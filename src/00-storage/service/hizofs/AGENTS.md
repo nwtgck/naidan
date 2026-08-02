@@ -9,4 +9,5 @@ Choose a destination by compatibility responsibility, not by filename suffix.
 - Consumers must not redeclare magic, kind tables, crypto domains, field order, or hard limits. Add a needed format concept to `00-format/` and import it directly.
 - Do not add heuristic lint that guesses semantic duplicates from numbers, strings, names, AST shapes, documentation, or tests. Use exact dependency/path/fixture checks.
 - Never import debug features from HizoFS core.
+- HizoFS core, API, runtime, and Worker own only generic filesystem, session, and Transition contracts. They must not name, type, import, or branch on Naidan application features such as Wesh, Chat, or File Explorer.
 - Only separately reviewed exact debug roots may receive deep-import exceptions; future `debug-*` names inherit nothing.

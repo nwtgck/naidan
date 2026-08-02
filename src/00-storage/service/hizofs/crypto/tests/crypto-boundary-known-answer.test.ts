@@ -25,7 +25,6 @@ import {
 } from '@/00-storage/service/hizofs/00-format';
 import * as cryptoBoundary from '@/00-storage/service/hizofs/crypto';
 import {
-  PASSPHRASE_CREDENTIAL_METHOD_V1,
   createUnlockAuthenticatorTag,
   decryptAuthenticatedRecord,
   encryptRecord,
@@ -39,6 +38,7 @@ import {
   FileSystemRootKey,
   plaintextRecordBytes,
 } from '@/00-storage/service/hizofs/crypto';
+import { HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD } from '@/00-storage/service/hizofs/00-format';
 
 function hex({ value }: { value: string }): Uint8Array {
   return Uint8Array.from(Buffer.from(value, 'hex'));
@@ -90,7 +90,7 @@ describe('HizoFS purpose-specific crypto boundary and known-answer vectors', () 
     expect(Buffer.from(encodePassphraseSlotAad({
       fileSystemId,
       formatVersion: 1,
-      method: PASSPHRASE_CREDENTIAL_METHOD_V1,
+      method: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.id,
       methodParameters,
       methodVersion: 1,
       slotId,

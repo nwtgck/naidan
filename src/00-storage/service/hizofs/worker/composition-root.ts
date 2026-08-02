@@ -25,6 +25,7 @@ import {
   createTimestampMilliseconds,
   createUnlockSequence,
   encodeFileSystemCommitPayload,
+  sameSuperblockLogicalStateExceptMinimumUnlockSequence,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
   type FileSystemCommitPayload,
@@ -34,6 +35,7 @@ import {
   type HomeRecordReference,
   type InodeNumber,
   type MutationId,
+  type OpenedSuperblockCopies,
   type PhysicalRecordReference,
   type SubvolumeId,
   type TimestampMilliseconds,
@@ -64,11 +66,7 @@ import {
   type AuthenticatedMetadataMutationAuthority,
 } from "@/00-storage/service/hizofs/authenticated-store/metadata-mutation-authority";
 import { createAuthenticatedNamespaceRecordSource } from "@/00-storage/service/hizofs/authenticated-store/namespace-record-source";
-import {
-  openSuperblockCopies,
-  sameSuperblockLogicalStateExceptMinimumUnlockSequence,
-  type OpenedSuperblockCopies,
-} from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
+import { openSuperblockCopies } from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
 import { readBootstrapRoot } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
 import { PreparedMutationCommitPublicationError } from "@/00-storage/service/hizofs/authenticated-store/prepared-mutation-commit-store";
 import {

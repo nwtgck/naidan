@@ -6,7 +6,6 @@ import { parseCredentialSlotId, parseFileSystemId, type CredentialSlotId, type F
 import { decodeRestrictedCanonicalJson, encodeCanonicalAsciiString } from './lexical';
 
 const CONSTANTS = HIZOFS_V1_FORMAT_CONSTANTS;
-const REQUIRED_METHOD = 'passphrase_pbkdf2_hmac_sha256_aes_256_gcm';
 const METHOD_ID = /^[a-z][a-z0-9_]{0,63}$/u;
 const ROOT_FIELDS = HIZOFS_V1_JSON_FORMATS.unlockEnvelope.fieldOrder;
 const SLOT_FIELDS = HIZOFS_V1_JSON_FORMATS.credentialSlot.fieldOrder;
@@ -35,6 +34,11 @@ export type UnlockEnvelopeUnsignedV1 = {
 export type UnlockEnvelopeV1 = UnlockEnvelopeUnsignedV1 & {
   readonly authenticatorTag: string;
 };
+
+export const HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD = {
+  id: 'passphrase_pbkdf2_hmac_sha256_aes_256_gcm',
+  version: 1,
+} as const;
 
 function asStrictObject({ fields, label, value }: { fields: readonly string[]; label: string; value: unknown }): JsonObject {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new TypeError(`${label} must be an object`);
@@ -76,7 +80,8 @@ function validateCredentialSlot({ slot }: { slot: CredentialSlotV1 }): number {
     maximumDecodedBytes: CONSTANTS.limits.credentialWrappedRootKeyBytes,
     value: slot.wrappedFileSystemRootKey,
   });
-  if (slot.method !== REQUIRED_METHOD || slot.methodVersion !== 1) return 0;
+  if (slot.method !== HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.id
+    || slot.methodVersion !== HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.version) return 0;
   if (parametersBytes.byteLength !== 32 || wrappedBytes.byteLength !== 48) {
     throw new RangeError('known passphrase credential material has an invalid byte length');
   }

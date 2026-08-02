@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { parsePortableFileSystemId } from '@/00-storage/service/hizofs/compatibility';
 import {
+  classifyPersistenceControlStructure,
+  createPersistenceControlCore,
+  encodePersistenceControl,
+  persistenceControlCandidatesAreBootstrapAbsent,
+  persistenceControlPublicationOutcome,
+  persistenceControlReadbackMatches,
   PersistenceControlSelectionError,
   selectPersistenceControlAuthority,
+  structurallyObservedPersistenceControlSequence,
   type NaidanPersistenceControlV1,
   type PersistenceControlCandidate,
 } from '@/00-storage/service/naidan-persistence-control/00-format';
@@ -38,6 +45,57 @@ function selectionCode(run: () => unknown): string | undefined {
 }
 
 describe('Naidan Persistence Control A/B authority selection', () => {
+  it('classifies canonical bytes and exposes the structural sequence without proof policy', () => {
+    const expected = control({ copy: 0, sequence: 7 });
+    const classified = classifyPersistenceControlStructure({
+      bytes: encodePersistenceControl({ control: expected }),
+      copy: 0,
+    });
+    expect(classified).toEqual({ control: expected, copy: 0, state: 'structurally_valid' });
+    expect(structurallyObservedPersistenceControlSequence({
+      candidate: { control: expected, copy: 0, state: 'protection_unresolved' },
+    })).toBe(7);
+    expect(classifyPersistenceControlStructure({ bytes: undefined, copy: 1 })).toEqual({
+      copy: 1,
+      reason: 'missing',
+      state: 'structurally_invalid',
+    });
+    expect(classifyPersistenceControlStructure({
+      bytes: new TextEncoder().encode('{}\n'),
+      copy: 1,
+    })).toMatchObject({ copy: 1, state: 'structurally_invalid' });
+  });
+
+  it('owns bootstrap absence, exact core construction, readback, and publication outcome facts', () => {
+    const absent = [
+      { copy: 0, reason: 'missing', state: 'structurally_invalid' },
+      { copy: 1, reason: 'missing', state: 'structurally_invalid' },
+    ] as const satisfies readonly [PersistenceControlCandidate, PersistenceControlCandidate];
+    expect(persistenceControlCandidatesAreBootstrapAbsent({ candidates: absent })).toBe(true);
+
+    const core = createPersistenceControlCore({
+      copy: 0,
+      semanticState: { mode: { type: 'plain' }, retiredFileSystemIds: [] },
+      sequence: 3,
+    });
+    expect(core).toEqual({
+      copy: 0,
+      format: 'naidan-persistence-control',
+      formatVersion: 1,
+      mode: { type: 'plain' },
+      retiredFileSystemIds: [],
+      sequence: 3,
+    });
+
+    const expected = control({ copy: 0, sequence: 3 });
+    const actual = { control: expected, copy: 0, state: 'proof_valid' } as const;
+    expect(persistenceControlReadbackMatches({ actual, expected, physicalCopy: 0 })).toBe(true);
+    expect(persistenceControlPublicationOutcome({
+      desiredState: { mode: { type: 'plain' }, retiredFileSystemIds: [] },
+      selectedAuthority: { control: expected, copy: 0, redundancy: 'degraded' },
+    })).toBe('committed_degraded');
+  });
+
   it('selects the highest proof-valid sequence', () => {
     const selected = selectPersistenceControlAuthority({ candidates: [candidate({ copy: 0, sequence: 3, state: 'proof_valid' }), candidate({ copy: 1, sequence: 4, state: 'proof_valid' })] });
     expect(selected.copy).toBe(1);

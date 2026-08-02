@@ -1,5 +1,6 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
+  HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD,
   encodePassphraseSlotAad,
   type CredentialSlotId,
   type FileSystemId,
@@ -13,8 +14,6 @@ import {
   type AuthenticatedWrappedRootKeyBytes,
   type CredentialWrapNonce,
 } from "@/00-storage/service/hizofs/crypto/types";
-
-export const PASSPHRASE_CREDENTIAL_METHOD_V1 = "passphrase_pbkdf2_hmac_sha256_aes_256_gcm";
 
 export type PassphraseCredentialParametersV1 = {
   readonly iterations: number;
@@ -82,9 +81,9 @@ export async function wrapFileSystemRootKeyForCredentialSlot({
   const aad = encodePassphraseSlotAad({
     fileSystemId,
     formatVersion: HIZOFS_V1_FORMAT_CONSTANTS.formatVersion,
-    method: PASSPHRASE_CREDENTIAL_METHOD_V1,
+    method: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.id,
     methodParameters,
-    methodVersion: 1,
+    methodVersion: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.version,
     slotId,
   });
   return await withFileSystemRootKeyBytes({
@@ -119,9 +118,9 @@ export async function unwrapFileSystemRootKeyFromCredentialSlot({
   const aad = encodePassphraseSlotAad({
     fileSystemId,
     formatVersion: HIZOFS_V1_FORMAT_CONSTANTS.formatVersion,
-    method: PASSPHRASE_CREDENTIAL_METHOD_V1,
+    method: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.id,
     methodParameters,
-    methodVersion: 1,
+    methodVersion: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.version,
     slotId,
   });
   const bytes = await decryptAesGcm({ aad, ciphertextAndTag: wrappedRootKey, key, nonce: parameters.nonce });

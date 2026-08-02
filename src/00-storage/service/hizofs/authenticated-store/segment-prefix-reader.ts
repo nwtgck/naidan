@@ -1,13 +1,18 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
+  assertRecordFrameReaderValidity,
   decodeRecordFrameHeader,
   decodeSegmentHeader,
-  segmentClassForRecordKind,
+  segmentFileSizeIsReaderValid,
+  segmentFramePaddingIsZero,
+  segmentHeaderMatchesPhysicalIdentity,
   segmentHeaderAuthenticatedPrefix,
-  validatePhysicalOnlyRecordIdentity,
+  segmentPrefixHasTruncatedFrameHeader,
+  segmentPrefixStartsWithFooterMagic,
   type FileSystemId,
   type RecordFrameHeaderV1,
   type SegmentClass,
+  type SegmentFrameDescriptor,
   type SegmentId,
 } from "@/00-storage/service/hizofs/00-format";
 import {
@@ -27,10 +32,7 @@ import {
 import { authenticatedStoreError } from "./errors";
 import { authenticatedSegmentPath } from "./segment-location";
 
-export type AuthenticatedSegmentFrame = Readonly<{
-  header: RecordFrameHeaderV1;
-  physicalOffset: bigint;
-}>;
+export type AuthenticatedSegmentFrame = SegmentFrameDescriptor;
 
 export type AuthenticatedSegmentDescriptor = Readonly<{
   fileSize: bigint;
@@ -42,33 +44,6 @@ export type ScannedSegmentPrefix = Readonly<{
   nextOffset: bigint;
   state: "abandoned_unsealed" | "complete_unsealed" | "footer_candidate";
 }>;
-
-function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
-  if (left.byteLength !== right.byteLength) return false;
-  return left.every((value, index) => value === right[index]);
-}
-
-function segmentMaximumBytes({ segmentClass }: { segmentClass: SegmentClass }): number {
-  switch (segmentClass) {
-  case "data": return HIZOFS_V1_FORMAT_CONSTANTS.limits.dataSegmentFileMaximumBytes;
-  case "metadata": return HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataSegmentFileMaximumBytes;
-  default: return segmentClass satisfies never;
-  }
-}
-
-function frameMaximumCount({ segmentClass }: { segmentClass: SegmentClass }): number {
-  switch (segmentClass) {
-  case "data": return HIZOFS_V1_FORMAT_CONSTANTS.limits.dataFramesPerSegment;
-  case "metadata": return HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataFramesPerSegment;
-  default: return segmentClass satisfies never;
-  }
-}
-
-function plaintextMaximumBytes({ recordKind }: { recordKind: number }): number {
-  return recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data
-    ? HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes
-    : HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes;
-}
 
 export async function readAuthenticatedSegmentDescriptor({ backend, diagnostics, fileSystemId, physicalSegmentId, rootKey, segmentClass }: {
   backend: HizoFSReadableBackend;
@@ -83,8 +58,7 @@ export async function readAuthenticatedSegmentDescriptor({ backend, diagnostics,
   if (fileSize === undefined) {
     throw authenticatedStoreError({ code: "control_plane_corrupt", message: "referenced segment file is missing" });
   }
-  const headerSize = BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
-  if (fileSize < headerSize || fileSize > BigInt(segmentMaximumBytes({ segmentClass }))) {
+  if (!segmentFileSizeIsReaderValid({ fileSize, segmentClass })) {
     throw authenticatedStoreError({ code: "control_plane_corrupt", message: "Segment file size is outside the V1 bound" });
   }
   const bytes = await backend.readExact({
@@ -95,7 +69,7 @@ export async function readAuthenticatedSegmentDescriptor({ backend, diagnostics,
   let header: ReturnType<typeof decodeSegmentHeader>;
   try {
     header = decodeSegmentHeader({ bytes });
-    if (header.segmentClass !== segmentClass || !bytesEqual({ left: header.physicalSegmentId, right: physicalSegmentId })) {
+    if (!segmentHeaderMatchesPhysicalIdentity({ header, physicalSegmentId, segmentClass })) {
       throw new TypeError("Segment Header does not match its path binding");
     }
   } catch (cause: unknown) {
@@ -145,32 +119,28 @@ export async function scanAuthenticatedSegmentPrefix({ backend, diagnostics, fil
   const headerSize = BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
   const frames: AuthenticatedSegmentFrame[] = [];
   const frameHeaderSize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader;
-  const footerMagic = new TextEncoder().encode(HIZOFS_V1_FORMAT_CONSTANTS.magic.segmentFooter);
   let offset = headerSize;
   while (offset < fileSize) {
     const remaining = fileSize - offset;
-    if (remaining < BigInt(frameHeaderSize)) return { frames, nextOffset: offset, state: "abandoned_unsealed" };
+    if (segmentPrefixHasTruncatedFrameHeader({ remainingBytes: remaining })) {
+      return { frames, nextOffset: offset, state: "abandoned_unsealed" };
+    }
     const headerBytes = await backend.readExact({ length: frameHeaderSize, offset, path });
-    if (bytesEqual({ left: headerBytes.subarray(0, footerMagic.byteLength), right: footerMagic })) {
+    if (segmentPrefixStartsWithFooterMagic({ bytes: headerBytes })) {
       return { frames, nextOffset: offset, state: "footer_candidate" };
     }
 
     let header: RecordFrameHeaderV1;
     try {
       header = decodeRecordFrameHeader({ bytes: headerBytes });
-      if (segmentClassForRecordKind({ recordKind: header.recordKind }) !== segmentClass
-        || header.plaintextLength > plaintextMaximumBytes({ recordKind: header.recordKind })
-        || frames.length >= frameMaximumCount({ segmentClass })
-        || BigInt(header.frameLength) > remaining) {
-        throw new TypeError("Record Frame violates its segment bounds");
-      }
-      if (header.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page) {
-        validatePhysicalOnlyRecordIdentity({
-          authenticatedHeader: header,
-          physicalOffset: offset,
-          physicalSegmentId,
-        });
-      }
+      assertRecordFrameReaderValidity({
+        frameCount: frames.length,
+        header,
+        physicalOffset: offset,
+        physicalSegmentId,
+        remainingBytes: remaining,
+        segmentClass,
+      });
     } catch {
       return { frames, nextOffset: offset, state: "abandoned_unsealed" };
     }
@@ -181,7 +151,7 @@ export async function scanAuthenticatedSegmentPrefix({ backend, diagnostics, fil
       path,
     });
     const ciphertext = body.subarray(0, header.sealedLength);
-    if (body.subarray(header.sealedLength).some(byte => byte !== 0)) {
+    if (!segmentFramePaddingIsZero({ body, sealedLength: header.sealedLength })) {
       return { frames, nextOffset: offset, state: "abandoned_unsealed" };
     }
     try {

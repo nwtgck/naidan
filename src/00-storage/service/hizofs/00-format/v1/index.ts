@@ -25,7 +25,10 @@ export * from './records/file-system-commit';
 export * from './records/record-kind';
 export * from './paths';
 export * from './scalars';
+export * from './segment-validity';
 export * from './semantic-validation/record-payloads';
+export * from './superblock-authority';
+export * from './unlock-envelope-authority';
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

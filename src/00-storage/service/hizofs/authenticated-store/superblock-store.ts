@@ -1,26 +1,41 @@
 import {
   HIZOFS_SUPERBLOCK_FILES,
   HIZOFS_V1_FORMAT_CONSTANTS,
+  assertMutationSuperblockPublicationTransition,
+  assertRelocationSuperblockPublicationTransition,
+  assertUnlockFloorSuperblockPublicationTransition,
+  authenticatedSuperblockCopiesByDescendingSequence,
   createPublicationSequence,
   createSuperblockHeader,
   decodeSuperblockHeader,
   decodeSuperblockPlaintext,
-  encodeHomeRecordReference,
-  encodeOptionalHomeRecordReference,
-  encodeOptionalPhysicalRecordReference,
   encodeSuperblockHeader,
   encodeSuperblockPlaintext,
-  type CommitSequence,
+  maximumStructurallyObservedSuperblockPublicationSequence,
+  resolveSuperblockPublicationAuthority,
+  selectSuperblockAuthority,
+  superblockFlagsForLogicalState,
+  superblockLogicalStateFrom,
+  superblockLogicalStatesSemanticallyEqual,
+  superblockMutationPublicationFailureOutcome,
+  superblockOpenedAuthoritiesSemanticallyEqual,
+  superblockRelocationPublicationFailureOutcome,
+  superblockRequiresUnsupportedFeatures,
+  superblockUnlockFloorPublicationFailureOutcome,
+  type AuthenticatedSuperblockCopy,
   type FeatureBits,
   type FileSystemId,
-  type HomeRecordReference,
-  type MutationId,
-  type PhysicalRecordReference,
   type PublicationId,
   type PublicationSequence,
   type SuperblockHeaderV1,
+  type SuperblockCopyReadResult,
+  type SuperblockLogicalState,
   type SuperblockPlaintextV1,
-  type UnlockSequence,
+  type OpenedSuperblockCopies,
+  type SuperblockMutationPublicationFailureOutcome,
+  type SuperblockPublicationPhase,
+  type SuperblockRelocationPublicationFailureOutcome,
+  type SuperblockUnlockFloorPublicationFailureOutcome,
 } from "@/00-storage/service/hizofs/00-format";
 import {
   authenticatedSuperblockBytes,
@@ -50,42 +65,15 @@ import {
   readAuthenticatedWholeFile,
 } from "./whole-file";
 
-export type SuperblockCopyState = "normal" | "superblock_redundancy_degraded";
-
-export type SuperblockLogicalState = Readonly<{
-  activeCommitHomeRef: HomeRecordReference;
-  activeCommitSequence: CommitSequence;
-  activeMutationId: MutationId;
-  fallbackCommitHomeRef: HomeRecordReference | null;
-  minimumUnlockSequence: UnlockSequence;
-  relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
-  requiredFeatureBits: FeatureBits;
-}>;
-
-export type HistoricalRootFeatureState = "supported_or_absent" | "unsupported";
-
-export type OpenedSuperblockCopies = Readonly<{
-  authenticatedLogicalStates: readonly SuperblockLogicalState[];
-  copyState: SuperblockCopyState;
-  historicalRootFeatureState: HistoricalRootFeatureState;
-  logicalState: SuperblockLogicalState;
-  maximumStructurallyObservedPublicationSequence: PublicationSequence;
-  selectedCopy: 0 | 1;
-  selectedPublicationId: PublicationId;
-  selectedPublicationSequence: PublicationSequence;
-}>;
-
-type AuthenticatedSuperblockCopy = Readonly<{
-  header: SuperblockHeaderV1;
-  logicalState: SuperblockLogicalState;
-  physicalCopy: 0 | 1;
-  plaintext: SuperblockPlaintextV1;
-}>;
-
-type SuperblockCopyReadResult =
-  | Readonly<{ kind: "invalid"; structurallyObservedPublicationSequence?: PublicationSequence }>
-  | Readonly<{ kind: "missing" }>
-  | Readonly<{ copy: AuthenticatedSuperblockCopy; kind: "valid" }>;
+export type {
+  HistoricalRootFeatureState,
+  OpenedSuperblockCopies,
+  SuperblockCopyState,
+  SuperblockLogicalState,
+  SuperblockMutationPublicationFailureOutcome,
+  SuperblockRelocationPublicationFailureOutcome,
+  SuperblockUnlockFloorPublicationFailureOutcome,
+} from "@/00-storage/service/hizofs/00-format";
 
 function superblockPath({ copy }: { copy: 0 | 1 }) {
   return canonicalContainerPath({ value: HIZOFS_SUPERBLOCK_FILES[copy] });
@@ -97,61 +85,6 @@ function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): b
     if (left[index] !== right[index]) return false;
   }
   return true;
-}
-
-function optionalBytesEqual({ left, right }: {
-  left: Uint8Array;
-  right: Uint8Array;
-}): boolean {
-  return bytesEqual({ left, right });
-}
-
-function logicalStateFrom({ header, plaintext }: {
-  header: SuperblockHeaderV1;
-  plaintext: SuperblockPlaintextV1;
-}): SuperblockLogicalState {
-  return {
-    activeCommitHomeRef: plaintext.activeCommitHomeRef,
-    activeCommitSequence: header.activeCommitSequence,
-    activeMutationId: plaintext.activeMutationId,
-    fallbackCommitHomeRef: plaintext.fallbackCommitHomeRef,
-    minimumUnlockSequence: plaintext.minimumUnlockSequence,
-    relocationIndexRootPhysicalRef: plaintext.relocationIndexRootPhysicalRef,
-    requiredFeatureBits: plaintext.requiredFeatureBits,
-  };
-}
-
-function sameLogicalState({ left, right }: {
-  left: SuperblockLogicalState;
-  right: SuperblockLogicalState;
-}): boolean {
-  return left.activeCommitSequence === right.activeCommitSequence
-    && bytesEqual({
-      left: encodeHomeRecordReference({ reference: left.activeCommitHomeRef }),
-      right: encodeHomeRecordReference({ reference: right.activeCommitHomeRef }),
-    })
-    && bytesEqual({ left: left.activeMutationId, right: right.activeMutationId })
-    && optionalBytesEqual({
-      left: encodeOptionalHomeRecordReference({ reference: left.fallbackCommitHomeRef }),
-      right: encodeOptionalHomeRecordReference({ reference: right.fallbackCommitHomeRef }),
-    })
-    && left.minimumUnlockSequence === right.minimumUnlockSequence
-    && optionalBytesEqual({
-      left: encodeOptionalPhysicalRecordReference({ reference: left.relocationIndexRootPhysicalRef }),
-      right: encodeOptionalPhysicalRecordReference({ reference: right.relocationIndexRootPhysicalRef }),
-    })
-    && left.requiredFeatureBits === right.requiredFeatureBits;
-}
-
-function superblockFlags({ logicalState }: { logicalState: SuperblockLogicalState }): number {
-  let flags = 0;
-  if (logicalState.fallbackCommitHomeRef !== null) {
-    flags |= HIZOFS_V1_FORMAT_CONSTANTS.flags.superblockFallbackCommitPresent;
-  }
-  if (logicalState.relocationIndexRootPhysicalRef !== null) {
-    flags |= HIZOFS_V1_FORMAT_CONSTANTS.flags.superblockRelocationIndexRootPresent;
-  }
-  return flags;
 }
 
 function isExpectedInvalidCopyFailure({ cause }: { cause: unknown }): boolean {
@@ -219,7 +152,7 @@ async function readSuperblockCopy({ backend, copy, diagnostics, fileSystemId, ro
     return {
       copy: {
         header,
-        logicalState: logicalStateFrom({ header, plaintext }),
+        logicalState: superblockLogicalStateFrom({ header, plaintext }),
         physicalCopy: copy,
         plaintext,
       },
@@ -233,104 +166,16 @@ async function readSuperblockCopy({ backend, copy, diagnostics, fileSystemId, ro
   }
 }
 
-function maximumStructurallyObservedPublicationSequence({ results }: {
-  results: readonly SuperblockCopyReadResult[];
-}): bigint {
-  let maximum = 0n;
-  for (const result of results) {
-    const observed = (() => {
-      switch (result.kind) {
-      case "valid": return result.copy.header.publicationSequence;
-      case "invalid": return result.structurallyObservedPublicationSequence;
-      case "missing": return undefined;
-      default: {
-        const exhaustive: never = result;
-        throw new Error(`Unhandled Superblock copy result: ${((exhaustive satisfies never) as { readonly kind: string }).kind}`);
-      }
-      }
-    })();
-    if (observed !== undefined && observed > maximum) maximum = observed;
-  }
-  return maximum;
-}
-
-function selectAuthenticatedCopies({ results }: {
-  results: readonly SuperblockCopyReadResult[];
-}): readonly AuthenticatedSuperblockCopy[] {
-  const copies: AuthenticatedSuperblockCopy[] = [];
-  for (const result of results) {
-    switch (result.kind) {
-    case "invalid":
-    case "missing":
-      break;
-    case "valid":
-      copies.push(result.copy);
-      break;
-    default: {
-      const exhaustive: never = result;
-      throw new Error(`Unhandled Superblock copy result: ${((exhaustive satisfies never) as { readonly kind: string }).kind}`);
-    }
-    }
-  }
-  return copies.sort((left, right) => {
-    if (left.header.publicationSequence === right.header.publicationSequence) return 0;
-    return left.header.publicationSequence > right.header.publicationSequence ? -1 : 1;
-  });
-}
-
-function requiresUnsupportedFeatures({ logicalState, supportedFeatureBits }: {
-  logicalState: SuperblockLogicalState;
-  supportedFeatureBits: FeatureBits;
-}): boolean {
-  return (logicalState.requiredFeatureBits & ~supportedFeatureBits) !== 0n;
-}
-
 function assertSupportedFeatures({ logicalState, supportedFeatureBits }: {
   logicalState: SuperblockLogicalState;
   supportedFeatureBits: FeatureBits;
 }): void {
-  if (requiresUnsupportedFeatures({ logicalState, supportedFeatureBits })) {
+  if (superblockRequiresUnsupportedFeatures({ logicalState, supportedFeatureBits })) {
     throw authenticatedStoreError({
       code: "unsupported_required_feature",
       message: "selected Superblock requires unsupported feature semantics",
     });
   }
-}
-
-function openedFromValidCopies({ copies, maximumObservedSequence, supportedFeatureBits }: {
-  copies: readonly AuthenticatedSuperblockCopy[];
-  maximumObservedSequence: PublicationSequence;
-  supportedFeatureBits: FeatureBits;
-}): OpenedSuperblockCopies {
-  const selected = copies[0];
-  if (selected === undefined) throw new Error("authenticated Superblock selection invariant failed");
-  const sameSequenceSibling = copies.find(copy => copy !== selected
-    && copy.header.publicationSequence === selected.header.publicationSequence);
-  if (sameSequenceSibling !== undefined) {
-    throw authenticatedStoreError({
-      code: "control_plane_corrupt",
-      message: "two authenticated Superblock copies reuse one Publication Sequence",
-    });
-  }
-  assertSupportedFeatures({ logicalState: selected.logicalState, supportedFeatureBits });
-  const sibling = copies[1];
-  return {
-    authenticatedLogicalStates: Object.freeze(copies.map(copy => copy.logicalState)),
-    copyState: sibling !== undefined && sameLogicalState({ left: selected.logicalState, right: sibling.logicalState })
-      ? "normal"
-      : "superblock_redundancy_degraded",
-    // A supported newest authority remains readable, but an authenticated older
-    // root with unknown semantics must stay visible so maintenance cannot erase it.
-    historicalRootFeatureState: sibling !== undefined
-      && requiresUnsupportedFeatures({ logicalState: sibling.logicalState, supportedFeatureBits })
-      ? "unsupported"
-      : "supported_or_absent",
-    logicalState: selected.logicalState,
-    maximumStructurallyObservedPublicationSequence: maximumObservedSequence,
-    selectedCopy: selected.physicalCopy,
-    selectedPublicationId: selected.plaintext.publicationId,
-    selectedPublicationSequence: selected.header.publicationSequence,
-  };
 }
 
 async function readSuperblockSnapshot({ backend, diagnostics, fileSystemId, rootKey, supportedFeatureBits }: {
@@ -351,24 +196,29 @@ async function readSuperblockSnapshot({ backend, diagnostics, fileSystemId, root
     fileSystemId,
     rootKey,
   })));
-  const copies = selectAuthenticatedCopies({ results });
-  if (copies.length === 0) {
-    const allMissing = results.every(result => result.kind === "missing");
+  const selection = selectSuperblockAuthority({ results, supportedFeatureBits });
+  switch (selection.type) {
+  case "no_authenticated_copy":
     throw authenticatedStoreError({
-      code: allMissing ? "incomplete_container" : "control_plane_corrupt",
-      message: allMissing
+      code: selection.allCopiesMissing ? "incomplete_container" : "control_plane_corrupt",
+      message: selection.allCopiesMissing
         ? "no Superblock copy is available"
         : "no authenticated Superblock copy is available",
     });
+  case "sequence_reuse_conflict":
+    throw authenticatedStoreError({
+      code: "control_plane_corrupt",
+      message: "two authenticated Superblock copies reuse one Publication Sequence",
+    });
+  case "unsupported_required_feature":
+    throw authenticatedStoreError({
+      code: "unsupported_required_feature",
+      message: "selected Superblock requires unsupported feature semantics",
+    });
+  case "selected":
+    return { copies: selection.copies, opened: selection.opened, results };
+  default: return selection satisfies never;
   }
-  const maximumObservedSequence = createPublicationSequence({
-    value: maximumStructurallyObservedPublicationSequence({ results }),
-  });
-  return {
-    copies,
-    opened: openedFromValidCopies({ copies, maximumObservedSequence, supportedFeatureBits }),
-    results,
-  };
 }
 
 export async function openSuperblockCopies({ backend, diagnostics, fileSystemId, rootKey, supportedFeatureBits }: {
@@ -418,7 +268,7 @@ async function prepareSuperblockCopy({ copy, diagnostics, fileSystemId, logicalS
   });
   usedNonces.push(Uint8Array.from(nonce));
   usedPublicationIds.push(publicationId);
-  const flags = superblockFlags({ logicalState });
+  const flags = superblockFlagsForLogicalState({ logicalState });
   const header = createSuperblockHeader({
     activeCommitSequence: logicalState.activeCommitSequence,
     copy,
@@ -473,7 +323,7 @@ async function verifyPreparedSuperblockCopy({ backend, diagnostics, fileSystemId
   if (readBack.kind !== "valid"
     || readBack.copy.header.publicationSequence !== prepared.publicationSequence
     || !bytesEqual({ left: readBack.copy.plaintext.publicationId, right: prepared.publicationId })
-    || !sameLogicalState({ left: readBack.copy.logicalState, right: prepared.logicalState })) {
+    || !superblockLogicalStatesSemanticallyEqual({ left: readBack.copy.logicalState, right: prepared.logicalState })) {
     throw authenticatedStoreError({
       code: "control_plane_corrupt",
       message: `Superblock copy ${prepared.copy} failed authenticated exact read-back`,
@@ -550,8 +400,8 @@ export async function createInitialSuperblockCopies({ backend, diagnostics, file
       message: "initial Superblock bootstrap encountered a non-repairable invalid copy",
     });
   }
-  const existing = selectAuthenticatedCopies({ results: initialResults });
-  if (existing.some(copy => !sameLogicalState({ left: copy.logicalState, right: logicalState }))) {
+  const existing = authenticatedSuperblockCopiesByDescendingSequence({ results: initialResults });
+  if (existing.some(copy => !superblockLogicalStatesSemanticallyEqual({ left: copy.logicalState, right: logicalState }))) {
     throw authenticatedStoreError({
       code: "control_plane_corrupt",
       message: "existing Superblock state disagrees with the requested initial state",
@@ -559,7 +409,7 @@ export async function createInitialSuperblockCopies({ backend, diagnostics, file
   }
   const usedNonces = existing.map(copy => Uint8Array.from(copy.header.nonce));
   const usedPublicationIds = existing.map(copy => copy.plaintext.publicationId);
-  let maximumSequence = maximumStructurallyObservedPublicationSequence({ results: initialResults });
+  let maximumSequence = maximumStructurallyObservedSuperblockPublicationSequence({ results: initialResults });
   const published = [...existing];
   for (const copy of [0, 1] as const) {
     const initialResult = initialResults[copy];
@@ -591,20 +441,16 @@ export async function createInitialSuperblockCopies({ backend, diagnostics, file
     }));
   }
   const finalResults = published.map(copy => ({ copy, kind: "valid" }) as const);
-  const sorted = selectAuthenticatedCopies({ results: finalResults });
-  return openedFromValidCopies({
-    copies: sorted,
-    maximumObservedSequence: createPublicationSequence({
-      value: maximumStructurallyObservedPublicationSequence({ results: finalResults }),
-    }),
-    supportedFeatureBits,
-  });
+  const finalSelection = selectSuperblockAuthority({ results: finalResults, supportedFeatureBits });
+  switch (finalSelection.type) {
+  case "no_authenticated_copy":
+  case "sequence_reuse_conflict":
+  case "unsupported_required_feature":
+    throw new Error(`initial Superblock publication selection failed: ${finalSelection.type}`);
+  case "selected": return finalSelection.opened;
+  default: return finalSelection satisfies never;
+  }
 }
-
-export type SuperblockMutationPublicationFailureOutcome =
-  | "committed_redundancy_degraded"
-  | "not_published"
-  | "outcome_resolution_required";
 
 export class SuperblockMutationPublicationError extends Error {
   readonly outcome: SuperblockMutationPublicationFailureOutcome;
@@ -625,11 +471,6 @@ export class SuperblockPublicationConflictError extends Error {
   }
 }
 
-export type SuperblockRelocationPublicationFailureOutcome =
-  | "not_published"
-  | "outcome_resolution_required"
-  | "published_redundancy_degraded";
-
 export class SuperblockRelocationPublicationError extends Error {
   readonly outcome: SuperblockRelocationPublicationFailureOutcome;
 
@@ -638,52 +479,6 @@ export class SuperblockRelocationPublicationError extends Error {
     this.name = "SuperblockRelocationPublicationError";
     this.outcome = outcome;
   }
-}
-
-type SuperblockPublicationPhase = "first_authority_verified" | "first_write_started" | "prepared" | "second_copy_converged";
-
-function mutationPublicationFailureOutcome({ phase }: { phase: SuperblockPublicationPhase }): SuperblockMutationPublicationFailureOutcome {
-  switch (phase) {
-  case "prepared": return "not_published";
-  case "first_write_started": return "outcome_resolution_required";
-  case "first_authority_verified": return "committed_redundancy_degraded";
-  case "second_copy_converged": throw new Error("converged publication cannot fail");
-  default: return phase satisfies never;
-  }
-}
-
-function assertMutationPublicationTransition({ base, firstPublicationSequence, logicalState, secondPublicationSequence }: {
-  base: OpenedSuperblockCopies;
-  firstPublicationSequence: PublicationSequence;
-  logicalState: SuperblockLogicalState;
-  secondPublicationSequence: PublicationSequence;
-}): void {
-  if (firstPublicationSequence !== base.maximumStructurallyObservedPublicationSequence + 1n
-    || secondPublicationSequence !== base.maximumStructurallyObservedPublicationSequence + 2n) {
-    throw new RangeError("reserved Publication Sequences must be exactly F + 1 and F + 2");
-  }
-  if (logicalState.activeCommitSequence !== base.logicalState.activeCommitSequence + 1n) {
-    throw new RangeError("mutation Commit Sequence must be exactly base + 1");
-  }
-  if (logicalState.fallbackCommitHomeRef === null
-    || !bytesEqual({
-      left: encodeHomeRecordReference({ reference: logicalState.fallbackCommitHomeRef }),
-      right: encodeHomeRecordReference({ reference: base.logicalState.activeCommitHomeRef }),
-    })) {
-    throw new TypeError("mutation fallback Commit must be the previous authoritative active Commit");
-  }
-  if (bytesEqual({ left: logicalState.activeMutationId, right: base.logicalState.activeMutationId })) {
-    throw new TypeError("mutation publication requires a fresh Mutation ID");
-  }
-}
-
-function sameOpenedAuthority({ left, right }: { left: OpenedSuperblockCopies; right: OpenedSuperblockCopies }): boolean {
-  return left.selectedCopy === right.selectedCopy
-    && left.historicalRootFeatureState === right.historicalRootFeatureState
-    && left.selectedPublicationSequence === right.selectedPublicationSequence
-    && bytesEqual({ left: left.selectedPublicationId, right: right.selectedPublicationId })
-    && left.maximumStructurallyObservedPublicationSequence === right.maximumStructurallyObservedPublicationSequence
-    && sameLogicalState({ left: left.logicalState, right: right.logicalState });
 }
 
 async function overwritePreparedSuperblockCopy({ backend, diagnostics, fileSystemId, onWriteStarted, prepared, rootKey }: {
@@ -746,66 +541,10 @@ export async function resolveMutationSuperblockPublication({
     rootKey,
     supportedFeatureBits,
   });
-  if (sameLogicalState({ left: current.logicalState, right: intendedLogicalState })) {
-    return { superblock: current, type: "published" };
-  }
-  if (sameOpenedAuthority({ left: base, right: current })) {
-    return { superblock: current, type: "not_published" };
-  }
-  return { superblock: current, type: "publication_conflict" };
-}
-
-function sameLogicalStateExceptRelocation({ left, right }: {
-  left: SuperblockLogicalState;
-  right: SuperblockLogicalState;
-}): boolean {
-  return sameLogicalState({
-    left,
-    right: { ...right, relocationIndexRootPhysicalRef: left.relocationIndexRootPhysicalRef },
-  });
-}
-
-function sameOptionalPhysicalReference({ left, right }: {
-  left: PhysicalRecordReference | null;
-  right: PhysicalRecordReference | null;
-}): boolean {
-  return optionalBytesEqual({
-    left: encodeOptionalPhysicalRecordReference({ reference: left }),
-    right: encodeOptionalPhysicalRecordReference({ reference: right }),
-  });
-}
-
-function assertRelocationPublicationTransition({ base, firstPublicationSequence, logicalState, secondPublicationSequence }: {
-  base: OpenedSuperblockCopies;
-  firstPublicationSequence: PublicationSequence;
-  logicalState: SuperblockLogicalState;
-  secondPublicationSequence: PublicationSequence;
-}): void {
-  if (firstPublicationSequence !== base.maximumStructurallyObservedPublicationSequence + 1n
-    || secondPublicationSequence !== base.maximumStructurallyObservedPublicationSequence + 2n) {
-    throw new RangeError("reserved Publication Sequences must be exactly F + 1 and F + 2");
-  }
-  if (!sameLogicalStateExceptRelocation({ left: base.logicalState, right: logicalState })) {
-    throw new TypeError("relocation publication must preserve Commit, Mutation, fallback, unlock, and feature authority");
-  }
-  if (sameOptionalPhysicalReference({
-    left: base.logicalState.relocationIndexRootPhysicalRef,
-    right: logicalState.relocationIndexRootPhysicalRef,
-  })) {
-    throw new TypeError("relocation publication must change the authoritative Relocation Index root");
-  }
-}
-
-function relocationPublicationFailureOutcome({ phase }: {
-  phase: SuperblockPublicationPhase;
-}): SuperblockRelocationPublicationFailureOutcome {
-  switch (phase) {
-  case "prepared": return "not_published";
-  case "first_write_started": return "outcome_resolution_required";
-  case "first_authority_verified": return "published_redundancy_degraded";
-  case "second_copy_converged": throw new Error("converged publication cannot fail");
-  default: return phase satisfies never;
-  }
+  return {
+    superblock: current,
+    type: resolveSuperblockPublicationAuthority({ base, current, intendedLogicalState }),
+  };
 }
 
 async function publishSuperblockCopiesWithTransition({
@@ -845,7 +584,9 @@ async function publishSuperblockCopiesWithTransition({
   assertSupportedFeatures({ logicalState, supportedFeatureBits });
   assertTransition({ base, firstPublicationSequence, logicalState, secondPublicationSequence });
   const current = await readSuperblockSnapshot({ backend, diagnostics, fileSystemId, rootKey, supportedFeatureBits });
-  if (!sameOpenedAuthority({ left: base, right: current.opened })) throw new SuperblockPublicationConflictError();
+  if (!superblockOpenedAuthoritiesSemanticallyEqual({ left: base, right: current.opened })) {
+    throw new SuperblockPublicationConflictError();
+  }
 
   const usedNonces = current.copies.map(copy => Uint8Array.from(copy.header.nonce));
   const usedPublicationIds = current.copies.map(copy => copy.plaintext.publicationId);
@@ -898,7 +639,7 @@ async function publishSuperblockCopiesWithTransition({
     });
     const converged = await readSuperblockSnapshot({ backend, diagnostics, fileSystemId, rootKey, supportedFeatureBits });
     if (converged.opened.copyState !== "normal"
-      || !sameLogicalState({ left: converged.opened.logicalState, right: logicalState })
+      || !superblockLogicalStatesSemanticallyEqual({ left: converged.opened.logicalState, right: logicalState })
       || converged.opened.maximumStructurallyObservedPublicationSequence !== secondPublicationSequence) {
       throw authenticatedStoreError({
         code: "control_plane_corrupt",
@@ -926,13 +667,13 @@ export async function publishMutationSuperblockCopies({ backend, base, beforeFir
   supportedFeatureBits: FeatureBits;
 }): Promise<OpenedSuperblockCopies> {
   return await publishSuperblockCopiesWithTransition({
-    assertTransition: assertMutationPublicationTransition,
+    assertTransition: assertMutationSuperblockPublicationTransition,
     backend,
     base,
     beforeFirstAuthorityWrite,
     createFailureError: ({ cause, phase }) => new SuperblockMutationPublicationError({
       cause,
-      outcome: mutationPublicationFailureOutcome({ phase }),
+      outcome: superblockMutationPublicationFailureOutcome({ phase }),
     }),
     diagnostics,
     fileSystemId,
@@ -968,13 +709,10 @@ export async function resolveRelocationSuperblockPublication({
   supportedFeatureBits: FeatureBits;
 }): Promise<RelocationSuperblockPublicationResolution> {
   const current = await openSuperblockCopies({ backend, diagnostics, fileSystemId, rootKey, supportedFeatureBits });
-  if (sameLogicalState({ left: current.logicalState, right: intendedLogicalState })) {
-    return { superblock: current, type: "published" };
-  }
-  if (sameOpenedAuthority({ left: base, right: current })) {
-    return { superblock: current, type: "not_published" };
-  }
-  return { superblock: current, type: "publication_conflict" };
+  return {
+    superblock: current,
+    type: resolveSuperblockPublicationAuthority({ base, current, intendedLogicalState }),
+  };
 }
 
 export async function publishRelocationSuperblockCopies({ backend, base, beforeFirstAuthorityWrite, diagnostics, fileSystemId, firstPublicationSequence, logicalState, randomSource, rootKey, secondPublicationSequence, supportedFeatureBits }: {
@@ -991,13 +729,13 @@ export async function publishRelocationSuperblockCopies({ backend, base, beforeF
   supportedFeatureBits: FeatureBits;
 }): Promise<OpenedSuperblockCopies> {
   return await publishSuperblockCopiesWithTransition({
-    assertTransition: assertRelocationPublicationTransition,
+    assertTransition: assertRelocationSuperblockPublicationTransition,
     backend,
     base,
     beforeFirstAuthorityWrite,
     createFailureError: ({ cause, phase }) => new SuperblockRelocationPublicationError({
       cause,
-      outcome: relocationPublicationFailureOutcome({ phase }),
+      outcome: superblockRelocationPublicationFailureOutcome({ phase }),
     }),
     diagnostics,
     fileSystemId,
@@ -1012,11 +750,6 @@ export async function publishRelocationSuperblockCopies({ backend, base, beforeF
 
 
 
-export type SuperblockUnlockFloorPublicationFailureOutcome =
-  | "not_published"
-  | "outcome_resolution_required"
-  | "published_redundancy_degraded";
-
 export class SuperblockUnlockFloorPublicationError extends Error {
   readonly outcome: SuperblockUnlockFloorPublicationFailureOutcome;
 
@@ -1024,46 +757,6 @@ export class SuperblockUnlockFloorPublicationError extends Error {
     super(`Superblock minimum Unlock Sequence publication failed: ${outcome}`, { cause });
     this.name = "SuperblockUnlockFloorPublicationError";
     this.outcome = outcome;
-  }
-}
-
-export function sameSuperblockLogicalStateExceptMinimumUnlockSequence({ left, right }: {
-  left: SuperblockLogicalState;
-  right: SuperblockLogicalState;
-}): boolean {
-  return sameLogicalState({
-    left,
-    right: { ...right, minimumUnlockSequence: left.minimumUnlockSequence },
-  });
-}
-
-function assertUnlockFloorPublicationTransition({ base, firstPublicationSequence, logicalState, secondPublicationSequence }: {
-  base: OpenedSuperblockCopies;
-  firstPublicationSequence: PublicationSequence;
-  logicalState: SuperblockLogicalState;
-  secondPublicationSequence: PublicationSequence;
-}): void {
-  if (firstPublicationSequence !== base.maximumStructurallyObservedPublicationSequence + 1n
-    || secondPublicationSequence !== base.maximumStructurallyObservedPublicationSequence + 2n) {
-    throw new RangeError("reserved Publication Sequences must be exactly F + 1 and F + 2");
-  }
-  if (!sameSuperblockLogicalStateExceptMinimumUnlockSequence({ left: base.logicalState, right: logicalState })) {
-    throw new TypeError("credential floor publication must preserve Commit, Mutation, fallback, relocation, and feature authority");
-  }
-  if (logicalState.minimumUnlockSequence <= base.logicalState.minimumUnlockSequence) {
-    throw new RangeError("credential floor publication must strictly increase minimum Unlock Sequence");
-  }
-}
-
-function unlockFloorPublicationFailureOutcome({ phase }: {
-  phase: SuperblockPublicationPhase;
-}): SuperblockUnlockFloorPublicationFailureOutcome {
-  switch (phase) {
-  case "prepared": return "not_published";
-  case "first_write_started": return "outcome_resolution_required";
-  case "first_authority_verified": return "published_redundancy_degraded";
-  case "second_copy_converged": throw new Error("converged publication cannot fail");
-  default: return phase satisfies never;
   }
 }
 
@@ -1090,13 +783,10 @@ export async function resolveUnlockFloorSuperblockPublication({
   supportedFeatureBits: FeatureBits;
 }): Promise<UnlockFloorSuperblockPublicationResolution> {
   const current = await openSuperblockCopies({ backend, diagnostics, fileSystemId, rootKey, supportedFeatureBits });
-  if (sameLogicalState({ left: current.logicalState, right: intendedLogicalState })) {
-    return { superblock: current, type: "published" };
-  }
-  if (sameOpenedAuthority({ left: base, right: current })) {
-    return { superblock: current, type: "not_published" };
-  }
-  return { superblock: current, type: "publication_conflict" };
+  return {
+    superblock: current,
+    type: resolveSuperblockPublicationAuthority({ base, current, intendedLogicalState }),
+  };
 }
 
 export async function publishUnlockFloorSuperblockCopies({
@@ -1125,13 +815,13 @@ export async function publishUnlockFloorSuperblockCopies({
   supportedFeatureBits: FeatureBits;
 }): Promise<OpenedSuperblockCopies> {
   return await publishSuperblockCopiesWithTransition({
-    assertTransition: assertUnlockFloorPublicationTransition,
+    assertTransition: assertUnlockFloorSuperblockPublicationTransition,
     backend,
     base,
     beforeFirstAuthorityWrite,
     createFailureError: ({ cause, phase }) => new SuperblockUnlockFloorPublicationError({
       cause,
-      outcome: unlockFloorPublicationFailureOutcome({ phase }),
+      outcome: superblockUnlockFloorPublicationFailureOutcome({ phase }),
     }),
     diagnostics,
     fileSystemId,

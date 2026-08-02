@@ -1,20 +1,32 @@
 import {
   HIZOFS_UNLOCK_ENVELOPE_FILES,
   HIZOFS_V1_FORMAT_CONSTANTS,
+  HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD,
+  cloneCredentialSlot,
   createUnlockSequence,
   decodeBase64UrlUnpadded,
   decodeUnlockEnvelope,
   encodeBase64UrlUnpadded,
   encodeUnlockEnvelope,
+  maximumStructurallyObservedUnlockSequence,
   parseFileSystemId,
+  reserveNextUnlockEnvelopeSequence,
+  selectAuthenticatedUnlockEnvelopeAuthority,
+  unlockEnvelopeCredentialSetsSemanticallyEqual,
+  unlockEnvelopesSemanticallyEqual,
+  unlockEnvelopePublicationFailureOutcome,
+  type AuthenticatedUnlockEnvelopeAuthority,
+  type AuthenticatedUnlockEnvelopeCopy,
+  type CredentialCopyState,
   type CredentialSlotId,
   type CredentialSlotV1,
   type FileSystemId,
   type UnlockEnvelopeV1,
+  type UnlockEnvelopePublicationFailureOutcome,
+  type UnlockEnvelopePublicationPhase,
   type UnlockSequence,
 } from "@/00-storage/service/hizofs/00-format";
 import {
-  PASSPHRASE_CREDENTIAL_METHOD_V1,
   authenticatedWrappedRootKeyBytes,
   createUnlockAuthenticatorTag,
   decodePassphraseCredentialParametersV1,
@@ -51,7 +63,7 @@ import {
   readAuthenticatedWholeFile,
 } from "./whole-file";
 
-export type CredentialCopyState = "credential_redundancy_degraded" | "normal";
+export type { AuthenticatedUnlockEnvelopeAuthority, CredentialCopyState } from "@/00-storage/service/hizofs/00-format";
 
 export type CreatedInitialUnlockEnvelopeCredentialSet = Readonly<{
   credentialSlotIds: readonly CredentialSlotId[];
@@ -90,21 +102,7 @@ export type OpenedUnlockEnvelopeCopies = CreatedInitialUnlockEnvelopeCopies & Re
 }>;
 
 
-export type AuthenticatedUnlockEnvelopeAuthority = Readonly<{
-  copyState: CredentialCopyState;
-  credentialSlots: readonly CredentialSlotV1[];
-  envelope: UnlockEnvelopeV1;
-  fileSystemId: FileSystemId;
-  maximumStructurallyObservedUnlockSequence: UnlockSequence;
-  minimumUnlockSequence: UnlockSequence;
-  selectedPhysicalCopy: 0 | 1;
-  unlockSequence: UnlockSequence;
-}>;
-
-export type UnlockEnvelopePublicationFailureOutcome =
-  | "not_published"
-  | "outcome_resolution_required"
-  | "published_redundancy_degraded";
+export type { UnlockEnvelopePublicationFailureOutcome } from "@/00-storage/service/hizofs/00-format";
 
 export class UnlockEnvelopePublicationError extends Error {
   public readonly expectedCredentialSlots?: readonly CredentialSlotV1[];
@@ -125,10 +123,7 @@ export class UnlockEnvelopePublicationError extends Error {
   }
 }
 
-type ParsedEnvelopeCopy = Readonly<{
-  envelope: UnlockEnvelopeV1;
-  physicalCopy: 0 | 1;
-}>;
+type ParsedEnvelopeCopy = AuthenticatedUnlockEnvelopeCopy;
 
 type SlotAttempt = Readonly<{
   envelope: UnlockEnvelopeV1;
@@ -152,33 +147,6 @@ function slotAttemptKey({ envelope, slot }: {
     slot.methodParameters,
     slot.wrappedFileSystemRootKey,
   ].join("\u0000");
-}
-
-function sameCredentialSlot({ left, right }: {
-  left: CredentialSlotV1;
-  right: CredentialSlotV1;
-}): boolean {
-  return left.type === right.type
-    && left.slotId === right.slotId
-    && left.method === right.method
-    && left.methodVersion === right.methodVersion
-    && left.methodParameters === right.methodParameters
-    && left.wrappedFileSystemRootKey === right.wrappedFileSystemRootKey;
-}
-
-function sameSemanticEnvelope({ left, right }: {
-  left: UnlockEnvelopeV1;
-  right: UnlockEnvelopeV1;
-}): boolean {
-  if (left.format !== right.format
-    || left.formatVersion !== right.formatVersion
-    || left.sequence !== right.sequence
-    || left.fileSystemId !== right.fileSystemId
-    || left.credentialSlots.length !== right.credentialSlots.length) return false;
-  return left.credentialSlots.every((slot, index) => {
-    const other = right.credentialSlots[index];
-    return other !== undefined && sameCredentialSlot({ left: slot, right: other });
-  });
 }
 
 function isAeadAuthenticationFailure({ cause }: { cause: unknown }): boolean {
@@ -280,7 +248,8 @@ function buildSlotAttempts({ copies }: {
   const ordered = [...copies].sort((left, right) => right.envelope.sequence - left.envelope.sequence);
   for (const { envelope } of ordered) {
     for (const slot of envelope.credentialSlots) {
-      if (slot.method !== PASSPHRASE_CREDENTIAL_METHOD_V1 || slot.methodVersion !== 1) continue;
+      if (slot.method !== HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.id
+        || slot.methodVersion !== HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.version) continue;
       const key = slotAttemptKey({ envelope, slot });
       if (seen.has(key)) continue;
       seen.add(key);
@@ -326,19 +295,6 @@ async function tryUnwrap({ attempt, diagnostics, passphrase }: {
     if (isAeadAuthenticationFailure({ cause })) return undefined;
     throw cause;
   }
-}
-
-function selectedAuthenticatedGroup({ authenticated, minimumUnlockSequence }: {
-  authenticated: readonly ParsedEnvelopeCopy[];
-  minimumUnlockSequence: UnlockSequence;
-}): readonly ParsedEnvelopeCopy[] | undefined {
-  const eligible = authenticated.filter(({ envelope }) => BigInt(envelope.sequence) >= minimumUnlockSequence);
-  const highestSequence = eligible.reduce<number | undefined>(
-    (highest, { envelope }) => highest === undefined || envelope.sequence > highest ? envelope.sequence : highest,
-    undefined,
-  );
-  if (highestSequence === undefined) return undefined;
-  return eligible.filter(({ envelope }) => envelope.sequence === highestSequence);
 }
 
 async function buildEnvelopeCopy({
@@ -440,11 +396,11 @@ async function createInitialPassphraseCredentialSlot({
     salt: generateCredentialSalt({ randomSource }),
   };
   return {
-    method: PASSPHRASE_CREDENTIAL_METHOD_V1,
+    method: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.id,
     methodParameters: encodeBase64UrlUnpadded({
       bytes: encodePassphraseCredentialParametersV1({ parameters }),
     }),
-    methodVersion: 1,
+    methodVersion: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.version,
     slotId,
     type: "credential",
     wrappedFileSystemRootKey: encodeBase64UrlUnpadded({
@@ -658,34 +614,31 @@ export async function openUnlockEnvelopeCopies({ backend, diagnostics, minimumUn
       for (const candidate of sameFileSystemCopies) {
         if (await verifyEnvelope({ diagnostics, envelope: candidate.envelope, rootKey })) authenticated.push(candidate);
       }
-      const selectedGroup = selectedAuthenticatedGroup({ authenticated, minimumUnlockSequence });
-      if (selectedGroup === undefined) {
+      const selection = selectAuthenticatedUnlockEnvelopeAuthority({
+        authenticatedCopies: authenticated,
+        minimumUnlockSequence,
+        requiredCredentialSlot: attempt.slot,
+      });
+      switch (selection.type) {
+      case "credential_rolled_back":
+      case "no_eligible_authority":
         rootKey.destroy();
         continue;
-      }
-      const first = selectedGroup[0];
-      if (first === undefined) throw new Error("selected Unlock Envelope group invariant failed");
-      if (selectedGroup.some(({ envelope }) => !sameSemanticEnvelope({ left: first.envelope, right: envelope }))) {
+      case "sequence_reuse_conflict":
         throw authenticatedStoreError({
           code: "control_plane_corrupt",
           message: "authenticated same-sequence Unlock Envelope copies disagree semantically",
         });
+      case "selected":
+        return {
+          copyState: selection.copyState,
+          fileSystemId: selection.envelope.fileSystemId,
+          rootKey,
+          unlockingSlotId: attempt.slot.slotId,
+          unlockSequence: createUnlockSequence({ value: BigInt(selection.envelope.sequence) }),
+        };
+      default: return selection satisfies never;
       }
-      const selectedHasUnlockingSlot = first.envelope.credentialSlots.some(slot => sameCredentialSlot({
-        left: slot,
-        right: attempt.slot,
-      }));
-      if (!selectedHasUnlockingSlot) {
-        rootKey.destroy();
-        continue;
-      }
-      return {
-        copyState: selectedGroup.length === 2 ? "normal" : "credential_redundancy_degraded",
-        fileSystemId: first.envelope.fileSystemId,
-        rootKey,
-        unlockingSlotId: attempt.slot.slotId,
-        unlockSequence: createUnlockSequence({ value: BigInt(first.envelope.sequence) }),
-      };
     } catch (cause: unknown) {
       rootKey.destroy();
       throw cause;
@@ -698,37 +651,6 @@ export async function openUnlockEnvelopeCopies({ backend, diagnostics, minimumUn
   });
 }
 
-
-function cloneCredentialSlot({ slot }: { slot: CredentialSlotV1 }): CredentialSlotV1 {
-  return { ...slot };
-}
-
-function cloneUnlockEnvelope({ envelope }: { envelope: UnlockEnvelopeV1 }): UnlockEnvelopeV1 {
-  return {
-    ...envelope,
-    credentialSlots: envelope.credentialSlots.map(slot => cloneCredentialSlot({ slot })),
-  };
-}
-
-function sameCredentialSlotSet({ left, right }: {
-  left: readonly CredentialSlotV1[];
-  right: readonly CredentialSlotV1[];
-}): boolean {
-  return left.length === right.length && left.every((slot, index) => {
-    const other = right[index];
-    return other !== undefined && sameCredentialSlot({ left: slot, right: other });
-  });
-}
-
-function maximumStructuralUnlockSequence({ copies }: {
-  copies: readonly ParsedEnvelopeCopy[];
-}): UnlockSequence {
-  const maximum = copies.reduce<bigint>((current, { envelope }) => {
-    const sequence = BigInt(envelope.sequence);
-    return sequence > current ? sequence : current;
-  }, 1n);
-  return createUnlockSequence({ value: maximum });
-}
 
 export async function openAuthenticatedUnlockEnvelopeAuthority({
   backend,
@@ -757,46 +679,39 @@ export async function openAuthenticatedUnlockEnvelopeAuthority({
       authenticated.push(candidate);
     }
   }
-  const selectedGroup = selectedAuthenticatedGroup({ authenticated, minimumUnlockSequence });
-  if (selectedGroup === undefined) {
+  const selection = selectAuthenticatedUnlockEnvelopeAuthority({
+    authenticatedCopies: authenticated,
+    minimumUnlockSequence,
+    requiredCredentialSlot: undefined,
+  });
+  switch (selection.type) {
+  case "no_eligible_authority":
     throw authenticatedStoreError({
       code: "control_plane_corrupt",
       message: "no authenticated Unlock Envelope satisfies the Superblock rollback floor",
     });
-  }
-  const first = selectedGroup[0];
-  if (first === undefined) throw new Error("selected Unlock Envelope group invariant failed");
-  if (selectedGroup.some(({ envelope }) => !sameSemanticEnvelope({ left: first.envelope, right: envelope }))) {
+  case "sequence_reuse_conflict":
     throw authenticatedStoreError({
       code: "control_plane_corrupt",
       message: "authenticated same-sequence Unlock Envelope copies disagree semantically",
     });
+  case "credential_rolled_back":
+    throw new Error("credential rollback selection requires a credential slot");
+  case "selected": {
+    const envelope = selection.envelope;
+    return {
+      copyState: selection.copyState,
+      credentialSlots: envelope.credentialSlots,
+      envelope,
+      fileSystemId,
+      maximumStructurallyObservedUnlockSequence: maximumStructurallyObservedUnlockSequence({ copies }),
+      minimumUnlockSequence,
+      selectedPhysicalCopy: selection.selectedPhysicalCopy,
+      unlockSequence: createUnlockSequence({ value: BigInt(envelope.sequence) }),
+    };
   }
-  const envelope = cloneUnlockEnvelope({ envelope: first.envelope });
-  return {
-    copyState: selectedGroup.length === 2 ? "normal" : "credential_redundancy_degraded",
-    credentialSlots: envelope.credentialSlots,
-    envelope,
-    fileSystemId,
-    maximumStructurallyObservedUnlockSequence: maximumStructuralUnlockSequence({ copies }),
-    minimumUnlockSequence,
-    selectedPhysicalCopy: first.physicalCopy,
-    unlockSequence: createUnlockSequence({ value: BigInt(envelope.sequence) }),
-  };
-}
-
-function reserveNextUnlockSequence({ authority }: {
-  authority: AuthenticatedUnlockEnvelopeAuthority;
-}): UnlockSequence {
-  const maximum = [
-    authority.maximumStructurallyObservedUnlockSequence,
-    authority.minimumUnlockSequence,
-    authority.unlockSequence,
-  ].reduce((current, candidate) => candidate > current ? candidate : current, 1n);
-  if (maximum >= BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new RangeError("Unlock Sequence safe-integer space is exhausted; export into a fresh container is required");
+  default: return selection satisfies never;
   }
-  return createUnlockSequence({ value: maximum + 1n });
 }
 
 async function readBackPublishedEnvelope({
@@ -820,27 +735,9 @@ async function readBackPublishedEnvelope({
   if (bytes === undefined) throw new Error(`Unlock Envelope copy ${physicalCopy} disappeared after durable publication`);
   const actual = decodeMeasuredUnlockEnvelope({ bytes, diagnostics });
   if (actual.copy !== physicalCopy
-    || !sameSemanticEnvelope({ left: expected, right: actual })
+    || !unlockEnvelopesSemanticallyEqual({ left: expected, right: actual })
     || !await verifyEnvelope({ diagnostics, envelope: actual, rootKey })) {
     throw new Error(`Unlock Envelope copy ${physicalCopy} failed authenticated semantic read-back`);
-  }
-}
-
-type UnlockEnvelopePublicationPhase =
-  | "prepared"
-  | "first_write_started"
-  | "first_authority_verified"
-  | "second_copy_converged";
-
-function publicationFailureOutcome({ phase }: {
-  phase: UnlockEnvelopePublicationPhase;
-}): UnlockEnvelopePublicationFailureOutcome {
-  switch (phase) {
-  case "prepared": return "not_published";
-  case "first_write_started": return "outcome_resolution_required";
-  case "first_authority_verified": return "published_redundancy_degraded";
-  case "second_copy_converged": throw new Error("converged Unlock Envelope publication cannot fail");
-  default: return phase satisfies never;
   }
 }
 
@@ -864,7 +761,11 @@ export async function publishUnlockEnvelopeCredentialSet({
   let expectedUnlockSequence: UnlockSequence | undefined;
   let phase: UnlockEnvelopePublicationPhase = "prepared";
   try {
-    const unlockSequence = reserveNextUnlockSequence({ authority });
+    const unlockSequence = reserveNextUnlockEnvelopeSequence({
+      maximumStructurallyObservedUnlockSequence: authority.maximumStructurallyObservedUnlockSequence,
+      minimumUnlockSequence: authority.minimumUnlockSequence,
+      unlockSequence: authority.unlockSequence,
+    });
     expectedUnlockSequence = unlockSequence;
     const copy0 = await buildEnvelopeCopy({
       copy: 0,
@@ -911,7 +812,7 @@ export async function publishUnlockEnvelopeCredentialSet({
     });
     if (published.copyState !== "normal"
       || published.unlockSequence !== unlockSequence
-      || !sameCredentialSlotSet({ left: credentialSlots, right: published.credentialSlots })) {
+      || !unlockEnvelopeCredentialSetsSemanticallyEqual({ left: credentialSlots, right: published.credentialSlots })) {
       throw new Error("published Unlock Envelope copies did not converge to the intended credential generation");
     }
     return published;
@@ -924,7 +825,7 @@ export async function publishUnlockEnvelopeCredentialSet({
         cause,
         expectedCredentialSlots: expectedUnlockSequence === undefined ? undefined : credentialSlots,
         expectedUnlockSequence,
-        outcome: publicationFailureOutcome({ phase }),
+        outcome: unlockEnvelopePublicationFailureOutcome({ phase }),
       });
     case "second_copy_converged": throw cause;
     default: return phase satisfies never;
@@ -960,11 +861,11 @@ export async function resolveUnlockEnvelopePublication({
     rootKey,
   });
   if (current.unlockSequence === expectedUnlockSequence
-    && sameCredentialSlotSet({ left: current.credentialSlots, right: expectedCredentialSlots })) {
+    && unlockEnvelopeCredentialSetsSemanticallyEqual({ left: current.credentialSlots, right: expectedCredentialSlots })) {
     return { authority: current, type: "published" };
   }
   if (current.unlockSequence === previousAuthority.unlockSequence
-    && sameCredentialSlotSet({ left: current.credentialSlots, right: previousAuthority.credentialSlots })) {
+    && unlockEnvelopeCredentialSetsSemanticallyEqual({ left: current.credentialSlots, right: previousAuthority.credentialSlots })) {
     return { authority: current, type: "not_published" };
   }
   return { authority: current, type: "publication_conflict" };
@@ -1023,11 +924,11 @@ async function createFreshPassphraseCredentialSlot({
     salt: generateCredentialSalt({ randomSource }),
   };
   const slot: CredentialSlotV1 = {
-    method: PASSPHRASE_CREDENTIAL_METHOD_V1,
+    method: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.id,
     methodParameters: encodeBase64UrlUnpadded({
       bytes: encodePassphraseCredentialParametersV1({ parameters }),
     }),
-    methodVersion: 1,
+    methodVersion: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.version,
     slotId,
     type: "credential",
     wrappedFileSystemRootKey: encodeBase64UrlUnpadded({
@@ -1300,6 +1201,4 @@ export async function prepareReplacedPassphraseCredentialSlots({
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
-  sameCredentialSlot,
-  sameSemanticEnvelope,
 };
