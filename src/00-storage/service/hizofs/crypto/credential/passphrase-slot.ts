@@ -1,6 +1,8 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD,
+  encodePassphraseCredentialParametersV1,
+  type PassphraseCredentialParametersV1,
   encodePassphraseSlotAad,
   type CredentialSlotId,
   type FileSystemId,
@@ -10,52 +12,8 @@ import { deriveCredentialWrappingKey } from "@/00-storage/service/hizofs/crypto/
 import { FileSystemRootKey, withFileSystemRootKeyBytes } from "@/00-storage/service/hizofs/crypto/secret-types";
 import {
   authenticatedWrappedRootKeyBytes,
-  credentialWrapNonce,
   type AuthenticatedWrappedRootKeyBytes,
-  type CredentialWrapNonce,
 } from "@/00-storage/service/hizofs/crypto/types";
-
-export type PassphraseCredentialParametersV1 = {
-  readonly iterations: number;
-  readonly nonce: CredentialWrapNonce;
-  readonly salt: Uint8Array;
-};
-
-function validatePassphraseCredentialParametersV1({ parameters }: {
-  parameters: PassphraseCredentialParametersV1;
-}): void {
-  if (parameters.salt.byteLength !== 16) throw new RangeError("Credential salt must be exactly 16 bytes");
-  if (!Number.isInteger(parameters.iterations)
-    || parameters.iterations < HIZOFS_V1_FORMAT_CONSTANTS.limits.credentialPbkdf2IterationsMinimum
-    || parameters.iterations > HIZOFS_V1_FORMAT_CONSTANTS.limits.credentialPbkdf2IterationsMaximum) {
-    throw new RangeError("PBKDF2 iterations are outside the V1 credential bounds");
-  }
-  credentialWrapNonce({ bytes: parameters.nonce });
-}
-
-export function encodePassphraseCredentialParametersV1({ parameters }: {
-  parameters: PassphraseCredentialParametersV1;
-}): Uint8Array {
-  validatePassphraseCredentialParametersV1({ parameters });
-  const bytes = new Uint8Array(32);
-  bytes.set(parameters.salt, 0);
-  new DataView(bytes.buffer).setUint32(16, parameters.iterations, false);
-  bytes.set(parameters.nonce, 20);
-  return bytes;
-}
-
-export function decodePassphraseCredentialParametersV1({ bytes }: {
-  bytes: Uint8Array;
-}): PassphraseCredentialParametersV1 {
-  if (bytes.byteLength !== 32) throw new RangeError("passphrase credential parameters must be exactly 32 bytes");
-  const parameters: PassphraseCredentialParametersV1 = {
-    iterations: new DataView(bytes.buffer, bytes.byteOffset + 16, 4).getUint32(0, false),
-    nonce: credentialWrapNonce({ bytes: bytes.subarray(20, 32) }),
-    salt: Uint8Array.from(bytes.subarray(0, 16)),
-  };
-  validatePassphraseCredentialParametersV1({ parameters });
-  return parameters;
-}
 
 export async function wrapFileSystemRootKeyForCredentialSlot({
   fileSystemId,

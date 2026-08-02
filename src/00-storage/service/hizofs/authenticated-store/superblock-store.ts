@@ -43,6 +43,7 @@ import {
   encryptSuperblock,
   generatePublicationId,
   generateSuperblockNonce,
+  isHizoFSCryptoAuthenticationError,
   plaintextSuperblockBytes,
   superblockNonce,
   type FileSystemRootKey,
@@ -89,10 +90,7 @@ function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): b
 
 function isExpectedInvalidCopyFailure({ cause }: { cause: unknown }): boolean {
   if (cause instanceof RangeError || cause instanceof TypeError) return true;
-  return typeof cause === "object"
-    && cause !== null
-    && "name" in cause
-    && (cause as { readonly name?: unknown }).name === "OperationError";
+  return isHizoFSCryptoAuthenticationError({ cause });
 }
 
 async function readSuperblockCopy({ backend, copy, diagnostics, fileSystemId, rootKey }: {
@@ -138,10 +136,7 @@ async function readSuperblockCopy({ backend, copy, diagnostics, fileSystemId, ro
       }),
     });
   } catch (cause: unknown) {
-    if (typeof cause === "object"
-      && cause !== null
-      && "name" in cause
-      && (cause as { readonly name?: unknown }).name === "OperationError") {
+    if (isHizoFSCryptoAuthenticationError({ cause })) {
       return { kind: "invalid", structurallyObservedPublicationSequence };
     }
     throw cause;

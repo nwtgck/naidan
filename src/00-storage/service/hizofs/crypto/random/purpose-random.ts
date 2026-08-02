@@ -1,6 +1,7 @@
 import { customRandom, nanoid, urlAlphabet } from "nanoid";
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
+  HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD,
   parseCredentialSlotId,
   parseFileSystemId,
   parseMutationId,
@@ -73,7 +74,11 @@ export async function generateCredentialSlotId({ isUsed, randomSource }: {
 export function generateCredentialSalt({ randomSource }: {
   randomSource?: RandomByteSource;
 } = {}): Uint8Array {
-  return generateUniqueRandomBytes({ byteLength: 16, isUsed: () => false, randomSource });
+  return generateUniqueRandomBytes({
+    byteLength: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.saltBytes,
+    isUsed: () => false,
+    randomSource,
+  });
 }
 
 export function generateFileSystemRootKey({ randomSource }: {

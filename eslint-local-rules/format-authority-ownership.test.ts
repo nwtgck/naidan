@@ -23,10 +23,24 @@ const CENTRALIZED_AUTHORITY_DECLARATIONS = [
     ],
   },
   {
-    consumer: 'src/00-storage/service/hizofs/crypto/credential/passphrase-slot.ts',
-    forbiddenDeclarations: ['export const PASSPHRASE_CREDENTIAL_METHOD_V1 ='],
-    owner: 'src/00-storage/service/hizofs/00-format/v1/canonical-json/unlock-envelope.ts',
+    consumer: 'src/00-storage/service/hizofs/00-format/v1/canonical-json/unlock-envelope.ts',
+    forbiddenDeclarations: ['export const HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD ='],
+    owner: 'src/00-storage/service/hizofs/00-format/v1/credential/passphrase-credential.ts',
     requiredDeclarations: ['export const HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD ='],
+  },
+  {
+    consumer: 'src/00-storage/service/hizofs/crypto/credential/passphrase-slot.ts',
+    forbiddenDeclarations: [
+      'export function decodePassphraseCredentialParametersV1(',
+      'export function encodePassphraseCredentialParametersV1(',
+      'export type PassphraseCredentialParametersV1 =',
+    ],
+    owner: 'src/00-storage/service/hizofs/00-format/v1/credential/passphrase-credential.ts',
+    requiredDeclarations: [
+      'export function decodePassphraseCredentialParametersV1(',
+      'export function encodePassphraseCredentialParametersV1(',
+      'export type PassphraseCredentialParametersV1 =',
+    ],
   },
   {
     consumer: 'src/00-storage/service/hizofs/authenticated-store/unlock-envelope-store.ts',

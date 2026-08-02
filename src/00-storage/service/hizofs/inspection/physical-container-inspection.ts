@@ -31,6 +31,7 @@ import type {
 import {
   authenticatedSuperblockBytes,
   decryptAuthenticatedSuperblock,
+  isHizoFSCryptoAuthenticationError,
   superblockNonce,
   unlockAuthenticatorNonce,
   unlockAuthenticatorTag,
@@ -179,13 +180,6 @@ function referenceInspection({ reference }: { reference: HomeRecordReference | P
   };
 }
 
-function isOperationError({ cause }: { cause: unknown }): boolean {
-  return typeof cause === "object"
-    && cause !== null
-    && "name" in cause
-    && (cause as { readonly name?: unknown }).name === "OperationError";
-}
-
 function credentialRedundancy({ copyState }: { copyState: OpenedUnlockCopies["copyState"] }): "degraded" | "normal" {
   switch (copyState) {
   case "credential_redundancy_degraded": return "degraded";
@@ -279,7 +273,7 @@ async function verifyUnlockCopy({ envelope, rootKey }: {
     });
     return true;
   } catch (cause: unknown) {
-    if (isOperationError({ cause })) return false;
+    if (isHizoFSCryptoAuthenticationError({ cause })) return false;
     throw cause;
   }
 }
@@ -375,7 +369,7 @@ async function inspectSuperblockCopies({ fileSystemId, physical, rootKey, select
           rootKey,
         });
       } catch (cause: unknown) {
-        if (isOperationError({ cause })) {
+        if (isHizoFSCryptoAuthenticationError({ cause })) {
           result.push({
             ...structuralBase,
             reason: "Superblock authentication failed",

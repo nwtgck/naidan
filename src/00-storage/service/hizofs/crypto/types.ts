@@ -1,4 +1,7 @@
-import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format';
+import {
+  HIZOFS_V1_FORMAT_CONSTANTS,
+  HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD,
+} from '@/00-storage/service/hizofs/00-format';
 
 declare const plaintextRecordBytesBrand: unique symbol;
 declare const authenticatedRecordBytesBrand: unique symbol;
@@ -68,7 +71,7 @@ export function authenticatedSegmentFooterBytes({ bytes }: { bytes: Uint8Array }
   return copyBytes<AuthenticatedSegmentFooterBytes>({ bytes });
 }
 export function authenticatedWrappedRootKeyBytes({ bytes }: { bytes: Uint8Array }): AuthenticatedWrappedRootKeyBytes {
-  if (bytes.byteLength !== 32 + HIZOFS_V1_FORMAT_CONSTANTS.crypto.tagBytes) {
+  if (bytes.byteLength !== HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.wrappedRootKeyBytes) {
     throw new RangeError('wrapped File System Root Key must contain exactly 32 ciphertext bytes and one authentication tag');
   }
   return copyBytes<AuthenticatedWrappedRootKeyBytes>({ bytes });

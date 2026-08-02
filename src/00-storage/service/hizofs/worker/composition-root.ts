@@ -1,6 +1,5 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
-  encodeBase64UrlUnpadded,
   parseCredentialSlotId,
   parseFileSystemId,
 } from "@/00-storage/service/hizofs/00-format";
@@ -138,9 +137,12 @@ import type {
 } from "@/00-storage/service/hizofs/filesystem/reflink/whole-file-reflink-plan";
 import {
   FileSystemRootKey,
+  deriveContainerCoordinationScopeTokenValue,
   generateFileSystemId,
+  generateBenchmarkSecret,
   generateMutationId,
-  withFileSystemRootKeyBytes,
+  issueHizoFSWorkerMountGrantPayload,
+  openHizoFSWorkerMountGrantPayload,
   withFileSystemRootKeyProofDerivationCapability,
   type FileSystemRootKeyProofDerivationCapability,
   type RandomByteSource,
@@ -197,27 +199,6 @@ export type AuthenticatedApplicationReadSessionResources = Readonly<{
 }>;
 
 
-type HizoFSWorkerMountGrantPayloadV1 = Readonly<{
-  ciphertext: Uint8Array;
-  nonce: Uint8Array;
-  type: "hizofs_worker_mount_grant_payload";
-  version: 1;
-  wrappingKey: CryptoKey;
-}>;
-
-type HizoFSWorkerMountGrantMetadataV1 = Readonly<{
-  accessMode: StorageDirectoryWorkerMountAccessMode;
-  canonicalBackingLocation: string;
-  fileSystemId: string;
-  grantId: string;
-  inodeNumber: string;
-  scopePath: readonly string[];
-  type: "hizofs_worker_mount_grant";
-  unlockingSlotId: string;
-  unlockSequence: string;
-  version: 1;
-}>;
-
 const WORKER_MOUNT_GRANT_POLICY: HizoFSRuntimePolicy = Object.freeze({
   maxDirectoryIteratorEntries: 4_096,
   maxHeldLockNames: 1_024,
@@ -225,102 +206,6 @@ const WORKER_MOUNT_GRANT_POLICY: HizoFSRuntimePolicy = Object.freeze({
   maxReaderPins: 256,
   maxSegmentReferences: 4_096,
 });
-
-function workerMountGrantAad({ accessMode, grantId }: {
-  accessMode: StorageDirectoryWorkerMountAccessMode;
-  grantId: string;
-}): Uint8Array {
-  return new TextEncoder().encode(`hizofs-worker-mount-grant-v1\u0000${grantId}\u0000${accessMode}`);
-}
-
-function randomWorkerMountGrantId(): string {
-  return encodeBase64UrlUnpadded({ bytes: crypto.getRandomValues(new Uint8Array(16)) });
-}
-
-function requireHizoFSWorkerMountGrantPayload({ value }: { value: unknown }): HizoFSWorkerMountGrantPayloadV1 {
-  if (typeof value !== "object" || value === null) {
-    throw new TypeError("HizoFS Worker mount grant payload must be an object");
-  }
-  const payload = value as Partial<HizoFSWorkerMountGrantPayloadV1>;
-  if (payload.type !== "hizofs_worker_mount_grant_payload" || payload.version !== 1) {
-    throw new TypeError("unsupported HizoFS Worker mount grant payload");
-  }
-  if (payload.wrappingKey === undefined
-    || !(payload.ciphertext instanceof Uint8Array)
-    || !(payload.nonce instanceof Uint8Array)
-    || payload.nonce.byteLength !== 12) {
-    throw new TypeError("invalid HizoFS Worker mount grant payload");
-  }
-  return payload as HizoFSWorkerMountGrantPayloadV1;
-}
-
-function requireWorkerMountGrantMetadata({ value }: { value: unknown }): HizoFSWorkerMountGrantMetadataV1 {
-  if (typeof value !== "object" || value === null) throw new TypeError("invalid HizoFS Worker mount grant plaintext");
-  const row = value as Partial<HizoFSWorkerMountGrantMetadataV1>;
-  if (row.type !== "hizofs_worker_mount_grant" || row.version !== 1
-    || (row.accessMode !== "read" && row.accessMode !== "read_write")
-    || typeof row.canonicalBackingLocation !== "string" || row.canonicalBackingLocation.length === 0
-    || typeof row.fileSystemId !== "string" || typeof row.grantId !== "string"
-    || typeof row.inodeNumber !== "string"
-    || !Array.isArray(row.scopePath) || row.scopePath.some(component => typeof component !== "string")
-    || typeof row.unlockingSlotId !== "string" || typeof row.unlockSequence !== "string") {
-    throw new TypeError("invalid HizoFS Worker mount grant plaintext");
-  }
-  return row as HizoFSWorkerMountGrantMetadataV1;
-}
-
-const WORKER_MOUNT_GRANT_ROOT_KEY_BYTES = 32;
-const WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES = 4;
-
-function encodeWorkerMountGrantCleartext({ metadata, rootKeyBytes }: {
-  metadata: HizoFSWorkerMountGrantMetadataV1;
-  rootKeyBytes: Uint8Array;
-}): Uint8Array {
-  if (rootKeyBytes.byteLength !== WORKER_MOUNT_GRANT_ROOT_KEY_BYTES) {
-    throw new RangeError("HizoFS Worker mount grant root key has invalid length");
-  }
-  const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
-  try {
-    const cleartext = new Uint8Array(
-      WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES
-      + metadataBytes.byteLength
-      + WORKER_MOUNT_GRANT_ROOT_KEY_BYTES,
-    );
-    new DataView(cleartext.buffer).setUint32(0, metadataBytes.byteLength, false);
-    cleartext.set(metadataBytes, WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES);
-    cleartext.set(rootKeyBytes, WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES + metadataBytes.byteLength);
-    return cleartext;
-  } finally {
-    metadataBytes.fill(0);
-  }
-}
-
-function decodeWorkerMountGrantCleartext({ cleartext }: { cleartext: Uint8Array }): Readonly<{
-  metadata: HizoFSWorkerMountGrantMetadataV1;
-  rootKeyBytes: Uint8Array;
-}> {
-  if (cleartext.byteLength < WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES + WORKER_MOUNT_GRANT_ROOT_KEY_BYTES) {
-    throw new TypeError("HizoFS Worker mount grant cleartext is truncated");
-  }
-  const metadataLength = new DataView(
-    cleartext.buffer,
-    cleartext.byteOffset,
-    WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES,
-  ).getUint32(0, false);
-  const rootKeyOffset = WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES + metadataLength;
-  if (rootKeyOffset + WORKER_MOUNT_GRANT_ROOT_KEY_BYTES !== cleartext.byteLength) {
-    throw new TypeError("HizoFS Worker mount grant cleartext framing is invalid");
-  }
-  const metadata = requireWorkerMountGrantMetadata({
-    value: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(
-      cleartext.subarray(WORKER_MOUNT_GRANT_METADATA_LENGTH_BYTES, rootKeyOffset),
-    )),
-  });
-  return {
-    metadata,
-    rootKeyBytes: Uint8Array.from(cleartext.subarray(rootKeyOffset)),
-  };
-}
 
 async function issueHizoFSWorkerMountGrant({
   accessMode,
@@ -351,62 +236,24 @@ async function issueHizoFSWorkerMountGrant({
     throw new Error(`Unhandled Worker mount scope: ${String(_ex)}`);
   }
   }
-  const grantId = randomWorkerMountGrantId();
-  const wrappingKey = await crypto.subtle.generateKey(
-    { length: 256, name: "AES-GCM" },
-    false,
-    ["decrypt", "encrypt"],
-  );
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const aad = workerMountGrantAad({ accessMode, grantId });
-  let plaintextBytes: Uint8Array | undefined;
-  try {
-    plaintextBytes = await withFileSystemRootKeyBytes({
-      rootKey,
-      useBytes: ({ bytes }) => encodeWorkerMountGrantCleartext({
-        metadata: {
-          accessMode,
-          canonicalBackingLocation,
-          fileSystemId,
-          grantId,
-          inodeNumber: stat.inodeNumber.toString(),
-          scopePath: [...path],
-          type: "hizofs_worker_mount_grant",
-          unlockingSlotId,
-          unlockSequence: unlockSequence.toString(),
-          version: 1,
-        },
-        rootKeyBytes: bytes,
-      }),
-    });
-    const ciphertext = new Uint8Array(await crypto.subtle.encrypt(
-      {
-        additionalData: new Uint8Array(aad).buffer,
-        iv: new Uint8Array(nonce).buffer,
-        name: "AES-GCM",
-      },
-      wrappingKey,
-      new Uint8Array(plaintextBytes).buffer,
-    ));
-    const opaquePayload: HizoFSWorkerMountGrantPayloadV1 = {
-      ciphertext,
-      nonce,
-      type: "hizofs_worker_mount_grant_payload",
-      version: 1,
-      wrappingKey,
-    };
-    return {
-      accessMode,
-      grantId,
-      implementation: "hizofs",
-      opaquePayload,
-      type: "storage_directory_worker_mount_grant",
-      version: 1,
-    };
-  } finally {
-    aad.fill(0);
-    plaintextBytes?.fill(0);
-  }
+  const issued = await issueHizoFSWorkerMountGrantPayload({
+    accessMode,
+    canonicalBackingLocation,
+    fileSystemId,
+    inodeNumber: stat.inodeNumber,
+    rootKey,
+    scopePath: path,
+    unlockingSlotId,
+    unlockSequence,
+  });
+  return {
+    accessMode,
+    grantId: issued.grantId,
+    implementation: "hizofs",
+    opaquePayload: issued.opaquePayload,
+    type: "storage_directory_worker_mount_grant",
+    version: 1,
+  };
 }
 
 /**
@@ -421,17 +268,11 @@ export async function createBrowserContainerCoordinationScope({
 }: {
   canonicalBackingLocation: string;
 }): Promise<ContainerCoordinationScope> {
-  const encodedLocation = new TextEncoder().encode(canonicalBackingLocation);
-  try {
-    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", encodedLocation));
-    return createContainerCoordinationScope({
-      token: parseContainerCoordinationScopeToken({
-        value: encodeBase64UrlUnpadded({ bytes: digest }),
-      }),
-    });
-  } finally {
-    encodedLocation.fill(0);
-  }
+  return createContainerCoordinationScope({
+    token: parseContainerCoordinationScopeToken({
+      value: await deriveContainerCoordinationScopeTokenValue({ canonicalBackingLocation }),
+    }),
+  });
 }
 
 export async function openAuthenticatedReadOnlyContainerAuthority({
@@ -3106,32 +2947,18 @@ export async function openHizoFSWorkerMountGrant({ grant, resolveBackingDirector
     || grant.implementation !== "hizofs") {
     throw new TypeError("unsupported HizoFS Worker mount grant envelope");
   }
-  const payload = requireHizoFSWorkerMountGrantPayload({ value: grant.opaquePayload });
-  const aad = workerMountGrantAad({ accessMode: grant.accessMode, grantId: grant.grantId });
-  let cleartext: Uint8Array | undefined;
-  let rootKeyBytes: Uint8Array | undefined;
-  let rootKeyToDestroy: FileSystemRootKey | undefined;
+  const openedGrant = await openHizoFSWorkerMountGrantPayload({
+    accessMode: grant.accessMode,
+    grantId: grant.grantId,
+    opaquePayload: grant.opaquePayload,
+  });
+  const plaintext = openedGrant.metadata;
+  const rootKey = openedGrant.rootKey;
+  let rootKeyToDestroy: FileSystemRootKey | undefined = rootKey;
   try {
-    cleartext = new Uint8Array(await crypto.subtle.decrypt(
-      {
-        additionalData: new Uint8Array(aad).buffer,
-        iv: new Uint8Array(payload.nonce).buffer,
-        name: "AES-GCM",
-      },
-      payload.wrappingKey,
-      new Uint8Array(payload.ciphertext).buffer,
-    ));
-    const decoded = decodeWorkerMountGrantCleartext({ cleartext });
-    const plaintext = decoded.metadata;
-    rootKeyBytes = decoded.rootKeyBytes;
-    if (plaintext.grantId !== grant.grantId || plaintext.accessMode !== grant.accessMode) {
-      throw new TypeError("HizoFS Worker mount grant envelope disagrees with its authenticated payload");
-    }
     const fileSystemId = parseFileSystemId({ value: plaintext.fileSystemId });
     const unlockingSlotId = parseCredentialSlotId({ value: plaintext.unlockingSlotId });
     const expectedUnlockSequence = createUnlockSequence({ value: BigInt(plaintext.unlockSequence) });
-    const rootKey = FileSystemRootKey.create({ bytes: rootKeyBytes });
-    rootKeyToDestroy = rootKey;
     const backingDirectory = await resolveBackingDirectory({
       canonicalBackingLocation: plaintext.canonicalBackingLocation,
       fileSystemId,
@@ -3251,9 +3078,6 @@ export async function openHizoFSWorkerMountGrant({ grant, resolveBackingDirector
     return session;
   } finally {
     rootKeyToDestroy?.destroy();
-    aad.fill(0);
-    cleartext?.fill(0);
-    rootKeyBytes?.fill(0);
   }
 }
 
@@ -3895,15 +3719,6 @@ export type BrowserHizoFSBenchmarkApplicationRuntime = Readonly<{
   snapshotRuntimeDiagnostics(): HizoFSRuntimeDiagnosticsSnapshot;
 }>;
 
-function randomBenchmarkSecret({ byteLength }: { readonly byteLength: number }): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
-  try {
-    return Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("");
-  } finally {
-    bytes.fill(0);
-  }
-}
-
 async function releaseBenchmarkCapabilityAfterSessionOpenFailure({ cause, releaseResources }: {
   cause: unknown;
   releaseResources: () => Promise<void>;
@@ -3980,8 +3795,8 @@ export async function createBrowserHizoFSBenchmarkApplicationRuntime({
     }),
     diagnostics: runtimeDiagnostics,
   });
-  let passphrase: string | undefined = randomBenchmarkSecret({ byteLength: 32 });
-  const canonicalBackingLocation = `hizofs-benchmark:${randomBenchmarkSecret({ byteLength: 16 })}`;
+  let passphrase: string | undefined = generateBenchmarkSecret({ byteLength: 32 });
+  const canonicalBackingLocation = `hizofs-benchmark:${generateBenchmarkSecret({ byteLength: 16 })}`;
   const supportedFeatureBits = createFeatureBits({ value: 0n });
   const created = await createEmptyEncryptedContainer({
     backend,

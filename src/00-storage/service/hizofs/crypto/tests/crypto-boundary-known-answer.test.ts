@@ -69,6 +69,7 @@ describe('HizoFS purpose-specific crypto boundary and known-answer vectors', () 
     expect(Object.keys(cryptoBoundary)).not.toContain('decryptAesGcm');
     expect(Object.keys(cryptoBoundary)).not.toContain('generateNonce');
     expect(Object.keys(cryptoBoundary)).not.toContain('generateUniqueRandomBytes');
+    expect(Object.keys(cryptoBoundary)).not.toContain('withFileSystemRootKeyBytes');
   });
 
   it('matches independently generated context bytes', async () => {

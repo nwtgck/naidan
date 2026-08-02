@@ -4,9 +4,11 @@ import {
   HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD,
   cloneCredentialSlot,
   createUnlockSequence,
+  decodePassphraseCredentialParametersV1,
   decodeBase64UrlUnpadded,
   decodeUnlockEnvelope,
   encodeBase64UrlUnpadded,
+  encodePassphraseCredentialParametersV1,
   encodeUnlockEnvelope,
   maximumStructurallyObservedUnlockSequence,
   parseFileSystemId,
@@ -29,14 +31,13 @@ import {
 import {
   authenticatedWrappedRootKeyBytes,
   createUnlockAuthenticatorTag,
-  decodePassphraseCredentialParametersV1,
-  encodePassphraseCredentialParametersV1,
   generateCredentialSalt,
   generateCredentialSlotId,
   generateCredentialWrapNonce,
   generateFileSystemId,
   generateFileSystemRootKey,
   generateUnlockAuthenticatorNonce,
+  isHizoFSCryptoAuthenticationError,
   unlockAuthenticatorNonce,
   unlockAuthenticatorTag,
   unwrapFileSystemRootKeyFromCredentialSlot,
@@ -149,13 +150,6 @@ function slotAttemptKey({ envelope, slot }: {
   ].join("\u0000");
 }
 
-function isAeadAuthenticationFailure({ cause }: { cause: unknown }): boolean {
-  return typeof cause === "object"
-    && cause !== null
-    && "name" in cause
-    && (cause as { readonly name?: unknown }).name === "OperationError";
-}
-
 function decodeMeasuredUnlockEnvelope({ bytes, diagnostics }: {
   bytes: Uint8Array;
   diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
@@ -210,7 +204,7 @@ async function verifyEnvelope({ diagnostics, envelope, rootKey }: {
     });
     return true;
   } catch (cause: unknown) {
-    if (isAeadAuthenticationFailure({ cause })) return false;
+    if (isHizoFSCryptoAuthenticationError({ cause })) return false;
     throw cause;
   }
 }
@@ -292,7 +286,7 @@ async function tryUnwrap({ attempt, diagnostics, passphrase }: {
       }),
     });
   } catch (cause: unknown) {
-    if (isAeadAuthenticationFailure({ cause })) return undefined;
+    if (isHizoFSCryptoAuthenticationError({ cause })) return undefined;
     throw cause;
   }
 }

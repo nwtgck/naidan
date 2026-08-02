@@ -5,6 +5,10 @@ import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/crypto
 import { deriveCredentialWrappingKey } from '@/00-storage/service/hizofs/crypto/primitives/pbkdf2';
 import { generateFileSystemRootKey, generateNonce, generateUniqueRandomBytes } from '@/00-storage/service/hizofs/crypto/random/random-bytes';
 import { FileSystemRootKey } from '@/00-storage/service/hizofs/crypto/secret-types';
+import {
+  HizoFSCryptoAuthenticationError,
+  throwNormalizedHizoFSCryptoFailure,
+} from '@/00-storage/service/hizofs/crypto/authentication-failure';
 
 describe('HizoFS crypto primitives', () => {
   it('encodes the exact versioned length-prefixed crypto context', () => {
@@ -46,7 +50,18 @@ describe('HizoFS crypto primitives', () => {
     const plaintext = Uint8Array.of(4, 5, 6);
     const ciphertextAndTag = await encryptAesGcm({ aad, key, nonce, plaintext });
     await expect(decryptAesGcm({ aad, ciphertextAndTag, key, nonce })).resolves.toEqual(plaintext);
-    await expect(decryptAesGcm({ aad: Uint8Array.of(9), ciphertextAndTag, key, nonce })).rejects.toThrow();
+    const authenticationFailure = await decryptAesGcm({
+      aad: Uint8Array.of(9),
+      ciphertextAndTag,
+      key,
+      nonce,
+    }).catch((cause: unknown) => cause);
+    expect(authenticationFailure).toBeInstanceOf(HizoFSCryptoAuthenticationError);
+    expect(authenticationFailure).toMatchObject({
+      cause: { name: 'OperationError' },
+      code: 'authentication_failed',
+      message: 'HizoFS cryptographic authentication failed',
+    });
     rootKey.destroy();
     await expect(deriveSuperblockKey({
       copy: 0,
@@ -54,6 +69,17 @@ describe('HizoFS crypto primitives', () => {
       publicationSequence: createPublicationSequence({ value: 1n }),
       rootKey,
     })).rejects.toThrow('destroyed');
+  });
+
+  it('preserves non-authentication infrastructure failures and their identity', () => {
+    const infrastructureFailure = new Error('test-only crypto runtime unavailable');
+    let thrown: unknown;
+    try {
+      throwNormalizedHizoFSCryptoFailure({ cause: infrastructureFailure });
+    } catch (cause: unknown) {
+      thrown = cause;
+    }
+    expect(thrown).toBe(infrastructureFailure);
   });
 
   it('binds PBKDF2 wrapping keys to passphrase and credential identity', async () => {

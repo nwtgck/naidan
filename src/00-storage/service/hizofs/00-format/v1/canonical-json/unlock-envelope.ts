@@ -3,6 +3,10 @@ import { encodeUtf8Strict } from '@/00-storage/service/hizofs/00-format/v1/encod
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { HIZOFS_V1_JSON_FORMATS } from '@/00-storage/service/hizofs/00-format/v1/json-formats';
 import { parseCredentialSlotId, parseFileSystemId, type CredentialSlotId, type FileSystemId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
+import {
+  HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD,
+  decodePassphraseCredentialParametersV1,
+} from '@/00-storage/service/hizofs/00-format/v1/credential/passphrase-credential';
 import { decodeRestrictedCanonicalJson, encodeCanonicalAsciiString } from './lexical';
 
 const CONSTANTS = HIZOFS_V1_FORMAT_CONSTANTS;
@@ -34,11 +38,6 @@ export type UnlockEnvelopeUnsignedV1 = {
 export type UnlockEnvelopeV1 = UnlockEnvelopeUnsignedV1 & {
   readonly authenticatorTag: string;
 };
-
-export const HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD = {
-  id: 'passphrase_pbkdf2_hmac_sha256_aes_256_gcm',
-  version: 1,
-} as const;
 
 function asStrictObject({ fields, label, value }: { fields: readonly string[]; label: string; value: unknown }): JsonObject {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new TypeError(`${label} must be an object`);
@@ -82,17 +81,11 @@ function validateCredentialSlot({ slot }: { slot: CredentialSlotV1 }): number {
   });
   if (slot.method !== HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.id
     || slot.methodVersion !== HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.version) return 0;
-  if (parametersBytes.byteLength !== 32 || wrappedBytes.byteLength !== 48) {
+  if (parametersBytes.byteLength !== HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.parametersBytes
+    || wrappedBytes.byteLength !== HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.wrappedRootKeyBytes) {
     throw new RangeError('known passphrase credential material has an invalid byte length');
   }
-  const iterations = new DataView(parametersBytes.buffer, parametersBytes.byteOffset + 16, 4).getUint32(0, false);
-  if (
-    iterations < CONSTANTS.limits.credentialPbkdf2IterationsMinimum
-    || iterations > CONSTANTS.limits.credentialPbkdf2IterationsMaximum
-  ) {
-    throw new RangeError('PBKDF2 iterations are outside the V1 credential bounds');
-  }
-  return iterations;
+  return decodePassphraseCredentialParametersV1({ bytes: parametersBytes }).iterations;
 }
 
 function validateCredentialSlots({ slots }: { slots: readonly CredentialSlotV1[] }): void {

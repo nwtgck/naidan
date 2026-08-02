@@ -1,4 +1,7 @@
-import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format';
+import {
+  HIZOFS_V1_FORMAT_CONSTANTS,
+  HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD,
+} from '@/00-storage/service/hizofs/00-format';
 import { FileSystemRootKey } from '@/00-storage/service/hizofs/crypto/secret-types';
 
 export type RandomByteSource = ({ bytes }: { bytes: Uint8Array }) => void;
@@ -25,7 +28,11 @@ export function generateFileSystemRootKey({ randomSource = defaultRandomSource }
   randomSource?: RandomByteSource;
 } = {}): FileSystemRootKey {
   return FileSystemRootKey.create({
-    bytes: generateUniqueRandomBytes({ byteLength: 32, isUsed: () => false, randomSource }),
+    bytes: generateUniqueRandomBytes({
+      byteLength: HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.rootKeyBytes,
+      isUsed: () => false,
+      randomSource,
+    }),
   });
 }
 

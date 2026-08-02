@@ -1,4 +1,6 @@
-const ROOT_KEY_BYTES = 32;
+import { HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD } from '@/00-storage/service/hizofs/00-format';
+
+const ROOT_KEY_BYTES = HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.rootKeyBytes;
 const SECRET_BYTES = new WeakMap<FileSystemRootKey, Uint8Array>();
 
 export class FileSystemRootKey {

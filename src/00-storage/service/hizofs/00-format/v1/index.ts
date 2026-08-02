@@ -11,6 +11,7 @@ export * from './canonical-json/unlock-envelope';
 export { decodeRestrictedCanonicalJson, encodeCanonicalAsciiString } from './canonical-json/lexical';
 export * from './crypto-context-codec';
 export * from './crypto-contexts';
+export * from './credential/passphrase-credential';
 export * from './encoding/base64-url';
 export * from './encoding/lowercase-hex';
 export * from './encoding/utf8';
