@@ -591,28 +591,6 @@ export class OPFSStorageProvider extends IStorageProvider {
     });
   }
 
-  async createInterruptedEncryptionForDebug({ passphrase, signal }: {
-    passphrase: string;
-    signal: AbortSignal | undefined;
-  }): Promise<void> {
-    await this.runInterruptedPersistenceTransition({
-      request: { operation: 'debug_interrupt_enable', passphrase },
-      signal,
-    });
-  }
-
-  async createInterruptedDecryptionForDebug({ signal }: {
-    signal: AbortSignal | undefined;
-  }): Promise<void> {
-    await this.runInterruptedPersistenceTransition({
-      request: {
-        operation: 'debug_interrupt_disable',
-        session: this.requireUnlockedEncryptionSession(),
-      },
-      signal,
-    });
-  }
-
   async listChatMetasRaw(): Promise<ChatMetaDto[]> {
     return await this.runWithBackend({ run: async ({ backend }) => await backend.listChatMetasRaw() });
   }
@@ -913,7 +891,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     await this.suspendSessionLocks();
     try {
       const storageRoot = await getOrCreateStorageRoot();
-      const result = await runWithExclusiveOpfsStorageSessionFence({
+      await runWithExclusiveOpfsStorageSessionFence({
         lockManager: navigator.locks,
         run: async () => await (await this.requirePersistenceRuntime()).runTransition({
           nativeNamespaceRoot: await navigator.storage.getDirectory(),
@@ -924,11 +902,6 @@ export class OPFSStorageProvider extends IStorageProvider {
         }),
         signal,
       });
-      switch (result.type) {
-      case 'completed': break;
-      case 'interrupted': throw new Error('Interrupted transition result cannot be accepted as a stable reload boundary');
-      default: result satisfies never;
-      }
       await settleProviderForReloadAfterTransition({
         settleProvider: async () => await settleStorageProviderShutdown({
           clearBackend: () => {
@@ -951,46 +924,6 @@ export class OPFSStorageProvider extends IStorageProvider {
           clearFileSystemSession: async () => await this.closeFileSystemSession(),
           clearPersistenceSession: async () => await this.clearPersistenceSession(),
           message: 'OPFS provider shutdown after transition failure failed',
-          suspend: async () => await this.suspendSessionLocks(),
-        }),
-      });
-    }
-  }
-
-  private async runInterruptedPersistenceTransition({ request, signal }: {
-    request: OpfsPersistenceTransitionRequest;
-    signal: AbortSignal | undefined;
-  }): Promise<void> {
-    await this.suspendSessionLocks();
-    try {
-      const result = await (await this.requirePersistenceRuntime()).runTransition({
-        nativeNamespaceRoot: await navigator.storage.getDirectory(),
-        onProgress: undefined,
-        request,
-        signal,
-        storageRoot: await getOrCreateStorageRoot(),
-      });
-      switch (result.type) {
-      case 'interrupted':
-        break;
-      case 'completed':
-        throw new Error(`Expected interrupted transition state, received: ${result.type}`);
-      default: result satisfies never;
-      }
-      await this.clearPersistenceSession();
-      await this.closeFileSystemSession();
-      this.backend = undefined;
-    } catch (error) {
-      await settleProviderAfterTransitionFailure({
-        cause: error,
-        message: 'OPFS interrupted transition setup and provider shutdown both failed',
-        settle: async () => await settleStorageProviderShutdown({
-          clearBackend: () => {
-            this.backend = undefined;
-          },
-          clearFileSystemSession: async () => await this.closeFileSystemSession(),
-          clearPersistenceSession: async () => await this.clearPersistenceSession(),
-          message: 'OPFS provider shutdown after interrupted transition failure failed',
           suspend: async () => await this.suspendSessionLocks(),
         }),
       });

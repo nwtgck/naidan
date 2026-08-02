@@ -417,7 +417,7 @@ describe("browserless production HizoFS enable system", () => {
     { interruption: "before authority switch", phase: "verifying" },
     { interruption: "after authority switch", phase: "cleaning_source" },
   ] as const)(
-    "returns to plain from an enable interruption $interruption using coarse convergence and a fresh transition",
+    "converges an enable interruption $interruption at the coarse authority boundary",
     async ({ phase }) => {
       const root = new InMemoryOpfsDirectoryHandle({
         capabilityProfile: "window",
@@ -457,18 +457,47 @@ describe("browserless production HizoFS enable system", () => {
           requiredAction: "converge_transition",
           type: "credential_required",
         });
-        await recovery.returnInterruptedEncryptionToPlain({
-          onProgress: undefined,
-          passphrase: PASSPHRASE,
-          signal: undefined,
-        });
-
-        const afterReload = new OPFSStorageProvider();
-        await afterReload.init();
-        await expect(afterReload.inspectEncryption()).resolves.toMatchObject({ type: "plain" });
-        expect(await afterReload.loadSettings()).toMatchObject({
-          endpoint: { url: `http://return-${phase}` },
-        });
+        switch (phase) {
+        case "verifying": {
+          await recovery.returnInterruptedEncryptionToPlain({
+            onProgress: undefined,
+            passphrase: PASSPHRASE,
+            signal: undefined,
+          });
+          const sourceAfterReload = new OPFSStorageProvider();
+          await sourceAfterReload.init();
+          await expect(sourceAfterReload.inspectEncryption()).resolves.toMatchObject({ type: "plain" });
+          await expect(sourceAfterReload.loadSettings()).resolves.toMatchObject({
+            endpoint: { url: `http://return-${phase}` },
+          });
+          await sourceAfterReload.enableEncryption({
+            onProgress: undefined,
+            passphrase: PASSPHRASE,
+            signal: undefined,
+          });
+          const freshTarget = new OPFSStorageProvider();
+          await freshTarget.unlockWithPassphrase({ passphrase: PASSPHRASE });
+          await expect(freshTarget.loadSettings()).resolves.toMatchObject({
+            endpoint: { url: `http://return-${phase}` },
+          });
+          await freshTarget.dispose();
+          break;
+        }
+        case "cleaning_source": {
+          await recovery.convergeTransitionWithPassphrase({
+            passphrase: PASSPHRASE,
+            signal: undefined,
+          });
+          const targetAfterReload = new OPFSStorageProvider();
+          await targetAfterReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
+          await expect(targetAfterReload.loadSettings()).resolves.toMatchObject({
+            endpoint: { url: `http://return-${phase}` },
+          });
+          await targetAfterReload.dispose();
+          break;
+        }
+        default: phase satisfies never;
+        }
         const storageRoot = await root.getDirectoryHandle(
           NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
           { create: false },
@@ -476,7 +505,6 @@ describe("browserless production HizoFS enable system", () => {
         await expectNoPersistentTransitionProgress({
           storageRoot: storageRoot as unknown as FileSystemDirectoryHandle,
         });
-        await afterReload.dispose();
       } finally {
         uninstallRuntime();
       }

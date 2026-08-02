@@ -40,13 +40,6 @@ export class OpfsDevelopmentCredentialRejectedError extends Error {
   }
 }
 
-export class OpfsDevelopmentPersistenceOperationUnavailableError extends Error {
-  constructor({ operation }: { operation: string }) {
-    super(`${operation} is not connected in the development HizoFS runtime`);
-    this.name = 'OpfsDevelopmentPersistenceOperationUnavailableError';
-  }
-}
-
 type DevelopmentRuntimePort = Readonly<{
   captureAuthority: ({ physical }: {
     physical: PersistenceControlReadablePhysicalPort;
@@ -253,14 +246,6 @@ async function createDevelopmentUnlockedSession({ opened, port }: {
   };
 }
 
-function unavailableTransition({ request }: {
-  request: OpfsPersistenceTransitionRequest;
-}): never {
-  throw new OpfsDevelopmentPersistenceOperationUnavailableError({
-    operation: `OPFS ${request.operation} transition`,
-  });
-}
-
 /**
  * Connects unreleased writable HizoFS to Naidan's ordinary provider path.
  *
@@ -417,8 +402,6 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
         });
         return { type: 'completed' };
       }
-      case 'debug_interrupt_disable':
-      case 'debug_interrupt_enable': return unavailableTransition({ request });
       default: return request satisfies never;
       }
     },

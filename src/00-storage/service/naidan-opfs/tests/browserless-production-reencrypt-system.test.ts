@@ -302,6 +302,81 @@ describe('browserless production HizoFS re-encrypt system', () => {
     }
   }, 60_000);
 
+  it('converges to the target and retries retired cleanup after post-switch interruption', async () => {
+    const { root, uninstallRuntime } = installBrowserlessSystem({
+      capabilityProfile: 'window',
+      faultHooks: undefined,
+    });
+    const controller = new AbortController();
+    let interruptedAfterAuthoritySwitch = false;
+
+    try {
+      const encryptedSource = await createEncryptedProvider({
+        endpointUrl: 'http://reencrypt-target-after-post-switch-interruption',
+        root,
+      });
+      const storageRoot = await root.getDirectoryHandle(
+        NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+        { create: false },
+      );
+      const [sourceContainerName, ...unexpectedSourceContainers] = containerEntryNames({
+        entries: await listEntryNames({
+          directory: storageRoot as unknown as FileSystemDirectoryHandle,
+        }),
+      });
+      expect(sourceContainerName).toBeDefined();
+      expect(unexpectedSourceContainers).toEqual([]);
+
+      await expect(encryptedSource.reencrypt({
+        onProgress: ({ progress }) => {
+          if (progress.phase !== 'cleaning_source' || interruptedAfterAuthoritySwitch) return;
+          interruptedAfterAuthoritySwitch = true;
+          controller.abort(new DOMException('planned post-switch interruption', 'AbortError'));
+        },
+        retainedCredentials: [{ passphrase: PASSPHRASE }],
+        signal: controller.signal,
+      })).rejects.toMatchObject({ name: 'AbortError' });
+      expect(interruptedAfterAuthoritySwitch).toBe(true);
+      expect(containerEntryNames({
+        entries: await listEntryNames({
+          directory: storageRoot as unknown as FileSystemDirectoryHandle,
+        }),
+      })).toHaveLength(2);
+
+      const recovery = new OPFSStorageProvider();
+      await expect(recovery.inspectEncryption()).resolves.toMatchObject({
+        requiredAction: 'converge_transition',
+        type: 'credential_required',
+      });
+      await recovery.convergeTransitionWithPassphrase({
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+
+      const targetAfterReload = new OPFSStorageProvider();
+      await targetAfterReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await expect(targetAfterReload.loadSettings()).resolves.toMatchObject({
+        endpoint: { url: 'http://reencrypt-target-after-post-switch-interruption' },
+      });
+      await vi.waitFor(async () => {
+        const [targetContainerName, ...unexpectedTargetContainers] = containerEntryNames({
+          entries: await listEntryNames({
+            directory: storageRoot as unknown as FileSystemDirectoryHandle,
+          }),
+        });
+        expect(targetContainerName).toBeDefined();
+        expect(targetContainerName).not.toBe(sourceContainerName);
+        expect(unexpectedTargetContainers).toEqual([]);
+      });
+      await expectNoPersistentTransitionProgress({
+        storageRoot: storageRoot as unknown as FileSystemDirectoryHandle,
+      });
+      await targetAfterReload.dispose();
+    } finally {
+      uninstallRuntime();
+    }
+  }, 60_000);
+
   it('converges to the target after authority-switch response loss and retries retired-source cleanup', async () => {
     const responseLoss = new DOMException('authority publication response lost', 'UnknownError');
     const cleanupFailure = new DOMException('retired source cleanup failed', 'NoModificationAllowedError');

@@ -301,6 +301,78 @@ describe("browserless production HizoFS disable system", () => {
     }
   }, 60_000);
 
+  it("keeps plain OPFS authoritative after disable is interrupted immediately after authority switch", async () => {
+    const root = new InMemoryOpfsDirectoryHandle({
+      capabilityProfile: "window",
+      name: "opfs-root",
+    });
+    const locks = new InMemoryWebLockManager();
+    vi.stubGlobal("navigator", {
+      locks,
+      storage: createInMemoryOpfsStorageManager({ root }),
+    });
+    const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({
+      lockManager: locks,
+    });
+    const controller = new AbortController();
+    let interruptedAfterAuthoritySwitch = false;
+
+    try {
+      const plainBeforeEnable = new OPFSStorageProvider();
+      await plainBeforeEnable.init();
+      await plainBeforeEnable.saveSettings({
+        settings: settings({ endpointUrl: "http://before-post-switch-disable" }),
+      });
+      await plainBeforeEnable.enableEncryption({
+        onProgress: undefined,
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+
+      const encrypted = new OPFSStorageProvider();
+      await encrypted.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await encrypted.saveSettings({
+        settings: settings({ endpointUrl: "http://plain-after-post-switch-disable" }),
+      });
+      await expect(encrypted.disableEncryption({
+        onProgress: ({ progress }) => {
+          if (progress.phase !== "switching_authority" || interruptedAfterAuthoritySwitch) return;
+          interruptedAfterAuthoritySwitch = true;
+          controller.abort(new DOMException("planned post-switch interruption", "AbortError"));
+        },
+        signal: controller.signal,
+      })).rejects.toMatchObject({ name: "AbortError" });
+      expect(interruptedAfterAuthoritySwitch).toBe(true);
+
+      const recovery = new OPFSStorageProvider();
+      await expect(recovery.inspectEncryption()).resolves.toMatchObject({
+        requiredAction: "converge_transition",
+        type: "credential_required",
+      });
+      await recovery.convergeTransitionWithPassphrase({
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+
+      const plainAfterReload = new OPFSStorageProvider();
+      await plainAfterReload.init();
+      await expect(plainAfterReload.inspectEncryptionSettings()).resolves.toEqual({ type: "plain" });
+      await expect(plainAfterReload.loadSettings()).resolves.toMatchObject({
+        endpoint: { url: "http://plain-after-post-switch-disable" },
+      });
+      const storageRoot = await root.getDirectoryHandle(
+        NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+        { create: false },
+      );
+      await expectNoPersistentTransitionProgress({
+        storageRoot: storageRoot as unknown as FileSystemDirectoryHandle,
+      });
+      await plainAfterReload.dispose();
+    } finally {
+      uninstallRuntime();
+    }
+  }, 60_000);
+
   it("keeps recovery required and preserves HizoFS when abandoned plaintext cleanup fails", async () => {
     let failAbandonedPlainCleanup = false;
     const cleanupFailure = new DOMException("abandoned plaintext cleanup fault", "NoModificationAllowedError");

@@ -1622,16 +1622,18 @@ import { weshTerminal__session } from '@/strings/messages/weshTerminal__session/
 import { weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue } from '@/strings/messages/weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue/ja';
 import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__wesh_terminal/ja';
 
-import { DeveloperOpfsEncryptionInterruptionPanel__already_interrupted } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__already_interrupted/ja';
+import { DeveloperOpfsEncryptionInterruptionPanel__after_authority_switch } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__after_authority_switch/ja';
+import { DeveloperOpfsEncryptionInterruptionPanel__before_authority_switch } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__before_authority_switch/ja';
 import { DeveloperOpfsEncryptionInterruptionPanel__confirm_passphrase } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__confirm_passphrase/ja';
-import { DeveloperOpfsEncryptionInterruptionPanel__create_and_reload } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__create_and_reload/ja';
-import { DeveloperOpfsEncryptionInterruptionPanel__create_interrupted_decryption } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__create_interrupted_decryption/ja';
-import { DeveloperOpfsEncryptionInterruptionPanel__create_interrupted_encryption } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__create_interrupted_encryption/ja';
-import { DeveloperOpfsEncryptionInterruptionPanel__description } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__description/ja';
-import { DeveloperOpfsEncryptionInterruptionPanel__interrupted_decryption_warning } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__interrupted_decryption_warning/ja';
-import { DeveloperOpfsEncryptionInterruptionPanel__interrupted_encryption_warning } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__interrupted_encryption_warning/ja';
+import { DeveloperOpfsEncryptionInterruptionPanel__interrupt_and_reload } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__interrupt_and_reload/ja';
+import { DeveloperOpfsEncryptionInterruptionPanel__interrupt_opfs_transition } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__interrupt_opfs_transition/ja';
+import { DeveloperOpfsEncryptionInterruptionPanel__interruption_boundary } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__interruption_boundary/ja';
+import { DeveloperOpfsEncryptionInterruptionPanel__interrupts_ordinary_transition } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__interrupts_ordinary_transition/ja';
+import { DeveloperOpfsEncryptionInterruptionPanel__operation } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__operation/ja';
 import { DeveloperOpfsEncryptionInterruptionPanel__opfs_only } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__opfs_only/ja';
-import { DeveloperOpfsEncryptionInterruptionPanel__title } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__title/ja';
+import { DeveloperOpfsEncryptionInterruptionPanel__opfs_transition_interruption } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__opfs_transition_interruption/ja';
+import { DeveloperOpfsEncryptionInterruptionPanel__ordinary_transition_warning } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__ordinary_transition_warning/ja';
+import { DeveloperOpfsEncryptionInterruptionPanel__transition_in_progress } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__transition_in_progress/ja';
 import { opfsEncryption__progress_bytes } from '@/strings/messages/opfsEncryption__progress_bytes/ja';
 import { opfsEncryption__progress_cleaning_source } from '@/strings/messages/opfsEncryption__progress_cleaning_source/ja';
 import { opfsEncryption__progress_copying } from '@/strings/messages/opfsEncryption__progress_copying/ja';
@@ -3269,16 +3271,18 @@ export const ja = {
   weshTerminal__session,
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
-  DeveloperOpfsEncryptionInterruptionPanel__already_interrupted,
+  DeveloperOpfsEncryptionInterruptionPanel__after_authority_switch,
+  DeveloperOpfsEncryptionInterruptionPanel__before_authority_switch,
   DeveloperOpfsEncryptionInterruptionPanel__confirm_passphrase,
-  DeveloperOpfsEncryptionInterruptionPanel__create_and_reload,
-  DeveloperOpfsEncryptionInterruptionPanel__create_interrupted_decryption,
-  DeveloperOpfsEncryptionInterruptionPanel__create_interrupted_encryption,
-  DeveloperOpfsEncryptionInterruptionPanel__description,
-  DeveloperOpfsEncryptionInterruptionPanel__interrupted_decryption_warning,
-  DeveloperOpfsEncryptionInterruptionPanel__interrupted_encryption_warning,
+  DeveloperOpfsEncryptionInterruptionPanel__interrupt_and_reload,
+  DeveloperOpfsEncryptionInterruptionPanel__interrupt_opfs_transition,
+  DeveloperOpfsEncryptionInterruptionPanel__interruption_boundary,
+  DeveloperOpfsEncryptionInterruptionPanel__interrupts_ordinary_transition,
+  DeveloperOpfsEncryptionInterruptionPanel__operation,
   DeveloperOpfsEncryptionInterruptionPanel__opfs_only,
-  DeveloperOpfsEncryptionInterruptionPanel__title,
+  DeveloperOpfsEncryptionInterruptionPanel__opfs_transition_interruption,
+  DeveloperOpfsEncryptionInterruptionPanel__ordinary_transition_warning,
+  DeveloperOpfsEncryptionInterruptionPanel__transition_in_progress,
   opfsEncryption__progress_bytes,
   opfsEncryption__progress_cleaning_source,
   opfsEncryption__progress_copying,

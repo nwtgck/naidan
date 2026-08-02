@@ -89,8 +89,6 @@ const mockProvider = {
   reencrypt: vi.fn().mockResolvedValue(undefined),
   convergeTransitionWithPassphrase: vi.fn().mockResolvedValue(undefined),
   returnInterruptedEncryptionToPlain: vi.fn().mockResolvedValue(undefined),
-  createInterruptedEncryptionForDebug: vi.fn().mockResolvedValue(undefined),
-  createInterruptedDecryptionForDebug: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock('./local-storage', () => ({
@@ -137,8 +135,6 @@ describe('StorageService Synchronization Wrapper', () => {
     mockProvider.reencrypt.mockResolvedValue(undefined);
     mockProvider.convergeTransitionWithPassphrase.mockResolvedValue(undefined);
     mockProvider.returnInterruptedEncryptionToPlain.mockResolvedValue(undefined);
-    mockProvider.createInterruptedEncryptionForDebug.mockResolvedValue(undefined);
-    mockProvider.createInterruptedDecryptionForDebug.mockResolvedValue(undefined);
     mockExternalTransitionStarting.mockResolvedValue(undefined);
     mockPrepareExternalTransition.mockResolvedValue(undefined);
     mockSuspendStorageSession.mockResolvedValue(undefined);
@@ -319,23 +315,6 @@ describe('StorageService Synchronization Wrapper', () => {
       ),
       name: 'return-to-plain',
       providerMethod: mockProvider.returnInterruptedEncryptionToPlain,
-    },
-    {
-      invoke: async ({ service }: { service: StorageService }) => (
-        await service.createInterruptedOpfsEncryptionForDebug({
-          passphrase: 'passphrase',
-          signal: undefined,
-        })
-      ),
-      name: 'debug enable interruption',
-      providerMethod: mockProvider.createInterruptedEncryptionForDebug,
-    },
-    {
-      invoke: async ({ service }: { service: StorageService }) => (
-        await service.createInterruptedOpfsDecryptionForDebug({ signal: undefined })
-      ),
-      name: 'debug disable interruption',
-      providerMethod: mockProvider.createInterruptedDecryptionForDebug,
     },
   ])('runs registered preflight for the public $name transition API', async ({ invoke, providerMethod }) => {
     service = new StorageService();

@@ -741,32 +741,6 @@ export class StorageService {
     });
   }
 
-  async createInterruptedOpfsEncryptionForDebug({
-    passphrase,
-    signal,
-  }: {
-    passphrase: string,
-    signal: AbortSignal | undefined,
-  }): Promise<void> {
-    await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().createInterruptedEncryptionForDebug({
-        passphrase,
-        signal,
-      }),
-    });
-  }
-
-  async createInterruptedOpfsDecryptionForDebug({
-    signal,
-  }: {
-    signal: AbortSignal | undefined,
-  }): Promise<void> {
-    await this.runOpfsEncryptionTransition({
-      run: async () => await this.getOpfsProvider().createInterruptedDecryptionForDebug({ signal }),
-    });
-  }
-
-
   // --- Hierarchy Management (Atomic) ---
 
   async loadHierarchy(): Promise<Hierarchy> {

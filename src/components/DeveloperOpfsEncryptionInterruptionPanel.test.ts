@@ -4,24 +4,57 @@ import DeveloperOpfsEncryptionInterruptionPanel from './DeveloperOpfsEncryptionI
 import { useConfirm } from '@/composables/useConfirm';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
+import type {
+  OpfsEncryptionTransitionProgressListener,
+  OpfsEncryptionTransitionProgressOperation,
+  OpfsEncryptionTransitionProgressPhase,
+} from '@/00-storage/service/naidan-opfs/transition-progress';
 
 const mocks = vi.hoisted(() => ({
-  inspectOpfsEncryption: vi.fn(),
-  createInterruptedOpfsEncryptionForDebug: vi.fn(),
-  createInterruptedOpfsDecryptionForDebug: vi.fn(),
+  disableOpfsEncryption: vi.fn(),
+  enableOpfsEncryption: vi.fn(),
+  inspectOpfsEncryptionSettings: vi.fn(),
+  reencryptOpfsEncryption: vi.fn(),
 }));
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
-    inspectOpfsEncryption: mocks.inspectOpfsEncryption,
-    createInterruptedOpfsEncryptionForDebug: mocks.createInterruptedOpfsEncryptionForDebug,
-    createInterruptedOpfsDecryptionForDebug: mocks.createInterruptedOpfsDecryptionForDebug,
+    disableOpfsEncryption: mocks.disableOpfsEncryption,
+    enableOpfsEncryption: mocks.enableOpfsEncryption,
+    inspectOpfsEncryptionSettings: mocks.inspectOpfsEncryptionSettings,
+    reencryptOpfsEncryption: mocks.reencryptOpfsEncryption,
   },
 }));
 
 vi.mock('@/composables/useConfirm', () => ({
   useConfirm: vi.fn(),
 }));
+
+const unlockedFileSystemId = PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({
+  fileSystemId: 'developer-panel-file-system',
+}).mode.activeFileSystemId;
+
+function installExpectedInterruption({ method, operation, phase }: {
+  method: ReturnType<typeof vi.fn>;
+  operation: OpfsEncryptionTransitionProgressOperation;
+  phase: OpfsEncryptionTransitionProgressPhase;
+}): void {
+  method.mockImplementation(async ({ onProgress, signal }: {
+    onProgress: OpfsEncryptionTransitionProgressListener;
+    signal: AbortSignal;
+  }) => {
+    onProgress({ progress: {
+      completedBytes: 1,
+      completedEntries: 1,
+      operation,
+      percent: undefined,
+      phase,
+      totalBytes: 1,
+      totalEntries: 1,
+    } });
+    signal.throwIfAborted();
+  });
+}
 
 describe('DeveloperOpfsEncryptionInterruptionPanel', () => {
   const showConfirm = vi.fn();
@@ -33,40 +66,132 @@ describe('DeveloperOpfsEncryptionInterruptionPanel', () => {
     vi.stubGlobal('location', { reload });
     (useConfirm as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ showConfirm });
     showConfirm.mockResolvedValue(true);
-    mocks.createInterruptedOpfsEncryptionForDebug.mockResolvedValue(undefined);
-    mocks.createInterruptedOpfsDecryptionForDebug.mockResolvedValue(undefined);
   });
 
-  it('creates a durable interrupted encryption state and reloads from plain OPFS', async () => {
-    mocks.inspectOpfsEncryption.mockResolvedValue({ type: 'plain' });
-    const wrapper = mount(DeveloperOpfsEncryptionInterruptionPanel, {
-      props: { storageType: 'opfs' },
-    });
-    await vi.waitFor(() => {
-      expect(mocks.inspectOpfsEncryption).toHaveBeenCalledOnce();
-    });
+  it.each([
+    { boundary: 'pre_switch', phase: 'verifying' },
+    { boundary: 'post_switch', phase: 'cleaning_source' },
+  ] as const)(
+    'interrupts ordinary enable at $boundary and reloads after settlement',
+    async ({ boundary, phase }) => {
+      mocks.inspectOpfsEncryptionSettings.mockResolvedValue({ type: 'plain' });
+      installExpectedInterruption({
+        method: mocks.enableOpfsEncryption,
+        operation: 'encrypting',
+        phase,
+      });
+      const wrapper = mount(DeveloperOpfsEncryptionInterruptionPanel, {
+        props: { storageType: 'opfs' },
+      });
+      await vi.waitFor(() => {
+        expect(mocks.inspectOpfsEncryptionSettings).toHaveBeenCalledOnce();
+      });
 
-    await wrapper.get('[data-testid="developer-interrupted-encryption-passphrase"]')
-      .setValue('developer passphrase');
-    await wrapper.get('[data-testid="developer-interrupted-encryption-confirm-passphrase"]')
-      .setValue('developer passphrase');
-    await wrapper.get('[data-testid="developer-create-interrupted-encryption"]').trigger('click');
-    await flushPromises();
+      await wrapper.get(`[data-testid="developer-opfs-interruption-boundary-${boundary.replace('_', '-')}"]`)
+        .trigger('click');
+      await wrapper.get('[data-testid="developer-opfs-interruption-passphrase"]')
+        .setValue('developer passphrase');
+      await wrapper.get('[data-testid="developer-opfs-interruption-confirm-passphrase"]')
+        .setValue('developer passphrase');
+      await wrapper.get('[data-testid="developer-opfs-interruption-run"]').trigger('click');
+      await flushPromises();
 
-    expect(mocks.createInterruptedOpfsEncryptionForDebug).toHaveBeenCalledWith({
-      passphrase: 'developer passphrase',
-      signal: undefined,
-    });
-    expect(reload).toHaveBeenCalledOnce();
-  });
+      expect(mocks.enableOpfsEncryption).toHaveBeenCalledWith({
+        onProgress: expect.any(Function),
+        passphrase: 'developer passphrase',
+        signal: expect.any(AbortSignal),
+      });
+      expect(reload).toHaveBeenCalledOnce();
+    },
+  );
 
-  it('shows credential-required storage without exposing interruption actions', async () => {
-    mocks.inspectOpfsEncryption.mockResolvedValue(
-      PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({
-        firstSequence: 2,
-        secondSequence: 1,
-      }),
-    );
+  it.each([
+    { boundary: 'pre_switch', phase: 'verifying' },
+    { boundary: 'post_switch', phase: 'switching_authority' },
+  ] as const)(
+    'interrupts ordinary disable at $boundary and reloads after settlement',
+    async ({ boundary, phase }) => {
+      mocks.inspectOpfsEncryptionSettings.mockResolvedValue({
+        access: 'unlocked',
+        fileSystemId: unlockedFileSystemId,
+        type: 'encrypted',
+      });
+      installExpectedInterruption({
+        method: mocks.disableOpfsEncryption,
+        operation: 'decrypting',
+        phase,
+      });
+      const wrapper = mount(DeveloperOpfsEncryptionInterruptionPanel, {
+        props: { storageType: 'opfs' },
+      });
+      await vi.waitFor(() => {
+        expect(wrapper.get('[data-testid="developer-opfs-interruption-operation-disable"]')
+          .attributes('aria-pressed')).toBe('true');
+      });
+
+      await wrapper.get(`[data-testid="developer-opfs-interruption-boundary-${boundary.replace('_', '-')}"]`)
+        .trigger('click');
+      await wrapper.get('[data-testid="developer-opfs-interruption-run"]').trigger('click');
+      await flushPromises();
+
+      expect(mocks.disableOpfsEncryption).toHaveBeenCalledWith({
+        onProgress: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      });
+      expect(reload).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each([
+    { boundary: 'pre_switch', phase: 'verifying' },
+    { boundary: 'post_switch', phase: 'cleaning_source' },
+  ] as const)(
+    'interrupts ordinary re-encryption at $boundary and reloads after settlement',
+    async ({ boundary, phase }) => {
+      mocks.inspectOpfsEncryptionSettings.mockResolvedValue({
+        access: 'unlocked',
+        fileSystemId: unlockedFileSystemId,
+        type: 'encrypted',
+      });
+      installExpectedInterruption({
+        method: mocks.reencryptOpfsEncryption,
+        operation: 'reencrypting',
+        phase,
+      });
+      const wrapper = mount(DeveloperOpfsEncryptionInterruptionPanel, {
+        props: { storageType: 'opfs' },
+      });
+      await vi.waitFor(() => {
+        expect(wrapper.find('[data-testid="developer-opfs-interruption-operation-reencrypt"]')
+          .exists()).toBe(true);
+      });
+
+      await wrapper.get('[data-testid="developer-opfs-interruption-operation-reencrypt"]')
+        .trigger('click');
+      await wrapper.get(`[data-testid="developer-opfs-interruption-boundary-${boundary.replace('_', '-')}"]`)
+        .trigger('click');
+      await wrapper.get('[data-testid="developer-opfs-interruption-passphrase"]')
+        .setValue('retained passphrase');
+      await wrapper.get('[data-testid="developer-opfs-interruption-confirm-passphrase"]')
+        .setValue('retained passphrase');
+      await vi.waitFor(() => {
+        expect(wrapper.get('[data-testid="developer-opfs-interruption-run"]').attributes('disabled'))
+          .toBeUndefined();
+      });
+      await wrapper.get('[data-testid="developer-opfs-interruption-run"]').trigger('click');
+      await flushPromises();
+
+      expect(mocks.reencryptOpfsEncryption).toHaveBeenCalledWith({
+        onProgress: expect.any(Function),
+        passphrase: 'retained passphrase',
+        signal: expect.any(AbortSignal),
+      });
+      expect(reload).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('does not expose transition actions for locked encrypted storage', async () => {
+    mocks.inspectOpfsEncryptionSettings.mockResolvedValue({ access: 'locked', type: 'encrypted' });
     const wrapper = mount(DeveloperOpfsEncryptionInterruptionPanel, {
       props: { storageType: 'opfs' },
     });
@@ -75,106 +200,103 @@ describe('DeveloperOpfsEncryptionInterruptionPanel', () => {
       expect(wrapper.text()).toContain('Enter the passphrase for this OPFS storage');
     });
 
-    expect(wrapper.find('[data-testid="developer-create-interrupted-encryption"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="developer-create-interrupted-decryption"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="developer-opfs-interruption-run"]').exists()).toBe(false);
   });
 
-  it('creates a durable interrupted decryption state and reloads from encrypted OPFS', async () => {
-    mocks.inspectOpfsEncryption.mockResolvedValue({
+  it('does not start a second confirmation while an operation request is pending', async () => {
+    mocks.inspectOpfsEncryptionSettings.mockResolvedValue({
+      access: 'unlocked',
+      fileSystemId: unlockedFileSystemId,
       type: 'encrypted',
-      state: {
-        formatVersion: 1,
-        sequence: 1,
-        state: 'encrypted',
-        keySlots: [],
-        activeEncryptedStoreId: 'store-id',
-      },
     });
+    let settleConfirmation: ((confirmed: boolean) => void) | undefined;
+    showConfirm.mockImplementationOnce(async () => await new Promise<boolean>(resolve => {
+      settleConfirmation = resolve;
+    }));
     const wrapper = mount(DeveloperOpfsEncryptionInterruptionPanel, {
       props: { storageType: 'opfs' },
     });
     await vi.waitFor(() => {
-      expect(wrapper.find('[data-testid="developer-create-interrupted-decryption"]').exists()).toBe(true);
+      expect(wrapper.get('[data-testid="developer-opfs-interruption-operation-disable"]')
+        .attributes('aria-pressed')).toBe('true');
     });
 
-    await wrapper.get('[data-testid="developer-create-interrupted-decryption"]').trigger('click');
-    await flushPromises();
+    await wrapper.get('[data-testid="developer-opfs-interruption-run"]').trigger('click');
+    await wrapper.get('[data-testid="developer-opfs-interruption-run"]').trigger('click');
 
-    expect(mocks.createInterruptedOpfsDecryptionForDebug).toHaveBeenCalledWith({ signal: undefined });
-    expect(reload).toHaveBeenCalledOnce();
+    expect(showConfirm).toHaveBeenCalledOnce();
+    expect(mocks.disableOpfsEncryption).not.toHaveBeenCalled();
+    if (settleConfirmation === undefined) throw new Error('confirmation did not start');
+    settleConfirmation(false);
+    await flushPromises();
   });
 
   it('warns without trimming leading or trailing passphrase whitespace', async () => {
-    mocks.inspectOpfsEncryption.mockResolvedValue({ type: 'plain' });
+    mocks.inspectOpfsEncryptionSettings.mockResolvedValue({ type: 'plain' });
     const wrapper = mount(DeveloperOpfsEncryptionInterruptionPanel, {
       props: { storageType: 'opfs' },
     });
     await vi.waitFor(() => {
-      expect(mocks.inspectOpfsEncryption).toHaveBeenCalledOnce();
+      expect(mocks.inspectOpfsEncryptionSettings).toHaveBeenCalledOnce();
     });
 
-    await wrapper.get('[data-testid="developer-interrupted-encryption-passphrase"]')
+    await wrapper.get('[data-testid="developer-opfs-interruption-passphrase"]')
       .setValue(' developer passphrase ');
-    await wrapper.get('[data-testid="developer-interrupted-encryption-confirm-passphrase"]')
+    await wrapper.get('[data-testid="developer-opfs-interruption-confirm-passphrase"]')
       .setValue(' developer passphrase ');
 
     expect(wrapper.text()).toContain(
       'Leading or trailing whitespace is part of the passphrase and will not be removed.',
     );
-    expect(wrapper.get('[data-testid="developer-create-interrupted-encryption"]').attributes('disabled'))
+    expect(wrapper.get('[data-testid="developer-opfs-interruption-run"]').attributes('disabled'))
       .toBeUndefined();
   });
 
   it('rejects a line break in either passphrase field', async () => {
-    mocks.inspectOpfsEncryption.mockResolvedValue({ type: 'plain' });
+    mocks.inspectOpfsEncryptionSettings.mockResolvedValue({ type: 'plain' });
     const wrapper = mount(DeveloperOpfsEncryptionInterruptionPanel, {
       props: { storageType: 'opfs' },
     });
     await vi.waitFor(() => {
-      expect(mocks.inspectOpfsEncryption).toHaveBeenCalledOnce();
+      expect(mocks.inspectOpfsEncryptionSettings).toHaveBeenCalledOnce();
     });
 
-    const pasteEvent = new Event('paste', {
-      bubbles: true,
-      cancelable: true,
-    });
+    const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
     Object.defineProperty(pasteEvent, 'clipboardData', {
-      value: {
-        getData: () => `\
+      value: { getData: () => `\
 developer
-passphrase`,
-      },
+passphrase` },
     });
     const preventDefault = vi.spyOn(pasteEvent, 'preventDefault');
-    wrapper.get('[data-testid="developer-interrupted-encryption-confirm-passphrase"]')
+    wrapper.get('[data-testid="developer-opfs-interruption-confirm-passphrase"]')
       .element.dispatchEvent(pasteEvent);
     await flushPromises();
 
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(wrapper.text()).toContain('Passphrases cannot contain line breaks.');
-    expect(wrapper.get('[data-testid="developer-create-interrupted-encryption"]').attributes('disabled'))
+    expect(wrapper.get('[data-testid="developer-opfs-interruption-run"]').attributes('disabled'))
       .toBeDefined();
   });
 
-  it('keeps the operation error visible after refreshing the inspection state', async () => {
-    mocks.inspectOpfsEncryption.mockResolvedValue({ type: 'plain' });
-    mocks.createInterruptedOpfsEncryptionForDebug.mockRejectedValue(new Error('debug interruption failed'));
+  it('keeps an ordinary operation error visible after refreshing inspection', async () => {
+    mocks.inspectOpfsEncryptionSettings.mockResolvedValue({ type: 'plain' });
+    mocks.enableOpfsEncryption.mockRejectedValue(new Error('ordinary transition failed'));
     const wrapper = mount(DeveloperOpfsEncryptionInterruptionPanel, {
       props: { storageType: 'opfs' },
     });
     await vi.waitFor(() => {
-      expect(mocks.inspectOpfsEncryption).toHaveBeenCalledOnce();
+      expect(mocks.inspectOpfsEncryptionSettings).toHaveBeenCalledOnce();
     });
 
-    await wrapper.get('[data-testid="developer-interrupted-encryption-passphrase"]')
+    await wrapper.get('[data-testid="developer-opfs-interruption-passphrase"]')
       .setValue('developer passphrase');
-    await wrapper.get('[data-testid="developer-interrupted-encryption-confirm-passphrase"]')
+    await wrapper.get('[data-testid="developer-opfs-interruption-confirm-passphrase"]')
       .setValue('developer passphrase');
-    await wrapper.get('[data-testid="developer-create-interrupted-encryption"]').trigger('click');
+    await wrapper.get('[data-testid="developer-opfs-interruption-run"]').trigger('click');
     await flushPromises();
 
-    expect(mocks.inspectOpfsEncryption).toHaveBeenCalledTimes(2);
-    expect(wrapper.text()).toContain('debug interruption failed');
+    expect(mocks.inspectOpfsEncryptionSettings).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).toContain('ordinary transition failed');
     expect(reload).not.toHaveBeenCalled();
   });
 });
