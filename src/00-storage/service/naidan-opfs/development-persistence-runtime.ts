@@ -6,6 +6,7 @@ import type { CapturedPersistenceControlAuthority } from '@/00-storage/service/n
 import type { PersistenceControlReadablePhysicalPort } from '@/00-storage/service/naidan-persistence-control/store';
 import { NaidanOpfsStorageBackend } from '@/00-storage/service/naidan-opfs/backend';
 import { createOpfsPersistenceControlReadablePhysicalPort } from '@/00-storage/service/naidan-opfs/opfs-persistence-control-readable-port';
+import { listNativePlainApplicationNamespaceEntryNames } from '@/00-storage/service/naidan-opfs/native-plain-application-namespace';
 import { installOpfsPersistenceRuntimeFactory } from '@/00-storage/service/naidan-opfs/persistence-runtime-registry';
 import type {
   OpfsEncryptionInspection,
@@ -23,7 +24,6 @@ import {
   runNativeHizoFSReencryptTransition,
   runNativeHizoFSReturnToPlainTransition,
   runNativeStableHizoFSRetiredContainerCleanup,
-  runNativeStableHizoFSRetiredPlainCleanup,
   runNativeStablePlainRetiredCleanup,
   type CredentialBoundApplicationSessionOpenResult,
 } from '@/00-storage/service/naidan-opfs/production-persistence-runtime';
@@ -102,12 +102,6 @@ type DevelopmentRuntimePort = Readonly<{
     nativeNamespaceRoot: FileSystemDirectoryHandle;
     storageRoot: FileSystemDirectoryHandle;
   }) => Promise<void>;
-  runStableHizoFSRetiredPlainCleanup: ({ lockManager, nativeNamespaceRoot, session, storageRoot }: {
-    lockManager: DevelopmentLockManager;
-    nativeNamespaceRoot: FileSystemDirectoryHandle;
-    session: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceUnlockedSession;
-    storageRoot: FileSystemDirectoryHandle;
-  }) => ReturnType<typeof runNativeStableHizoFSRetiredPlainCleanup>;
   runStableHizoFSRetiredContainerCleanup: ({ lockManager, nativeNamespaceRoot, session, storageRoot }: {
     lockManager: DevelopmentLockManager;
     nativeNamespaceRoot: FileSystemDirectoryHandle;
@@ -188,7 +182,6 @@ const browserPort: DevelopmentRuntimePort = Object.freeze({
       storageRoot,
     })
   ),
-  runStableHizoFSRetiredPlainCleanup: runNativeStableHizoFSRetiredPlainCleanup,
   runStableHizoFSRetiredContainerCleanup: runNativeStableHizoFSRetiredContainerCleanup,
   runStablePlainRetiredCleanup: runNativeStablePlainRetiredCleanup,
   inspect: inspectNativeCredentialAwarePersistenceRuntime,
@@ -280,12 +273,11 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
         session,
         storageRoot,
       });
-      return await port.runStableHizoFSRetiredPlainCleanup({
-        lockManager,
-        nativeNamespaceRoot,
-        session,
-        storageRoot,
-      });
+      return {
+        remainingEntryCount: (await listNativePlainApplicationNamespaceEntryNames({ nativeNamespaceRoot })).length,
+        removedEntryCount: 0,
+        state: 'completed',
+      };
     },
     unlockWithPassphrase: async ({ passphrase, storageRoot }) => {
       reportHizoFSTrialDebug({

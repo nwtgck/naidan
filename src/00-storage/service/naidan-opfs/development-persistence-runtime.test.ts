@@ -33,7 +33,11 @@ const runtimePolicy: RuntimeOptions['runtimePolicy'] = {
 
 const lockManager = {} as RuntimeOptions['lockManager'];
 const storageRoot = {} as FileSystemDirectoryHandle;
-const nativeNamespaceRoot = {} as FileSystemDirectoryHandle;
+const nativeNamespaceRoot = {
+  getDirectoryHandle: vi.fn(async () => {
+    throw new DOMException('missing test storage root', 'NotFoundError');
+  }),
+} as unknown as FileSystemDirectoryHandle;
 const physical = {} as PersistenceControlReadablePhysicalPort;
 const captured = {} as CapturedPersistenceControlAuthority;
 
@@ -85,11 +89,6 @@ function port({
     runEnableTransition: vi.fn(async () => undefined),
     runReencryptTransition: vi.fn(async () => undefined),
     runStableHizoFSRetiredContainerCleanup: vi.fn(async () => undefined),
-    runStableHizoFSRetiredPlainCleanup: vi.fn(async () => ({
-      remainingEntryCount: 0,
-      removedEntryCount: 0,
-      state: 'completed' as const,
-    })),
     runStablePlainRetiredCleanup: vi.fn(async () => undefined),
     runReturnToPlainTransition: vi.fn(async () => ({ type: 'returned_plain' as const })),
     openApplicationSession: vi.fn(async () => {
@@ -157,7 +156,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
     expect(runtimePort.inspect).not.toHaveBeenCalled();
   });
 
-  it('removes retired HizoFS containers before cleaning the retired plain namespace', async () => {
+  it('removes retired HizoFS containers without deleting an unowned plain namespace', async () => {
     const runtimePort = port();
     const subject = runtime({ runtimePort });
     const session = await subject.unlockWithPassphrase({
@@ -181,17 +180,6 @@ describe('development-unverified OPFS Persistence runtime', () => {
       session,
       storageRoot,
     });
-    expect(runtimePort.runStableHizoFSRetiredPlainCleanup).toHaveBeenCalledWith({
-      lockManager,
-      nativeNamespaceRoot,
-      session,
-      storageRoot,
-    });
-    const retiredContainerCleanup = vi.mocked(runtimePort.runStableHizoFSRetiredContainerCleanup);
-    const retiredPlainCleanup = vi.mocked(runtimePort.runStableHizoFSRetiredPlainCleanup);
-    expect(
-      retiredContainerCleanup.mock.invocationCallOrder[0],
-    ).toBeLessThan(retiredPlainCleanup.mock.invocationCallOrder[0] ?? 0);
   });
 
   it('maps only credential rejection to the explicit development error', async () => {

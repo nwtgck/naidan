@@ -50,6 +50,24 @@ async function listEntryNames({ directory }: {
   return names.toSorted();
 }
 
+async function writeFileBytes({ bytes, directory, name }: {
+  bytes: Uint8Array<ArrayBuffer>;
+  directory: FileSystemDirectoryHandle;
+  name: string;
+}): Promise<void> {
+  const writable = await (await directory.getFileHandle(name, { create: true })).createWritable();
+  await writable.write(bytes);
+  await writable.close();
+}
+
+async function readFileBytes({ directory, name }: {
+  directory: FileSystemDirectoryHandle;
+  name: string;
+}): Promise<Uint8Array> {
+  const file = await (await directory.getFileHandle(name, { create: false })).getFile();
+  return new Uint8Array(await file.arrayBuffer());
+}
+
 async function expectNoPersistentTransitionProgress({ storageRoot }: {
   storageRoot: FileSystemDirectoryHandle;
 }): Promise<void> {
@@ -68,6 +86,101 @@ afterEach(() => {
 });
 
 describe("browserless production HizoFS disable system", () => {
+  it("rejects fresh disable before durable start and preserves unowned plain bytes", async () => {
+    const root = new InMemoryOpfsDirectoryHandle({
+      capabilityProfile: "window",
+      name: "opfs-root",
+    });
+    const locks = new InMemoryWebLockManager();
+    vi.stubGlobal("navigator", {
+      locks,
+      storage: createInMemoryOpfsStorageManager({ root }),
+    });
+    const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({
+      lockManager: locks,
+    });
+    const unownedFileBytes = new Uint8Array([0, 255, 17, 34, 51]);
+    const unownedNestedBytes = new Uint8Array([99, 0, 100, 200]);
+
+    try {
+      const plain = new OPFSStorageProvider();
+      await plain.init();
+      await plain.saveSettings({
+        settings: settings({ endpointUrl: "http://hizofs-source-before-conflict" }),
+      });
+      await plain.enableEncryption({
+        onProgress: undefined,
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+
+      const encrypted = new OPFSStorageProvider();
+      await encrypted.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await encrypted.saveSettings({
+        settings: settings({ endpointUrl: "http://hizofs-source-after-conflict" }),
+      });
+      await vi.waitFor(async () => {
+        await expect(listNativePlainApplicationNamespaceEntryNames({
+          nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+        })).resolves.toEqual([]);
+      });
+
+      const storageRoot = await root.getDirectoryHandle(
+        NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+        { create: false },
+      );
+      await writeFileBytes({
+        bytes: unownedFileBytes,
+        directory: storageRoot as unknown as FileSystemDirectoryHandle,
+        name: "unowned-plain.bin",
+      });
+      const unownedDirectory = await storageRoot.getDirectoryHandle("unowned-plain-directory", { create: true });
+      await writeFileBytes({
+        bytes: unownedNestedBytes,
+        directory: unownedDirectory as unknown as FileSystemDirectoryHandle,
+        name: "nested.bin",
+      });
+
+      await expect(encrypted.disableEncryption({
+        onProgress: undefined,
+        signal: undefined,
+      })).rejects.toThrow("unowned application bytes");
+
+      const afterReload = new OPFSStorageProvider();
+      await expect(afterReload.inspectEncryption()).resolves.toMatchObject({
+        requiredAction: "unlock",
+        type: "credential_required",
+      });
+      await expect(listNativePlainApplicationNamespaceEntryNames({
+        nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      })).resolves.toEqual(["unowned-plain-directory", "unowned-plain.bin"]);
+      await expect(readFileBytes({
+        directory: storageRoot as unknown as FileSystemDirectoryHandle,
+        name: "unowned-plain.bin",
+      })).resolves.toEqual(unownedFileBytes);
+      const unownedDirectoryAfterReload = await storageRoot.getDirectoryHandle(
+        "unowned-plain-directory",
+        { create: false },
+      );
+      await expect(readFileBytes({
+        directory: unownedDirectoryAfterReload as unknown as FileSystemDirectoryHandle,
+        name: "nested.bin",
+      })).resolves.toEqual(unownedNestedBytes);
+
+      await afterReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
+      await expect(afterReload.loadSettings()).resolves.toMatchObject({
+        endpoint: { url: "http://hizofs-source-after-conflict" },
+      });
+      await expect(readFileBytes({
+        directory: storageRoot as unknown as FileSystemDirectoryHandle,
+        name: "unowned-plain.bin",
+      })).resolves.toEqual(unownedFileBytes);
+      await afterReload.dispose();
+    } finally {
+      uninstallRuntime();
+    }
+  }, 60_000);
+
   it("disables, reloads into plain storage, writes, reopens, and removes the retired HizoFS container", async () => {
     const root = new InMemoryOpfsDirectoryHandle({
       capabilityProfile: "window",
@@ -414,6 +527,11 @@ describe("browserless production HizoFS disable system", () => {
           nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
         })).resolves.toEqual([]);
       });
+      await vi.waitFor(async () => {
+        await expect(encrypted.loadSettings()).resolves.toMatchObject({
+          endpoint: { url: "http://source-survives-cleanup-fault" },
+        });
+      });
       await expect(encrypted.disableEncryption({
         onProgress: ({ progress }) => {
           if (progress.phase === "verifying") controller.abort();
@@ -501,6 +619,11 @@ describe("browserless production HizoFS disable system", () => {
         await expect(listNativePlainApplicationNamespaceEntryNames({
           nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
         })).resolves.toEqual([]);
+      });
+      await vi.waitFor(async () => {
+        await expect(encrypted.loadSettings()).resolves.toMatchObject({
+          endpoint: { url: "http://source-after-delete-response-loss" },
+        });
       });
       await expect(encrypted.disableEncryption({
         onProgress: ({ progress }) => {

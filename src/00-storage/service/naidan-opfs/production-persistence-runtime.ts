@@ -69,7 +69,6 @@ import type { StorageFileSystemSession } from '@/00-storage/service/storage-file
 import type {
   OpfsEncryptionInspection,
   OpfsPersistenceRetainedCredential,
-  OpfsPersistenceUnlockedMaintenanceResult,
   OpfsPersistenceUnlockedSession,
 } from './persistence-runtime-contract';
 import { projectPersistenceRuntimeInspection } from './persistence-runtime-inspection';
@@ -112,7 +111,6 @@ import {
 } from './native-plain-application-namespace';
 import {
   runWithExclusiveOpfsPlainNamespaceFence,
-  runWithOpportunisticExclusiveOpfsPlainNamespaceFence,
 } from '@/00-storage/service/opfs/opfs-storage-session-lock';
 import {
   reportHizoFSTrialDebug,
@@ -1458,6 +1456,15 @@ async function convergeNativePersistenceTransition({
     });
   };
 
+  const cleanupPlainSourceAfterConvergence = async (): Promise<void> => {
+    await cleanupNativePlainEnableSourceAfterAuthoritySwitch({
+      binding: authority.binding,
+      lockManager,
+      nativeNamespaceRoot,
+      signal,
+    });
+  };
+
   switch (authority.operation) {
   case 'decrypt':
     switch (authority.phase) {
@@ -1473,11 +1480,60 @@ async function convergeNativePersistenceTransition({
       return await runConvergence({ plainTargetDisposition: 'preserve' });
     default: return authority.phase satisfies never;
     }
-  case 'encrypt':
-    return await runConvergence({ plainTargetDisposition: 'preserve' });
+  case 'encrypt': {
+    const convergence = await runConvergence({ plainTargetDisposition: 'preserve' });
+    switch (expectedPhase) {
+    case 'building_target': break;
+    case 'cleaning_up_source': await cleanupPlainSourceAfterConvergence(); break;
+    default: expectedPhase satisfies never;
+    }
+    return convergence;
+  }
   case 're_encrypt':
     return await runConvergence({ plainTargetDisposition: 'preserve' });
   default: return authority satisfies never;
+  }
+}
+
+async function cleanupNativePlainEnableSourceAfterAuthoritySwitch({
+  binding,
+  lockManager,
+  nativeNamespaceRoot,
+  signal,
+}: {
+  binding: TransitionTargetOperationBinding;
+  lockManager: Pick<LockManager, 'request'>;
+  nativeNamespaceRoot: FileSystemDirectoryHandle;
+  signal: AbortSignal | undefined;
+}): Promise<void> {
+  switch (binding.source.type) {
+  case 'plain': break;
+  case 'hizofs': throw new TypeError('native enable source cleanup requires a plain source');
+  default: binding.source satisfies never;
+  }
+  const fileSystemId = (() => {
+    switch (binding.target.type) {
+    case 'hizofs': return binding.target.fileSystemId;
+    case 'plain': throw new TypeError('native enable source cleanup requires a HizoFS target');
+    default: return binding.target satisfies never;
+    }
+  })();
+  let remainingEntryCount: number | undefined;
+  try {
+    await runWithExclusiveOpfsPlainNamespaceFence({
+      lockManager,
+      run: async () => {
+        remainingEntryCount = (await listNativePlainApplicationNamespaceEntryNames({ nativeNamespaceRoot })).length;
+        await cleanupNativePlainApplicationNamespaceWithReport({ nativeNamespaceRoot });
+        remainingEntryCount = (await listNativePlainApplicationNamespaceEntryNames({ nativeNamespaceRoot })).length;
+        if (remainingEntryCount !== 0) {
+          throw new TypeError('owned native plain enable source remained after cleanup');
+        }
+      },
+      signal,
+    });
+  } catch (cause: unknown) {
+    reportRetiredPlainCleanupFailure({ cause, fileSystemId, remainingEntryCount });
   }
 }
 
@@ -1732,6 +1788,23 @@ async function runNativeHizoFSDisableTransitionWithPlainNamespaceFence({
         },
         readState: async () => await baseControl.readState(),
       };
+      trialStage = 'prepare_transition_runtime';
+      const runtimeBinding = {
+        operationId,
+        sourceAuthorityIdentity,
+        sourceEndpoint: binding.source,
+        targetAuthorityIdentity: NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY,
+        targetEndpoint: binding.target,
+      } as const;
+      const runtime = new NativePlainTransitionRuntimeState({ binding: runtimeBinding });
+      transitionRuntime = runtime;
+      const plainTargetDriver = createNativePlainDisableTransitionDriver({
+        binding,
+        nativeNamespaceRoot,
+        runtime,
+        verificationPageSize: NATIVE_ENABLE_TRANSITION_POLICY.verification.maximumDirectoryEntriesPerRead,
+      });
+      await plainTargetDriver.prepareTarget({ binding });
       trialStage = 'start_persistence_transition';
       try {
         await startPersistenceTransition({ control, operationId, source: binding.source, target: binding.target });
@@ -1757,23 +1830,9 @@ async function runNativeHizoFSDisableTransitionWithPlainNamespaceFence({
         throw cause;
       }
       trialStage = 'prepare_transition_runtime';
-      const runtimeBinding = {
-        operationId,
-        sourceAuthorityIdentity,
-        sourceEndpoint: binding.source,
-        targetAuthorityIdentity: NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY,
-        targetEndpoint: binding.target,
-      } as const;
-      const runtime = new NativePlainTransitionRuntimeState({ binding: runtimeBinding });
-      transitionRuntime = runtime;
       const provider = new TransitionProviderAdapter({
         hizofs: sourceDriver.driver,
-        plain: createNativePlainDisableTransitionDriver({
-          binding,
-          nativeNamespaceRoot,
-          runtime,
-          verificationPageSize: NATIVE_ENABLE_TRANSITION_POLICY.verification.maximumDirectoryEntriesPerRead,
-        }),
+        plain: plainTargetDriver,
       });
       reportHizoFSTrialDebug({
         detail: { event: 'native_disable', fileSystemId, operationId, stage: 'runtime_prepared' },
@@ -1999,22 +2058,6 @@ export async function runNativeHizoFSReturnToPlainTransition({
     convergedFileSystemId: converged.fileSystemId,
     opened,
     runDisable: async ({ session }) => {
-      const cleanup = await runNativeStableHizoFSRetiredPlainCleanup({
-        lockManager,
-        nativeNamespaceRoot,
-        session,
-        storageRoot,
-      });
-      switch (cleanup.state) {
-      case 'completed':
-        if (cleanup.remainingEntryCount !== 0) {
-          throw new TypeError('return-to-plain could not clear the retired plain source');
-        }
-        break;
-      case 'plain_namespace_in_use':
-        throw new TypeError('return-to-plain plain target remains leased by another runtime');
-      default: cleanup satisfies never;
-      }
       await runNativeHizoFSDisableTransition({
         lockManager,
         nativeNamespaceRoot,
@@ -2483,6 +2526,12 @@ export async function runNativeHizoFSEnableTransition({
       }
       switch (result.state) {
       case 'stable': {
+        await cleanupNativePlainEnableSourceAfterAuthoritySwitch({
+          binding,
+          lockManager,
+          nativeNamespaceRoot,
+          signal,
+        });
         await cleanupRetiredLocalTransitionProgress({ exclusiveGate, storageRoot });
         return fileSystemId;
       }
@@ -3574,123 +3623,6 @@ export async function runNativeStableHizoFSRetiredContainerCleanup({
     },
     session: session.fileSystemSession,
   });
-}
-
-export async function runNativeStableHizoFSRetiredPlainCleanup({
-  lockManager,
-  nativeNamespaceRoot,
-  session,
-  storageRoot,
-}: {
-  lockManager: Pick<LockManager, 'request'>;
-  nativeNamespaceRoot: FileSystemDirectoryHandle;
-  session: Pick<OpfsPersistenceUnlockedSession, 'fileSystemId' | 'fileSystemSession'>;
-  storageRoot: FileSystemDirectoryHandle;
-}): Promise<OpfsPersistenceUnlockedMaintenanceResult> {
-  let remainingEntryCount: number | undefined;
-  reportHizoFSTrialDebug({
-    detail: {
-      event: 'retired_plain_cleanup',
-      failure: undefined,
-      fileSystemId: session.fileSystemId,
-      remainingEntryCount: undefined,
-      removedEntryCount: undefined,
-      stage: 'scheduled',
-    },
-    level: 'info',
-  });
-  try {
-    const fenced = await runWithOpportunisticExclusiveOpfsPlainNamespaceFence({
-      lockManager,
-      run: async () => await withAuthenticatedDevelopmentWritableSessionRootKeyProof({
-        operation: async ({ fileSystemId, rootKeyProof }) => {
-          if (fileSystemId !== session.fileSystemId) {
-            throw new TypeError('retired plain cleanup session proof belongs to another File System ID');
-          }
-          const exclusiveGate = createBrowserNaidanPersistenceControlExclusiveGate({ lockManager });
-          const physical = createOpfsPersistenceControlPhysicalPort({ exclusiveGate, storageRoot });
-          const proofAuthority: PersistenceControlProofAuthority = {
-            resolveRootKey: async ({ fileSystemId: requestedFileSystemId }) => requestedFileSystemId === fileSystemId
-              ? { rootKey: rootKeyProof, state: 'resolved' }
-              : { state: 'unresolved' },
-            validateEndpointReadiness: async ({ control }) => {
-              switch (control.mode.type) {
-              case 'hizofs': return control.mode.activeFileSystemId === fileSystemId ? 'valid' : 'invalid';
-              case 'plain':
-              case 'transitioning': return 'invalid';
-              default: return control.mode satisfies never;
-              }
-            },
-          };
-          const selected = await openPersistenceControl({ physical, proofAuthority });
-          switch (selected.control.mode.type) {
-          case 'hizofs':
-            if (selected.control.mode.activeFileSystemId !== fileSystemId) {
-              throw new TypeError('retired plain cleanup authority belongs to another File System ID');
-            }
-            break;
-          case 'plain':
-          case 'transitioning':
-            throw new TypeError('retired plain cleanup requires stable HizoFS authority');
-          default: selected.control.mode satisfies never;
-          }
-          const before = await listNativePlainApplicationNamespaceEntryNames({ nativeNamespaceRoot });
-          remainingEntryCount = before.length;
-          reportHizoFSTrialDebug({
-            detail: {
-              event: 'retired_plain_cleanup',
-              failure: undefined,
-              fileSystemId,
-              remainingEntryCount,
-              removedEntryCount: undefined,
-              stage: 'started',
-            },
-            level: 'info',
-          });
-          const removed = await cleanupNativePlainApplicationNamespaceWithReport({ nativeNamespaceRoot });
-          const remaining = await listNativePlainApplicationNamespaceEntryNames({ nativeNamespaceRoot });
-          remainingEntryCount = remaining.length;
-          reportHizoFSTrialDebug({
-            detail: {
-              event: 'retired_plain_cleanup',
-              failure: undefined,
-              fileSystemId,
-              remainingEntryCount,
-              removedEntryCount: removed.length,
-              stage: 'completed',
-            },
-            level: 'info',
-          });
-          return {
-            remainingEntryCount,
-            removedEntryCount: removed.length,
-            state: 'completed',
-          } as const;
-        },
-        session: session.fileSystemSession,
-      }),
-    });
-    switch (fenced.state) {
-    case 'completed': return fenced.value;
-    case 'unavailable':
-      reportHizoFSTrialDebug({
-        detail: {
-          event: 'retired_plain_cleanup',
-          failure: undefined,
-          fileSystemId: session.fileSystemId,
-          remainingEntryCount: undefined,
-          removedEntryCount: undefined,
-          stage: 'plain_namespace_in_use',
-        },
-        level: 'info',
-      });
-      return { state: 'plain_namespace_in_use' };
-    default: return fenced satisfies never;
-    }
-  } catch (cause: unknown) {
-    reportRetiredPlainCleanupFailure({ cause, fileSystemId: session.fileSystemId, remainingEntryCount });
-    throw cause;
-  }
 }
 
 type NativeStablePlainRetiredCleanupRuntime = Readonly<{

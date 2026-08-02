@@ -270,7 +270,7 @@ describe("browserless production HizoFS enable system", () => {
     }
   }, 60_000);
 
-  it("defers retired plain cleanup until a stale plain namespace lease is released", async () => {
+  it("does not infer plain cleanup ownership from stable HizoFS after a stale lease is released", async () => {
     const root = new InMemoryOpfsDirectoryHandle({
       capabilityProfile: "window",
       name: "opfs-root",
@@ -293,6 +293,14 @@ describe("browserless production HizoFS enable system", () => {
         passphrase: PASSPHRASE,
         signal: undefined,
       });
+      const storageRoot = await root.getDirectoryHandle(
+        NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+        { create: false },
+      );
+      const unownedFile = await storageRoot.getFileHandle("unowned-after-stable.bin", { create: true });
+      const unownedWritable = await unownedFile.createWritable();
+      await unownedWritable.write(new Uint8Array([1, 3, 3, 7]));
+      await unownedWritable.close();
 
       const releaseStalePlainLease = Promise.withResolvers<void>();
       const stalePlainLease = locks.request(
@@ -307,18 +315,16 @@ describe("browserless production HizoFS enable system", () => {
         });
       });
 
-      const trace = vi.spyOn(console, "info");
       const firstReload = new OPFSStorageProvider();
       await firstReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
-      await vi.waitFor(() => {
-        expect(trace).toHaveBeenCalledWith("[HIZOFS_TRIAL_DEBUG_001]", expect.objectContaining({
-          event: "retired_plain_cleanup",
-          stage: "plain_namespace_in_use",
-        }));
-      });
       await expect(listNativePlainApplicationNamespaceEntryNames({
         nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
-      })).resolves.not.toEqual([]);
+      })).resolves.toEqual(["unowned-after-stable.bin"]);
+      await vi.waitFor(async () => {
+        await expect(firstReload.loadSettings()).resolves.toMatchObject({
+          endpoint: { url: "http://cleanup-before" },
+        });
+      });
       await firstReload.dispose();
 
       releaseStalePlainLease.resolve();
@@ -326,23 +332,20 @@ describe("browserless production HizoFS enable system", () => {
 
       const secondReload = new OPFSStorageProvider();
       await secondReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
-      await vi.waitFor(async () => {
-        await expect(listNativePlainApplicationNamespaceEntryNames({
-          nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
-        })).resolves.toEqual([]);
-      });
+      await expect(listNativePlainApplicationNamespaceEntryNames({
+        nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      })).resolves.toEqual(["unowned-after-stable.bin"]);
       expect(await secondReload.loadSettings()).toMatchObject({
         endpoint: { url: "http://cleanup-before" },
       });
       await secondReload.dispose();
-      trace.mockRestore();
     } finally {
       uninstallRuntime();
     }
   }, 60_000);
 
 
-  it("keeps stable HizoFS usable when retired plain cleanup fails and retries on the next unlock", async () => {
+  it("keeps stable HizoFS usable without retrying unproven plain cleanup after failure", async () => {
     let failCleanup = false;
     const cleanupFailure = new DOMException("cleanup fault", "NoModificationAllowedError");
     const root = new InMemoryOpfsDirectoryHandle({
@@ -368,13 +371,13 @@ describe("browserless production HizoFS enable system", () => {
       const before = new OPFSStorageProvider();
       await before.init();
       await before.saveSettings({ settings: settings({ endpointUrl: "http://cleanup-fault" }) });
+      failCleanup = true;
       await before.enableEncryption({
         onProgress: undefined,
         passphrase: PASSPHRASE,
         signal: undefined,
       });
 
-      failCleanup = true;
       const firstReload = new OPFSStorageProvider();
       await expect(firstReload.unlockWithPassphrase({ passphrase: PASSPHRASE })).resolves.toBeUndefined();
       await vi.waitFor(() => {
@@ -398,11 +401,9 @@ describe("browserless production HizoFS enable system", () => {
       failCleanup = false;
       const secondReload = new OPFSStorageProvider();
       await secondReload.unlockWithPassphrase({ passphrase: PASSPHRASE });
-      await vi.waitFor(async () => {
-        await expect(listNativePlainApplicationNamespaceEntryNames({
-          nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
-        })).resolves.toEqual([]);
-      });
+      await expect(listNativePlainApplicationNamespaceEntryNames({
+        nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      })).resolves.not.toEqual([]);
       expect(await secondReload.loadSettings()).toMatchObject({
         endpoint: { url: "http://cleanup-fault" },
       });
