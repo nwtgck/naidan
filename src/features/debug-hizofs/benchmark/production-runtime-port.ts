@@ -1,38 +1,61 @@
-import { createBrowserHizoFSBenchmarkApplicationRuntime } from '@/00-storage/service/hizofs/worker-entry';
+import {
+  createBrowserHizoFSBenchmarkApplicationRuntime,
+  type BrowserHizoFSBenchmarkApplicationRuntime,
+} from '@/00-storage/service/hizofs/worker-entry';
 import type {
   HizoFSBenchmarkRuntime,
   HizoFSBenchmarkRuntimeDiagnostics,
   HizoFSBenchmarkRuntimePort,
 } from '@/features/debug-hizofs/benchmark/runtime-port';
 
-function unavailableRuntimeDiagnostics({ resetHighWaterMarks }: { readonly resetHighWaterMarks: () => void }): HizoFSBenchmarkRuntimeDiagnostics {
+function measuredRuntimeDiagnostics({ resetHighWaterMarks, snapshotRuntimeDiagnostics }: {
+  readonly resetHighWaterMarks: () => void;
+  readonly snapshotRuntimeDiagnostics:
+    BrowserHizoFSBenchmarkApplicationRuntime['snapshotRuntimeDiagnostics'];
+}): HizoFSBenchmarkRuntimeDiagnostics {
   return {
-    snapshot: () => ({
-      schemaVersion: 3,
-      type: 'unavailable',
-      reason: 'production HizoFS runtime counters are not instrumented',
-    }),
+    snapshot() {
+      const snapshot = snapshotRuntimeDiagnostics();
+      const { caches, coordinator, phases, records, resources, ...unhandledSnapshot } = snapshot;
+      unhandledSnapshot satisfies Record<PropertyKey, never>;
+      return {
+        schemaVersion: 3,
+        type: 'measured',
+        caches,
+        coordinator,
+        phases,
+        records,
+        resources,
+      };
+    },
     resetResourceHighWaterMarks: resetHighWaterMarks,
   };
 }
 
 /**
  * Adapts the product-owned isolated HizoFS composition to the debug benchmark.
- * Unsupported diagnostics stay explicitly unavailable rather than becoming
- * synthetic zero measurements.
+ * The product composition owns the counters and exposes only non-secret
+ * snapshots. Keeping the adapter structural prevents the debug feature from
+ * reaching into runtime internals while making missing instrumentation visible
+ * as actual zero counters rather than a disconnected placeholder.
  */
 export function createProductionHizoFSBenchmarkRuntimePort(): HizoFSBenchmarkRuntimePort {
   return {
-    async createRuntime({ backingDirectory }) {
+    async createRuntime({ backingDirectory, policy }) {
       const applicationRuntime = await createBrowserHizoFSBenchmarkApplicationRuntime({
         backingDirectory,
+        metadataRecordCachePolicy: {
+          maximumBytes: policy.metadataObjectCacheByteLimit,
+          maximumEntries: policy.metadataObjectCacheEntryLimit,
+        },
       });
       const runtime: HizoFSBenchmarkRuntime = {
         get session() {
           return applicationRuntime.session;
         },
-        diagnostics: unavailableRuntimeDiagnostics({
+        diagnostics: measuredRuntimeDiagnostics({
           resetHighWaterMarks: () => applicationRuntime.resetRuntimeDiagnosticsHighWaterMarks(),
+          snapshotRuntimeDiagnostics: () => applicationRuntime.snapshotRuntimeDiagnostics(),
         }),
         reopen: async () => await applicationRuntime.reopen(),
         async createBulkBuilder() {

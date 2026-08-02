@@ -331,6 +331,12 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     }
   }
 
+  recordMetadataCacheEvent({ event }: {
+    event: "eviction" | "hit" | "miss";
+  }): void {
+    this.recordCacheEvent({ cache: "metadata", event });
+  }
+
   recordCacheEvent({ cache, event }: {
     cache: HizoFSRuntimeDiagnosticCache;
     event: "eviction" | "hit" | "miss";
@@ -356,6 +362,13 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     counter.currentEntries = currentEntries;
     counter.maximumBytes = Math.max(counter.maximumBytes, currentBytes);
     counter.maximumEntries = Math.max(counter.maximumEntries, currentEntries);
+  }
+
+  setMetadataCacheUsage({ bytes, entries }: {
+    bytes: number;
+    entries: number;
+  }): void {
+    this.setCacheUsage({ bytes, cache: "metadata", entries });
   }
 
   setResourceUsage({ bytes, operations, resource }: {

@@ -6,6 +6,7 @@ import type {
 import { resolveAuthenticatedHomeRecord } from "@/00-storage/service/hizofs/authenticated-store/relocation-index-reader";
 import type { FileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
+import type { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
 import {
   measureAuthenticatedCodecOperation,
   type AuthenticatedStoreDiagnosticsPort,
@@ -32,15 +33,34 @@ export function createAuthenticatedNamespaceRecordSource({
   backend,
   diagnostics,
   fileSystemId,
+  metadataRecordCache,
   relocationIndexRootPhysicalRef,
   rootKey,
 }: {
   backend: HizoFSReadableBackend;
   diagnostics?: AuthenticatedStoreDiagnosticsPort;
   fileSystemId: FileSystemId;
+  metadataRecordCache?: AuthenticatedMetadataRecordCache;
   relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
   rootKey: FileSystemRootKey;
 }): AuthenticatedNamespaceRecordSource {
+  const loadRecord = async ({ reference }: {
+    reference: HomeRecordReference;
+  }): Promise<AuthenticatedNamespaceRecord> => {
+    const record = await resolveAuthenticatedHomeRecord({
+      backend,
+      diagnostics,
+      fileSystemId,
+      homeReference: reference,
+      relocationIndexRootPhysicalRef,
+      rootKey,
+    });
+    return {
+      plaintext: record.plaintext,
+      recordKind: record.header.recordKind,
+    };
+  };
+
   return {
     decodeRecordPayload: ({ decode }) => measureAuthenticatedCodecOperation({
       diagnostics,
@@ -48,20 +68,12 @@ export function createAuthenticatedNamespaceRecordSource({
       operation: "decode",
       run: decode,
     }),
-    readHomeRecord: async ({ reference }) => {
-      const record = await resolveAuthenticatedHomeRecord({
-        backend,
-        diagnostics,
-        fileSystemId,
-        homeReference: reference,
-        relocationIndexRootPhysicalRef,
-        rootKey,
-      });
-      return {
-        plaintext: record.plaintext,
-        recordKind: record.header.recordKind,
-      };
-    },
+    readHomeRecord: async ({ reference }) => metadataRecordCache === undefined
+      ? await loadRecord({ reference })
+      : await metadataRecordCache.read({
+        load: async () => await loadRecord({ reference }),
+        reference,
+      }),
   };
 }
 

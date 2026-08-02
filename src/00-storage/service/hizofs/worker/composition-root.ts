@@ -65,6 +65,10 @@ import {
   createAuthenticatedMetadataMutationAuthority,
   type AuthenticatedMetadataMutationAuthority,
 } from "@/00-storage/service/hizofs/authenticated-store/metadata-mutation-authority";
+import {
+  AuthenticatedMetadataRecordCache,
+  type AuthenticatedMetadataRecordCachePolicy,
+} from "@/00-storage/service/hizofs/authenticated-store/metadata-record-cache";
 import { createAuthenticatedNamespaceRecordSource } from "@/00-storage/service/hizofs/authenticated-store/namespace-record-source";
 import { openSuperblockCopies } from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
 import { readBootstrapRoot } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
@@ -207,6 +211,11 @@ const WORKER_MOUNT_GRANT_POLICY: HizoFSRuntimePolicy = Object.freeze({
   maxMaintenanceRootRegistrations: 1_024,
   maxReaderPins: 256,
   maxSegmentReferences: 4_096,
+});
+
+const APPLICATION_METADATA_RECORD_CACHE_POLICY = Object.freeze({
+  maximumBytes: 8 * 1024 * 1024,
+  maximumEntries: 16 * 1024,
 });
 
 async function issueHizoFSWorkerMountGrant({
@@ -1502,10 +1511,11 @@ function sameCommitPayload({ left, right }: {
   });
 }
 
-function writableGeneration({ backend, commit, fileSystemId, recordDiagnostics, rootKey, superblock }: {
+function writableGeneration({ backend, commit, fileSystemId, metadataRecordCache, recordDiagnostics, rootKey, superblock }: {
   backend: HizoFSReadableBackend;
   commit: FileSystemCommitPayload;
   fileSystemId: OpenedEmptyEncryptedContainer["fileSystemId"];
+  metadataRecordCache: AuthenticatedMetadataRecordCache;
   recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
   rootKey: OpenedEmptyEncryptedContainer["rootKey"];
   superblock: OpenedSuperblockCopies;
@@ -1524,6 +1534,7 @@ function writableGeneration({ backend, commit, fileSystemId, recordDiagnostics, 
         backend,
         diagnostics: recordDiagnostics,
         fileSystemId,
+        metadataRecordCache,
         relocationIndexRootPhysicalRef: superblock.logicalState.relocationIndexRootPhysicalRef,
         rootKey,
       }),
@@ -1599,6 +1610,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   randomSource,
   recordDiagnostics,
   registerCredentialAuthorityUpdater,
+  metadataRecordCachePolicy,
   removalLimits,
   recheckGenerationAuthority,
   rootSubvolumeId,
@@ -1609,6 +1621,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   registerCredentialAuthorityUpdater?: ({ updater }: {
     updater: AuthenticatedCredentialAuthorityUpdater;
   }) => void;
+  metadataRecordCachePolicy?: AuthenticatedMetadataRecordCachePolicy;
   runtimeHost: Pick<
     import("@/00-storage/service/hizofs/worker/runtime-host").HizoFSWorkerRuntimeHost,
     "acquireWriterDependencyRoot"
@@ -1644,12 +1657,24 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
 
   let released = false;
   let mutationPoison: unknown | undefined;
-  let generation = writableGeneration({
+  const metadataRecordCache = new AuthenticatedMetadataRecordCache({
+    diagnostics: recordDiagnostics,
+    policy: metadataRecordCachePolicy ?? APPLICATION_METADATA_RECORD_CACHE_POLICY,
+  });
+  const createGeneration = ({ commit, superblock }: {
+    commit: FileSystemCommitPayload;
+    superblock: OpenedSuperblockCopies;
+  }): AuthenticatedWritableApplicationGeneration => writableGeneration({
     backend,
-    commit: opened.commit,
+    commit,
     fileSystemId: opened.fileSystemId,
+    metadataRecordCache,
     recordDiagnostics,
     rootKey: opened.rootKey,
+    superblock,
+  });
+  let generation = createGeneration({
+    commit: opened.commit,
     superblock: opened.superblock,
   });
   let activeUnlockingSlotId = opened.unlockingSlotId;
@@ -1673,12 +1698,8 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         || update.unlockSequence <= activeUnlockSequence) {
         throw new TypeError("credential authority update did not advance the active Unlock Sequence");
       }
-      generation = writableGeneration({
-        backend,
+      generation = createGeneration({
         commit: generation.commit,
-        fileSystemId: opened.fileSystemId,
-        recordDiagnostics,
-        rootKey: opened.rootKey,
         superblock: update.superblock,
       });
       activeUnlockingSlotId = update.unlockingSlotId;
@@ -1741,12 +1762,8 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       case "superblock_redundancy_degraded": mutationPoison = cause; break;
       default: return resolution.superblock.copyState satisfies never;
       }
-      generation = writableGeneration({
-        backend,
+      generation = createGeneration({
         commit: base.commit,
-        fileSystemId: opened.fileSystemId,
-        recordDiagnostics,
-        rootKey: opened.rootKey,
         superblock: resolution.superblock,
       });
       throw cause;
@@ -1782,12 +1799,8 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         mutationPoison = mismatch;
         throw mismatch;
       }
-      generation = writableGeneration({
-        backend,
+      generation = createGeneration({
         commit: reopened.commit,
-        fileSystemId: opened.fileSystemId,
-        recordDiagnostics,
-        rootKey: opened.rootKey,
         superblock: resolution.superblock,
       });
       applicationAuthority.markCommitPointCrossed();
@@ -1948,12 +1961,8 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           applicationAuthority.markNoChangeResolved();
           return;
         }
-        const nextGeneration = writableGeneration({
-          backend,
+        const nextGeneration = createGeneration({
           commit: result.commitPayload,
-          fileSystemId: opened.fileSystemId,
-          recordDiagnostics,
-          rootKey: opened.rootKey,
           superblock: result.publication.superblock,
         });
         applicationAuthority.markCommitPointCrossed();
@@ -2559,12 +2568,8 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             commitPayload,
             publicationPort: fileAuthority,
           });
-          generation = writableGeneration({
-            backend,
+          generation = createGeneration({
             commit: commitPayload,
-            fileSystemId: opened.fileSystemId,
-            recordDiagnostics,
-            rootKey: opened.rootKey,
             superblock: publication.superblock,
           });
           applicationAuthority.markCommitPointCrossed();
@@ -2755,6 +2760,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     releaseResources: async () => {
       if (released) return;
       released = true;
+      metadataRecordCache.dispose();
       opened.rootKey.destroy();
     },
     workerMountGrantIssuer: async ({ accessMode, path }) => await issueHizoFSWorkerMountGrant({
@@ -2775,6 +2781,7 @@ export async function openAuthenticatedReadWriteApplicationSession<Captured>({
   captureAuthority,
   recheckAuthority,
   registerCredentialAuthorityUpdater,
+  metadataRecordCachePolicy,
   registerRuntimeSession,
   rootName,
   rootPath,
@@ -2787,6 +2794,7 @@ export async function openAuthenticatedReadWriteApplicationSession<Captured>({
   registerCredentialAuthorityUpdater?: ({ updater }: {
     updater: AuthenticatedCredentialAuthorityUpdater;
   }) => void;
+  metadataRecordCachePolicy?: AuthenticatedMetadataRecordCachePolicy;
   registerRuntimeSession?: ({ runtimeSession }: {
     runtimeSession: HizoFSApplicationRuntimeSession;
   }) => void;
@@ -2802,6 +2810,7 @@ export async function openAuthenticatedReadWriteApplicationSession<Captured>({
       createAuthenticatedApplicationReadWriteSessionResources({
         ...verified,
         registerCredentialAuthorityUpdater,
+        metadataRecordCachePolicy,
         runtimeHost,
       })
     ),
@@ -2854,12 +2863,14 @@ export type AuthenticatedOpenedApplicationAuthority = Readonly<{
 export async function openAuthenticatedDevelopmentWritableApplicationSessionFromCapability({
   authority,
   canonicalBackingLocation,
+  metadataRecordCachePolicy,
   recheckAuthority,
   rootName,
   runtimeHost,
 }: {
   authority: AuthenticatedDevelopmentWritableContainerCapability;
   canonicalBackingLocation: string;
+  metadataRecordCachePolicy?: AuthenticatedMetadataRecordCachePolicy;
   recheckAuthority: () => Promise<void>;
   rootName?: string;
   runtimeHost: import("@/00-storage/service/hizofs/worker/runtime-host").HizoFSWorkerRuntimeHost;
@@ -2891,6 +2902,7 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
         if (captured !== authority) throw new TypeError("runtime authority capture does not match the transferred capability");
         await recheckAuthority();
       },
+      metadataRecordCachePolicy,
       registerCredentialAuthorityUpdater: ({ updater }) => {
         if (credentialAuthorityUpdater !== undefined) {
           throw new TypeError("application session registered more than one credential authority updater");
@@ -3904,8 +3916,10 @@ async function createBenchmarkExplicitBulkBuilder({ session, targetName }: {
  */
 export async function createBrowserHizoFSBenchmarkApplicationRuntime({
   backingDirectory,
+  metadataRecordCachePolicy,
 }: {
   readonly backingDirectory: FileSystemDirectoryHandle;
+  readonly metadataRecordCachePolicy?: AuthenticatedMetadataRecordCachePolicy;
 }): Promise<BrowserHizoFSBenchmarkApplicationRuntime> {
   const runtimeDiagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
   const backend = instrumentHizoFSWritableBackend({
@@ -3958,6 +3972,7 @@ export async function createBrowserHizoFSBenchmarkApplicationRuntime({
         return await openAuthenticatedDevelopmentWritableApplicationSessionFromCapability({
           authority: opened.authority,
           canonicalBackingLocation,
+          metadataRecordCachePolicy,
           recheckAuthority: async () => undefined,
           rootName: "benchmark.hizofs",
           runtimeHost,

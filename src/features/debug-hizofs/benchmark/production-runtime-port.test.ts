@@ -110,6 +110,64 @@ describe('production HizoFS benchmark runtime port', () => {
     }
   });
 
+
+  it('bounds repeated authenticated metadata reads and releases retained plaintext on close', async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
+    const configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });
+    const runtime = await createProductionHizoFSBenchmarkRuntimePort().createRuntime({
+      backingDirectory: root as unknown as FileSystemDirectoryHandle,
+      policy: createBenchmarkRuntimePolicy({ configuration }),
+    });
+    const entryCount = 16;
+    for (let index = 0; index < entryCount; index += 1) {
+      await runtime.session.root.getFileHandle({ create: true, name: `metadata-${index}` });
+    }
+
+    const beforeClose = runtime.diagnostics.snapshot();
+    expect(beforeClose.type).toBe('measured');
+    if (beforeClose.type !== 'measured') throw new Error('production diagnostics are unavailable');
+    expect(beforeClose.caches.metadata.hits).toBeGreaterThan(beforeClose.caches.metadata.misses);
+    expect(beforeClose.caches.metadata.currentEntries).toBeGreaterThan(0);
+    // A disabled cache requires more than 400 exact reads for this fixed workload.
+    // Keep the bound loose enough to measure structural amplification, not host timing.
+    expect(beforeClose.phases.physical_read_exact.operationCount).toBeLessThan(entryCount * 20);
+
+    await runtime.close();
+    const afterClose = runtime.diagnostics.snapshot();
+    expect(afterClose.type).toBe('measured');
+    if (afterClose.type !== 'measured') throw new Error('production diagnostics are unavailable');
+    expect(afterClose.caches.metadata).toMatchObject({ currentBytes: 0, currentEntries: 0 });
+  }, 15_000);
+
+
+  it('applies the reported metadata cache policy to the production runtime', async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
+    const configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });
+    const policy = {
+      ...createBenchmarkRuntimePolicy({ configuration }),
+      metadataObjectCacheByteLimit: 0,
+      metadataObjectCacheEntryLimit: 0,
+    };
+    const runtime = await createProductionHizoFSBenchmarkRuntimePort().createRuntime({
+      backingDirectory: root as unknown as FileSystemDirectoryHandle,
+      policy,
+    });
+    try {
+      await runtime.session.root.getFileHandle({ create: true, name: 'uncached' });
+      const snapshot = runtime.diagnostics.snapshot();
+      expect(snapshot.type).toBe('measured');
+      if (snapshot.type !== 'measured') throw new Error('production diagnostics are unavailable');
+      expect(snapshot.caches.metadata).toMatchObject({
+        currentBytes: 0,
+        currentEntries: 0,
+        hits: 0,
+      });
+      expect(snapshot.caches.metadata.misses).toBeGreaterThan(0);
+    } finally {
+      await runtime.close();
+    }
+  });
+
   it('revokes reopen after the isolated runtime closes', async () => {
     const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
     const configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });
@@ -150,11 +208,16 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(remainingRunNames).toEqual([]);
     const sample = report.results.find(result => result.caseId === 'small_files_create_empty')
       ?.backends.hizofs?.samples[0];
-    expect(sample?.hizoFSDiagnostics?.runtime).toEqual({
-      schemaVersion: 3,
-      type: 'unavailable',
-      reason: 'production HizoFS runtime counters are not instrumented',
-    });
+    const runtimeDiagnostics = sample?.hizoFSDiagnostics?.runtime;
+    expect(runtimeDiagnostics?.type).toBe('measured');
+    if (runtimeDiagnostics?.type !== 'measured') {
+      throw new Error('production HizoFS runtime diagnostics are unavailable');
+    }
+    expect(runtimeDiagnostics.phases.physical_read_exact.operationCount).toBeGreaterThan(0);
+    expect(Object.values(runtimeDiagnostics.records).some(counter => counter.readOperations > 0)).toBe(true);
+    expect(runtimeDiagnostics.caches.metadata.hits).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.caches.metadata.misses).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.caches.metadata.currentEntries).toBeGreaterThan(0);
   });
 
   it('runs the explicit bulk benchmark as one measured publication', async () => {

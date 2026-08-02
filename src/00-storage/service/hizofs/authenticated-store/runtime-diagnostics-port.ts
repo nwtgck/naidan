@@ -20,6 +20,15 @@ export type AuthenticatedPublicationDiagnosticsObservation = Readonly<{
   durationMs: number;
 }>;
 
+export type AuthenticatedMetadataCacheEventObservation = Readonly<{
+  event: "eviction" | "hit" | "miss";
+}>;
+
+export type AuthenticatedMetadataCacheUsageObservation = Readonly<{
+  bytes: number;
+  entries: number;
+}>;
+
 /**
  * Receives non-secret measurements at authenticated-store boundaries.
  *
@@ -30,6 +39,9 @@ export type AuthenticatedPublicationDiagnosticsObservation = Readonly<{
  * attempt without carrying payload or authority bytes.
  */
 export type AuthenticatedStoreDiagnosticsPort = Readonly<{
+  recordMetadataCacheEvent?: ({
+    event,
+  }: AuthenticatedMetadataCacheEventObservation) => void;
   recordCodecOperation: ({
     durationMs,
     format,
@@ -48,6 +60,10 @@ export type AuthenticatedStoreDiagnosticsPort = Readonly<{
   recordPublicationOperation: ({
     durationMs,
   }: AuthenticatedPublicationDiagnosticsObservation) => void;
+  setMetadataCacheUsage?: ({
+    bytes,
+    entries,
+  }: AuthenticatedMetadataCacheUsageObservation) => void;
 }>;
 
 export function measureAuthenticatedCodecOperation<T>({
