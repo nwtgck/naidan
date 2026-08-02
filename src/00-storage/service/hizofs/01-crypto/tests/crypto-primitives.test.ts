@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createPublicationSequence, encodeCryptoContext, parseCredentialSlotId, parseFileSystemId, parseSegmentId, type PublicationSequence } from '@/00-storage/service/hizofs/00-format';
-import { deriveRecordKey, deriveSuperblockKey } from '@/00-storage/service/hizofs/crypto/key-application/derived-keys';
-import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/crypto/primitives/aes-gcm';
-import { deriveCredentialWrappingKey } from '@/00-storage/service/hizofs/crypto/primitives/pbkdf2';
-import { generateFileSystemRootKey, generateNonce, generateUniqueRandomBytes } from '@/00-storage/service/hizofs/crypto/random/random-bytes';
-import { FileSystemRootKey } from '@/00-storage/service/hizofs/crypto/secret-types';
+import { deriveRecordKey, deriveSuperblockKey } from '@/00-storage/service/hizofs/01-crypto/key-application/derived-keys';
+import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm';
+import { deriveCredentialWrappingKey } from '@/00-storage/service/hizofs/01-crypto/primitives/pbkdf2';
+import { generateFileSystemRootKey, generateNonce, generateUniqueRandomBytes } from '@/00-storage/service/hizofs/01-crypto/random/random-bytes';
+import { FileSystemRootKey } from '@/00-storage/service/hizofs/01-crypto/secret-types';
 import {
   HizoFSCryptoAuthenticationError,
   throwNormalizedHizoFSCryptoFailure,
-} from '@/00-storage/service/hizofs/crypto/authentication-failure';
+} from '@/00-storage/service/hizofs/01-crypto/authentication-failure';
 
 describe('HizoFS crypto primitives', () => {
   it('encodes the exact versioned length-prefixed crypto context', () => {

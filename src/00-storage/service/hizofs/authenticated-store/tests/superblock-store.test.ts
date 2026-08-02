@@ -25,7 +25,7 @@ import {
   superblockNonce,
   type FileSystemRootKey,
   type RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import { authenticatedHizoFSPhysicalBytes, type AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import type {
   AuthenticatedCryptoDiagnosticsObservation,

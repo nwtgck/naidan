@@ -14,7 +14,7 @@ import {
   TEST_ONLY,
 } from "@/00-storage/service/hizofs/authenticated-store/segment-maintenance-descriptor";
 import type { AuthenticatedSegmentIndex } from "@/00-storage/service/hizofs/authenticated-store/segment-footer-store";
-import { generateFileSystemRootKey } from "@/00-storage/service/hizofs/crypto";
+import { generateFileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import {
   canonicalContainerDirectory,

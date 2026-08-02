@@ -29,7 +29,7 @@ import {
   generateRecordNonce,
   plaintextRecordBytes,
   type RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 

@@ -146,7 +146,7 @@ import {
   withFileSystemRootKeyProofDerivationCapability,
   type FileSystemRootKeyProofDerivationCapability,
   type RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import type {
   ReadOnlyNamespace,
   ReadOnlyNamespaceResolver,
@@ -332,7 +332,7 @@ export type AuthenticatedReadOnlyContainerCapabilityOpenResult =
 
 type PrivateReadOnlyContainerAuthority =
   | { readonly authority: AuthenticatedOpenedApplicationAuthority; readonly type: "normal_read" }
-  | { readonly rootKey: import("@/00-storage/service/hizofs/crypto").FileSystemRootKey; readonly type: "root_key_proof" };
+  | { readonly rootKey: import("@/00-storage/service/hizofs/01-crypto").FileSystemRootKey; readonly type: "root_key_proof" };
 
 type PrivateReadOnlyContainerCapabilityState =
   | { readonly state: "owned"; readonly value: PrivateReadOnlyContainerAuthority }

@@ -48,7 +48,7 @@ import {
   superblockNonce,
   type FileSystemRootKey,
   type RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import { canonicalContainerPath, parentContainerDirectory } from "@/00-storage/service/hizofs/physical-store/paths";
 import { authenticatedStoreError } from "./errors";

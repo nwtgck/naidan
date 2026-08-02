@@ -12,7 +12,7 @@ import {
   type PublicationSequence,
   type UnlockSequence,
 } from '@/00-storage/service/hizofs/00-format';
-import { deriveRootKeyAesGcmKey, type FileSystemRootKey } from '@/00-storage/service/hizofs/crypto/secret-types';
+import { deriveRootKeyAesGcmKey, type FileSystemRootKey } from '@/00-storage/service/hizofs/01-crypto/secret-types';
 
 function validateCopyAndSequence({ copy, label, sequence }: { copy: number; label: string; sequence: PublicationSequence | UnlockSequence }): void {
   if (copy !== 0 && copy !== 1) throw new RangeError(`${label} copy must be 0 or 1`);

@@ -13,7 +13,7 @@ import {
   type PublicationId,
   type SegmentId,
 } from "@/00-storage/service/hizofs/00-format";
-import type { FileSystemRootKey } from "@/00-storage/service/hizofs/crypto/secret-types";
+import type { FileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto/secret-types";
 import {
   credentialWrapNonce,
   recordNonce,
@@ -25,7 +25,7 @@ import {
   type SegmentFooterNonce,
   type SuperblockNonce,
   type UnlockAuthenticatorNonce,
-} from "@/00-storage/service/hizofs/crypto/types";
+} from "@/00-storage/service/hizofs/01-crypto/types";
 import {
   generateFileSystemRootKey as generateRootKey,
   generateNonce,

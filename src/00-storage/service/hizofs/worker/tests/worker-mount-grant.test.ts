@@ -6,7 +6,7 @@ import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizo
 import {
   HizoFSCryptoAuthenticationError,
   type RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import { OpfsWritableBackend } from "@/00-storage/service/hizofs/physical-store/opfs/opfs-writable-backend";
 import { InMemoryOpfsDirectoryHandle } from "@/00-storage/service/test-support/in-memory-opfs";
 import { createContainerCoordinationScope, parseContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";

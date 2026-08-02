@@ -3,14 +3,14 @@ import {
   type FileSystemId,
   type UnlockSequence,
 } from '@/00-storage/service/hizofs/00-format';
-import { deriveUnlockAuthenticatorKey } from '@/00-storage/service/hizofs/crypto/key-application/derived-keys';
-import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/crypto/primitives/aes-gcm';
-import type { FileSystemRootKey } from '@/00-storage/service/hizofs/crypto/secret-types';
+import { deriveUnlockAuthenticatorKey } from '@/00-storage/service/hizofs/01-crypto/key-application/derived-keys';
+import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm';
+import type { FileSystemRootKey } from '@/00-storage/service/hizofs/01-crypto/secret-types';
 import {
   unlockAuthenticatorTag,
   type UnlockAuthenticatorNonce,
   type UnlockAuthenticatorTag,
-} from '@/00-storage/service/hizofs/crypto/types';
+} from '@/00-storage/service/hizofs/01-crypto/types';
 
 export async function createUnlockAuthenticatorTag({
   canonicalUnsignedEnvelopeBytes,

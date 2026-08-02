@@ -7,7 +7,7 @@ import {
   type SegmentClass,
   type SegmentId,
 } from "@/00-storage/service/hizofs/00-format";
-import type { FileSystemRootKey } from "@/00-storage/service/hizofs/crypto";
+import type { FileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
 import type {
   HizoFSDirectoryCursorBackend,
   HizoFSPhysicalDirectoryCursor,

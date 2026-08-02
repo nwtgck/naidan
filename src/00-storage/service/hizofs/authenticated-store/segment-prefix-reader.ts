@@ -22,7 +22,7 @@ import {
   decryptAuthenticatedSegmentHeader,
   recordNonce,
   type FileSystemRootKey,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import type { CanonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import {

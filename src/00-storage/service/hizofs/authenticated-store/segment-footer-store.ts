@@ -29,7 +29,7 @@ import {
   segmentFooterNonce,
   type FileSystemRootKey,
   type RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import type { ActiveSegmentWriterCapability } from "./record-appender";
 import { authenticatedStoreError } from "./errors";

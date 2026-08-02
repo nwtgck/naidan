@@ -7,13 +7,13 @@ import {
   type CredentialSlotId,
   type FileSystemId,
 } from "@/00-storage/service/hizofs/00-format";
-import { decryptAesGcm, encryptAesGcm } from "@/00-storage/service/hizofs/crypto/primitives/aes-gcm";
-import { deriveCredentialWrappingKey } from "@/00-storage/service/hizofs/crypto/primitives/pbkdf2";
-import { FileSystemRootKey, withFileSystemRootKeyBytes } from "@/00-storage/service/hizofs/crypto/secret-types";
+import { decryptAesGcm, encryptAesGcm } from "@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm";
+import { deriveCredentialWrappingKey } from "@/00-storage/service/hizofs/01-crypto/primitives/pbkdf2";
+import { FileSystemRootKey, withFileSystemRootKeyBytes } from "@/00-storage/service/hizofs/01-crypto/secret-types";
 import {
   authenticatedWrappedRootKeyBytes,
   type AuthenticatedWrappedRootKeyBytes,
-} from "@/00-storage/service/hizofs/crypto/types";
+} from "@/00-storage/service/hizofs/01-crypto/types";
 
 export async function wrapFileSystemRootKeyForCredentialSlot({
   fileSystemId,

@@ -23,7 +23,7 @@ import {
   parseFileSystemId,
   parseSegmentId,
 } from '@/00-storage/service/hizofs/00-format';
-import * as cryptoBoundary from '@/00-storage/service/hizofs/crypto';
+import * as cryptoBoundary from '@/00-storage/service/hizofs/01-crypto';
 import {
   createUnlockAuthenticatorTag,
   decryptAuthenticatedRecord,
@@ -37,7 +37,7 @@ import {
   unlockAuthenticatorNonce,
   FileSystemRootKey,
   plaintextRecordBytes,
-} from '@/00-storage/service/hizofs/crypto';
+} from '@/00-storage/service/hizofs/01-crypto';
 import { HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD } from '@/00-storage/service/hizofs/00-format';
 
 function hex({ value }: { value: string }): Uint8Array {

@@ -15,7 +15,7 @@ import {
   decryptAuthenticatedRecord,
   recordNonce,
   type FileSystemRootKey,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import { authenticatedStoreError } from "./errors";
 import {

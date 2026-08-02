@@ -26,7 +26,7 @@ import {
   type FileSystemRootKey,
   type RandomByteSource,
   type RecordNonce,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import {
   CANONICAL_CONTAINER_ROOT,

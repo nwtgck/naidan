@@ -4,16 +4,16 @@ import {
   type FileSystemId,
   type PublicationSequence,
 } from '@/00-storage/service/hizofs/00-format';
-import { deriveSuperblockKey } from '@/00-storage/service/hizofs/crypto/key-application/derived-keys';
-import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/crypto/primitives/aes-gcm';
-import type { FileSystemRootKey } from '@/00-storage/service/hizofs/crypto/secret-types';
+import { deriveSuperblockKey } from '@/00-storage/service/hizofs/01-crypto/key-application/derived-keys';
+import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm';
+import type { FileSystemRootKey } from '@/00-storage/service/hizofs/01-crypto/secret-types';
 import {
   authenticatedSuperblockBytes,
   plaintextSuperblockBytes,
   type AuthenticatedSuperblockBytes,
   type PlaintextSuperblockBytes,
   type SuperblockNonce,
-} from '@/00-storage/service/hizofs/crypto/types';
+} from '@/00-storage/service/hizofs/01-crypto/types';
 
 function validateHeader({ exactHeader }: { exactHeader: Uint8Array }): void {
   if (exactHeader.byteLength !== HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.superblockHeader) {

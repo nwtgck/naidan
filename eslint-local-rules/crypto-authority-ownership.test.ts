@@ -1,11 +1,12 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const HIZOFS_ROOT = path.join(ROOT, 'src/00-storage/service/hizofs');
-const CRYPTO_ROOT = path.join(HIZOFS_ROOT, 'crypto');
+const CRYPTO_ROOT = path.join(HIZOFS_ROOT, '01-crypto');
 
 async function productionTypeScriptFiles({ root }: { root: string }): Promise<string[]> {
   const entries = await readdir(root, { recursive: true, withFileTypes: true });
@@ -16,6 +17,17 @@ async function productionTypeScriptFiles({ root }: { root: string }): Promise<st
 }
 
 describe('HizoFS cryptographic authority ownership', () => {
+  it('has no old crypto directory or tracked old-path references', async () => {
+    await expect(stat(path.join(HIZOFS_ROOT, 'crypto'))).rejects.toMatchObject({ code: 'ENOENT' });
+    const oldImportPath = ['hizofs', 'crypto'].join('/');
+    const result = spawnSync('git', ['grep', '-nF', oldImportPath, '--', '.'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+  });
+
   it('keeps raw Web Crypto, authentication errors, and Root Key bytes inside crypto', async () => {
     const violations: string[] = [];
     for (const filePath of await productionTypeScriptFiles({ root: HIZOFS_ROOT })) {

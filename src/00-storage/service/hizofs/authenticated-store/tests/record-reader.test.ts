@@ -11,7 +11,7 @@ import {
   type AuthenticatedHizoFSPhysicalBytes,
 } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import { readAuthenticatedHomeRecord } from "@/00-storage/service/hizofs/authenticated-store/record-reader";
-import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/crypto";
+import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import type {

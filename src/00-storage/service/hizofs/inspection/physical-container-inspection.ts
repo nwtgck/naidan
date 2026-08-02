@@ -37,7 +37,7 @@ import {
   unlockAuthenticatorTag,
   verifyUnlockAuthenticator,
   type FileSystemRootKey,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 
 export type HizoFSInspectionCopyState =
   | "missing"

@@ -8,7 +8,7 @@ import {
   type PhysicalRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
 import type { AuthenticatedHizoFSInspectionPort } from "@/00-storage/service/hizofs/authenticated-store/inspection-port";
-import type { FileSystemRootKey } from "@/00-storage/service/hizofs/crypto";
+import type { FileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
 
 export type HizoFSInspectionAuthorityMode = "active" | "fallback_read_only";
 

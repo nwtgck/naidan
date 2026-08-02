@@ -39,7 +39,7 @@ import {
   generateFileSystemRootKey,
   type FileSystemRootKeyProofDerivationCapability,
   type RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import { ExplicitBulkCandidate } from "@/00-storage/service/hizofs/filesystem/bulk/explicit-bulk-candidate";
 import { createCandidateFrameOrdinalAuthority } from "@/00-storage/service/hizofs/authenticated-store/candidate-frame-ordinal-authority";
 import { createMaintenancePolicy } from "@/00-storage/service/hizofs/maintenance/maintenance-policy";

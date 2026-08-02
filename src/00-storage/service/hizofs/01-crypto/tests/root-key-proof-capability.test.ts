@@ -3,7 +3,7 @@ import {
   FileSystemRootKey,
   withFileSystemRootKeyProofDerivationCapability,
   type FileSystemRootKeyProofDerivationCapability,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 
 describe("File System Root Key proof derivation capability", () => {
   it("expires immediately after the verification callback", async () => {

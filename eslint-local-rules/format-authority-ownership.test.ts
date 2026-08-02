@@ -29,7 +29,7 @@ const CENTRALIZED_AUTHORITY_DECLARATIONS = [
     requiredDeclarations: ['export const HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD ='],
   },
   {
-    consumer: 'src/00-storage/service/hizofs/crypto/credential/passphrase-slot.ts',
+    consumer: 'src/00-storage/service/hizofs/01-crypto/credential/passphrase-slot.ts',
     forbiddenDeclarations: [
       'export function decodePassphraseCredentialParametersV1(',
       'export function encodePassphraseCredentialParametersV1(',

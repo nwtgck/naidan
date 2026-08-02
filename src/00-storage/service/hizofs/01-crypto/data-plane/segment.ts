@@ -5,9 +5,9 @@ import {
   type FileSystemId,
   type SegmentId,
 } from '@/00-storage/service/hizofs/00-format';
-import { deriveSegmentFooterKey, deriveSegmentHeaderKey } from '@/00-storage/service/hizofs/crypto/key-application/derived-keys';
-import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/crypto/primitives/aes-gcm';
-import type { FileSystemRootKey } from '@/00-storage/service/hizofs/crypto/secret-types';
+import { deriveSegmentFooterKey, deriveSegmentHeaderKey } from '@/00-storage/service/hizofs/01-crypto/key-application/derived-keys';
+import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm';
+import type { FileSystemRootKey } from '@/00-storage/service/hizofs/01-crypto/secret-types';
 import {
   authenticatedSegmentFooterBytes,
   authenticatedSegmentHeaderBytes,
@@ -18,7 +18,7 @@ import {
   type PlaintextSegmentFooterBytes,
   type PlaintextSegmentHeaderBytes,
   type SegmentFooterNonce,
-} from '@/00-storage/service/hizofs/crypto/types';
+} from '@/00-storage/service/hizofs/01-crypto/types';
 
 const ZERO_NONCE = new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.crypto.nonceBytes);
 

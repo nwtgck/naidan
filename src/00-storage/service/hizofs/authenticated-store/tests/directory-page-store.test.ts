@@ -11,7 +11,7 @@ import { createAuthenticatedSegmentWriter } from "@/00-storage/service/hizofs/au
 import {
   generateFileSystemRootKey,
   type RandomByteSource,
-} from "@/00-storage/service/hizofs/crypto";
+} from "@/00-storage/service/hizofs/01-crypto";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import { describe, expect, it } from "vitest";
 

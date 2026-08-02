@@ -4,16 +4,16 @@ import {
   type FileSystemId,
   type SegmentId,
 } from '@/00-storage/service/hizofs/00-format';
-import { deriveRecordKey } from '@/00-storage/service/hizofs/crypto/key-application/derived-keys';
-import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/crypto/primitives/aes-gcm';
-import type { FileSystemRootKey } from '@/00-storage/service/hizofs/crypto/secret-types';
+import { deriveRecordKey } from '@/00-storage/service/hizofs/01-crypto/key-application/derived-keys';
+import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm';
+import type { FileSystemRootKey } from '@/00-storage/service/hizofs/01-crypto/secret-types';
 import {
   authenticatedRecordBytes,
   plaintextRecordBytes,
   type AuthenticatedRecordBytes,
   type PlaintextRecordBytes,
   type RecordNonce,
-} from '@/00-storage/service/hizofs/crypto/types';
+} from '@/00-storage/service/hizofs/01-crypto/types';
 
 function validateFrameHeader({ completeFrameHeader }: { completeFrameHeader: Uint8Array }): void {
   if (completeFrameHeader.byteLength !== HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader) {

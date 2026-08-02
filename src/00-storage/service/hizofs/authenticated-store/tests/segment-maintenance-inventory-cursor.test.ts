@@ -14,7 +14,7 @@ import {
   type AuthenticatedSegmentMaintenanceInventoryBackend,
 } from "@/00-storage/service/hizofs/authenticated-store/segment-maintenance-inventory-cursor";
 import { parseBoundSegmentMaintenanceSegmentId } from "@/00-storage/service/hizofs/authenticated-store/segment-maintenance-descriptor";
-import { generateFileSystemRootKey } from "@/00-storage/service/hizofs/crypto";
+import { generateFileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
 import { createCandidateFrameOrdinalAuthority } from "@/00-storage/service/hizofs/authenticated-store/candidate-frame-ordinal-authority";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import {

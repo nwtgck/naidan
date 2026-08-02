@@ -6,11 +6,11 @@ import {
   type FileSystemId,
   type UnlockSequence,
 } from '@/00-storage/service/hizofs/00-format';
-import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/crypto/primitives/aes-gcm';
+import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm';
 import {
   FileSystemRootKey,
   withFileSystemRootKeyBytes,
-} from '@/00-storage/service/hizofs/crypto/secret-types';
+} from '@/00-storage/service/hizofs/01-crypto/secret-types';
 
 export type HizoFSWorkerMountAccessMode = 'read' | 'read_write';
 

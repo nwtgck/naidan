@@ -1,5 +1,5 @@
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format';
-import { throwNormalizedHizoFSCryptoFailure } from '@/00-storage/service/hizofs/crypto/authentication-failure';
+import { throwNormalizedHizoFSCryptoFailure } from '@/00-storage/service/hizofs/01-crypto/authentication-failure';
 
 function validateNonce({ nonce }: { nonce: Uint8Array }): void {
   if (nonce.byteLength !== HIZOFS_V1_FORMAT_CONSTANTS.crypto.nonceBytes) {
