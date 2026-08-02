@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parsePortableFileSystemId } from '@/00-storage/service/hizofs/compatibility';
 import { parseTransitionOperationId, type NaidanPersistenceEndpointV1 } from '@/00-storage/service/naidan-persistence-control/00-format';
 import {
+  inspectPersistenceEndpointReadiness,
   validatePersistenceEndpointReadiness,
   type TransitionEndpointReadiness,
   type TransitionEndpointReadinessProvider,
@@ -42,6 +43,14 @@ function cleaningReEncrypt() {
 }
 
 describe('Persistence Control endpoint readiness adapter', () => {
+  it('returns the exact target readiness consumed by building-target preparation', async () => {
+    const mode = createBuildingTransitionMode({ operationId: OPERATION, source, target });
+    await expect(inspectPersistenceEndpointReadiness({
+      mode,
+      provider: provider({ [SOURCE]: 'fully_verified', [TARGET]: 'root_key_ready' }),
+    })).resolves.toEqual({ result: 'valid', targetReadiness: 'root_key_ready' });
+  });
+
   it('requires stable endpoints to be fully verified', async () => {
     await expect(validatePersistenceEndpointReadiness({ mode: { type: 'plain' }, provider: provider({ plain: 'root_key_ready' }) })).resolves.toBe('invalid');
     await expect(validatePersistenceEndpointReadiness({ mode: { type: 'plain' }, provider: provider({ plain: 'fully_verified' }) })).resolves.toBe('valid');

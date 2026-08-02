@@ -79,6 +79,14 @@ function driver({
 }
 
 describe("native HizoFS enable transition driver", () => {
+  it("consumes coordinator-validated target readiness without reopening the proof endpoint", async () => {
+    const { inspectTarget, result } = driver();
+
+    await expect(result.prepareTarget({ binding, readiness: "root_key_ready" })).resolves.toBeUndefined();
+
+    expect(inspectTarget).not.toHaveBeenCalled();
+  });
+
   it("binds target open, publication, normal-open proof, inspection, and cleanup to one operation", async () => {
     const { inspectTarget, result, runtime, targetSession } = driver();
 

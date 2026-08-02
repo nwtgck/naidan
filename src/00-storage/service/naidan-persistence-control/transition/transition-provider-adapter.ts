@@ -45,7 +45,10 @@ export interface TransitionEndpointDriver {
   inspectEndpoint({ endpoint }: { endpoint: NaidanPersistenceEndpointV1 }): Promise<TransitionEndpointReadiness>;
   openSourceEndpoint({ endpoint }: { endpoint: NaidanPersistenceEndpointV1 }): Promise<TransitionSourceEndpointSession>;
   openTargetEndpoint({ binding }: { binding: TransitionTargetOperationBinding }): Promise<TransitionTargetEndpointSession>;
-  prepareTarget({ binding }: { binding: TransitionTargetOperationBinding }): Promise<void>;
+  prepareTarget({ binding, readiness }: {
+    binding: TransitionTargetOperationBinding;
+    readiness?: TransitionEndpointReadiness;
+  }): Promise<void>;
   verifyNormalOpen({ binding }: { binding: TransitionTargetOperationBinding }): Promise<void>;
 }
 
@@ -89,8 +92,14 @@ export class TransitionProviderAdapter implements TransitionEndpointReadinessPro
     return await this.#driver({ endpoint: binding.target }).openTargetEndpoint({ binding });
   }
 
-  public async prepareTarget({ binding }: { binding: TransitionTargetOperationBinding }): Promise<void> {
-    await this.#driver({ endpoint: binding.target }).prepareTarget({ binding });
+  public async prepareTarget({ binding, readiness }: {
+    binding: TransitionTargetOperationBinding;
+    readiness?: TransitionEndpointReadiness;
+  }): Promise<void> {
+    const driver = this.#driver({ endpoint: binding.target });
+    await (readiness === undefined
+      ? driver.prepareTarget({ binding })
+      : driver.prepareTarget({ binding, readiness }));
   }
 
   public async verifyNormalOpen({ binding }: { binding: TransitionTargetOperationBinding }): Promise<void> {

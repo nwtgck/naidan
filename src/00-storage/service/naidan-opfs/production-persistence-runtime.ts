@@ -395,15 +395,15 @@ function createNativeHizoFSEnableTransitionDriverWith({
         verifyProofAuthority,
       });
     },
-    prepareTarget: async ({ binding: actual }) => {
+    prepareTarget: async ({ binding: actual, readiness }) => {
       requireBinding({ actual });
-      const readiness = await inspectTarget({ openProfile: activeOpenProfile });
-      switch (readiness) {
+      const validatedReadiness = readiness ?? await inspectTarget({ openProfile: activeOpenProfile });
+      switch (validatedReadiness) {
       case 'fully_verified':
       case 'root_key_ready': return;
       case 'absent': throw new TypeError('native HizoFS enable target is absent');
       case 'invalid': throw new TypeError('native HizoFS enable target is invalid');
-      default: return readiness satisfies never;
+      default: return validatedReadiness satisfies never;
       }
     },
     verifyNormalOpen: async ({ binding: actual }) => {
@@ -686,9 +686,11 @@ function createNativeHizoFSReencryptTransitionDriver({
       requireTargetBinding({ actual });
       return await target.openTargetEndpoint({ binding: actual });
     },
-    prepareTarget: async ({ binding: actual }) => {
+    prepareTarget: async ({ binding: actual, readiness }) => {
       requireTargetBinding({ actual });
-      await target.prepareTarget({ binding: actual });
+      await (readiness === undefined
+        ? target.prepareTarget({ binding: actual })
+        : target.prepareTarget({ binding: actual, readiness }));
     },
     verifyNormalOpen: async ({ binding: actual }) => {
       requireTargetBinding({ actual });

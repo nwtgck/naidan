@@ -1,8 +1,10 @@
 import {
   compareUnsignedBytes,
   createInodeRevision,
+  encodeDirectoryEntry,
   encodeFilenameComponent,
   encodeInodeLeafPage,
+  HIZOFS_V1_FORMAT_CONSTANTS,
   UINT64_MAXIMUM,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
@@ -26,6 +28,12 @@ export class InlineDirectoryCreateMutationError extends Error {
   }
 }
 
+export type InlineDirectoryCreateCandidateParent = Readonly<
+  Omit<DirectoryInodeEntry, "content"> & {
+    content: Extract<DirectoryInodeEntry["content"], { type: "inline" }>;
+  }
+>;
+
 export type InlineDirectoryCreateMutation = Readonly<{
   changes: readonly RootInodeTableMutation[];
   updatedParent: DirectoryInodeEntry;
@@ -41,13 +49,13 @@ function compareDirectoryEntries({ left, right }: {
   });
 }
 
-export function prepareInlineDirectoryCreateMutation({
+export function prepareInlineDirectoryCreateCandidateParent({
   parent,
   plan,
 }: {
   parent: DirectoryInodeEntry;
   plan: OrdinaryEntryCreatePlan;
-}): InlineDirectoryCreateMutation {
+}): InlineDirectoryCreateCandidateParent {
   if (parent.inodeNumber !== plan.parentDirectoryInodeNumber) {
     throw new InlineDirectoryCreateMutationError({
       code: "parent_identity_mismatch",
@@ -84,7 +92,7 @@ export function prepareInlineDirectoryCreateMutation({
   const entries = [...currentEntries, plan.directoryEntry].sort((left, right) =>
     compareDirectoryEntries({ left, right })
   );
-  const updatedParent: DirectoryInodeEntry = {
+  return {
     ...parent,
     content: { entries, type: "inline" },
     inodeRevision: createInodeRevision({ value: parent.inodeRevision + 1n }),
@@ -93,18 +101,49 @@ export function prepareInlineDirectoryCreateMutation({
       modifiedAt: plan.inode.timestamps.modifiedAt,
     },
   };
+}
 
+export function inlineDirectoryCreateCandidateFits({ candidateParent }: {
+  candidateParent: InlineDirectoryCreateCandidateParent;
+}): boolean {
+  const encodedBytes = candidateParent.content.entries.reduce(
+    (total, entry) => total + encodeDirectoryEntry({ entry }).byteLength,
+    0,
+  );
+  return encodedBytes <= HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes;
+}
+
+export function prepareInlineDirectoryCreateMutationFromCandidate({
+  candidateParent,
+  plan,
+}: {
+  candidateParent: InlineDirectoryCreateCandidateParent;
+  plan: OrdinaryEntryCreatePlan;
+}): InlineDirectoryCreateMutation {
   // The authoritative inode codec enforces the inline-directory byte bound and
   // canonical UTF-8 entry ordering before any page mutation is prepared.
-  encodeInodeLeafPage({ entries: [updatedParent], isRoot: false });
+  encodeInodeLeafPage({ entries: [candidateParent], isRoot: false });
 
   return {
     changes: [
-      { entry: updatedParent, type: "set" },
+      { entry: candidateParent, type: "set" },
       { entry: plan.inode, type: "set" },
     ],
-    updatedParent,
+    updatedParent: candidateParent,
   };
+}
+
+export function prepareInlineDirectoryCreateMutation({
+  parent,
+  plan,
+}: {
+  parent: DirectoryInodeEntry;
+  plan: OrdinaryEntryCreatePlan;
+}): InlineDirectoryCreateMutation {
+  return prepareInlineDirectoryCreateMutationFromCandidate({
+    candidateParent: prepareInlineDirectoryCreateCandidateParent({ parent, plan }),
+    plan,
+  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

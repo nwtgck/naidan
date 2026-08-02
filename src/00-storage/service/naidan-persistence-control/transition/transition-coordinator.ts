@@ -23,7 +23,7 @@ import {
   planTransitionAuthoritySwitch,
 } from '@/00-storage/service/naidan-persistence-control/transition/transition-state-machine';
 import {
-  validatePersistenceEndpointReadiness,
+  inspectPersistenceEndpointReadiness,
 } from '@/00-storage/service/naidan-persistence-control/transition/transition-endpoint-readiness';
 import type {
   TransitionProviderAdapter,
@@ -287,17 +287,17 @@ export async function advancePersistenceTransition({ control, policy, progressPo
     source: mode.phase.source,
     target: mode.phase.target,
   };
-  const readiness = await validatePersistenceEndpointReadiness({ mode, provider });
-  switch (readiness) {
+  const readiness = await inspectPersistenceEndpointReadiness({ mode, provider });
+  switch (readiness.result) {
   case 'valid': break;
   case 'invalid':
     throw new TransitionCoordinatorError({ code: 'endpoint_not_ready', message: 'transition endpoints are not ready for the persisted phase' });
-  default: readiness satisfies never;
+  default: readiness.result satisfies never;
   }
 
   switch (mode.phase.type) {
   case 'building_target': {
-    await provider.prepareTarget({ binding: targetBinding });
+    await provider.prepareTarget({ binding: targetBinding, readiness: readiness.targetReadiness });
     const loadedProgress = await progressPort.load({ operationId: mode.operationId });
 
     const outcome = await withTransitionSessions({

@@ -899,6 +899,10 @@ export class OPFSStorageProvider extends IStorageProvider {
     request: OpfsPersistenceTransitionRequest;
     signal: AbortSignal | undefined;
   }): Promise<void> {
+    // Unlocked maintenance may temporarily own the same proof-scoped HizoFS
+    // session needed by disable or re-encryption. Management transitions wait
+    // for that opportunistic work to settle before suspending shared sessions.
+    await this.unlockedMaintenanceCompletion;
     await this.suspendSessionLocks();
     try {
       const storageRoot = await getOrCreateStorageRoot();

@@ -7,6 +7,7 @@ import {
 } from '@/00-storage/service/naidan-opfs/active-hizofs-container-location';
 import { naidanOpfsContainerOriginRelativePathComponents } from '@/00-storage/service/naidan-opfs/opfs-storage-location';
 import { OPFSStorageProvider, TEST_ONLY as OPFS_STORAGE_TEST_ONLY } from './opfs-storage';
+import { InMemoryWebLockManager } from '@/00-storage/service/test-support/in-memory-web-locks';
 
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
@@ -430,6 +431,81 @@ describe('OPFS Persistence Control runtime composition', () => {
     await expect(openActiveAuthenticatedHizoFSContainerLocationLease()).rejects.toThrow('unavailable');
     expect(sessionClose).toHaveBeenCalledOnce();
     uninstall();
+  });
+
+  it('settles unlocked maintenance before starting a re-encryption transition', async () => {
+    vi.stubGlobal('navigator', {
+      locks: new InMemoryWebLockManager(),
+      storage: {
+        getDirectory: () => Promise.resolve(mockOpfsRoot),
+      },
+    });
+    const storageRoot = await mockOpfsRoot.getDirectoryHandle('naidan-storage', { create: true });
+    await storageRoot.getDirectoryHandle('persistence-control', { create: true });
+    const inspection = PERSISTENCE_RUNTIME_TEST_ONLY.createCredentialRequiredInspection({
+      firstSequence: 2,
+      secondSequence: 1,
+    });
+    const maintenance = Promise.withResolvers<void>();
+    const session = {
+      backend: {},
+      close: vi.fn(async () => undefined),
+      fileSystemId: PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({
+        fileSystemId: '0123456789_ABCDEFGHIJ',
+      }).mode.activeFileSystemId,
+      fileSystemSession: {},
+    } as unknown as OpfsPersistenceUnlockedSession;
+    const runTransition = vi.fn(async () => undefined);
+    const runtime: OpfsPersistenceRuntime = {
+      writableProfile: 'development-unverified',
+      runUnlockedMaintenance: vi.fn(async () => {
+        await maintenance.promise;
+        return {
+          remainingEntryCount: 0,
+          removedEntryCount: 0,
+          state: 'completed' as const,
+        };
+      }),
+      inspect: vi.fn(async () => inspection),
+      runStartupMaintenance: vi.fn(async () => undefined),
+      unlockWithPassphrase: vi.fn(async () => session),
+      changePassphrase: vi.fn(async () => {
+        throw new Error('not used');
+      }),
+      runTransition,
+    };
+    const uninstall = installOpfsPersistenceRuntimeFactory({ factory: async () => runtime });
+    const provider = new OPFSStorageProvider();
+
+    try {
+      await provider.unlockWithPassphrase({ passphrase: 'current passphrase' });
+      const transition = provider.reencrypt({
+        onProgress: undefined,
+        retainedCredentials: [{ passphrase: 'current passphrase' }],
+        signal: undefined,
+      });
+      await Promise.resolve();
+      expect(runTransition).not.toHaveBeenCalled();
+
+      maintenance.resolve();
+      await transition;
+      expect(runTransition).toHaveBeenCalledOnce();
+      expect(runTransition).toHaveBeenCalledWith({
+        nativeNamespaceRoot: mockOpfsRoot,
+        onProgress: undefined,
+        request: {
+          operation: 'reencrypt',
+          retainedCredentials: [{ passphrase: 'current passphrase' }],
+          session,
+        },
+        signal: undefined,
+        storageRoot,
+      });
+    } finally {
+      maintenance.resolve();
+      await provider.dispose();
+      uninstall();
+    }
   });
 
   it('replaces the active physical location with the next authenticated session generation', async () => {
