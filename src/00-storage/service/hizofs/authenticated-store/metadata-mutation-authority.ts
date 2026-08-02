@@ -163,6 +163,10 @@ export class AuthenticatedMetadataMutationAuthority {
     } catch (error: unknown) {
       if (!(error instanceof AuthenticatedSegmentCapacityError) || !this.#pageWriterHasRecords) throw error;
       this.#pageWriter.abandon();
+      this.#diagnostics?.recordSegmentWriterEvent?.({
+        event: "rollover",
+        segmentClass: "metadata",
+      });
       this.#pageWriter = await this.#createPageWriter();
       this.#pageWriterHasRecords = false;
       const reference = await append({ writer: this.#pageWriter });

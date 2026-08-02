@@ -177,8 +177,25 @@ const hizoFSRuntimeResourceCounterSchema = z.object({
   maximumOperations: z.number().int().nonnegative(),
 }).strict();
 
+const hizoFSRuntimePublicationAccessCounterSchema = z.object({
+  duplicateOperations: z.number().int().nonnegative(),
+  maximumOperationsPerPublication: z.number().int().nonnegative(),
+  operations: z.number().int().nonnegative(),
+  observedUniqueTargets: z.number().int().nonnegative(),
+  truncatedPublications: z.number().int().nonnegative(),
+  unclassifiedOperations: z.number().int().nonnegative(),
+}).strict();
+
+const hizoFSRuntimeSegmentWriterCounterSchema = z.object({
+  appendOperations: z.number().int().nonnegative(),
+  created: z.number().int().nonnegative(),
+  rollovers: z.number().int().nonnegative(),
+  trustedTailMatches: z.number().int().nonnegative(),
+  trustedTailMismatches: z.number().int().nonnegative(),
+}).strict();
+
 const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(3),
+  schemaVersion: z.literal(4),
   type: z.literal('measured'),
   phases: z.object(Object.fromEntries(
     HIZOFS_RUNTIME_DIAGNOSTIC_PHASES.map(phase => [
@@ -218,10 +235,21 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
     localRequests: z.number().int().nonnegative(),
     remoteRequests: z.number().int().nonnegative(),
   }).strict(),
+  publication: z.object({
+    completed: z.number().int().nonnegative(),
+    overlapping: z.number().int().nonnegative(),
+    getFileSize: hizoFSRuntimePublicationAccessCounterSchema,
+    readExact: hizoFSRuntimePublicationAccessCounterSchema,
+  }).strict(),
+  segmentWriters: z.object({
+    data: hizoFSRuntimeSegmentWriterCounterSchema,
+    metadata: hizoFSRuntimeSegmentWriterCounterSchema,
+    relocation: hizoFSRuntimeSegmentWriterCounterSchema,
+  }).strict(),
 }).strict();
 
 const hizoFSUnavailableRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(3),
+  schemaVersion: z.literal(4),
   type: z.literal('unavailable'),
   reason: z.string().min(1),
 }).strict();
@@ -409,8 +437,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(19),
-  benchmarkImplementationVersion: z.literal(24),
+  schemaVersion: z.literal(20),
+  benchmarkImplementationVersion: z.literal(25),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),

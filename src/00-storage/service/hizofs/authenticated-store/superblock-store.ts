@@ -476,17 +476,30 @@ export class SuperblockRelocationPublicationError extends Error {
   }
 }
 
-async function overwritePreparedSuperblockCopy({ backend, diagnostics, fileSystemId, onWriteStarted, prepared, rootKey }: {
+type SuperblockCopyPresence = "missing" | "present";
+
+function superblockCopyPresence({ result }: {
+  result: SuperblockCopyReadResult;
+}): SuperblockCopyPresence {
+  switch (result.kind) {
+  case "missing": return "missing";
+  case "invalid":
+  case "valid": return "present";
+  default: return result satisfies never;
+  }
+}
+
+async function overwritePreparedSuperblockCopy({ backend, diagnostics, expectedPresence, fileSystemId, onWriteStarted, prepared, rootKey }: {
   backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  expectedPresence: SuperblockCopyPresence;
   fileSystemId: FileSystemId;
   onWriteStarted: () => void;
   prepared: PreparedSuperblockCopy;
   rootKey: FileSystemRootKey;
 }): Promise<AuthenticatedSuperblockCopy> {
   const path = superblockPath({ copy: prepared.copy });
-  const existingSize = await backend.getFileSize({ path });
-  const created = existingSize === undefined;
+  const created = expectedPresence === "missing";
   const file = created
     ? await backend.createFileExclusive({ path })
     : await backend.openFileForUpdate({ path });
@@ -616,6 +629,7 @@ async function publishSuperblockCopiesWithTransition({
     await overwritePreparedSuperblockCopy({
       backend,
       diagnostics,
+      expectedPresence: superblockCopyPresence({ result: current.results[firstPrepared.copy] }),
       fileSystemId,
       onWriteStarted: () => {
         phase = "first_write_started";
@@ -627,6 +641,7 @@ async function publishSuperblockCopiesWithTransition({
     await overwritePreparedSuperblockCopy({
       backend,
       diagnostics,
+      expectedPresence: superblockCopyPresence({ result: current.results[secondPrepared.copy] }),
       fileSystemId,
       onWriteStarted: () => undefined,
       prepared: secondPrepared,

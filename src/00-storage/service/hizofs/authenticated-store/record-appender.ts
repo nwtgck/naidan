@@ -336,6 +336,7 @@ export class AuthenticatedSegmentWriter {
       path,
     });
     await readAuthenticatedSegmentDescriptor({ backend, diagnostics, fileSystemId, physicalSegmentId: segmentId, rootKey, segmentClass });
+    diagnostics?.recordSegmentWriterEvent?.({ event: "created", segmentClass });
     return new AuthenticatedSegmentWriter({ backend, diagnostics, fileSystemId, path, randomSource, rootKey, segmentClass, segmentId });
   }
 
@@ -381,6 +382,10 @@ export class AuthenticatedSegmentWriter {
     requireActiveWriter({ operation: "append", state: this.#state });
     if (this.#operationInProgress) throw new Error("segment writer operation already in progress");
     this.#operationInProgress = true;
+    this.#diagnostics?.recordSegmentWriterEvent?.({
+      event: "append_started",
+      segmentClass: this.#segmentClass,
+    });
     try {
       if (records.length === 0) throw new RangeError("record append batch must not be empty");
       if (this.#frameCount + records.length > frameMaximumCount({ segmentClass: this.#segmentClass })) {
@@ -481,9 +486,17 @@ export class AuthenticatedSegmentWriter {
         state: this.#state,
       });
       if (observedSize !== this.#nextOffset) {
+        this.#diagnostics?.recordSegmentWriterEvent?.({
+          event: "trusted_tail_mismatch",
+          segmentClass: this.#segmentClass,
+        });
         this.#state = "abandoned";
         throw authenticatedStoreError({ code: "control_plane_corrupt", message: "active Segment trusted append tail changed" });
       }
+      this.#diagnostics?.recordSegmentWriterEvent?.({
+        event: "trusted_tail_match",
+        segmentClass: this.#segmentClass,
+      });
       const file = await this.#backend.openFileForUpdate({ path: this.#path });
       await runAndCloseAuthenticatedFile({
         backend: this.#backend,

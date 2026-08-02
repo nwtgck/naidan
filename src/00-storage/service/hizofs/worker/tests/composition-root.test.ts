@@ -2546,12 +2546,42 @@ describe("HizoFS worker composition root", () => {
     await backend.removeFile({ path });
     await backend.list({ directory: CANONICAL_CONTAINER_ROOT });
 
+    diagnostics.recordPublicationScopeEvent({ event: "begin" });
+    await backend.getFileSize({ path });
+    await backend.getFileSize({ path });
+    await backend.readExact({ length: 0, offset: 0n, path });
+    await backend.readExact({ length: 0, offset: 0n, path });
+    diagnostics.recordPublicationScopeEvent({ event: "end" });
+
     const physical = Object.entries(diagnostics.snapshot().phases)
       .filter(([phase]) => phase.startsWith("physical_"));
     expect(physical).toHaveLength(13);
-    for (const [, counter] of physical) {
+    expect(diagnostics.snapshot().phases.physical_get_file_size).toEqual({ operationCount: 3, totalDurationMs: 3 });
+    expect(diagnostics.snapshot().phases.physical_read_exact).toEqual({ operationCount: 3, totalDurationMs: 3 });
+    for (const [phase, counter] of physical) {
+      if (phase === "physical_get_file_size" || phase === "physical_read_exact") continue;
       expect(counter).toEqual({ operationCount: 1, totalDurationMs: 1 });
     }
+    expect(diagnostics.snapshot().publication).toEqual({
+      completed: 1,
+      overlapping: 0,
+      getFileSize: {
+        duplicateOperations: 1,
+        maximumOperationsPerPublication: 2,
+        operations: 2,
+        observedUniqueTargets: 1,
+        truncatedPublications: 0,
+        unclassifiedOperations: 0,
+      },
+      readExact: {
+        duplicateOperations: 1,
+        maximumOperationsPerPublication: 2,
+        operations: 2,
+        observedUniqueTargets: 1,
+        truncatedPublications: 0,
+        unclassifiedOperations: 0,
+      },
+    });
   });
 
 

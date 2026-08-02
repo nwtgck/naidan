@@ -213,6 +213,26 @@ describe('production HizoFS benchmark runtime port', () => {
     if (runtimeDiagnostics?.type !== 'measured') {
       throw new Error('production HizoFS runtime diagnostics are unavailable');
     }
+    expect(runtimeDiagnostics.publication).toMatchObject({
+      completed: 1,
+      overlapping: 0,
+      getFileSize: {
+        duplicateOperations: 2,
+        operations: 4,
+        observedUniqueTargets: 2,
+      },
+      readExact: {
+        duplicateOperations: 0,
+        operations: 2,
+        observedUniqueTargets: 2,
+      },
+    });
+    expect(runtimeDiagnostics.segmentWriters.metadata).toMatchObject({
+      appendOperations: 2,
+      created: 2,
+      trustedTailMatches: 2,
+      trustedTailMismatches: 0,
+    });
     expect(runtimeDiagnostics.phases.physical_read_exact.operationCount).toBeGreaterThan(0);
     expect(Object.values(runtimeDiagnostics.records).some(counter => counter.readOperations > 0)).toBe(true);
     expect(runtimeDiagnostics.caches.metadata.hits).toBeGreaterThan(0);

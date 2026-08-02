@@ -20,8 +20,23 @@ export type AuthenticatedPublicationDiagnosticsObservation = Readonly<{
   durationMs: number;
 }>;
 
+export type AuthenticatedPublicationScopeEventObservation = Readonly<{
+  event: "begin" | "end";
+}>;
+
+export type AuthenticatedSegmentWriterDiagnosticsObservation = Readonly<{
+  event:
+    | "append_started"
+    | "created"
+    | "rollover"
+    | "trusted_tail_match"
+    | "trusted_tail_mismatch";
+  segmentClass: "data" | "metadata" | "relocation";
+}>;
+
 export type AuthenticatedMetadataCacheEventObservation = Readonly<{
   event: "eviction" | "hit" | "miss";
+  recordKind: number;
 }>;
 
 export type AuthenticatedMetadataCacheUsageObservation = Readonly<{
@@ -39,8 +54,16 @@ export type AuthenticatedMetadataCacheUsageObservation = Readonly<{
  * attempt without carrying payload or authority bytes.
  */
 export type AuthenticatedStoreDiagnosticsPort = Readonly<{
+  recordPublicationScopeEvent?: ({
+    event,
+  }: AuthenticatedPublicationScopeEventObservation) => void;
+  recordSegmentWriterEvent?: ({
+    event,
+    segmentClass,
+  }: AuthenticatedSegmentWriterDiagnosticsObservation) => void;
   recordMetadataCacheEvent?: ({
     event,
+    recordKind,
   }: AuthenticatedMetadataCacheEventObservation) => void;
   recordCodecOperation: ({
     durationMs,
@@ -126,12 +149,17 @@ export async function measureAuthenticatedPublicationOperation<T>({
 }): Promise<T> {
   if (diagnostics === undefined) return await run();
   const startedAt = clock();
+  diagnostics.recordPublicationScopeEvent?.({ event: "begin" });
   try {
     return await run();
   } finally {
-    diagnostics.recordPublicationOperation({
-      durationMs: Math.max(0, clock() - startedAt),
-    });
+    try {
+      diagnostics.recordPublicationOperation({
+        durationMs: Math.max(0, clock() - startedAt),
+      });
+    } finally {
+      diagnostics.recordPublicationScopeEvent?.({ event: "end" });
+    }
   }
 }
 

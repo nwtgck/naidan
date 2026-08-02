@@ -3213,7 +3213,10 @@ export async function openHizoFSWorkerMountGrant({ grant, resolveBackingDirector
 }
 
 type PhysicalDiagnosticPhase = Extract<HizoFSRuntimeDiagnosticPhase, `physical_${string}`>;
-type RuntimePhaseRecorder = Pick<HizoFSRuntimeDiagnosticsAccumulator, "recordPhase">;
+type RuntimePhaseRecorder = Pick<
+  HizoFSRuntimeDiagnosticsAccumulator,
+  "recordPhase" | "recordPublicationPhysicalAccess"
+>;
 type MonotonicClock = () => number;
 
 async function measurePhysicalOperation<T>({ clock, diagnostics, operation, phase }: {
@@ -3272,10 +3275,16 @@ function instrumentHizoFSWritableBackend<AuthenticatedPhysicalBytes extends Uint
       operation: async () => await backend.createFileExclusive({ path }),
       phase: "physical_create_file_exclusive",
     }),
-    getFileSize: async ({ path }) => await measured({
-      operation: async () => await backend.getFileSize({ path }),
-      phase: "physical_get_file_size",
-    }),
+    getFileSize: async ({ path }) => {
+      diagnostics.recordPublicationPhysicalAccess({
+        identity: String(path),
+        operation: "get_file_size",
+      });
+      return await measured({
+        operation: async () => await backend.getFileSize({ path }),
+        phase: "physical_get_file_size",
+      });
+    },
     list: async ({ directory }) => await measured({
       operation: async () => await backend.list({ directory }),
       phase: "physical_list",
@@ -3284,10 +3293,16 @@ function instrumentHizoFSWritableBackend<AuthenticatedPhysicalBytes extends Uint
       operation: async () => await backend.openFileForUpdate({ path }),
       phase: "physical_open_file_for_update",
     }),
-    readExact: async ({ length, offset, path }) => await measured({
-      operation: async () => await backend.readExact({ length, offset, path }),
-      phase: "physical_read_exact",
-    }),
+    readExact: async ({ length, offset, path }) => {
+      diagnostics.recordPublicationPhysicalAccess({
+        identity: `${String(path)}\u0000${offset.toString()}\u0000${length.toString()}`,
+        operation: "read_exact",
+      });
+      return await measured({
+        operation: async () => await backend.readExact({ length, offset, path }),
+        phase: "physical_read_exact",
+      });
+    },
     readFileBounded: async ({ maximumByteLength, path }) => await measured({
       operation: async () => await backend.readFileBounded({ maximumByteLength, path }),
       phase: "physical_read_file_bounded",

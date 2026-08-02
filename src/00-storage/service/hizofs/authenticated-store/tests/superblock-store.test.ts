@@ -50,6 +50,17 @@ import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-sto
 import { DeterministicPhysicalStoreFaultInjector } from "@/00-storage/service/hizofs/physical-store/testing/deterministic-fault-injector";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 
+class GetFileSizeCountingBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
+  getFileSizeOperations = 0;
+
+  public override async getFileSize(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["getFileSize"]>[0],
+  ): Promise<bigint | undefined> {
+    this.getFileSizeOperations += 1;
+    return await super.getFileSize(input);
+  }
+}
+
 function deterministicRandomSource(): RandomByteSource {
   let next = 1;
   return ({ bytes }) => {
@@ -323,7 +334,7 @@ describe("HizoFS Superblock store", () => {
   });
 
   it("publishes a mutation to the opposite copy before converging the selected copy", async () => {
-    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const backend = new GetFileSizeCountingBackend({});
     const randomSource = deterministicRandomSource();
     const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
     const rootKey = generateFileSystemRootKey({ randomSource });
@@ -337,6 +348,7 @@ describe("HizoFS Superblock store", () => {
     });
     expect(initial.maximumStructurallyObservedPublicationSequence).toBe(2n);
     const logicalState = nextLogicalState({ previous: initial.logicalState });
+    backend.getFileSizeOperations = 0;
 
     const published = await publishMutationSuperblockCopies({
       backend,
@@ -359,6 +371,10 @@ describe("HizoFS Superblock store", () => {
     expect(copy1.header.publicationSequence).toBe(4n);
     expect(copy0.plaintext.activeMutationId).toEqual(logicalState.activeMutationId);
     expect(copy1.plaintext.fallbackCommitHomeRef).toEqual(initial.logicalState.activeCommitHomeRef);
+    // The authenticated pre-publication snapshot already proves whether each
+    // copy exists. Publication must not add a second existence probe before
+    // choosing exclusive create versus update-open.
+    expect(backend.getFileSizeOperations).toBe(0);
     expect(backend.openHandleCount()).toBe(0);
     rootKey.destroy();
   });

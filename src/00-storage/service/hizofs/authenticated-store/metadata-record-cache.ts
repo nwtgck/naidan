@@ -91,14 +91,14 @@ export class AuthenticatedMetadataRecordCache {
     if (cached !== undefined) {
       this.#entries.delete(identity);
       this.#entries.set(identity, cached);
-      this.#diagnostics?.recordMetadataCacheEvent?.({ event: "hit" });
+      this.#diagnostics?.recordMetadataCacheEvent?.({ event: "hit", recordKind: cached.recordKind });
       return {
         plaintext: cached.plaintext.slice(),
         recordKind: cached.recordKind,
       };
     }
 
-    this.#diagnostics?.recordMetadataCacheEvent?.({ event: "miss" });
+    this.#diagnostics?.recordMetadataCacheEvent?.({ event: "miss", recordKind: reference.recordKind });
     const loaded = await load();
     if (this.#disposed) {
       loaded.plaintext.fill(0);
@@ -114,6 +114,7 @@ export class AuthenticatedMetadataRecordCache {
       loaded.plaintext.fill(0);
       this.#entries.delete(identity);
       this.#entries.set(identity, concurrentlyCached);
+      this.#diagnostics?.recordMetadataCacheEvent?.({ event: "hit", recordKind: concurrentlyCached.recordKind });
       return {
         plaintext: concurrentlyCached.plaintext.slice(),
         recordKind: concurrentlyCached.recordKind,
@@ -138,7 +139,10 @@ export class AuthenticatedMetadataRecordCache {
       this.#entries.delete(oldestIdentity);
       this.#currentBytes -= oldestEntry.plaintext.byteLength;
       oldestEntry.plaintext.fill(0);
-      this.#diagnostics?.recordMetadataCacheEvent?.({ event: "eviction" });
+      this.#diagnostics?.recordMetadataCacheEvent?.({
+        event: "eviction",
+        recordKind: oldestEntry.recordKind,
+      });
     }
     this.#entries.set(identity, {
       plaintext: retained,

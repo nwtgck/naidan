@@ -100,6 +100,137 @@ describe("HizoFS runtime diagnostics", () => {
     expect(before).not.toBe(after);
   });
 
+  it("counts bounded publication duplicates and segment-writer lifecycle events", () => {
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+    diagnostics.recordPublicationScopeEvent({ event: "begin" });
+    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
+    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
+    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a:0:64", operation: "read_exact" });
+    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a:0:64", operation: "read_exact" });
+    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a:64:64", operation: "read_exact" });
+    diagnostics.recordPublicationScopeEvent({ event: "end" });
+    diagnostics.recordSegmentWriterEvent({ event: "created", segmentClass: "metadata" });
+    diagnostics.recordSegmentWriterEvent({ event: "append_started", segmentClass: "metadata" });
+    diagnostics.recordSegmentWriterEvent({ event: "trusted_tail_match", segmentClass: "metadata" });
+    diagnostics.recordSegmentWriterEvent({ event: "rollover", segmentClass: "metadata" });
+
+    const snapshot = diagnostics.snapshot();
+    expect(snapshot.publication).toEqual({
+      completed: 1,
+      overlapping: 0,
+      getFileSize: {
+        duplicateOperations: 1,
+        maximumOperationsPerPublication: 2,
+        operations: 2,
+        observedUniqueTargets: 1,
+        truncatedPublications: 0,
+        unclassifiedOperations: 0,
+      },
+      readExact: {
+        duplicateOperations: 1,
+        maximumOperationsPerPublication: 3,
+        operations: 3,
+        observedUniqueTargets: 2,
+        truncatedPublications: 0,
+        unclassifiedOperations: 0,
+      },
+    });
+    expect(snapshot.segmentWriters.metadata).toEqual({
+      appendOperations: 1,
+      created: 1,
+      rollovers: 1,
+      trustedTailMatches: 1,
+      trustedTailMismatches: 0,
+    });
+
+    diagnostics.resetHighWaterMarks();
+    expect(diagnostics.snapshot().publication.getFileSize.maximumOperationsPerPublication).toBe(0);
+    expect(diagnostics.snapshot().publication.readExact.maximumOperationsPerPublication).toBe(0);
+  });
+
+  it("drops ambiguous publication attribution when publication scopes overlap", () => {
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+    diagnostics.recordPublicationScopeEvent({ event: "begin" });
+    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
+    diagnostics.recordPublicationScopeEvent({ event: "begin" });
+    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-b", operation: "get_file_size" });
+    diagnostics.recordPublicationScopeEvent({ event: "end" });
+    diagnostics.recordPublicationScopeEvent({ event: "end" });
+
+    expect(diagnostics.snapshot().publication).toEqual({
+      completed: 0,
+      overlapping: 1,
+      getFileSize: {
+        duplicateOperations: 0,
+        maximumOperationsPerPublication: 0,
+        operations: 0,
+        observedUniqueTargets: 0,
+        truncatedPublications: 0,
+        unclassifiedOperations: 0,
+      },
+      readExact: {
+        duplicateOperations: 0,
+        maximumOperationsPerPublication: 0,
+        operations: 0,
+        observedUniqueTargets: 0,
+        truncatedPublications: 0,
+        unclassifiedOperations: 0,
+      },
+    });
+  });
+
+  it("attributes metadata-cache hits and misses to canonical record kinds", () => {
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+    diagnostics.recordMetadataCacheEvent({
+      event: "miss",
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    });
+    diagnostics.recordMetadataCacheEvent({
+      event: "hit",
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    });
+    diagnostics.recordMetadataCacheEvent({
+      event: "eviction",
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    });
+
+    const snapshot = diagnostics.snapshot();
+    expect(snapshot.caches.metadata).toMatchObject({
+      evictions: 1,
+      hits: 1,
+      misses: 1,
+    });
+    expect(snapshot.records.inode_table_page).toMatchObject({
+      cacheHits: 1,
+      cacheMisses: 1,
+    });
+  });
+
+  it("bounds publication target identity retention and reports truncation", () => {
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+    diagnostics.recordPublicationScopeEvent({ event: "begin" });
+    for (let index = 0; index < 4_100; index += 1) {
+      diagnostics.recordPublicationPhysicalAccess({
+        identity: `target-${index}`,
+        operation: "read_exact",
+      });
+    }
+    diagnostics.recordPublicationPhysicalAccess({
+      identity: "target-0",
+      operation: "read_exact",
+    });
+    diagnostics.recordPublicationScopeEvent({ event: "end" });
+
+    expect(diagnostics.snapshot().publication.readExact).toEqual({
+      duplicateOperations: 1,
+      maximumOperationsPerPublication: 4_101,
+      observedUniqueTargets: 4_096,
+      operations: 4_101,
+      truncatedPublications: 1,
+      unclassifiedOperations: 4,
+    });
+  });
+
   it("rejects invalid measurements instead of corrupting counters", () => {
     const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
     const before = diagnostics.snapshot();
