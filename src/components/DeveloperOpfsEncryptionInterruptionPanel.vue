@@ -157,6 +157,7 @@ async function createInterruption(): Promise<void> {
   const selectedOperation = operation.value;
   loading.value = true;
   errorMessage.value = undefined;
+  let transitionRequested = false;
   try {
     const confirmed = await showConfirm({
       title: await ensureStrings.DeveloperOpfsEncryptionInterruptionPanel__interrupt_opfs_transition(),
@@ -165,11 +166,11 @@ async function createInterruption(): Promise<void> {
       confirmButtonVariant: 'danger',
     });
     if (!confirmed) return;
+    transitionRequested = true;
     await runSelectedTransition({ selectedBoundary, selectedOperation });
-    window.location.reload();
   } catch (error: unknown) {
     const operationErrorMessage = error instanceof Error ? error.message : String(error);
-    await refreshInspection();
+    if (!transitionRequested) await refreshInspection();
     errorMessage.value = operationErrorMessage;
   } finally {
     loading.value = false;

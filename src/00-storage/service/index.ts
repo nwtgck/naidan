@@ -112,6 +112,7 @@ export class StorageService {
   private readonly settledExternalTransitionOperationIds = new Set<string>();
   private readonly ignoredExternalTransitionOperationIds = new Set<string>();
   private externalOpfsTransitionEpoch = 0;
+  private externalOpfsTransitionReloadRequired = false;
 
   constructor() {
     this.synchronizer = new StorageSynchronizer();
@@ -167,6 +168,7 @@ export class StorageService {
       ) {
         return;
       }
+      this.externalOpfsTransitionReloadRequired = true;
       this.externalOpfsTransitionEpoch += 1;
       const preparation = await this.suspendOpfsStorageForExternalTransition({
         operationId: event.operationId,
@@ -196,6 +198,7 @@ export class StorageService {
       if (this.settledExternalTransitionOperationIds.has(event.operationId)) {
         return;
       }
+      this.externalOpfsTransitionReloadRequired = true;
       this.externalOpfsTransitionEpoch += 1;
       if (this.pendingExternalTransitionOperationId !== event.operationId) {
         const preparation = await this.suspendOpfsStorageForExternalTransition({
@@ -227,6 +230,7 @@ export class StorageService {
       if (this.settledExternalTransitionOperationIds.has(event.operationId)) {
         return;
       }
+      this.externalOpfsTransitionReloadRequired = true;
       this.externalOpfsTransitionEpoch += 1;
       if (this.pendingExternalTransitionOperationId !== event.operationId) {
         const preparation = await this.suspendOpfsStorageForExternalTransition({
@@ -427,6 +431,9 @@ export class StorageService {
           // Do not begin a second transition from stale UI state after the
           // winner settles; the caller will re-inspect the stable backend.
           throw new Error('OPFS encryption transition was superseded by another tab');
+        }
+        if (this.externalOpfsTransitionReloadRequired) {
+          throw new Error('OPFS encryption transition requires this page to reload');
         }
 
         const preflightFailures: unknown[] = [];
