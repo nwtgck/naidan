@@ -336,6 +336,7 @@ export class AuthenticatedSegmentWriter {
       path,
     });
     await readAuthenticatedSegmentDescriptor({ backend, diagnostics, fileSystemId, physicalSegmentId: segmentId, rootKey, segmentClass });
+    diagnostics?.recordSegmentWriterEvent?.({ event: "descriptor_validated", segmentClass });
     diagnostics?.recordSegmentWriterEvent?.({ event: "created", segmentClass });
     return new AuthenticatedSegmentWriter({ backend, diagnostics, fileSystemId, path, randomSource, rootKey, segmentClass, segmentId });
   }
@@ -520,6 +521,10 @@ export class AuthenticatedSegmentWriter {
       if (!bytesEqual({ left: readBack, right: batch })) {
         throw authenticatedStoreError({ code: "control_plane_corrupt", message: "durable record append read-back differs" });
       }
+      this.#diagnostics?.recordSegmentWriterEvent?.({
+        event: "append_read_back_verified",
+        segmentClass: this.#segmentClass,
+      });
       this.#nextOffset = nextOffset;
       this.#frameCount += frames.length;
       for (const key of batchNonceKeys) this.#usedNonceKeys.add(key);

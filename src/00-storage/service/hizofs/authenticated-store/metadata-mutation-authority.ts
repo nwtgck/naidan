@@ -32,7 +32,8 @@ import {
   type AuthenticatedStoreDiagnosticsPort,
 } from "./runtime-diagnostics-port";
 import {
-  appendAndPublishPreparedMutationCommit,
+  appendPreparedMutationCommit,
+  publishPreparedMutationCommit,
   type PublishedPreparedMutationCommit,
 } from "./prepared-mutation-commit-store";
 import {
@@ -57,6 +58,7 @@ export class AuthenticatedMetadataMutationAuthority {
   readonly #relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
   readonly #rootKey: FileSystemRootKey;
   readonly #supportedFeatureBits: FeatureBits;
+  #mutationDiagnosticsOpen = true;
   #operationInProgress = false;
   #pageWriter: AuthenticatedSegmentWriter;
   #pageWriterHasRecords = false;
@@ -108,24 +110,30 @@ export class AuthenticatedMetadataMutationAuthority {
     rootKey: FileSystemRootKey;
     supportedFeatureBits: FeatureBits;
   }): Promise<AuthenticatedMetadataMutationAuthority> {
-    const pageWriter = await createAuthenticatedSegmentWriter({
-      backend,
-      diagnostics,
-      fileSystemId,
-      randomSource,
-      rootKey,
-      segmentClass: "metadata",
-    });
-    return new AuthenticatedMetadataMutationAuthority({
-      backend,
-      diagnostics,
-      fileSystemId,
-      pageWriter,
-      randomSource,
-      relocationIndexRootPhysicalRef,
-      rootKey,
-      supportedFeatureBits,
-    });
+    diagnostics?.recordMutationScopeEvent?.({ observation: { event: "begin" } });
+    try {
+      const pageWriter = await createAuthenticatedSegmentWriter({
+        backend,
+        diagnostics,
+        fileSystemId,
+        randomSource,
+        rootKey,
+        segmentClass: "metadata",
+      });
+      return new AuthenticatedMetadataMutationAuthority({
+        backend,
+        diagnostics,
+        fileSystemId,
+        pageWriter,
+        randomSource,
+        relocationIndexRootPhysicalRef,
+        rootKey,
+        supportedFeatureBits,
+      });
+    } catch (error: unknown) {
+      diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome: "failed" } });
+      throw error;
+    }
   }
 
   state(): AuthenticatedMetadataMutationAuthorityState {
@@ -142,6 +150,14 @@ export class AuthenticatedMetadataMutationAuthority {
     if (this.#operationInProgress) throw new Error("mutation authority operation already in progress");
   }
 
+  #closeMutationDiagnostics({ outcome }: {
+    outcome: "abandoned" | "failed" | "published";
+  }): void {
+    if (!this.#mutationDiagnosticsOpen) return;
+    this.#mutationDiagnosticsOpen = false;
+    this.#diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome } });
+  }
+
   async #createPageWriter(): Promise<AuthenticatedSegmentWriter> {
     return await createAuthenticatedSegmentWriter({
       backend: this.#backend,
@@ -153,7 +169,7 @@ export class AuthenticatedMetadataMutationAuthority {
     });
   }
 
-  async #appendPageWithRollover({ append }: {
+  async #appendMetadataRecordWithRollover({ append }: {
     append: ({ writer }: { writer: AuthenticatedSegmentWriter }) => Promise<HomeRecordReference>;
   }): Promise<HomeRecordReference> {
     try {
@@ -203,7 +219,7 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#requireActive({ operation: "write a File Extent page" });
     this.#operationInProgress = true;
     try {
-      return await this.#appendPageWithRollover({
+      return await this.#appendMetadataRecordWithRollover({
         append: async ({ writer }) => await appendAuthenticatedFileExtentPage({ isRoot, page, writer }),
       });
     } finally {
@@ -239,7 +255,7 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#requireActive({ operation: "write an Inode Table page" });
     this.#operationInProgress = true;
     try {
-      return await this.#appendPageWithRollover({
+      return await this.#appendMetadataRecordWithRollover({
         append: async ({ writer }) => await appendAuthenticatedInodeTablePage({
           isRoot,
           page,
@@ -279,7 +295,7 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#requireActive({ operation: "write a Directory page" });
     this.#operationInProgress = true;
     try {
-      return await this.#appendPageWithRollover({
+      return await this.#appendMetadataRecordWithRollover({
         append: async ({ writer }) => await appendAuthenticatedDirectoryPage({
           isRoot,
           page,
@@ -306,26 +322,43 @@ export class AuthenticatedMetadataMutationAuthority {
   }): Promise<PublishedPreparedMutationCommit> {
     this.#requireActive({ operation: "publish the prepared Commit" });
     this.#state = "publishing";
-    this.#pageWriter.abandon();
+    let outcome: "failed" | "published" = "failed";
     try {
-      return await measureAuthenticatedPublicationOperation({
+      const published = await measureAuthenticatedPublicationOperation({
         diagnostics: this.#diagnostics,
-        run: async () => await appendAndPublishPreparedMutationCommit({
-          backend: this.#backend,
-          base,
-          beforeFirstAuthorityWrite,
-          commitPayload,
-          diagnostics: this.#diagnostics,
-          fileSystemId: this.#fileSystemId,
-          firstPublicationSequence,
-          randomSource: this.#randomSource,
-          rootKey: this.#rootKey,
-          secondPublicationSequence,
-          supportedFeatureBits: this.#supportedFeatureBits,
-        }),
+        run: async () => {
+          try {
+            const commitHomeRef = await this.#appendMetadataRecordWithRollover({
+              append: async ({ writer }) => await appendPreparedMutationCommit({
+                commitPayload,
+                writer,
+              }),
+            });
+            this.#pageWriter.abandon();
+            return await publishPreparedMutationCommit({
+              backend: this.#backend,
+              base,
+              beforeFirstAuthorityWrite,
+              commitHomeRef,
+              commitPayload,
+              diagnostics: this.#diagnostics,
+              fileSystemId: this.#fileSystemId,
+              firstPublicationSequence,
+              randomSource: this.#randomSource,
+              rootKey: this.#rootKey,
+              secondPublicationSequence,
+              supportedFeatureBits: this.#supportedFeatureBits,
+            });
+          } finally {
+            this.#pageWriter.abandon();
+          }
+        },
       });
+      outcome = "published";
+      return published;
     } finally {
       this.#state = "closed";
+      this.#closeMutationDiagnostics({ outcome });
     }
   }
 
@@ -356,6 +389,7 @@ export class AuthenticatedMetadataMutationAuthority {
     case "active":
       this.#pageWriter.abandon();
       this.#state = "closed";
+      this.#closeMutationDiagnostics({ outcome: "abandoned" });
       return;
     case "closed": return;
     case "publishing": throw new Error("cannot abandon mutation authority during publication");

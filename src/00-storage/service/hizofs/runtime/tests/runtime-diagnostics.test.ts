@@ -103,14 +103,16 @@ describe("HizoFS runtime diagnostics", () => {
   it("counts bounded publication duplicates and segment-writer lifecycle events", () => {
     const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
     diagnostics.recordPublicationScopeEvent({ event: "begin" });
-    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
-    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
-    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a:0:64", operation: "read_exact" });
-    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a:0:64", operation: "read_exact" });
-    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a:64:64", operation: "read_exact" });
+    diagnostics.recordPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
+    diagnostics.recordPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
+    diagnostics.recordPhysicalAccess({ identity: "segment-a:0:64", operation: "read_exact" });
+    diagnostics.recordPhysicalAccess({ identity: "segment-a:0:64", operation: "read_exact" });
+    diagnostics.recordPhysicalAccess({ identity: "segment-a:64:64", operation: "read_exact" });
     diagnostics.recordPublicationScopeEvent({ event: "end" });
+    diagnostics.recordSegmentWriterEvent({ event: "descriptor_validated", segmentClass: "metadata" });
     diagnostics.recordSegmentWriterEvent({ event: "created", segmentClass: "metadata" });
     diagnostics.recordSegmentWriterEvent({ event: "append_started", segmentClass: "metadata" });
+    diagnostics.recordSegmentWriterEvent({ event: "append_read_back_verified", segmentClass: "metadata" });
     diagnostics.recordSegmentWriterEvent({ event: "trusted_tail_match", segmentClass: "metadata" });
     diagnostics.recordSegmentWriterEvent({ event: "rollover", segmentClass: "metadata" });
 
@@ -120,40 +122,42 @@ describe("HizoFS runtime diagnostics", () => {
       overlapping: 0,
       getFileSize: {
         duplicateOperations: 1,
-        maximumOperationsPerPublication: 2,
+        maximumOperationsPerScope: 2,
         operations: 2,
         observedUniqueTargets: 1,
-        truncatedPublications: 0,
+        truncatedScopes: 0,
         unclassifiedOperations: 0,
       },
       readExact: {
         duplicateOperations: 1,
-        maximumOperationsPerPublication: 3,
+        maximumOperationsPerScope: 3,
         operations: 3,
         observedUniqueTargets: 2,
-        truncatedPublications: 0,
+        truncatedScopes: 0,
         unclassifiedOperations: 0,
       },
     });
     expect(snapshot.segmentWriters.metadata).toEqual({
       appendOperations: 1,
+      appendReadBackVerifications: 1,
       created: 1,
+      descriptorValidations: 1,
       rollovers: 1,
       trustedTailMatches: 1,
       trustedTailMismatches: 0,
     });
 
     diagnostics.resetHighWaterMarks();
-    expect(diagnostics.snapshot().publication.getFileSize.maximumOperationsPerPublication).toBe(0);
-    expect(diagnostics.snapshot().publication.readExact.maximumOperationsPerPublication).toBe(0);
+    expect(diagnostics.snapshot().publication.getFileSize.maximumOperationsPerScope).toBe(0);
+    expect(diagnostics.snapshot().publication.readExact.maximumOperationsPerScope).toBe(0);
   });
 
   it("drops ambiguous publication attribution when publication scopes overlap", () => {
     const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
     diagnostics.recordPublicationScopeEvent({ event: "begin" });
-    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
+    diagnostics.recordPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
     diagnostics.recordPublicationScopeEvent({ event: "begin" });
-    diagnostics.recordPublicationPhysicalAccess({ identity: "segment-b", operation: "get_file_size" });
+    diagnostics.recordPhysicalAccess({ identity: "segment-b", operation: "get_file_size" });
     diagnostics.recordPublicationScopeEvent({ event: "end" });
     diagnostics.recordPublicationScopeEvent({ event: "end" });
 
@@ -162,20 +166,77 @@ describe("HizoFS runtime diagnostics", () => {
       overlapping: 1,
       getFileSize: {
         duplicateOperations: 0,
-        maximumOperationsPerPublication: 0,
+        maximumOperationsPerScope: 0,
         operations: 0,
         observedUniqueTargets: 0,
-        truncatedPublications: 0,
+        truncatedScopes: 0,
         unclassifiedOperations: 0,
       },
       readExact: {
         duplicateOperations: 0,
-        maximumOperationsPerPublication: 0,
+        maximumOperationsPerScope: 0,
         operations: 0,
         observedUniqueTargets: 0,
-        truncatedPublications: 0,
+        truncatedScopes: 0,
         unclassifiedOperations: 0,
       },
+    });
+  });
+
+
+  it("tracks complete mutation access and terminal outcomes without retaining paths", () => {
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+    diagnostics.recordMutationScopeEvent({ observation: { event: "begin" } });
+    diagnostics.recordPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
+    diagnostics.recordPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
+    diagnostics.recordPhysicalAccess({ identity: "segment-a:0:64", operation: "read_exact" });
+    diagnostics.recordMutationScopeEvent({ observation: { event: "end", outcome: "published" } });
+
+    diagnostics.recordMutationScopeEvent({ observation: { event: "begin" } });
+    diagnostics.recordMutationScopeEvent({ observation: { event: "end", outcome: "abandoned" } });
+    diagnostics.recordMutationScopeEvent({ observation: { event: "begin" } });
+    diagnostics.recordMutationScopeEvent({ observation: { event: "end", outcome: "failed" } });
+
+    expect(diagnostics.snapshot().mutation).toEqual({
+      abandoned: 1,
+      completed: 1,
+      failed: 1,
+      overlapping: 0,
+      getFileSize: {
+        duplicateOperations: 1,
+        maximumOperationsPerScope: 2,
+        operations: 2,
+        observedUniqueTargets: 1,
+        truncatedScopes: 0,
+        unclassifiedOperations: 0,
+      },
+      readExact: {
+        duplicateOperations: 0,
+        maximumOperationsPerScope: 1,
+        operations: 1,
+        observedUniqueTargets: 1,
+        truncatedScopes: 0,
+        unclassifiedOperations: 0,
+      },
+    });
+  });
+
+  it("drops ambiguous mutation attribution when mutation scopes overlap", () => {
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+    diagnostics.recordMutationScopeEvent({ observation: { event: "begin" } });
+    diagnostics.recordPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
+    diagnostics.recordMutationScopeEvent({ observation: { event: "begin" } });
+    diagnostics.recordPhysicalAccess({ identity: "segment-b", operation: "get_file_size" });
+    diagnostics.recordMutationScopeEvent({ observation: { event: "end", outcome: "failed" } });
+    diagnostics.recordMutationScopeEvent({ observation: { event: "end", outcome: "failed" } });
+
+    expect(diagnostics.snapshot().mutation).toMatchObject({
+      abandoned: 0,
+      completed: 0,
+      failed: 0,
+      overlapping: 1,
+      getFileSize: { operations: 0 },
+      readExact: { operations: 0 },
     });
   });
 
@@ -210,12 +271,12 @@ describe("HizoFS runtime diagnostics", () => {
     const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
     diagnostics.recordPublicationScopeEvent({ event: "begin" });
     for (let index = 0; index < 4_100; index += 1) {
-      diagnostics.recordPublicationPhysicalAccess({
+      diagnostics.recordPhysicalAccess({
         identity: `target-${index}`,
         operation: "read_exact",
       });
     }
-    diagnostics.recordPublicationPhysicalAccess({
+    diagnostics.recordPhysicalAccess({
       identity: "target-0",
       operation: "read_exact",
     });
@@ -223,10 +284,10 @@ describe("HizoFS runtime diagnostics", () => {
 
     expect(diagnostics.snapshot().publication.readExact).toEqual({
       duplicateOperations: 1,
-      maximumOperationsPerPublication: 4_101,
+      maximumOperationsPerScope: 4_101,
       observedUniqueTargets: 4_096,
       operations: 4_101,
-      truncatedPublications: 1,
+      truncatedScopes: 1,
       unclassifiedOperations: 4,
     });
   });

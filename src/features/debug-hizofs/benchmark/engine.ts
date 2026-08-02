@@ -33,7 +33,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 25 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 26 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -322,7 +322,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 20,
+    schemaVersion: 21,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -1868,7 +1868,7 @@ function unavailableRuntimeDiagnostics({ reason }: {
   reason: string;
 }): HizoFSBenchmarkRuntimeDiagnosticsSnapshot {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     type: 'unavailable',
     reason,
   };
@@ -1895,7 +1895,7 @@ function subtractHizoFSRuntimeDiagnostics({
   default: return before satisfies never;
   }
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [
@@ -1999,14 +1999,28 @@ function subtractHizoFSRuntimeDiagnostics({
         0,
       ),
     },
+    mutation: {
+      abandoned: Math.max(after.mutation.abandoned - before.mutation.abandoned, 0),
+      completed: Math.max(after.mutation.completed - before.mutation.completed, 0),
+      failed: Math.max(after.mutation.failed - before.mutation.failed, 0),
+      overlapping: Math.max(after.mutation.overlapping - before.mutation.overlapping, 0),
+      getFileSize: subtractHizoFSRuntimeScopedAccessDiagnostics({
+        before: before.mutation.getFileSize,
+        after: after.mutation.getFileSize,
+      }),
+      readExact: subtractHizoFSRuntimeScopedAccessDiagnostics({
+        before: before.mutation.readExact,
+        after: after.mutation.readExact,
+      }),
+    },
     publication: {
       completed: Math.max(after.publication.completed - before.publication.completed, 0),
       overlapping: Math.max(after.publication.overlapping - before.publication.overlapping, 0),
-      getFileSize: subtractHizoFSRuntimePublicationAccessDiagnostics({
+      getFileSize: subtractHizoFSRuntimeScopedAccessDiagnostics({
         before: before.publication.getFileSize,
         after: after.publication.getFileSize,
       }),
-      readExact: subtractHizoFSRuntimePublicationAccessDiagnostics({
+      readExact: subtractHizoFSRuntimeScopedAccessDiagnostics({
         before: before.publication.readExact,
         after: after.publication.readExact,
       }),
@@ -2028,7 +2042,7 @@ function subtractHizoFSRuntimeDiagnostics({
   };
 }
 
-function subtractHizoFSRuntimePublicationAccessDiagnostics({
+function subtractHizoFSRuntimeScopedAccessDiagnostics({
   before,
   after,
 }: {
@@ -2037,10 +2051,10 @@ function subtractHizoFSRuntimePublicationAccessDiagnostics({
 }): HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['publication']['getFileSize'] {
   return {
     duplicateOperations: Math.max(after.duplicateOperations - before.duplicateOperations, 0),
-    maximumOperationsPerPublication: after.maximumOperationsPerPublication,
+    maximumOperationsPerScope: after.maximumOperationsPerScope,
     operations: Math.max(after.operations - before.operations, 0),
     observedUniqueTargets: Math.max(after.observedUniqueTargets - before.observedUniqueTargets, 0),
-    truncatedPublications: Math.max(after.truncatedPublications - before.truncatedPublications, 0),
+    truncatedScopes: Math.max(after.truncatedScopes - before.truncatedScopes, 0),
     unclassifiedOperations: Math.max(after.unclassifiedOperations - before.unclassifiedOperations, 0),
   };
 }
@@ -2054,7 +2068,9 @@ function subtractHizoFSRuntimeSegmentWriterDiagnostics({
 }): HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['segmentWriters']['metadata'] {
   return {
     appendOperations: Math.max(after.appendOperations - before.appendOperations, 0),
+    appendReadBackVerifications: Math.max(after.appendReadBackVerifications - before.appendReadBackVerifications, 0),
     created: Math.max(after.created - before.created, 0),
+    descriptorValidations: Math.max(after.descriptorValidations - before.descriptorValidations, 0),
     rollovers: Math.max(after.rollovers - before.rollovers, 0),
     trustedTailMatches: Math.max(after.trustedTailMatches - before.trustedTailMatches, 0),
     trustedTailMismatches: Math.max(after.trustedTailMismatches - before.trustedTailMismatches, 0),
@@ -2319,7 +2335,7 @@ function aggregateHizoFSRuntimeDiagnostics({
     throw new Error('HizoFS measured runtime diagnostics aggregate requires at least one sample');
   }
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [
@@ -2434,13 +2450,25 @@ function aggregateHizoFSRuntimeDiagnostics({
         0,
       ),
     },
+    mutation: {
+      abandoned: measured.reduce((sum, value) => sum + value.mutation.abandoned, 0),
+      completed: measured.reduce((sum, value) => sum + value.mutation.completed, 0),
+      failed: measured.reduce((sum, value) => sum + value.mutation.failed, 0),
+      overlapping: measured.reduce((sum, value) => sum + value.mutation.overlapping, 0),
+      getFileSize: aggregateHizoFSRuntimeScopedAccessDiagnostics({
+        diagnostics: measured.map(value => value.mutation.getFileSize),
+      }),
+      readExact: aggregateHizoFSRuntimeScopedAccessDiagnostics({
+        diagnostics: measured.map(value => value.mutation.readExact),
+      }),
+    },
     publication: {
       completed: measured.reduce((sum, value) => sum + value.publication.completed, 0),
       overlapping: measured.reduce((sum, value) => sum + value.publication.overlapping, 0),
-      getFileSize: aggregateHizoFSRuntimePublicationAccessDiagnostics({
+      getFileSize: aggregateHizoFSRuntimeScopedAccessDiagnostics({
         diagnostics: measured.map(value => value.publication.getFileSize),
       }),
-      readExact: aggregateHizoFSRuntimePublicationAccessDiagnostics({
+      readExact: aggregateHizoFSRuntimeScopedAccessDiagnostics({
         diagnostics: measured.map(value => value.publication.readExact),
       }),
     },
@@ -2458,17 +2486,17 @@ function aggregateHizoFSRuntimeDiagnostics({
   };
 }
 
-function aggregateHizoFSRuntimePublicationAccessDiagnostics({
+function aggregateHizoFSRuntimeScopedAccessDiagnostics({
   diagnostics,
 }: {
   diagnostics: readonly HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['publication']['getFileSize'][];
 }): HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['publication']['getFileSize'] {
   return {
     duplicateOperations: diagnostics.reduce((sum, value) => sum + value.duplicateOperations, 0),
-    maximumOperationsPerPublication: Math.max(...diagnostics.map(value => value.maximumOperationsPerPublication)),
+    maximumOperationsPerScope: Math.max(...diagnostics.map(value => value.maximumOperationsPerScope)),
     operations: diagnostics.reduce((sum, value) => sum + value.operations, 0),
     observedUniqueTargets: diagnostics.reduce((sum, value) => sum + value.observedUniqueTargets, 0),
-    truncatedPublications: diagnostics.reduce((sum, value) => sum + value.truncatedPublications, 0),
+    truncatedScopes: diagnostics.reduce((sum, value) => sum + value.truncatedScopes, 0),
     unclassifiedOperations: diagnostics.reduce((sum, value) => sum + value.unclassifiedOperations, 0),
   };
 }
@@ -2480,7 +2508,9 @@ function aggregateHizoFSRuntimeSegmentWriterDiagnostics({
 }): HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['segmentWriters']['metadata'] {
   return {
     appendOperations: diagnostics.reduce((sum, value) => sum + value.appendOperations, 0),
+    appendReadBackVerifications: diagnostics.reduce((sum, value) => sum + value.appendReadBackVerifications, 0),
     created: diagnostics.reduce((sum, value) => sum + value.created, 0),
+    descriptorValidations: diagnostics.reduce((sum, value) => sum + value.descriptorValidations, 0),
     rollovers: diagnostics.reduce((sum, value) => sum + value.rollovers, 0),
     trustedTailMatches: diagnostics.reduce((sum, value) => sum + value.trustedTailMatches, 0),
     trustedTailMismatches: diagnostics.reduce((sum, value) => sum + value.trustedTailMismatches, 0),

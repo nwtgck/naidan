@@ -41,23 +41,25 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
     currentOperations: 0,
     maximumOperations: 0,
   });
-  const publicationAccess = () => ({
+  const scopedAccess = () => ({
     duplicateOperations: 0,
-    maximumOperationsPerPublication: 0,
+    maximumOperationsPerScope: 0,
     operations: 0,
     observedUniqueTargets: 0,
-    truncatedPublications: 0,
+    truncatedScopes: 0,
     unclassifiedOperations: 0,
   });
   const segmentWriter = () => ({
     appendOperations: 0,
+    appendReadBackVerifications: 0,
     created: 0,
+    descriptorValidations: 0,
     rollovers: 0,
     trustedTailMatches: 0,
     trustedTailMismatches: 0,
   });
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     type: 'measured',
     phases: Object.fromEntries(HIZOFS_BENCHMARK_RUNTIME_PHASES.map(name => [name, phase()])) as HizoFSBenchmarkDiagnostics['runtime'] extends { readonly type: 'measured'; readonly phases: infer T } ? T : never,
     records: {
@@ -75,11 +77,19 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
       activeStateCacheHits: 0, durableReloads: 0, leadershipAcquisitions: 0,
       failovers: 0, localRequests: 0, remoteRequests: 0,
     },
+    mutation: {
+      abandoned: 0,
+      completed: 0,
+      failed: 0,
+      overlapping: 0,
+      getFileSize: scopedAccess(),
+      readExact: scopedAccess(),
+    },
     publication: {
       completed: 0,
       overlapping: 0,
-      getFileSize: publicationAccess(),
-      readExact: publicationAccess(),
+      getFileSize: scopedAccess(),
+      readExact: scopedAccess(),
     },
     segmentWriters: {
       data: segmentWriter(),
@@ -91,8 +101,8 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 20,
-    benchmarkImplementationVersion: 25,
+    schemaVersion: 21,
+    benchmarkImplementationVersion: 26,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -392,7 +402,7 @@ describe('HizoFS benchmark report serialization', () => {
               : {
                 ...hizofs.hizoFSDiagnosticsTotals,
                 runtime: {
-                  schemaVersion: 4 as const,
+                  schemaVersion: 5 as const,
                   type: 'unavailable' as const,
                   reason: 'production counters are unavailable',
                 },
@@ -404,7 +414,7 @@ describe('HizoFS benchmark report serialization', () => {
                 : {
                   ...sample.hizoFSDiagnostics,
                   runtime: {
-                    schemaVersion: 4 as const,
+                    schemaVersion: 5 as const,
                     type: 'unavailable' as const,
                     reason: 'production counters are unavailable',
                   },
@@ -418,7 +428,7 @@ describe('HizoFS benchmark report serialization', () => {
     const parsed = hizoFSBenchmarkReportSchema.parse({ ...report, results });
     expect(parsed.results[0]?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime)
       .toEqual({
-        schemaVersion: 4,
+        schemaVersion: 5,
         type: 'unavailable',
         reason: 'production counters are unavailable',
       });

@@ -119,6 +119,9 @@ describe('production HizoFS benchmark runtime port', () => {
       policy: createBenchmarkRuntimePolicy({ configuration }),
     });
     const entryCount = 16;
+    const beforeOperations = runtime.diagnostics.snapshot();
+    expect(beforeOperations.type).toBe('measured');
+    if (beforeOperations.type !== 'measured') throw new Error('production diagnostics are unavailable');
     for (let index = 0; index < entryCount; index += 1) {
       await runtime.session.root.getFileHandle({ create: true, name: `metadata-${index}` });
     }
@@ -131,6 +134,13 @@ describe('production HizoFS benchmark runtime port', () => {
     // A disabled cache requires more than 400 exact reads for this fixed workload.
     // Keep the bound loose enough to measure structural amplification, not host timing.
     expect(beforeClose.phases.physical_read_exact.operationCount).toBeLessThan(entryCount * 20);
+    expect(beforeClose.mutation.completed - beforeOperations.mutation.completed).toBe(entryCount);
+    expect(beforeClose.segmentWriters.metadata.created - beforeOperations.segmentWriters.metadata.created)
+      .toBe(entryCount);
+    expect(beforeClose.publication.getFileSize.operations - beforeOperations.publication.getFileSize.operations)
+      .toBe(entryCount);
+    expect(beforeClose.publication.readExact.operations - beforeOperations.publication.readExact.operations)
+      .toBe(entryCount);
 
     await runtime.close();
     const afterClose = runtime.diagnostics.snapshot();
@@ -213,23 +223,41 @@ describe('production HizoFS benchmark runtime port', () => {
     if (runtimeDiagnostics?.type !== 'measured') {
       throw new Error('production HizoFS runtime diagnostics are unavailable');
     }
+    expect(runtimeDiagnostics.mutation).toMatchObject({
+      abandoned: 0,
+      completed: 1,
+      failed: 0,
+      overlapping: 0,
+      getFileSize: {
+        duplicateOperations: 3,
+        operations: 6,
+        observedUniqueTargets: 3,
+      },
+      readExact: {
+        duplicateOperations: 0,
+        operations: 6,
+        observedUniqueTargets: 6,
+      },
+    });
     expect(runtimeDiagnostics.publication).toMatchObject({
       completed: 1,
       overlapping: 0,
       getFileSize: {
-        duplicateOperations: 2,
-        operations: 4,
-        observedUniqueTargets: 2,
+        duplicateOperations: 0,
+        operations: 1,
+        observedUniqueTargets: 1,
       },
       readExact: {
         duplicateOperations: 0,
-        operations: 2,
-        observedUniqueTargets: 2,
+        operations: 1,
+        observedUniqueTargets: 1,
       },
     });
     expect(runtimeDiagnostics.segmentWriters.metadata).toMatchObject({
       appendOperations: 2,
-      created: 2,
+      appendReadBackVerifications: 2,
+      created: 1,
+      descriptorValidations: 1,
       trustedTailMatches: 2,
       trustedTailMismatches: 0,
     });

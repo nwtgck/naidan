@@ -24,10 +24,19 @@ export type AuthenticatedPublicationScopeEventObservation = Readonly<{
   event: "begin" | "end";
 }>;
 
+export type AuthenticatedMutationScopeEventObservation =
+  | Readonly<{ event: "begin" }>
+  | Readonly<{
+    event: "end";
+    outcome: "abandoned" | "failed" | "published";
+  }>;
+
 export type AuthenticatedSegmentWriterDiagnosticsObservation = Readonly<{
   event:
+    | "append_read_back_verified"
     | "append_started"
     | "created"
+    | "descriptor_validated"
     | "rollover"
     | "trusted_tail_match"
     | "trusted_tail_mismatch";
@@ -54,6 +63,11 @@ export type AuthenticatedMetadataCacheUsageObservation = Readonly<{
  * attempt without carrying payload or authority bytes.
  */
 export type AuthenticatedStoreDiagnosticsPort = Readonly<{
+  recordMutationScopeEvent?: ({
+    observation,
+  }: {
+    observation: AuthenticatedMutationScopeEventObservation;
+  }) => void;
   recordPublicationScopeEvent?: ({
     event,
   }: AuthenticatedPublicationScopeEventObservation) => void;

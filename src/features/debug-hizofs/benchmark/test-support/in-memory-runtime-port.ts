@@ -320,8 +320,10 @@ function createMutableRuntimeDiagnostics(): MutableRuntimeDiagnostics {
         resource.maximumBytes = resource.currentBytes;
         resource.maximumOperations = resource.currentOperations;
       }
-      snapshot.publication.getFileSize.maximumOperationsPerPublication = 0;
-      snapshot.publication.readExact.maximumOperationsPerPublication = 0;
+      snapshot.mutation.getFileSize.maximumOperationsPerScope = 0;
+      snapshot.mutation.readExact.maximumOperationsPerScope = 0;
+      snapshot.publication.getFileSize.maximumOperationsPerScope = 0;
+      snapshot.publication.readExact.maximumOperationsPerScope = 0;
     },
     incrementCoordinator({ event }) {
       snapshot.coordinator[event] += 1;
@@ -331,6 +333,8 @@ function createMutableRuntimeDiagnostics(): MutableRuntimeDiagnostics {
       snapshot.records.directory_page.writeOperations += count;
       snapshot.records.file_system_commit.writeOperations += count;
       snapshot.phases.commit_publication.operationCount += count;
+      snapshot.mutation.completed += count;
+      snapshot.publication.completed += count;
       snapshot.coordinator.activeStateCacheHits += count;
       snapshot.coordinator.localRequests += count;
     },
@@ -339,7 +343,7 @@ function createMutableRuntimeDiagnostics(): MutableRuntimeDiagnostics {
 
 function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnapshot {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     type: "measured",
     phases: Object.fromEntries(HIZOFS_BENCHMARK_RUNTIME_PHASES.map(key => [
       key,
@@ -378,11 +382,19 @@ function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnaps
       localRequests: 0,
       remoteRequests: 0,
     },
+    mutation: {
+      abandoned: 0,
+      completed: 0,
+      failed: 0,
+      overlapping: 0,
+      getFileSize: createEmptyScopedAccessDiagnostics(),
+      readExact: createEmptyScopedAccessDiagnostics(),
+    },
     publication: {
       completed: 0,
       overlapping: 0,
-      getFileSize: createEmptyPublicationAccessDiagnostics(),
-      readExact: createEmptyPublicationAccessDiagnostics(),
+      getFileSize: createEmptyScopedAccessDiagnostics(),
+      readExact: createEmptyScopedAccessDiagnostics(),
     },
     segmentWriters: {
       data: createEmptySegmentWriterDiagnostics(),
@@ -392,13 +404,13 @@ function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnaps
   };
 }
 
-function createEmptyPublicationAccessDiagnostics(): MutableRuntimeDiagnosticsSnapshot["publication"]["getFileSize"] {
+function createEmptyScopedAccessDiagnostics(): MutableRuntimeDiagnosticsSnapshot["publication"]["getFileSize"] {
   return {
     duplicateOperations: 0,
-    maximumOperationsPerPublication: 0,
+    maximumOperationsPerScope: 0,
     operations: 0,
     observedUniqueTargets: 0,
-    truncatedPublications: 0,
+    truncatedScopes: 0,
     unclassifiedOperations: 0,
   };
 }
@@ -406,7 +418,9 @@ function createEmptyPublicationAccessDiagnostics(): MutableRuntimeDiagnosticsSna
 function createEmptySegmentWriterDiagnostics(): MutableRuntimeDiagnosticsSnapshot["segmentWriters"]["metadata"] {
   return {
     appendOperations: 0,
+    appendReadBackVerifications: 0,
     created: 0,
+    descriptorValidations: 0,
     rollovers: 0,
     trustedTailMatches: 0,
     trustedTailMismatches: 0,

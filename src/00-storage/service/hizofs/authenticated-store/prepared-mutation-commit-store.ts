@@ -17,6 +17,7 @@ import type { AuthenticatedStoreDiagnosticsPort } from "./runtime-diagnostics-po
 import {
   createAuthenticatedSegmentWriter,
   encodedHizoFSRecord,
+  type AuthenticatedSegmentWriter,
 } from "./record-appender";
 import {
   publishMutationSuperblockCopies,
@@ -62,6 +63,84 @@ export class PreparedMutationCommitPublicationError extends Error {
   }
 }
 
+export async function appendPreparedMutationCommit({
+  commitPayload,
+  writer,
+}: {
+  commitPayload: FileSystemCommitPayload;
+  writer: AuthenticatedSegmentWriter;
+}): Promise<HomeRecordReference> {
+  const [appended] = await writer.append({ records: [encodedHizoFSRecord({
+    plaintext: writer.encodeRecordPayload({ encode: () => encodeFileSystemCommitPayload({ payload: commitPayload }) }),
+    recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+  })] });
+  if (appended === undefined) throw new Error("Commit append result is missing");
+  switch (appended.type) {
+  case "home": return appended.homeReference;
+  case "physical_only": throw new Error("File System Commit cannot be a physical-only record");
+  default: return appended satisfies never;
+  }
+}
+
+export async function publishPreparedMutationCommit({
+  backend,
+  base,
+  beforeFirstAuthorityWrite,
+  commitHomeRef,
+  commitPayload,
+  diagnostics,
+  fileSystemId,
+  firstPublicationSequence,
+  randomSource,
+  rootKey,
+  secondPublicationSequence,
+  supportedFeatureBits,
+}: {
+  backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  base: OpenedSuperblockCopies;
+  beforeFirstAuthorityWrite?: () => void;
+  commitHomeRef: HomeRecordReference;
+  commitPayload: FileSystemCommitPayload;
+  diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  fileSystemId: FileSystemId;
+  firstPublicationSequence: PublicationSequence;
+  randomSource?: RandomByteSource;
+  rootKey: FileSystemRootKey;
+  secondPublicationSequence: PublicationSequence;
+  supportedFeatureBits: FeatureBits;
+}): Promise<PublishedPreparedMutationCommit> {
+  const intendedLogicalState: SuperblockLogicalState = {
+    ...base.logicalState,
+    activeCommitHomeRef: commitHomeRef,
+    activeCommitSequence: commitPayload.commitSequence,
+    activeMutationId: commitPayload.mutationId,
+    fallbackCommitHomeRef: base.logicalState.activeCommitHomeRef,
+  };
+  try {
+    const superblock = await publishMutationSuperblockCopies({
+      backend,
+      base,
+      beforeFirstAuthorityWrite,
+      diagnostics,
+      fileSystemId,
+      firstPublicationSequence,
+      logicalState: intendedLogicalState,
+      randomSource,
+      rootKey,
+      secondPublicationSequence,
+      supportedFeatureBits,
+    });
+    return { commitHomeRef, superblock };
+  } catch (cause: unknown) {
+    throw new PreparedMutationCommitPublicationError({
+      cause,
+      commitHomeRef,
+      commitPayload,
+      intendedLogicalState,
+    });
+  }
+}
+
 export async function appendAndPublishPreparedMutationCommit({
   backend,
   base,
@@ -96,49 +175,22 @@ export async function appendAndPublishPreparedMutationCommit({
     segmentClass: "metadata",
   });
   try {
-    const [appended] = await writer.append({ records: [encodedHizoFSRecord({
-      plaintext: writer.encodeRecordPayload({ encode: () => encodeFileSystemCommitPayload({ payload: commitPayload }) }),
-      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
-    })] });
-    if (appended === undefined) throw new Error("Commit append result is missing");
-    const commitHomeRef = (() => {
-      switch (appended.type) {
-      case "home": return appended.homeReference;
-      case "physical_only": throw new Error("File System Commit cannot be a physical-only record");
-      default: return appended satisfies never;
-      }
-    })();
+    const commitHomeRef = await appendPreparedMutationCommit({ commitPayload, writer });
     writer.abandon();
-    const intendedLogicalState: SuperblockLogicalState = {
-      ...base.logicalState,
-      activeCommitHomeRef: commitHomeRef,
-      activeCommitSequence: commitPayload.commitSequence,
-      activeMutationId: commitPayload.mutationId,
-      fallbackCommitHomeRef: base.logicalState.activeCommitHomeRef,
-    };
-    try {
-      const superblock = await publishMutationSuperblockCopies({
-        backend,
-        base,
-        beforeFirstAuthorityWrite,
-        diagnostics,
-        fileSystemId,
-        firstPublicationSequence,
-        logicalState: intendedLogicalState,
-        randomSource,
-        rootKey,
-        secondPublicationSequence,
-        supportedFeatureBits,
-      });
-      return { commitHomeRef, superblock };
-    } catch (cause: unknown) {
-      throw new PreparedMutationCommitPublicationError({
-        cause,
-        commitHomeRef,
-        commitPayload,
-        intendedLogicalState,
-      });
-    }
+    return await publishPreparedMutationCommit({
+      backend,
+      base,
+      beforeFirstAuthorityWrite,
+      commitHomeRef,
+      commitPayload,
+      diagnostics,
+      fileSystemId,
+      firstPublicationSequence,
+      randomSource,
+      rootKey,
+      secondPublicationSequence,
+      supportedFeatureBits,
+    });
   } finally {
     writer.abandon();
   }

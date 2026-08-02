@@ -12,6 +12,8 @@ import {
   createSubvolumeId,
   createUInt64,
   createUnlockSequence,
+  encodeFileExtentPage,
+  encodeFileSystemCommitPayload,
   parseFileSystemId,
   parseSegmentId,
   parseMutationId,
@@ -21,6 +23,11 @@ import { readAuthenticatedDirectoryPage } from "@/00-storage/service/hizofs/auth
 import { readAuthenticatedInodeTablePage } from "@/00-storage/service/hizofs/authenticated-store/inode-table-page-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import { createAuthenticatedMetadataMutationAuthority } from "@/00-storage/service/hizofs/authenticated-store/metadata-mutation-authority";
+import type {
+  AuthenticatedMutationScopeEventObservation,
+  AuthenticatedSegmentWriterDiagnosticsObservation,
+  AuthenticatedStoreDiagnosticsPort,
+} from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
 import {
   createInitialSuperblockCopies,
   openSuperblockCopies,
@@ -30,6 +37,72 @@ import {
   type RandomByteSource,
 } from "@/00-storage/service/hizofs/01-crypto";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
+
+
+class AuthenticatedStoreDiagnosticsProbe implements AuthenticatedStoreDiagnosticsPort {
+  readonly #mutation = { abandoned: 0, completed: 0, failed: 0, overlapping: 0 };
+  readonly #metadataWriter = {
+    appendOperations: 0,
+    appendReadBackVerifications: 0,
+    created: 0,
+    descriptorValidations: 0,
+    rollovers: 0,
+    trustedTailMatches: 0,
+    trustedTailMismatches: 0,
+  };
+
+  recordCodecOperation({ durationMs, format, operation }: Parameters<AuthenticatedStoreDiagnosticsPort["recordCodecOperation"]>[0]): void {
+    void durationMs;
+    void format;
+    void operation;
+  }
+
+  recordCryptoOperation({ durationMs, operation }: Parameters<AuthenticatedStoreDiagnosticsPort["recordCryptoOperation"]>[0]): void {
+    void durationMs;
+    void operation;
+  }
+
+  recordPersistedRecord({ operation, physicalBytes, plaintextBytes, recordKind }: Parameters<AuthenticatedStoreDiagnosticsPort["recordPersistedRecord"]>[0]): void {
+    void operation;
+    void physicalBytes;
+    void plaintextBytes;
+    void recordKind;
+  }
+
+  recordPublicationOperation({ durationMs }: Parameters<AuthenticatedStoreDiagnosticsPort["recordPublicationOperation"]>[0]): void {
+    void durationMs;
+  }
+
+  recordMutationScopeEvent({ observation }: {
+    observation: AuthenticatedMutationScopeEventObservation;
+  }): void {
+    if (observation.event === "begin") return;
+    switch (observation.outcome) {
+    case "abandoned": this.#mutation.abandoned += 1; break;
+    case "failed": this.#mutation.failed += 1; break;
+    case "published": this.#mutation.completed += 1; break;
+    default: observation.outcome satisfies never;
+    }
+  }
+
+  recordSegmentWriterEvent({ event, segmentClass }: AuthenticatedSegmentWriterDiagnosticsObservation): void {
+    if (segmentClass !== "metadata") return;
+    switch (event) {
+    case "append_started": this.#metadataWriter.appendOperations += 1; break;
+    case "append_read_back_verified": this.#metadataWriter.appendReadBackVerifications += 1; break;
+    case "created": this.#metadataWriter.created += 1; break;
+    case "descriptor_validated": this.#metadataWriter.descriptorValidations += 1; break;
+    case "rollover": this.#metadataWriter.rollovers += 1; break;
+    case "trusted_tail_match": this.#metadataWriter.trustedTailMatches += 1; break;
+    case "trusted_tail_mismatch": this.#metadataWriter.trustedTailMismatches += 1; break;
+    default: event satisfies never;
+    }
+  }
+
+  snapshot() {
+    return { mutation: { ...this.#mutation }, segmentWriters: { metadata: { ...this.#metadataWriter } } };
+  }
+}
 
 function deterministicRandomSource(): RandomByteSource {
   let next = 1;
@@ -41,9 +114,40 @@ function deterministicRandomSource(): RandomByteSource {
   };
 }
 
+
+function persistedFrameLength({ plaintextBytes }: { plaintextBytes: number }): number {
+  const unaligned = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader
+    + plaintextBytes
+    + HIZOFS_V1_FORMAT_CONSTANTS.crypto.tagBytes;
+  return Math.ceil(unaligned / 8) * 8;
+}
+
+function exactCapacityFill({
+  bytesAlreadyUsed,
+  commitFrameLength,
+  largeFrameLength,
+  smallFrameLength,
+}: {
+  bytesAlreadyUsed: number;
+  commitFrameLength: number;
+  largeFrameLength: number;
+  smallFrameLength: number;
+}): Readonly<{ largeCount: number; remainingBytes: number; smallCount: number }> {
+  const capacity = HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataSegmentDataBytes;
+  const available = capacity - bytesAlreadyUsed;
+  for (let largeCount = Math.floor(available / largeFrameLength); largeCount >= 0; largeCount -= 1) {
+    const afterLarge = available - largeCount * largeFrameLength;
+    const smallCount = Math.floor(afterLarge / smallFrameLength);
+    const remainingBytes = afterLarge - smallCount * smallFrameLength;
+    if (remainingBytes < commitFrameLength) return { largeCount, remainingBytes, smallCount };
+  }
+  throw new Error("metadata capacity fixture cannot force Commit rollover");
+}
+
 describe("authenticated metadata mutation authority", () => {
   it("provides structurally compatible page and Commit publication ports", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const diagnostics = new AuthenticatedStoreDiagnosticsProbe();
     const randomSource = deterministicRandomSource();
     const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
     const rootKey = generateFileSystemRootKey({ randomSource });
@@ -66,6 +170,7 @@ describe("authenticated metadata mutation authority", () => {
     });
     const authority = await createAuthenticatedMetadataMutationAuthority({
       backend,
+      diagnostics,
       fileSystemId,
       randomSource,
       relocationIndexRootPhysicalRef: null,
@@ -112,7 +217,21 @@ describe("authenticated metadata mutation authority", () => {
     });
 
     expect(authority.state()).toBe("closed");
+    expect(published.commitHomeRef.segmentId).toEqual(newRoot.segmentId);
     expect(published.superblock.logicalState.activeCommitSequence).toBe(2n);
+    expect(diagnostics.snapshot().segmentWriters.metadata).toMatchObject({
+      appendOperations: 3,
+      created: 1,
+      rollovers: 0,
+      trustedTailMatches: 3,
+      trustedTailMismatches: 0,
+    });
+    expect(diagnostics.snapshot().mutation).toMatchObject({
+      abandoned: 0,
+      completed: 1,
+      failed: 0,
+      overlapping: 0,
+    });
     await expect(authority.resolvePublication({
       base,
       intendedLogicalState: published.superblock.logicalState,
@@ -192,13 +311,141 @@ describe("authenticated metadata mutation authority", () => {
     rootKey.destroy();
   });
 
+  it("rolls only the Commit into a fresh metadata segment when shared capacity is exhausted", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const diagnostics = new AuthenticatedStoreDiagnosticsProbe();
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const bootstrap = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
+    const base = await createInitialSuperblockCopies({
+      backend,
+      fileSystemId,
+      logicalState: {
+        activeCommitHomeRef: bootstrap.activeCommitHomeRef,
+        activeCommitSequence: bootstrap.activeCommitSequence,
+        activeMutationId: bootstrap.activeMutationId,
+        fallbackCommitHomeRef: null,
+        minimumUnlockSequence: createUnlockSequence({ value: 1n }),
+        relocationIndexRootPhysicalRef: null,
+        requiredFeatureBits: createFeatureBits({ value: 0n }),
+      },
+      randomSource,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const authority = await createAuthenticatedMetadataMutationAuthority({
+      backend,
+      diagnostics,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const directoryRoot = await authority.writeDirectoryPage({
+      isRoot: true,
+      page: { entries: [], level: 0, type: "leaf" },
+    });
+    const inodeRoot = await authority.writeInodeTablePage({
+      isRoot: true,
+      page: {
+        entries: [{
+          content: { directoryTreeRootHomeRef: directoryRoot, type: "tree" },
+          inodeKind: "directory",
+          inodeNumber: createInodeNumber({ value: 1n }),
+          inodeRevision: createInodeRevision({ value: 2n }),
+          timestamps: { createdAt: null, modifiedAt: null },
+        }],
+        level: 0,
+        type: "leaf",
+      },
+    });
+    const commitPayload = createFileSystemCommitPayload({ payload: {
+      commitSequence: createCommitSequence({ value: 2n }),
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(29) }),
+      nestedSubvolumeTableRootHomeRef: null,
+      nextInodeNumber: createInodeNumber({ value: 2n }),
+      nextSubvolumeId: createSubvolumeId({ value: 2n }),
+      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      rootInodeTableRootHomeRef: inodeRoot,
+    } });
+    const fileDataHomeRef = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 64n }),
+      frameLength: 96,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data,
+      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(211) }),
+    } });
+    const extentPage = ({ entryCount }: { entryCount: number }) => ({
+      entries: Array.from({ length: entryCount }, (_, index) => ({
+        byteLength: 1,
+        dataOffset: 0,
+        fileDataHomeRef,
+        fileOffset: createFileOffset({ value: BigInt(index * 2) }),
+      })),
+      level: 0 as const,
+      type: "leaf" as const,
+    });
+    const largePage = extentPage({ entryCount: 1_024 });
+    const smallPage = extentPage({ entryCount: 1 });
+    const fill = exactCapacityFill({
+      bytesAlreadyUsed: directoryRoot.frameLength + inodeRoot.frameLength,
+      commitFrameLength: persistedFrameLength({
+        plaintextBytes: encodeFileSystemCommitPayload({ payload: commitPayload }).byteLength,
+      }),
+      largeFrameLength: persistedFrameLength({
+        plaintextBytes: encodeFileExtentPage({ isRoot: false, page: largePage }).byteLength,
+      }),
+      smallFrameLength: persistedFrameLength({
+        plaintextBytes: encodeFileExtentPage({ isRoot: false, page: smallPage }).byteLength,
+      }),
+    });
+    expect(fill.remainingBytes).toBeLessThan(persistedFrameLength({
+      plaintextBytes: encodeFileSystemCommitPayload({ payload: commitPayload }).byteLength,
+    }));
+    for (let index = 0; index < fill.largeCount; index += 1) {
+      await authority.writeFileExtentPage({ isRoot: false, page: largePage });
+    }
+    for (let index = 0; index < fill.smallCount; index += 1) {
+      await authority.writeFileExtentPage({ isRoot: false, page: smallPage });
+    }
+    expect(diagnostics.snapshot().segmentWriters.metadata).toMatchObject({
+      created: 1,
+      rollovers: 0,
+    });
+
+    const published = await authority.publish({
+      base,
+      beforeFirstAuthorityWrite: () => undefined,
+      commitPayload,
+      firstPublicationSequence: createPublicationSequence({ value: 3n }),
+      secondPublicationSequence: createPublicationSequence({ value: 4n }),
+    });
+
+    expect(published.commitHomeRef.segmentId).not.toEqual(inodeRoot.segmentId);
+    expect(diagnostics.snapshot().segmentWriters.metadata).toMatchObject({
+      created: 2,
+      rollovers: 1,
+      trustedTailMismatches: 0,
+    });
+    await expect(openSuperblockCopies({
+      backend,
+      fileSystemId,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    })).resolves.toMatchObject({ logicalState: { activeCommitSequence: 2n } });
+    rootKey.destroy();
+  });
+
   it("becomes terminal after explicit abandon", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const diagnostics = new AuthenticatedStoreDiagnosticsProbe();
     const randomSource = deterministicRandomSource();
     const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
     const rootKey = generateFileSystemRootKey({ randomSource });
     const authority = await createAuthenticatedMetadataMutationAuthority({
       backend,
+      diagnostics,
       fileSystemId,
       randomSource,
       relocationIndexRootPhysicalRef: null,
@@ -211,6 +458,12 @@ describe("authenticated metadata mutation authority", () => {
       isRoot: true,
       page: { entries: [], level: 0, type: "leaf" },
     })).rejects.toThrow("closed");
+    expect(diagnostics.snapshot().mutation).toMatchObject({
+      abandoned: 1,
+      completed: 0,
+      failed: 0,
+      overlapping: 0,
+    });
     rootKey.destroy();
   });
 });

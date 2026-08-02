@@ -50,6 +50,7 @@ import {
   type RandomByteSource,
 } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
+import { promiseAllKeyed } from "@/utils/promise";
 import { canonicalContainerPath, parentContainerDirectory } from "@/00-storage/service/hizofs/physical-store/paths";
 import { authenticatedStoreError } from "./errors";
 import { runAndCloseAuthenticatedFile } from "./file-operation";
@@ -182,15 +183,13 @@ async function readSuperblockSnapshot({ backend, diagnostics, fileSystemId, root
 }): Promise<Readonly<{
   copies: readonly AuthenticatedSuperblockCopy[];
   opened: OpenedSuperblockCopies;
-  results: readonly SuperblockCopyReadResult[];
+  results: readonly [SuperblockCopyReadResult, SuperblockCopyReadResult];
 }>> {
-  const results = await Promise.all(([0, 1] as const).map(async copy => await readSuperblockCopy({
-    backend,
-    copy,
-    diagnostics,
-    fileSystemId,
-    rootKey,
-  })));
+  const { first, second } = await promiseAllKeyed({
+    first: readSuperblockCopy({ backend, copy: 0, diagnostics, fileSystemId, rootKey }),
+    second: readSuperblockCopy({ backend, copy: 1, diagnostics, fileSystemId, rootKey }),
+  });
+  const results = [first, second] as const;
   const selection = selectSuperblockAuthority({ results, supportedFeatureBits });
   switch (selection.type) {
   case "no_authenticated_copy":

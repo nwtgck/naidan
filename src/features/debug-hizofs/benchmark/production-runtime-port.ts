@@ -20,6 +20,7 @@ function measuredRuntimeDiagnostics({ resetHighWaterMarks, snapshotRuntimeDiagno
         caches,
         coordinator,
         phases,
+        mutation,
         publication,
         records,
         resources,
@@ -28,11 +29,12 @@ function measuredRuntimeDiagnostics({ resetHighWaterMarks, snapshotRuntimeDiagno
       } = snapshot;
       unhandledSnapshot satisfies Record<PropertyKey, never>;
       return {
-        schemaVersion: 4,
+        schemaVersion: 5,
         type: 'measured',
         caches,
         coordinator,
         phases,
+        mutation,
         publication,
         records,
         resources,

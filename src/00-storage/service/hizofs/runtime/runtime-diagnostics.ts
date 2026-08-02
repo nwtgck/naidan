@@ -11,6 +11,7 @@ import type {
   AuthenticatedCodecDiagnosticsObservation,
   AuthenticatedCryptoDiagnosticsObservation,
   AuthenticatedMetadataCacheEventObservation,
+  AuthenticatedMutationScopeEventObservation,
   AuthenticatedPublicationDiagnosticsObservation,
   AuthenticatedPublicationScopeEventObservation,
   AuthenticatedRecordDiagnosticsObservation,
@@ -104,25 +105,36 @@ export type HizoFSRuntimeResourceCounter = Readonly<{
   maximumOperations: number;
 }>;
 
-export type HizoFSRuntimePublicationAccessCounter = Readonly<{
+export type HizoFSRuntimeScopedAccessCounter = Readonly<{
   duplicateOperations: number;
-  maximumOperationsPerPublication: number;
+  maximumOperationsPerScope: number;
   operations: number;
   observedUniqueTargets: number;
-  truncatedPublications: number;
+  truncatedScopes: number;
   unclassifiedOperations: number;
+}>;
+
+export type HizoFSRuntimeMutationCounter = Readonly<{
+  abandoned: number;
+  completed: number;
+  failed: number;
+  overlapping: number;
+  getFileSize: HizoFSRuntimeScopedAccessCounter;
+  readExact: HizoFSRuntimeScopedAccessCounter;
 }>;
 
 export type HizoFSRuntimePublicationCounter = Readonly<{
   completed: number;
   overlapping: number;
-  getFileSize: HizoFSRuntimePublicationAccessCounter;
-  readExact: HizoFSRuntimePublicationAccessCounter;
+  getFileSize: HizoFSRuntimeScopedAccessCounter;
+  readExact: HizoFSRuntimeScopedAccessCounter;
 }>;
 
 export type HizoFSRuntimeSegmentWriterCounter = Readonly<{
   appendOperations: number;
+  appendReadBackVerifications: number;
   created: number;
+  descriptorValidations: number;
   rollovers: number;
   trustedTailMatches: number;
   trustedTailMismatches: number;
@@ -134,6 +146,7 @@ export type HizoFSRuntimeDiagnosticsSnapshot = Readonly<{
   caches: Readonly<Record<HizoFSRuntimeDiagnosticCache, HizoFSRuntimeCacheCounter>>;
   resources: Readonly<Record<HizoFSRuntimeDiagnosticResource, HizoFSRuntimeResourceCounter>>;
   coordinator: Readonly<Record<HizoFSRuntimeDiagnosticCoordinatorCounter, number>>;
+  mutation: HizoFSRuntimeMutationCounter;
   publication: HizoFSRuntimePublicationCounter;
   segmentWriters: Readonly<Record<"data" | "metadata" | "relocation", HizoFSRuntimeSegmentWriterCounter>>;
 }>;
@@ -164,28 +177,38 @@ type MutableResourceCounter = {
   currentOperations: number;
   maximumOperations: number;
 };
-type MutablePublicationAccessCounter = {
+type MutableScopedAccessCounter = {
   duplicateOperations: number;
-  maximumOperationsPerPublication: number;
+  maximumOperationsPerScope: number;
   operations: number;
   observedUniqueTargets: number;
-  truncatedPublications: number;
+  truncatedScopes: number;
   unclassifiedOperations: number;
+};
+type MutableMutationCounter = {
+  abandoned: number;
+  completed: number;
+  failed: number;
+  overlapping: number;
+  getFileSize: MutableScopedAccessCounter;
+  readExact: MutableScopedAccessCounter;
 };
 type MutablePublicationCounter = {
   completed: number;
   overlapping: number;
-  getFileSize: MutablePublicationAccessCounter;
-  readExact: MutablePublicationAccessCounter;
+  getFileSize: MutableScopedAccessCounter;
+  readExact: MutableScopedAccessCounter;
 };
 type MutableSegmentWriterCounter = {
   appendOperations: number;
+  appendReadBackVerifications: number;
   created: number;
+  descriptorValidations: number;
   rollovers: number;
   trustedTailMatches: number;
   trustedTailMismatches: number;
 };
-type ActivePublicationScope = {
+type ActivePhysicalAccessScope = {
   getFileSizeDuplicateOperations: number;
   getFileSizeOperations: number;
   getFileSizeTargets: Set<string>;
@@ -196,7 +219,7 @@ type ActivePublicationScope = {
   readExactUnclassifiedOperations: number;
 };
 
-const MAXIMUM_PUBLICATION_DIAGNOSTIC_TARGETS_PER_OPERATION = 4_096;
+const MAXIMUM_SCOPED_DIAGNOSTIC_TARGETS_PER_OPERATION = 4_096;
 
 function finiteNonNegative({ label, value }: { label: string; value: number }): number {
   if (!Number.isFinite(value) || value < 0) throw new RangeError(`${label} must be finite and non-negative`);
@@ -261,14 +284,25 @@ function coordinatorCounters(): Record<HizoFSRuntimeDiagnosticCoordinatorCounter
   ) as Record<HizoFSRuntimeDiagnosticCoordinatorCounter, number>;
 }
 
-function publicationAccessCounter(): MutablePublicationAccessCounter {
+function scopedAccessCounter(): MutableScopedAccessCounter {
   return {
     duplicateOperations: 0,
-    maximumOperationsPerPublication: 0,
+    maximumOperationsPerScope: 0,
     operations: 0,
     observedUniqueTargets: 0,
-    truncatedPublications: 0,
+    truncatedScopes: 0,
     unclassifiedOperations: 0,
+  };
+}
+
+function mutationCounter(): MutableMutationCounter {
+  return {
+    abandoned: 0,
+    completed: 0,
+    failed: 0,
+    overlapping: 0,
+    getFileSize: scopedAccessCounter(),
+    readExact: scopedAccessCounter(),
   };
 }
 
@@ -276,15 +310,30 @@ function publicationCounter(): MutablePublicationCounter {
   return {
     completed: 0,
     overlapping: 0,
-    getFileSize: publicationAccessCounter(),
-    readExact: publicationAccessCounter(),
+    getFileSize: scopedAccessCounter(),
+    readExact: scopedAccessCounter(),
+  };
+}
+
+function physicalAccessScope(): ActivePhysicalAccessScope {
+  return {
+    getFileSizeDuplicateOperations: 0,
+    getFileSizeOperations: 0,
+    getFileSizeTargets: new Set<string>(),
+    getFileSizeUnclassifiedOperations: 0,
+    readExactDuplicateOperations: 0,
+    readExactOperations: 0,
+    readExactTargets: new Set<string>(),
+    readExactUnclassifiedOperations: 0,
   };
 }
 
 function segmentWriterCounters(): Record<"data" | "metadata" | "relocation", MutableSegmentWriterCounter> {
   return Object.fromEntries((["data", "metadata", "relocation"] as const).map(segmentClass => [segmentClass, {
     appendOperations: 0,
+    appendReadBackVerifications: 0,
     created: 0,
+    descriptorValidations: 0,
     rollovers: 0,
     trustedTailMatches: 0,
     trustedTailMismatches: 0,
@@ -333,10 +382,13 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
   readonly #caches = cacheCounters();
   readonly #resources = resourceCounters();
   readonly #coordinator = coordinatorCounters();
+  readonly #mutation = mutationCounter();
   readonly #publication = publicationCounter();
   readonly #segmentWriters = segmentWriterCounters();
+  #activeMutationDepth = 0;
+  #activeMutationScope: ActivePhysicalAccessScope | undefined;
   #activePublicationDepth = 0;
-  #activePublicationScope: ActivePublicationScope | undefined;
+  #activePublicationScope: ActivePhysicalAccessScope | undefined;
 
   recordPhase({ durationMs, phase }: { durationMs: number; phase: HizoFSRuntimeDiagnosticPhase }): void {
     const counter = this.#phases[phase];
@@ -448,6 +500,57 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     }
   }
 
+  recordMutationScopeEvent({
+    observation,
+  }: {
+    observation: AuthenticatedMutationScopeEventObservation;
+  }): void {
+    switch (observation.event) {
+    case "begin": {
+      this.#activeMutationDepth = incrementSafe({
+        current: this.#activeMutationDepth,
+        delta: 1,
+        label: "active mutation diagnostic depth",
+      });
+      if (this.#activeMutationDepth === 1) {
+        this.#activeMutationScope = physicalAccessScope();
+      } else {
+        this.#mutation.overlapping = incrementSafe({
+          current: this.#mutation.overlapping,
+          delta: 1,
+          label: "overlapping mutation diagnostics",
+        });
+        this.#activeMutationScope = undefined;
+      }
+      return;
+    }
+    case "end": {
+      if (this.#activeMutationDepth === 0) return;
+      this.#activeMutationDepth -= 1;
+      if (this.#activeMutationDepth !== 0) return;
+      const scope = this.#activeMutationScope;
+      this.#activeMutationScope = undefined;
+      if (scope === undefined) return;
+      switch (observation.outcome) {
+      case "abandoned":
+        this.#mutation.abandoned = incrementSafe({ current: this.#mutation.abandoned, delta: 1, label: "abandoned mutation diagnostics" });
+        break;
+      case "failed":
+        this.#mutation.failed = incrementSafe({ current: this.#mutation.failed, delta: 1, label: "failed mutation diagnostics" });
+        break;
+      case "published":
+        this.#mutation.completed = incrementSafe({ current: this.#mutation.completed, delta: 1, label: "completed mutation diagnostics" });
+        break;
+      default: observation.outcome satisfies never;
+      }
+      this.#finalizeScopedPhysicalAccess({ counter: this.#mutation.getFileSize, operation: "get_file_size", scope });
+      this.#finalizeScopedPhysicalAccess({ counter: this.#mutation.readExact, operation: "read_exact", scope });
+      return;
+    }
+    default: observation satisfies never;
+    }
+  }
+
   recordPublicationScopeEvent({ event }: AuthenticatedPublicationScopeEventObservation): void {
     switch (event) {
     case "begin": {
@@ -457,16 +560,7 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
         label: "active publication diagnostic depth",
       });
       if (this.#activePublicationDepth === 1) {
-        this.#activePublicationScope = {
-          getFileSizeDuplicateOperations: 0,
-          getFileSizeOperations: 0,
-          getFileSizeTargets: new Set<string>(),
-          getFileSizeUnclassifiedOperations: 0,
-          readExactDuplicateOperations: 0,
-          readExactOperations: 0,
-          readExactTargets: new Set<string>(),
-          readExactUnclassifiedOperations: 0,
-        };
+        this.#activePublicationScope = physicalAccessScope();
       } else {
         this.#publication.overlapping = incrementSafe({
           current: this.#publication.overlapping,
@@ -489,89 +583,50 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
         delta: 1,
         label: "completed publication diagnostics",
       });
-      this.#finalizePublicationAccess({
-        counter: this.#publication.getFileSize,
-        duplicateOperations: scope.getFileSizeDuplicateOperations,
-        operations: scope.getFileSizeOperations,
-        observedUniqueTargets: scope.getFileSizeTargets.size,
-        unclassifiedOperations: scope.getFileSizeUnclassifiedOperations,
-      });
-      this.#finalizePublicationAccess({
-        counter: this.#publication.readExact,
-        duplicateOperations: scope.readExactDuplicateOperations,
-        operations: scope.readExactOperations,
-        observedUniqueTargets: scope.readExactTargets.size,
-        unclassifiedOperations: scope.readExactUnclassifiedOperations,
-      });
+      this.#finalizeScopedPhysicalAccess({ counter: this.#publication.getFileSize, operation: "get_file_size", scope });
+      this.#finalizeScopedPhysicalAccess({ counter: this.#publication.readExact, operation: "read_exact", scope });
       return;
     }
     default: event satisfies never;
     }
   }
 
-  recordPublicationPhysicalAccess({ identity, operation }: {
+  recordPhysicalAccess({ identity, operation }: {
     identity: string;
     operation: "get_file_size" | "read_exact";
   }): void {
-    const scope = this.#activePublicationScope;
-    if (this.#activePublicationDepth !== 1 || scope === undefined) return;
-    switch (operation) {
-    case "get_file_size":
-      scope.getFileSizeOperations = incrementSafe({
-        current: scope.getFileSizeOperations,
-        delta: 1,
-        label: "publication get-file-size operations",
+    if (this.#activeMutationDepth === 1 && this.#activeMutationScope !== undefined) {
+      this.#recordScopedPhysicalAccess({
+        identity,
+        operation,
+        scope: this.#activeMutationScope,
+        scopeLabel: "mutation",
       });
-      if (scope.getFileSizeTargets.has(identity)) {
-        scope.getFileSizeDuplicateOperations = incrementSafe({
-          current: scope.getFileSizeDuplicateOperations,
-          delta: 1,
-          label: "publication get-file-size duplicate operations",
-        });
-      } else if (scope.getFileSizeTargets.size < MAXIMUM_PUBLICATION_DIAGNOSTIC_TARGETS_PER_OPERATION) {
-        scope.getFileSizeTargets.add(identity);
-      } else {
-        scope.getFileSizeUnclassifiedOperations = incrementSafe({
-          current: scope.getFileSizeUnclassifiedOperations,
-          delta: 1,
-          label: "publication get-file-size unclassified operations",
-        });
-      }
-      return;
-    case "read_exact":
-      scope.readExactOperations = incrementSafe({
-        current: scope.readExactOperations,
-        delta: 1,
-        label: "publication read-exact operations",
+    }
+    if (this.#activePublicationDepth === 1 && this.#activePublicationScope !== undefined) {
+      this.#recordScopedPhysicalAccess({
+        identity,
+        operation,
+        scope: this.#activePublicationScope,
+        scopeLabel: "publication",
       });
-      if (scope.readExactTargets.has(identity)) {
-        scope.readExactDuplicateOperations = incrementSafe({
-          current: scope.readExactDuplicateOperations,
-          delta: 1,
-          label: "publication read-exact duplicate operations",
-        });
-      } else if (scope.readExactTargets.size < MAXIMUM_PUBLICATION_DIAGNOSTIC_TARGETS_PER_OPERATION) {
-        scope.readExactTargets.add(identity);
-      } else {
-        scope.readExactUnclassifiedOperations = incrementSafe({
-          current: scope.readExactUnclassifiedOperations,
-          delta: 1,
-          label: "publication read-exact unclassified operations",
-        });
-      }
-      return;
-    default: operation satisfies never;
     }
   }
 
   recordSegmentWriterEvent({ event, segmentClass }: AuthenticatedSegmentWriterDiagnosticsObservation): void {
     const counter = this.#segmentWriters[segmentClass];
     switch (event) {
+    case "append_read_back_verified":
+      counter.appendReadBackVerifications = incrementSafe({ current: counter.appendReadBackVerifications, delta: 1, label: `${segmentClass} append read-back verifications` });
+      return;
     case "append_started":
       counter.appendOperations = incrementSafe({ current: counter.appendOperations, delta: 1, label: `${segmentClass} append operations` });
       return;
     case "created":
       counter.created = incrementSafe({ current: counter.created, delta: 1, label: `${segmentClass} writer creations` });
+      return;
+    case "descriptor_validated":
+      counter.descriptorValidations = incrementSafe({ current: counter.descriptorValidations, delta: 1, label: `${segmentClass} descriptor validations` });
       return;
     case "rollover":
       counter.rollovers = incrementSafe({ current: counter.rollovers, delta: 1, label: `${segmentClass} writer rollovers` });
@@ -586,8 +641,67 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     }
   }
 
-  #finalizePublicationAccess({ counter, duplicateOperations, operations, observedUniqueTargets, unclassifiedOperations }: {
-    counter: MutablePublicationAccessCounter;
+  #recordScopedPhysicalAccess({ identity, operation, scope, scopeLabel }: {
+    identity: string;
+    operation: "get_file_size" | "read_exact";
+    scope: ActivePhysicalAccessScope;
+    scopeLabel: "mutation" | "publication";
+  }): void {
+    switch (operation) {
+    case "get_file_size":
+      scope.getFileSizeOperations = incrementSafe({ current: scope.getFileSizeOperations, delta: 1, label: `${scopeLabel} get-file-size operations` });
+      if (scope.getFileSizeTargets.has(identity)) {
+        scope.getFileSizeDuplicateOperations = incrementSafe({ current: scope.getFileSizeDuplicateOperations, delta: 1, label: `${scopeLabel} get-file-size duplicate operations` });
+      } else if (scope.getFileSizeTargets.size < MAXIMUM_SCOPED_DIAGNOSTIC_TARGETS_PER_OPERATION) {
+        scope.getFileSizeTargets.add(identity);
+      } else {
+        scope.getFileSizeUnclassifiedOperations = incrementSafe({ current: scope.getFileSizeUnclassifiedOperations, delta: 1, label: `${scopeLabel} get-file-size unclassified operations` });
+      }
+      return;
+    case "read_exact":
+      scope.readExactOperations = incrementSafe({ current: scope.readExactOperations, delta: 1, label: `${scopeLabel} read-exact operations` });
+      if (scope.readExactTargets.has(identity)) {
+        scope.readExactDuplicateOperations = incrementSafe({ current: scope.readExactDuplicateOperations, delta: 1, label: `${scopeLabel} read-exact duplicate operations` });
+      } else if (scope.readExactTargets.size < MAXIMUM_SCOPED_DIAGNOSTIC_TARGETS_PER_OPERATION) {
+        scope.readExactTargets.add(identity);
+      } else {
+        scope.readExactUnclassifiedOperations = incrementSafe({ current: scope.readExactUnclassifiedOperations, delta: 1, label: `${scopeLabel} read-exact unclassified operations` });
+      }
+      return;
+    default: operation satisfies never;
+    }
+  }
+
+  #finalizeScopedPhysicalAccess({ counter, operation, scope }: {
+    counter: MutableScopedAccessCounter;
+    operation: "get_file_size" | "read_exact";
+    scope: ActivePhysicalAccessScope;
+  }): void {
+    switch (operation) {
+    case "get_file_size":
+      this.#finalizeScopedAccess({
+        counter,
+        duplicateOperations: scope.getFileSizeDuplicateOperations,
+        operations: scope.getFileSizeOperations,
+        observedUniqueTargets: scope.getFileSizeTargets.size,
+        unclassifiedOperations: scope.getFileSizeUnclassifiedOperations,
+      });
+      return;
+    case "read_exact":
+      this.#finalizeScopedAccess({
+        counter,
+        duplicateOperations: scope.readExactDuplicateOperations,
+        operations: scope.readExactOperations,
+        observedUniqueTargets: scope.readExactTargets.size,
+        unclassifiedOperations: scope.readExactUnclassifiedOperations,
+      });
+      return;
+    default: operation satisfies never;
+    }
+  }
+
+  #finalizeScopedAccess({ counter, duplicateOperations, operations, observedUniqueTargets, unclassifiedOperations }: {
+    counter: MutableScopedAccessCounter;
     duplicateOperations: number;
     operations: number;
     observedUniqueTargets: number;
@@ -606,13 +720,13 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
       label: "publication unclassified access operations",
     });
     if (unclassifiedOperations > 0) {
-      counter.truncatedPublications = incrementSafe({
-        current: counter.truncatedPublications,
+      counter.truncatedScopes = incrementSafe({
+        current: counter.truncatedScopes,
         delta: 1,
         label: "publication truncated access diagnostics",
       });
     }
-    counter.maximumOperationsPerPublication = Math.max(counter.maximumOperationsPerPublication, operations);
+    counter.maximumOperationsPerScope = Math.max(counter.maximumOperationsPerScope, operations);
   }
 
   recordCacheEvent({ cache, event }: {
@@ -682,8 +796,10 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
       counter.maximumBytes = counter.currentBytes;
       counter.maximumOperations = counter.currentOperations;
     }
-    this.#publication.getFileSize.maximumOperationsPerPublication = 0;
-    this.#publication.readExact.maximumOperationsPerPublication = 0;
+    this.#mutation.getFileSize.maximumOperationsPerScope = 0;
+    this.#mutation.readExact.maximumOperationsPerScope = 0;
+    this.#publication.getFileSize.maximumOperationsPerScope = 0;
+    this.#publication.readExact.maximumOperationsPerScope = 0;
   }
 
   snapshot(): HizoFSRuntimeDiagnosticsSnapshot {
@@ -693,6 +809,7 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
       caches: this.#caches,
       resources: this.#resources,
       coordinator: this.#coordinator,
+      mutation: this.#mutation,
       publication: this.#publication,
       segmentWriters: this.#segmentWriters,
     });

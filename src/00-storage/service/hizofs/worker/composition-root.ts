@@ -3215,7 +3215,7 @@ export async function openHizoFSWorkerMountGrant({ grant, resolveBackingDirector
 type PhysicalDiagnosticPhase = Extract<HizoFSRuntimeDiagnosticPhase, `physical_${string}`>;
 type RuntimePhaseRecorder = Pick<
   HizoFSRuntimeDiagnosticsAccumulator,
-  "recordPhase" | "recordPublicationPhysicalAccess"
+  "recordPhase" | "recordPhysicalAccess"
 >;
 type MonotonicClock = () => number;
 
@@ -3276,7 +3276,7 @@ function instrumentHizoFSWritableBackend<AuthenticatedPhysicalBytes extends Uint
       phase: "physical_create_file_exclusive",
     }),
     getFileSize: async ({ path }) => {
-      diagnostics.recordPublicationPhysicalAccess({
+      diagnostics.recordPhysicalAccess({
         identity: String(path),
         operation: "get_file_size",
       });
@@ -3294,7 +3294,7 @@ function instrumentHizoFSWritableBackend<AuthenticatedPhysicalBytes extends Uint
       phase: "physical_open_file_for_update",
     }),
     readExact: async ({ length, offset, path }) => {
-      diagnostics.recordPublicationPhysicalAccess({
+      diagnostics.recordPhysicalAccess({
         identity: `${String(path)}\u0000${offset.toString()}\u0000${length.toString()}`,
         operation: "read_exact",
       });

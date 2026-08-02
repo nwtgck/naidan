@@ -177,25 +177,27 @@ const hizoFSRuntimeResourceCounterSchema = z.object({
   maximumOperations: z.number().int().nonnegative(),
 }).strict();
 
-const hizoFSRuntimePublicationAccessCounterSchema = z.object({
+const hizoFSRuntimeScopedAccessCounterSchema = z.object({
   duplicateOperations: z.number().int().nonnegative(),
-  maximumOperationsPerPublication: z.number().int().nonnegative(),
+  maximumOperationsPerScope: z.number().int().nonnegative(),
   operations: z.number().int().nonnegative(),
   observedUniqueTargets: z.number().int().nonnegative(),
-  truncatedPublications: z.number().int().nonnegative(),
+  truncatedScopes: z.number().int().nonnegative(),
   unclassifiedOperations: z.number().int().nonnegative(),
 }).strict();
 
 const hizoFSRuntimeSegmentWriterCounterSchema = z.object({
   appendOperations: z.number().int().nonnegative(),
+  appendReadBackVerifications: z.number().int().nonnegative(),
   created: z.number().int().nonnegative(),
+  descriptorValidations: z.number().int().nonnegative(),
   rollovers: z.number().int().nonnegative(),
   trustedTailMatches: z.number().int().nonnegative(),
   trustedTailMismatches: z.number().int().nonnegative(),
 }).strict();
 
 const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(4),
+  schemaVersion: z.literal(5),
   type: z.literal('measured'),
   phases: z.object(Object.fromEntries(
     HIZOFS_RUNTIME_DIAGNOSTIC_PHASES.map(phase => [
@@ -235,11 +237,19 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
     localRequests: z.number().int().nonnegative(),
     remoteRequests: z.number().int().nonnegative(),
   }).strict(),
+  mutation: z.object({
+    abandoned: z.number().int().nonnegative(),
+    completed: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    overlapping: z.number().int().nonnegative(),
+    getFileSize: hizoFSRuntimeScopedAccessCounterSchema,
+    readExact: hizoFSRuntimeScopedAccessCounterSchema,
+  }).strict(),
   publication: z.object({
     completed: z.number().int().nonnegative(),
     overlapping: z.number().int().nonnegative(),
-    getFileSize: hizoFSRuntimePublicationAccessCounterSchema,
-    readExact: hizoFSRuntimePublicationAccessCounterSchema,
+    getFileSize: hizoFSRuntimeScopedAccessCounterSchema,
+    readExact: hizoFSRuntimeScopedAccessCounterSchema,
   }).strict(),
   segmentWriters: z.object({
     data: hizoFSRuntimeSegmentWriterCounterSchema,
@@ -249,7 +259,7 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
 }).strict();
 
 const hizoFSUnavailableRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(4),
+  schemaVersion: z.literal(5),
   type: z.literal('unavailable'),
   reason: z.string().min(1),
 }).strict();
@@ -437,8 +447,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(20),
-  benchmarkImplementationVersion: z.literal(25),
+  schemaVersion: z.literal(21),
+  benchmarkImplementationVersion: z.literal(26),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
