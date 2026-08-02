@@ -41,8 +41,10 @@ import { authenticatedStoreError } from "./errors";
 import { runAndCloseAuthenticatedFile } from "./file-operation";
 import { authenticatedHizoFSPhysicalBytes, type AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import {
+  getFileSizeWithAuthenticatedReason,
   measureAuthenticatedCodecOperation,
   measureAuthenticatedCryptoOperation,
+  readExactWithAuthenticatedReason,
   type AuthenticatedStoreDiagnosticsPort,
 } from "./runtime-diagnostics-port";
 import { authenticatedSegmentPath, segmentIdIsUsedAcrossClasses } from "./segment-location";
@@ -481,7 +483,12 @@ export class AuthenticatedSegmentWriter {
         message: "segment writer was abandoned during append preparation",
         state: this.#state,
       });
-      const observedSize = await this.#backend.getFileSize({ path: this.#path });
+      const observedSize = await getFileSizeWithAuthenticatedReason({
+        backend: this.#backend,
+        diagnostics: this.#diagnostics,
+        path: this.#path,
+        reason: "trusted_tail",
+      });
       requireWriterStillActive({
         message: "segment writer was abandoned while checking its trusted append tail",
         state: this.#state,
@@ -517,7 +524,14 @@ export class AuthenticatedSegmentWriter {
         },
         operationLabel: "record append",
       });
-      const readBack = await this.#backend.readExact({ length: batch.byteLength, offset: this.#nextOffset, path: this.#path });
+      const readBack = await readExactWithAuthenticatedReason({
+        backend: this.#backend,
+        diagnostics: this.#diagnostics,
+        length: batch.byteLength,
+        offset: this.#nextOffset,
+        path: this.#path,
+        reason: "append_read_back",
+      });
       if (!bytesEqual({ left: readBack, right: batch })) {
         throw authenticatedStoreError({ code: "control_plane_corrupt", message: "durable record append read-back differs" });
       }

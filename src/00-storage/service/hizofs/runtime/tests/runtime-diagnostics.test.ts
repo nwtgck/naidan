@@ -190,6 +190,21 @@ describe("HizoFS runtime diagnostics", () => {
     diagnostics.recordPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
     diagnostics.recordPhysicalAccess({ identity: "segment-a", operation: "get_file_size" });
     diagnostics.recordPhysicalAccess({ identity: "segment-a:0:64", operation: "read_exact" });
+    diagnostics.recordPhysicalAccessReason({
+      identity: "segment-a",
+      operation: "get_file_size",
+      reason: "segment_descriptor",
+    });
+    diagnostics.recordPhysicalAccessReason({
+      identity: "segment-a",
+      operation: "get_file_size",
+      reason: "segment_descriptor",
+    });
+    diagnostics.recordPhysicalAccessReason({
+      identity: "segment-a:0:64",
+      operation: "read_exact",
+      reason: "authenticated_record_resolution",
+    });
     diagnostics.recordMutationScopeEvent({ observation: { event: "end", outcome: "published" } });
 
     diagnostics.recordMutationScopeEvent({ observation: { event: "begin" } });
@@ -197,7 +212,7 @@ describe("HizoFS runtime diagnostics", () => {
     diagnostics.recordMutationScopeEvent({ observation: { event: "begin" } });
     diagnostics.recordMutationScopeEvent({ observation: { event: "end", outcome: "failed" } });
 
-    expect(diagnostics.snapshot().mutation).toEqual({
+    expect(diagnostics.snapshot().mutation).toMatchObject({
       abandoned: 1,
       completed: 1,
       failed: 1,
@@ -218,6 +233,20 @@ describe("HizoFS runtime diagnostics", () => {
         truncatedScopes: 0,
         unclassifiedOperations: 0,
       },
+    });
+    expect(diagnostics.snapshot().mutation.physicalAccessReasons.segment_descriptor.getFileSize).toEqual({
+      duplicateOperations: 1,
+      maximumOperationsPerScope: 2,
+      operations: 2,
+      observedUniqueTargets: 1,
+      truncatedScopes: 0,
+      unclassifiedOperations: 0,
+    });
+    expect(diagnostics.snapshot().mutation.physicalAccessReasons.authenticated_record_resolution.readExact).toMatchObject({
+      duplicateOperations: 0,
+      maximumOperationsPerScope: 1,
+      operations: 1,
+      observedUniqueTargets: 1,
     });
   });
 
@@ -254,10 +283,27 @@ describe("HizoFS runtime diagnostics", () => {
       event: "eviction",
       recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
     });
+    diagnostics.recordMetadataCacheEvent({
+      event: "miss",
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page,
+      scope: "mutation",
+    });
+    diagnostics.recordMetadataCacheEvent({
+      event: "hit",
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page,
+      scope: "mutation",
+    });
+    diagnostics.setMetadataCacheUsage({ bytes: 64, entries: 1, scope: "mutation" });
 
     const snapshot = diagnostics.snapshot();
     expect(snapshot.caches.metadata).toMatchObject({
       evictions: 1,
+      hits: 1,
+      misses: 1,
+    });
+    expect(snapshot.caches.mutationMetadata).toMatchObject({
+      currentBytes: 64,
+      currentEntries: 1,
       hits: 1,
       misses: 1,
     });

@@ -18,7 +18,10 @@ import {
   parseSegmentId,
   parseMutationId,
 } from "@/00-storage/service/hizofs/00-format";
-import { createInitialBootstrapSegment } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
+import {
+  createInitialBootstrapSegment,
+  readBootstrapRoot,
+} from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
 import { readAuthenticatedDirectoryPage } from "@/00-storage/service/hizofs/authenticated-store/directory-page-store";
 import { readAuthenticatedInodeTablePage } from "@/00-storage/service/hizofs/authenticated-store/inode-table-page-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
@@ -40,6 +43,15 @@ import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/phys
 
 
 class AuthenticatedStoreDiagnosticsProbe implements AuthenticatedStoreDiagnosticsPort {
+  readonly #mutationMetadataCache = {
+    currentBytes: 0,
+    currentEntries: 0,
+    evictions: 0,
+    hits: 0,
+    maximumBytes: 0,
+    maximumEntries: 0,
+    misses: 0,
+  };
   readonly #mutation = { abandoned: 0, completed: 0, failed: 0, overlapping: 0 };
   readonly #metadataWriter = {
     appendOperations: 0,
@@ -67,6 +79,24 @@ class AuthenticatedStoreDiagnosticsProbe implements AuthenticatedStoreDiagnostic
     void physicalBytes;
     void plaintextBytes;
     void recordKind;
+  }
+
+  recordMetadataCacheEvent({ event, scope }: NonNullable<Parameters<NonNullable<AuthenticatedStoreDiagnosticsPort["recordMetadataCacheEvent"]>>[0]>): void {
+    if (scope !== "mutation") return;
+    switch (event) {
+    case "eviction": this.#mutationMetadataCache.evictions += 1; break;
+    case "hit": this.#mutationMetadataCache.hits += 1; break;
+    case "miss": this.#mutationMetadataCache.misses += 1; break;
+    default: event satisfies never;
+    }
+  }
+
+  setMetadataCacheUsage({ bytes, entries, scope }: NonNullable<Parameters<NonNullable<AuthenticatedStoreDiagnosticsPort["setMetadataCacheUsage"]>>[0]>): void {
+    if (scope !== "mutation") return;
+    this.#mutationMetadataCache.currentBytes = bytes;
+    this.#mutationMetadataCache.currentEntries = entries;
+    this.#mutationMetadataCache.maximumBytes = Math.max(this.#mutationMetadataCache.maximumBytes, bytes);
+    this.#mutationMetadataCache.maximumEntries = Math.max(this.#mutationMetadataCache.maximumEntries, entries);
   }
 
   recordPublicationOperation({ durationMs }: Parameters<AuthenticatedStoreDiagnosticsPort["recordPublicationOperation"]>[0]): void {
@@ -100,7 +130,11 @@ class AuthenticatedStoreDiagnosticsProbe implements AuthenticatedStoreDiagnostic
   }
 
   snapshot() {
-    return { mutation: { ...this.#mutation }, segmentWriters: { metadata: { ...this.#metadataWriter } } };
+    return {
+      caches: { mutationMetadata: { ...this.#mutationMetadataCache } },
+      mutation: { ...this.#mutation },
+      segmentWriters: { metadata: { ...this.#metadataWriter } },
+    };
   }
 }
 
@@ -145,6 +179,59 @@ function exactCapacityFill({
 }
 
 describe("authenticated metadata mutation authority", () => {
+  it("reuses authenticated immutable metadata only within the active mutation and clears it on abandon", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const diagnostics = new AuthenticatedStoreDiagnosticsProbe();
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const bootstrap = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
+    const opened = await readBootstrapRoot({
+      authority: {
+        commitHomeRef: bootstrap.activeCommitHomeRef,
+        commitSequence: bootstrap.activeCommitSequence,
+        mutationId: bootstrap.activeMutationId,
+        type: "active",
+      },
+      backend,
+      fileSystemId,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+    });
+    const authority = await createAuthenticatedMetadataMutationAuthority({
+      backend,
+      diagnostics,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+
+    const first = await authority.readInodeTablePage({
+      isRoot: true,
+      reference: opened.commit.rootInodeTableRootHomeRef,
+    });
+    const second = await authority.readInodeTablePage({
+      isRoot: true,
+      reference: opened.commit.rootInodeTableRootHomeRef,
+    });
+
+    expect(second).toEqual(first);
+    expect(diagnostics.snapshot().caches.mutationMetadata).toMatchObject({
+      currentEntries: 1,
+      hits: 1,
+      misses: 1,
+    });
+
+    authority.abandon();
+    expect(diagnostics.snapshot().caches.mutationMetadata).toMatchObject({
+      currentBytes: 0,
+      currentEntries: 0,
+      maximumEntries: 1,
+    });
+  });
+
   it("provides structurally compatible page and Commit publication ports", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const diagnostics = new AuthenticatedStoreDiagnosticsProbe();

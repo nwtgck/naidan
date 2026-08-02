@@ -25,6 +25,57 @@ export type AuthenticatedNamespaceRecordSource = Readonly<{
 }>;
 
 /**
+ * Resolves one immutable authenticated record through an optional mutation-local
+ * cache layered over the longer-lived session cache. The local layer avoids
+ * repeated work inside one mutation without discarding cross-mutation hits;
+ * each layer retains and returns detached plaintext under its own zeroization
+ * lifetime.
+ */
+export async function readAuthenticatedNamespaceHomeRecord({
+  backend,
+  diagnostics,
+  fileSystemId,
+  metadataRecordCache,
+  sharedMetadataRecordCache,
+  reference,
+  relocationIndexRootPhysicalRef,
+  rootKey,
+}: {
+  backend: HizoFSReadableBackend;
+  diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  fileSystemId: FileSystemId;
+  metadataRecordCache?: AuthenticatedMetadataRecordCache;
+  sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
+  reference: HomeRecordReference;
+  relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
+  rootKey: FileSystemRootKey;
+}): Promise<AuthenticatedNamespaceRecord> {
+  const loadRecord = async (): Promise<AuthenticatedNamespaceRecord> => {
+    const record = await resolveAuthenticatedHomeRecord({
+      backend,
+      diagnostics,
+      fileSystemId,
+      homeReference: reference,
+      relocationIndexRootPhysicalRef,
+      rootKey,
+    });
+    return {
+      plaintext: record.plaintext,
+      recordKind: record.header.recordKind,
+    };
+  };
+  const loadSharedRecord = sharedMetadataRecordCache === undefined
+    ? loadRecord
+    : async (): Promise<AuthenticatedNamespaceRecord> => await sharedMetadataRecordCache.read({
+      load: loadRecord,
+      reference,
+    });
+  return metadataRecordCache === undefined
+    ? await loadSharedRecord()
+    : await metadataRecordCache.read({ load: loadSharedRecord, reference });
+}
+
+/**
  * Binds secret-bearing physical read authority behind a record-only capability.
  * Filesystem traversal receives authenticated plaintext records, never the root
  * key, backend, relocation index, or physical read primitives themselves.
@@ -44,23 +95,6 @@ export function createAuthenticatedNamespaceRecordSource({
   relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
   rootKey: FileSystemRootKey;
 }): AuthenticatedNamespaceRecordSource {
-  const loadRecord = async ({ reference }: {
-    reference: HomeRecordReference;
-  }): Promise<AuthenticatedNamespaceRecord> => {
-    const record = await resolveAuthenticatedHomeRecord({
-      backend,
-      diagnostics,
-      fileSystemId,
-      homeReference: reference,
-      relocationIndexRootPhysicalRef,
-      rootKey,
-    });
-    return {
-      plaintext: record.plaintext,
-      recordKind: record.header.recordKind,
-    };
-  };
-
   return {
     decodeRecordPayload: ({ decode }) => measureAuthenticatedCodecOperation({
       diagnostics,
@@ -68,12 +102,15 @@ export function createAuthenticatedNamespaceRecordSource({
       operation: "decode",
       run: decode,
     }),
-    readHomeRecord: async ({ reference }) => metadataRecordCache === undefined
-      ? await loadRecord({ reference })
-      : await metadataRecordCache.read({
-        load: async () => await loadRecord({ reference }),
-        reference,
-      }),
+    readHomeRecord: async ({ reference }) => await readAuthenticatedNamespaceHomeRecord({
+      backend,
+      diagnostics,
+      fileSystemId,
+      metadataRecordCache,
+      reference,
+      relocationIndexRootPhysicalRef,
+      rootKey,
+    }),
   };
 }
 

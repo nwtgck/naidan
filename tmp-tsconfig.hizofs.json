@@ -10,6 +10,7 @@
   },
   "include": [
     "src/env.d.ts",
+    "src/virtual-file-protocol-standalone.d.ts",
     "src/utils/virtual-naidan-tailwind.d.ts",
     "src/components/DeveloperOpfsEncryptionInterruptionPanel.vue",
     "src/components/DeveloperOpfsEncryptionInterruptionPanel.test.ts",
@@ -17,6 +18,8 @@
     "src/components/SidebarDebugControls.vue",
     "src/features/debug-hizofs/composables/useDebugHizoFSWorkbench.ts",
     "src/features/debug-hizofs/composables/useDebugHizoFSWorkbench.test.ts",
+    "src/features/debug-hizofs/components/HizoFSBenchmarkPanel.runtime.test.ts",
+    "src/features/debug-hizofs/benchmark/**/*.ts",
     "src/features/debug-opfs-encryption/composables/usePersistenceControlInspector.ts",
     "src/features/debug-opfs-encryption/composables/usePersistenceControlInspector.test.ts",
     "src/features/debug-opfs-encryption/components/PersistenceControlInspectorModal.vue",

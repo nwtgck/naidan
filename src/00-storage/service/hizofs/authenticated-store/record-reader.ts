@@ -21,6 +21,7 @@ import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical
 import { authenticatedStoreError } from "./errors";
 import {
   measureAuthenticatedCryptoOperation,
+  readExactWithAuthenticatedReason,
   type AuthenticatedStoreDiagnosticsPort,
 } from "./runtime-diagnostics-port";
 import { readAuthenticatedSegmentDescriptor } from "./segment-prefix-reader";
@@ -118,10 +119,13 @@ export async function readAuthenticatedPhysicalRecord({
     });
   }
   const frameHeaderSize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader;
-  const headerBytes = await backend.readExact({
+  const headerBytes = await readExactWithAuthenticatedReason({
+    backend,
+    diagnostics,
     length: frameHeaderSize,
     offset: physicalReference.byteOffset,
     path: descriptor.path,
+    reason: "authenticated_record_resolution",
   });
   let header: RecordFrameHeaderV1;
   try {
@@ -138,10 +142,13 @@ export async function readAuthenticatedPhysicalRecord({
     });
   }
 
-  const body = await backend.readExact({
+  const body = await readExactWithAuthenticatedReason({
+    backend,
+    diagnostics,
     length: header.frameLength - frameHeaderSize,
     offset: physicalReference.byteOffset + BigInt(frameHeaderSize),
     path: descriptor.path,
+    reason: "authenticated_record_resolution",
   });
   const ciphertext = body.subarray(0, header.sealedLength);
   if (body.subarray(header.sealedLength).some(byte => byte !== 0)) {

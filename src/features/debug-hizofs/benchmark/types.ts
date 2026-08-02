@@ -1,4 +1,5 @@
 import { HIZOFS_V1_PERSISTED_RECORD_KIND_DIAGNOSTIC_NAMES } from '@/00-storage/service/hizofs/00-format';
+import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port';
 import { HIZOFS_RUNTIME_DIAGNOSTIC_PHASES } from '@/00-storage/service/hizofs/runtime/runtime-diagnostics';
 import { z } from 'zod';
 
@@ -186,6 +187,21 @@ const hizoFSRuntimeScopedAccessCounterSchema = z.object({
   unclassifiedOperations: z.number().int().nonnegative(),
 }).strict();
 
+const hizoFSRuntimePhysicalAccessReasonCounterSchema = z.object({
+  getFileSize: hizoFSRuntimeScopedAccessCounterSchema,
+  readExact: hizoFSRuntimeScopedAccessCounterSchema,
+}).strict();
+
+const hizoFSRuntimePhysicalAccessReasonsSchema = z.object(Object.fromEntries(
+  AUTHENTICATED_PHYSICAL_ACCESS_REASONS.map(reason => [
+    reason,
+    hizoFSRuntimePhysicalAccessReasonCounterSchema,
+  ]),
+) as Record<
+  typeof AUTHENTICATED_PHYSICAL_ACCESS_REASONS[number],
+  typeof hizoFSRuntimePhysicalAccessReasonCounterSchema
+>).strict();
+
 const hizoFSRuntimeSegmentWriterCounterSchema = z.object({
   appendOperations: z.number().int().nonnegative(),
   appendReadBackVerifications: z.number().int().nonnegative(),
@@ -197,7 +213,7 @@ const hizoFSRuntimeSegmentWriterCounterSchema = z.object({
 }).strict();
 
 const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(5),
+  schemaVersion: z.literal(6),
   type: z.literal('measured'),
   phases: z.object(Object.fromEntries(
     HIZOFS_RUNTIME_DIAGNOSTIC_PHASES.map(phase => [
@@ -219,6 +235,7 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
   >).strict(),
   caches: z.object({
     metadata: hizoFSRuntimeCacheCounterSchema,
+    mutationMetadata: hizoFSRuntimeCacheCounterSchema,
     fileChunk: hizoFSRuntimeCacheCounterSchema,
     backingFileHandle: hizoFSRuntimeCacheCounterSchema,
     backingFileSnapshot: hizoFSRuntimeCacheCounterSchema,
@@ -243,6 +260,7 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
     failed: z.number().int().nonnegative(),
     overlapping: z.number().int().nonnegative(),
     getFileSize: hizoFSRuntimeScopedAccessCounterSchema,
+    physicalAccessReasons: hizoFSRuntimePhysicalAccessReasonsSchema,
     readExact: hizoFSRuntimeScopedAccessCounterSchema,
   }).strict(),
   publication: z.object({
@@ -259,7 +277,7 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
 }).strict();
 
 const hizoFSUnavailableRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(5),
+  schemaVersion: z.literal(6),
   type: z.literal('unavailable'),
   reason: z.string().min(1),
 }).strict();
@@ -447,8 +465,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(21),
-  benchmarkImplementationVersion: z.literal(26),
+  schemaVersion: z.literal(22),
+  benchmarkImplementationVersion: z.literal(27),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),

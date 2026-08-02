@@ -11,12 +11,13 @@ import type { FileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import { authenticatedStoreError } from "./errors";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
+import type { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
+import { readAuthenticatedNamespaceHomeRecord } from "./namespace-record-source";
 import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "./runtime-diagnostics-port";
 import {
   encodedHizoFSRecord,
   type AuthenticatedSegmentWriter,
 } from "./record-appender";
-import { resolveAuthenticatedHomeRecord } from "./relocation-index-reader";
 
 export async function readAuthenticatedDirectoryPage({
   backend,
@@ -24,6 +25,8 @@ export async function readAuthenticatedDirectoryPage({
   fileSystemId,
   homeReference,
   isRoot,
+  metadataRecordCache,
+  sharedMetadataRecordCache,
   relocationIndexRootPhysicalRef,
   rootKey,
 }: {
@@ -32,17 +35,21 @@ export async function readAuthenticatedDirectoryPage({
   fileSystemId: FileSystemId;
   homeReference: HomeRecordReference;
   isRoot: boolean;
+  metadataRecordCache?: AuthenticatedMetadataRecordCache;
+  sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
   relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
   rootKey: FileSystemRootKey;
 }): Promise<DirectoryPage> {
   if (homeReference.recordKind !== HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page) {
     throw new TypeError("Directory page reference has the wrong record kind");
   }
-  const record = await resolveAuthenticatedHomeRecord({
+  const record = await readAuthenticatedNamespaceHomeRecord({
     backend,
     diagnostics,
     fileSystemId,
-    homeReference,
+    metadataRecordCache,
+    sharedMetadataRecordCache,
+    reference: homeReference,
     relocationIndexRootPhysicalRef,
     rootKey,
   });
@@ -54,6 +61,8 @@ export async function readAuthenticatedDirectoryPage({
       code: "control_plane_corrupt",
       message: "Directory page decode failed",
     });
+  } finally {
+    record.plaintext.fill(0);
   }
 }
 

@@ -27,6 +27,7 @@ import {
   type AuthenticatedInodeTablePage,
 } from "./inode-table-page-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
+import { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
 import {
   measureAuthenticatedPublicationOperation,
   type AuthenticatedStoreDiagnosticsPort,
@@ -50,13 +51,23 @@ import {
 
 export type AuthenticatedMetadataMutationAuthorityState = "active" | "closed" | "publishing";
 
+// Mutation-local plaintext is intentionally smaller than the session cache.
+// The full Home Record Reference remains the identity, and disposal is coupled
+// to the terminal mutation outcome rather than session lifetime.
+const MUTATION_METADATA_RECORD_CACHE_POLICY = Object.freeze({
+  maximumBytes: 2 * 1024 * 1024,
+  maximumEntries: 256,
+});
+
 export class AuthenticatedMetadataMutationAuthority {
   readonly #backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
   readonly #fileSystemId: FileSystemId;
+  readonly #metadataRecordCache: AuthenticatedMetadataRecordCache;
   readonly #randomSource: RandomByteSource | undefined;
   readonly #relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
   readonly #rootKey: FileSystemRootKey;
+  readonly #sharedMetadataRecordCache: AuthenticatedMetadataRecordCache | undefined;
   readonly #supportedFeatureBits: FeatureBits;
   #mutationDiagnosticsOpen = true;
   #operationInProgress = false;
@@ -68,28 +79,34 @@ export class AuthenticatedMetadataMutationAuthority {
     backend,
     diagnostics,
     fileSystemId,
+    metadataRecordCache,
     pageWriter,
     randomSource,
     relocationIndexRootPhysicalRef,
     rootKey,
+    sharedMetadataRecordCache,
     supportedFeatureBits,
   }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
     fileSystemId: FileSystemId;
+    metadataRecordCache: AuthenticatedMetadataRecordCache;
     pageWriter: AuthenticatedSegmentWriter;
     randomSource?: RandomByteSource;
     relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
     rootKey: FileSystemRootKey;
+    sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
     supportedFeatureBits: FeatureBits;
   }) {
     this.#backend = backend;
     this.#diagnostics = diagnostics;
     this.#fileSystemId = fileSystemId;
+    this.#metadataRecordCache = metadataRecordCache;
     this.#pageWriter = pageWriter;
     this.#randomSource = randomSource;
     this.#relocationIndexRootPhysicalRef = relocationIndexRootPhysicalRef;
     this.#rootKey = rootKey;
+    this.#sharedMetadataRecordCache = sharedMetadataRecordCache;
     this.#supportedFeatureBits = supportedFeatureBits;
   }
 
@@ -100,6 +117,7 @@ export class AuthenticatedMetadataMutationAuthority {
     randomSource,
     relocationIndexRootPhysicalRef,
     rootKey,
+    sharedMetadataRecordCache,
     supportedFeatureBits,
   }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
@@ -108,9 +126,15 @@ export class AuthenticatedMetadataMutationAuthority {
     randomSource?: RandomByteSource;
     relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
     rootKey: FileSystemRootKey;
+    sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
     supportedFeatureBits: FeatureBits;
   }): Promise<AuthenticatedMetadataMutationAuthority> {
     diagnostics?.recordMutationScopeEvent?.({ observation: { event: "begin" } });
+    const metadataRecordCache = new AuthenticatedMetadataRecordCache({
+      diagnosticScope: "mutation",
+      diagnostics,
+      policy: MUTATION_METADATA_RECORD_CACHE_POLICY,
+    });
     try {
       const pageWriter = await createAuthenticatedSegmentWriter({
         backend,
@@ -124,13 +148,16 @@ export class AuthenticatedMetadataMutationAuthority {
         backend,
         diagnostics,
         fileSystemId,
+        metadataRecordCache,
         pageWriter,
         randomSource,
         relocationIndexRootPhysicalRef,
         rootKey,
+        sharedMetadataRecordCache,
         supportedFeatureBits,
       });
     } catch (error: unknown) {
+      metadataRecordCache.dispose();
       diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome: "failed" } });
       throw error;
     }
@@ -155,6 +182,7 @@ export class AuthenticatedMetadataMutationAuthority {
   }): void {
     if (!this.#mutationDiagnosticsOpen) return;
     this.#mutationDiagnosticsOpen = false;
+    this.#metadataRecordCache.dispose();
     this.#diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome } });
   }
 
@@ -204,6 +232,8 @@ export class AuthenticatedMetadataMutationAuthority {
         fileSystemId: this.#fileSystemId,
         homeReference: reference,
         isRoot,
+        metadataRecordCache: this.#metadataRecordCache,
+        sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
         relocationIndexRootPhysicalRef: this.#relocationIndexRootPhysicalRef,
         rootKey: this.#rootKey,
       });
@@ -240,6 +270,8 @@ export class AuthenticatedMetadataMutationAuthority {
         fileSystemId: this.#fileSystemId,
         homeReference: reference,
         isRoot,
+        metadataRecordCache: this.#metadataRecordCache,
+        sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
         relocationIndexRootPhysicalRef: this.#relocationIndexRootPhysicalRef,
         rootKey: this.#rootKey,
       });
@@ -280,6 +312,8 @@ export class AuthenticatedMetadataMutationAuthority {
         fileSystemId: this.#fileSystemId,
         homeReference: reference,
         isRoot,
+        metadataRecordCache: this.#metadataRecordCache,
+        sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
         relocationIndexRootPhysicalRef: this.#relocationIndexRootPhysicalRef,
         rootKey: this.#rootKey,
       });
@@ -405,6 +439,7 @@ export async function createAuthenticatedMetadataMutationAuthority({
   randomSource,
   relocationIndexRootPhysicalRef,
   rootKey,
+  sharedMetadataRecordCache,
   supportedFeatureBits,
 }: Parameters<typeof AuthenticatedMetadataMutationAuthority.create>[0]): Promise<AuthenticatedMetadataMutationAuthority> {
   return await AuthenticatedMetadataMutationAuthority.create({
@@ -414,6 +449,7 @@ export async function createAuthenticatedMetadataMutationAuthority({
     randomSource,
     relocationIndexRootPhysicalRef,
     rootKey,
+    sharedMetadataRecordCache,
     supportedFeatureBits,
   });
 }

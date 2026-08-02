@@ -1,3 +1,6 @@
+import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
+import type { CanonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
+
 export type AuthenticatedRecordDiagnosticsObservation = Readonly<{
   operation: "read" | "write";
   physicalBytes: number;
@@ -44,13 +47,30 @@ export type AuthenticatedSegmentWriterDiagnosticsObservation = Readonly<{
 }>;
 
 export type AuthenticatedMetadataCacheEventObservation = Readonly<{
+  scope?: "mutation" | "session";
   event: "eviction" | "hit" | "miss";
   recordKind: number;
 }>;
 
 export type AuthenticatedMetadataCacheUsageObservation = Readonly<{
+  scope?: "mutation" | "session";
   bytes: number;
   entries: number;
+}>;
+
+export const AUTHENTICATED_PHYSICAL_ACCESS_REASONS = Object.freeze([
+  "append_read_back",
+  "authenticated_record_resolution",
+  "segment_descriptor",
+  "trusted_tail",
+] as const);
+
+export type AuthenticatedPhysicalAccessReason = typeof AUTHENTICATED_PHYSICAL_ACCESS_REASONS[number];
+
+export type AuthenticatedPhysicalAccessReasonObservation = Readonly<{
+  identity: string;
+  operation: "get_file_size" | "read_exact";
+  reason: AuthenticatedPhysicalAccessReason;
 }>;
 
 /**
@@ -76,9 +96,15 @@ export type AuthenticatedStoreDiagnosticsPort = Readonly<{
     segmentClass,
   }: AuthenticatedSegmentWriterDiagnosticsObservation) => void;
   recordMetadataCacheEvent?: ({
+    scope,
     event,
     recordKind,
   }: AuthenticatedMetadataCacheEventObservation) => void;
+  recordPhysicalAccessReason?: ({
+    identity,
+    operation,
+    reason,
+  }: AuthenticatedPhysicalAccessReasonObservation) => void;
   recordCodecOperation: ({
     durationMs,
     format,
@@ -98,10 +124,53 @@ export type AuthenticatedStoreDiagnosticsPort = Readonly<{
     durationMs,
   }: AuthenticatedPublicationDiagnosticsObservation) => void;
   setMetadataCacheUsage?: ({
+    scope,
     bytes,
     entries,
   }: AuthenticatedMetadataCacheUsageObservation) => void;
 }>;
+
+export async function getFileSizeWithAuthenticatedReason({
+  backend,
+  diagnostics,
+  path,
+  reason,
+}: {
+  backend: HizoFSReadableBackend;
+  diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
+  path: CanonicalContainerPath;
+  reason: AuthenticatedPhysicalAccessReason;
+}): Promise<bigint | undefined> {
+  diagnostics?.recordPhysicalAccessReason?.({
+    identity: String(path),
+    operation: "get_file_size",
+    reason,
+  });
+  return await backend.getFileSize({ path });
+}
+
+export async function readExactWithAuthenticatedReason({
+  backend,
+  diagnostics,
+  length,
+  offset,
+  path,
+  reason,
+}: {
+  backend: HizoFSReadableBackend;
+  diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
+  length: number;
+  offset: bigint;
+  path: CanonicalContainerPath;
+  reason: AuthenticatedPhysicalAccessReason;
+}): Promise<Uint8Array> {
+  diagnostics?.recordPhysicalAccessReason?.({
+    identity: `${String(path)}\u0000${offset.toString()}\u0000${length.toString()}`,
+    operation: "read_exact",
+    reason,
+  });
+  return await backend.readExact({ length, offset, path });
+}
 
 export function measureAuthenticatedCodecOperation<T>({
   clock = () => globalThis.performance.now(),

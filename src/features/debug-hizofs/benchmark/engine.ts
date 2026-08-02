@@ -1,4 +1,5 @@
 import { HIZOFS_SUPERBLOCK_FILES } from '@/00-storage/service/hizofs/00-format';
+import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port';
 import {
   createBenchmarkRuntimePolicy,
   HIZOFS_BENCHMARK_RUNTIME_PHASES,
@@ -33,7 +34,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 26 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 27 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -322,7 +323,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 21,
+    schemaVersion: 22,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -1868,7 +1869,7 @@ function unavailableRuntimeDiagnostics({ reason }: {
   reason: string;
 }): HizoFSBenchmarkRuntimeDiagnosticsSnapshot {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     type: 'unavailable',
     reason,
   };
@@ -1895,7 +1896,7 @@ function subtractHizoFSRuntimeDiagnostics({
   default: return before satisfies never;
   }
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [
@@ -1947,6 +1948,10 @@ function subtractHizoFSRuntimeDiagnostics({
       metadata: subtractHizoFSRuntimeCacheDiagnostics({
         before: before.caches.metadata,
         after: after.caches.metadata,
+      }),
+      mutationMetadata: subtractHizoFSRuntimeCacheDiagnostics({
+        before: before.caches.mutationMetadata,
+        after: after.caches.mutationMetadata,
       }),
       fileChunk: subtractHizoFSRuntimeCacheDiagnostics({
         before: before.caches.fileChunk,
@@ -2008,6 +2013,18 @@ function subtractHizoFSRuntimeDiagnostics({
         before: before.mutation.getFileSize,
         after: after.mutation.getFileSize,
       }),
+      physicalAccessReasons: Object.fromEntries(
+        AUTHENTICATED_PHYSICAL_ACCESS_REASONS.map(reason => [reason, {
+          getFileSize: subtractHizoFSRuntimeScopedAccessDiagnostics({
+            before: before.mutation.physicalAccessReasons[reason].getFileSize,
+            after: after.mutation.physicalAccessReasons[reason].getFileSize,
+          }),
+          readExact: subtractHizoFSRuntimeScopedAccessDiagnostics({
+            before: before.mutation.physicalAccessReasons[reason].readExact,
+            after: after.mutation.physicalAccessReasons[reason].readExact,
+          }),
+        }]),
+      ) as HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['mutation']['physicalAccessReasons'],
       readExact: subtractHizoFSRuntimeScopedAccessDiagnostics({
         before: before.mutation.readExact,
         after: after.mutation.readExact,
@@ -2335,7 +2352,7 @@ function aggregateHizoFSRuntimeDiagnostics({
     throw new Error('HizoFS measured runtime diagnostics aggregate requires at least one sample');
   }
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [
@@ -2395,6 +2412,10 @@ function aggregateHizoFSRuntimeDiagnostics({
       metadata: aggregateHizoFSRuntimeCacheDiagnostics({
         diagnostics: measured.map(value => value.caches.metadata),
         current: current.caches.metadata,
+      }),
+      mutationMetadata: aggregateHizoFSRuntimeCacheDiagnostics({
+        diagnostics: measured.map(value => value.caches.mutationMetadata),
+        current: current.caches.mutationMetadata,
       }),
       fileChunk: aggregateHizoFSRuntimeCacheDiagnostics({
         diagnostics: measured.map(value => value.caches.fileChunk),
@@ -2458,6 +2479,16 @@ function aggregateHizoFSRuntimeDiagnostics({
       getFileSize: aggregateHizoFSRuntimeScopedAccessDiagnostics({
         diagnostics: measured.map(value => value.mutation.getFileSize),
       }),
+      physicalAccessReasons: Object.fromEntries(
+        AUTHENTICATED_PHYSICAL_ACCESS_REASONS.map(reason => [reason, {
+          getFileSize: aggregateHizoFSRuntimeScopedAccessDiagnostics({
+            diagnostics: measured.map(value => value.mutation.physicalAccessReasons[reason].getFileSize),
+          }),
+          readExact: aggregateHizoFSRuntimeScopedAccessDiagnostics({
+            diagnostics: measured.map(value => value.mutation.physicalAccessReasons[reason].readExact),
+          }),
+        }]),
+      ) as HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['mutation']['physicalAccessReasons'],
       readExact: aggregateHizoFSRuntimeScopedAccessDiagnostics({
         diagnostics: measured.map(value => value.mutation.readExact),
       }),

@@ -75,6 +75,7 @@ export class AuthenticatedFileContentMutationAuthority {
     randomSource,
     relocationIndexRootPhysicalRef,
     rootKey,
+    sharedMetadataRecordCache,
     supportedFeatureBits,
   }: Parameters<typeof createAuthenticatedMetadataMutationAuthority>[0]): Promise<AuthenticatedFileContentMutationAuthority> {
     const parameters = {
@@ -84,6 +85,7 @@ export class AuthenticatedFileContentMutationAuthority {
       randomSource,
       relocationIndexRootPhysicalRef,
       rootKey,
+      sharedMetadataRecordCache,
       supportedFeatureBits,
     };
     return new AuthenticatedFileContentMutationAuthority({

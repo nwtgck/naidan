@@ -150,6 +150,64 @@ describe('production HizoFS benchmark runtime port', () => {
   }, 15_000);
 
 
+  it('reuses authenticated metadata within one writable mutation and releases its plaintext', async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
+    const configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });
+    const runtime = await createProductionHizoFSBenchmarkRuntimePort().createRuntime({
+      backingDirectory: root as unknown as FileSystemDirectoryHandle,
+      policy: createBenchmarkRuntimePolicy({ configuration }),
+    });
+    try {
+      const file = await runtime.session.root.getFileHandle({ name: 'mutation-cache.bin', create: true });
+      const before = runtime.diagnostics.snapshot();
+      expect(before.type).toBe('measured');
+      if (before.type !== 'measured') throw new Error('production diagnostics are unavailable');
+
+      const writable = await file.createWritable({ keepExistingData: false });
+      await writable.write({ position: 0, data: new Uint8Array(4096).fill(1) });
+      await writable.write({ position: 4096, data: new Uint8Array(4096).fill(2) });
+      await writable.write({ position: 8192, data: new Uint8Array(4096).fill(3) });
+      await writable.close();
+
+      const after = runtime.diagnostics.snapshot();
+      expect(after.type).toBe('measured');
+      if (after.type !== 'measured') throw new Error('production diagnostics are unavailable');
+      expect(after.mutation.completed - before.mutation.completed).toBe(1);
+      expect(after.mutation.failed - before.mutation.failed).toBe(0);
+      expect(after.caches.mutationMetadata.hits - before.caches.mutationMetadata.hits)
+        .toBeGreaterThan(0);
+      expect(after.caches.mutationMetadata.misses - before.caches.mutationMetadata.misses)
+        .toBeGreaterThan(0);
+      expect(after.caches.mutationMetadata).toMatchObject({ currentBytes: 0, currentEntries: 0 });
+      expect(after.caches.mutationMetadata.maximumEntries).toBeGreaterThan(0);
+      expect(after.caches.metadata.hits - before.caches.metadata.hits).toBeGreaterThan(0);
+      expect(after.mutation.physicalAccessReasons.append_read_back.readExact.operations
+        - before.mutation.physicalAccessReasons.append_read_back.readExact.operations).toBeGreaterThan(0);
+      expect(after.mutation.physicalAccessReasons.authenticated_record_resolution.readExact.operations
+        - before.mutation.physicalAccessReasons.authenticated_record_resolution.readExact.operations).toBeGreaterThan(0);
+      expect(after.segmentWriters.metadata.trustedTailMismatches
+        - before.segmentWriters.metadata.trustedTailMismatches).toBe(0);
+
+      const readable = await file.openReadable({ mimeType: 'application/octet-stream' });
+      try {
+        const bytes = new Uint8Array(await new Response(readable.stream({
+          start: 0,
+          end: undefined,
+          signal: undefined,
+        })).arrayBuffer());
+        expect(bytes.byteLength).toBe(12_288);
+        expect(bytes[0]).toBe(1);
+        expect(bytes[4096]).toBe(2);
+        expect(bytes[8192]).toBe(3);
+      } finally {
+        await readable.close();
+      }
+    } finally {
+      await runtime.close();
+    }
+  }, 15_000);
+
+
   it('applies the reported metadata cache policy to the production runtime', async () => {
     const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
     const configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });
@@ -230,13 +288,28 @@ describe('production HizoFS benchmark runtime port', () => {
       overlapping: 0,
       getFileSize: {
         duplicateOperations: 3,
-        operations: 6,
-        observedUniqueTargets: 3,
+        operations: 5,
+        observedUniqueTargets: 2,
+      },
+      physicalAccessReasons: {
+        append_read_back: {
+          readExact: { duplicateOperations: 0, operations: 2, observedUniqueTargets: 2 },
+        },
+        authenticated_record_resolution: {
+          readExact: { duplicateOperations: 0, operations: 0, observedUniqueTargets: 0 },
+        },
+        segment_descriptor: {
+          getFileSize: { duplicateOperations: 0, operations: 1, observedUniqueTargets: 1 },
+          readExact: { duplicateOperations: 0, operations: 1, observedUniqueTargets: 1 },
+        },
+        trusted_tail: {
+          getFileSize: { duplicateOperations: 1, operations: 2, observedUniqueTargets: 1 },
+        },
       },
       readExact: {
         duplicateOperations: 0,
-        operations: 6,
-        observedUniqueTargets: 6,
+        operations: 3,
+        observedUniqueTargets: 3,
       },
     });
     expect(runtimeDiagnostics.publication).toMatchObject({
@@ -266,6 +339,17 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(runtimeDiagnostics.caches.metadata.hits).toBeGreaterThan(0);
     expect(runtimeDiagnostics.caches.metadata.misses).toBeGreaterThan(0);
     expect(runtimeDiagnostics.caches.metadata.currentEntries).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.caches.mutationMetadata).toMatchObject({
+      currentBytes: 0,
+      currentEntries: 0,
+      hits: 0,
+      misses: 1,
+    });
+    expect(runtimeDiagnostics.caches.mutationMetadata.maximumEntries).toBe(1);
+    expect(Object.values(runtimeDiagnostics.records).reduce((sum, counter) => sum + counter.cacheHits, 0))
+      .toBe(runtimeDiagnostics.caches.metadata.hits + runtimeDiagnostics.caches.mutationMetadata.hits);
+    expect(Object.values(runtimeDiagnostics.records).reduce((sum, counter) => sum + counter.cacheMisses, 0))
+      .toBe(runtimeDiagnostics.caches.metadata.misses + runtimeDiagnostics.caches.mutationMetadata.misses);
   });
 
   it('runs the explicit bulk benchmark as one measured publication', async () => {

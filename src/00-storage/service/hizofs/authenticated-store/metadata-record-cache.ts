@@ -10,6 +10,8 @@ export type AuthenticatedMetadataRecordCachePolicy = Readonly<{
   maximumEntries: number;
 }>;
 
+export type AuthenticatedMetadataRecordCacheScope = "mutation" | "session";
+
 export type AuthenticatedMetadataRecord = Readonly<{
   plaintext: Uint8Array;
   recordKind: number;
@@ -41,26 +43,29 @@ function isMetadataReference({ reference }: { reference: HomeRecordReference }):
 /**
  * Retains successfully authenticated immutable namespace-record plaintext.
  * Inode pages can contain inline file payloads, so this is a bounded,
- * secret-bearing session resource rather than a harmless structural cache.
+ * secret-bearing scope-owned resource rather than a harmless structural cache.
  *
  * Cache identity is the complete Home Record Reference, so a hit cannot cross
  * record kind, segment, offset, or frame identity. Callers receive a copy and
  * may continue zeroizing their buffer without mutating the retained entry.
- * Eviction and session disposal zero retained plaintext before dropping it.
+ * Eviction and owner-scope disposal zero retained plaintext before dropping it.
  */
 export class AuthenticatedMetadataRecordCache {
+  readonly #diagnosticScope: AuthenticatedMetadataRecordCacheScope;
   readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
   readonly #entries = new Map<string, CacheEntry>();
   readonly #policy: AuthenticatedMetadataRecordCachePolicy;
   #currentBytes = 0;
   #disposed = false;
 
-  constructor({ diagnostics, policy }: {
+  constructor({ diagnosticScope = "session", diagnostics, policy }: {
+    diagnosticScope?: AuthenticatedMetadataRecordCacheScope;
     diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
     policy: AuthenticatedMetadataRecordCachePolicy;
   }) {
     validateBound({ name: "metadata cache maximum bytes", value: policy.maximumBytes });
     validateBound({ name: "metadata cache maximum entries", value: policy.maximumEntries });
+    this.#diagnosticScope = diagnosticScope;
     this.#diagnostics = diagnostics;
     this.#policy = Object.freeze({ ...policy });
     this.#reportUsage();
@@ -91,14 +96,22 @@ export class AuthenticatedMetadataRecordCache {
     if (cached !== undefined) {
       this.#entries.delete(identity);
       this.#entries.set(identity, cached);
-      this.#diagnostics?.recordMetadataCacheEvent?.({ event: "hit", recordKind: cached.recordKind });
+      this.#diagnostics?.recordMetadataCacheEvent?.({
+        event: "hit",
+        recordKind: cached.recordKind,
+        scope: this.#diagnosticScope,
+      });
       return {
         plaintext: cached.plaintext.slice(),
         recordKind: cached.recordKind,
       };
     }
 
-    this.#diagnostics?.recordMetadataCacheEvent?.({ event: "miss", recordKind: reference.recordKind });
+    this.#diagnostics?.recordMetadataCacheEvent?.({
+      event: "miss",
+      recordKind: reference.recordKind,
+      scope: this.#diagnosticScope,
+    });
     const loaded = await load();
     if (this.#disposed) {
       loaded.plaintext.fill(0);
@@ -114,7 +127,11 @@ export class AuthenticatedMetadataRecordCache {
       loaded.plaintext.fill(0);
       this.#entries.delete(identity);
       this.#entries.set(identity, concurrentlyCached);
-      this.#diagnostics?.recordMetadataCacheEvent?.({ event: "hit", recordKind: concurrentlyCached.recordKind });
+      this.#diagnostics?.recordMetadataCacheEvent?.({
+        event: "hit",
+        recordKind: concurrentlyCached.recordKind,
+        scope: this.#diagnosticScope,
+      });
       return {
         plaintext: concurrentlyCached.plaintext.slice(),
         recordKind: concurrentlyCached.recordKind,
@@ -142,6 +159,7 @@ export class AuthenticatedMetadataRecordCache {
       this.#diagnostics?.recordMetadataCacheEvent?.({
         event: "eviction",
         recordKind: oldestEntry.recordKind,
+        scope: this.#diagnosticScope,
       });
     }
     this.#entries.set(identity, {
@@ -157,6 +175,7 @@ export class AuthenticatedMetadataRecordCache {
     this.#diagnostics?.setMetadataCacheUsage?.({
       bytes: this.#currentBytes,
       entries: this.#entries.size,
+      scope: this.#diagnosticScope,
     });
   }
 }

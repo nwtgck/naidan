@@ -8,6 +8,7 @@ import type {
   ImmutableBTreeDiagnosticsPort,
 } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
 import type {
+  AuthenticatedPhysicalAccessReason,
   AuthenticatedCodecDiagnosticsObservation,
   AuthenticatedCryptoDiagnosticsObservation,
   AuthenticatedMetadataCacheEventObservation,
@@ -18,6 +19,7 @@ import type {
   AuthenticatedSegmentWriterDiagnosticsObservation,
   AuthenticatedStoreDiagnosticsPort,
 } from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
 
 export const HIZOFS_RUNTIME_DIAGNOSTIC_PHASES = Object.freeze([
   "record_encode",
@@ -46,6 +48,7 @@ export const HIZOFS_RUNTIME_DIAGNOSTIC_PHASES = Object.freeze([
 
 export const HIZOFS_RUNTIME_DIAGNOSTIC_CACHES = Object.freeze([
   "metadata",
+  "mutationMetadata",
   "fileChunk",
   "backingFileHandle",
   "backingFileSnapshot",
@@ -120,6 +123,10 @@ export type HizoFSRuntimeMutationCounter = Readonly<{
   failed: number;
   overlapping: number;
   getFileSize: HizoFSRuntimeScopedAccessCounter;
+  physicalAccessReasons: Readonly<Record<AuthenticatedPhysicalAccessReason, Readonly<{
+    getFileSize: HizoFSRuntimeScopedAccessCounter;
+    readExact: HizoFSRuntimeScopedAccessCounter;
+  }>>>;
   readExact: HizoFSRuntimeScopedAccessCounter;
 }>;
 
@@ -191,6 +198,10 @@ type MutableMutationCounter = {
   failed: number;
   overlapping: number;
   getFileSize: MutableScopedAccessCounter;
+  physicalAccessReasons: Record<AuthenticatedPhysicalAccessReason, {
+    getFileSize: MutableScopedAccessCounter;
+    readExact: MutableScopedAccessCounter;
+  }>;
   readExact: MutableScopedAccessCounter;
 };
 type MutablePublicationCounter = {
@@ -208,7 +219,7 @@ type MutableSegmentWriterCounter = {
   trustedTailMatches: number;
   trustedTailMismatches: number;
 };
-type ActivePhysicalAccessScope = {
+type PhysicalAccessScopeCounters = {
   getFileSizeDuplicateOperations: number;
   getFileSizeOperations: number;
   getFileSizeTargets: Set<string>;
@@ -218,8 +229,21 @@ type ActivePhysicalAccessScope = {
   readExactTargets: Set<string>;
   readExactUnclassifiedOperations: number;
 };
+type ActivePhysicalAccessScope = PhysicalAccessScopeCounters & {
+  reasonScopes: Record<AuthenticatedPhysicalAccessReason, PhysicalAccessScopeCounters>;
+};
 
 const MAXIMUM_SCOPED_DIAGNOSTIC_TARGETS_PER_OPERATION = 4_096;
+
+function metadataCacheDiagnosticName({ scope }: {
+  scope: "mutation" | "session";
+}): "metadata" | "mutationMetadata" {
+  switch (scope) {
+  case "mutation": return "mutationMetadata";
+  case "session": return "metadata";
+  default: return scope satisfies never;
+  }
+}
 
 function finiteNonNegative({ label, value }: { label: string; value: number }): number {
   if (!Number.isFinite(value) || value < 0) throw new RangeError(`${label} must be finite and non-negative`);
@@ -302,6 +326,10 @@ function mutationCounter(): MutableMutationCounter {
     failed: 0,
     overlapping: 0,
     getFileSize: scopedAccessCounter(),
+    physicalAccessReasons: Object.fromEntries(AUTHENTICATED_PHYSICAL_ACCESS_REASONS.map(reason => [reason, {
+      getFileSize: scopedAccessCounter(),
+      readExact: scopedAccessCounter(),
+    }])) as MutableMutationCounter["physicalAccessReasons"],
     readExact: scopedAccessCounter(),
   };
 }
@@ -316,7 +344,7 @@ function publicationCounter(): MutablePublicationCounter {
 }
 
 function physicalAccessScope(): ActivePhysicalAccessScope {
-  return {
+  const access = (): PhysicalAccessScopeCounters => ({
     getFileSizeDuplicateOperations: 0,
     getFileSizeOperations: 0,
     getFileSizeTargets: new Set<string>(),
@@ -325,6 +353,12 @@ function physicalAccessScope(): ActivePhysicalAccessScope {
     readExactOperations: 0,
     readExactTargets: new Set<string>(),
     readExactUnclassifiedOperations: 0,
+  });
+  return {
+    ...access(),
+    reasonScopes: Object.fromEntries(
+      AUTHENTICATED_PHYSICAL_ACCESS_REASONS.map(reason => [reason, access()]),
+    ) as ActivePhysicalAccessScope["reasonScopes"],
   };
 }
 
@@ -479,8 +513,8 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     }
   }
 
-  recordMetadataCacheEvent({ event, recordKind }: AuthenticatedMetadataCacheEventObservation): void {
-    this.recordCacheEvent({ cache: "metadata", event });
+  recordMetadataCacheEvent({ event, recordKind, scope = "session" }: AuthenticatedMetadataCacheEventObservation): void {
+    this.recordCacheEvent({ cache: metadataCacheDiagnosticName({ scope }), event });
     switch (event) {
     case "eviction":
       return;
@@ -545,6 +579,19 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
       }
       this.#finalizeScopedPhysicalAccess({ counter: this.#mutation.getFileSize, operation: "get_file_size", scope });
       this.#finalizeScopedPhysicalAccess({ counter: this.#mutation.readExact, operation: "read_exact", scope });
+      for (const reason of AUTHENTICATED_PHYSICAL_ACCESS_REASONS) {
+        const reasonScope = scope.reasonScopes[reason];
+        this.#finalizeScopedPhysicalAccess({
+          counter: this.#mutation.physicalAccessReasons[reason].getFileSize,
+          operation: "get_file_size",
+          scope: reasonScope,
+        });
+        this.#finalizeScopedPhysicalAccess({
+          counter: this.#mutation.physicalAccessReasons[reason].readExact,
+          operation: "read_exact",
+          scope: reasonScope,
+        });
+      }
       return;
     }
     default: observation satisfies never;
@@ -613,6 +660,20 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     }
   }
 
+  recordPhysicalAccessReason({ identity, operation, reason }: {
+    identity: string;
+    operation: "get_file_size" | "read_exact";
+    reason: AuthenticatedPhysicalAccessReason;
+  }): void {
+    if (this.#activeMutationDepth !== 1 || this.#activeMutationScope === undefined) return;
+    this.#recordScopedPhysicalAccess({
+      identity,
+      operation,
+      scope: this.#activeMutationScope.reasonScopes[reason],
+      scopeLabel: `mutation ${reason}`,
+    });
+  }
+
   recordSegmentWriterEvent({ event, segmentClass }: AuthenticatedSegmentWriterDiagnosticsObservation): void {
     const counter = this.#segmentWriters[segmentClass];
     switch (event) {
@@ -644,8 +705,8 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
   #recordScopedPhysicalAccess({ identity, operation, scope, scopeLabel }: {
     identity: string;
     operation: "get_file_size" | "read_exact";
-    scope: ActivePhysicalAccessScope;
-    scopeLabel: "mutation" | "publication";
+    scope: PhysicalAccessScopeCounters;
+    scopeLabel: string;
   }): void {
     switch (operation) {
     case "get_file_size":
@@ -675,7 +736,7 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
   #finalizeScopedPhysicalAccess({ counter, operation, scope }: {
     counter: MutableScopedAccessCounter;
     operation: "get_file_size" | "read_exact";
-    scope: ActivePhysicalAccessScope;
+    scope: PhysicalAccessScopeCounters;
   }): void {
     switch (operation) {
     case "get_file_size":
@@ -756,11 +817,12 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     counter.maximumEntries = Math.max(counter.maximumEntries, currentEntries);
   }
 
-  setMetadataCacheUsage({ bytes, entries }: {
+  setMetadataCacheUsage({ bytes, entries, scope = "session" }: {
     bytes: number;
     entries: number;
+    scope?: "mutation" | "session";
   }): void {
-    this.setCacheUsage({ bytes, cache: "metadata", entries });
+    this.setCacheUsage({ bytes, cache: metadataCacheDiagnosticName({ scope }), entries });
   }
 
   setResourceUsage({ bytes, operations, resource }: {
@@ -798,6 +860,10 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     }
     this.#mutation.getFileSize.maximumOperationsPerScope = 0;
     this.#mutation.readExact.maximumOperationsPerScope = 0;
+    for (const reason of AUTHENTICATED_PHYSICAL_ACCESS_REASONS) {
+      this.#mutation.physicalAccessReasons[reason].getFileSize.maximumOperationsPerScope = 0;
+      this.#mutation.physicalAccessReasons[reason].readExact.maximumOperationsPerScope = 0;
+    }
     this.#publication.getFileSize.maximumOperationsPerScope = 0;
     this.#publication.readExact.maximumOperationsPerScope = 0;
   }

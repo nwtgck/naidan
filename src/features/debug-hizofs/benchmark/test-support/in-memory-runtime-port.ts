@@ -1,4 +1,5 @@
 import { HIZOFS_SUPERBLOCK_FILES } from "@/00-storage/service/hizofs/00-format";
+import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
 import type {
   StorageDirectoryHandle,
   StorageFileHandle,
@@ -322,6 +323,10 @@ function createMutableRuntimeDiagnostics(): MutableRuntimeDiagnostics {
       }
       snapshot.mutation.getFileSize.maximumOperationsPerScope = 0;
       snapshot.mutation.readExact.maximumOperationsPerScope = 0;
+      for (const reason of AUTHENTICATED_PHYSICAL_ACCESS_REASONS) {
+        snapshot.mutation.physicalAccessReasons[reason].getFileSize.maximumOperationsPerScope = 0;
+        snapshot.mutation.physicalAccessReasons[reason].readExact.maximumOperationsPerScope = 0;
+      }
       snapshot.publication.getFileSize.maximumOperationsPerScope = 0;
       snapshot.publication.readExact.maximumOperationsPerScope = 0;
     },
@@ -343,7 +348,7 @@ function createMutableRuntimeDiagnostics(): MutableRuntimeDiagnostics {
 
 function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnapshot {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     type: "measured",
     phases: Object.fromEntries(HIZOFS_BENCHMARK_RUNTIME_PHASES.map(key => [
       key,
@@ -364,6 +369,7 @@ function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnaps
     ])) as MutableRuntimeDiagnosticsSnapshot["records"],
     caches: {
       metadata: createEmptyCacheDiagnostics(),
+      mutationMetadata: createEmptyCacheDiagnostics(),
       fileChunk: createEmptyCacheDiagnostics(),
       backingFileHandle: createEmptyCacheDiagnostics(),
       backingFileSnapshot: createEmptyCacheDiagnostics(),
@@ -388,6 +394,10 @@ function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnaps
       failed: 0,
       overlapping: 0,
       getFileSize: createEmptyScopedAccessDiagnostics(),
+      physicalAccessReasons: Object.fromEntries(AUTHENTICATED_PHYSICAL_ACCESS_REASONS.map(reason => [reason, {
+        getFileSize: createEmptyScopedAccessDiagnostics(),
+        readExact: createEmptyScopedAccessDiagnostics(),
+      }])) as MutableRuntimeDiagnosticsSnapshot["mutation"]["physicalAccessReasons"],
       readExact: createEmptyScopedAccessDiagnostics(),
     },
     publication: {

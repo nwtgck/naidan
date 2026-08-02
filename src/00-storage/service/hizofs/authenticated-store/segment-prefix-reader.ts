@@ -27,7 +27,9 @@ import {
 import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import type { CanonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import {
+  getFileSizeWithAuthenticatedReason,
   measureAuthenticatedCryptoOperation,
+  readExactWithAuthenticatedReason,
   type AuthenticatedStoreDiagnosticsPort,
 } from "./runtime-diagnostics-port";
 import { authenticatedStoreError } from "./errors";
@@ -55,17 +57,25 @@ export async function readAuthenticatedSegmentDescriptor({ backend, diagnostics,
   segmentClass: SegmentClass;
 }): Promise<AuthenticatedSegmentDescriptor> {
   const path = authenticatedSegmentPath({ segmentClass, segmentId: physicalSegmentId });
-  const fileSize = await backend.getFileSize({ path });
+  const fileSize = await getFileSizeWithAuthenticatedReason({
+    backend,
+    diagnostics,
+    path,
+    reason: "segment_descriptor",
+  });
   if (fileSize === undefined) {
     throw authenticatedStoreError({ code: "control_plane_corrupt", message: "referenced segment file is missing" });
   }
   if (!segmentFileSizeIsReaderValid({ fileSize, segmentClass })) {
     throw authenticatedStoreError({ code: "control_plane_corrupt", message: "Segment file size is outside the V1 bound" });
   }
-  const bytes = await backend.readExact({
+  const bytes = await readExactWithAuthenticatedReason({
+    backend,
+    diagnostics,
     length: HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader,
     offset: 0n,
     path,
+    reason: "segment_descriptor",
   });
   let header: ReturnType<typeof decodeSegmentHeader>;
   try {

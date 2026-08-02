@@ -1947,6 +1947,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         randomSource,
         relocationIndexRootPhysicalRef: base.superblock.logicalState.relocationIndexRootPhysicalRef,
         rootKey: opened.rootKey,
+        sharedMetadataRecordCache: metadataRecordCache,
         supportedFeatureBits,
       });
       try {
@@ -2409,6 +2410,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       randomSource,
       relocationIndexRootPhysicalRef: base.superblock.logicalState.relocationIndexRootPhysicalRef,
       rootKey: opened.rootKey,
+      sharedMetadataRecordCache: metadataRecordCache,
       supportedFeatureBits,
     });
     const contentPort = {
