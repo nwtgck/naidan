@@ -124,9 +124,11 @@ class PinnedReadSnapshotRuntimeSession implements HizoFSApplicationRuntimeSessio
 }
 
 async function createPinnedReadSnapshotPort({
+  assertOperationAllowed,
   createResources,
   parent,
 }: {
+  assertOperationAllowed?: () => void;
   createResources: () => Readonly<{
     commitReference: Parameters<ContainerRuntimeSession["acquireReaderPin"]>[0]["commitReference"];
     mutationPort: HizoFSApplicationMutationPort;
@@ -134,10 +136,13 @@ async function createPinnedReadSnapshotPort({
   }>;
   parent: ContainerRuntimeSession;
 }): Promise<HizoFSApplicationSessionPort> {
+  assertOperationAllowed?.();
   const resources = createResources();
   const pin = await parent.acquireReaderPin({ commitReference: resources.commitReference });
   try {
+    assertOperationAllowed?.();
     return createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      ...(assertOperationAllowed === undefined ? {} : { assertOperationAllowed }),
       mutationPort: resources.mutationPort,
       namespace: resources.namespace,
       runtimeSession: new PinnedReadSnapshotRuntimeSession({ parent, pin }),
@@ -194,13 +199,16 @@ export class HizoFSWorkerRuntimeHost {
   }
 
   async openApplicationSession<Captured, Verified>({
+    assertOperationAllowed,
     captureAuthority,
     createApplicationSessionResources,
     recheckAuthority,
+    registerRuntimeSession,
     rootName,
     rootPath,
     verifyCapturedAuthority,
   }: {
+    assertOperationAllowed?: () => void;
     captureAuthority: () => Promise<Captured>;
     createApplicationSessionResources: ({ captured, verified }: {
       captured: Captured;
@@ -217,6 +225,9 @@ export class HizoFSWorkerRuntimeHost {
       workerMountGrantIssuer?: HizoFSWorkerMountGrantIssuer;
     }>;
     recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
+    registerRuntimeSession?: ({ runtimeSession }: {
+      runtimeSession: HizoFSApplicationRuntimeSession;
+    }) => void;
     rootName?: string;
     rootPath?: readonly string[];
     verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
@@ -264,10 +275,13 @@ export class HizoFSWorkerRuntimeHost {
     }
     const createReadSnapshotResources = applicationResources.createReadSnapshotResources;
     try {
+      registerRuntimeSession?.({ runtimeSession: session });
       return createHizoFSStorageFileSystemSession({
         port: createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+          ...(assertOperationAllowed === undefined ? {} : { assertOperationAllowed }),
           ...(createReadSnapshotResources === undefined ? {} : {
             createReadSnapshot: async () => await createPinnedReadSnapshotPort({
+              ...(assertOperationAllowed === undefined ? {} : { assertOperationAllowed }),
               createResources: createReadSnapshotResources,
               parent: session,
             }),

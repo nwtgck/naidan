@@ -360,6 +360,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   private unlockedEncryptionSession: OpfsPersistenceUnlockedSession | undefined;
   private persistenceRuntime: OpfsPersistenceRuntime | undefined;
   private uninstallActiveHizoFSContainerLocation: (() => void) | undefined;
+  private unlockedMaintenanceCompletion: Promise<void> | undefined;
   private readonly hostVolumeDB = new HostVolumeDB();
   private readonly plainNamespaceSessionLock = new OpfsPlainNamespaceSessionLock();
   private readonly storageSessionLock = new OpfsStorageSessionLock();
@@ -457,11 +458,20 @@ export class OPFSStorageProvider extends IStorageProvider {
           level: 'info',
         });
         const nativeNamespaceRoot = await navigator.storage.getDirectory();
-        void runtime.runUnlockedMaintenance({ nativeNamespaceRoot, session, storageRoot }).catch(error => {
-          // WHY: Stable HizoFS is already authoritative and usable. Retired
-          // source deletion is opportunistic maintenance and must never turn
-          // a successful unlock into an application startup failure.
-          console.error('[opfs-encryption] unlocked persistence maintenance failed', error);
+        const maintenanceCompletion = runtime.runUnlockedMaintenance({ nativeNamespaceRoot, session, storageRoot }).then(
+          () => undefined,
+          error => {
+            // WHY: Stable HizoFS is already authoritative and usable. Retired
+            // source deletion is opportunistic maintenance and must never turn
+            // a successful unlock into an application startup failure.
+            console.error('[opfs-encryption] unlocked persistence maintenance failed', error);
+          },
+        );
+        this.unlockedMaintenanceCompletion = maintenanceCompletion;
+        void maintenanceCompletion.finally(() => {
+          if (this.unlockedMaintenanceCompletion === maintenanceCompletion) {
+            this.unlockedMaintenanceCompletion = undefined;
+          }
         });
       } });
     } catch (error) {
@@ -516,6 +526,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async changePassphrase({ passphrase }: { passphrase: string }): Promise<void> {
     await this.storageSessionLock.run({ run: async () => {
+      await this.unlockedMaintenanceCompletion;
       const session = this.requireUnlockedEncryptionSession();
       const storageRoot = await getOrCreateStorageRoot();
       const nextSession = await (await this.requirePersistenceRuntime()).changePassphrase({
@@ -964,6 +975,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   private async clearPersistenceSession(): Promise<void> {
+    await this.unlockedMaintenanceCompletion;
     const uninstallActiveLocation = this.uninstallActiveHizoFSContainerLocation;
     this.uninstallActiveHizoFSContainerLocation = undefined;
     uninstallActiveLocation?.();

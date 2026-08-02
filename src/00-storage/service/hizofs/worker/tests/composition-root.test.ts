@@ -1686,14 +1686,25 @@ describe("HizoFS worker composition root", () => {
     });
     expect(transferRechecks).toBe(1);
 
+    const beforeCredentialUpdate = await session.root.getFileHandle({
+      create: true,
+      name: "before-credential-update.bin",
+    });
+    const beforeCredentialUpdateBytes = new Uint8Array([19, 23, 29, 31]);
+    const heldWriter = await beforeCredentialUpdate.createWritable({ keepExistingData: false });
+    await heldWriter.write({ data: beforeCredentialUpdateBytes, position: 0 });
+
     let updateRechecks = 0;
-    await expect(replaceAuthenticatedDevelopmentWritableSessionPassphrase({
+    const credentialUpdate = replaceAuthenticatedDevelopmentWritableSessionPassphrase({
       recheckAuthority: async () => {
         updateRechecks += 1;
       },
       replacementPassphrase: "new-passphrase",
       session,
-    })).resolves.toBe(session);
+    });
+    expect(updateRechecks).toBe(0);
+    await heldWriter.close();
+    await expect(credentialUpdate).resolves.toBe(session);
     expect(updateRechecks).toBe(2);
     await expect(session.root.getFileHandle({
       create: true,
@@ -1707,12 +1718,39 @@ describe("HizoFS worker composition root", () => {
       passphrase: "old-passphrase",
       supportedFeatureBits,
     })).rejects.toMatchObject({ code: "credential_rejected" });
-    const reopened = await openEmptyEncryptedContainer({
-      backend,
+    const reopenedCapability = await openAuthenticatedDevelopmentWritableContainerCapability({
+      backend: developmentBackend({ backend }),
       passphrase: "new-passphrase",
-      supportedFeatureBits,
+      verifyProofAuthority: async () => undefined,
     });
-    reopened.rootKey.destroy();
+    if (reopenedCapability.type !== "opened") throw new Error("expected replacement credential to reopen capability");
+    const reopenedSession = await openAuthenticatedDevelopmentWritableApplicationSessionFromCapability({
+      authority: reopenedCapability.authority,
+      canonicalBackingLocation: "memory://credential-update.hizofs",
+      recheckAuthority: async () => undefined,
+      runtimeHost: runtimeHost(),
+    });
+    const reopenedFile = await reopenedSession.root.getFileHandle({
+      create: false,
+      name: "before-credential-update.bin",
+    });
+    const reopenedReadable = await reopenedFile.openReadable({ mimeType: "application/octet-stream" });
+    const reopenedBytes = new Uint8Array(beforeCredentialUpdateBytes.byteLength);
+    await expect(reopenedReadable.read({
+      buffer: reopenedBytes,
+      length: reopenedBytes.byteLength,
+      offset: 0,
+      position: 0,
+      signal: undefined,
+    })).resolves.toEqual({ bytesRead: reopenedBytes.byteLength });
+    expect(reopenedBytes).toEqual(beforeCredentialUpdateBytes);
+    await expect(reopenedSession.root.getFileHandle({
+      create: false,
+      name: "after-credential-update.bin",
+    })).resolves.toBeDefined();
+    await reopenedReadable.close();
+    await reopenedCapability.releaseResources();
+    await reopenedSession.close();
   });
 
   it("scopes active-session root-key proof to one callback", async () => {
@@ -1864,8 +1902,10 @@ describe("HizoFS worker composition root", () => {
   it("requires recovery when authority recheck fails after credential publication", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
     const created = await createEmptyEncryptedContainer({
       backend,
+      diagnostics,
       passphrase: "old-passphrase",
       randomSource: deterministicRandomSource(),
       supportedFeatureBits,
@@ -1874,6 +1914,7 @@ describe("HizoFS worker composition root", () => {
     const capability = await openAuthenticatedDevelopmentWritableContainerCapability({
       backend: developmentBackend({ backend }),
       passphrase: "old-passphrase",
+      recordDiagnostics: diagnostics,
       verifyProofAuthority: async () => undefined,
     });
     if (capability.type !== "opened") throw new Error("expected development writable capability");
@@ -1884,6 +1925,13 @@ describe("HizoFS worker composition root", () => {
       rootName: "credential-recheck.hizofs",
       runtimeHost: runtimeHost(),
     });
+    const staleRoot = session.root;
+    const staleFile = await staleRoot.getFileHandle({ create: true, name: "stable.bin" });
+    const stableBytes = new Uint8Array([37, 41, 43]);
+    const stableWritable = await staleFile.createWritable({ keepExistingData: false });
+    await stableWritable.write({ data: stableBytes, position: 0 });
+    await stableWritable.close();
+    const staleReadable = await staleFile.openReadable({ mimeType: "application/octet-stream" });
 
     let rechecks = 0;
     await expect(replaceAuthenticatedDevelopmentWritableSessionPassphrase({
@@ -1899,19 +1947,56 @@ describe("HizoFS worker composition root", () => {
       replacementPassphrase: "another-passphrase",
       session,
     })).rejects.toThrow("requires recovery");
+    const diagnosticsBeforeRejectedIo = diagnostics.snapshot();
+    await expect(staleRoot.stat()).rejects.toMatchObject({ code: "recovery_required" });
+    await expect(staleFile.stat()).rejects.toMatchObject({ code: "recovery_required" });
+    await expect(staleReadable.read({
+      buffer: new Uint8Array(stableBytes.byteLength),
+      length: stableBytes.byteLength,
+      offset: 0,
+      position: 0,
+      signal: undefined,
+    })).rejects.toMatchObject({ code: "recovery_required" });
+    await expect(session.root.getFileHandle({
+      create: false,
+      name: "stable.bin",
+    })).rejects.toMatchObject({ code: "recovery_required" });
+    await expect(session.createReadSnapshot?.()).rejects.toMatchObject({ code: "recovery_required" });
+    expect(diagnostics.snapshot()).toEqual(diagnosticsBeforeRejectedIo);
 
+    await staleReadable.close();
     await session.close();
     await expect(openEmptyEncryptedContainer({
       backend,
       passphrase: "old-passphrase",
       supportedFeatureBits,
     })).rejects.toMatchObject({ code: "credential_rejected" });
-    const reopened = await openEmptyEncryptedContainer({
-      backend,
+    const recoveredCapability = await openAuthenticatedDevelopmentWritableContainerCapability({
+      backend: developmentBackend({ backend }),
       passphrase: "new-passphrase",
-      supportedFeatureBits,
+      verifyProofAuthority: async () => undefined,
     });
-    reopened.rootKey.destroy();
+    if (recoveredCapability.type !== "opened") throw new Error("expected recovery credential to reopen capability");
+    const recoveredSession = await openAuthenticatedDevelopmentWritableApplicationSessionFromCapability({
+      authority: recoveredCapability.authority,
+      canonicalBackingLocation: "memory://credential-recheck.hizofs",
+      recheckAuthority: async () => undefined,
+      runtimeHost: runtimeHost(),
+    });
+    const recoveredFile = await recoveredSession.root.getFileHandle({ create: false, name: "stable.bin" });
+    const recoveredReadable = await recoveredFile.openReadable({ mimeType: "application/octet-stream" });
+    const recoveredBytes = new Uint8Array(stableBytes.byteLength);
+    await expect(recoveredReadable.read({
+      buffer: recoveredBytes,
+      length: recoveredBytes.byteLength,
+      offset: 0,
+      position: 0,
+      signal: undefined,
+    })).resolves.toEqual({ bytesRead: recoveredBytes.byteLength });
+    expect(recoveredBytes).toEqual(stableBytes);
+    await recoveredReadable.close();
+    await recoveredCapability.releaseResources();
+    await recoveredSession.close();
   });
 
   it("transfers one normal-read opaque capability into one authority-rechecked application session", async () => {
