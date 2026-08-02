@@ -36,6 +36,7 @@ import {
   type PublishedPreparedMutationCommit,
 } from "./prepared-mutation-commit-store";
 import {
+  AuthenticatedSegmentCapacityError,
   createAuthenticatedSegmentWriter,
   type AuthenticatedSegmentWriter,
 } from "./record-appender";
@@ -52,12 +53,13 @@ export class AuthenticatedMetadataMutationAuthority {
   readonly #backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
   readonly #fileSystemId: FileSystemId;
-  readonly #pageWriter: AuthenticatedSegmentWriter;
   readonly #randomSource: RandomByteSource | undefined;
   readonly #relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
   readonly #rootKey: FileSystemRootKey;
   readonly #supportedFeatureBits: FeatureBits;
   #operationInProgress = false;
+  #pageWriter: AuthenticatedSegmentWriter;
+  #pageWriterHasRecords = false;
   #state: AuthenticatedMetadataMutationAuthorityState = "active";
 
   private constructor({
@@ -140,6 +142,35 @@ export class AuthenticatedMetadataMutationAuthority {
     if (this.#operationInProgress) throw new Error("mutation authority operation already in progress");
   }
 
+  async #createPageWriter(): Promise<AuthenticatedSegmentWriter> {
+    return await createAuthenticatedSegmentWriter({
+      backend: this.#backend,
+      diagnostics: this.#diagnostics,
+      fileSystemId: this.#fileSystemId,
+      randomSource: this.#randomSource,
+      rootKey: this.#rootKey,
+      segmentClass: "metadata",
+    });
+  }
+
+  async #appendPageWithRollover({ append }: {
+    append: ({ writer }: { writer: AuthenticatedSegmentWriter }) => Promise<HomeRecordReference>;
+  }): Promise<HomeRecordReference> {
+    try {
+      const reference = await append({ writer: this.#pageWriter });
+      this.#pageWriterHasRecords = true;
+      return reference;
+    } catch (error: unknown) {
+      if (!(error instanceof AuthenticatedSegmentCapacityError) || !this.#pageWriterHasRecords) throw error;
+      this.#pageWriter.abandon();
+      this.#pageWriter = await this.#createPageWriter();
+      this.#pageWriterHasRecords = false;
+      const reference = await append({ writer: this.#pageWriter });
+      this.#pageWriterHasRecords = true;
+      return reference;
+    }
+  }
+
   async readFileExtentPage({ isRoot, reference }: {
     isRoot: boolean;
     reference: HomeRecordReference;
@@ -168,7 +199,9 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#requireActive({ operation: "write a File Extent page" });
     this.#operationInProgress = true;
     try {
-      return await appendAuthenticatedFileExtentPage({ isRoot, page, writer: this.#pageWriter });
+      return await this.#appendPageWithRollover({
+        append: async ({ writer }) => await appendAuthenticatedFileExtentPage({ isRoot, page, writer }),
+      });
     } finally {
       this.#operationInProgress = false;
     }
@@ -202,10 +235,12 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#requireActive({ operation: "write an Inode Table page" });
     this.#operationInProgress = true;
     try {
-      return await appendAuthenticatedInodeTablePage({
-        isRoot,
-        page,
-        writer: this.#pageWriter,
+      return await this.#appendPageWithRollover({
+        append: async ({ writer }) => await appendAuthenticatedInodeTablePage({
+          isRoot,
+          page,
+          writer,
+        }),
       });
     } finally {
       this.#operationInProgress = false;
@@ -240,10 +275,12 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#requireActive({ operation: "write a Directory page" });
     this.#operationInProgress = true;
     try {
-      return await appendAuthenticatedDirectoryPage({
-        isRoot,
-        page,
-        writer: this.#pageWriter,
+      return await this.#appendPageWithRollover({
+        append: async ({ writer }) => await appendAuthenticatedDirectoryPage({
+          isRoot,
+          page,
+          writer,
+        }),
       });
     } finally {
       this.#operationInProgress = false;

@@ -455,7 +455,7 @@ describe('OPFS Persistence Control runtime composition', () => {
       }).mode.activeFileSystemId,
       fileSystemSession: {},
     } as unknown as OpfsPersistenceUnlockedSession;
-    const runTransition = vi.fn(async () => undefined);
+    const runTransition = vi.fn(async () => ({ type: 'completed' as const }));
     const runtime: OpfsPersistenceRuntime = {
       writableProfile: 'development-unverified',
       runUnlockedMaintenance: vi.fn(async () => {

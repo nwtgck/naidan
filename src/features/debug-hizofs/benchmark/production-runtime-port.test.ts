@@ -192,6 +192,45 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(sample?.hizoFSDiagnostics?.commits.superblockPublications).toBe(1);
   });
 
+  it('runs every public benchmark case through the production HizoFS runtime', async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
+    const configuration: HizoFSBenchmarkConfiguration = {
+      ...createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),
+      backendMode: 'hizofs_only' as const,
+      warmupIterations: 0,
+      measuredIterations: 1,
+    };
+
+    const report = await runHizoFSBenchmark({
+      configuration,
+      onProgress: () => undefined,
+      assertActive: () => undefined,
+      nativeOpfsRoot: root as unknown as FileSystemDirectoryHandle,
+      runtimePort: createProductionHizoFSBenchmarkRuntimePort(),
+    });
+
+    expect(report.status).toBe('completed');
+    expect(report.failure).toBeUndefined();
+    expect(report.cleanup).toMatchObject({ attempted: true, completed: true });
+    expect(report.results.map(({ caseId }) => caseId)).toEqual([
+      'small_files_create_empty',
+      'small_files_write_existing',
+      'small_files_read',
+      'small_files_delete',
+      'sequential_write',
+      'sequential_read',
+      'sequential_append',
+      'sequential_truncate',
+      'random_read',
+      'random_write',
+      'directory_create_entries',
+      'directory_lookup',
+      'directory_list',
+      'directory_recursive_delete',
+    ]);
+    expect(report.results.every(result => result.backends.hizofs?.sampleCount === 1)).toBe(true);
+  }, 30_000);
+
   it('retains an isolated production run only by configuration and removes it explicitly', async () => {
     const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
     const configuration: HizoFSBenchmarkConfiguration = {

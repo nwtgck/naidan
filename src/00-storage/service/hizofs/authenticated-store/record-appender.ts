@@ -82,6 +82,19 @@ export type AppendedRecord =
 
 export type SegmentWriterState = "abandoned" | "active" | "sealed";
 
+export class AuthenticatedSegmentCapacityError extends RangeError {
+  readonly capacity: "frame_count" | "record_area";
+
+  constructor({ capacity, message }: {
+    capacity: "frame_count" | "record_area";
+    message: string;
+  }) {
+    super(message);
+    this.name = "AuthenticatedSegmentCapacityError";
+    this.capacity = capacity;
+  }
+}
+
 export function encodedHizoFSRecord({ plaintext, recordKind }: {
   plaintext: Uint8Array;
   recordKind: number;
@@ -371,7 +384,10 @@ export class AuthenticatedSegmentWriter {
     try {
       if (records.length === 0) throw new RangeError("record append batch must not be empty");
       if (this.#frameCount + records.length > frameMaximumCount({ segmentClass: this.#segmentClass })) {
-        throw new RangeError("record append batch exceeds the segment frame-count bound");
+        throw new AuthenticatedSegmentCapacityError({
+          capacity: "frame_count",
+          message: "record append batch exceeds the segment frame-count bound",
+        });
       }
       const recordSnapshots = records.map(record => {
         // Validate caller-controlled size and kind before copying. Rejected input
@@ -410,7 +426,10 @@ export class AuthenticatedSegmentWriter {
         const end = nextOffset + BigInt(header.frameLength);
         const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
         if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.#segmentClass }))) {
-          throw new RangeError("record append batch exceeds the segment record-area bound");
+          throw new AuthenticatedSegmentCapacityError({
+            capacity: "record_area",
+            message: "record append batch exceeds the segment record-area bound",
+          });
         }
         const headerBytes = encodeRecordFrameHeader({ header });
         const ciphertext = await measureAuthenticatedCryptoOperation({

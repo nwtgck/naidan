@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  HIZOFS_V1_FORMAT_CONSTANTS,
   createCommitSequence,
+  createFileOffset,
+  createHomeRecordReference,
   createFeatureBits,
   createFileSystemCommitPayload,
   createInodeNumber,
   createInodeRevision,
   createPublicationSequence,
   createSubvolumeId,
+  createUInt64,
   createUnlockSequence,
   parseFileSystemId,
+  parseSegmentId,
   parseMutationId,
 } from "@/00-storage/service/hizofs/00-format";
 import { createInitialBootstrapSegment } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
@@ -139,6 +144,51 @@ describe("authenticated metadata mutation authority", () => {
       rootKey,
       supportedFeatureBits: createFeatureBits({ value: 0n }),
     })).resolves.toMatchObject({ logicalState: { activeCommitSequence: 2n } });
+    rootKey.destroy();
+  });
+
+  it("rolls metadata page writes into a fresh segment when one mutation exceeds the record area", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const authority = await createAuthenticatedMetadataMutationAuthority({
+      backend,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const fileDataHomeRef = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 64n }),
+      frameLength: 96,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data,
+      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(211) }),
+    } });
+    const page = {
+      entries: Array.from({ length: 1_024 }, (_, index) => ({
+        byteLength: 1,
+        dataOffset: 0,
+        fileDataHomeRef,
+        fileOffset: createFileOffset({ value: BigInt(index * 2) }),
+      })),
+      level: 0 as const,
+      type: "leaf" as const,
+    };
+
+    const references = [];
+    for (let index = 0; index < 96; index += 1) {
+      references.push(await authority.writeFileExtentPage({ isRoot: false, page }));
+    }
+
+    const first = references.at(0);
+    const last = references.at(-1);
+    if (first === undefined || last === undefined) throw new Error("metadata rollover references are missing");
+    expect(last.segmentId).not.toEqual(first.segmentId);
+    await expect(authority.readFileExtentPage({ isRoot: false, reference: first })).resolves.toEqual(page);
+    await expect(authority.readFileExtentPage({ isRoot: false, reference: last })).resolves.toEqual(page);
+    authority.abandon();
     rootKey.destroy();
   });
 
