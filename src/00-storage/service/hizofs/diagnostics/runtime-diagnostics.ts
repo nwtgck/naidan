@@ -34,6 +34,7 @@ export const HIZOFS_RUNTIME_DIAGNOSTIC_PHASES = Object.freeze([
   "envelope_encode",
   "envelope_decode",
   "physical_create_directory_exclusive",
+  "physical_provision_directory_hierarchy",
   "physical_create_file_exclusive",
   "physical_open_file_for_update",
   "physical_get_file_size",

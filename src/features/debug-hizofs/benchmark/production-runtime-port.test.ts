@@ -60,7 +60,7 @@ describe('production HizoFS benchmark runtime port', () => {
 
     expect(diagnostics.snapshot()).toEqual({
       reason: 'runtime diagnostics recording failed',
-      schemaVersion: 8,
+      schemaVersion: 9,
       type: 'unavailable',
     });
   });
@@ -526,6 +526,8 @@ describe('production HizoFS benchmark runtime port', () => {
       operations: 0,
       pageReads: 0,
     });
+    expect(smallFileWriteRuntime.phases.physical_provision_directory_hierarchy.operationCount)
+      .toBeGreaterThan(0);
     const randomWriteSample = report.results.find(result => result.caseId === 'random_write')
       ?.backends.hizofs?.samples[0];
     const randomWriteRuntime = randomWriteSample?.hizoFSDiagnostics?.runtime;

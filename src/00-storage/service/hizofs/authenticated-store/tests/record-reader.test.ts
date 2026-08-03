@@ -14,12 +14,60 @@ import { readAuthenticatedHomeRecord } from "@/00-storage/service/hizofs/authent
 import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import * as HizoFSCrypto from "@/00-storage/service/hizofs/01-crypto";
 import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
+import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import type {
   AuthenticatedCryptoDiagnosticsObservation,
   AuthenticatedPhysicalAccessReasonObservation,
   AuthenticatedRecordDiagnosticsObservation,
 } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
+
+
+function pairedReadableBackend({
+  backend,
+  omitSecond = false,
+}: {
+  backend: HizoFSReadableBackend;
+  omitSecond?: boolean;
+}): Readonly<{
+  backend: HizoFSReadableBackend;
+  legacyReadExact: ReturnType<typeof vi.fn>;
+  legacyReadExactWithFileSize: ReturnType<typeof vi.fn>;
+  readPair: ReturnType<typeof vi.fn>;
+}> {
+  const legacyReadExact = vi.fn(async (parameters: Parameters<HizoFSReadableBackend["readExact"]>[0]) => (
+    await backend.readExact(parameters)
+  ));
+  const legacyReadExactWithFileSize = vi.fn(async (
+    parameters: Parameters<HizoFSReadableBackend["readExactWithFileSize"]>[0],
+  ) => await backend.readExactWithFileSize(parameters));
+  const readPair = vi.fn(async ({ first, path, second }: Parameters<
+    NonNullable<HizoFSReadableBackend["readExactPairWithFileSize"]>
+  >[0]) => {
+    const firstResult = await backend.readExactWithFileSize({ ...first, path });
+    const secondEnd = second.offset + BigInt(second.length);
+    return {
+      fileSize: firstResult.fileSize,
+      first: firstResult.bytes,
+      second: omitSecond || secondEnd > firstResult.fileSize
+        ? undefined
+        : await backend.readExact({ ...second, path }),
+    };
+  });
+  return {
+    backend: {
+      getFileSize: async parameters => await backend.getFileSize(parameters),
+      list: async parameters => await backend.list(parameters),
+      readExact: legacyReadExact,
+      readExactPairWithFileSize: readPair,
+      readExactWithFileSize: legacyReadExactWithFileSize,
+      readFileBounded: async parameters => await backend.readFileBounded(parameters),
+    },
+    legacyReadExact,
+    legacyReadExactWithFileSize,
+    readPair,
+  };
+}
 
 function deterministicRandomSource(): RandomByteSource {
   let next = 1;
@@ -73,6 +121,75 @@ describe("authenticated Record Frame reader", () => {
       plaintextBytes: record.plaintext.byteLength,
       recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
     }]);
+    rootKey.destroy();
+  });
+
+  it("uses the optional paired snapshot read instead of the legacy two-read path", async () => {
+    const physicalBackend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const created = await createInitialBootstrapSegment({
+      backend: physicalBackend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+    });
+    const paired = pairedReadableBackend({ backend: physicalBackend });
+    const physicalAccessObservations: AuthenticatedPhysicalAccessReasonObservation[] = [];
+
+    const record = await readAuthenticatedHomeRecord({
+      backend: paired.backend,
+      diagnostics: {
+        recordCodecOperation: () => {},
+        recordCryptoOperation: () => {},
+        recordPhysicalAccessReason: observation => physicalAccessObservations.push(observation),
+        recordPublicationOperation: () => {},
+        recordPersistedRecord: () => {},
+      },
+      fileSystemId,
+      homeReference: created.activeCommitHomeRef,
+      rootKey,
+    });
+
+    expect(decodeFileSystemCommitPayload({ bytes: record.plaintext }).commitSequence).toBe(1n);
+    expect(paired.readPair).toHaveBeenCalledTimes(1);
+    expect(paired.legacyReadExact).not.toHaveBeenCalled();
+    expect(paired.legacyReadExactWithFileSize).not.toHaveBeenCalled();
+    expect(physicalAccessObservations.filter(({ operation, reason }) => (
+      operation === "read_exact" && reason === "segment_descriptor"
+    ))).toHaveLength(1);
+    expect(physicalAccessObservations.filter(({ operation, reason }) => (
+      operation === "read_exact" && reason === "authenticated_record_resolution"
+    ))).toHaveLength(1);
+    rootKey.destroy();
+  });
+
+  it("preserves the authenticated oversized-reference error on a paired snapshot miss", async () => {
+    const physicalBackend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const created = await createInitialBootstrapSegment({
+      backend: physicalBackend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+    });
+    const paired = pairedReadableBackend({ backend: physicalBackend, omitSecond: true });
+
+    await expect(readAuthenticatedHomeRecord({
+      backend: paired.backend,
+      fileSystemId,
+      homeReference: created.activeCommitHomeRef,
+      rootKey,
+    })).rejects.toMatchObject({
+      code: "control_plane_corrupt",
+      message: "Physical Record Reference exceeds its segment file",
+    });
+    expect(paired.readPair).toHaveBeenCalledTimes(1);
+    expect(paired.legacyReadExact).not.toHaveBeenCalled();
+    expect(paired.legacyReadExactWithFileSize).not.toHaveBeenCalled();
     rootKey.destroy();
   });
 

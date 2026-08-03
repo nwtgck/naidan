@@ -68,15 +68,7 @@ describe('HizoFS benchmark engine', () => {
     const physical = new Uint8Array(16);
     let physicalSize = 0;
     let committed = 0;
-    const counters = {
-      fileSnapshotOperations: 0,
-      readOperations: 0,
-      writeOperations: 0,
-      removeOperations: 0,
-      listOperations: 0,
-      bytesRead: 0,
-      bytesWritten: 0,
-    };
+    const counters = TEST_ONLY.createEmptyBackingStoreCounters();
     const handle = TEST_ONLY.createCountingSyncAccessHandle({
       handle: {
         getSize: () => physicalSize,
@@ -133,15 +125,7 @@ describe('HizoFS benchmark engine', () => {
     const writable = await source.createWritable();
     await writable.write(new Uint8Array([1, 2, 3, 4]));
     await writable.close();
-    const counters = {
-      fileSnapshotOperations: 0,
-      readOperations: 0,
-      writeOperations: 0,
-      removeOperations: 0,
-      listOperations: 0,
-      bytesRead: 0,
-      bytesWritten: 0,
-    };
+    const counters = TEST_ONLY.createEmptyBackingStoreCounters();
     const countedRoot = TEST_ONLY.createCountingDirectoryHandle({
       directory: root,
       counters,
@@ -152,16 +136,47 @@ describe('HizoFS benchmark engine', () => {
       },
     });
 
+    await countedRoot.getDirectoryHandle('created', { create: true });
+    await countedRoot.getFileHandle('created.bin', { create: true });
+    const segments = await countedRoot.getDirectoryHandle('segments', { create: true });
+    const metadata = await segments.getDirectoryHandle('metadata', { create: true });
+    const shard = await metadata.getDirectoryHandle('ab', { create: true });
+    const segment = await shard.getFileHandle('segment.enc', { create: true });
+    await segment.getFile();
+    await Array.fromAsync(shard.keys());
     const snapshot = await (await countedRoot.getFileHandle('value.bin')).getFile();
     expect(counters).toMatchObject({
-      fileSnapshotOperations: 1,
+      directoryHandleLookups: 4,
+      directoryHandleCreateRequests: 4,
+      fileHandleLookups: 3,
+      fileHandleCreateRequests: 2,
+      fileSnapshotOperations: 2,
       readOperations: 0,
       bytesRead: 0,
+      pathAttribution: {
+        directoryHandleLookups: {
+          segmentRoot: 1,
+          segmentClass: 1,
+          segmentShard: 1,
+          other: 1,
+        },
+        fileHandleLookups: {
+          metadataSegment: 1,
+          other: 2,
+        },
+        fileSnapshotOperations: {
+          metadataSegment: 1,
+          other: 1,
+        },
+        listOperations: {
+          segmentShard: 1,
+        },
+      },
     });
     expect(new Uint8Array(await snapshot.slice(1, 3).arrayBuffer()))
       .toEqual(new Uint8Array([2, 3]));
     expect(counters).toMatchObject({
-      fileSnapshotOperations: 1,
+      fileSnapshotOperations: 2,
       readOperations: 1,
       bytesRead: 2,
     });
@@ -192,6 +207,9 @@ describe('HizoFS benchmark engine', () => {
       physicalObjectScope: 'immutable_segment_files',
       backingStoreFileSnapshotOperationScope: 'get_file_snapshot_calls',
       backingStoreReadOperationScope: 'materialized_blob_or_sync_access_reads',
+      backingStoreHandleLookupOperationScope: 'get_directory_handle_and_get_file_handle_calls',
+      backingStoreHandleCreateRequestScope: 'handle_lookup_calls_with_create_true',
+      backingStorePathAttributionScope: 'canonical_container_path_kind',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: 256 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
@@ -250,7 +268,13 @@ describe('HizoFS benchmark engine', () => {
       result => result.caseId === 'small_files_create_empty',
     );
     expect(createResult?.backends.hizofs?.samples[0]?.hizoFSDiagnostics).toMatchObject({
-      backingStore: { writeOperations: 6 },
+      backingStore: {
+        directoryHandleLookups: expect.any(Number),
+        directoryHandleCreateRequests: expect.any(Number),
+        fileHandleLookups: expect.any(Number),
+        fileHandleCreateRequests: expect.any(Number),
+        writeOperations: 6,
+      },
       objects: { created: 3 },
       commits: { superblockPublications: 3 },
       amplification: { objectCreatesPerOperation: 1 },
@@ -284,6 +308,22 @@ describe('HizoFS benchmark engine', () => {
         },
       },
     });
+    const createBackingStoreDiagnostics = createResult?.backends.hizofs?.samples[0]
+      ?.hizoFSDiagnostics?.backingStore;
+    expect(createBackingStoreDiagnostics?.directoryHandleLookups).toBeGreaterThan(0);
+    expect(createBackingStoreDiagnostics?.directoryHandleCreateRequests).toBeGreaterThan(0);
+    expect(createBackingStoreDiagnostics?.fileHandleLookups).toBeGreaterThan(0);
+    expect(createBackingStoreDiagnostics?.fileHandleCreateRequests).toBeGreaterThan(0);
+    expect(createBackingStoreDiagnostics?.pathAttribution.directoryHandleLookups.segmentRoot)
+      .toBeGreaterThan(0);
+    expect(createBackingStoreDiagnostics?.pathAttribution.directoryHandleLookups.segmentClass)
+      .toBeGreaterThan(0);
+    expect(createBackingStoreDiagnostics?.pathAttribution.directoryHandleLookups.segmentShard)
+      .toBeGreaterThan(0);
+    expect(createBackingStoreDiagnostics?.pathAttribution.fileHandleLookups.metadataSegment)
+      .toBeGreaterThan(0);
+    expect(createBackingStoreDiagnostics?.pathAttribution.fileHandleLookups.superblock)
+      .toBeGreaterThan(0);
     const createRuntimeDiagnostics = createResult?.backends.hizofs?.samples[0]
       ?.hizoFSDiagnostics?.runtime;
     expect(createRuntimeDiagnostics?.type).toBe('measured');

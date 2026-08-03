@@ -2513,6 +2513,11 @@ describe("HizoFS worker composition root", () => {
     const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
     const path = canonicalContainerPath({ value: "diagnostic-file" });
     const file = { path } as HizoFSWritableFile;
+    const readExactPairWithFileSize = vi.fn(async () => ({
+      fileSize: 0n,
+      first: new Uint8Array() as AuthenticatedHizoFSPhysicalBytes,
+      second: new Uint8Array() as AuthenticatedHizoFSPhysicalBytes,
+    }));
     const underlying: HizoFSDevelopmentWritableBackend<AuthenticatedHizoFSPhysicalBytes> = {
       capabilities: { directoryEntryDurability: "not-demonstrated", fileDataDurability: "not-demonstrated" },
       closeFile: async () => undefined,
@@ -2521,11 +2526,13 @@ describe("HizoFS worker composition root", () => {
       getFileSize: async () => 0n,
       list: async () => [],
       openFileForUpdate: async () => file,
+      provisionDirectoryHierarchy: async () => ({ parentEntriesRequiringSync: [] }),
       readExact: async () => new Uint8Array() as AuthenticatedHizoFSPhysicalBytes,
       readExactWithFileSize: async () => ({
         bytes: new Uint8Array() as AuthenticatedHizoFSPhysicalBytes,
         fileSize: 0n,
       }),
+      readExactPairWithFileSize,
       readFileBounded: async () => new Uint8Array() as AuthenticatedHizoFSPhysicalBytes,
       removeFile: async () => undefined,
       syncDirectoryEntries: async () => undefined,
@@ -2541,10 +2548,19 @@ describe("HizoFS worker composition root", () => {
     });
     await backend.createFileExclusive({ path });
     await backend.createDirectoryExclusive({ path: CANONICAL_CONTAINER_ROOT });
+    if (backend.provisionDirectoryHierarchy === undefined) throw new Error("expected hierarchy provisioning capability");
+    await backend.provisionDirectoryHierarchy({ path: CANONICAL_CONTAINER_ROOT });
     await backend.openFileForUpdate({ path });
     await backend.getFileSize({ path });
     await backend.readExact({ length: 0, offset: 0n, path });
     await backend.readExactWithFileSize({ length: 0, offset: 0n, path });
+    if (backend.readExactPairWithFileSize === undefined) throw new Error("expected paired exact-read capability");
+    await backend.readExactPairWithFileSize({
+      first: { length: 0, offset: 0n },
+      path,
+      second: { length: 0, offset: 0n },
+    });
+    expect(readExactPairWithFileSize).toHaveBeenCalledOnce();
     await backend.readFileBounded({ maximumByteLength: 0, path });
     await backend.writeAt({ bytes: new Uint8Array() as AuthenticatedHizoFSPhysicalBytes, file, offset: 0n });
     await backend.truncate({ file, length: 0n });
@@ -2563,9 +2579,9 @@ describe("HizoFS worker composition root", () => {
 
     const physical = Object.entries(diagnostics.snapshot().phases)
       .filter(([phase]) => phase.startsWith("physical_"));
-    expect(physical).toHaveLength(13);
+    expect(physical).toHaveLength(14);
     expect(diagnostics.snapshot().phases.physical_get_file_size).toEqual({ operationCount: 3, totalDurationMs: 3 });
-    expect(diagnostics.snapshot().phases.physical_read_exact).toEqual({ operationCount: 4, totalDurationMs: 4 });
+    expect(diagnostics.snapshot().phases.physical_read_exact).toEqual({ operationCount: 5, totalDurationMs: 5 });
     for (const [phase, counter] of physical) {
       if (phase === "physical_get_file_size" || phase === "physical_read_exact") continue;
       expect(counter).toEqual({ operationCount: 1, totalDurationMs: 1 });

@@ -175,17 +175,28 @@ class TestDirectoryHandle {
   public readonly kind = "directory" as const;
   public entriesReadCount = 0;
   readonly #entries = new Map<string, TestEntry>();
+  readonly #stats: { directoryHandleLookups: number };
 
-  public constructor(public readonly name: string) {}
+  public constructor(
+    public readonly name: string,
+    stats: { directoryHandleLookups: number } = { directoryHandleLookups: 0 },
+  ) {
+    this.#stats = stats;
+  }
+
+  public get directoryHandleLookups(): number {
+    return this.#stats.directoryHandleLookups;
+  }
 
   public async getDirectoryHandle(name: string, options?: FileSystemGetDirectoryOptions): Promise<TestDirectoryHandle> {
+    this.#stats.directoryHandleLookups += 1;
     const existing = this.#entries.get(name);
     if (existing !== undefined) {
       if (existing.kind !== "directory") throw new DOMException("not a directory", "TypeMismatchError");
       return existing;
     }
     if (options?.create !== true) throw new DOMException("missing", "NotFoundError");
-    const created = new TestDirectoryHandle(name);
+    const created = new TestDirectoryHandle(name, this.#stats);
     this.#entries.set(name, created);
     return created;
   }
@@ -227,6 +238,37 @@ function createBackend(root = new TestDirectoryHandle("root")): {
 }
 
 describe("OPFS writable backend", () => {
+  it("provisions a directory hierarchy with one prefix traversal", async () => {
+    const { backend, root } = createBackend();
+    const path = canonicalContainerDirectory({ value: "segments/metadata/ab" });
+
+    await expect(backend.provisionDirectoryHierarchy({ path })).resolves.toEqual({
+      parentEntriesRequiringSync: [
+        canonicalContainerDirectory({ value: "" }),
+        canonicalContainerDirectory({ value: "segments" }),
+        canonicalContainerDirectory({ value: "segments/metadata" }),
+      ],
+    });
+    expect(root.directoryHandleLookups).toBe(6);
+
+    await expect(backend.provisionDirectoryHierarchy({ path })).resolves.toEqual({
+      parentEntriesRequiringSync: [],
+    });
+    expect(root.directoryHandleLookups).toBe(9);
+  });
+
+  it("reports the exact occupied hierarchy component as not_directory", async () => {
+    const { backend } = createBackend();
+    const file = await backend.createFileExclusive({
+      path: canonicalContainerPath({ value: "segments" }),
+    });
+    await backend.closeFile({ file });
+
+    await expect(backend.provisionDirectoryHierarchy({
+      path: canonicalContainerDirectory({ value: "segments/metadata/ab" }),
+    })).rejects.toMatchObject({ code: "not_directory", path: "segments" });
+  });
+
   it("performs development parent readback without claiming crash durability", async () => {
     const { backend, root } = createBackend();
     const parent = canonicalContainerDirectory({ value: "segments" });
@@ -292,6 +334,61 @@ describe("OPFS writable backend", () => {
     await backend.closeFile({ file });
     await expect(backend.writeAt({ file, offset: 0n, bytes: authenticatedBytes([1]) }))
       .rejects.toMatchObject({ code: "closed_handle" });
+  });
+
+  it("reads two exact ranges from one immutable file snapshot", async () => {
+    const { backend, root } = createBackend();
+    const path = canonicalContainerPath({ value: "paired.enc" });
+    const file = await backend.createFileExclusive({ path });
+    await backend.writeAt({
+      bytes: authenticatedBytes([0, 1, 2, 3, 4, 5, 6, 7]),
+      file,
+      offset: 0n,
+    });
+    const native = await root.getFileHandle("paired.enc");
+
+    const snapshotsBefore = native.getFileCount;
+    await expect(backend.readExactPairWithFileSize({
+      first: { length: 3, offset: 1n },
+      path,
+      second: { length: 2, offset: 5n },
+    })).resolves.toEqual({
+      fileSize: 8n,
+      first: Uint8Array.from([1, 2, 3]),
+      second: Uint8Array.from([5, 6]),
+    });
+    expect(native.getFileCount).toBe(snapshotsBefore + 1);
+
+    await expect(backend.readExactPairWithFileSize({
+      first: { length: 2, offset: 0n },
+      path,
+      second: { length: 2, offset: 7n },
+    })).resolves.toEqual({
+      fileSize: 8n,
+      first: Uint8Array.from([0, 1]),
+      second: undefined,
+    });
+    expect(native.getFileCount).toBe(snapshotsBefore + 2);
+
+    await expect(backend.readExactPairWithFileSize({
+      first: { length: 2, offset: 7n },
+      path,
+      second: { length: 1, offset: 0n },
+    })).rejects.toMatchObject({ code: "unexpected_end" });
+    await backend.closeFile({ file });
+
+    await expect(backend.readExactPairWithFileSize({
+      first: { length: 0, offset: 0n },
+      path: canonicalContainerPath({ value: "missing.enc" }),
+      second: { length: 0, offset: 0n },
+    })).rejects.toMatchObject({ code: "not_found" });
+
+    await backend.createDirectoryExclusive({ path: canonicalContainerDirectory({ value: "directory" }) });
+    await expect(backend.readExactPairWithFileSize({
+      first: { length: 0, offset: 0n },
+      path: canonicalContainerPath({ value: "directory" }),
+      second: { length: 0, offset: 0n },
+    })).rejects.toMatchObject({ code: "is_directory" });
   });
 
   it("completes short writes without losing authenticated bytes", async () => {

@@ -6,6 +6,8 @@ import type {
   HizoFSWritableFile,
   PhysicalEntry,
   PhysicalDirectoryCursorPage,
+  PhysicalExactReadPairWithFileSize,
+  PhysicalExactReadRange,
 } from '@/00-storage/service/hizofs/physical-store/backend';
 import { PhysicalStoreError, physicalStoreError } from '@/00-storage/service/hizofs/physical-store/errors';
 import {
@@ -185,6 +187,50 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     }
   }
 
+  public async provisionDirectoryHierarchy({
+    path,
+  }: {
+    path: CanonicalContainerDirectory;
+  }): Promise<Readonly<{ parentEntriesRequiringSync: readonly CanonicalContainerDirectory[] }>> {
+    let directory = this.#root;
+    let parentPath = CANONICAL_CONTAINER_ROOT;
+    const parentEntriesRequiringSync: CanonicalContainerDirectory[] = [];
+
+    for (const segment of containerPathSegments({ path })) {
+      const childPath = canonicalContainerDirectory({
+        value: parentPath === '' ? segment : `${parentPath}/${segment}`,
+      });
+      try {
+        directory = await directory.getDirectoryHandle(segment);
+      } catch (error) {
+        if (isDomExceptionNamed({ error, name: 'TypeMismatchError' })) {
+          throw physicalStoreError({
+            code: 'not_directory',
+            message: `physical entry is not a directory: ${childPath}`,
+            path: childPath,
+          });
+        }
+        if (!isDomExceptionNamed({ error, name: 'NotFoundError' })) throw error;
+        try {
+          directory = await directory.getDirectoryHandle(segment, { create: true });
+          parentEntriesRequiringSync.push(parentPath);
+        } catch (createError) {
+          if (isDomExceptionNamed({ error: createError, name: 'TypeMismatchError' })) {
+            throw physicalStoreError({
+              code: 'not_directory',
+              message: `physical entry is not a directory: ${childPath}`,
+              path: childPath,
+            });
+          }
+          throw createError;
+        }
+      }
+      parentPath = childPath;
+    }
+
+    return Object.freeze({ parentEntriesRequiringSync: Object.freeze(parentEntriesRequiringSync) });
+  }
+
   public async createFileExclusive({
     path,
   }: {
@@ -284,6 +330,69 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     return await this.#readSnapshotRange({ length, offset, path });
   }
 
+  public async readExactPairWithFileSize({
+    first,
+    path,
+    second,
+  }: {
+    first: PhysicalExactReadRange;
+    path: CanonicalContainerPath;
+    second: PhysicalExactReadRange;
+  }): Promise<PhysicalExactReadPairWithFileSize> {
+    const firstRange = this.#checkedSnapshotRange({ ...first, label: 'first exact read' });
+    const secondRange = this.#checkedSnapshotRange({ ...second, label: 'second exact read' });
+    try {
+      const { fileHandle } = await this.#resolveFile({ path });
+      const snapshot = await fileHandle.getFile();
+      if (firstRange.end > snapshot.size) {
+        throw physicalStoreError({
+          code: 'unexpected_end',
+          message: `first exact read exceeds physical file length: ${path}`,
+          path,
+        });
+      }
+      const firstBytes = await snapshot.slice(firstRange.start, firstRange.end).arrayBuffer();
+      const secondBytes = secondRange.end > snapshot.size
+        ? undefined
+        : await snapshot.slice(secondRange.start, secondRange.end).arrayBuffer();
+      return {
+        fileSize: BigInt(snapshot.size),
+        first: new Uint8Array(firstBytes),
+        second: secondBytes === undefined ? undefined : new Uint8Array(secondBytes),
+      };
+    } catch (error) {
+      if (isDomExceptionNamed({ error, name: 'NotFoundError' })) {
+        throw physicalStoreError({
+          code: 'not_found',
+          message: `physical file does not exist: ${path}`,
+          path,
+        });
+      }
+      if (isDomExceptionNamed({ error, name: 'TypeMismatchError' })) {
+        throw physicalStoreError({
+          code: 'is_directory',
+          message: `physical entry is a directory: ${path}`,
+          path,
+        });
+      }
+      throw error;
+    }
+  }
+
+  #checkedSnapshotRange({
+    label,
+    length,
+    offset,
+  }: PhysicalExactReadRange & { label: string }): Readonly<{ end: number; start: number }> {
+    if (!Number.isSafeInteger(length) || length < 0) {
+      throw new RangeError(`${label} length must be a non-negative safe integer`);
+    }
+    const start = this.#checkedSafeInteger({ label: `${label} offset`, value: offset });
+    const end = start + length;
+    if (!Number.isSafeInteger(end)) throw new RangeError(`${label} end exceeds safe integer range`);
+    return { end, start };
+  }
+
   async #readSnapshotRange({
     length,
     offset,
@@ -293,12 +402,11 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     offset: bigint;
     path: CanonicalContainerPath;
   }): Promise<Readonly<{ bytes: Uint8Array; fileSize: bigint }>> {
-    if (!Number.isSafeInteger(length) || length < 0) {
-      throw new RangeError('exact read length must be a non-negative safe integer');
-    }
-    const start = this.#checkedSafeInteger({ label: 'exact read offset', value: offset });
-    const end = start + length;
-    if (!Number.isSafeInteger(end)) throw new RangeError('exact read end exceeds safe integer range');
+    const { end, start } = this.#checkedSnapshotRange({
+      label: 'exact read',
+      length,
+      offset,
+    });
 
     try {
       const { fileHandle } = await this.#resolveFile({ path });

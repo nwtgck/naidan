@@ -48,64 +48,61 @@ export type ScannedSegmentPrefix = Readonly<{
   state: "abandoned_unsealed" | "complete_unsealed" | "footer_candidate";
 }>;
 
-export async function readAuthenticatedSegmentDescriptor({ backend, diagnostics, fileSystemId, physicalSegmentId, rootKey, segmentClass }: {
-  backend: HizoFSReadableBackend;
+export function rethrowAuthenticatedSegmentDescriptorReadError({ cause }: { cause: unknown }): never {
+  if (cause instanceof PhysicalStoreError) {
+    switch (cause.code) {
+    case "not_found":
+      throw authenticatedStoreError({
+        cause,
+        code: "control_plane_corrupt",
+        message: "referenced segment file is missing",
+      });
+    case "unexpected_end":
+      throw authenticatedStoreError({
+        cause,
+        code: "control_plane_corrupt",
+        message: "Segment Header is truncated",
+      });
+    case "already_exists":
+    case "closed_handle":
+    case "durability_not_demonstrated":
+    case "file_open":
+    case "file_too_large":
+    case "foreign_handle":
+    case "is_directory":
+    case "not_directory":
+    case "out_of_range":
+    case "sync_access_unavailable":
+    case "write_stalled":
+      throw cause;
+    default: {
+      const _ex: never = cause.code;
+      throw new Error(`Unhandled physical-store error code: ${_ex}`);
+    }
+    }
+  }
+  throw cause;
+}
+
+export async function authenticateSegmentDescriptorSnapshot({
+  bytes,
+  diagnostics,
+  fileSize,
+  fileSystemId,
+  path,
+  physicalSegmentId,
+  rootKey,
+  segmentClass,
+}: {
+  bytes: Uint8Array;
   diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  fileSize: bigint;
   fileSystemId: FileSystemId;
+  path: CanonicalContainerPath;
   physicalSegmentId: SegmentId;
   rootKey: FileSystemRootKey;
   segmentClass: SegmentClass;
 }): Promise<AuthenticatedSegmentDescriptor> {
-  const path = authenticatedSegmentPath({ segmentClass, segmentId: physicalSegmentId });
-  // The Segment Header and its snapshot size must describe the same physical
-  // file image. One backend snapshot removes a redundant getFile() call while
-  // strengthening that consistency boundary.
-  const { bytes, fileSize } = await (async () => {
-    try {
-      return await readExactWithFileSizeWithAuthenticatedReason({
-        backend,
-        diagnostics,
-        length: HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader,
-        offset: 0n,
-        path,
-        reason: "segment_descriptor",
-      });
-    } catch (cause: unknown) {
-      if (cause instanceof PhysicalStoreError) {
-        switch (cause.code) {
-        case "not_found":
-          throw authenticatedStoreError({
-            cause,
-            code: "control_plane_corrupt",
-            message: "referenced segment file is missing",
-          });
-        case "unexpected_end":
-          throw authenticatedStoreError({
-            cause,
-            code: "control_plane_corrupt",
-            message: "Segment Header is truncated",
-          });
-        case "already_exists":
-        case "closed_handle":
-        case "durability_not_demonstrated":
-        case "file_open":
-        case "file_too_large":
-        case "foreign_handle":
-        case "is_directory":
-        case "not_directory":
-        case "out_of_range":
-        case "sync_access_unavailable":
-        case "write_stalled":
-          throw cause;
-        default: {
-          const _ex: never = cause.code;
-          throw new Error(`Unhandled physical-store error code: ${_ex}`);
-        }
-        }
-      }
-      throw cause;
-    }
-  })();
   if (!segmentFileSizeIsReaderValid({ fileSize, segmentClass })) {
     throw authenticatedStoreError({ code: "control_plane_corrupt", message: "Segment file size is outside the V1 bound" });
   }
@@ -148,6 +145,44 @@ export async function readAuthenticatedSegmentDescriptor({ backend, diagnostics,
     });
   }
   return { fileSize, path };
+}
+
+export async function readAuthenticatedSegmentDescriptor({ backend, diagnostics, fileSystemId, physicalSegmentId, rootKey, segmentClass }: {
+  backend: HizoFSReadableBackend;
+  diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  fileSystemId: FileSystemId;
+  physicalSegmentId: SegmentId;
+  rootKey: FileSystemRootKey;
+  segmentClass: SegmentClass;
+}): Promise<AuthenticatedSegmentDescriptor> {
+  const path = authenticatedSegmentPath({ segmentClass, segmentId: physicalSegmentId });
+  // The Segment Header and its snapshot size must describe the same physical
+  // file image. One backend snapshot removes a redundant getFile() call while
+  // strengthening that consistency boundary.
+  const { bytes, fileSize } = await (async () => {
+    try {
+      return await readExactWithFileSizeWithAuthenticatedReason({
+        backend,
+        diagnostics,
+        length: HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader,
+        offset: 0n,
+        path,
+        reason: "segment_descriptor",
+      });
+    } catch (cause: unknown) {
+      rethrowAuthenticatedSegmentDescriptorReadError({ cause });
+    }
+  })();
+  return await authenticateSegmentDescriptorSnapshot({
+    bytes,
+    diagnostics,
+    fileSize,
+    fileSystemId,
+    path,
+    physicalSegmentId,
+    rootKey,
+    segmentClass,
+  });
 }
 
 export async function scanAuthenticatedSegmentPrefix({ backend, diagnostics, fileSystemId, physicalSegmentId, rootKey, segmentClass }: {

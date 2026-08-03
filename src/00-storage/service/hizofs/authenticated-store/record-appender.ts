@@ -33,7 +33,7 @@ import {
   type CanonicalContainerPath,
 } from "@/00-storage/service/hizofs/physical-store/paths";
 import { authenticatedStoreError } from "./errors";
-import { ensureAuthenticatedContainerDirectory } from "./ensure-container-directory";
+import { ensureAuthenticatedContainerDirectoryHierarchy } from "./ensure-container-directory";
 import { runAndCloseAuthenticatedFile } from "./file-operation";
 import { authenticatedHizoFSPhysicalBytes, type AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import {
@@ -158,9 +158,7 @@ async function ensureSegmentDirectories({ backend, segmentClass, segmentId }: {
   const shardDirectory = canonicalContainerDirectory({
     value: `${classDirectory}/${segmentIdToShard({ id: segmentId })}`,
   });
-  await ensureAuthenticatedContainerDirectory({ backend, path: segmentDirectory });
-  await ensureAuthenticatedContainerDirectory({ backend, path: classDirectory });
-  await ensureAuthenticatedContainerDirectory({ backend, path: shardDirectory });
+  await ensureAuthenticatedContainerDirectoryHierarchy({ backend, path: shardDirectory });
 }
 
 async function createAuthenticatedSegmentHeader({ diagnostics, fileSystemId, rootKey, segmentClass, segmentId }: {

@@ -24,8 +24,8 @@ function createReport({
   status: HizoFSBenchmarkReport['status'];
 }): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 24,
-    benchmarkImplementationVersion: 33,
+    schemaVersion: 26,
+    benchmarkImplementationVersion: 36,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: `run-${status}`,
@@ -50,6 +50,9 @@ function createReport({
       physicalObjectScope: 'immutable_segment_files',
       backingStoreFileSnapshotOperationScope: 'get_file_snapshot_calls',
       backingStoreReadOperationScope: 'materialized_blob_or_sync_access_reads',
+      backingStoreHandleLookupOperationScope: 'get_directory_handle_and_get_file_handle_calls',
+      backingStoreHandleCreateRequestScope: 'handle_lookup_calls_with_create_true',
+      backingStorePathAttributionScope: 'canonical_container_path_kind',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: configuration.hizoFSRuntimePolicy.fileChunkSize,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,

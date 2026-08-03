@@ -24,7 +24,12 @@ import {
   readExactWithAuthenticatedReason,
   type AuthenticatedStoreDiagnosticsPort,
 } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
-import { readAuthenticatedSegmentDescriptor } from "./segment-prefix-reader";
+import {
+  authenticateSegmentDescriptorSnapshot,
+  readAuthenticatedSegmentDescriptor,
+  rethrowAuthenticatedSegmentDescriptorReadError,
+} from "./segment-prefix-reader";
+import { authenticatedSegmentPath } from "./segment-location";
 
 export type AuthenticatedRecordRead = Readonly<{
   header: RecordFrameHeaderV1;
@@ -87,6 +92,75 @@ export function physicalReferenceAtHome({ homeReference }: {
   } });
 }
 
+async function readDescriptorAndFrameFromSingleSnapshot({
+  backend,
+  diagnostics,
+  fileSystemId,
+  physicalReference,
+  rootKey,
+}: {
+  backend: HizoFSReadableBackend;
+  diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  fileSystemId: FileSystemId;
+  physicalReference: PhysicalRecordReference;
+  rootKey: FileSystemRootKey;
+}): Promise<Readonly<{
+  descriptor: Awaited<ReturnType<typeof readAuthenticatedSegmentDescriptor>>;
+  frameBytes: Uint8Array;
+}> | undefined> {
+  const readPair = backend.readExactPairWithFileSize;
+  if (readPair === undefined) return undefined;
+  const segmentClass = segmentClassForRecordKind({ recordKind: physicalReference.recordKind });
+  const path = authenticatedSegmentPath({
+    segmentClass,
+    segmentId: physicalReference.segmentId,
+  });
+  diagnostics?.recordPhysicalAccessReason?.({
+    identity: `${String(path)}\u00000\u0000${HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader.toString()}`,
+    operation: "read_exact",
+    reason: "segment_descriptor",
+  });
+  diagnostics?.recordPhysicalAccessReason?.({
+    identity: `${String(path)}\u0000${physicalReference.byteOffset.toString()}\u0000${physicalReference.frameLength.toString()}`,
+    operation: "read_exact",
+    reason: "authenticated_record_resolution",
+  });
+  let pair: Awaited<ReturnType<NonNullable<HizoFSReadableBackend["readExactPairWithFileSize"]>>>;
+  try {
+    pair = await readPair.call(backend, {
+      first: {
+        length: HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader,
+        offset: 0n,
+      },
+      path,
+      second: {
+        length: physicalReference.frameLength,
+        offset: physicalReference.byteOffset,
+      },
+    });
+  } catch (cause: unknown) {
+    rethrowAuthenticatedSegmentDescriptorReadError({ cause });
+  }
+  const descriptor = await authenticateSegmentDescriptorSnapshot({
+    bytes: pair.first,
+    diagnostics,
+    fileSize: pair.fileSize,
+    fileSystemId,
+    path,
+    physicalSegmentId: physicalReference.segmentId,
+    rootKey,
+    segmentClass,
+  });
+  const recordEnd = physicalReference.byteOffset + BigInt(physicalReference.frameLength);
+  if (recordEnd > descriptor.fileSize || pair.second === undefined) {
+    throw authenticatedStoreError({
+      code: "control_plane_corrupt",
+      message: "Physical Record Reference exceeds its segment file",
+    });
+  }
+  return { descriptor, frameBytes: pair.second };
+}
+
 export async function readAuthenticatedPhysicalRecord({
   backend,
   diagnostics,
@@ -102,35 +176,44 @@ export async function readAuthenticatedPhysicalRecord({
   physicalReference: PhysicalRecordReference;
   rootKey: FileSystemRootKey;
 }): Promise<AuthenticatedRecordRead> {
-  const segmentClass = segmentClassForRecordKind({ recordKind: physicalReference.recordKind });
-  const descriptor = await readAuthenticatedSegmentDescriptor({
+  const pairedRead = await readDescriptorAndFrameFromSingleSnapshot({
     backend,
     diagnostics,
     fileSystemId,
-    physicalSegmentId: physicalReference.segmentId,
+    physicalReference,
     rootKey,
-    segmentClass,
   });
-  const recordEnd = physicalReference.byteOffset + BigInt(physicalReference.frameLength);
-  if (recordEnd > descriptor.fileSize) {
-    throw authenticatedStoreError({
-      code: "control_plane_corrupt",
-      message: "Physical Record Reference exceeds its segment file",
+  let descriptor: Awaited<ReturnType<typeof readAuthenticatedSegmentDescriptor>>;
+  let frameBytes: Uint8Array;
+  if (pairedRead === undefined) {
+    const segmentClass = segmentClassForRecordKind({ recordKind: physicalReference.recordKind });
+    descriptor = await readAuthenticatedSegmentDescriptor({
+      backend,
+      diagnostics,
+      fileSystemId,
+      physicalSegmentId: physicalReference.segmentId,
+      rootKey,
+      segmentClass,
     });
+    const recordEnd = physicalReference.byteOffset + BigInt(physicalReference.frameLength);
+    if (recordEnd > descriptor.fileSize) {
+      throw authenticatedStoreError({
+        code: "control_plane_corrupt",
+        message: "Physical Record Reference exceeds its segment file",
+      });
+    }
+    frameBytes = await readExactWithAuthenticatedReason({
+      backend,
+      diagnostics,
+      length: physicalReference.frameLength,
+      offset: physicalReference.byteOffset,
+      path: descriptor.path,
+      reason: "authenticated_record_resolution",
+    });
+  } else {
+    ({ descriptor, frameBytes } = pairedRead);
   }
   const frameHeaderSize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader;
-  // The authenticated Physical Record Reference already fixes the complete
-  // frame length. Reading the frame once avoids a second OPFS snapshot and
-  // await boundary without weakening header validation, canonical padding,
-  // or authenticated decryption.
-  const frameBytes = await readExactWithAuthenticatedReason({
-    backend,
-    diagnostics,
-    length: physicalReference.frameLength,
-    offset: physicalReference.byteOffset,
-    path: descriptor.path,
-    reason: "authenticated_record_resolution",
-  });
   const headerBytes = frameBytes.subarray(0, frameHeaderSize);
   let header: RecordFrameHeaderV1;
   try {

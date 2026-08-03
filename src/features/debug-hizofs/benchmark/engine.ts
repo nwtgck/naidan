@@ -1,4 +1,7 @@
-import { HIZOFS_SUPERBLOCK_FILES } from '@/00-storage/service/hizofs/00-format';
+import {
+  HIZOFS_SUPERBLOCK_FILES,
+  HIZOFS_UNLOCK_ENVELOPE_FILES,
+} from '@/00-storage/service/hizofs/00-format';
 import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics';
 import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics';
 import {
@@ -35,7 +38,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 33 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 36 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -324,7 +327,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 24,
+    schemaVersion: 26,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -350,6 +353,9 @@ async function runHizoFSBenchmarkWithLockHeld({
       physicalObjectScope: 'immutable_segment_files',
       backingStoreFileSnapshotOperationScope: 'get_file_snapshot_calls',
       backingStoreReadOperationScope: 'materialized_blob_or_sync_access_reads',
+      backingStoreHandleLookupOperationScope: 'get_directory_handle_and_get_file_handle_calls',
+      backingStoreHandleCreateRequestScope: 'handle_lookup_calls_with_create_true',
+      backingStorePathAttributionScope: 'canonical_container_path_kind',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: hizoFSPolicy.fileChunkSize,
         maxDirtyFileBytesPerWriter: hizoFSPolicy.maxDirtyFileBytes,
@@ -495,7 +501,7 @@ async function createBenchmarkContexts({
           policy: hizoFSPolicy,
         });
         session = runtime.session;
-        initializationBackingStore = { ...counters };
+        initializationBackingStore = snapshotBackingStoreCounters({ counters });
         initializationSuperblockPublications = physicalDiagnostics.superblockPublications;
         await initializeHizoFSPhysicalDiagnostics({
           backingDirectory,
@@ -585,7 +591,7 @@ async function applyBetweenIterationLifecycle({
     ) {
       return;
     }
-    const countersBefore = { ...context.counters };
+    const countersBefore = snapshotBackingStoreCounters({ counters: context.counters });
     const superblockPublicationsBefore = context.hizoFSPhysicalDiagnostics.superblockPublications;
     const startedAt = performance.now();
     await context.hizoFSSession.close();
@@ -623,7 +629,7 @@ async function applyBetweenIterationLifecycle({
       return;
     }
     const objectsBefore = context.hizoFSPhysicalDiagnostics.objectPaths.size;
-    const countersBefore = { ...context.counters };
+    const countersBefore = snapshotBackingStoreCounters({ counters: context.counters });
     const superblockPublicationsBefore = context.hizoFSPhysicalDiagnostics.superblockPublications;
     const startedAt = performance.now();
     const result = await context.hizoFSRuntime.collectGarbage({
@@ -1806,7 +1812,7 @@ function readHizoFSDiagnosticBaseline({
     return undefined;
   }
   return {
-    counters: { ...context.counters },
+    counters: snapshotBackingStoreCounters({ counters: context.counters }),
     objectCount: context.hizoFSPhysicalDiagnostics.objectPaths.size,
     superblockPublications: context.hizoFSPhysicalDiagnostics.superblockPublications,
     runtime: context.hizoFSRuntime.diagnostics.snapshot(),
@@ -1870,7 +1876,7 @@ function unavailableRuntimeDiagnostics({ reason }: {
   reason: string;
 }): HizoFSBenchmarkRuntimeDiagnosticsSnapshot {
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     type: 'unavailable',
     reason,
   };
@@ -1897,7 +1903,7 @@ function subtractHizoFSRuntimeDiagnostics({
   default: return before satisfies never;
   }
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [
@@ -2304,6 +2310,79 @@ function aggregateBenchmarkMemoryDiagnostics({
   };
 }
 
+function addBackingDirectoryPathCounters({
+  target,
+  source,
+}: {
+  target: BackingStoreCounters['pathAttribution']['directoryHandleLookups'];
+  source: BackingStoreCounters['pathAttribution']['directoryHandleLookups'];
+}): void {
+  target.root += source.root;
+  target.segmentRoot += source.segmentRoot;
+  target.segmentClass += source.segmentClass;
+  target.segmentShard += source.segmentShard;
+  target.other += source.other;
+}
+
+function addBackingFilePathCounters({
+  target,
+  source,
+}: {
+  target: BackingStoreCounters['pathAttribution']['fileHandleLookups'];
+  source: BackingStoreCounters['pathAttribution']['fileHandleLookups'];
+}): void {
+  target.superblock += source.superblock;
+  target.unlockEnvelope += source.unlockEnvelope;
+  target.metadataSegment += source.metadataSegment;
+  target.dataSegment += source.dataSegment;
+  target.relocationSegment += source.relocationSegment;
+  target.other += source.other;
+}
+
+function addBackingStoreCounters({
+  target,
+  source,
+}: {
+  target: BackingStoreCounters;
+  source: BackingStoreCounters;
+}): void {
+  target.directoryHandleLookups += source.directoryHandleLookups;
+  target.directoryHandleCreateRequests += source.directoryHandleCreateRequests;
+  target.fileHandleLookups += source.fileHandleLookups;
+  target.fileHandleCreateRequests += source.fileHandleCreateRequests;
+  target.fileSnapshotOperations += source.fileSnapshotOperations;
+  target.readOperations += source.readOperations;
+  target.writeOperations += source.writeOperations;
+  target.removeOperations += source.removeOperations;
+  target.listOperations += source.listOperations;
+  target.bytesRead += source.bytesRead;
+  target.bytesWritten += source.bytesWritten;
+  addBackingDirectoryPathCounters({
+    target: target.pathAttribution.directoryHandleLookups,
+    source: source.pathAttribution.directoryHandleLookups,
+  });
+  addBackingDirectoryPathCounters({
+    target: target.pathAttribution.directoryHandleCreateRequests,
+    source: source.pathAttribution.directoryHandleCreateRequests,
+  });
+  addBackingFilePathCounters({
+    target: target.pathAttribution.fileHandleLookups,
+    source: source.pathAttribution.fileHandleLookups,
+  });
+  addBackingFilePathCounters({
+    target: target.pathAttribution.fileHandleCreateRequests,
+    source: source.pathAttribution.fileHandleCreateRequests,
+  });
+  addBackingFilePathCounters({
+    target: target.pathAttribution.fileSnapshotOperations,
+    source: source.pathAttribution.fileSnapshotOperations,
+  });
+  addBackingDirectoryPathCounters({
+    target: target.pathAttribution.listOperations,
+    source: source.pathAttribution.listOperations,
+  });
+}
+
 function aggregateHizoFSDiagnosticsTotals({
   samples,
 }: {
@@ -2322,13 +2401,10 @@ function aggregateHizoFSDiagnosticsTotals({
   let ciphertextBytesWritten = 0;
   let operationCount = 0;
   for (const diagnostic of diagnostics) {
-    backingStore.fileSnapshotOperations += diagnostic.backingStore.fileSnapshotOperations;
-    backingStore.readOperations += diagnostic.backingStore.readOperations;
-    backingStore.writeOperations += diagnostic.backingStore.writeOperations;
-    backingStore.removeOperations += diagnostic.backingStore.removeOperations;
-    backingStore.listOperations += diagnostic.backingStore.listOperations;
-    backingStore.bytesRead += diagnostic.backingStore.bytesRead;
-    backingStore.bytesWritten += diagnostic.backingStore.bytesWritten;
+    addBackingStoreCounters({
+      target: backingStore,
+      source: diagnostic.backingStore,
+    });
     created += diagnostic.objects.created;
     removed += diagnostic.objects.removed;
     superblockPublications += diagnostic.commits.superblockPublications;
@@ -2386,7 +2462,7 @@ function aggregateHizoFSRuntimeDiagnostics({
     throw new Error('HizoFS measured runtime diagnostics aggregate requires at least one sample');
   }
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [
@@ -3502,8 +3578,102 @@ function ratioOptional({
   return numerator / denominator;
 }
 
+function createEmptyBackingDirectoryPathCounters(): BackingStoreCounters['pathAttribution']['directoryHandleLookups'] {
+  return {
+    root: 0,
+    segmentRoot: 0,
+    segmentClass: 0,
+    segmentShard: 0,
+    other: 0,
+  };
+}
+
+function createEmptyBackingFilePathCounters(): BackingStoreCounters['pathAttribution']['fileHandleLookups'] {
+  return {
+    superblock: 0,
+    unlockEnvelope: 0,
+    metadataSegment: 0,
+    dataSegment: 0,
+    relocationSegment: 0,
+    other: 0,
+  };
+}
+
+function snapshotBackingDirectoryPathCounters({
+  counters,
+}: {
+  counters: BackingStoreCounters['pathAttribution']['directoryHandleLookups'];
+}): BackingStoreCounters['pathAttribution']['directoryHandleLookups'] {
+  return {
+    root: counters.root,
+    segmentRoot: counters.segmentRoot,
+    segmentClass: counters.segmentClass,
+    segmentShard: counters.segmentShard,
+    other: counters.other,
+  };
+}
+
+function snapshotBackingFilePathCounters({
+  counters,
+}: {
+  counters: BackingStoreCounters['pathAttribution']['fileHandleLookups'];
+}): BackingStoreCounters['pathAttribution']['fileHandleLookups'] {
+  return {
+    superblock: counters.superblock,
+    unlockEnvelope: counters.unlockEnvelope,
+    metadataSegment: counters.metadataSegment,
+    dataSegment: counters.dataSegment,
+    relocationSegment: counters.relocationSegment,
+    other: counters.other,
+  };
+}
+
+function snapshotBackingStoreCounters({
+  counters,
+}: {
+  counters: BackingStoreCounters;
+}): BackingStoreCounters {
+  return {
+    directoryHandleLookups: counters.directoryHandleLookups,
+    directoryHandleCreateRequests: counters.directoryHandleCreateRequests,
+    fileHandleLookups: counters.fileHandleLookups,
+    fileHandleCreateRequests: counters.fileHandleCreateRequests,
+    fileSnapshotOperations: counters.fileSnapshotOperations,
+    readOperations: counters.readOperations,
+    writeOperations: counters.writeOperations,
+    removeOperations: counters.removeOperations,
+    listOperations: counters.listOperations,
+    bytesRead: counters.bytesRead,
+    bytesWritten: counters.bytesWritten,
+    pathAttribution: {
+      directoryHandleLookups: snapshotBackingDirectoryPathCounters({
+        counters: counters.pathAttribution.directoryHandleLookups,
+      }),
+      directoryHandleCreateRequests: snapshotBackingDirectoryPathCounters({
+        counters: counters.pathAttribution.directoryHandleCreateRequests,
+      }),
+      fileHandleLookups: snapshotBackingFilePathCounters({
+        counters: counters.pathAttribution.fileHandleLookups,
+      }),
+      fileHandleCreateRequests: snapshotBackingFilePathCounters({
+        counters: counters.pathAttribution.fileHandleCreateRequests,
+      }),
+      fileSnapshotOperations: snapshotBackingFilePathCounters({
+        counters: counters.pathAttribution.fileSnapshotOperations,
+      }),
+      listOperations: snapshotBackingDirectoryPathCounters({
+        counters: counters.pathAttribution.listOperations,
+      }),
+    },
+  };
+}
+
 function createEmptyBackingStoreCounters(): BackingStoreCounters {
   return {
+    directoryHandleLookups: 0,
+    directoryHandleCreateRequests: 0,
+    fileHandleLookups: 0,
+    fileHandleCreateRequests: 0,
     fileSnapshotOperations: 0,
     readOperations: 0,
     writeOperations: 0,
@@ -3511,6 +3681,14 @@ function createEmptyBackingStoreCounters(): BackingStoreCounters {
     listOperations: 0,
     bytesRead: 0,
     bytesWritten: 0,
+    pathAttribution: {
+      directoryHandleLookups: createEmptyBackingDirectoryPathCounters(),
+      directoryHandleCreateRequests: createEmptyBackingDirectoryPathCounters(),
+      fileHandleLookups: createEmptyBackingFilePathCounters(),
+      fileHandleCreateRequests: createEmptyBackingFilePathCounters(),
+      fileSnapshotOperations: createEmptyBackingFilePathCounters(),
+      listOperations: createEmptyBackingDirectoryPathCounters(),
+    },
   };
 }
 
@@ -3617,6 +3795,39 @@ function readMemoryDiagnostics({
   };
 }
 
+function subtractBackingDirectoryPathCounters({
+  before,
+  after,
+}: {
+  before: BackingStoreCounters['pathAttribution']['directoryHandleLookups'];
+  after: BackingStoreCounters['pathAttribution']['directoryHandleLookups'];
+}): BackingStoreCounters['pathAttribution']['directoryHandleLookups'] {
+  return {
+    root: Math.max(after.root - before.root, 0),
+    segmentRoot: Math.max(after.segmentRoot - before.segmentRoot, 0),
+    segmentClass: Math.max(after.segmentClass - before.segmentClass, 0),
+    segmentShard: Math.max(after.segmentShard - before.segmentShard, 0),
+    other: Math.max(after.other - before.other, 0),
+  };
+}
+
+function subtractBackingFilePathCounters({
+  before,
+  after,
+}: {
+  before: BackingStoreCounters['pathAttribution']['fileHandleLookups'];
+  after: BackingStoreCounters['pathAttribution']['fileHandleLookups'];
+}): BackingStoreCounters['pathAttribution']['fileHandleLookups'] {
+  return {
+    superblock: Math.max(after.superblock - before.superblock, 0),
+    unlockEnvelope: Math.max(after.unlockEnvelope - before.unlockEnvelope, 0),
+    metadataSegment: Math.max(after.metadataSegment - before.metadataSegment, 0),
+    dataSegment: Math.max(after.dataSegment - before.dataSegment, 0),
+    relocationSegment: Math.max(after.relocationSegment - before.relocationSegment, 0),
+    other: Math.max(after.other - before.other, 0),
+  };
+}
+
 function subtractBackingStoreCounters({
   before,
   after,
@@ -3625,6 +3836,16 @@ function subtractBackingStoreCounters({
   after: BackingStoreCounters;
 }): BackingStoreCounters {
   return {
+    directoryHandleLookups: Math.max(after.directoryHandleLookups - before.directoryHandleLookups, 0),
+    directoryHandleCreateRequests: Math.max(
+      after.directoryHandleCreateRequests - before.directoryHandleCreateRequests,
+      0,
+    ),
+    fileHandleLookups: Math.max(after.fileHandleLookups - before.fileHandleLookups, 0),
+    fileHandleCreateRequests: Math.max(
+      after.fileHandleCreateRequests - before.fileHandleCreateRequests,
+      0,
+    ),
     fileSnapshotOperations: Math.max(
       after.fileSnapshotOperations - before.fileSnapshotOperations,
       0,
@@ -3635,7 +3856,80 @@ function subtractBackingStoreCounters({
     listOperations: Math.max(after.listOperations - before.listOperations, 0),
     bytesRead: Math.max(after.bytesRead - before.bytesRead, 0),
     bytesWritten: Math.max(after.bytesWritten - before.bytesWritten, 0),
+    pathAttribution: {
+      directoryHandleLookups: subtractBackingDirectoryPathCounters({
+        before: before.pathAttribution.directoryHandleLookups,
+        after: after.pathAttribution.directoryHandleLookups,
+      }),
+      directoryHandleCreateRequests: subtractBackingDirectoryPathCounters({
+        before: before.pathAttribution.directoryHandleCreateRequests,
+        after: after.pathAttribution.directoryHandleCreateRequests,
+      }),
+      fileHandleLookups: subtractBackingFilePathCounters({
+        before: before.pathAttribution.fileHandleLookups,
+        after: after.pathAttribution.fileHandleLookups,
+      }),
+      fileHandleCreateRequests: subtractBackingFilePathCounters({
+        before: before.pathAttribution.fileHandleCreateRequests,
+        after: after.pathAttribution.fileHandleCreateRequests,
+      }),
+      fileSnapshotOperations: subtractBackingFilePathCounters({
+        before: before.pathAttribution.fileSnapshotOperations,
+        after: after.pathAttribution.fileSnapshotOperations,
+      }),
+      listOperations: subtractBackingDirectoryPathCounters({
+        before: before.pathAttribution.listOperations,
+        after: after.pathAttribution.listOperations,
+      }),
+    },
   };
+}
+
+function classifyBackingDirectoryPath({ relativePath }: {
+  relativePath: readonly string[];
+}): keyof BackingStoreCounters['pathAttribution']['directoryHandleLookups'] {
+  if (relativePath.length === 0) return 'root';
+  if (relativePath[0] !== 'segments') return 'other';
+  if (relativePath.length === 1) return 'segmentRoot';
+  switch (relativePath[1]) {
+  case 'metadata':
+  case 'data':
+  case 'relocation':
+    break;
+  default:
+    return 'other';
+  }
+  if (relativePath.length === 2) return 'segmentClass';
+  if (relativePath.length === 3) return 'segmentShard';
+  return 'other';
+}
+
+function classifyBackingFilePath({ relativePath }: {
+  relativePath: readonly string[];
+}): keyof BackingStoreCounters['pathAttribution']['fileHandleLookups'] {
+  if (relativePath.length === 1) {
+    const [name] = relativePath;
+    if (HIZOFS_SUPERBLOCK_FILES.some(candidate => candidate === name)) return 'superblock';
+    if (HIZOFS_UNLOCK_ENVELOPE_FILES.some(candidate => candidate === name)) return 'unlockEnvelope';
+    return 'other';
+  }
+  if (relativePath.length !== 4 || relativePath[0] !== 'segments') return 'other';
+  switch (relativePath[1]) {
+  case 'metadata': return 'metadataSegment';
+  case 'data': return 'dataSegment';
+  case 'relocation': return 'relocationSegment';
+  default: return 'other';
+  }
+}
+
+function incrementBackingPathCounter<TPathKind extends string>({
+  counters,
+  pathKind,
+}: {
+  counters: Record<TPathKind, number>;
+  pathKind: TPathKind;
+}): void {
+  counters[pathKind] += 1;
 }
 
 function createCountingDirectoryHandle({
@@ -3654,20 +3948,52 @@ function createCountingDirectoryHandle({
       switch (property) {
       case 'getDirectoryHandle':
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements FileSystemDirectoryHandle.getDirectoryHandle.
-        return async (name: string, options?: FileSystemGetDirectoryOptions) => createCountingDirectoryHandle({
-          directory: await target.getDirectoryHandle(name, options),
-          counters,
-          relativePath: [...relativePath, name],
-          physicalDiagnostics,
-        });
+        return async (name: string, options?: FileSystemGetDirectoryOptions) => {
+          const targetPath = [...relativePath, name];
+          const pathKind = classifyBackingDirectoryPath({ relativePath: targetPath });
+          counters.directoryHandleLookups += 1;
+          incrementBackingPathCounter({
+            counters: counters.pathAttribution.directoryHandleLookups,
+            pathKind,
+          });
+          if (options?.create === true) {
+            counters.directoryHandleCreateRequests += 1;
+            incrementBackingPathCounter({
+              counters: counters.pathAttribution.directoryHandleCreateRequests,
+              pathKind,
+            });
+          }
+          return createCountingDirectoryHandle({
+            directory: await target.getDirectoryHandle(name, options),
+            counters,
+            relativePath: targetPath,
+            physicalDiagnostics,
+          });
+        };
       case 'getFileHandle':
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements FileSystemDirectoryHandle.getFileHandle.
-        return async (name: string, options?: FileSystemGetFileOptions) => createCountingFileHandle({
-          file: await target.getFileHandle(name, options),
-          counters,
-          relativePath: [...relativePath, name],
-          physicalDiagnostics,
-        });
+        return async (name: string, options?: FileSystemGetFileOptions) => {
+          const targetPath = [...relativePath, name];
+          const pathKind = classifyBackingFilePath({ relativePath: targetPath });
+          counters.fileHandleLookups += 1;
+          incrementBackingPathCounter({
+            counters: counters.pathAttribution.fileHandleLookups,
+            pathKind,
+          });
+          if (options?.create === true) {
+            counters.fileHandleCreateRequests += 1;
+            incrementBackingPathCounter({
+              counters: counters.pathAttribution.fileHandleCreateRequests,
+              pathKind,
+            });
+          }
+          return createCountingFileHandle({
+            file: await target.getFileHandle(name, options),
+            counters,
+            relativePath: targetPath,
+            physicalDiagnostics,
+          });
+        };
       case 'removeEntry':
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Implements FileSystemDirectoryHandle.removeEntry.
         return async (name: string, options?: FileSystemRemoveOptions) => {
@@ -3681,6 +4007,10 @@ function createCountingDirectoryHandle({
       case 'entries':
         return () => {
           counters.listOperations += 1;
+          incrementBackingPathCounter({
+            counters: counters.pathAttribution.listOperations,
+            pathKind: classifyBackingDirectoryPath({ relativePath }),
+          });
           return wrapDirectoryEntries({
             entries: target.entries(),
             counters,
@@ -3691,6 +4021,10 @@ function createCountingDirectoryHandle({
       case 'values':
         return () => {
           counters.listOperations += 1;
+          incrementBackingPathCounter({
+            counters: counters.pathAttribution.listOperations,
+            pathKind: classifyBackingDirectoryPath({ relativePath }),
+          });
           return wrapDirectoryValues({
             values: target.values(),
             counters,
@@ -3701,6 +4035,10 @@ function createCountingDirectoryHandle({
       case 'keys':
         return () => {
           counters.listOperations += 1;
+          incrementBackingPathCounter({
+            counters: counters.pathAttribution.listOperations,
+            pathKind: classifyBackingDirectoryPath({ relativePath }),
+          });
           return target.keys();
         };
       default: {
@@ -3730,6 +4068,10 @@ function createCountingFileHandle({
         return async () => {
           const file = await target.getFile();
           counters.fileSnapshotOperations += 1;
+          incrementBackingPathCounter({
+            counters: counters.pathAttribution.fileSnapshotOperations,
+            pathKind: classifyBackingFilePath({ relativePath }),
+          });
           return createCountingBlob({ blob: file, counters });
         };
       case 'createWritable':
@@ -4192,6 +4534,7 @@ function toExactArrayBuffer({ bytes }: { readonly bytes: Uint8Array }): ArrayBuf
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  createEmptyBackingStoreCounters,
   aggregateSamples,
   createRandomPositions,
   createPatternBytes,

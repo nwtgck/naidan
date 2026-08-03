@@ -103,7 +103,28 @@ const durationSummarySchema = z.object({
   maximum: z.number().nonnegative(),
 }).strict();
 
+const backingDirectoryPathCountersSchema = z.object({
+  root: z.number().int().nonnegative(),
+  segmentRoot: z.number().int().nonnegative(),
+  segmentClass: z.number().int().nonnegative(),
+  segmentShard: z.number().int().nonnegative(),
+  other: z.number().int().nonnegative(),
+}).strict();
+
+const backingFilePathCountersSchema = z.object({
+  superblock: z.number().int().nonnegative(),
+  unlockEnvelope: z.number().int().nonnegative(),
+  metadataSegment: z.number().int().nonnegative(),
+  dataSegment: z.number().int().nonnegative(),
+  relocationSegment: z.number().int().nonnegative(),
+  other: z.number().int().nonnegative(),
+}).strict();
+
 const hizoFSBackingStoreCountersSchema = z.object({
+  directoryHandleLookups: z.number().int().nonnegative(),
+  directoryHandleCreateRequests: z.number().int().nonnegative(),
+  fileHandleLookups: z.number().int().nonnegative(),
+  fileHandleCreateRequests: z.number().int().nonnegative(),
   fileSnapshotOperations: z.number().int().nonnegative(),
   readOperations: z.number().int().nonnegative(),
   writeOperations: z.number().int().nonnegative(),
@@ -111,6 +132,14 @@ const hizoFSBackingStoreCountersSchema = z.object({
   listOperations: z.number().int().nonnegative(),
   bytesRead: z.number().int().nonnegative(),
   bytesWritten: z.number().int().nonnegative(),
+  pathAttribution: z.object({
+    directoryHandleLookups: backingDirectoryPathCountersSchema,
+    directoryHandleCreateRequests: backingDirectoryPathCountersSchema,
+    fileHandleLookups: backingFilePathCountersSchema,
+    fileHandleCreateRequests: backingFilePathCountersSchema,
+    fileSnapshotOperations: backingFilePathCountersSchema,
+    listOperations: backingDirectoryPathCountersSchema,
+  }).strict(),
 }).strict();
 
 
@@ -239,7 +268,7 @@ const hizoFSRuntimeInodeLeafLookupCounterSchema = z.object({
 }).strict();
 
 const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(8),
+  schemaVersion: z.literal(9),
   type: z.literal('measured'),
   phases: z.object(Object.fromEntries(
     HIZOFS_RUNTIME_DIAGNOSTIC_PHASES.map(phase => [
@@ -307,7 +336,7 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
 }).strict();
 
 const hizoFSUnavailableRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(8),
+  schemaVersion: z.literal(9),
   type: z.literal('unavailable'),
   reason: z.string().min(1),
 }).strict();
@@ -495,8 +524,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(24),
-  benchmarkImplementationVersion: z.literal(33),
+  schemaVersion: z.literal(26),
+  benchmarkImplementationVersion: z.literal(36),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -525,6 +554,9 @@ export const hizoFSBenchmarkReportSchema = z.object({
     physicalObjectScope: z.literal('immutable_segment_files'),
     backingStoreFileSnapshotOperationScope: z.literal('get_file_snapshot_calls'),
     backingStoreReadOperationScope: z.literal('materialized_blob_or_sync_access_reads'),
+    backingStoreHandleLookupOperationScope: z.literal('get_directory_handle_and_get_file_handle_calls'),
+    backingStoreHandleCreateRequestScope: z.literal('handle_lookup_calls_with_create_true'),
+    backingStorePathAttributionScope: z.literal('canonical_container_path_kind'),
     hizoFSRuntimePolicy: z.object({
       fileChunkSizeBytes: z.number().int().positive(),
       maxDirtyFileBytesPerWriter: z.number().int().positive(),

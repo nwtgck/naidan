@@ -61,7 +61,7 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
     trustedTailMismatches: 0,
   });
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     type: 'measured',
     phases: Object.fromEntries(HIZOFS_BENCHMARK_RUNTIME_PHASES.map(name => [name, phase()])) as HizoFSBenchmarkDiagnostics['runtime'] extends { readonly type: 'measured'; readonly phases: infer T } ? T : never,
     records: {
@@ -122,10 +122,74 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
   };
 }
 
+
+function createBackingStoreDiagnostics(): HizoFSBenchmarkDiagnostics['backingStore'] {
+  return {
+    directoryHandleLookups: 4,
+    directoryHandleCreateRequests: 1,
+    fileHandleLookups: 3,
+    fileHandleCreateRequests: 1,
+    fileSnapshotOperations: 2,
+    readOperations: 2,
+    writeOperations: 3,
+    removeOperations: 0,
+    listOperations: 1,
+    bytesRead: 128,
+    bytesWritten: 256,
+    pathAttribution: {
+      directoryHandleLookups: {
+        root: 0,
+        segmentRoot: 1,
+        segmentClass: 1,
+        segmentShard: 2,
+        other: 0,
+      },
+      directoryHandleCreateRequests: {
+        root: 0,
+        segmentRoot: 0,
+        segmentClass: 0,
+        segmentShard: 1,
+        other: 0,
+      },
+      fileHandleLookups: {
+        superblock: 1,
+        unlockEnvelope: 0,
+        metadataSegment: 2,
+        dataSegment: 0,
+        relocationSegment: 0,
+        other: 0,
+      },
+      fileHandleCreateRequests: {
+        superblock: 0,
+        unlockEnvelope: 0,
+        metadataSegment: 1,
+        dataSegment: 0,
+        relocationSegment: 0,
+        other: 0,
+      },
+      fileSnapshotOperations: {
+        superblock: 1,
+        unlockEnvelope: 0,
+        metadataSegment: 1,
+        dataSegment: 0,
+        relocationSegment: 0,
+        other: 0,
+      },
+      listOperations: {
+        root: 0,
+        segmentRoot: 0,
+        segmentClass: 0,
+        segmentShard: 1,
+        other: 0,
+      },
+    },
+  };
+}
+
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 24,
-    benchmarkImplementationVersion: 33,
+    schemaVersion: 26,
+    benchmarkImplementationVersion: 36,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -150,6 +214,9 @@ function createReport(): HizoFSBenchmarkReport {
       physicalObjectScope: 'immutable_segment_files',
       backingStoreFileSnapshotOperationScope: 'get_file_snapshot_calls',
       backingStoreReadOperationScope: 'materialized_blob_or_sync_access_reads',
+      backingStoreHandleLookupOperationScope: 'get_directory_handle_and_get_file_handle_calls',
+      backingStoreHandleCreateRequestScope: 'handle_lookup_calls_with_create_true',
+      backingStorePathAttributionScope: 'canonical_container_path_kind',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: 1024 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
@@ -227,15 +294,7 @@ function createReport(): HizoFSBenchmarkReport {
           apiOperationTotals: { directoryHandleLookups: 0, directoryCreates: 0, fileHandleLookups: 0, fileCreates: 0, writableOpens: 0, writeCalls: 0, truncateCalls: 0, readableOpens: 0, readCalls: 0, directoryLists: 0, removeCalls: 0, cloneCalls: 0, bulkBuilderCreates: 0, bulkEntryCreates: 0, bulkCommits: 0 },
           memoryHighWater: { maximumTrackedBytes: 0, largestTrackedAllocationBytes: 0, scope: 'benchmark_harness_buffers_only' },
           hizoFSDiagnosticsTotals: {
-            backingStore: {
-              fileSnapshotOperations: 2,
-              readOperations: 2,
-              writeOperations: 3,
-              removeOperations: 0,
-              listOperations: 1,
-              bytesRead: 128,
-              bytesWritten: 256,
-            },
+            backingStore: createBackingStoreDiagnostics(),
             objectChanges: { created: 2, removed: 0 },
             commits: { superblockPublications: 1 },
             crypto: {
@@ -278,15 +337,7 @@ function createReport(): HizoFSBenchmarkReport {
               scope: 'benchmark_harness_buffers_only',
             },
             hizoFSDiagnostics: {
-              backingStore: {
-                fileSnapshotOperations: 2,
-                readOperations: 2,
-                writeOperations: 3,
-                removeOperations: 0,
-                listOperations: 1,
-                bytesRead: 128,
-                bytesWritten: 256,
-              },
+              backingStore: createBackingStoreDiagnostics(),
               objects: { before: 1, after: 3, created: 2, removed: 0 },
               commits: { superblockPublications: 1 },
               crypto: {
@@ -425,7 +476,7 @@ describe('HizoFS benchmark report serialization', () => {
               : {
                 ...hizofs.hizoFSDiagnosticsTotals,
                 runtime: {
-                  schemaVersion: 8 as const,
+                  schemaVersion: 9 as const,
                   type: 'unavailable' as const,
                   reason: 'production counters are unavailable',
                 },
@@ -437,7 +488,7 @@ describe('HizoFS benchmark report serialization', () => {
                 : {
                   ...sample.hizoFSDiagnostics,
                   runtime: {
-                    schemaVersion: 8 as const,
+                    schemaVersion: 9 as const,
                     type: 'unavailable' as const,
                     reason: 'production counters are unavailable',
                   },
@@ -451,7 +502,7 @@ describe('HizoFS benchmark report serialization', () => {
     const parsed = hizoFSBenchmarkReportSchema.parse({ ...report, results });
     expect(parsed.results[0]?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime)
       .toEqual({
-        schemaVersion: 8,
+        schemaVersion: 9,
         type: 'unavailable',
         reason: 'production counters are unavailable',
       });
@@ -495,8 +546,8 @@ describe('HizoFS benchmark report serialization', () => {
     const report = createReport();
     expect(() => hizoFSBenchmarkReportSchema.parse({
       ...report,
-      schemaVersion: 22,
-      benchmarkImplementationVersion: 27,
+      schemaVersion: 25,
+      benchmarkImplementationVersion: 34,
     })).toThrow();
   });
 

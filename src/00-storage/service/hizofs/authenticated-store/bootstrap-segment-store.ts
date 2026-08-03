@@ -44,7 +44,7 @@ import {
   canonicalContainerDirectory,
 } from "@/00-storage/service/hizofs/physical-store/paths";
 import { authenticatedStoreError } from "./errors";
-import { ensureAuthenticatedContainerDirectory } from "./ensure-container-directory";
+import { ensureAuthenticatedContainerDirectoryHierarchy } from "./ensure-container-directory";
 import { resolveAuthenticatedHomeRecord } from "./relocation-index-reader";
 import {
   authenticatedHizoFSPhysicalBytes,
@@ -180,9 +180,7 @@ async function ensureMetadataSegmentDirectories({ backend, segmentId }: {
   const shardDirectory = canonicalContainerDirectory({
     value: `${metadataDirectory}/${segmentIdToShard({ id: segmentId })}`,
   });
-  await ensureAuthenticatedContainerDirectory({ backend, path: segmentDirectory });
-  await ensureAuthenticatedContainerDirectory({ backend, path: metadataDirectory });
-  await ensureAuthenticatedContainerDirectory({ backend, path: shardDirectory });
+  await ensureAuthenticatedContainerDirectoryHierarchy({ backend, path: shardDirectory });
 }
 
 async function createAuthenticatedSegmentHeader({ diagnostics, fileSystemId, physicalSegmentId, rootKey }: {

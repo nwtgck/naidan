@@ -359,7 +359,7 @@ function createMutableRuntimeDiagnostics(): MutableRuntimeDiagnostics {
 
 function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnapshot {
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     type: "measured",
     phases: Object.fromEntries(HIZOFS_BENCHMARK_RUNTIME_PHASES.map(key => [
       key,

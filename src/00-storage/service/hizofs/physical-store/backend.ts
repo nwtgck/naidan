@@ -68,6 +68,17 @@ export interface HizoFSDevelopmentWritableBackendCapabilities extends HizoFSWrit
 // requirements merely because production mutation paths use the same backend.
 // Keeping the read contract separate allows OPFS inspection to report actual
 // bytes without promoting unproven directory-entry durability claims.
+export type PhysicalExactReadRange = Readonly<{
+  length: number;
+  offset: bigint;
+}>;
+
+export type PhysicalExactReadPairWithFileSize = Readonly<{
+  fileSize: bigint;
+  first: Uint8Array;
+  second: Uint8Array | undefined;
+}>;
+
 export interface HizoFSReadableBackend {
   getFileSize({ path }: { path: CanonicalContainerPath }): Promise<bigint | undefined>;
   readExact({ length, offset, path }: {
@@ -80,6 +91,17 @@ export interface HizoFSReadableBackend {
     offset: bigint;
     path: CanonicalContainerPath;
   }): Promise<Readonly<{ bytes: Uint8Array; fileSize: bigint }>>;
+  /**
+   * Optional immutable-snapshot read for two exact ranges from one file image.
+   * The first range is required and uses the canonical exact-read failure. The
+   * second range returns undefined when the same snapshot is too short so the
+   * authenticated owner can preserve its record-reference error classification.
+   */
+  readExactPairWithFileSize?({ first, path, second }: {
+    first: PhysicalExactReadRange;
+    path: CanonicalContainerPath;
+    second: PhysicalExactReadRange;
+  }): Promise<PhysicalExactReadPairWithFileSize>;
   readFileBounded({ maximumByteLength, path }: {
     maximumByteLength: number;
     path: CanonicalContainerPath;
@@ -101,11 +123,26 @@ export type PhysicalDirectoryCreationResult = Readonly<{
   parentEntrySyncRequired: boolean;
 }>;
 
+/**
+ * Optional single-traversal provisioning for one canonical directory hierarchy.
+ *
+ * Every returned parent observed an absent child before the backend performed
+ * an idempotent create. Callers must confirm those parent entries in order
+ * before treating the hierarchy as provisioned. The result is not an ownership
+ * claim because another realm may have won any individual create race.
+ */
+export type PhysicalDirectoryHierarchyProvisioningResult = Readonly<{
+  parentEntriesRequiringSync: readonly CanonicalContainerDirectory[];
+}>;
+
 export interface HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes extends Uint8Array>
 extends HizoFSReadableBackend {
   readonly capabilities: HizoFSWritableBackendCapabilities;
 
   createDirectoryExclusive({ path }: { path: CanonicalContainerDirectory }): Promise<PhysicalDirectoryCreationResult>;
+  provisionDirectoryHierarchy?({ path }: {
+    path: CanonicalContainerDirectory;
+  }): Promise<PhysicalDirectoryHierarchyProvisioningResult>;
   createFileExclusive({ path }: { path: CanonicalContainerPath }): Promise<HizoFSWritableFile>;
   openFileForUpdate({ path }: { path: CanonicalContainerPath }): Promise<HizoFSWritableFile>;
   writeAt({ bytes, file, offset }: {
