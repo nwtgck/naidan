@@ -29,15 +29,11 @@ import {
 } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import {
-  CANONICAL_CONTAINER_ROOT,
   canonicalContainerDirectory,
-  canonicalContainerPath,
-  containerEntryName,
-  parentContainerDirectory,
-  type CanonicalContainerDirectory,
   type CanonicalContainerPath,
 } from "@/00-storage/service/hizofs/physical-store/paths";
 import { authenticatedStoreError } from "./errors";
+import { ensureAuthenticatedContainerDirectory } from "./ensure-container-directory";
 import { runAndCloseAuthenticatedFile } from "./file-operation";
 import { authenticatedHizoFSPhysicalBytes, type AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import {
@@ -47,10 +43,10 @@ import {
   readExactWithAuthenticatedReason,
   type AuthenticatedStoreDiagnosticsPort,
 } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
-import { authenticatedSegmentPath, segmentIdIsUsedAcrossClasses } from "./segment-location";
+import { authenticatedSegmentPath, segmentIdIsUsedInOtherClass } from "./segment-location";
 import { sealAuthenticatedSegment, type AuthenticatedSegmentIndex } from "./segment-footer-store";
 import { readAuthenticatedSegmentDescriptor } from "./segment-prefix-reader";
-import { createAuthenticatedWholeFile } from "./whole-file";
+import { tryCreateAuthenticatedWholeFile } from "./whole-file";
 
 declare const activeSegmentWriterCapabilityBrand: unique symbol;
 declare const encodedRecordBrand: unique symbol;
@@ -148,31 +144,6 @@ function plaintextMaximum({ recordKind }: { recordKind: number }): number {
     : HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes;
 }
 
-async function createDirectoryIfMissing({ backend, path }: {
-  backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
-  path: CanonicalContainerDirectory;
-}): Promise<void> {
-  const parent = path === CANONICAL_CONTAINER_ROOT
-    ? CANONICAL_CONTAINER_ROOT
-    : parentContainerDirectory({ path: canonicalContainerPath({ value: path }) });
-  const name = containerEntryName({ path });
-  const existing = (await backend.list({ directory: parent })).find(entry => entry.name === name);
-  switch (existing?.kind) {
-  case "directory": return;
-  case "file":
-    throw authenticatedStoreError({
-      code: "control_plane_corrupt",
-      message: `required segment directory ${path} is occupied by a file`,
-    });
-  case undefined:
-    await backend.createDirectoryExclusive({ path });
-    await backend.syncDirectoryEntries({ parent });
-    return;
-  default:
-    throw new Error(`Unhandled physical entry kind: ${((existing satisfies never) as { readonly kind: string }).kind}`);
-  }
-}
-
 async function ensureSegmentDirectories({ backend, segmentClass, segmentId }: {
   backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   segmentClass: SegmentClass;
@@ -187,9 +158,9 @@ async function ensureSegmentDirectories({ backend, segmentClass, segmentId }: {
   const shardDirectory = canonicalContainerDirectory({
     value: `${classDirectory}/${segmentIdToShard({ id: segmentId })}`,
   });
-  await createDirectoryIfMissing({ backend, path: segmentDirectory });
-  await createDirectoryIfMissing({ backend, path: classDirectory });
-  await createDirectoryIfMissing({ backend, path: shardDirectory });
+  await ensureAuthenticatedContainerDirectory({ backend, path: segmentDirectory });
+  await ensureAuthenticatedContainerDirectory({ backend, path: classDirectory });
+  await ensureAuthenticatedContainerDirectory({ backend, path: shardDirectory });
 }
 
 async function createAuthenticatedSegmentHeader({ diagnostics, fileSystemId, rootKey, segmentClass, segmentId }: {
@@ -325,22 +296,23 @@ export class AuthenticatedSegmentWriter {
     rootKey: FileSystemRootKey;
     segmentClass: SegmentClass;
   }): Promise<AuthenticatedSegmentWriter> {
-    const segmentId = await generateSegmentId({
-      isUsed: async ({ id }) => await segmentIdIsUsedAcrossClasses({ backend, segmentId: id }),
-      randomSource,
-    });
-    await ensureSegmentDirectories({ backend, segmentClass, segmentId });
-    const path = authenticatedSegmentPath({ segmentClass, segmentId });
-    const header = await createAuthenticatedSegmentHeader({ diagnostics, fileSystemId, rootKey, segmentClass, segmentId });
-    await createAuthenticatedWholeFile({
-      backend,
-      bytes: authenticatedHizoFSPhysicalBytes({ bytes: header }),
-      path,
-    });
-    await readAuthenticatedSegmentDescriptor({ backend, diagnostics, fileSystemId, physicalSegmentId: segmentId, rootKey, segmentClass });
-    diagnostics?.recordSegmentWriterEvent?.({ event: "descriptor_validated", segmentClass });
-    diagnostics?.recordSegmentWriterEvent?.({ event: "created", segmentClass });
-    return new AuthenticatedSegmentWriter({ backend, diagnostics, fileSystemId, path, randomSource, rootKey, segmentClass, segmentId });
+    for (let attempt = 0; attempt < HIZOFS_V1_FORMAT_CONSTANTS.limits.randomIdentityGenerationAttempts; attempt += 1) {
+      const segmentId = await generateSegmentId({ isUsed: async () => false, randomSource });
+      if (await segmentIdIsUsedInOtherClass({ backend, segmentClass, segmentId })) continue;
+      await ensureSegmentDirectories({ backend, segmentClass, segmentId });
+      const path = authenticatedSegmentPath({ segmentClass, segmentId });
+      const header = await createAuthenticatedSegmentHeader({ diagnostics, fileSystemId, rootKey, segmentClass, segmentId });
+      if (!await tryCreateAuthenticatedWholeFile({
+        backend,
+        bytes: authenticatedHizoFSPhysicalBytes({ bytes: header }),
+        path,
+      })) continue;
+      await readAuthenticatedSegmentDescriptor({ backend, diagnostics, fileSystemId, physicalSegmentId: segmentId, rootKey, segmentClass });
+      diagnostics?.recordSegmentWriterEvent?.({ event: "descriptor_validated", segmentClass });
+      diagnostics?.recordSegmentWriterEvent?.({ event: "created", segmentClass });
+      return new AuthenticatedSegmentWriter({ backend, diagnostics, fileSystemId, path, randomSource, rootKey, segmentClass, segmentId });
+    }
+    throw new Error("Segment ID creation exhausted the collision retry bound");
   }
 
   public get physicalSegmentId(): SegmentId {

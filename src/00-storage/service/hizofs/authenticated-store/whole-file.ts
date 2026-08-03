@@ -1,16 +1,17 @@
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
+import { PhysicalStoreError, physicalStoreError } from "@/00-storage/service/hizofs/physical-store/errors";
 import type { CanonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import { parentContainerDirectory } from "@/00-storage/service/hizofs/physical-store/paths";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 
 import { runAndCloseAuthenticatedFile } from "./file-operation";
 
-export async function createAuthenticatedWholeFile({ backend, bytes, path }: {
+async function persistClaimedAuthenticatedWholeFile({ backend, bytes, file, path }: {
   backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   bytes: AuthenticatedHizoFSPhysicalBytes;
+  file: Awaited<ReturnType<HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>["createFileExclusive"]>>;
   path: CanonicalContainerPath;
 }): Promise<void> {
-  const file = await backend.createFileExclusive({ path });
   await runAndCloseAuthenticatedFile({
     backend,
     file,
@@ -22,6 +23,35 @@ export async function createAuthenticatedWholeFile({ backend, bytes, path }: {
     operationLabel: "authenticated whole-file operation",
   });
   await backend.syncDirectoryEntries({ parent: parentContainerDirectory({ path }) });
+}
+
+export async function tryCreateAuthenticatedWholeFile({ backend, bytes, path }: {
+  backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  bytes: AuthenticatedHizoFSPhysicalBytes;
+  path: CanonicalContainerPath;
+}): Promise<boolean> {
+  let file: Awaited<ReturnType<HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>["createFileExclusive"]>>;
+  try {
+    file = await backend.createFileExclusive({ path });
+  } catch (cause) {
+    if (cause instanceof PhysicalStoreError && cause.code === "already_exists") return false;
+    throw cause;
+  }
+  await persistClaimedAuthenticatedWholeFile({ backend, bytes, file, path });
+  return true;
+}
+
+export async function createAuthenticatedWholeFile({ backend, bytes, path }: {
+  backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  bytes: AuthenticatedHizoFSPhysicalBytes;
+  path: CanonicalContainerPath;
+}): Promise<void> {
+  if (await tryCreateAuthenticatedWholeFile({ backend, bytes, path })) return;
+  throw physicalStoreError({
+    code: "already_exists",
+    message: `physical entry already exists: ${path}`,
+    path,
+  });
 }
 
 

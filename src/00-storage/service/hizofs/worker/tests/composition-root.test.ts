@@ -2516,7 +2516,7 @@ describe("HizoFS worker composition root", () => {
     const underlying: HizoFSDevelopmentWritableBackend<AuthenticatedHizoFSPhysicalBytes> = {
       capabilities: { directoryEntryDurability: "not-demonstrated", fileDataDurability: "not-demonstrated" },
       closeFile: async () => undefined,
-      createDirectoryExclusive: async () => undefined,
+      createDirectoryExclusive: async () => ({ parentEntrySyncRequired: false }),
       createFileExclusive: async () => file,
       getFileSize: async () => 0n,
       list: async () => [],

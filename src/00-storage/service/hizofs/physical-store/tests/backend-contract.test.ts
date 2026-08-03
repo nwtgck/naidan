@@ -60,8 +60,8 @@ describe('HizoFS physical-store backend contract', () => {
     const path = canonicalContainerPath({ value: 'segments/empty.enc' });
 
     expect(await backend.readFileBounded({ path, maximumByteLength: 0 })).toBeUndefined();
-    await backend.createDirectoryExclusive({ path: directory });
-    await backend.createDirectoryExclusive({ path: directory });
+    await expect(backend.createDirectoryExclusive({ path: directory })).resolves.toEqual({ parentEntrySyncRequired: true });
+    await expect(backend.createDirectoryExclusive({ path: directory })).resolves.toEqual({ parentEntrySyncRequired: false });
     const file = await backend.createFileExclusive({ path });
     expect(await backend.readFileBounded({ path, maximumByteLength: 0 })).toEqual(new Uint8Array());
     await expect(backend.createFileExclusive({ path })).rejects.toMatchObject({ code: 'already_exists' });

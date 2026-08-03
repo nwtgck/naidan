@@ -314,8 +314,8 @@ describe('production HizoFS benchmark runtime port', () => {
       failed: 0,
       overlapping: 0,
       getFileSize: {
-        duplicateOperations: 2,
-        operations: 4,
+        duplicateOperations: 1,
+        operations: 3,
         observedUniqueTargets: 2,
       },
       physicalAccessReasons: {
@@ -381,6 +381,7 @@ describe('production HizoFS benchmark runtime port', () => {
       trustedTailMismatches: 0,
     });
     expect(runtimeDiagnostics.phases.physical_read_exact.operationCount).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.phases.physical_list.operationCount).toBe(0);
     expect(Object.values(runtimeDiagnostics.records).some(counter => counter.readOperations > 0)).toBe(true);
     expect(runtimeDiagnostics.caches.metadata.hits).toBeGreaterThan(0);
     expect(runtimeDiagnostics.caches.metadata.misses).toBeGreaterThan(0);

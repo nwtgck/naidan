@@ -33,6 +33,23 @@ export async function segmentIdIsUsedAcrossClasses({ backend, segmentId }: {
   }) !== undefined;
 }
 
+export async function segmentIdIsUsedInOtherClass({ backend, segmentClass, segmentId }: {
+  backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  segmentClass: SegmentClass;
+  segmentId: SegmentId;
+}): Promise<boolean> {
+  const otherClass: SegmentClass = (() => {
+    switch (segmentClass) {
+    case "metadata": return "data";
+    case "data": return "metadata";
+    default: return segmentClass satisfies never;
+    }
+  })();
+  return await backend.getFileSize({
+    path: authenticatedSegmentPath({ segmentClass: otherClass, segmentId }),
+  }) !== undefined;
+}
+
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {

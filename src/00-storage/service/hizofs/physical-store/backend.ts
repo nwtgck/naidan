@@ -91,11 +91,21 @@ export interface HizoFSReadableBackend {
 // Creation, existing-copy update, bounded reads, file flush, parent-entry confirmation,
 // and explicit close therefore live in one contract. Capability claims separately state
 // whether those operations have demonstrated crash durability in the selected environment.
+/**
+ * Reports whether an absence observation was followed by an idempotent create.
+ * A concurrent creator may win the race, so this is deliberately a durability
+ * instruction rather than an ownership claim: true means the parent entry must
+ * be confirmed before the caller treats the directory as provisioned.
+ */
+export type PhysicalDirectoryCreationResult = Readonly<{
+  parentEntrySyncRequired: boolean;
+}>;
+
 export interface HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes extends Uint8Array>
 extends HizoFSReadableBackend {
   readonly capabilities: HizoFSWritableBackendCapabilities;
 
-  createDirectoryExclusive({ path }: { path: CanonicalContainerDirectory }): Promise<void>;
+  createDirectoryExclusive({ path }: { path: CanonicalContainerDirectory }): Promise<PhysicalDirectoryCreationResult>;
   createFileExclusive({ path }: { path: CanonicalContainerPath }): Promise<HizoFSWritableFile>;
   openFileForUpdate({ path }: { path: CanonicalContainerPath }): Promise<HizoFSWritableFile>;
   writeAt({ bytes, file, offset }: {

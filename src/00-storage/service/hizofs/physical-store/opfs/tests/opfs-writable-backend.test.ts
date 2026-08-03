@@ -230,7 +230,8 @@ describe("OPFS writable backend", () => {
   it("performs development parent readback without claiming crash durability", async () => {
     const { backend, root } = createBackend();
     const parent = canonicalContainerDirectory({ value: "segments" });
-    await backend.createDirectoryExclusive({ path: parent });
+    await expect(backend.createDirectoryExclusive({ path: parent })).resolves.toEqual({ parentEntrySyncRequired: true });
+    await expect(backend.createDirectoryExclusive({ path: parent })).resolves.toEqual({ parentEntrySyncRequired: false });
     const nativeParent = await root.getDirectoryHandle("segments");
 
     expect(backend.capabilities).toEqual({

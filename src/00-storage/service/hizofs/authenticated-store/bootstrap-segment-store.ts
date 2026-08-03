@@ -41,14 +41,10 @@ import {
 } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import {
-  CANONICAL_CONTAINER_ROOT,
   canonicalContainerDirectory,
-  canonicalContainerPath,
-  containerEntryName,
-  parentContainerDirectory,
-  type CanonicalContainerDirectory,
 } from "@/00-storage/service/hizofs/physical-store/paths";
 import { authenticatedStoreError } from "./errors";
+import { ensureAuthenticatedContainerDirectory } from "./ensure-container-directory";
 import { resolveAuthenticatedHomeRecord } from "./relocation-index-reader";
 import {
   authenticatedHizoFSPhysicalBytes,
@@ -171,32 +167,6 @@ async function buildEncryptedFrame({
   };
 }
 
-async function createDirectoryIfMissing({ backend, path }: {
-  backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
-  path: CanonicalContainerDirectory;
-}): Promise<void> {
-  const parent = path === "" ? CANONICAL_CONTAINER_ROOT : parentContainerDirectory({
-    path: canonicalContainerPath({ value: path }),
-  });
-  const name = containerEntryName({ path });
-  const existing = (await backend.list({ directory: parent })).find(entry => entry.name === name);
-  switch (existing?.kind) {
-  case "directory":
-    return;
-  case "file":
-    throw authenticatedStoreError({
-      code: "control_plane_corrupt",
-      message: `required segment directory ${path} is occupied by a file`,
-    });
-  case undefined:
-    await backend.createDirectoryExclusive({ path });
-    await backend.syncDirectoryEntries({ parent });
-    return;
-  default:
-    throw new Error(`Unhandled physical entry kind: ${((existing satisfies never) as { readonly kind: string }).kind}`);
-  }
-}
-
 async function ensureMetadataSegmentDirectories({ backend, segmentId }: {
   backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   segmentId: SegmentId;
@@ -210,9 +180,9 @@ async function ensureMetadataSegmentDirectories({ backend, segmentId }: {
   const shardDirectory = canonicalContainerDirectory({
     value: `${metadataDirectory}/${segmentIdToShard({ id: segmentId })}`,
   });
-  await createDirectoryIfMissing({ backend, path: segmentDirectory });
-  await createDirectoryIfMissing({ backend, path: metadataDirectory });
-  await createDirectoryIfMissing({ backend, path: shardDirectory });
+  await ensureAuthenticatedContainerDirectory({ backend, path: segmentDirectory });
+  await ensureAuthenticatedContainerDirectory({ backend, path: metadataDirectory });
+  await ensureAuthenticatedContainerDirectory({ backend, path: shardDirectory });
 }
 
 async function createAuthenticatedSegmentHeader({ diagnostics, fileSystemId, physicalSegmentId, rootKey }: {

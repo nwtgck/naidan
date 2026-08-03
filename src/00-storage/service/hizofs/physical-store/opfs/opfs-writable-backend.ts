@@ -153,12 +153,26 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     path,
   }: {
     path: CanonicalContainerDirectory;
-  }): Promise<void> {
-    if (path === CANONICAL_CONTAINER_ROOT) return;
+  }): Promise<Readonly<{ parentEntrySyncRequired: boolean }>> {
+    if (path === CANONICAL_CONTAINER_ROOT) return { parentEntrySyncRequired: false };
     const parent = await this.#resolveDirectory({ path: parentDirectoryOfDirectory({ path }) });
     const name = containerEntryName({ path });
     try {
+      await parent.getDirectoryHandle(name);
+      return { parentEntrySyncRequired: false };
+    } catch (error) {
+      if (isDomExceptionNamed({ error, name: 'TypeMismatchError' })) {
+        throw physicalStoreError({
+          code: 'not_directory',
+          message: `physical entry is not a directory: ${path}`,
+          path,
+        });
+      }
+      if (!isDomExceptionNamed({ error, name: 'NotFoundError' })) throw error;
+    }
+    try {
       await parent.getDirectoryHandle(name, { create: true });
+      return { parentEntrySyncRequired: true };
     } catch (error) {
       if (isDomExceptionNamed({ error, name: 'TypeMismatchError' })) {
         throw physicalStoreError({

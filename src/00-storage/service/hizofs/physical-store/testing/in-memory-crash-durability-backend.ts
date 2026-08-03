@@ -138,13 +138,13 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     this.#maximumFileByteLength = maximumFileByteLength;
   }
 
-  public async createDirectoryExclusive({ path }: { path: CanonicalContainerDirectory }): Promise<void> {
-    if (path === CANONICAL_CONTAINER_ROOT) return;
+  public async createDirectoryExclusive({ path }: { path: CanonicalContainerDirectory }): Promise<Readonly<{ parentEntrySyncRequired: boolean }>> {
+    if (path === CANONICAL_CONTAINER_ROOT) return { parentEntrySyncRequired: false };
     const { entryName, parent } = this.#resolveDirectoryParent({ path });
     const existing = parent.entries.get(entryName);
     if (existing !== undefined) {
       switch (existing.kind) {
-      case 'directory': return;
+      case 'directory': return { parentEntrySyncRequired: false };
       case 'file':
         throw physicalStoreError({ code: 'not_directory', message: `physical entry is not a directory: ${path}`, path });
       default: {
@@ -156,6 +156,7 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     this.#checkpoint({ operation: 'createDirectoryExclusive', timing: 'before' });
     parent.entries.set(entryName, createDirectoryNode());
     this.#checkpoint({ operation: 'createDirectoryExclusive', timing: 'after' });
+    return { parentEntrySyncRequired: true };
   }
 
   public async createFileExclusive({ path }: { path: CanonicalContainerPath }): Promise<HizoFSWritableFile> {

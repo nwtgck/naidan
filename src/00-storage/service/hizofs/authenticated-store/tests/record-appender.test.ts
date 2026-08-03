@@ -57,6 +57,33 @@ class FileSizeBlockingBackend extends InMemoryCrashDurabilityBackend<Authenticat
   }
 }
 
+
+class PhysicalAccessRecordingBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
+  readonly events: string[] = [];
+
+  public override async getFileSize(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["getFileSize"]>[0],
+  ): Promise<bigint | undefined> {
+    this.events.push(`size:${input.path}`);
+    return await super.getFileSize(input);
+  }
+
+  public override async createFileExclusive(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["createFileExclusive"]>[0],
+  ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["createFileExclusive"]> {
+    this.events.push(`create:${input.path}`);
+    return await super.createFileExclusive(input);
+  }
+}
+
+function repeatedThenFreshSegmentSource(): RandomByteSource {
+  let call = 0;
+  return ({ bytes }) => {
+    bytes.fill(call === 0 ? 7 : 8);
+    call += 1;
+  };
+}
+
 class DurabilityBlockingBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
   #blockNextDurability = false;
   readonly #durabilityStarted: Promise<void>;
@@ -117,6 +144,77 @@ function fixture({ faultInjector }: { faultInjector?: DeterministicPhysicalStore
 }
 
 describe("authenticated record appender", () => {
+  it("subtracts the same-class preflight probe and lets exclusive creation claim the target path", async () => {
+    const backend = new PhysicalAccessRecordingBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+
+    await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+
+    const firstCreateIndex = backend.events.findIndex(event => event.startsWith("create:"));
+    const preflightSizes = backend.events.slice(0, firstCreateIndex).filter(event => event.startsWith("size:"));
+    expect(preflightSizes).toHaveLength(1);
+    expect(preflightSizes[0]).toContain("/data/");
+    rootKey.destroy();
+  });
+
+  it("retries a same-class Segment ID collision through exclusive creation", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource: deterministicRandomSource() });
+    const repeatedSource: RandomByteSource = ({ bytes }) => bytes.fill(7);
+    const existing = await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource: repeatedSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    const retried = await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource: repeatedThenFreshSegmentSource(),
+      rootKey,
+      segmentClass: "metadata",
+    });
+
+    expect(retried.physicalSegmentId).not.toEqual(existing.physicalSegmentId);
+    expect(backend.openHandleCount()).toBe(0);
+    rootKey.destroy();
+  });
+
+  it("keeps the opposite-class preflight for the global Segment ID space", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource: deterministicRandomSource() });
+    const repeatedSource: RandomByteSource = ({ bytes }) => bytes.fill(7);
+    const metadata = await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource: repeatedSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    const data = await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource: repeatedThenFreshSegmentSource(),
+      rootKey,
+      segmentClass: "data",
+    });
+
+    expect(data.physicalSegmentId).not.toEqual(metadata.physicalSegmentId);
+    expect(backend.openHandleCount()).toBe(0);
+    rootKey.destroy();
+  });
+
   it("reports each successfully persisted record through the authenticated diagnostics port", async () => {
     const value = fixture();
     const cryptoObservations: AuthenticatedCryptoDiagnosticsObservation[] = [];
