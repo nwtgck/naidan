@@ -273,6 +273,15 @@ describe('HizoFS benchmark engine', () => {
           localRequests: expect.any(Number),
           remoteRequests: 0,
         },
+        indexes: {
+          update: {
+            inputMutations: 3,
+            maximumPageLevel: 1,
+            operations: 3,
+            pageReads: 3,
+            pageWrites: 3,
+          },
+        },
       },
     });
     const createRuntimeDiagnostics = createResult?.backends.hizofs?.samples[0]
@@ -282,6 +291,13 @@ describe('HizoFS benchmark engine', () => {
       throw new TypeError('expected measured runtime diagnostics');
     }
     expect(createRuntimeDiagnostics.coordinator.activeStateCacheHits).toBeGreaterThan(0);
+    expect(createRuntimeDiagnostics.indexes.update).toMatchObject({
+      inputMutations: 3,
+      maximumPageLevel: 1,
+      operations: 3,
+      pageReads: 3,
+      pageWrites: 3,
+    });
     const writeResult = report.results.find(
       result => result.caseId === 'small_files_write_existing',
     );
@@ -440,6 +456,20 @@ describe('HizoFS benchmark engine', () => {
     }
     expect(firstRuntime.records.file_system_commit.writeOperations).toBeGreaterThan(0);
     expect(secondRuntime.records.file_system_commit.writeOperations).toBeGreaterThan(0);
+    expect(firstRuntime.indexes.update.maximumPageLevel).toBe(1);
+    expect(secondRuntime.indexes.update.maximumPageLevel).toBe(1);
+    expect(createResult?.backends.hizofs?.hizoFSDiagnosticsTotals?.runtime).toMatchObject({
+      type: 'measured',
+      indexes: {
+        update: {
+          inputMutations: 6,
+          maximumPageLevel: 1,
+          operations: 6,
+          pageReads: 6,
+          pageWrites: 6,
+        },
+      },
+    });
     expect(report.lifecycleEvents.filter(event => event.action === 'garbage_collection'))
       .toHaveLength(0);
   });

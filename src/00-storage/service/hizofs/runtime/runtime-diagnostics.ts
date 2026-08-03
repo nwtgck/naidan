@@ -7,6 +7,7 @@ import type {
   ImmutableBTreeDiagnosticsObservation,
   ImmutableBTreeDiagnosticsPort,
 } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
+import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
 import type {
   AuthenticatedPhysicalAccessReason,
   AuthenticatedCodecDiagnosticsObservation,
@@ -42,7 +43,12 @@ export const HIZOFS_RUNTIME_DIAGNOSTIC_PHASES = Object.freeze([
   "physical_remove_file",
   "physical_list",
   "index_build",
+  "index_entries",
+  "index_entries_from_floor",
+  "index_get",
+  "index_seek_floor",
   "index_update",
+  "index_validate_structure",
   "commit_publication",
 ] as const);
 
@@ -137,6 +143,18 @@ export type HizoFSRuntimePublicationCounter = Readonly<{
   readExact: HizoFSRuntimeScopedAccessCounter;
 }>;
 
+export type HizoFSRuntimeIndexCounter = Readonly<{
+  inputMutations: number;
+  maximumPageLevel: number;
+  operations: number;
+  pageReads: number;
+  pageWrites: number;
+  rootCollapses: number;
+  splitOperations: number;
+  splitOutputPages: number;
+  unchangedPageReuses: number;
+}>;
+
 export type HizoFSRuntimeSegmentWriterCounter = Readonly<{
   appendOperations: number;
   appendReadBackVerifications: number;
@@ -153,6 +171,7 @@ export type HizoFSRuntimeDiagnosticsSnapshot = Readonly<{
   caches: Readonly<Record<HizoFSRuntimeDiagnosticCache, HizoFSRuntimeCacheCounter>>;
   resources: Readonly<Record<HizoFSRuntimeDiagnosticResource, HizoFSRuntimeResourceCounter>>;
   coordinator: Readonly<Record<HizoFSRuntimeDiagnosticCoordinatorCounter, number>>;
+  indexes: Readonly<Record<ImmutableBTreeDiagnosticsObservation["operation"], HizoFSRuntimeIndexCounter>>;
   mutation: HizoFSRuntimeMutationCounter;
   publication: HizoFSRuntimePublicationCounter;
   segmentWriters: Readonly<Record<"data" | "metadata" | "relocation", HizoFSRuntimeSegmentWriterCounter>>;
@@ -209,6 +228,17 @@ type MutablePublicationCounter = {
   overlapping: number;
   getFileSize: MutableScopedAccessCounter;
   readExact: MutableScopedAccessCounter;
+};
+type MutableIndexCounter = {
+  inputMutations: number;
+  maximumPageLevel: number;
+  operations: number;
+  pageReads: number;
+  pageWrites: number;
+  rootCollapses: number;
+  splitOperations: number;
+  splitOutputPages: number;
+  unchangedPageReuses: number;
 };
 type MutableSegmentWriterCounter = {
   appendOperations: number;
@@ -362,6 +392,21 @@ function physicalAccessScope(): ActivePhysicalAccessScope {
   };
 }
 
+
+function indexCounters(): Record<ImmutableBTreeDiagnosticsObservation["operation"], MutableIndexCounter> {
+  return Object.fromEntries(IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS.map(operation => [operation, {
+    inputMutations: 0,
+    maximumPageLevel: 0,
+    operations: 0,
+    pageReads: 0,
+    pageWrites: 0,
+    rootCollapses: 0,
+    splitOperations: 0,
+    splitOutputPages: 0,
+    unchangedPageReuses: 0,
+  }])) as Record<ImmutableBTreeDiagnosticsObservation["operation"], MutableIndexCounter>;
+}
+
 function segmentWriterCounters(): Record<"data" | "metadata" | "relocation", MutableSegmentWriterCounter> {
   return Object.fromEntries((["data", "metadata", "relocation"] as const).map(segmentClass => [segmentClass, {
     appendOperations: 0,
@@ -416,6 +461,7 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
   readonly #caches = cacheCounters();
   readonly #resources = resourceCounters();
   readonly #coordinator = coordinatorCounters();
+  readonly #indexes = indexCounters();
   readonly #mutation = mutationCounter();
   readonly #publication = publicationCounter();
   readonly #segmentWriters = segmentWriterCounters();
@@ -505,12 +551,38 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     this.recordPhase({ durationMs, phase: "commit_publication" });
   }
 
-  recordIndexOperation({ durationMs, operation }: ImmutableBTreeDiagnosticsObservation): void {
+  recordIndexOperation({ durationMs, operation, structural }: ImmutableBTreeDiagnosticsObservation): void {
     switch (operation) {
-    case "build": this.recordPhase({ durationMs, phase: "index_build" }); return;
-    case "update": this.recordPhase({ durationMs, phase: "index_update" }); return;
+    case "build": this.recordPhase({ durationMs, phase: "index_build" }); break;
+    case "entries": this.recordPhase({ durationMs, phase: "index_entries" }); break;
+    case "entries_from_floor": this.recordPhase({ durationMs, phase: "index_entries_from_floor" }); break;
+    case "get": this.recordPhase({ durationMs, phase: "index_get" }); break;
+    case "seek_floor": this.recordPhase({ durationMs, phase: "index_seek_floor" }); break;
+    case "update": this.recordPhase({ durationMs, phase: "index_update" }); break;
+    case "validate_structure": this.recordPhase({ durationMs, phase: "index_validate_structure" }); break;
     default: operation satisfies never;
     }
+    const counter = this.#indexes[operation];
+    counter.operations = incrementSafe({ current: counter.operations, delta: 1, label: `${operation} index operations` });
+    for (const field of [
+      "inputMutations",
+      "pageReads",
+      "pageWrites",
+      "rootCollapses",
+      "splitOperations",
+      "splitOutputPages",
+      "unchangedPageReuses",
+    ] as const) {
+      counter[field] = incrementSafe({
+        current: counter[field],
+        delta: structural[field],
+        label: `${operation} index ${field}`,
+      });
+    }
+    counter.maximumPageLevel = Math.max(
+      counter.maximumPageLevel,
+      safeNonNegativeInteger({ label: `${operation} index maximum page level`, value: structural.maximumPageLevel }),
+    );
   }
 
   recordMetadataCacheEvent({ event, recordKind, scope = "session" }: AuthenticatedMetadataCacheEventObservation): void {
@@ -866,6 +938,9 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     }
     this.#publication.getFileSize.maximumOperationsPerScope = 0;
     this.#publication.readExact.maximumOperationsPerScope = 0;
+    for (const operation of IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS) {
+      this.#indexes[operation].maximumPageLevel = 0;
+    }
   }
 
   snapshot(): HizoFSRuntimeDiagnosticsSnapshot {
@@ -875,6 +950,7 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
       caches: this.#caches,
       resources: this.#resources,
       coordinator: this.#coordinator,
+      indexes: this.#indexes,
       mutation: this.#mutation,
       publication: this.#publication,
       segmentWriters: this.#segmentWriters,

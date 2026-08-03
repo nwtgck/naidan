@@ -1,5 +1,6 @@
 import { HIZOFS_V1_PERSISTED_RECORD_KIND_DIAGNOSTIC_NAMES } from '@/00-storage/service/hizofs/00-format';
 import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port';
+import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizofs/indexes/runtime-diagnostics-port';
 import { HIZOFS_RUNTIME_DIAGNOSTIC_PHASES } from '@/00-storage/service/hizofs/runtime/runtime-diagnostics';
 import { z } from 'zod';
 
@@ -178,6 +179,18 @@ const hizoFSRuntimeResourceCounterSchema = z.object({
   maximumOperations: z.number().int().nonnegative(),
 }).strict();
 
+const hizoFSRuntimeIndexCounterSchema = z.object({
+  inputMutations: z.number().int().nonnegative(),
+  maximumPageLevel: z.number().int().nonnegative(),
+  operations: z.number().int().nonnegative(),
+  pageReads: z.number().int().nonnegative(),
+  pageWrites: z.number().int().nonnegative(),
+  rootCollapses: z.number().int().nonnegative(),
+  splitOperations: z.number().int().nonnegative(),
+  splitOutputPages: z.number().int().nonnegative(),
+  unchangedPageReuses: z.number().int().nonnegative(),
+}).strict();
+
 const hizoFSRuntimeScopedAccessCounterSchema = z.object({
   duplicateOperations: z.number().int().nonnegative(),
   maximumOperationsPerScope: z.number().int().nonnegative(),
@@ -213,7 +226,7 @@ const hizoFSRuntimeSegmentWriterCounterSchema = z.object({
 }).strict();
 
 const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(6),
+  schemaVersion: z.literal(7),
   type: z.literal('measured'),
   phases: z.object(Object.fromEntries(
     HIZOFS_RUNTIME_DIAGNOSTIC_PHASES.map(phase => [
@@ -254,6 +267,9 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
     localRequests: z.number().int().nonnegative(),
     remoteRequests: z.number().int().nonnegative(),
   }).strict(),
+  indexes: z.object(Object.fromEntries(
+    IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS.map(operation => [operation, hizoFSRuntimeIndexCounterSchema]),
+  ) as Record<typeof IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS[number], typeof hizoFSRuntimeIndexCounterSchema>).strict(),
   mutation: z.object({
     abandoned: z.number().int().nonnegative(),
     completed: z.number().int().nonnegative(),
@@ -277,7 +293,7 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
 }).strict();
 
 const hizoFSUnavailableRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(6),
+  schemaVersion: z.literal(7),
   type: z.literal('unavailable'),
   reason: z.string().min(1),
 }).strict();
@@ -465,8 +481,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(22),
-  benchmarkImplementationVersion: z.literal(27),
+  schemaVersion: z.literal(23),
+  benchmarkImplementationVersion: z.literal(29),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),

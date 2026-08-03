@@ -287,8 +287,8 @@ describe('production HizoFS benchmark runtime port', () => {
       failed: 0,
       overlapping: 0,
       getFileSize: {
-        duplicateOperations: 3,
-        operations: 5,
+        duplicateOperations: 2,
+        operations: 4,
         observedUniqueTargets: 2,
       },
       physicalAccessReasons: {
@@ -299,7 +299,7 @@ describe('production HizoFS benchmark runtime port', () => {
           readExact: { duplicateOperations: 0, operations: 0, observedUniqueTargets: 0 },
         },
         segment_descriptor: {
-          getFileSize: { duplicateOperations: 0, operations: 1, observedUniqueTargets: 1 },
+          getFileSize: { duplicateOperations: 0, operations: 0, observedUniqueTargets: 0 },
           readExact: { duplicateOperations: 0, operations: 1, observedUniqueTargets: 1 },
         },
         trusted_tail: {
@@ -326,6 +326,18 @@ describe('production HizoFS benchmark runtime port', () => {
         observedUniqueTargets: 1,
       },
     });
+    expect(runtimeDiagnostics.indexes.update).toMatchObject({
+      inputMutations: expect.any(Number),
+      operations: expect.any(Number),
+      pageReads: expect.any(Number),
+      pageWrites: expect.any(Number),
+    });
+    expect(runtimeDiagnostics.indexes.update.operations).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.indexes.update.pageReads).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.indexes.get.operations).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.indexes.get.pageReads).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.indexes.validate_structure.operations).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.indexes.validate_structure.pageReads).toBeGreaterThan(0);
     expect(runtimeDiagnostics.segmentWriters.metadata).toMatchObject({
       appendOperations: 2,
       appendReadBackVerifications: 2,
@@ -424,6 +436,17 @@ describe('production HizoFS benchmark runtime port', () => {
       'directory_recursive_delete',
     ]);
     expect(report.results.every(result => result.backends.hizofs?.sampleCount === 1)).toBe(true);
+    const randomWriteSample = report.results.find(result => result.caseId === 'random_write')
+      ?.backends.hizofs?.samples[0];
+    const randomWriteRuntime = randomWriteSample?.hizoFSDiagnostics?.runtime;
+    expect(randomWriteRuntime?.type).toBe('measured');
+    if (randomWriteRuntime?.type !== 'measured') {
+      throw new Error('random-write structural diagnostics are unavailable');
+    }
+    expect(randomWriteRuntime.indexes.update.operations)
+      .toBe(configuration.randomAccess.operationCount + 1);
+    expect(randomWriteRuntime.indexes.update.inputMutations)
+      .toBe(configuration.randomAccess.operationCount + 1);
   }, 30_000);
 
   it('retains an isolated production run only by configuration and removes it explicitly', async () => {

@@ -561,6 +561,9 @@ describe("read-only container open contract", () => {
       getFileSize: async ({ path }) => await backend.getFileSize({ path }),
       list: async ({ directory }) => await backend.list({ directory }),
       readExact: async ({ length, offset, path }) => await backend.readExact({ length, offset, path }),
+      readExactWithFileSize: async ({ length, offset, path }) => (
+        await backend.readExactWithFileSize({ length, offset, path })
+      ),
       readFileBounded: async ({ maximumByteLength, path }) => await backend.readFileBounded({
         maximumByteLength,
         path,

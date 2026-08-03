@@ -1,5 +1,6 @@
 import { HIZOFS_SUPERBLOCK_FILES } from '@/00-storage/service/hizofs/00-format';
 import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port';
+import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizofs/indexes/runtime-diagnostics-port';
 import {
   createBenchmarkRuntimePolicy,
   HIZOFS_BENCHMARK_RUNTIME_PHASES,
@@ -34,7 +35,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 27 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 29 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -323,7 +324,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 22,
+    schemaVersion: 23,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -1869,7 +1870,7 @@ function unavailableRuntimeDiagnostics({ reason }: {
   reason: string;
 }): HizoFSBenchmarkRuntimeDiagnosticsSnapshot {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     type: 'unavailable',
     reason,
   };
@@ -1896,7 +1897,7 @@ function subtractHizoFSRuntimeDiagnostics({
   default: return before satisfies never;
   }
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [
@@ -2004,6 +2005,12 @@ function subtractHizoFSRuntimeDiagnostics({
         0,
       ),
     },
+    indexes: Object.fromEntries(IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS.map(operation => [operation,
+      subtractHizoFSRuntimeIndexDiagnostics({
+        before: before.indexes[operation],
+        after: after.indexes[operation],
+      }),
+    ])) as HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['indexes'],
     mutation: {
       abandoned: Math.max(after.mutation.abandoned - before.mutation.abandoned, 0),
       completed: Math.max(after.mutation.completed - before.mutation.completed, 0),
@@ -2056,6 +2063,29 @@ function subtractHizoFSRuntimeDiagnostics({
         after: after.segmentWriters.relocation,
       }),
     },
+  };
+}
+
+function subtractHizoFSRuntimeIndexDiagnostics({
+  before,
+  after,
+}: {
+  before: HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['indexes']['update'];
+  after: HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['indexes']['update'];
+}): HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['indexes']['update'] {
+  return {
+    inputMutations: Math.max(after.inputMutations - before.inputMutations, 0),
+    maximumPageLevel: after.maximumPageLevel,
+    operations: Math.max(after.operations - before.operations, 0),
+    pageReads: Math.max(after.pageReads - before.pageReads, 0),
+    pageWrites: Math.max(after.pageWrites - before.pageWrites, 0),
+    rootCollapses: Math.max(after.rootCollapses - before.rootCollapses, 0),
+    splitOperations: Math.max(after.splitOperations - before.splitOperations, 0),
+    splitOutputPages: Math.max(after.splitOutputPages - before.splitOutputPages, 0),
+    unchangedPageReuses: Math.max(
+      after.unchangedPageReuses - before.unchangedPageReuses,
+      0,
+    ),
   };
 }
 
@@ -2352,7 +2382,7 @@ function aggregateHizoFSRuntimeDiagnostics({
     throw new Error('HizoFS measured runtime diagnostics aggregate requires at least one sample');
   }
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [
@@ -2471,6 +2501,11 @@ function aggregateHizoFSRuntimeDiagnostics({
         0,
       ),
     },
+    indexes: Object.fromEntries(IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS.map(operation => [operation,
+      aggregateHizoFSRuntimeIndexDiagnostics({
+        diagnostics: measured.map(value => value.indexes[operation]),
+      }),
+    ])) as HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['indexes'],
     mutation: {
       abandoned: measured.reduce((sum, value) => sum + value.mutation.abandoned, 0),
       completed: measured.reduce((sum, value) => sum + value.mutation.completed, 0),
@@ -2514,6 +2549,27 @@ function aggregateHizoFSRuntimeDiagnostics({
         diagnostics: measured.map(value => value.segmentWriters.relocation),
       }),
     },
+  };
+}
+
+function aggregateHizoFSRuntimeIndexDiagnostics({
+  diagnostics,
+}: {
+  diagnostics: readonly HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['indexes']['update'][];
+}): HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['indexes']['update'] {
+  return {
+    inputMutations: diagnostics.reduce((sum, value) => sum + value.inputMutations, 0),
+    maximumPageLevel: Math.max(...diagnostics.map(value => value.maximumPageLevel)),
+    operations: diagnostics.reduce((sum, value) => sum + value.operations, 0),
+    pageReads: diagnostics.reduce((sum, value) => sum + value.pageReads, 0),
+    pageWrites: diagnostics.reduce((sum, value) => sum + value.pageWrites, 0),
+    rootCollapses: diagnostics.reduce((sum, value) => sum + value.rootCollapses, 0),
+    splitOperations: diagnostics.reduce((sum, value) => sum + value.splitOperations, 0),
+    splitOutputPages: diagnostics.reduce((sum, value) => sum + value.splitOutputPages, 0),
+    unchangedPageReuses: diagnostics.reduce(
+      (sum, value) => sum + value.unchangedPageReuses,
+      0,
+    ),
   };
 }
 

@@ -128,6 +128,7 @@ class TestWritableStream {
 class TestFileHandle {
   public readonly kind = "file" as const;
   public bytes = new Uint8Array();
+  public getFileCount = 0;
   public open = false;
   public readonly sync = new TestSyncAccessHandle(this);
   public writableAbortCount = 0;
@@ -157,6 +158,7 @@ class TestFileHandle {
   }
 
   public async getFile(): Promise<File> {
+    this.getFileCount += 1;
     const snapshot = Uint8Array.from(this.bytes);
     return {
       size: snapshot.byteLength,
@@ -278,6 +280,13 @@ describe("OPFS writable backend", () => {
     expect(await backend.readExact({ path, offset: 0n, length: 7 })).toEqual(
       Uint8Array.from([0, 0, 7, 8, 9, 0, 0]),
     );
+    const snapshotReadsBeforeCombinedOperation = (
+      await nativeDirectory.getFileHandle('data.enc')
+    ).getFileCount;
+    await expect(backend.readExactWithFileSize({ path, offset: 2n, length: 3 }))
+      .resolves.toEqual({ bytes: Uint8Array.from([7, 8, 9]), fileSize: 7n });
+    expect((await nativeDirectory.getFileHandle('data.enc')).getFileCount)
+      .toBe(snapshotReadsBeforeCombinedOperation + 1);
     await backend.closeFile({ file });
     await backend.closeFile({ file });
     await expect(backend.writeAt({ file, offset: 0n, bytes: authenticatedBytes([1]) }))

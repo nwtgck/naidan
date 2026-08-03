@@ -231,6 +231,25 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     return result;
   }
 
+  public async readExactWithFileSize({ length, offset, path }: {
+    length: number;
+    offset: bigint;
+    path: CanonicalContainerPath;
+  }): Promise<Readonly<{ bytes: Uint8Array; fileSize: bigint }>> {
+    const fileSize = await this.getFileSize({ path });
+    if (fileSize === undefined) {
+      throw physicalStoreError({
+        code: 'not_found',
+        message: `physical file does not exist: ${path}`,
+        path,
+      });
+    }
+    return {
+      bytes: await this.readExact({ length, offset, path }),
+      fileSize,
+    };
+  }
+
   public async readFileBounded({ maximumByteLength, path }: {
     maximumByteLength: number;
     path: CanonicalContainerPath;

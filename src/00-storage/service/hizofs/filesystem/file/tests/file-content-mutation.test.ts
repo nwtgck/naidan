@@ -12,6 +12,7 @@ import {
   type FileInodeEntry,
   type HomeRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
+import type { ImmutableBTreeDiagnosticsObservation } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
 import {
   prepareFileTruncateMutation,
   prepareFileWriteMutation,
@@ -41,6 +42,15 @@ function identity({ value }: { value: HomeRecordReference }): string {
 }
 
 class MemoryPagePort {
+  readonly observations: ImmutableBTreeDiagnosticsObservation[] = [];
+  readonly operationDiagnostics = {
+    operation: "update" as const,
+    port: {
+      recordIndexOperation: (observation: ImmutableBTreeDiagnosticsObservation): void => {
+        this.observations.push(observation);
+      },
+    },
+  };
   readonly pages = new Map<string, FileExtentPage>();
   #nextOffset = 10_000n;
 
@@ -179,6 +189,93 @@ describe("file content mutation", () => {
     ]);
     expect(inode.fileSize).toBe(30n);
     expect(inode.inodeRevision).toBe(2n);
+  });
+
+  it("applies overlap removal, boundary preservation, and replacement in one tree update when bounded", async () => {
+    const memory = new MemoryContentPort();
+    const root = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
+      offset: 1_504n,
+    });
+    memory.pagePort.pages.set(identity({ value: root }), {
+      entries: [extent({ byteLength: 10, dataOffset: 4, fileOffset: 0n, seed: 2_504n })],
+      level: 0,
+      type: "leaf",
+    });
+    const source = fileInode({
+      content: { extentTreeRootHomeRef: root, type: "tree" },
+      fileSize: 10n,
+    });
+    const plan = prepareFileWritePlan({
+      bytes: new Uint8Array(5).fill(7),
+      operationTimestamp,
+      position: createFileOffset({ value: 2n }),
+      source,
+    });
+    if (plan === null) throw new Error("expected write plan");
+
+    const inode = await prepareFileWriteMutation({
+      limits: { maximumExtentMutationsPerBatch: 128 },
+      plan,
+      port: memory.port,
+      source,
+    });
+    if (inode.content.type !== "tree") throw new Error("expected extent-backed inode");
+    const updates = memory.pagePort.observations.filter(observation => observation.operation === "update");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.structural.inputMutations).toBe(3);
+    expect((await entries({ port: memory, root: inode.content.extentTreeRootHomeRef })).map(entry => ({
+      byteLength: entry.byteLength,
+      dataOffset: entry.dataOffset,
+      fileOffset: entry.fileOffset,
+    }))).toEqual([
+      { byteLength: 2, dataOffset: 4, fileOffset: 0n },
+      { byteLength: 5, dataOffset: 0, fileOffset: 2n },
+      { byteLength: 3, dataOffset: 11, fileOffset: 7n },
+    ]);
+  });
+
+  it("lets the replacement win when overlap removal targets the same extent key", async () => {
+    const memory = new MemoryContentPort();
+    const root = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
+      offset: 1_600n,
+    });
+    memory.pagePort.pages.set(identity({ value: root }), {
+      entries: [extent({ byteLength: 10, dataOffset: 3, fileOffset: 0n, seed: 2_600n })],
+      level: 0,
+      type: "leaf",
+    });
+    const source = fileInode({
+      content: { extentTreeRootHomeRef: root, type: "tree" },
+      fileSize: 10n,
+    });
+    const plan = prepareFileWritePlan({
+      bytes: new Uint8Array(4).fill(8),
+      operationTimestamp,
+      position: createFileOffset({ value: 0n }),
+      source,
+    });
+    if (plan === null) throw new Error("expected write plan");
+
+    const inode = await prepareFileWriteMutation({
+      limits: { maximumExtentMutationsPerBatch: 128 },
+      plan,
+      port: memory.port,
+      source,
+    });
+    if (inode.content.type !== "tree") throw new Error("expected extent-backed inode");
+    const updates = memory.pagePort.observations.filter(observation => observation.operation === "update");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.structural.inputMutations).toBe(2);
+    expect((await entries({ port: memory, root: inode.content.extentTreeRootHomeRef })).map(entry => ({
+      byteLength: entry.byteLength,
+      dataOffset: entry.dataOffset,
+      fileOffset: entry.fileOffset,
+    }))).toEqual([
+      { byteLength: 4, dataOffset: 0, fileOffset: 0n },
+      { byteLength: 6, dataOffset: 7, fileOffset: 4n },
+    ]);
   });
 
   it("promotes inline content without allocating sparse holes", async () => {

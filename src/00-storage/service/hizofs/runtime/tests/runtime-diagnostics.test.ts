@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HIZOFS_V1_FORMAT_CONSTANTS } from "@/00-storage/service/hizofs/00-format";
+import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
 import {
   HIZOFS_RUNTIME_DIAGNOSTIC_PHASES,
   HizoFSRuntimeDiagnosticsAccumulator,
@@ -13,8 +14,36 @@ describe("HizoFS runtime diagnostics", () => {
     diagnostics.recordCryptoOperation({ durationMs: 2.5, operation: "encrypt" });
     diagnostics.recordCryptoOperation({ durationMs: 3.5, operation: "decrypt" });
     diagnostics.recordPublicationOperation({ durationMs: 4.5 });
-    diagnostics.recordIndexOperation({ durationMs: 5.5, operation: "build" });
-    diagnostics.recordIndexOperation({ durationMs: 6.5, operation: "update" });
+    diagnostics.recordIndexOperation({ durationMs: 5.5, operation: "build", structural: {
+      inputMutations: 3,
+      maximumPageLevel: 2,
+      pageReads: 5,
+      pageWrites: 4,
+      rootCollapses: 0,
+      splitOperations: 1,
+      splitOutputPages: 2,
+      unchangedPageReuses: 1,
+    } });
+    diagnostics.recordIndexOperation({ durationMs: 6.5, operation: "update", structural: {
+      inputMutations: 3,
+      maximumPageLevel: 2,
+      pageReads: 5,
+      pageWrites: 4,
+      rootCollapses: 0,
+      splitOperations: 1,
+      splitOutputPages: 2,
+      unchangedPageReuses: 1,
+    } });
+    diagnostics.recordIndexOperation({ durationMs: 2.25, operation: "get", structural: {
+      inputMutations: 0,
+      maximumPageLevel: 1,
+      pageReads: 2,
+      pageWrites: 0,
+      rootCollapses: 0,
+      splitOperations: 0,
+      splitOutputPages: 0,
+      unchangedPageReuses: 0,
+    } });
     diagnostics.recordPersistedRecord({
       operation: "write",
       physicalBytes: 64,
@@ -28,7 +57,44 @@ describe("HizoFS runtime diagnostics", () => {
     expect(diagnostics.snapshot().phases.object_decrypt).toEqual({ operationCount: 1, totalDurationMs: 3.5 });
     expect(diagnostics.snapshot().phases.commit_publication).toEqual({ operationCount: 1, totalDurationMs: 4.5 });
     expect(diagnostics.snapshot().phases.index_build).toEqual({ operationCount: 1, totalDurationMs: 5.5 });
+    expect(diagnostics.snapshot().phases.index_get).toEqual({ operationCount: 1, totalDurationMs: 2.25 });
     expect(diagnostics.snapshot().phases.index_update).toEqual({ operationCount: 1, totalDurationMs: 6.5 });
+    expect(Object.keys(diagnostics.snapshot().indexes)).toEqual(IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS);
+    expect(diagnostics.snapshot().indexes).toMatchObject({
+      build: {
+        inputMutations: 3,
+        maximumPageLevel: 2,
+        operations: 1,
+        pageReads: 5,
+        pageWrites: 4,
+        rootCollapses: 0,
+        splitOperations: 1,
+        splitOutputPages: 2,
+        unchangedPageReuses: 1,
+      },
+      get: {
+        inputMutations: 0,
+        maximumPageLevel: 1,
+        operations: 1,
+        pageReads: 2,
+        pageWrites: 0,
+        rootCollapses: 0,
+        splitOperations: 0,
+        splitOutputPages: 0,
+        unchangedPageReuses: 0,
+      },
+      update: {
+        inputMutations: 3,
+        maximumPageLevel: 2,
+        operations: 1,
+        pageReads: 5,
+        pageWrites: 4,
+        rootCollapses: 0,
+        splitOperations: 1,
+        splitOutputPages: 2,
+        unchangedPageReuses: 1,
+      },
+    });
     expect(diagnostics.snapshot().records.directory_page).toMatchObject({
       physicalBytesWritten: 64,
       plaintextBytesWritten: 17,
@@ -88,6 +154,20 @@ describe("HizoFS runtime diagnostics", () => {
     diagnostics.setCacheUsage({ bytes: 5, cache: "metadata", entries: 1 });
     diagnostics.setResourceUsage({ bytes: 40, operations: 4, resource: "readerPrefetch" });
     diagnostics.setResourceUsage({ bytes: 7, operations: 1, resource: "readerPrefetch" });
+    diagnostics.recordIndexOperation({
+      durationMs: 1,
+      operation: "update",
+      structural: {
+        inputMutations: 1,
+        maximumPageLevel: 3,
+        pageReads: 1,
+        pageWrites: 1,
+        rootCollapses: 0,
+        splitOperations: 0,
+        splitOutputPages: 0,
+        unchangedPageReuses: 0,
+      },
+    });
     const before = diagnostics.snapshot();
     diagnostics.resetHighWaterMarks();
     const after = diagnostics.snapshot();
@@ -97,6 +177,9 @@ describe("HizoFS runtime diagnostics", () => {
     expect(after.caches.metadata.maximumEntries).toBe(1);
     expect(after.resources.readerPrefetch.maximumBytes).toBe(7);
     expect(after.resources.readerPrefetch.maximumOperations).toBe(1);
+    expect(before.indexes.update.maximumPageLevel).toBe(3);
+    expect(after.indexes.update.maximumPageLevel).toBe(0);
+    expect(after.indexes.update.operations).toBe(1);
     expect(before).not.toBe(after);
   });
 

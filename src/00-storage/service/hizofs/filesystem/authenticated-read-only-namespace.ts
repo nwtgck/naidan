@@ -26,6 +26,7 @@ import {
   ImmutableBTreeReader,
   type ImmutableBTreePage,
 } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
+import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
 
 const MAXIMUM_SINGLE_NAMESPACE_READ_BYTES = 64 * 1024 * 1024;
 
@@ -61,9 +62,11 @@ function safeReadLength({ length }: { length: bigint }): number {
 
 export function createAuthenticatedReadOnlyNamespaceResolver({
   commit,
+  indexDiagnostics,
   recordSource,
 }: {
   commit: FileSystemCommitPayload;
+  indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   recordSource: AuthenticatedNamespaceRecordSource;
 }): ReadOnlyNamespaceResolver {
   const readPlaintext = async ({ expectedRecordKind, reference }: {
@@ -82,6 +85,7 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
   };
 
   const source: ReadOnlyNamespacePageSource = {
+    indexDiagnostics,
     readDirectoryPage: async ({ isRoot, reference }) => {
       const bytes = await readPlaintext({
         expectedRecordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page,
@@ -99,6 +103,7 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
       const extentReader = new ImmutableBTreeReader<FileOffset, FileExtentLeafEntry, HomeRecordReference>({
         compareKeys: ({ left, right }) => left < right ? -1 : left > right ? 1 : 0,
         getEntryKey: ({ entry }) => entry.fileOffset,
+        operationDiagnostics: indexDiagnostics,
         pageReader: async ({ isRoot, reference }) => {
           const bytes = await readPlaintext({
             expectedRecordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
@@ -190,12 +195,14 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
 
 export function createAuthenticatedReadOnlyNamespace({
   commit,
+  indexDiagnostics,
   recordSource,
 }: {
   commit: FileSystemCommitPayload;
+  indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   recordSource: AuthenticatedNamespaceRecordSource;
 }): ReadOnlyNamespace {
-  const resolver = createAuthenticatedReadOnlyNamespaceResolver({ commit, recordSource });
+  const resolver = createAuthenticatedReadOnlyNamespaceResolver({ commit, indexDiagnostics, recordSource });
   const {
     knownInodeNumbers: _knownInodeNumbers,
     list,

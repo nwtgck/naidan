@@ -17,6 +17,7 @@ import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-sto
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import type {
   AuthenticatedCryptoDiagnosticsObservation,
+  AuthenticatedPhysicalAccessReasonObservation,
   AuthenticatedRecordDiagnosticsObservation,
 } from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
 
@@ -38,6 +39,7 @@ describe("authenticated Record Frame reader", () => {
     const rootKey = generateFileSystemRootKey({ randomSource });
     const created = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
     const cryptoObservations: AuthenticatedCryptoDiagnosticsObservation[] = [];
+    const physicalAccessObservations: AuthenticatedPhysicalAccessReasonObservation[] = [];
     const observations: AuthenticatedRecordDiagnosticsObservation[] = [];
 
     const record = await readAuthenticatedHomeRecord({
@@ -45,6 +47,7 @@ describe("authenticated Record Frame reader", () => {
       diagnostics: {
         recordCodecOperation: () => {},
         recordCryptoOperation: observation => cryptoObservations.push(observation),
+        recordPhysicalAccessReason: observation => physicalAccessObservations.push(observation),
         recordPublicationOperation: () => {},
         recordPersistedRecord: observation => observations.push(observation),
       },
@@ -55,6 +58,15 @@ describe("authenticated Record Frame reader", () => {
 
     expect(cryptoObservations.map(({ operation }) => operation)).toEqual(["decrypt", "decrypt"]);
     expect(cryptoObservations.every(({ durationMs }) => Number.isFinite(durationMs) && durationMs >= 0)).toBe(true);
+    expect(physicalAccessObservations.filter(({ operation, reason }) => (
+      operation === "read_exact" && reason === "authenticated_record_resolution"
+    ))).toHaveLength(1);
+    expect(physicalAccessObservations.filter(({ operation, reason }) => (
+      operation === "read_exact" && reason === "segment_descriptor"
+    ))).toHaveLength(1);
+    expect(physicalAccessObservations.filter(({ operation, reason }) => (
+      operation === "get_file_size" && reason === "segment_descriptor"
+    ))).toHaveLength(0);
     expect(observations).toEqual([{
       operation: "read",
       physicalBytes: created.activeCommitHomeRef.frameLength,

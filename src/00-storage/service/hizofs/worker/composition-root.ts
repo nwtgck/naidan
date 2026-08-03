@@ -1011,12 +1011,14 @@ export async function openBrowserAuthenticatedReadOnlyContainerCapability({
  */
 export function createAuthenticatedApplicationReadSessionResources({
   backend,
+  indexDiagnostics,
   opened,
   recordDiagnostics,
 }: AuthenticatedOpenedApplicationAuthority): AuthenticatedApplicationReadSessionResources {
   let released = false;
   const namespace = createAuthenticatedReadOnlyNamespace({
     commit: opened.commit,
+    indexDiagnostics,
     recordSource: createAuthenticatedNamespaceRecordSource({
       backend,
       diagnostics: recordDiagnostics,
@@ -1511,10 +1513,11 @@ function sameCommitPayload({ left, right }: {
   });
 }
 
-function writableGeneration({ backend, commit, fileSystemId, metadataRecordCache, recordDiagnostics, rootKey, superblock }: {
+function writableGeneration({ backend, commit, fileSystemId, indexDiagnostics, metadataRecordCache, recordDiagnostics, rootKey, superblock }: {
   backend: HizoFSReadableBackend;
   commit: FileSystemCommitPayload;
   fileSystemId: OpenedEmptyEncryptedContainer["fileSystemId"];
+  indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   metadataRecordCache: AuthenticatedMetadataRecordCache;
   recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
   rootKey: OpenedEmptyEncryptedContainer["rootKey"];
@@ -1530,6 +1533,7 @@ function writableGeneration({ backend, commit, fileSystemId, metadataRecordCache
     commit,
     resolver: createAuthenticatedReadOnlyNamespaceResolver({
       commit,
+      indexDiagnostics,
       recordSource: createAuthenticatedNamespaceRecordSource({
         backend,
         diagnostics: recordDiagnostics,
@@ -1668,6 +1672,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     backend,
     commit,
     fileSystemId: opened.fileSystemId,
+    indexDiagnostics,
     metadataRecordCache,
     recordDiagnostics,
     rootKey: opened.rootKey,
@@ -3302,6 +3307,16 @@ function instrumentHizoFSWritableBackend<AuthenticatedPhysicalBytes extends Uint
       });
       return await measured({
         operation: async () => await backend.readExact({ length, offset, path }),
+        phase: "physical_read_exact",
+      });
+    },
+    readExactWithFileSize: async ({ length, offset, path }) => {
+      diagnostics.recordPhysicalAccess({
+        identity: `${String(path)}\u0000${offset.toString()}\u0000${length.toString()}`,
+        operation: "read_exact",
+      });
+      return await measured({
+        operation: async () => await backend.readExactWithFileSize({ length, offset, path }),
         phase: "physical_read_exact",
       });
     },

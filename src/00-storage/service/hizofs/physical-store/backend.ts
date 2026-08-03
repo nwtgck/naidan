@@ -75,6 +75,11 @@ export interface HizoFSReadableBackend {
     offset: bigint;
     path: CanonicalContainerPath;
   }): Promise<Uint8Array>;
+  readExactWithFileSize({ length, offset, path }: {
+    length: number;
+    offset: bigint;
+    path: CanonicalContainerPath;
+  }): Promise<Readonly<{ bytes: Uint8Array; fileSize: bigint }>>;
   readFileBounded({ maximumByteLength, path }: {
     maximumByteLength: number;
     path: CanonicalContainerPath;

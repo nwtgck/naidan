@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port';
+import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizofs/indexes/runtime-diagnostics-port';
 import { createHizoFSBenchmarkPresetConfiguration } from './presets';
 import { HIZOFS_BENCHMARK_RUNTIME_PHASES } from './runtime-port';
 import {
@@ -60,7 +61,7 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
     trustedTailMismatches: 0,
   });
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     type: 'measured',
     phases: Object.fromEntries(HIZOFS_BENCHMARK_RUNTIME_PHASES.map(name => [name, phase()])) as HizoFSBenchmarkDiagnostics['runtime'] extends { readonly type: 'measured'; readonly phases: infer T } ? T : never,
     records: {
@@ -78,6 +79,11 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
       activeStateCacheHits: 0, durableReloads: 0, leadershipAcquisitions: 0,
       failovers: 0, localRequests: 0, remoteRequests: 0,
     },
+    indexes: Object.fromEntries(IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS.map(operation => [operation, {
+      inputMutations: 0, maximumPageLevel: 0, operations: 0, pageReads: 0,
+      pageWrites: 0, rootCollapses: 0, splitOperations: 0,
+      splitOutputPages: 0, unchangedPageReuses: 0,
+    }])) as Extract<HizoFSBenchmarkDiagnostics['runtime'], { readonly type: 'measured' }>['indexes'],
     mutation: {
       abandoned: 0,
       completed: 0,
@@ -106,8 +112,8 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 22,
-    benchmarkImplementationVersion: 27,
+    schemaVersion: 23,
+    benchmarkImplementationVersion: 29,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -407,7 +413,7 @@ describe('HizoFS benchmark report serialization', () => {
               : {
                 ...hizofs.hizoFSDiagnosticsTotals,
                 runtime: {
-                  schemaVersion: 6 as const,
+                  schemaVersion: 7 as const,
                   type: 'unavailable' as const,
                   reason: 'production counters are unavailable',
                 },
@@ -419,7 +425,7 @@ describe('HizoFS benchmark report serialization', () => {
                 : {
                   ...sample.hizoFSDiagnostics,
                   runtime: {
-                    schemaVersion: 6 as const,
+                    schemaVersion: 7 as const,
                     type: 'unavailable' as const,
                     reason: 'production counters are unavailable',
                   },
@@ -433,7 +439,7 @@ describe('HizoFS benchmark report serialization', () => {
     const parsed = hizoFSBenchmarkReportSchema.parse({ ...report, results });
     expect(parsed.results[0]?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime)
       .toEqual({
-        schemaVersion: 6,
+        schemaVersion: 7,
         type: 'unavailable',
         reason: 'production counters are unavailable',
       });
@@ -477,8 +483,8 @@ describe('HizoFS benchmark report serialization', () => {
     const report = createReport();
     expect(() => hizoFSBenchmarkReportSchema.parse({
       ...report,
-      schemaVersion: 21,
-      benchmarkImplementationVersion: 26,
+      schemaVersion: 22,
+      benchmarkImplementationVersion: 27,
     })).toThrow();
   });
 

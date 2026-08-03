@@ -20,6 +20,7 @@ import {
   ImmutableBTreeReader,
   type ImmutableBTreePage,
 } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
+import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
 
 export type ReadOnlyNamespaceErrorCode =
   | "corrupt_namespace"
@@ -40,6 +41,7 @@ export class ReadOnlyNamespaceError extends Error {
 }
 
 export type ReadOnlyNamespacePageSource = Readonly<{
+  indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   readDirectoryPage: ({ isRoot, reference }: {
     isRoot: boolean;
     reference: HomeRecordReference;
@@ -213,6 +215,7 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
   const inodeReader = new ImmutableBTreeReader<InodeNumber, InodeLeafEntry, HomeRecordReference>({
     compareKeys: ({ left, right }) => left < right ? -1 : left > right ? 1 : 0,
     getEntryKey: ({ entry }) => entry.inodeNumber,
+    operationDiagnostics: source.indexDiagnostics,
     pageReader: async ({ isRoot, reference }) => inodePageToImmutable({
       page: await source.readInodePage({ isRoot, reference }),
     }),
@@ -222,6 +225,7 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
   const directoryReader = new ImmutableBTreeReader<Uint8Array, DirectoryLeafEntry, HomeRecordReference>({
     compareKeys: compareUnsignedBytes,
     getEntryKey: ({ entry }) => encodeFilenameComponent({ value: entry.name }),
+    operationDiagnostics: source.indexDiagnostics,
     pageReader: async ({ isRoot, reference }) => directoryPageToImmutable({
       page: await source.readDirectoryPage({ isRoot, reference }),
     }),

@@ -109,6 +109,7 @@ function createReader({ pageStore }: {
   return new ImmutableBTreeReader({
     compareKeys: compareOffsets,
     getEntryKey: ({ entry }) => entry.fileOffset,
+    operationDiagnostics: pageStore.operationDiagnostics?.port,
     pageReader: pageStore.readPage,
     referenceIdentity,
   });

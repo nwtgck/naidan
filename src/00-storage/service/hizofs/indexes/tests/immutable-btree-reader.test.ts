@@ -3,14 +3,22 @@ import {
   ImmutableBTreeReader,
   type ImmutableBTreePage,
 } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
+import type {
+  ImmutableBTreeDiagnosticsObservation,
+  ImmutableBTreeDiagnosticsPort,
+} from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
 
 type Entry = Readonly<{ key: number; value: string }>;
 type Page = ImmutableBTreePage<number, Entry, string>;
 
-function reader({ pages }: { pages: ReadonlyMap<string, Page> }): ImmutableBTreeReader<number, Entry, string> {
+function reader({ operationDiagnostics, pages }: {
+  operationDiagnostics?: ImmutableBTreeDiagnosticsPort;
+  pages: ReadonlyMap<string, Page>;
+}): ImmutableBTreeReader<number, Entry, string> {
   return new ImmutableBTreeReader({
     compareKeys: ({ left, right }) => left - right,
     getEntryKey: ({ entry }) => entry.key,
+    operationDiagnostics,
     pageReader: async ({ reference }) => {
       const page = pages.get(reference);
       if (page === undefined) throw new Error(`missing page ${reference}`);
@@ -113,5 +121,41 @@ describe("immutable B-tree reader", () => {
       type: "branch",
     });
     await expect(reader({ pages: reusedChild }).validateStructure({ rootReference: "root" })).rejects.toThrow("duplicate page reference");
+  });
+
+  it("reports bounded structural reads for lookup and partially consumed iteration", async () => {
+    const observations: ImmutableBTreeDiagnosticsObservation[] = [];
+    const index = reader({
+      operationDiagnostics: {
+        recordIndexOperation: observation => observations.push(observation),
+      },
+      pages: twoLeafTree(),
+    });
+
+    await expect(index.get({ key: 20, rootReference: "root" })).resolves.toEqual({ key: 20, value: "twenty" });
+    for await (const _entry of index.entriesFromFloor({ key: 25, rootReference: "root" })) break;
+
+    expect(observations).toHaveLength(2);
+    expect(observations.map(observation => observation.operation)).toEqual(["get", "entries_from_floor"]);
+    expect(observations[0]?.structural).toEqual({
+      inputMutations: 0,
+      maximumPageLevel: 1,
+      pageReads: 2,
+      pageWrites: 0,
+      rootCollapses: 0,
+      splitOperations: 0,
+      splitOutputPages: 0,
+      unchangedPageReuses: 0,
+    });
+    expect(observations[1]?.structural).toEqual({
+      inputMutations: 0,
+      maximumPageLevel: 1,
+      pageReads: 3,
+      pageWrites: 0,
+      rootCollapses: 0,
+      splitOperations: 0,
+      splitOutputPages: 0,
+      unchangedPageReuses: 0,
+    });
   });
 });

@@ -163,17 +163,29 @@ async function replaceExtentRange({ end, limits, newEntries, pageStore, rootRefe
     }
   }
 
-  const withoutOverlaps = await applyMutationBatches({
-    changes: removalsAndBoundaryFragments(),
+  // Apply one logical range replacement through one bounded tree-update stream.
+  // A replacement entry wins when the overlap-removal scan targets the same
+  // File Offset; CanonicalBTreeWriter requires each batch key to be unique.
+  const replacementOffsets = new Set<FileOffset>(newEntries.map(entry => entry.fileOffset));
+  async function* replacementChanges(): AsyncIterable<FileExtentTreeMutation> {
+    for await (const mutation of removalsAndBoundaryFragments()) {
+      const key = (() => {
+        switch (mutation.type) {
+        case "delete": return mutation.key;
+        case "set": return mutation.entry.fileOffset;
+        default: return mutation satisfies never;
+        }
+      })();
+      if (!replacementOffsets.has(key)) yield mutation;
+    }
+    for (const entry of newEntries) yield { entry, type: "set" };
+  }
+
+  return await applyMutationBatches({
+    changes: replacementChanges(),
     limits,
     pageStore,
     rootReference,
-  });
-  return await applyMutationBatches({
-    changes: newEntries.map(entry => ({ entry, type: "set" as const })),
-    limits,
-    pageStore,
-    rootReference: withoutOverlaps,
   });
 }
 

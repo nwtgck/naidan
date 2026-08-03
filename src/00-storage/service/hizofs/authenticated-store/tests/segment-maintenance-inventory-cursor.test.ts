@@ -255,6 +255,7 @@ describe("authenticated Segment maintenance inventory cursor", () => {
         throw new Error(`unexpected directory: ${directory}`);
       },
       readExact: async () => new Uint8Array(),
+      readExactWithFileSize: async () => ({ bytes: new Uint8Array(), fileSize: 0n }),
       readFileBounded: async () => undefined,
     };
     const cursor = TEST_ONLY.createAuthenticatedSegmentMaintenanceInventoryCursorWithReader({

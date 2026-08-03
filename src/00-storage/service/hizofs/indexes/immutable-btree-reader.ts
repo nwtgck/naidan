@@ -8,6 +8,12 @@ import {
   type ImmutableBTreeBranchPage,
   type ImmutableBTreePage,
 } from "@/00-storage/service/hizofs/indexes/ordering";
+import {
+  measureImmutableBTreeIteration,
+  measureImmutableBTreeOperation,
+  type ImmutableBTreeDiagnosticsPort,
+  type MutableImmutableBTreeStructuralDiagnostics,
+} from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
 
 export type {
   ImmutableBTreeBranchChild,
@@ -43,30 +49,38 @@ type PageReadExpectation<TKey> = Readonly<{
 export class ImmutableBTreeReader<TKey, TEntry, TReference> {
   readonly #compareKeys: CompareImmutableBTreeKeys<TKey>;
   readonly #getEntryKey: GetImmutableBTreeEntryKey<TKey, TEntry>;
+  readonly #operationDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
   readonly #pageReader: ImmutableBTreePageReader<TKey, TEntry, TReference>;
   readonly #referenceIdentity: ({ reference }: { reference: TReference }) => string;
 
-  constructor({ compareKeys, getEntryKey, pageReader, referenceIdentity }: {
+  constructor({ compareKeys, getEntryKey, operationDiagnostics, pageReader, referenceIdentity }: {
     compareKeys: CompareImmutableBTreeKeys<TKey>;
     getEntryKey: GetImmutableBTreeEntryKey<TKey, TEntry>;
+    operationDiagnostics?: ImmutableBTreeDiagnosticsPort;
     pageReader: ImmutableBTreePageReader<TKey, TEntry, TReference>;
     referenceIdentity: ({ reference }: { reference: TReference }) => string;
   }) {
     this.#compareKeys = compareKeys;
     this.#getEntryKey = getEntryKey;
+    this.#operationDiagnostics = operationDiagnostics;
     this.#pageReader = pageReader;
     this.#referenceIdentity = referenceIdentity;
   }
 
-  async #readPage({ expectation, reference, visited }: {
+  async #readPage({ expectation, reference, structural, visited }: {
     expectation: PageReadExpectation<TKey>;
     reference: TReference;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
     visited: Set<string>;
   }): Promise<ImmutableBTreePage<TKey, TEntry, TReference>> {
     const identity = this.#referenceIdentity({ reference });
     if (visited.has(identity)) throw new TypeError("B-tree contains a cycle or duplicate page reference");
     visited.add(identity);
     const page = await this.#pageReader({ isRoot: expectation.isRoot, reference });
+    if (structural !== undefined) {
+      structural.pageReads += 1;
+      structural.maximumPageLevel = Math.max(structural.maximumPageLevel, page.level);
+    }
     assertLocallyValidImmutableBTreePage({
       compareKeys: this.#compareKeys,
       getEntryKey: this.#getEntryKey,
@@ -86,44 +100,51 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
   }
 
   async get({ key, rootReference }: { key: TKey; rootReference: TReference }): Promise<TEntry | undefined> {
-    const visited = new Set<string>();
-    let expectation: PageReadExpectation<TKey> = { isRoot: true };
-    let reference = rootReference;
-    while (true) {
-      const page = await this.#readPage({ expectation, reference, visited });
-      switch (page.type) {
-      case "leaf": {
-        const index = findLeafEntryIndex({
-          compareKeys: this.#compareKeys,
-          entries: page.entries,
-          getEntryKey: this.#getEntryKey,
-          key,
-        });
-        const entry = page.entries[index];
-        return entry !== undefined && this.#compareKeys({ left: this.#getEntryKey({ entry }), right: key }) === 0
-          ? entry
-          : undefined;
-      }
-      case "branch": {
-        const index = findBranchChildIndex({ children: page.children, compareKeys: this.#compareKeys, key });
-        const child = page.children[index];
-        if (child === undefined) return undefined;
-        reference = child.childPageReference;
-        expectation = {
-          expectedLevel: page.level - 1,
-          expectedUpperBound: child.upperBound,
-          isRoot: false,
-        };
-        break;
-      }
-      default: return page satisfies never;
-      }
-    }
+    return await measureImmutableBTreeOperation({
+      diagnostics: this.#operationDiagnostics,
+      operation: "get",
+      run: async ({ structural }) => {
+        const visited = new Set<string>();
+        let expectation: PageReadExpectation<TKey> = { isRoot: true };
+        let reference = rootReference;
+        while (true) {
+          const page = await this.#readPage({ expectation, reference, structural, visited });
+          switch (page.type) {
+          case "leaf": {
+            const index = findLeafEntryIndex({
+              compareKeys: this.#compareKeys,
+              entries: page.entries,
+              getEntryKey: this.#getEntryKey,
+              key,
+            });
+            const entry = page.entries[index];
+            return entry !== undefined && this.#compareKeys({ left: this.#getEntryKey({ entry }), right: key }) === 0
+              ? entry
+              : undefined;
+          }
+          case "branch": {
+            const index = findBranchChildIndex({ children: page.children, compareKeys: this.#compareKeys, key });
+            const child = page.children[index];
+            if (child === undefined) return undefined;
+            reference = child.childPageReference;
+            expectation = {
+              expectedLevel: page.level - 1,
+              expectedUpperBound: child.upperBound,
+              isRoot: false,
+            };
+            break;
+          }
+          default: return page satisfies never;
+          }
+        }
+      },
+    });
   }
 
-  async #descendToCandidateLeaf({ key, rootReference, visited }: {
+  async #descendToCandidateLeaf({ key, rootReference, structural, visited }: {
     key: TKey;
     rootReference: TReference;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
     visited: Set<string>;
   }): Promise<Readonly<{
     insertionIndex: number;
@@ -136,7 +157,7 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     let reference = rootReference;
     while (true) {
       const pageReferenceIdentity = this.#referenceIdentity({ reference });
-      const page = await this.#readPage({ expectation, reference, visited });
+      const page = await this.#readPage({ expectation, reference, structural, visited });
       switch (page.type) {
       case "leaf": {
         const insertionIndex = findLeafEntryIndex({
@@ -166,9 +187,10 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     }
   }
 
-  async #descendRightmost({ initialStack, reference, upperBound, visited }: {
+  async #descendRightmost({ initialStack, reference, structural, upperBound, visited }: {
     initialStack: readonly BranchCursorFrame<TKey, TReference>[];
     reference: TReference;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
     upperBound: TKey;
     visited: Set<string>;
   }): Promise<LeafCursor<TKey, TEntry, TReference>> {
@@ -177,7 +199,7 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     let currentReference = reference;
     while (true) {
       const pageReferenceIdentity = this.#referenceIdentity({ reference: currentReference });
-      const page = await this.#readPage({ expectation, reference: currentReference, visited });
+      const page = await this.#readPage({ expectation, reference: currentReference, structural, visited });
       switch (page.type) {
       case "leaf": return { entryIndex: page.entries.length - 1, leaf: page, leafReferenceIdentity: pageReferenceIdentity, stack };
       case "branch": {
@@ -198,12 +220,13 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     }
   }
 
-  async #locateFloorCursor({ key, rootReference }: {
+  async #locateFloorCursor({ key, rootReference, structural }: {
     key: TKey;
     rootReference: TReference;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<Readonly<{ cursor?: LeafCursor<TKey, TEntry, TReference>; firstCandidate?: LeafCursor<TKey, TEntry, TReference> }>> {
     const visited = new Set<string>();
-    const candidate = await this.#descendToCandidateLeaf({ key, rootReference, visited });
+    const candidate = await this.#descendToCandidateLeaf({ key, rootReference, structural, visited });
     const exact = candidate.leaf.entries[candidate.insertionIndex];
     if (exact !== undefined && this.#compareKeys({ left: this.#getEntryKey({ entry: exact }), right: key }) === 0) {
       return { cursor: { entryIndex: candidate.insertionIndex, leaf: candidate.leaf, leafReferenceIdentity: candidate.leafReferenceIdentity, stack: candidate.stack } };
@@ -227,6 +250,7 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
         cursor: await this.#descendRightmost({
           initialStack: parentStack,
           reference: previousChild.childPageReference,
+          structural,
           upperBound: previousChild.upperBound,
           visited,
         }),
@@ -237,12 +261,19 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
   }
 
   async seekFloor({ key, rootReference }: { key: TKey; rootReference: TReference }): Promise<TEntry | undefined> {
-    const located = await this.#locateFloorCursor({ key, rootReference });
-    return located.cursor?.leaf.entries[located.cursor.entryIndex];
+    return await measureImmutableBTreeOperation({
+      diagnostics: this.#operationDiagnostics,
+      operation: "seek_floor",
+      run: async ({ structural }) => {
+        const located = await this.#locateFloorCursor({ key, rootReference, structural });
+        return located.cursor?.leaf.entries[located.cursor.entryIndex];
+      },
+    });
   }
 
-  async #nextLeaf({ cursor, visited }: {
+  async #nextLeaf({ cursor, structural, visited }: {
     cursor: LeafCursor<TKey, TEntry, TReference>;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
     visited: Set<string>;
   }): Promise<LeafCursor<TKey, TEntry, TReference> | undefined> {
     const stack = [...cursor.stack];
@@ -261,7 +292,7 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
       };
       while (true) {
         const pageReferenceIdentity = this.#referenceIdentity({ reference });
-        const page = await this.#readPage({ expectation, reference, visited });
+        const page = await this.#readPage({ expectation, reference, structural, visited });
         switch (page.type) {
         case "leaf": return { entryIndex: 0, leaf: page, leafReferenceIdentity: pageReferenceIdentity, stack };
         case "branch": {
@@ -287,7 +318,19 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     key: TKey;
     rootReference: TReference;
   }): AsyncIterable<TEntry> {
-    const located = await this.#locateFloorCursor({ key, rootReference });
+    yield* measureImmutableBTreeIteration({
+      diagnostics: this.#operationDiagnostics,
+      operation: "entries_from_floor",
+      run: ({ structural }) => this.#entriesFromFloor({ key, rootReference, structural }),
+    });
+  }
+
+  async *#entriesFromFloor({ key, rootReference, structural }: {
+    key: TKey;
+    rootReference: TReference;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
+  }): AsyncIterable<TEntry> {
+    const located = await this.#locateFloorCursor({ key, rootReference, structural });
     let cursor = located.cursor ?? located.firstCandidate;
     if (cursor === undefined) return;
     const visited = new Set<string>([
@@ -306,11 +349,22 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
         previousKey = entryKey;
         yield entry;
       }
-      cursor = await this.#nextLeaf({ cursor, visited });
+      cursor = await this.#nextLeaf({ cursor, structural, visited });
     }
   }
 
   async *entries({ rootReference }: { rootReference: TReference }): AsyncIterable<TEntry> {
+    yield* measureImmutableBTreeIteration({
+      diagnostics: this.#operationDiagnostics,
+      operation: "entries",
+      run: ({ structural }) => this.#entries({ rootReference, structural }),
+    });
+  }
+
+  async *#entries({ rootReference, structural }: {
+    rootReference: TReference;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
+  }): AsyncIterable<TEntry> {
     const visited = new Set<string>();
     let previousKey: TKey | undefined;
     const walk = async function* (this: ImmutableBTreeReader<TKey, TEntry, TReference>, {
@@ -320,7 +374,7 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
       expectation: PageReadExpectation<TKey>;
       reference: TReference;
     }): AsyncIterable<TEntry> {
-      const page = await this.#readPage({ expectation, reference, visited });
+      const page = await this.#readPage({ expectation, reference, structural, visited });
       switch (page.type) {
       case "leaf":
         for (const entry of page.entries) {
@@ -355,71 +409,77 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     entryCount: number;
     pageCount: number;
   }>> {
-    const visited = new Set<string>();
-    const visit = async ({ expectation, reference }: {
-      expectation: PageReadExpectation<TKey>;
-      reference: TReference;
-    }): Promise<Readonly<{
-      depth: number;
-      entryCount: number;
-      maximumKey?: TKey;
-      minimumKey?: TKey;
-      pageCount: number;
-    }>> => {
-      const page = await this.#readPage({ expectation, reference, visited });
-      switch (page.type) {
-      case "leaf": {
-        const first = page.entries[0];
-        const last = page.entries.at(-1);
-        return {
-          depth: 1,
-          entryCount: page.entries.length,
-          maximumKey: last === undefined ? undefined : this.#getEntryKey({ entry: last }),
-          minimumKey: first === undefined ? undefined : this.#getEntryKey({ entry: first }),
-          pageCount: 1,
-        };
-      }
-      case "branch": {
-        let depth: number | undefined;
-        let entryCount = 0;
-        let pageCount = 1;
-        let minimumKey: TKey | undefined;
-        let previousMaximum: TKey | undefined;
-        for (const child of page.children) {
-          const result = await visit({
-            expectation: {
-              expectedLevel: page.level - 1,
-              expectedUpperBound: child.upperBound,
-              isRoot: false,
-            },
-            reference: child.childPageReference,
-          });
-          if (result.minimumKey === undefined || result.maximumKey === undefined) {
-            throw new TypeError("B-tree branch references an empty subtree");
+    return await measureImmutableBTreeOperation({
+      diagnostics: this.#operationDiagnostics,
+      operation: "validate_structure",
+      run: async ({ structural }) => {
+        const visited = new Set<string>();
+        const visit = async ({ expectation, reference }: {
+          expectation: PageReadExpectation<TKey>;
+          reference: TReference;
+        }): Promise<Readonly<{
+          depth: number;
+          entryCount: number;
+          maximumKey?: TKey;
+          minimumKey?: TKey;
+          pageCount: number;
+        }>> => {
+          const page = await this.#readPage({ expectation, reference, structural, visited });
+          switch (page.type) {
+          case "leaf": {
+            const first = page.entries[0];
+            const last = page.entries.at(-1);
+            return {
+              depth: 1,
+              entryCount: page.entries.length,
+              maximumKey: last === undefined ? undefined : this.#getEntryKey({ entry: last }),
+              minimumKey: first === undefined ? undefined : this.#getEntryKey({ entry: first }),
+              pageCount: 1,
+            };
           }
-          if (depth === undefined) depth = result.depth;
-          else if (depth !== result.depth) throw new TypeError("B-tree leaves do not share one depth");
-          if (previousMaximum !== undefined && this.#compareKeys({ left: previousMaximum, right: result.minimumKey }) >= 0) {
-            throw new TypeError("B-tree sibling key ranges overlap");
+          case "branch": {
+            let depth: number | undefined;
+            let entryCount = 0;
+            let pageCount = 1;
+            let minimumKey: TKey | undefined;
+            let previousMaximum: TKey | undefined;
+            for (const child of page.children) {
+              const result = await visit({
+                expectation: {
+                  expectedLevel: page.level - 1,
+                  expectedUpperBound: child.upperBound,
+                  isRoot: false,
+                },
+                reference: child.childPageReference,
+              });
+              if (result.minimumKey === undefined || result.maximumKey === undefined) {
+                throw new TypeError("B-tree branch references an empty subtree");
+              }
+              if (depth === undefined) depth = result.depth;
+              else if (depth !== result.depth) throw new TypeError("B-tree leaves do not share one depth");
+              if (previousMaximum !== undefined && this.#compareKeys({ left: previousMaximum, right: result.minimumKey }) >= 0) {
+                throw new TypeError("B-tree sibling key ranges overlap");
+              }
+              minimumKey ??= result.minimumKey;
+              previousMaximum = result.maximumKey;
+              entryCount += result.entryCount;
+              pageCount += result.pageCount;
+            }
+            return {
+              depth: (depth ?? 0) + 1,
+              entryCount,
+              maximumKey: previousMaximum,
+              minimumKey,
+              pageCount,
+            };
           }
-          minimumKey ??= result.minimumKey;
-          previousMaximum = result.maximumKey;
-          entryCount += result.entryCount;
-          pageCount += result.pageCount;
-        }
-        return {
-          depth: (depth ?? 0) + 1,
-          entryCount,
-          maximumKey: previousMaximum,
-          minimumKey,
-          pageCount,
+          default: return page satisfies never;
+          }
         };
-      }
-      default: return page satisfies never;
-      }
-    };
-    const result = await visit({ expectation: { isRoot: true }, reference: rootReference });
-    return { depth: result.depth, entryCount: result.entryCount, pageCount: result.pageCount };
+        const result = await visit({ expectation: { isRoot: true }, reference: rootReference });
+        return { depth: result.depth, entryCount: result.entryCount, pageCount: result.pageCount };
+      },
+    });
   }
 }
 

@@ -64,6 +64,9 @@ function developmentBackend({ backend }: {
     syncFileData: async ({ file }) => await backend.syncFileData({ file }),
     openFileForUpdate: async ({ path }) => await backend.openFileForUpdate({ path }),
     readExact: async ({ length, offset, path }) => await backend.readExact({ length, offset, path }),
+    readExactWithFileSize: async ({ length, offset, path }) => (
+      await backend.readExactWithFileSize({ length, offset, path })
+    ),
     readFileBounded: async ({ maximumByteLength, path }) => (
       await backend.readFileBounded({ maximumByteLength, path })
     ),

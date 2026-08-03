@@ -172,6 +172,29 @@ export async function readExactWithAuthenticatedReason({
   return await backend.readExact({ length, offset, path });
 }
 
+export async function readExactWithFileSizeWithAuthenticatedReason({
+  backend,
+  diagnostics,
+  length,
+  offset,
+  path,
+  reason,
+}: {
+  backend: HizoFSReadableBackend;
+  diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
+  length: number;
+  offset: bigint;
+  path: CanonicalContainerPath;
+  reason: AuthenticatedPhysicalAccessReason;
+}): Promise<Readonly<{ bytes: Uint8Array; fileSize: bigint }>> {
+  diagnostics?.recordPhysicalAccessReason?.({
+    identity: `${String(path)}\u0000${offset.toString()}\u0000${length.toString()}`,
+    operation: "read_exact",
+    reason,
+  });
+  return await backend.readExactWithFileSize({ length, offset, path });
+}
+
 export function measureAuthenticatedCodecOperation<T>({
   clock = () => globalThis.performance.now(),
   diagnostics,

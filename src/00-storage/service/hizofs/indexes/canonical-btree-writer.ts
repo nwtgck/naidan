@@ -3,6 +3,7 @@ import {
   measureImmutableBTreeOperation,
   type ImmutableBTreeDiagnosticOperation,
   type ImmutableBTreeDiagnosticsPort,
+  type MutableImmutableBTreeStructuralDiagnostics,
 } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
 import {
   assertLocallyValidImmutableBTreePage,
@@ -163,17 +164,23 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return splitRange({ end: items.length, start: 0 });
   }
 
-  async #writeLeafGroups({ entries, isRootWhenSingleGroup }: {
+  async #writeLeafGroups({ entries, isRootWhenSingleGroup, structural }: {
     entries: readonly TEntry[];
     isRootWhenSingleGroup: boolean;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<readonly ReferenceSummary<TKey, TReference>[]> {
     const groups = this.#splitItems({
       itemByteLength: ({ item }) => this.#encodedLeafEntryByteLength({ entry: item }),
       items: entries,
     });
+    if (structural !== undefined && groups.length > 1) {
+      structural.splitOperations += 1;
+      structural.splitOutputPages += groups.length;
+    }
     const references: ReferenceSummary<TKey, TReference>[] = [];
     for (const group of groups) {
       const page = { entries: group, level: 0, type: "leaf" } as const;
+      if (structural !== undefined) structural.pageWrites += 1;
       const reference = await this.#pageStore.writePage({
         isRoot: isRootWhenSingleGroup && groups.length === 1,
         page,
@@ -189,18 +196,27 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return references;
   }
 
-  async #writeBranchGroups({ children, isRootWhenSingleGroup, level }: {
+  async #writeBranchGroups({ children, isRootWhenSingleGroup, level, structural }: {
     children: readonly ImmutableBTreeBranchChild<TKey, TReference>[];
     isRootWhenSingleGroup: boolean;
     level: number;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<readonly ReferenceSummary<TKey, TReference>[]> {
     const groups = this.#splitItems({
       itemByteLength: ({ item }) => this.#encodedBranchChildByteLength({ child: item }),
       items: children,
     });
+    if (structural !== undefined) {
+      structural.maximumPageLevel = Math.max(structural.maximumPageLevel, level);
+      if (groups.length > 1) {
+        structural.splitOperations += 1;
+        structural.splitOutputPages += groups.length;
+      }
+    }
     const references: ReferenceSummary<TKey, TReference>[] = [];
     for (const group of groups) {
       const page = { children: group, level, type: "branch" } as const;
+      if (structural !== undefined) structural.pageWrites += 1;
       const reference = await this.#pageStore.writePage({
         isRoot: isRootWhenSingleGroup && groups.length === 1,
         page,
@@ -286,12 +302,17 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return { changed, entries: next };
   }
 
-  async #mutatePage({ changes, isRoot, reference }: {
+  async #mutatePage({ changes, isRoot, reference, structural }: {
     changes: readonly ImmutableBTreeMutation<TKey, TEntry>[];
     isRoot: boolean;
     reference: TReference;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<MutationResult<TKey, TReference>> {
     const page = await this.#pageStore.readPage({ isRoot, reference });
+    if (structural !== undefined) {
+      structural.pageReads += 1;
+      structural.maximumPageLevel = Math.max(structural.maximumPageLevel, page.level);
+    }
     assertLocallyValidImmutableBTreePage({
       compareKeys: this.#compareKeys,
       getEntryKey: this.#getEntryKey,
@@ -302,6 +323,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     case "leaf": {
       const merged = this.#mergeLeafChanges({ changes, entries: page.entries });
       if (!merged.changed) {
+        if (structural !== undefined) structural.unchangedPageReuses += 1;
         return {
           changed: false,
           references: [{
@@ -313,12 +335,11 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
       }
       if (merged.entries.length === 0) {
         if (!isRoot) return { changed: true, references: [] };
-        const emptyPage = { entries: [], level: 0, type: "leaf" } as const;
         return {
           changed: true,
           references: [{
             level: 0,
-            reference: await this.#pageStore.writePage({ isRoot: true, page: emptyPage }),
+            reference: await this.#writeEmptyRootPage({ structural }),
           }],
         };
       }
@@ -327,6 +348,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
         references: await this.#writeLeafGroups({
           entries: merged.entries,
           isRootWhenSingleGroup: isRoot,
+          structural,
         }),
       };
     }
@@ -369,6 +391,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
           changes: childChanges,
           isRoot: false,
           reference: child.childPageReference,
+          structural,
         });
         changed ||= result.changed;
         for (const replacement of result.references) {
@@ -381,12 +404,14 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
         }
       }
       if (!changed) {
+        if (structural !== undefined) structural.unchangedPageReuses += 1;
         const upperBound = page.children.at(-1)?.upperBound;
         if (upperBound === undefined) throw new Error("non-empty B-tree branch has no upper bound");
         return { changed: false, references: [{ level: page.level, reference, upperBound }] };
       }
       if (nextChildren.length === 0) return { changed: true, references: [] };
       if (isRoot && nextChildren.length === 1) {
+        if (structural !== undefined) structural.rootCollapses += 1;
         const onlyChild = nextChildren[0];
         if (onlyChild === undefined) throw new Error("B-tree root collapse child invariant failed");
         return {
@@ -404,6 +429,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
           children: nextChildren,
           isRootWhenSingleGroup: isRoot,
           level: page.level,
+          structural,
         }),
       };
     }
@@ -411,17 +437,21 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     }
   }
 
-  async #createEmptyPage(): Promise<TReference> {
+  async #writeEmptyRootPage({ structural }: {
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
+  }): Promise<TReference> {
+    if (structural !== undefined) structural.pageWrites += 1;
     return await this.#pageStore.writePage({
       isRoot: true,
       page: { entries: [], level: 0, type: "leaf" },
     });
   }
 
-  async #buildRoot({ references }: {
+  async #buildRoot({ references, structural }: {
     references: readonly ReferenceSummary<TKey, TReference>[];
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<TReference> {
-    if (references.length === 0) return await this.#createEmptyPage();
+    if (references.length === 0) return await this.#writeEmptyRootPage({ structural });
     let current = references;
     while (current.length > 1) {
       const childLevel = current[0]?.level;
@@ -435,6 +465,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
         children,
         isRootWhenSingleGroup: true,
         level: childLevel + 1,
+        structural,
       });
     }
     const root = current[0];
@@ -446,7 +477,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return await measureImmutableBTreeOperation({
       diagnostics: this.#pageStore.operationDiagnostics?.port,
       operation: "build",
-      run: async () => await this.#createEmptyPage(),
+      run: async ({ structural }) => await this.#writeEmptyRootPage({ structural }),
     });
   }
 
@@ -458,11 +489,17 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return await measureImmutableBTreeOperation({
       diagnostics: this.#pageStore.operationDiagnostics?.port,
       operation: this.#pageStore.operationDiagnostics?.operation ?? "update",
-      run: async () => {
+      run: async ({ structural }) => {
         const sorted = this.#sortedUniqueMutations({ changes });
-        const result = await this.#mutatePage({ changes: sorted, isRoot: true, reference: rootReference });
+        if (structural !== undefined) structural.inputMutations = sorted.length;
+        const result = await this.#mutatePage({
+          changes: sorted,
+          isRoot: true,
+          reference: rootReference,
+          structural,
+        });
         if (!result.changed) return rootReference;
-        return await this.#buildRoot({ references: result.references });
+        return await this.#buildRoot({ references: result.references, structural });
       },
     });
   }

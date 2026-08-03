@@ -25,11 +25,11 @@ import {
   type FileSystemRootKey,
 } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
+import { PhysicalStoreError } from "@/00-storage/service/hizofs/physical-store/errors";
 import type { CanonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import {
-  getFileSizeWithAuthenticatedReason,
   measureAuthenticatedCryptoOperation,
-  readExactWithAuthenticatedReason,
+  readExactWithFileSizeWithAuthenticatedReason,
   type AuthenticatedStoreDiagnosticsPort,
 } from "./runtime-diagnostics-port";
 import { authenticatedStoreError } from "./errors";
@@ -57,26 +57,58 @@ export async function readAuthenticatedSegmentDescriptor({ backend, diagnostics,
   segmentClass: SegmentClass;
 }): Promise<AuthenticatedSegmentDescriptor> {
   const path = authenticatedSegmentPath({ segmentClass, segmentId: physicalSegmentId });
-  const fileSize = await getFileSizeWithAuthenticatedReason({
-    backend,
-    diagnostics,
-    path,
-    reason: "segment_descriptor",
-  });
-  if (fileSize === undefined) {
-    throw authenticatedStoreError({ code: "control_plane_corrupt", message: "referenced segment file is missing" });
-  }
+  // The Segment Header and its snapshot size must describe the same physical
+  // file image. One backend snapshot removes a redundant getFile() call while
+  // strengthening that consistency boundary.
+  const { bytes, fileSize } = await (async () => {
+    try {
+      return await readExactWithFileSizeWithAuthenticatedReason({
+        backend,
+        diagnostics,
+        length: HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader,
+        offset: 0n,
+        path,
+        reason: "segment_descriptor",
+      });
+    } catch (cause: unknown) {
+      if (cause instanceof PhysicalStoreError) {
+        switch (cause.code) {
+        case "not_found":
+          throw authenticatedStoreError({
+            cause,
+            code: "control_plane_corrupt",
+            message: "referenced segment file is missing",
+          });
+        case "unexpected_end":
+          throw authenticatedStoreError({
+            cause,
+            code: "control_plane_corrupt",
+            message: "Segment Header is truncated",
+          });
+        case "already_exists":
+        case "closed_handle":
+        case "durability_not_demonstrated":
+        case "file_open":
+        case "file_too_large":
+        case "foreign_handle":
+        case "is_directory":
+        case "not_directory":
+        case "out_of_range":
+        case "sync_access_unavailable":
+        case "write_stalled":
+          throw cause;
+        default: {
+          const _ex: never = cause.code;
+          throw new Error(`Unhandled physical-store error code: ${_ex}`);
+        }
+        }
+      }
+      throw cause;
+    }
+  })();
   if (!segmentFileSizeIsReaderValid({ fileSize, segmentClass })) {
     throw authenticatedStoreError({ code: "control_plane_corrupt", message: "Segment file size is outside the V1 bound" });
   }
-  const bytes = await readExactWithAuthenticatedReason({
-    backend,
-    diagnostics,
-    length: HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader,
-    offset: 0n,
-    path,
-    reason: "segment_descriptor",
-  });
   let header: ReturnType<typeof decodeSegmentHeader>;
   try {
     header = decodeSegmentHeader({ bytes });

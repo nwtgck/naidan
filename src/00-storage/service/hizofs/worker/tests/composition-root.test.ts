@@ -198,6 +198,9 @@ function developmentBackend({ backend }: {
     list: async ({ directory }) => await backend.list({ directory }),
     openFileForUpdate: async ({ path }) => await backend.openFileForUpdate({ path }),
     readExact: async ({ length, offset, path }) => await backend.readExact({ length, offset, path }),
+    readExactWithFileSize: async ({ length, offset, path }) => (
+      await backend.readExactWithFileSize({ length, offset, path })
+    ),
     readFileBounded: async ({ maximumByteLength, path }) => (
       await backend.readFileBounded({ maximumByteLength, path })
     ),
@@ -2519,6 +2522,10 @@ describe("HizoFS worker composition root", () => {
       list: async () => [],
       openFileForUpdate: async () => file,
       readExact: async () => new Uint8Array() as AuthenticatedHizoFSPhysicalBytes,
+      readExactWithFileSize: async () => ({
+        bytes: new Uint8Array() as AuthenticatedHizoFSPhysicalBytes,
+        fileSize: 0n,
+      }),
       readFileBounded: async () => new Uint8Array() as AuthenticatedHizoFSPhysicalBytes,
       removeFile: async () => undefined,
       syncDirectoryEntries: async () => undefined,
@@ -2537,6 +2544,7 @@ describe("HizoFS worker composition root", () => {
     await backend.openFileForUpdate({ path });
     await backend.getFileSize({ path });
     await backend.readExact({ length: 0, offset: 0n, path });
+    await backend.readExactWithFileSize({ length: 0, offset: 0n, path });
     await backend.readFileBounded({ maximumByteLength: 0, path });
     await backend.writeAt({ bytes: new Uint8Array() as AuthenticatedHizoFSPhysicalBytes, file, offset: 0n });
     await backend.truncate({ file, length: 0n });
@@ -2557,7 +2565,7 @@ describe("HizoFS worker composition root", () => {
       .filter(([phase]) => phase.startsWith("physical_"));
     expect(physical).toHaveLength(13);
     expect(diagnostics.snapshot().phases.physical_get_file_size).toEqual({ operationCount: 3, totalDurationMs: 3 });
-    expect(diagnostics.snapshot().phases.physical_read_exact).toEqual({ operationCount: 3, totalDurationMs: 3 });
+    expect(diagnostics.snapshot().phases.physical_read_exact).toEqual({ operationCount: 4, totalDurationMs: 4 });
     for (const [phase, counter] of physical) {
       if (phase === "physical_get_file_size" || phase === "physical_read_exact") continue;
       expect(counter).toEqual({ operationCount: 1, totalDurationMs: 1 });
@@ -2567,18 +2575,18 @@ describe("HizoFS worker composition root", () => {
       overlapping: 0,
       getFileSize: {
         duplicateOperations: 1,
-        maximumOperationsPerPublication: 2,
+        maximumOperationsPerScope: 2,
         operations: 2,
         observedUniqueTargets: 1,
-        truncatedPublications: 0,
+        truncatedScopes: 0,
         unclassifiedOperations: 0,
       },
       readExact: {
         duplicateOperations: 1,
-        maximumOperationsPerPublication: 2,
+        maximumOperationsPerScope: 2,
         operations: 2,
         observedUniqueTargets: 1,
-        truncatedPublications: 0,
+        truncatedScopes: 0,
         unclassifiedOperations: 0,
       },
     });

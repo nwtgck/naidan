@@ -255,6 +255,30 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     offset: bigint;
     path: CanonicalContainerPath;
   }): Promise<Uint8Array> {
+    return (await this.#readSnapshotRange({ length, offset, path })).bytes;
+  }
+
+  public async readExactWithFileSize({
+    length,
+    offset,
+    path,
+  }: {
+    length: number;
+    offset: bigint;
+    path: CanonicalContainerPath;
+  }): Promise<Readonly<{ bytes: Uint8Array; fileSize: bigint }>> {
+    return await this.#readSnapshotRange({ length, offset, path });
+  }
+
+  async #readSnapshotRange({
+    length,
+    offset,
+    path,
+  }: {
+    length: number;
+    offset: bigint;
+    path: CanonicalContainerPath;
+  }): Promise<Readonly<{ bytes: Uint8Array; fileSize: bigint }>> {
     if (!Number.isSafeInteger(length) || length < 0) {
       throw new RangeError('exact read length must be a non-negative safe integer');
     }
@@ -272,7 +296,10 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
           path,
         });
       }
-      return new Uint8Array(await snapshot.slice(start, end).arrayBuffer());
+      return {
+        bytes: new Uint8Array(await snapshot.slice(start, end).arrayBuffer()),
+        fileSize: BigInt(snapshot.size),
+      };
     } catch (error) {
       if (isDomExceptionNamed({ error, name: 'NotFoundError' })) {
         throw physicalStoreError({

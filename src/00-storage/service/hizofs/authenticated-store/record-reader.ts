@@ -119,14 +119,19 @@ export async function readAuthenticatedPhysicalRecord({
     });
   }
   const frameHeaderSize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader;
-  const headerBytes = await readExactWithAuthenticatedReason({
+  // The authenticated Physical Record Reference already fixes the complete
+  // frame length. Reading the frame once avoids a second OPFS snapshot and
+  // await boundary without weakening header validation, canonical padding,
+  // or authenticated decryption.
+  const frameBytes = await readExactWithAuthenticatedReason({
     backend,
     diagnostics,
-    length: frameHeaderSize,
+    length: physicalReference.frameLength,
     offset: physicalReference.byteOffset,
     path: descriptor.path,
     reason: "authenticated_record_resolution",
   });
+  const headerBytes = frameBytes.subarray(0, frameHeaderSize);
   let header: RecordFrameHeaderV1;
   try {
     header = decodeRecordFrameHeader({ bytes: headerBytes });
@@ -142,14 +147,7 @@ export async function readAuthenticatedPhysicalRecord({
     });
   }
 
-  const body = await readExactWithAuthenticatedReason({
-    backend,
-    diagnostics,
-    length: header.frameLength - frameHeaderSize,
-    offset: physicalReference.byteOffset + BigInt(frameHeaderSize),
-    path: descriptor.path,
-    reason: "authenticated_record_resolution",
-  });
+  const body = frameBytes.subarray(frameHeaderSize);
   const ciphertext = body.subarray(0, header.sealedLength);
   if (body.subarray(header.sealedLength).some(byte => byte !== 0)) {
     throw authenticatedStoreError({

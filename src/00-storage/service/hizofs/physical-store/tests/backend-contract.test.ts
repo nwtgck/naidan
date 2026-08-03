@@ -78,7 +78,12 @@ describe('HizoFS physical-store backend contract', () => {
 
     expect(await backend.getFileSize({ path })).toBe(5n);
     expect(await backend.readExact({ path, offset: 0n, length: 5 })).toEqual(Uint8Array.from([0, 0, 1, 2, 3]));
+    expect(await backend.readExactWithFileSize({ path, offset: 1n, length: 3 })).toEqual({
+      bytes: Uint8Array.from([0, 1, 2]),
+      fileSize: 5n,
+    });
     await expect(backend.readExact({ path, offset: 4n, length: 2 })).rejects.toMatchObject({ code: 'unexpected_end' });
+    await expect(backend.readExactWithFileSize({ path, offset: 4n, length: 2 })).rejects.toMatchObject({ code: 'unexpected_end' });
     await expect(backend.readFileBounded({ path, maximumByteLength: 4 })).rejects.toMatchObject({ code: 'file_too_large' });
 
     await backend.writeAt({ file, offset: 10n, bytes: authenticatedBytes({ values: [] }) });

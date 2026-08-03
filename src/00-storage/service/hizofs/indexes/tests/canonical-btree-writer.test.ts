@@ -7,6 +7,7 @@ import {
   ImmutableBTreeReader,
   type ImmutableBTreePage,
 } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
+import type { ImmutableBTreeDiagnosticsObservation } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
 
 type Entry = Readonly<{ key: number; payload: string }>;
 type Page = ImmutableBTreePage<number, Entry, string>;
@@ -171,12 +172,12 @@ describe("canonical immutable B-tree writer", () => {
   });
 
   it("reports one owner operation without exposing B+tree values or double-counting empty-root rebuilds", async () => {
-    const observations: { durationMs: number; operation: "build" | "update" }[] = [];
+    const observations: ImmutableBTreeDiagnosticsObservation[] = [];
     const store = Object.assign(new MemoryPageStore(), {
       operationDiagnostics: {
         operation: "update" as const,
         port: {
-          recordIndexOperation: (observation: { durationMs: number; operation: "build" | "update" }) => {
+          recordIndexOperation: (observation: (typeof observations)[number]) => {
             observations.push(observation);
           },
         },
@@ -201,7 +202,39 @@ describe("canonical immutable B-tree writer", () => {
 
     expect(observations.map(({ operation }) => operation)).toEqual(["build", "update", "update"]);
     expect(observations.every(({ durationMs }) => Number.isFinite(durationMs) && durationMs >= 0)).toBe(true);
-    expect(Object.keys(observations[0] ?? {})).toEqual(["durationMs", "operation"]);
+    expect(observations.map(({ structural }) => structural)).toEqual([
+      {
+        inputMutations: 0,
+        maximumPageLevel: 0,
+        pageReads: 0,
+        pageWrites: 1,
+        rootCollapses: 0,
+        splitOperations: 0,
+        splitOutputPages: 0,
+        unchangedPageReuses: 0,
+      },
+      {
+        inputMutations: 1,
+        maximumPageLevel: 0,
+        pageReads: 1,
+        pageWrites: 1,
+        rootCollapses: 0,
+        splitOperations: 0,
+        splitOutputPages: 0,
+        unchangedPageReuses: 0,
+      },
+      {
+        inputMutations: 1,
+        maximumPageLevel: 0,
+        pageReads: 1,
+        pageWrites: 1,
+        rootCollapses: 0,
+        splitOperations: 0,
+        splitOutputPages: 0,
+        unchangedPageReuses: 0,
+      },
+    ]);
+    expect(Object.keys(observations[0] ?? {})).toEqual(["durationMs", "operation", "structural"]);
   });
 
   it("passes root context to the page store for empty roots and split roots", async () => {

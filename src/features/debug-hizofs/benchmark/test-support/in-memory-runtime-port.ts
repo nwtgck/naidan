@@ -1,5 +1,6 @@
 import { HIZOFS_SUPERBLOCK_FILES } from "@/00-storage/service/hizofs/00-format";
 import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
 import type {
   StorageDirectoryHandle,
   StorageFileHandle,
@@ -329,6 +330,8 @@ function createMutableRuntimeDiagnostics(): MutableRuntimeDiagnostics {
       }
       snapshot.publication.getFileSize.maximumOperationsPerScope = 0;
       snapshot.publication.readExact.maximumOperationsPerScope = 0;
+      snapshot.indexes.build.maximumPageLevel = 0;
+      snapshot.indexes.update.maximumPageLevel = 0;
     },
     incrementCoordinator({ event }) {
       snapshot.coordinator[event] += 1;
@@ -342,13 +345,21 @@ function createMutableRuntimeDiagnostics(): MutableRuntimeDiagnostics {
       snapshot.publication.completed += count;
       snapshot.coordinator.activeStateCacheHits += count;
       snapshot.coordinator.localRequests += count;
+      snapshot.indexes.update.inputMutations += count;
+      snapshot.indexes.update.maximumPageLevel = Math.max(
+        snapshot.indexes.update.maximumPageLevel,
+        count > 0 ? 1 : 0,
+      );
+      snapshot.indexes.update.operations += count;
+      snapshot.indexes.update.pageReads += count;
+      snapshot.indexes.update.pageWrites += count;
     },
   };
 }
 
 function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnapshot {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     type: "measured",
     phases: Object.fromEntries(HIZOFS_BENCHMARK_RUNTIME_PHASES.map(key => [
       key,
@@ -388,6 +399,10 @@ function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnaps
       localRequests: 0,
       remoteRequests: 0,
     },
+    indexes: Object.fromEntries(IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS.map(operation => [
+      operation,
+      createEmptyIndexDiagnostics(),
+    ])) as MutableRuntimeDiagnosticsSnapshot["indexes"],
     mutation: {
       abandoned: 0,
       completed: 0,
@@ -411,6 +426,20 @@ function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnaps
       metadata: createEmptySegmentWriterDiagnostics(),
       relocation: createEmptySegmentWriterDiagnostics(),
     },
+  };
+}
+
+function createEmptyIndexDiagnostics(): MutableRuntimeDiagnosticsSnapshot["indexes"]["update"] {
+  return {
+    inputMutations: 0,
+    maximumPageLevel: 0,
+    operations: 0,
+    pageReads: 0,
+    pageWrites: 0,
+    rootCollapses: 0,
+    splitOperations: 0,
+    splitOutputPages: 0,
+    unchangedPageReuses: 0,
   };
 }
 

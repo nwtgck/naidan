@@ -117,6 +117,7 @@ function createDirectoryPageTreeReader({ pageStore }: {
   return new ImmutableBTreeReader({
     compareKeys: compareDirectoryNames,
     getEntryKey: ({ entry }) => entry.name,
+    operationDiagnostics: pageStore.operationDiagnostics?.port,
     pageReader: pageStore.readPage,
     referenceIdentity,
   });
