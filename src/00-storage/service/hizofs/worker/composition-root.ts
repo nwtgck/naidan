@@ -3344,6 +3344,7 @@ function instrumentHizoFSWritableBackend<AuthenticatedPhysicalBytes extends Uint
   }): Promise<T> => measurePhysicalOperation({ clock, diagnostics, operation, phase });
   const provisionDirectoryHierarchy = backend.provisionDirectoryHierarchy;
   const readExactPairWithFileSize = backend.readExactPairWithFileSize;
+  const syncFileDirectoryEntry = backend.syncFileDirectoryEntry;
   return {
     capabilities: backend.capabilities,
     closeFile: async ({ file }: { file: HizoFSWritableFile }) => await measured({
@@ -3429,6 +3430,12 @@ function instrumentHizoFSWritableBackend<AuthenticatedPhysicalBytes extends Uint
     removeFile: async ({ path }) => await measured({
       operation: async () => await backend.removeFile({ path }),
       phase: "physical_remove_file",
+    }),
+    ...(syncFileDirectoryEntry === undefined ? {} : {
+      syncFileDirectoryEntry: async ({ path }) => await measured({
+        operation: async () => await syncFileDirectoryEntry.call(backend, { path }),
+        phase: "physical_sync_directory_entries",
+      }),
     }),
     syncDirectoryEntries: async ({ parent }) => await measured({
       operation: async () => await backend.syncDirectoryEntries({ parent }),

@@ -2518,6 +2518,7 @@ describe("HizoFS worker composition root", () => {
       first: new Uint8Array() as AuthenticatedHizoFSPhysicalBytes,
       second: new Uint8Array() as AuthenticatedHizoFSPhysicalBytes,
     }));
+    const syncFileDirectoryEntry = vi.fn(async () => undefined);
     const underlying: HizoFSDevelopmentWritableBackend<AuthenticatedHizoFSPhysicalBytes> = {
       capabilities: { directoryEntryDurability: "not-demonstrated", fileDataDurability: "not-demonstrated" },
       closeFile: async () => undefined,
@@ -2536,6 +2537,7 @@ describe("HizoFS worker composition root", () => {
       readFileBounded: async () => new Uint8Array() as AuthenticatedHizoFSPhysicalBytes,
       removeFile: async () => undefined,
       syncDirectoryEntries: async () => undefined,
+      syncFileDirectoryEntry,
       syncFileData: async () => undefined,
       truncate: async () => undefined,
       writeAt: async () => undefined,
@@ -2566,6 +2568,9 @@ describe("HizoFS worker composition root", () => {
     await backend.truncate({ file, length: 0n });
     await backend.syncFileData({ file });
     await backend.closeFile({ file });
+    if (backend.syncFileDirectoryEntry === undefined) throw new Error("expected exact file-entry confirmation capability");
+    await backend.syncFileDirectoryEntry({ path });
+    expect(syncFileDirectoryEntry).toHaveBeenCalledOnce();
     await backend.syncDirectoryEntries({ parent: CANONICAL_CONTAINER_ROOT });
     await backend.removeFile({ path });
     await backend.list({ directory: CANONICAL_CONTAINER_ROOT });
@@ -2582,8 +2587,14 @@ describe("HizoFS worker composition root", () => {
     expect(physical).toHaveLength(14);
     expect(diagnostics.snapshot().phases.physical_get_file_size).toEqual({ operationCount: 3, totalDurationMs: 3 });
     expect(diagnostics.snapshot().phases.physical_read_exact).toEqual({ operationCount: 5, totalDurationMs: 5 });
+    expect(diagnostics.snapshot().phases.physical_sync_directory_entries).toEqual({
+      operationCount: 2,
+      totalDurationMs: 2,
+    });
     for (const [phase, counter] of physical) {
-      if (phase === "physical_get_file_size" || phase === "physical_read_exact") continue;
+      if (phase === "physical_get_file_size"
+        || phase === "physical_read_exact"
+        || phase === "physical_sync_directory_entries") continue;
       expect(counter).toEqual({ operationCount: 1, totalDurationMs: 1 });
     }
     expect(diagnostics.snapshot().publication).toEqual({

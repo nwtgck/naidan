@@ -129,6 +129,7 @@ describe('HizoFS benchmark engine', () => {
     const countedRoot = TEST_ONLY.createCountingDirectoryHandle({
       directory: root,
       counters,
+      diagnosticsMode: 'detailed',
       relativePath: [],
       physicalDiagnostics: {
         objectPaths: new Set<string>(),
@@ -151,6 +152,7 @@ describe('HizoFS benchmark engine', () => {
       fileHandleLookups: 3,
       fileHandleCreateRequests: 2,
       fileSnapshotOperations: 2,
+      listEntriesMaterialized: 1,
       readOperations: 0,
       bytesRead: 0,
       pathAttribution: {
@@ -171,6 +173,9 @@ describe('HizoFS benchmark engine', () => {
         listOperations: {
           segmentShard: 1,
         },
+        listEntriesMaterialized: {
+          segmentShard: 1,
+        },
       },
     });
     expect(new Uint8Array(await snapshot.slice(1, 3).arrayBuffer()))
@@ -179,6 +184,63 @@ describe('HizoFS benchmark engine', () => {
       fileSnapshotOperations: 2,
       readOperations: 1,
       bytesRead: 2,
+    });
+  });
+
+
+  it('keeps basic backing counters while omitting path attribution', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    const counters = TEST_ONLY.createEmptyBackingStoreCounters();
+    const countedRoot = TEST_ONLY.createCountingDirectoryHandle({
+      directory: root,
+      counters,
+      diagnosticsMode: 'basic',
+      relativePath: [],
+      physicalDiagnostics: {
+        objectPaths: new Set<string>(),
+        superblockPublications: 0,
+      },
+    });
+
+    const segments = await countedRoot.getDirectoryHandle('segments', { create: true });
+    const metadata = await segments.getDirectoryHandle('metadata', { create: true });
+    const shard = await metadata.getDirectoryHandle('ab', { create: true });
+    await shard.getFileHandle('segment.enc', { create: true });
+    await Array.fromAsync(shard.keys());
+
+    expect(counters).toMatchObject({
+      directoryHandleLookups: 3,
+      directoryHandleCreateRequests: 3,
+      fileHandleLookups: 1,
+      fileHandleCreateRequests: 1,
+      listOperations: 1,
+      listEntriesMaterialized: 1,
+    });
+    expect(counters.pathAttribution).toEqual({
+      directoryHandleLookups: {
+        root: 0, segmentRoot: 0, segmentClass: 0, segmentShard: 0, other: 0,
+      },
+      directoryHandleCreateRequests: {
+        root: 0, segmentRoot: 0, segmentClass: 0, segmentShard: 0, other: 0,
+      },
+      fileHandleLookups: {
+        superblock: 0, unlockEnvelope: 0, metadataSegment: 0,
+        dataSegment: 0, relocationSegment: 0, other: 0,
+      },
+      fileHandleCreateRequests: {
+        superblock: 0, unlockEnvelope: 0, metadataSegment: 0,
+        dataSegment: 0, relocationSegment: 0, other: 0,
+      },
+      fileSnapshotOperations: {
+        superblock: 0, unlockEnvelope: 0, metadataSegment: 0,
+        dataSegment: 0, relocationSegment: 0, other: 0,
+      },
+      listOperations: {
+        root: 0, segmentRoot: 0, segmentClass: 0, segmentShard: 0, other: 0,
+      },
+      listEntriesMaterialized: {
+        root: 0, segmentRoot: 0, segmentClass: 0, segmentShard: 0, other: 0,
+      },
     });
   });
 
@@ -210,6 +272,8 @@ describe('HizoFS benchmark engine', () => {
       backingStoreHandleLookupOperationScope: 'get_directory_handle_and_get_file_handle_calls',
       backingStoreHandleCreateRequestScope: 'handle_lookup_calls_with_create_true',
       backingStorePathAttributionScope: 'canonical_container_path_kind',
+      backingStoreListEntryMaterializationScope: 'entries_values_and_keys_yields',
+      physicalStoreShapeScope: 'tracked_immutable_segment_files_and_distinct_shards',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: 256 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
@@ -324,6 +388,23 @@ describe('HizoFS benchmark engine', () => {
       .toBeGreaterThan(0);
     expect(createBackingStoreDiagnostics?.pathAttribution.fileHandleLookups.superblock)
       .toBeGreaterThan(0);
+    expect(createBackingStoreDiagnostics?.listEntriesMaterialized).toBe(
+      Object.values(
+        createBackingStoreDiagnostics?.pathAttribution.listEntriesMaterialized ?? {},
+      ).reduce((total, value) => total + value, 0),
+    );
+    const createDiagnostics = createResult?.backends.hizofs?.samples[0]?.hizoFSDiagnostics;
+    if (createDiagnostics === undefined) {
+      throw new TypeError('expected create diagnostics');
+    }
+    expect(
+      createDiagnostics.physicalStore.after.segmentFiles.total
+      - createDiagnostics.physicalStore.before.segmentFiles.total,
+    ).toBe(createDiagnostics.objects.created);
+    expect(createDiagnostics.physicalStore.after.segmentFiles.metadata)
+      .toBeGreaterThan(createDiagnostics.physicalStore.before.segmentFiles.metadata);
+    expect(createDiagnostics.physicalStore.after.segmentShards.total)
+      .toBeGreaterThanOrEqual(createDiagnostics.physicalStore.before.segmentShards.total);
     const createRuntimeDiagnostics = createResult?.backends.hizofs?.samples[0]
       ?.hizoFSDiagnostics?.runtime;
     expect(createRuntimeDiagnostics?.type).toBe('measured');

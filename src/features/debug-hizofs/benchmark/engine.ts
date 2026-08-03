@@ -38,12 +38,13 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 36 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 38 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
 
 type BackingStoreCounters = HizoFSBenchmarkDiagnostics['backingStore'];
+type PhysicalStoreShape = HizoFSBenchmarkDiagnostics['physicalStore']['before'];
 type BenchmarkApiCounters = HizoFSBenchmarkSample['apiOperations'];
 
 type BenchmarkMemoryTracker = {
@@ -327,7 +328,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 26,
+    schemaVersion: 27,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -356,6 +357,8 @@ async function runHizoFSBenchmarkWithLockHeld({
       backingStoreHandleLookupOperationScope: 'get_directory_handle_and_get_file_handle_calls',
       backingStoreHandleCreateRequestScope: 'handle_lookup_calls_with_create_true',
       backingStorePathAttributionScope: 'canonical_container_path_kind',
+      backingStoreListEntryMaterializationScope: 'entries_values_and_keys_yields',
+      physicalStoreShapeScope: 'tracked_immutable_segment_files_and_distinct_shards',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: hizoFSPolicy.fileChunkSize,
         maxDirtyFileBytesPerWriter: hizoFSPolicy.maxDirtyFileBytes,
@@ -485,6 +488,7 @@ async function createBenchmarkContexts({
       const countedBackingDirectory = createCountingDirectoryHandle({
         directory: backingDirectory,
         counters,
+        diagnosticsMode: configuration.backingStoreDiagnosticsMode,
         relativePath: [],
         physicalDiagnostics,
       });
@@ -1794,6 +1798,7 @@ async function measureCase({
 type HizoFSDiagnosticSnapshot = {
   readonly counters: BackingStoreCounters;
   readonly objectCount: number;
+  readonly physicalStoreShape: PhysicalStoreShape;
   readonly superblockPublications: number;
   readonly runtime: HizoFSBenchmarkRuntimeDiagnosticsSnapshot;
 };
@@ -1814,6 +1819,9 @@ function readHizoFSDiagnosticBaseline({
   return {
     counters: snapshotBackingStoreCounters({ counters: context.counters }),
     objectCount: context.hizoFSPhysicalDiagnostics.objectPaths.size,
+    physicalStoreShape: snapshotPhysicalStoreShape({
+      objectPaths: context.hizoFSPhysicalDiagnostics.objectPaths,
+    }),
     superblockPublications: context.hizoFSPhysicalDiagnostics.superblockPublications,
     runtime: context.hizoFSRuntime.diagnostics.snapshot(),
   };
@@ -1839,6 +1847,10 @@ function createHizoFSDiagnostics({
       after: after.objectCount,
       created: Math.max(after.objectCount - before.objectCount, 0),
       removed: Math.max(before.objectCount - after.objectCount, 0),
+    },
+    physicalStore: {
+      before: before.physicalStoreShape,
+      after: after.physicalStoreShape,
     },
     commits: {
       superblockPublications: Math.max(after.superblockPublications - before.superblockPublications, 0),
@@ -2355,6 +2367,7 @@ function addBackingStoreCounters({
   target.writeOperations += source.writeOperations;
   target.removeOperations += source.removeOperations;
   target.listOperations += source.listOperations;
+  target.listEntriesMaterialized += source.listEntriesMaterialized;
   target.bytesRead += source.bytesRead;
   target.bytesWritten += source.bytesWritten;
   addBackingDirectoryPathCounters({
@@ -2380,6 +2393,10 @@ function addBackingStoreCounters({
   addBackingDirectoryPathCounters({
     target: target.pathAttribution.listOperations,
     source: source.pathAttribution.listOperations,
+  });
+  addBackingDirectoryPathCounters({
+    target: target.pathAttribution.listEntriesMaterialized,
+    source: source.pathAttribution.listEntriesMaterialized,
   });
 }
 
@@ -3643,6 +3660,7 @@ function snapshotBackingStoreCounters({
     writeOperations: counters.writeOperations,
     removeOperations: counters.removeOperations,
     listOperations: counters.listOperations,
+    listEntriesMaterialized: counters.listEntriesMaterialized,
     bytesRead: counters.bytesRead,
     bytesWritten: counters.bytesWritten,
     pathAttribution: {
@@ -3664,6 +3682,9 @@ function snapshotBackingStoreCounters({
       listOperations: snapshotBackingDirectoryPathCounters({
         counters: counters.pathAttribution.listOperations,
       }),
+      listEntriesMaterialized: snapshotBackingDirectoryPathCounters({
+        counters: counters.pathAttribution.listEntriesMaterialized,
+      }),
     },
   };
 }
@@ -3679,6 +3700,7 @@ function createEmptyBackingStoreCounters(): BackingStoreCounters {
     writeOperations: 0,
     removeOperations: 0,
     listOperations: 0,
+    listEntriesMaterialized: 0,
     bytesRead: 0,
     bytesWritten: 0,
     pathAttribution: {
@@ -3688,6 +3710,7 @@ function createEmptyBackingStoreCounters(): BackingStoreCounters {
       fileHandleCreateRequests: createEmptyBackingFilePathCounters(),
       fileSnapshotOperations: createEmptyBackingFilePathCounters(),
       listOperations: createEmptyBackingDirectoryPathCounters(),
+      listEntriesMaterialized: createEmptyBackingDirectoryPathCounters(),
     },
   };
 }
@@ -3854,6 +3877,10 @@ function subtractBackingStoreCounters({
     writeOperations: Math.max(after.writeOperations - before.writeOperations, 0),
     removeOperations: Math.max(after.removeOperations - before.removeOperations, 0),
     listOperations: Math.max(after.listOperations - before.listOperations, 0),
+    listEntriesMaterialized: Math.max(
+      after.listEntriesMaterialized - before.listEntriesMaterialized,
+      0,
+    ),
     bytesRead: Math.max(after.bytesRead - before.bytesRead, 0),
     bytesWritten: Math.max(after.bytesWritten - before.bytesWritten, 0),
     pathAttribution: {
@@ -3880,6 +3907,10 @@ function subtractBackingStoreCounters({
       listOperations: subtractBackingDirectoryPathCounters({
         before: before.pathAttribution.listOperations,
         after: after.pathAttribution.listOperations,
+      }),
+      listEntriesMaterialized: subtractBackingDirectoryPathCounters({
+        before: before.pathAttribution.listEntriesMaterialized,
+        after: after.pathAttribution.listEntriesMaterialized,
       }),
     },
   };
@@ -3924,22 +3955,36 @@ function classifyBackingFilePath({ relativePath }: {
 
 function incrementBackingPathCounter<TPathKind extends string>({
   counters,
+  diagnosticsMode,
   pathKind,
 }: {
   counters: Record<TPathKind, number>;
+  diagnosticsMode: HizoFSBenchmarkConfiguration['backingStoreDiagnosticsMode'];
   pathKind: TPathKind;
 }): void {
-  counters[pathKind] += 1;
+  switch (diagnosticsMode) {
+  case 'basic':
+    return;
+  case 'detailed':
+    counters[pathKind] += 1;
+    return;
+  default: {
+    const _ex: never = diagnosticsMode;
+    throw new Error(`Unhandled backing-store diagnostics mode: ${String(_ex)}`);
+  }
+  }
 }
 
 function createCountingDirectoryHandle({
   directory,
   counters,
+  diagnosticsMode,
   relativePath,
   physicalDiagnostics,
 }: {
   directory: FileSystemDirectoryHandle;
   counters: BackingStoreCounters;
+  diagnosticsMode: HizoFSBenchmarkConfiguration['backingStoreDiagnosticsMode'];
   relativePath: readonly string[];
   physicalDiagnostics: HizoFSPhysicalDiagnosticTracker;
 }): FileSystemDirectoryHandle {
@@ -3953,12 +3998,14 @@ function createCountingDirectoryHandle({
           const pathKind = classifyBackingDirectoryPath({ relativePath: targetPath });
           counters.directoryHandleLookups += 1;
           incrementBackingPathCounter({
+            diagnosticsMode,
             counters: counters.pathAttribution.directoryHandleLookups,
             pathKind,
           });
           if (options?.create === true) {
             counters.directoryHandleCreateRequests += 1;
             incrementBackingPathCounter({
+              diagnosticsMode,
               counters: counters.pathAttribution.directoryHandleCreateRequests,
               pathKind,
             });
@@ -3966,6 +4013,7 @@ function createCountingDirectoryHandle({
           return createCountingDirectoryHandle({
             directory: await target.getDirectoryHandle(name, options),
             counters,
+            diagnosticsMode,
             relativePath: targetPath,
             physicalDiagnostics,
           });
@@ -3977,12 +4025,14 @@ function createCountingDirectoryHandle({
           const pathKind = classifyBackingFilePath({ relativePath: targetPath });
           counters.fileHandleLookups += 1;
           incrementBackingPathCounter({
+            diagnosticsMode,
             counters: counters.pathAttribution.fileHandleLookups,
             pathKind,
           });
           if (options?.create === true) {
             counters.fileHandleCreateRequests += 1;
             incrementBackingPathCounter({
+              diagnosticsMode,
               counters: counters.pathAttribution.fileHandleCreateRequests,
               pathKind,
             });
@@ -3990,6 +4040,7 @@ function createCountingDirectoryHandle({
           return createCountingFileHandle({
             file: await target.getFileHandle(name, options),
             counters,
+            diagnosticsMode,
             relativePath: targetPath,
             physicalDiagnostics,
           });
@@ -4008,12 +4059,14 @@ function createCountingDirectoryHandle({
         return () => {
           counters.listOperations += 1;
           incrementBackingPathCounter({
+            diagnosticsMode,
             counters: counters.pathAttribution.listOperations,
             pathKind: classifyBackingDirectoryPath({ relativePath }),
           });
           return wrapDirectoryEntries({
             entries: target.entries(),
             counters,
+            diagnosticsMode,
             relativePath,
             physicalDiagnostics,
           });
@@ -4022,12 +4075,14 @@ function createCountingDirectoryHandle({
         return () => {
           counters.listOperations += 1;
           incrementBackingPathCounter({
+            diagnosticsMode,
             counters: counters.pathAttribution.listOperations,
             pathKind: classifyBackingDirectoryPath({ relativePath }),
           });
           return wrapDirectoryValues({
             values: target.values(),
             counters,
+            diagnosticsMode,
             relativePath,
             physicalDiagnostics,
           });
@@ -4036,10 +4091,16 @@ function createCountingDirectoryHandle({
         return () => {
           counters.listOperations += 1;
           incrementBackingPathCounter({
+            diagnosticsMode,
             counters: counters.pathAttribution.listOperations,
             pathKind: classifyBackingDirectoryPath({ relativePath }),
           });
-          return target.keys();
+          return wrapDirectoryKeys({
+            keys: target.keys(),
+            counters,
+            diagnosticsMode,
+            relativePath,
+          });
         };
       default: {
         const value = Reflect.get(target, property, target);
@@ -4053,11 +4114,13 @@ function createCountingDirectoryHandle({
 function createCountingFileHandle({
   file,
   counters,
+  diagnosticsMode,
   relativePath,
   physicalDiagnostics,
 }: {
   file: FileSystemFileHandle;
   counters: BackingStoreCounters;
+  diagnosticsMode: HizoFSBenchmarkConfiguration['backingStoreDiagnosticsMode'];
   relativePath: readonly string[];
   physicalDiagnostics: HizoFSPhysicalDiagnosticTracker;
 }): FileSystemFileHandle {
@@ -4069,6 +4132,7 @@ function createCountingFileHandle({
           const file = await target.getFile();
           counters.fileSnapshotOperations += 1;
           incrementBackingPathCounter({
+            diagnosticsMode,
             counters: counters.pathAttribution.fileSnapshotOperations,
             pathKind: classifyBackingFilePath({ relativePath }),
           });
@@ -4255,18 +4319,22 @@ function createCountingSyncAccessHandle({
 async function* wrapDirectoryEntries({
   entries,
   counters,
+  diagnosticsMode,
   relativePath,
   physicalDiagnostics,
 }: {
   entries: AsyncIterableIterator<[string, FileSystemHandle]>;
   counters: BackingStoreCounters;
+  diagnosticsMode: HizoFSBenchmarkConfiguration['backingStoreDiagnosticsMode'];
   relativePath: readonly string[];
   physicalDiagnostics: HizoFSPhysicalDiagnosticTracker;
 }): AsyncIterableIterator<[string, FileSystemHandle]> {
   for await (const [name, handle] of entries) {
+    recordBackingListEntryMaterialized({ counters, diagnosticsMode, relativePath });
     yield [name, wrapCountingHandle({
       handle,
       counters,
+      diagnosticsMode,
       relativePath: [...relativePath, name],
       physicalDiagnostics,
     })];
@@ -4276,32 +4344,72 @@ async function* wrapDirectoryEntries({
 async function* wrapDirectoryValues({
   values,
   counters,
+  diagnosticsMode,
   relativePath,
   physicalDiagnostics,
 }: {
   values: AsyncIterableIterator<FileSystemHandle>;
   counters: BackingStoreCounters;
+  diagnosticsMode: HizoFSBenchmarkConfiguration['backingStoreDiagnosticsMode'];
   relativePath: readonly string[];
   physicalDiagnostics: HizoFSPhysicalDiagnosticTracker;
 }): AsyncIterableIterator<FileSystemHandle> {
   for await (const handle of values) {
+    recordBackingListEntryMaterialized({ counters, diagnosticsMode, relativePath });
     yield wrapCountingHandle({
       handle,
       counters,
+      diagnosticsMode,
       relativePath: [...relativePath, handle.name],
       physicalDiagnostics,
     });
   }
 }
 
+async function* wrapDirectoryKeys({
+  keys,
+  counters,
+  diagnosticsMode,
+  relativePath,
+}: {
+  keys: AsyncIterableIterator<string>;
+  counters: BackingStoreCounters;
+  diagnosticsMode: HizoFSBenchmarkConfiguration['backingStoreDiagnosticsMode'];
+  relativePath: readonly string[];
+}): AsyncIterableIterator<string> {
+  for await (const name of keys) {
+    recordBackingListEntryMaterialized({ counters, diagnosticsMode, relativePath });
+    yield name;
+  }
+}
+
+function recordBackingListEntryMaterialized({
+  counters,
+  diagnosticsMode,
+  relativePath,
+}: {
+  counters: BackingStoreCounters;
+  diagnosticsMode: HizoFSBenchmarkConfiguration['backingStoreDiagnosticsMode'];
+  relativePath: readonly string[];
+}): void {
+  counters.listEntriesMaterialized += 1;
+  incrementBackingPathCounter({
+    counters: counters.pathAttribution.listEntriesMaterialized,
+    diagnosticsMode,
+    pathKind: classifyBackingDirectoryPath({ relativePath }),
+  });
+}
+
 function wrapCountingHandle({
   handle,
   counters,
+  diagnosticsMode,
   relativePath,
   physicalDiagnostics,
 }: {
   handle: FileSystemHandle;
   counters: BackingStoreCounters;
+  diagnosticsMode: HizoFSBenchmarkConfiguration['backingStoreDiagnosticsMode'];
   relativePath: readonly string[];
   physicalDiagnostics: HizoFSPhysicalDiagnosticTracker;
 }): FileSystemHandle {
@@ -4311,6 +4419,7 @@ function wrapCountingHandle({
     return createCountingDirectoryHandle({
       directory: handle as FileSystemDirectoryHandle,
       counters,
+      diagnosticsMode,
       relativePath,
       physicalDiagnostics,
     });
@@ -4318,6 +4427,7 @@ function wrapCountingHandle({
     return createCountingFileHandle({
       file: handle as FileSystemFileHandle,
       counters,
+      diagnosticsMode,
       relativePath,
       physicalDiagnostics,
     });
@@ -4337,6 +4447,53 @@ function getWriteChunkByteLength({ data }: { data: FileSystemWriteChunkType }): 
     return getWriteChunkByteLength({ data: data.data });
   }
   return 0;
+}
+
+function snapshotPhysicalStoreShape({
+  objectPaths,
+}: {
+  objectPaths: ReadonlySet<string>;
+}): PhysicalStoreShape {
+  const segmentFiles = { metadata: 0, data: 0, relocation: 0 };
+  const segmentShards = {
+    metadata: new Set<string>(),
+    data: new Set<string>(),
+    relocation: new Set<string>(),
+  };
+  for (const objectPath of objectPaths) {
+    const [segments, segmentClass, shard] = objectPath.split('/');
+    if (segments !== 'segments' || shard === undefined) continue;
+    switch (segmentClass) {
+    case 'metadata':
+    case 'data':
+    case 'relocation':
+      segmentFiles[segmentClass] += 1;
+      segmentShards[segmentClass].add(shard);
+      break;
+    default:
+      break;
+    }
+  }
+  const metadataFiles = segmentFiles.metadata;
+  const dataFiles = segmentFiles.data;
+  const relocationFiles = segmentFiles.relocation;
+  const metadataShards = segmentShards.metadata.size;
+  const dataShards = segmentShards.data.size;
+  const relocationShards = segmentShards.relocation.size;
+  return {
+    segmentFiles: {
+      metadata: metadataFiles,
+      data: dataFiles,
+      relocation: relocationFiles,
+      total: metadataFiles + dataFiles + relocationFiles,
+    },
+    segmentShards: {
+      metadata: metadataShards,
+      data: dataShards,
+      relocation: relocationShards,
+      total: metadataShards + dataShards + relocationShards,
+    },
+  };
 }
 
 function createHizoFSPhysicalDiagnosticTracker(): HizoFSPhysicalDiagnosticTracker {

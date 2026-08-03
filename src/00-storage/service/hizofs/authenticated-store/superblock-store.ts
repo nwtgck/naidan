@@ -51,9 +51,10 @@ import {
 } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import { promiseAllKeyed } from "@/utils/promise";
-import { canonicalContainerPath, parentContainerDirectory } from "@/00-storage/service/hizofs/physical-store/paths";
+import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import { authenticatedStoreError } from "./errors";
 import { runAndCloseAuthenticatedFile } from "./file-operation";
+import { syncCreatedFileEntry } from "./sync-created-file-entry";
 import {
   authenticatedHizoFSPhysicalBytes,
   type AuthenticatedHizoFSPhysicalBytes,
@@ -514,7 +515,7 @@ async function overwritePreparedSuperblockCopy({ backend, diagnostics, expectedP
     operationLabel: "Superblock mutation publication",
   });
   if (created) {
-    await backend.syncDirectoryEntries({ parent: parentContainerDirectory({ path }) });
+    await syncCreatedFileEntry({ backend, path });
   }
   return await verifyPreparedSuperblockCopy({ backend, diagnostics, fileSystemId, prepared, rootKey });
 }

@@ -604,6 +604,38 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     }
   }
 
+  public async syncFileDirectoryEntry({
+    path,
+  }: {
+    path: CanonicalContainerPath;
+  }): Promise<void> {
+    // OPFS has no directory fsync. Reacquire only the file whose entry was
+    // created and materialize one immutable snapshot instead of enumerating
+    // every sibling in the shard. This preserves the development live-
+    // namespace confirmation without claiming crash durability.
+    try {
+      const { fileHandle } = await this.#resolveFile({ path });
+      await fileHandle.getFile();
+    } catch (error) {
+      if (isDomExceptionNamed({ error, name: 'NotFoundError' })
+        || isPhysicalStoreErrorCode({ error, code: 'not_found' })) {
+        throw physicalStoreError({
+          code: 'not_found',
+          message: `physical file does not exist: ${path}`,
+          path,
+        });
+      }
+      if (isDomExceptionNamed({ error, name: 'TypeMismatchError' })) {
+        throw physicalStoreError({
+          code: 'is_directory',
+          message: `physical entry is a directory: ${path}`,
+          path,
+        });
+      }
+      throw error;
+    }
+  }
+
   public async syncDirectoryEntries({
     parent,
   }: {

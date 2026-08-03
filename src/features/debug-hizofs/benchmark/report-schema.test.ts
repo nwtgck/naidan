@@ -134,6 +134,7 @@ function createBackingStoreDiagnostics(): HizoFSBenchmarkDiagnostics['backingSto
     writeOperations: 3,
     removeOperations: 0,
     listOperations: 1,
+    listEntriesMaterialized: 7,
     bytesRead: 128,
     bytesWritten: 256,
     pathAttribution: {
@@ -182,14 +183,21 @@ function createBackingStoreDiagnostics(): HizoFSBenchmarkDiagnostics['backingSto
         segmentShard: 1,
         other: 0,
       },
+      listEntriesMaterialized: {
+        root: 0,
+        segmentRoot: 0,
+        segmentClass: 0,
+        segmentShard: 7,
+        other: 0,
+      },
     },
   };
 }
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 26,
-    benchmarkImplementationVersion: 36,
+    schemaVersion: 27,
+    benchmarkImplementationVersion: 38,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -217,6 +225,8 @@ function createReport(): HizoFSBenchmarkReport {
       backingStoreHandleLookupOperationScope: 'get_directory_handle_and_get_file_handle_calls',
       backingStoreHandleCreateRequestScope: 'handle_lookup_calls_with_create_true',
       backingStorePathAttributionScope: 'canonical_container_path_kind',
+      backingStoreListEntryMaterializationScope: 'entries_values_and_keys_yields',
+      physicalStoreShapeScope: 'tracked_immutable_segment_files_and_distinct_shards',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: 1024 * 1024,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
@@ -339,6 +349,16 @@ function createReport(): HizoFSBenchmarkReport {
             hizoFSDiagnostics: {
               backingStore: createBackingStoreDiagnostics(),
               objects: { before: 1, after: 3, created: 2, removed: 0 },
+              physicalStore: {
+                before: {
+                  segmentFiles: { metadata: 1, data: 0, relocation: 0, total: 1 },
+                  segmentShards: { metadata: 1, data: 0, relocation: 0, total: 1 },
+                },
+                after: {
+                  segmentFiles: { metadata: 3, data: 0, relocation: 0, total: 3 },
+                  segmentShards: { metadata: 2, data: 0, relocation: 0, total: 2 },
+                },
+              },
               commits: { superblockPublications: 1 },
               crypto: {
                 plaintextBytesProcessed: 64,

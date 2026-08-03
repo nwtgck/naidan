@@ -30,6 +30,11 @@ export const hizoFSBenchmarkStoreLifecycleSchema = z.union([
   z.literal('reopen_between_iterations'),
 ]);
 
+export const hizoFSBenchmarkBackingStoreDiagnosticsModeSchema = z.union([
+  z.literal('basic'),
+  z.literal('detailed'),
+]);
+
 export const hizoFSBenchmarkWorkloadSchema = z.union([
   z.literal('small_files'),
   z.literal('sequential_io'),
@@ -47,6 +52,7 @@ export const hizoFSBenchmarkConfigurationSchema = z.object({
   warmupIterations: z.number().int().min(0).max(5),
   measuredIterations: z.number().int().min(1).max(20),
   storeLifecycle: hizoFSBenchmarkStoreLifecycleSchema,
+  backingStoreDiagnosticsMode: hizoFSBenchmarkBackingStoreDiagnosticsModeSchema,
   workloads: z.array(hizoFSBenchmarkWorkloadSchema).min(1),
   smallFiles: z.object({
     count: z.number().int().min(1).max(100_000),
@@ -130,6 +136,7 @@ const hizoFSBackingStoreCountersSchema = z.object({
   writeOperations: z.number().int().nonnegative(),
   removeOperations: z.number().int().nonnegative(),
   listOperations: z.number().int().nonnegative(),
+  listEntriesMaterialized: z.number().int().nonnegative(),
   bytesRead: z.number().int().nonnegative(),
   bytesWritten: z.number().int().nonnegative(),
   pathAttribution: z.object({
@@ -139,6 +146,7 @@ const hizoFSBackingStoreCountersSchema = z.object({
     fileHandleCreateRequests: backingFilePathCountersSchema,
     fileSnapshotOperations: backingFilePathCountersSchema,
     listOperations: backingDirectoryPathCountersSchema,
+    listEntriesMaterialized: backingDirectoryPathCountersSchema,
   }).strict(),
 }).strict();
 
@@ -346,6 +354,18 @@ const hizoFSRuntimeDiagnosticsSchema = z.discriminatedUnion('type', [
   hizoFSUnavailableRuntimeDiagnosticsSchema,
 ]);
 
+const hizoFSPhysicalStoreClassCountsSchema = z.object({
+  metadata: z.number().int().nonnegative(),
+  data: z.number().int().nonnegative(),
+  relocation: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+}).strict();
+
+const hizoFSPhysicalStoreShapeSchema = z.object({
+  segmentFiles: hizoFSPhysicalStoreClassCountsSchema,
+  segmentShards: hizoFSPhysicalStoreClassCountsSchema,
+}).strict();
+
 const hizoFSBenchmarkDiagnosticsSchema = z.object({
   backingStore: hizoFSBackingStoreCountersSchema,
   objects: z.object({
@@ -353,6 +373,10 @@ const hizoFSBenchmarkDiagnosticsSchema = z.object({
     after: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
     removed: z.number().int().nonnegative(),
+  }).strict(),
+  physicalStore: z.object({
+    before: hizoFSPhysicalStoreShapeSchema,
+    after: hizoFSPhysicalStoreShapeSchema,
   }).strict(),
   commits: z.object({
     superblockPublications: z.number().int().nonnegative(),
@@ -524,8 +548,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(26),
-  benchmarkImplementationVersion: z.literal(36),
+  schemaVersion: z.literal(27),
+  benchmarkImplementationVersion: z.literal(38),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -557,6 +581,8 @@ export const hizoFSBenchmarkReportSchema = z.object({
     backingStoreHandleLookupOperationScope: z.literal('get_directory_handle_and_get_file_handle_calls'),
     backingStoreHandleCreateRequestScope: z.literal('handle_lookup_calls_with_create_true'),
     backingStorePathAttributionScope: z.literal('canonical_container_path_kind'),
+    backingStoreListEntryMaterializationScope: z.literal('entries_values_and_keys_yields'),
+    physicalStoreShapeScope: z.literal('tracked_immutable_segment_files_and_distinct_shards'),
     hizoFSRuntimePolicy: z.object({
       fileChunkSizeBytes: z.number().int().positive(),
       maxDirtyFileBytesPerWriter: z.number().int().positive(),
@@ -616,11 +642,12 @@ export const hizoFSBenchmarkStudyKindSchema = z.union([
   z.literal('lifecycle_matrix'),
   z.literal('bulk_transaction'),
   z.literal('garbage_collection_policy'),
+  z.literal('diagnostics_overhead'),
 ]);
 
 export const hizoFSBenchmarkStudyReportSchema = z.object({
   schemaVersion: z.literal(1),
-  studyImplementationVersion: z.literal(8),
+  studyImplementationVersion: z.literal(9),
   reportType: z.literal('hizofs_benchmark_study'),
   studyId: z.string(),
   studyKind: hizoFSBenchmarkStudyKindSchema,
@@ -643,6 +670,9 @@ export const hizoFSBenchmarkStudyReportSchema = z.object({
 export type HizoFSBenchmarkBackendMode = z.infer<typeof hizoFSBenchmarkBackendModeSchema>;
 export type HizoFSBenchmarkPreset = z.infer<typeof hizoFSBenchmarkPresetSchema>;
 export type HizoFSBenchmarkStoreLifecycle = z.infer<typeof hizoFSBenchmarkStoreLifecycleSchema>;
+export type HizoFSBenchmarkBackingStoreDiagnosticsMode = z.infer<
+  typeof hizoFSBenchmarkBackingStoreDiagnosticsModeSchema
+>;
 export type HizoFSBenchmarkWorkload = z.infer<typeof hizoFSBenchmarkWorkloadSchema>;
 export type HizoFSBenchmarkStudyKind = z.infer<typeof hizoFSBenchmarkStudyKindSchema>;
 export type HizoFSBenchmarkConfiguration = z.infer<typeof hizoFSBenchmarkConfigurationSchema>;

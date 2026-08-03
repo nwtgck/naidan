@@ -87,6 +87,7 @@ const estimatedWrittenBytes = computed(() => {
   case 'lifecycle_matrix':
   case 'bulk_transaction':
   case 'garbage_collection_policy':
+  case 'diagnostics_overhead':
     return createHizoFSBenchmarkStudyPlan({
       studyKind: runMode.value,
       baseConfiguration: parsed.data,
@@ -258,6 +259,7 @@ async function runBenchmark(): Promise<void> {
     case 'lifecycle_matrix':
     case 'bulk_transaction':
     case 'garbage_collection_policy':
+    case 'diagnostics_overhead':
       studyKind = currentRunMode;
       break;
     default: {
@@ -442,6 +444,7 @@ async function copyHumanSummary(): Promise<void> {
     `Run ID: ${currentReport.runId}`,
     `Backends: ${currentReport.configuration.backendMode}`,
     `Store lifecycle: ${currentReport.configuration.storeLifecycle}`,
+    `Backing diagnostics: ${currentReport.configuration.backingStoreDiagnosticsMode}`,
     '',
     '| Case | Raw OPFS | HizoFS | HizoFS / Raw |',
     '|---|---:|---:|---:|',
@@ -507,6 +510,7 @@ function summarizeStudyConfiguration({
   return [
     value.backendMode,
     value.storeLifecycle,
+    `diag=${value.backingStoreDiagnosticsMode}`,
     value.workloads.join('+'),
     `chunk=${formatBytes({ value: policy.fileChunkSize })}`,
     `write=${String(policy.fileChunkWriteConcurrency)}`,
@@ -653,6 +657,7 @@ onBeforeUnmount(() => {
             <option value="lifecycle_matrix">Store lifecycle matrix</option>
             <option value="bulk_transaction">Bulk transaction comparison</option>
             <option value="garbage_collection_policy">Garbage-collection policy</option>
+            <option value="diagnostics_overhead">Backing diagnostics overhead</option>
           </select>
           <p tw-class="mt-2 text-[10px] text-gray-500">Studies derive isolated configurations from the current values, run them sequentially, stop after cancellation or failure, and export one combined JSON report.</p>
         </section>
@@ -677,6 +682,7 @@ onBeforeUnmount(() => {
             <label tw-class="text-xs">Warm-up iterations<select v-model.number="configuration.warmupIterations" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="0">0</option><option :value="1">1</option><option :value="2">2</option></select></label>
             <label tw-class="text-xs">Measured iterations<select v-model.number="configuration.measuredIterations" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="1">1</option><option :value="3">3</option><option :value="5">5</option><option :value="10">10</option></select></label>
             <label tw-class="text-xs">Store lifecycle<select v-model="configuration.storeLifecycle" data-testid="hizofs-benchmark-store-lifecycle" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option value="reuse_without_gc">Reuse without GC</option><option value="fresh_per_iteration">Fresh store per iteration</option><option value="reuse_with_gc_between_iterations">Reuse with GC between iterations</option><option value="reopen_between_iterations">Reopen between iterations</option></select></label>
+            <label tw-class="text-xs">Backing diagnostics<select v-model="configuration.backingStoreDiagnosticsMode" data-testid="hizofs-benchmark-backing-diagnostics-mode" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option value="basic">Basic totals</option><option value="detailed">Detailed path attribution</option></select></label>
             <label tw-class="text-xs">Chunk write concurrency<select v-model.number="configuration.hizoFSRuntimePolicy.fileChunkWriteConcurrency" data-testid="hizofs-benchmark-write-concurrency" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="1">1</option><option :value="2">2</option><option :value="4">4</option><option :value="8">8</option><option :value="16">16</option></select></label>
             <label tw-class="text-xs">Sequential read prefetch<select v-model.number="configuration.hizoFSRuntimePolicy.fileChunkReadPrefetchConcurrency" data-testid="hizofs-benchmark-read-prefetch" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="1">Off / 1</option><option :value="2">2</option><option :value="4">4</option><option :value="8">8</option><option :value="16">16</option></select></label>
             <label tw-class="text-xs">Backing file handles<select v-model.number="configuration.hizoFSRuntimePolicy.backingFileHandleCacheEntryLimit" data-testid="hizofs-benchmark-backing-file-handle-cache" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 dark:border-gray-600 dark:bg-gray-950" :disabled="running" @change="markCustom"><option :value="0">Disabled</option><option :value="1024">1,024</option><option :value="4096">4,096</option><option :value="16384">16,384</option></select></label>
@@ -705,11 +711,12 @@ onBeforeUnmount(() => {
         </section>
 
         <section tw-class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-          <div tw-class="grid gap-2 text-xs sm:grid-cols-5">
+          <div tw-class="grid gap-2 text-xs sm:grid-cols-6">
             <div><span tw-class="text-gray-500">Run mode:</span> {{ runMode }}</div>
             <div><span tw-class="text-gray-500">Backends:</span> {{ configuration.backendMode }}</div>
             <div><span tw-class="text-gray-500">Workloads:</span> {{ selectedWorkloadLabels }}</div>
             <div><span tw-class="text-gray-500">Lifecycle:</span> {{ configuration.storeLifecycle }}</div>
+            <div><span tw-class="text-gray-500">Diagnostics:</span> {{ configuration.backingStoreDiagnosticsMode }}</div>
             <div><span tw-class="text-gray-500">Estimated logical writes:</span> {{ formatBytes({ value: estimatedWrittenBytes }) }}</div>
           </div>
           <div tw-class="mt-4 flex flex-wrap items-center gap-2">

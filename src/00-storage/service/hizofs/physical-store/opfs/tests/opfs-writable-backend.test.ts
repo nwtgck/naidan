@@ -285,6 +285,68 @@ describe("OPFS writable backend", () => {
     expect(nativeParent.entriesReadCount).toBe(1);
   });
 
+  it("reduces a 500-file shard confirmation from 500 snapshots to one", async () => {
+    const { backend, root } = createBackend();
+    const parent = canonicalContainerDirectory({ value: "segments" });
+    await backend.createDirectoryExclusive({ path: parent });
+    const paths = Array.from({ length: 500 }, (_, index) => canonicalContainerPath({
+      value: `segments/${String(index).padStart(4, "0")}.enc`,
+    }));
+    for (const path of paths) {
+      const file = await backend.createFileExclusive({ path });
+      await backend.closeFile({ file });
+    }
+    const nativeParent = await root.getDirectoryHandle("segments");
+    const nativeFiles = await Promise.all(paths.map(async path => await nativeParent.getFileHandle(path.split("/").at(-1)!)));
+    const snapshotsBeforeList = nativeFiles.reduce((total, file) => total + file.getFileCount, 0);
+
+    await backend.syncDirectoryEntries({ parent });
+
+    const snapshotsAfterList = nativeFiles.reduce((total, file) => total + file.getFileCount, 0);
+    expect(snapshotsAfterList - snapshotsBeforeList).toBe(500);
+    const entriesReadAfterList = nativeParent.entriesReadCount;
+    const snapshotsBeforeExact = snapshotsAfterList;
+
+    await backend.syncFileDirectoryEntry({ path: paths[250]! });
+
+    const snapshotsAfterExact = nativeFiles.reduce((total, file) => total + file.getFileCount, 0);
+    expect(snapshotsAfterExact - snapshotsBeforeExact).toBe(1);
+    expect(nativeParent.entriesReadCount).toBe(entriesReadAfterList);
+  });
+
+  it("confirms one created file entry without enumerating sibling files", async () => {
+    const { backend, root } = createBackend();
+    const parent = canonicalContainerDirectory({ value: "segments" });
+    const targetPath = canonicalContainerPath({ value: "segments/target.enc" });
+    const siblingPath = canonicalContainerPath({ value: "segments/sibling.enc" });
+    await backend.createDirectoryExclusive({ path: parent });
+    const target = await backend.createFileExclusive({ path: targetPath });
+    const sibling = await backend.createFileExclusive({ path: siblingPath });
+    await backend.closeFile({ file: target });
+    await backend.closeFile({ file: sibling });
+
+    const nativeParent = await root.getDirectoryHandle("segments");
+    const nativeTarget = await nativeParent.getFileHandle("target.enc");
+    const nativeSibling = await nativeParent.getFileHandle("sibling.enc");
+    const targetSnapshotsBefore = nativeTarget.getFileCount;
+    const siblingSnapshotsBefore = nativeSibling.getFileCount;
+
+    await backend.syncFileDirectoryEntry({ path: targetPath });
+
+    expect(nativeParent.entriesReadCount).toBe(0);
+    expect(nativeTarget.getFileCount).toBe(targetSnapshotsBefore + 1);
+    expect(nativeSibling.getFileCount).toBe(siblingSnapshotsBefore);
+    await expect(backend.syncFileDirectoryEntry({
+      path: canonicalContainerPath({ value: "segments/missing.enc" }),
+    })).rejects.toMatchObject({ code: "not_found" });
+    await backend.createDirectoryExclusive({
+      path: canonicalContainerDirectory({ value: "segments/directory" }),
+    });
+    await expect(backend.syncFileDirectoryEntry({
+      path: canonicalContainerPath({ value: "segments/directory" }),
+    })).rejects.toMatchObject({ code: "is_directory" });
+  });
+
   it("traverses OPFS directories through bounded stateful pages", async () => {
     const { backend } = createBackend();
     const directory = canonicalContainerDirectory({ value: "segments" });

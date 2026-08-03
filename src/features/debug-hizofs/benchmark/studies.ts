@@ -42,6 +42,8 @@ export function createHizoFSBenchmarkStudyPlan({
     return createBulkTransactionStudy({ baseConfiguration });
   case 'garbage_collection_policy':
     return createGarbageCollectionPolicyStudy({ baseConfiguration });
+  case 'diagnostics_overhead':
+    return createDiagnosticsOverheadStudy({ baseConfiguration });
   default: {
     const _ex: never = studyKind;
     throw new Error(`Unhandled HizoFS benchmark study: ${String(_ex)}`);
@@ -84,7 +86,7 @@ export function createHizoFSBenchmarkStudyReport({
   });
   return hizoFSBenchmarkStudyReportSchema.parse({
     schemaVersion: 1,
-    studyImplementationVersion: 8,
+    studyImplementationVersion: 9,
     reportType: 'hizofs_benchmark_study',
     studyId,
     studyKind,
@@ -330,6 +332,38 @@ function createLifecycleMatrix({
     configuration: {
       ...studyBase,
       storeLifecycle,
+    },
+  }));
+}
+
+function createDiagnosticsOverheadStudy({
+  baseConfiguration,
+}: {
+  baseConfiguration: HizoFSBenchmarkConfiguration;
+}): readonly HizoFSBenchmarkStudyVariant[] {
+  const selectedNormalWorkloads = baseConfiguration.workloads.filter(
+    workload => NORMAL_LIFECYCLE_WORKLOADS.includes(workload),
+  );
+  const studyBase = createStudyBaseConfiguration({
+    baseConfiguration,
+    backendMode: 'hizofs_only',
+    workloads: selectedNormalWorkloads.length === 0
+      ? [...NORMAL_LIFECYCLE_WORKLOADS]
+      : selectedNormalWorkloads,
+    warmupIterations: Math.min(baseConfiguration.warmupIterations, 1),
+    measuredIterations: Math.min(baseConfiguration.measuredIterations, 3),
+    storeLifecycle: 'fresh_per_iteration',
+  });
+  return ([
+    { mode: 'basic' as const, label: 'Basic backing-store counters' },
+    { mode: 'detailed' as const, label: 'Detailed backing-store attribution' },
+  ]).map(({ mode, label }) => createVariant({
+    studyKind: 'diagnostics_overhead',
+    variantId: mode,
+    label,
+    configuration: {
+      ...studyBase,
+      backingStoreDiagnosticsMode: mode,
     },
   }));
 }

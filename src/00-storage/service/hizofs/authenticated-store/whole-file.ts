@@ -1,10 +1,10 @@
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import { PhysicalStoreError, physicalStoreError } from "@/00-storage/service/hizofs/physical-store/errors";
 import type { CanonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
-import { parentContainerDirectory } from "@/00-storage/service/hizofs/physical-store/paths";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 
 import { runAndCloseAuthenticatedFile } from "./file-operation";
+import { syncCreatedFileEntry } from "./sync-created-file-entry";
 
 async function persistClaimedAuthenticatedWholeFile({ backend, bytes, file, path }: {
   backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
@@ -22,7 +22,7 @@ async function persistClaimedAuthenticatedWholeFile({ backend, bytes, file, path
     },
     operationLabel: "authenticated whole-file operation",
   });
-  await backend.syncDirectoryEntries({ parent: parentContainerDirectory({ path }) });
+  await syncCreatedFileEntry({ backend, path });
 }
 
 export async function tryCreateAuthenticatedWholeFile({ backend, bytes, path }: {
@@ -74,7 +74,7 @@ export async function overwriteAuthenticatedWholeFile({ backend, bytes, path }: 
     },
     operationLabel: "authenticated whole-file overwrite",
   });
-  if (!existed) await backend.syncDirectoryEntries({ parent: parentContainerDirectory({ path }) });
+  if (!existed) await syncCreatedFileEntry({ backend, path });
 }
 
 export async function readAuthenticatedWholeFile({ backend, maximumByteLength, path }: {

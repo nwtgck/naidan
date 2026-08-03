@@ -161,6 +161,7 @@ function createConfiguration({
     warmupIterations,
     measuredIterations,
     storeLifecycle: 'reuse_without_gc',
+    backingStoreDiagnosticsMode: 'detailed',
     workloads: [...workloads],
     smallFiles: {
       count: smallFileCount,

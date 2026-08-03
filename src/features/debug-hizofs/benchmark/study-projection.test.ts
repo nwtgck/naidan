@@ -24,8 +24,8 @@ function createReport({
   status: HizoFSBenchmarkReport['status'];
 }): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 26,
-    benchmarkImplementationVersion: 36,
+    schemaVersion: 27,
+    benchmarkImplementationVersion: 38,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: `run-${status}`,
@@ -53,6 +53,8 @@ function createReport({
       backingStoreHandleLookupOperationScope: 'get_directory_handle_and_get_file_handle_calls',
       backingStoreHandleCreateRequestScope: 'handle_lookup_calls_with_create_true',
       backingStorePathAttributionScope: 'canonical_container_path_kind',
+      backingStoreListEntryMaterializationScope: 'entries_values_and_keys_yields',
+      physicalStoreShapeScope: 'tracked_immutable_segment_files_and_distinct_shards',
       hizoFSRuntimePolicy: {
         fileChunkSizeBytes: configuration.hizoFSRuntimePolicy.fileChunkSize,
         maxDirtyFileBytesPerWriter: 16 * 1024 * 1024,
@@ -227,6 +229,21 @@ describe('HizoFS benchmark studies', () => {
     expect(variants.every(variant => (
       variant.configuration.backendMode === 'hizofs_only'
       && variant.configuration.measuredIterations >= 2
+      && variant.configuration.measuredIterations <= 3
+    ))).toBe(true);
+  });
+
+  it('compares basic and detailed backing diagnostics on fresh stores', () => {
+    const variants = createHizoFSBenchmarkStudyPlan({
+      studyKind: 'diagnostics_overhead',
+      baseConfiguration: createConfiguration(),
+    });
+
+    expect(variants.map(variant => variant.configuration.backingStoreDiagnosticsMode))
+      .toEqual(['basic', 'detailed']);
+    expect(variants.every(variant => (
+      variant.configuration.backendMode === 'hizofs_only'
+      && variant.configuration.storeLifecycle === 'fresh_per_iteration'
       && variant.configuration.measuredIterations <= 3
     ))).toBe(true);
   });

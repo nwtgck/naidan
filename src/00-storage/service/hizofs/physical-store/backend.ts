@@ -153,6 +153,11 @@ extends HizoFSReadableBackend {
   truncate({ file, length }: { file: HizoFSWritableFile; length: bigint }): Promise<void>;
   syncFileData({ file }: { file: HizoFSWritableFile }): Promise<void>;
   closeFile({ file }: { file: HizoFSWritableFile }): Promise<void>;
+  /**
+   * Optional exact created-file entry confirmation. Backends without an
+   * exact primitive retain the canonical parent-directory confirmation.
+   */
+  syncFileDirectoryEntry?({ path }: { path: CanonicalContainerPath }): Promise<void>;
   syncDirectoryEntries({ parent }: { parent: CanonicalContainerDirectory }): Promise<void>;
   removeFile({ path }: { path: CanonicalContainerPath }): Promise<void>;
 }
