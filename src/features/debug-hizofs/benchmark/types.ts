@@ -482,7 +482,7 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 
 export const hizoFSBenchmarkReportSchema = z.object({
   schemaVersion: z.literal(23),
-  benchmarkImplementationVersion: z.literal(29),
+  benchmarkImplementationVersion: z.literal(30),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),

@@ -77,6 +77,7 @@ import {
   createAuthenticatedReadOnlyNamespace,
   createAuthenticatedReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/authenticated-read-only-namespace";
+import { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 import {
   StreamingNamespaceImport,
   type SealedStreamingNamespaceImport,
@@ -1513,12 +1514,13 @@ function sameCommitPayload({ left, right }: {
   });
 }
 
-function writableGeneration({ backend, commit, fileSystemId, indexDiagnostics, metadataRecordCache, recordDiagnostics, rootKey, superblock }: {
+function writableGeneration({ backend, commit, fileSystemId, indexDiagnostics, metadataRecordCache, namespaceValidationCache, recordDiagnostics, rootKey, superblock }: {
   backend: HizoFSReadableBackend;
   commit: FileSystemCommitPayload;
   fileSystemId: OpenedEmptyEncryptedContainer["fileSystemId"];
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   metadataRecordCache: AuthenticatedMetadataRecordCache;
+  namespaceValidationCache: ReadOnlyNamespaceValidationCache;
   recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
   rootKey: OpenedEmptyEncryptedContainer["rootKey"];
   superblock: OpenedSuperblockCopies;
@@ -1542,6 +1544,7 @@ function writableGeneration({ backend, commit, fileSystemId, indexDiagnostics, m
         relocationIndexRootPhysicalRef: superblock.logicalState.relocationIndexRootPhysicalRef,
         rootKey,
       }),
+      validationCache: namespaceValidationCache,
     }),
     superblock,
   };
@@ -1665,6 +1668,28 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     diagnostics: recordDiagnostics,
     policy: metadataRecordCachePolicy ?? APPLICATION_METADATA_RECORD_CACHE_POLICY,
   });
+  const namespaceValidationCache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 256 });
+  const inheritValidatedInodeTableSuccessor = ({ base, successor }: {
+    base: FileSystemCommitPayload;
+    successor: FileSystemCommitPayload;
+  }): void => {
+    namespaceValidationCache.inheritValidatedSuccessor({
+      baseReference: base.rootInodeTableRootHomeRef,
+      kind: "inode_table",
+      successorReference: successor.rootInodeTableRootHomeRef,
+    });
+  };
+  const inheritValidatedDirectoryTreeSuccessor = ({ base, successor }: {
+    base: DirectoryInodeEntry;
+    successor: DirectoryInodeEntry;
+  }): void => {
+    if (base.content.type !== "tree" || successor.content.type !== "tree") return;
+    namespaceValidationCache.inheritValidatedSuccessor({
+      baseReference: base.content.directoryTreeRootHomeRef,
+      kind: "directory_tree",
+      successorReference: successor.content.directoryTreeRootHomeRef,
+    });
+  };
   const createGeneration = ({ commit, superblock }: {
     commit: FileSystemCommitPayload;
     superblock: OpenedSuperblockCopies;
@@ -1674,6 +1699,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     fileSystemId: opened.fileSystemId,
     indexDiagnostics,
     metadataRecordCache,
+    namespaceValidationCache,
     recordDiagnostics,
     rootKey: opened.rootKey,
     superblock,
@@ -1804,6 +1830,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         mutationPoison = mismatch;
         throw mismatch;
       }
+      inheritValidatedInodeTableSuccessor({ base: base.commit, successor: reopened.commit });
       generation = createGeneration({
         commit: reopened.commit,
         superblock: resolution.superblock,
@@ -1967,6 +1994,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           applicationAuthority.markNoChangeResolved();
           return;
         }
+        inheritValidatedInodeTableSuccessor({ base: base.commit, successor: result.commitPayload });
         const nextGeneration = createGeneration({
           commit: result.commitPayload,
           superblock: result.publication.superblock,
@@ -2066,7 +2094,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         name: newName,
       });
       const knownInodeNumbers = await base.resolver.knownInodeNumbers();
-      return await publishAuthenticatedWholeFileReflink({
+      const published = await publishAuthenticatedWholeFileReflink({
         assertPublicationAllowed: authority.assertPublicationAllowed,
         authority: metadataAuthority,
         indexDiagnostics,
@@ -2091,6 +2119,11 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           replace,
         },
       });
+      inheritValidatedDirectoryTreeSuccessor({
+        base: destinationParent,
+        successor: published.mutation.updatedDestinationParent,
+      });
+      return published;
     },
   });
 
@@ -2128,6 +2161,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             parentSubvolumeId: rootSubvolumeId,
           },
         });
+        inheritValidatedDirectoryTreeSuccessor({ base: parent, successor: published.updatedParent });
         switch (request.type) {
         case "directory": {
           const inode = published.plan.inode;
@@ -2213,7 +2247,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         },
       });
       if (plan === null) return null;
-      return await publishAuthenticatedOrdinaryEntryMove({
+      const published = await publishAuthenticatedOrdinaryEntryMove({
         assertPublicationAllowed: authority.assertPublicationAllowed,
         authority: metadataAuthority,
         indexDiagnostics,
@@ -2225,6 +2259,17 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         plan,
         sourceParent,
       });
+      inheritValidatedDirectoryTreeSuccessor({
+        base: sourceParent,
+        successor: published.mutation.updatedSourceParent,
+      });
+      if (destinationParent.inodeNumber !== sourceParent.inodeNumber) {
+        inheritValidatedDirectoryTreeSuccessor({
+          base: destinationParent,
+          successor: published.mutation.updatedDestinationParent,
+        });
+      }
+      return published;
     },
   });
 
@@ -2253,7 +2298,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         recursive,
         sourceEntry: sourceEntry ?? null,
       });
-      return await publishAuthenticatedOrdinaryEntryRemoval({
+      const published = await publishAuthenticatedOrdinaryEntryRemoval({
         assertPublicationAllowed: authority.assertPublicationAllowed,
         authority: metadataAuthority,
         indexDiagnostics,
@@ -2264,6 +2309,8 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         parent,
         plan,
       });
+      inheritValidatedDirectoryTreeSuccessor({ base: parent, successor: published.mutation.updatedParent });
+      return published;
     },
   });
 
@@ -2575,6 +2622,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             commitPayload,
             publicationPort: fileAuthority,
           });
+          inheritValidatedInodeTableSuccessor({ base: base.commit, successor: commitPayload });
           generation = createGeneration({
             commit: commitPayload,
             superblock: publication.superblock,
@@ -2768,6 +2816,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       if (released) return;
       released = true;
       metadataRecordCache.dispose();
+      namespaceValidationCache.clear();
       opened.rootKey.destroy();
     },
     workerMountGrantIssuer: async ({ accessMode, path }) => await issueHizoFSWorkerMountGrant({

@@ -22,6 +22,7 @@ import {
   type ReadOnlyNamespacePageSource,
   type ReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
+import type { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 import {
   ImmutableBTreeReader,
   type ImmutableBTreePage,
@@ -64,10 +65,12 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
   commit,
   indexDiagnostics,
   recordSource,
+  validationCache,
 }: {
   commit: FileSystemCommitPayload;
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   recordSource: AuthenticatedNamespaceRecordSource;
+  validationCache?: ReadOnlyNamespaceValidationCache;
 }): ReadOnlyNamespaceResolver {
   const readPlaintext = async ({ expectedRecordKind, reference }: {
     expectedRecordKind: number;
@@ -190,6 +193,7 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
     inodeTableRootHomeRef: commit.rootInodeTableRootHomeRef,
     rootDirectoryInodeNumber: commit.rootDirectoryInodeNumber,
     source,
+    validationCache,
   });
 }
 

@@ -31,6 +31,7 @@ import { prepareTreeBackedDirectoryCreateMutation } from "@/00-storage/service/h
 export type PreparedOrdinaryEntryCreateCommit = Readonly<{
   commitPayload: FileSystemCommitPayload;
   plan: OrdinaryEntryCreatePlan;
+  updatedParent: DirectoryInodeEntry;
 }>;
 
 type PreparedOrdinaryEntryCreateMutation = Readonly<{
@@ -108,6 +109,7 @@ export async function prepareOrdinaryEntryCreateCommit({
       nextInodeNumber: plan.nextInodeNumber,
     } }),
     plan,
+    updatedParent: mutation.updatedParent,
   };
   default: return prepared satisfies never;
   }

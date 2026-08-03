@@ -21,6 +21,7 @@ import {
   type ImmutableBTreePage,
 } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
 import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
+import { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 
 export type ReadOnlyNamespaceErrorCode =
   | "corrupt_namespace"
@@ -207,10 +208,11 @@ function assertNonnegativeRange({ fileSize, length, offset }: {
   if (offset > fileSize || length > fileSize - offset) throw new RangeError("file read range exceeds file size");
 }
 
-export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDirectoryInodeNumber, source }: {
+export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDirectoryInodeNumber, source, validationCache }: {
   inodeTableRootHomeRef: HomeRecordReference;
   rootDirectoryInodeNumber: InodeNumber;
   source: ReadOnlyNamespacePageSource;
+  validationCache?: ReadOnlyNamespaceValidationCache;
 }): ReadOnlyNamespaceResolver {
   const inodeReader = new ImmutableBTreeReader<InodeNumber, InodeLeafEntry, HomeRecordReference>({
     compareKeys: ({ left, right }) => left < right ? -1 : left > right ? 1 : 0,
@@ -232,36 +234,24 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
     referenceIdentity,
   });
 
-  let inodeTableValidation: Promise<void> | undefined;
-  const directoryTreeValidations = new Map<string, Promise<void>>();
+  const validations = validationCache ?? new ReadOnlyNamespaceValidationCache({ maximumEntries: 1_024 });
 
   const validateInodeTable = async (): Promise<void> => {
-    const existing = inodeTableValidation;
-    if (existing !== undefined) return await existing;
-    const pending = inodeReader.validateStructure({ rootReference: inodeTableRootHomeRef }).then(() => undefined);
-    inodeTableValidation = pending;
-    try {
-      await pending;
-    } catch (cause: unknown) {
-      if (inodeTableValidation === pending) inodeTableValidation = undefined;
-      throw cause;
-    }
+    await validations.validate({
+      kind: "inode_table",
+      reference: inodeTableRootHomeRef,
+      validate: async () => await inodeReader.validateStructure({ rootReference: inodeTableRootHomeRef }).then(() => undefined),
+    });
   };
 
   const validateDirectoryTree = async ({ rootReference }: {
     rootReference: HomeRecordReference;
   }): Promise<void> => {
-    const identity = referenceIdentity({ reference: rootReference });
-    const existing = directoryTreeValidations.get(identity);
-    if (existing !== undefined) return await existing;
-    const pending = directoryReader.validateStructure({ rootReference }).then(() => undefined);
-    directoryTreeValidations.set(identity, pending);
-    try {
-      await pending;
-    } catch (cause: unknown) {
-      if (directoryTreeValidations.get(identity) === pending) directoryTreeValidations.delete(identity);
-      throw cause;
-    }
+    await validations.validate({
+      kind: "directory_tree",
+      reference: rootReference,
+      validate: async () => await directoryReader.validateStructure({ rootReference }).then(() => undefined),
+    });
   };
 
   const getInode = async ({ inodeNumber }: { inodeNumber: InodeNumber }): Promise<InodeLeafEntry> => {

@@ -363,8 +363,10 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(runtimeDiagnostics.indexes.update.pageReads).toBeGreaterThan(0);
     expect(runtimeDiagnostics.indexes.get.operations).toBeGreaterThan(0);
     expect(runtimeDiagnostics.indexes.get.pageReads).toBeGreaterThan(0);
-    expect(runtimeDiagnostics.indexes.validate_structure.operations).toBeGreaterThan(0);
-    expect(runtimeDiagnostics.indexes.validate_structure.pageReads).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.indexes.validate_structure).toMatchObject({
+      operations: 0,
+      pageReads: 0,
+    });
     expect(runtimeDiagnostics.segmentWriters.metadata).toMatchObject({
       appendOperations: 2,
       appendReadBackVerifications: 2,
@@ -390,6 +392,46 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(Object.values(runtimeDiagnostics.records).reduce((sum, counter) => sum + counter.cacheMisses, 0))
       .toBe(runtimeDiagnostics.caches.metadata.misses + runtimeDiagnostics.caches.mutationMetadata.misses);
   });
+
+  it('reuses validated namespace successor proofs after Directory tree promotion', async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
+    const configuration: HizoFSBenchmarkConfiguration = {
+      ...createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),
+      backendMode: 'hizofs_only' as const,
+      warmupIterations: 0,
+      measuredIterations: 1,
+      workloads: ['small_files'],
+      smallFiles: { count: 160, sizeBytes: 16 },
+    };
+
+    const report = await runHizoFSBenchmark({
+      configuration,
+      onProgress: () => undefined,
+      assertActive: () => undefined,
+      nativeOpfsRoot: root as unknown as FileSystemDirectoryHandle,
+      runtimePort: createProductionHizoFSBenchmarkRuntimePort(),
+    });
+
+    expect(report.status).toBe('completed');
+    expect(report.failure).toBeUndefined();
+    const measuredRuntime = (caseId: string) => {
+      const runtime = report.results.find(result => result.caseId === caseId)
+        ?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime;
+      expect(runtime?.type).toBe('measured');
+      if (runtime?.type !== 'measured') throw new Error(`${caseId} diagnostics are unavailable`);
+      return runtime;
+    };
+    expect(measuredRuntime('small_files_create_empty').indexes.validate_structure).toMatchObject({
+      operations: 1,
+      pageReads: 1,
+    });
+    for (const caseId of ['small_files_write_existing', 'small_files_read']) {
+      expect(measuredRuntime(caseId).indexes.validate_structure).toMatchObject({
+        operations: 0,
+        pageReads: 0,
+      });
+    }
+  }, 30_000);
 
   it('runs the explicit bulk benchmark as one measured publication', async () => {
     const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
@@ -463,6 +505,16 @@ describe('production HizoFS benchmark runtime port', () => {
       'directory_recursive_delete',
     ]);
     expect(report.results.every(result => result.backends.hizofs?.sampleCount === 1)).toBe(true);
+    const smallFileWriteRuntime = report.results.find(result => result.caseId === 'small_files_write_existing')
+      ?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime;
+    expect(smallFileWriteRuntime?.type).toBe('measured');
+    if (smallFileWriteRuntime?.type !== 'measured') {
+      throw new Error('small-file write structural diagnostics are unavailable');
+    }
+    expect(smallFileWriteRuntime.indexes.validate_structure).toMatchObject({
+      operations: 0,
+      pageReads: 0,
+    });
     const randomWriteSample = report.results.find(result => result.caseId === 'random_write')
       ?.backends.hizofs?.samples[0];
     const randomWriteRuntime = randomWriteSample?.hizoFSDiagnostics?.runtime;
