@@ -56,6 +56,7 @@ function inode(entry: InodeFixtureEntry): InodeLeafEntry {
 function fixture(): Readonly<{
   inodePages: Map<HomeRecordReference, Readonly<{ entries: readonly InodeLeafEntry[]; level: 0; type: "leaf" }> | InodeBranchPage>;
   namespace: ReturnType<typeof createReadOnlyNamespace>;
+  pointReads: ReturnType<typeof vi.fn>;
   readExtentFile: ReturnType<typeof vi.fn>;
   resolver: ReturnType<typeof createReadOnlyNamespaceResolver>;
 }> {
@@ -108,6 +109,20 @@ function fixture(): Readonly<{
     ], level: 0, type: "leaf" }],
   ]);
   const readExtentFile = vi.fn(async () => new Uint8Array([7, 8, 9]));
+  const pointReads = vi.fn(async ({ inodeNumber, reference: value }: {
+    inodeNumber: bigint;
+    reference: HomeRecordReference;
+  }) => {
+    const page = inodePages.get(value);
+    if (page === undefined) throw new Error("missing inode point page");
+    if ("type" in page) {
+      return {
+        entry: page.entries.find(entry => entry.inodeNumber === inodeNumber),
+        type: "leaf" as const,
+      };
+    }
+    return { page, type: "branch" as const };
+  });
   const source: ReadOnlyNamespacePageSource = {
     readDirectoryPage: async ({ reference: value }) => {
       const page = directoryPages.get(value);
@@ -115,6 +130,7 @@ function fixture(): Readonly<{
       return page;
     },
     readExtentFile,
+    readInodePointPage: pointReads,
     readInodePage: async ({ reference: value }) => {
       const page = inodePages.get(value);
       if (page === undefined) throw new Error("missing inode page");
@@ -128,6 +144,7 @@ function fixture(): Readonly<{
       rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
       source,
     }),
+    pointReads,
     readExtentFile,
     resolver: createReadOnlyNamespaceResolver({
       inodeTableRootHomeRef: inodeRoot,
@@ -139,11 +156,14 @@ function fixture(): Readonly<{
 
 describe("read-only HizoFS namespace", () => {
   it("looks up inline and tree directories through the immutable B-tree reader", async () => {
-    const { namespace } = fixture();
+    const { namespace, pointReads } = fixture();
     expect((await namespace.stat({ pathComponents: [] })).kind).toBe("directory");
     expect((await namespace.stat({ pathComponents: ["inline.txt"] })).kind).toBe("file");
     expect((await namespace.stat({ pathComponents: ["tree", "huge.bin"] })).kind).toBe("file");
     await expect(namespace.stat({ pathComponents: ["missing"] })).rejects.toMatchObject({ code: "not_found" });
+    expect(pointReads).toHaveBeenCalledWith(expect.objectContaining({ isRoot: true, reference: inodeRoot }));
+    expect(pointReads).toHaveBeenCalledWith(expect.objectContaining({ isRoot: false, reference: inodeLeafA }));
+    expect(pointReads).toHaveBeenCalledWith(expect.objectContaining({ isRoot: false, reference: inodeLeafB }));
   });
 
   it("exposes validated raw namespace capabilities for mutation planning without duplicating traversal", async () => {

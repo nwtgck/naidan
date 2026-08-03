@@ -359,7 +359,7 @@ function createMutableRuntimeDiagnostics(): MutableRuntimeDiagnostics {
 
 function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnapshot {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     type: "measured",
     phases: Object.fromEntries(HIZOFS_BENCHMARK_RUNTIME_PHASES.map(key => [
       key,
@@ -403,6 +403,18 @@ function createEmptyRuntimeDiagnosticsSnapshot(): MutableRuntimeDiagnosticsSnaps
       operation,
       createEmptyIndexDiagnostics(),
     ])) as MutableRuntimeDiagnosticsSnapshot["indexes"],
+    inodeLeafLookup: {
+      branchPageDecodes: 0,
+      branchPageBytesDecoded: 0,
+      decodedEntryBytes: 0,
+      indexBuilds: 0,
+      indexBytesCreated: 0,
+      indexedEntries: 0,
+      indexedPageBytes: 0,
+      selectiveEntryHits: 0,
+      selectiveEntryMisses: 0,
+      skippedPageBytes: 0,
+    },
     mutation: {
       abandoned: 0,
       completed: 0,

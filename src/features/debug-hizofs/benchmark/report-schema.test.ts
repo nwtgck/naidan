@@ -61,7 +61,7 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
     trustedTailMismatches: 0,
   });
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     type: 'measured',
     phases: Object.fromEntries(HIZOFS_BENCHMARK_RUNTIME_PHASES.map(name => [name, phase()])) as HizoFSBenchmarkDiagnostics['runtime'] extends { readonly type: 'measured'; readonly phases: infer T } ? T : never,
     records: {
@@ -84,6 +84,18 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
       pageWrites: 0, rootCollapses: 0, splitOperations: 0,
       splitOutputPages: 0, unchangedPageReuses: 0,
     }])) as Extract<HizoFSBenchmarkDiagnostics['runtime'], { readonly type: 'measured' }>['indexes'],
+    inodeLeafLookup: {
+      branchPageDecodes: 0,
+      branchPageBytesDecoded: 0,
+      decodedEntryBytes: 0,
+      indexBuilds: 0,
+      indexBytesCreated: 0,
+      indexedEntries: 0,
+      indexedPageBytes: 0,
+      selectiveEntryHits: 0,
+      selectiveEntryMisses: 0,
+      skippedPageBytes: 0,
+    },
     mutation: {
       abandoned: 0,
       completed: 0,
@@ -112,8 +124,8 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 23,
-    benchmarkImplementationVersion: 30,
+    schemaVersion: 24,
+    benchmarkImplementationVersion: 31,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -413,7 +425,7 @@ describe('HizoFS benchmark report serialization', () => {
               : {
                 ...hizofs.hizoFSDiagnosticsTotals,
                 runtime: {
-                  schemaVersion: 7 as const,
+                  schemaVersion: 8 as const,
                   type: 'unavailable' as const,
                   reason: 'production counters are unavailable',
                 },
@@ -425,7 +437,7 @@ describe('HizoFS benchmark report serialization', () => {
                 : {
                   ...sample.hizoFSDiagnostics,
                   runtime: {
-                    schemaVersion: 7 as const,
+                    schemaVersion: 8 as const,
                     type: 'unavailable' as const,
                     reason: 'production counters are unavailable',
                   },
@@ -439,7 +451,7 @@ describe('HizoFS benchmark report serialization', () => {
     const parsed = hizoFSBenchmarkReportSchema.parse({ ...report, results });
     expect(parsed.results[0]?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime)
       .toEqual({
-        schemaVersion: 7,
+        schemaVersion: 8,
         type: 'unavailable',
         reason: 'production counters are unavailable',
       });

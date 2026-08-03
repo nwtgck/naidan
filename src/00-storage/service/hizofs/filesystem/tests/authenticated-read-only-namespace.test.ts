@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   createCommitSequence,
@@ -12,6 +12,7 @@ import {
   encodeFileDataPayload,
   encodeFileExtentPage,
   encodeHomeRecordReference,
+  encodeInodeBranchPage,
   encodeInodeLeafPage,
   parseMutationId,
   parseSegmentId,
@@ -20,7 +21,11 @@ import {
 import {
   type AuthenticatedNamespaceRecordSource,
 } from "@/00-storage/service/hizofs/authenticated-store/namespace-record-source";
-import { createAuthenticatedReadOnlyNamespace } from "@/00-storage/service/hizofs/filesystem/authenticated-read-only-namespace";
+import {
+  createAuthenticatedReadOnlyNamespace,
+  createAuthenticatedReadOnlyNamespaceResolver,
+} from "@/00-storage/service/hizofs/filesystem/authenticated-read-only-namespace";
+import { DecodedInodeLeafPageIndexCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-leaf-page-index-cache";
 
 const KINDS = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds;
 
@@ -133,6 +138,102 @@ describe("authenticated read-only HizoFS namespace", () => {
       offset: 1n,
       pathComponents: ["data.bin"],
     })).toEqual(new Uint8Array([2, 3, 4, 5, 6, 7]));
+  });
+
+
+  it("selectively decodes a non-root authenticated Inode leaf after branch routing", async () => {
+    const inodeRoot = reference({ kind: KINDS.inode_table_page, offset: 64n });
+    const inodeLeafA = reference({ kind: KINDS.inode_table_page, offset: 320n });
+    const inodeLeafB = reference({ kind: KINDS.inode_table_page, offset: 576n });
+    const rootDirectoryNumber = createInodeNumber({ value: 1n });
+    const fileNumber = createInodeNumber({ value: 3n });
+    const records = new Map<string, Readonly<{ plaintext: Uint8Array; recordKind: number }>>([
+      [referenceIdentity({ reference: inodeRoot }), {
+        plaintext: encodeInodeBranchPage({
+          isRoot: true,
+          page: {
+            entries: [
+              { childPageHomeRef: inodeLeafA, upperBound: rootDirectoryNumber },
+              { childPageHomeRef: inodeLeafB, upperBound: fileNumber },
+            ],
+            level: 1,
+          },
+        }),
+        recordKind: KINDS.inode_table_page,
+      }],
+      [referenceIdentity({ reference: inodeLeafA }), {
+        plaintext: encodeInodeLeafPage({
+          isRoot: false,
+          entries: [{
+            content: {
+              entries: [{ inodeKind: "file", inodeNumber: fileNumber, name: "data.bin", targetType: "inode" }],
+              type: "inline",
+            },
+            inodeKind: "directory",
+            inodeNumber: rootDirectoryNumber,
+            inodeRevision: createInodeRevision({ value: 1n }),
+            timestamps: { createdAt: null, modifiedAt: null },
+          }],
+        }),
+        recordKind: KINDS.inode_table_page,
+      }],
+      [referenceIdentity({ reference: inodeLeafB }), {
+        plaintext: encodeInodeLeafPage({
+          isRoot: false,
+          entries: [{
+            content: { bytes: new Uint8Array([1, 2, 3]), type: "inline" },
+            fileSize: createFileOffset({ value: 3n }),
+            inodeKind: "file",
+            inodeNumber: fileNumber,
+            inodeRevision: createInodeRevision({ value: 1n }),
+            timestamps: { createdAt: null, modifiedAt: null },
+          }],
+        }),
+        recordKind: KINDS.inode_table_page,
+      }],
+    ]);
+    const recordInodeLeafLookup = vi.fn();
+    const cache = new DecodedInodeLeafPageIndexCache({
+      diagnostics: {
+        recordDecodedInodeIndexPageCacheEvent: vi.fn(),
+        recordInodeLeafLookup,
+        setDecodedInodeIndexPageCacheUsage: vi.fn(),
+      },
+      maximumEntries: 8,
+    });
+    const resolver = createAuthenticatedReadOnlyNamespaceResolver({
+      commit: createFileSystemCommitPayload({ payload: {
+        commitSequence: createCommitSequence({ value: 1n }),
+        mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(9) }),
+        nestedSubvolumeTableRootHomeRef: null,
+        nextInodeNumber: createInodeNumber({ value: 4n }),
+        nextSubvolumeId: createSubvolumeId({ value: 2n }),
+        rootDirectoryInodeNumber: rootDirectoryNumber,
+        rootInodeTableRootHomeRef: inodeRoot,
+      } }),
+      decodedInodeLeafPageIndexCache: cache,
+      recordSource: {
+        decodeRecordPayload: ({ decode }) => decode(),
+        readHomeRecord: async ({ reference: value }) => {
+          const record = records.get(referenceIdentity({ reference: value }));
+          if (record === undefined) throw new Error("missing record fixture");
+          return { plaintext: Uint8Array.from(record.plaintext), recordKind: record.recordKind };
+        },
+      },
+    });
+
+    expect((await resolver.resolveInodeByNumber({ inodeNumber: fileNumber })).inodeNumber).toBe(fileNumber);
+    expect(recordInodeLeafLookup).toHaveBeenCalledWith({ observation: expect.objectContaining({
+      event: "branch_page_decode",
+    }) });
+    expect(recordInodeLeafLookup).toHaveBeenCalledWith({ observation: expect.objectContaining({
+      event: "index_build",
+      indexedEntries: 1,
+    }) });
+    expect(recordInodeLeafLookup).toHaveBeenCalledWith({ observation: expect.objectContaining({
+      event: "selective_entry_hit",
+    }) });
+    cache.dispose();
   });
 
   it("reads leading and trailing sparse holes as zero-filled bytes", async () => {

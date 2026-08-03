@@ -60,7 +60,7 @@ describe('production HizoFS benchmark runtime port', () => {
 
     expect(diagnostics.snapshot()).toEqual({
       reason: 'runtime diagnostics recording failed',
-      schemaVersion: 7,
+      schemaVersion: 8,
       type: 'unavailable',
     });
   });
@@ -363,6 +363,11 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(runtimeDiagnostics.indexes.update.pageReads).toBeGreaterThan(0);
     expect(runtimeDiagnostics.indexes.get.operations).toBeGreaterThan(0);
     expect(runtimeDiagnostics.indexes.get.pageReads).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.caches.decodedInodeIndexPage.hits).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.inodeLeafLookup.indexBuilds).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.inodeLeafLookup.selectiveEntryHits).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.inodeLeafLookup.decodedEntryBytes).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.inodeLeafLookup.skippedPageBytes).toBeGreaterThan(0);
     expect(runtimeDiagnostics.indexes.validate_structure).toMatchObject({
       operations: 0,
       pageReads: 0,
@@ -426,10 +431,15 @@ describe('production HizoFS benchmark runtime port', () => {
       pageReads: 1,
     });
     for (const caseId of ['small_files_write_existing', 'small_files_read']) {
-      expect(measuredRuntime(caseId).indexes.validate_structure).toMatchObject({
+      const runtime = measuredRuntime(caseId);
+      expect(runtime.indexes.validate_structure).toMatchObject({
         operations: 0,
         pageReads: 0,
       });
+      expect(runtime.caches.decodedInodeIndexPage.hits).toBeGreaterThan(0);
+      expect(runtime.caches.decodedInodeIndexPage.currentEntries).toBeGreaterThan(0);
+      expect(runtime.inodeLeafLookup.selectiveEntryHits).toBeGreaterThan(0);
+      expect(runtime.inodeLeafLookup.skippedPageBytes).toBeGreaterThan(0);
     }
   }, 30_000);
 

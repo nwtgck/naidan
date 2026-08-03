@@ -225,8 +225,21 @@ const hizoFSRuntimeSegmentWriterCounterSchema = z.object({
   trustedTailMismatches: z.number().int().nonnegative(),
 }).strict();
 
+const hizoFSRuntimeInodeLeafLookupCounterSchema = z.object({
+  branchPageDecodes: z.number().int().nonnegative(),
+  branchPageBytesDecoded: z.number().int().nonnegative(),
+  decodedEntryBytes: z.number().int().nonnegative(),
+  indexBuilds: z.number().int().nonnegative(),
+  indexBytesCreated: z.number().int().nonnegative(),
+  indexedEntries: z.number().int().nonnegative(),
+  indexedPageBytes: z.number().int().nonnegative(),
+  selectiveEntryHits: z.number().int().nonnegative(),
+  selectiveEntryMisses: z.number().int().nonnegative(),
+  skippedPageBytes: z.number().int().nonnegative(),
+}).strict();
+
 const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(7),
+  schemaVersion: z.literal(8),
   type: z.literal('measured'),
   phases: z.object(Object.fromEntries(
     HIZOFS_RUNTIME_DIAGNOSTIC_PHASES.map(phase => [
@@ -270,6 +283,7 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
   indexes: z.object(Object.fromEntries(
     IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS.map(operation => [operation, hizoFSRuntimeIndexCounterSchema]),
   ) as Record<typeof IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS[number], typeof hizoFSRuntimeIndexCounterSchema>).strict(),
+  inodeLeafLookup: hizoFSRuntimeInodeLeafLookupCounterSchema,
   mutation: z.object({
     abandoned: z.number().int().nonnegative(),
     completed: z.number().int().nonnegative(),
@@ -293,7 +307,7 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
 }).strict();
 
 const hizoFSUnavailableRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(7),
+  schemaVersion: z.literal(8),
   type: z.literal('unavailable'),
   reason: z.string().min(1),
 }).strict();
@@ -481,8 +495,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(23),
-  benchmarkImplementationVersion: z.literal(30),
+  schemaVersion: z.literal(24),
+  benchmarkImplementationVersion: z.literal(31),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),

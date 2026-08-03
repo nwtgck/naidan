@@ -77,6 +77,7 @@ import {
   createAuthenticatedReadOnlyNamespace,
   createAuthenticatedReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/authenticated-read-only-namespace";
+import { DecodedInodeLeafPageIndexCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-leaf-page-index-cache";
 import { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 import {
   StreamingNamespaceImport,
@@ -98,6 +99,7 @@ import {
 import { prepareFileTruncatePlan } from "@/00-storage/service/hizofs/filesystem/file/file-truncate-plan";
 import { prepareFileWritePlan } from "@/00-storage/service/hizofs/filesystem/file/file-write-plan";
 import { createDirectoryPageTreePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
+import type { DecodedInodeIndexPageCacheDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/decoded-inode-index-page-cache-diagnostics";
 import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import type { ContainerCoordinationKey } from "@/00-storage/service/hizofs/filesystem/container-coordination-key";
 import { createFileExtentTreePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/file-extent-tree";
@@ -289,6 +291,7 @@ export async function createBrowserContainerCoordinationScope({
 
 export async function openAuthenticatedReadOnlyContainerAuthority({
   backend,
+  decodedInodeIndexPageCacheDiagnostics,
   indexDiagnostics,
   passphrase,
   recordDiagnostics,
@@ -296,6 +299,7 @@ export async function openAuthenticatedReadOnlyContainerAuthority({
   verifyProofAuthority,
 }: {
   backend: HizoFSReadableBackend;
+  decodedInodeIndexPageCacheDiagnostics?: DecodedInodeIndexPageCacheDiagnosticsPort;
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   passphrase: string;
   recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
@@ -319,7 +323,7 @@ export async function openAuthenticatedReadOnlyContainerAuthority({
         rootKeyProof: capability,
       }),
     });
-    return { backend, indexDiagnostics, opened, recordDiagnostics };
+    return { backend, decodedInodeIndexPageCacheDiagnostics, indexDiagnostics, opened, recordDiagnostics };
   } catch (cause: unknown) {
     opened.rootKey.destroy();
     throw cause;
@@ -901,12 +905,14 @@ function releaseAuthenticatedDevelopmentWritableContainerCapability({ authority 
 
 export async function openAuthenticatedDevelopmentWritableContainerCapability({
   backend,
+  decodedInodeIndexPageCacheDiagnostics,
   indexDiagnostics,
   passphrase,
   recordDiagnostics,
   verifyProofAuthority,
 }: {
   backend: HizoFSDevelopmentWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  decodedInodeIndexPageCacheDiagnostics?: DecodedInodeIndexPageCacheDiagnosticsPort;
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   passphrase: string;
   recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
@@ -919,6 +925,7 @@ export async function openAuthenticatedDevelopmentWritableContainerCapability({
   try {
     openedAuthority = await openAuthenticatedReadOnlyContainerAuthority({
       backend,
+      decodedInodeIndexPageCacheDiagnostics,
       indexDiagnostics,
       passphrase,
       recordDiagnostics,
@@ -973,6 +980,7 @@ export async function openBrowserAuthenticatedDevelopmentWritableContainerCapabi
     backend: runtimeDiagnostics === undefined
       ? backend
       : instrumentHizoFSWritableBackend({ backend, diagnostics: runtimeDiagnostics }),
+    decodedInodeIndexPageCacheDiagnostics: runtimeDiagnostics,
     indexDiagnostics: runtimeDiagnostics,
     passphrase,
     recordDiagnostics: runtimeDiagnostics,
@@ -1459,6 +1467,8 @@ type AuthenticatedOpenedWritableApplicationAuthorityCommon = Readonly<{
     directoryImport: StreamingDirectoryImportLimits;
   }>;
   fileMutationLimits: FileContentMutationLimits;
+  decodedInodeIndexPageCacheDiagnostics?: DecodedInodeIndexPageCacheDiagnosticsPort;
+  decodedInodeIndexPageCacheEntryLimit?: number;
   operationTimestamp: () => TimestampMilliseconds;
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   randomSource?: RandomByteSource;
@@ -1514,9 +1524,10 @@ function sameCommitPayload({ left, right }: {
   });
 }
 
-function writableGeneration({ backend, commit, fileSystemId, indexDiagnostics, metadataRecordCache, namespaceValidationCache, recordDiagnostics, rootKey, superblock }: {
+function writableGeneration({ backend, commit, decodedInodeLeafPageIndexCache, fileSystemId, indexDiagnostics, metadataRecordCache, namespaceValidationCache, recordDiagnostics, rootKey, superblock }: {
   backend: HizoFSReadableBackend;
   commit: FileSystemCommitPayload;
+  decodedInodeLeafPageIndexCache: DecodedInodeLeafPageIndexCache;
   fileSystemId: OpenedEmptyEncryptedContainer["fileSystemId"];
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   metadataRecordCache: AuthenticatedMetadataRecordCache;
@@ -1535,6 +1546,7 @@ function writableGeneration({ backend, commit, fileSystemId, indexDiagnostics, m
     commit,
     resolver: createAuthenticatedReadOnlyNamespaceResolver({
       commit,
+      decodedInodeLeafPageIndexCache,
       indexDiagnostics,
       recordSource: createAuthenticatedNamespaceRecordSource({
         backend,
@@ -1609,6 +1621,8 @@ function requireWritableFile({ inode }: {
 export function createAuthenticatedApplicationReadWriteSessionResources({
   backend,
   canonicalBackingLocation,
+  decodedInodeIndexPageCacheDiagnostics,
+  decodedInodeIndexPageCacheEntryLimit,
   explicitBulkLimits,
   fileMutationLimits,
   indexDiagnostics,
@@ -1669,6 +1683,10 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     policy: metadataRecordCachePolicy ?? APPLICATION_METADATA_RECORD_CACHE_POLICY,
   });
   const namespaceValidationCache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 256 });
+  const decodedInodeLeafPageIndexCache = new DecodedInodeLeafPageIndexCache({
+    diagnostics: decodedInodeIndexPageCacheDiagnostics,
+    maximumEntries: decodedInodeIndexPageCacheEntryLimit ?? 128,
+  });
   const inheritValidatedInodeTableSuccessor = ({ base, successor }: {
     base: FileSystemCommitPayload;
     successor: FileSystemCommitPayload;
@@ -1696,6 +1714,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   }): AuthenticatedWritableApplicationGeneration => writableGeneration({
     backend,
     commit,
+    decodedInodeLeafPageIndexCache,
     fileSystemId: opened.fileSystemId,
     indexDiagnostics,
     metadataRecordCache,
@@ -2815,6 +2834,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     releaseResources: async () => {
       if (released) return;
       released = true;
+      decodedInodeLeafPageIndexCache.dispose();
       metadataRecordCache.dispose();
       namespaceValidationCache.clear();
       opened.rootKey.destroy();
@@ -2902,6 +2922,7 @@ function readOnlyMutationPort(): import("@/00-storage/service/hizofs/api").HizoF
 
 export type AuthenticatedOpenedApplicationAuthority = Readonly<{
   backend: HizoFSReadableBackend;
+  decodedInodeIndexPageCacheDiagnostics?: DecodedInodeIndexPageCacheDiagnosticsPort;
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   opened: OpenedEmptyEncryptedContainer;
   recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
@@ -2919,6 +2940,7 @@ export type AuthenticatedOpenedApplicationAuthority = Readonly<{
 export async function openAuthenticatedDevelopmentWritableApplicationSessionFromCapability({
   authority,
   canonicalBackingLocation,
+  decodedInodeIndexPageCacheEntryLimit,
   metadataRecordCachePolicy,
   recheckAuthority,
   rootName,
@@ -2926,6 +2948,7 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
 }: {
   authority: AuthenticatedDevelopmentWritableContainerCapability;
   canonicalBackingLocation: string;
+  decodedInodeIndexPageCacheEntryLimit?: number;
   metadataRecordCachePolicy?: AuthenticatedMetadataRecordCachePolicy;
   recheckAuthority: () => Promise<void>;
   rootName?: string;
@@ -2978,6 +3001,8 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
         return {
           backend,
           canonicalBackingLocation,
+          decodedInodeIndexPageCacheDiagnostics: openedAuthority.decodedInodeIndexPageCacheDiagnostics,
+          decodedInodeIndexPageCacheEntryLimit,
           explicitBulkLimits: DEFAULT_EXPLICIT_BULK_LIMITS,
           fileMutationLimits: { maximumExtentMutationsPerBatch: 64 },
           indexDiagnostics: openedAuthority.indexDiagnostics,
@@ -3997,9 +4022,11 @@ async function createBenchmarkExplicitBulkBuilder({ session, targetName }: {
  */
 export async function createBrowserHizoFSBenchmarkApplicationRuntime({
   backingDirectory,
+  decodedInodeIndexPageCacheEntryLimit,
   metadataRecordCachePolicy,
 }: {
   readonly backingDirectory: FileSystemDirectoryHandle;
+  readonly decodedInodeIndexPageCacheEntryLimit?: number;
   readonly metadataRecordCachePolicy?: AuthenticatedMetadataRecordCachePolicy;
 }): Promise<BrowserHizoFSBenchmarkApplicationRuntime> {
   const runtimeDiagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
@@ -4053,6 +4080,7 @@ export async function createBrowserHizoFSBenchmarkApplicationRuntime({
         return await openAuthenticatedDevelopmentWritableApplicationSessionFromCapability({
           authority: opened.authority,
           canonicalBackingLocation,
+          decodedInodeIndexPageCacheEntryLimit,
           metadataRecordCachePolicy,
           recheckAuthority: async () => undefined,
           rootName: "benchmark.hizofs",

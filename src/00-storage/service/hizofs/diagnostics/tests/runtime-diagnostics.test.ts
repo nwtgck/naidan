@@ -151,6 +151,42 @@ describe("HizoFS runtime diagnostics", () => {
     expect(snapshot.coordinator.localRequests).toBe(1);
   });
 
+  it("attributes selective Inode leaf lookup work without retaining inode bodies", () => {
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+    diagnostics.recordInodeLeafLookup({ observation: {
+      event: "index_build",
+      indexBytes: 48,
+      indexedEntries: 3,
+      pageBytes: 96,
+    } });
+    diagnostics.recordInodeLeafLookup({ observation: {
+      entryBytes: 24,
+      event: "selective_entry_hit",
+      pageBytes: 96,
+    } });
+    diagnostics.recordInodeLeafLookup({ observation: {
+      event: "selective_entry_miss",
+      pageBytes: 96,
+    } });
+    diagnostics.recordInodeLeafLookup({ observation: {
+      event: "branch_page_decode",
+      pageBytes: 128,
+    } });
+
+    expect(diagnostics.snapshot().inodeLeafLookup).toEqual({
+      branchPageDecodes: 1,
+      branchPageBytesDecoded: 128,
+      decodedEntryBytes: 24,
+      indexBuilds: 1,
+      indexBytesCreated: 48,
+      indexedEntries: 3,
+      indexedPageBytes: 96,
+      selectiveEntryHits: 1,
+      selectiveEntryMisses: 1,
+      skippedPageBytes: 168,
+    });
+  });
+
   it("resets only high-water marks to current usage and returns detached snapshots", () => {
     const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
     diagnostics.setCacheUsage({ bytes: 20, cache: "metadata", entries: 2 });

@@ -20,6 +20,8 @@ import {
   ImmutableBTreeReader,
   type ImmutableBTreePage,
 } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
+import { measureImmutableBTreeOperation } from "@/00-storage/service/hizofs/indexes/diagnostics-hooks";
+import { findBranchChildIndex } from "@/00-storage/service/hizofs/indexes/ordering";
 import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 
@@ -56,6 +58,14 @@ export type ReadOnlyNamespacePageSource = Readonly<{
     isRoot: boolean;
     reference: HomeRecordReference;
   }) => Promise<InodeBranchPage | InodeLeafPage>;
+  readInodePointPage?: ({ inodeNumber, isRoot, reference }: {
+    inodeNumber: InodeNumber;
+    isRoot: boolean;
+    reference: HomeRecordReference;
+  }) => Promise<
+    | Readonly<{ entry: InodeLeafEntry | undefined; type: "leaf" }>
+    | Readonly<{ page: InodeBranchPage; type: "branch" }>
+  >;
 }>;
 
 export type ReadOnlyInodeStat = Readonly<{
@@ -254,11 +264,78 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
     });
   };
 
+  const getValidatedInodePoint = async ({ inodeNumber }: {
+    inodeNumber: InodeNumber;
+  }): Promise<InodeLeafEntry | undefined> => {
+    const pointReader = source.readInodePointPage;
+    if (pointReader === undefined) {
+      return await inodeReader.get({ key: inodeNumber, rootReference: inodeTableRootHomeRef });
+    }
+    return await measureImmutableBTreeOperation({
+      diagnostics: source.indexDiagnostics,
+      operation: "get",
+      run: async ({ structural }) => {
+        const visited = new Set<string>();
+        let expectedLevel: number | undefined;
+        let isRoot = true;
+        let reference = inodeTableRootHomeRef;
+        while (true) {
+          const identity = referenceIdentity({ reference });
+          if (visited.has(identity)) throw new TypeError("B-tree contains a cycle or duplicate page reference");
+          visited.add(identity);
+          const point = await pointReader({ inodeNumber, isRoot, reference });
+          const level = (() => {
+            switch (point.type) {
+            case "leaf": return 0;
+            case "branch": return point.page.level;
+            default: return point satisfies never;
+            }
+          })();
+          if (structural !== undefined) {
+            structural.pageReads += 1;
+            structural.maximumPageLevel = Math.max(structural.maximumPageLevel, level);
+          }
+          if (expectedLevel !== undefined && level !== expectedLevel) {
+            throw new TypeError("B-tree child level does not equal parent level minus one");
+          }
+          switch (point.type) {
+          case "leaf": return point.entry;
+          case "branch": {
+            // The exact immutable root was fully validated before this point.
+            // Reuse that proof while decoding only branch routing metadata and
+            // the selected leaf entry for subsequent point lookups.
+            const page = inodePageToImmutable({ page: point.page });
+            switch (page.type) {
+            case "branch": {
+              const index = findBranchChildIndex({
+                children: page.children,
+                compareKeys: ({ left, right }) => left < right ? -1 : left > right ? 1 : 0,
+                key: inodeNumber,
+              });
+              const child = page.children[index];
+              if (child === undefined) return undefined;
+              expectedLevel = page.level - 1;
+              isRoot = false;
+              reference = child.childPageReference;
+              break;
+            }
+            case "leaf": throw new Error("Inode point-page branch projection produced a leaf");
+            default: return page satisfies never;
+            }
+            break;
+          }
+          default: return point satisfies never;
+          }
+        }
+      },
+    });
+  };
+
   const getInode = async ({ inodeNumber }: { inodeNumber: InodeNumber }): Promise<InodeLeafEntry> => {
     // Point lookup alone can leave a corrupt sibling subtree unread. Validate
     // the complete immutable root before any namespace result becomes visible.
     await validateInodeTable();
-    const inode = await inodeReader.get({ key: inodeNumber, rootReference: inodeTableRootHomeRef });
+    const inode = await getValidatedInodePoint({ inodeNumber });
     if (inode === undefined) {
       throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "directory entry references a missing inode" });
     }

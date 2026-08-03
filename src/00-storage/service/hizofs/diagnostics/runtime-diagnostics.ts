@@ -4,6 +4,10 @@ import {
   type HizoFSV1PersistedRecordKindDiagnosticName,
 } from "@/00-storage/service/hizofs/00-format";
 import type {
+  DecodedInodeIndexPageCacheDiagnosticsPort,
+  InodeLeafLookupDiagnosticsObservation,
+} from "@/00-storage/service/hizofs/diagnostics/decoded-inode-index-page-cache-diagnostics";
+import type {
   ImmutableBTreeDiagnosticsObservation,
   ImmutableBTreeDiagnosticsPort,
 } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
@@ -165,6 +169,19 @@ export type HizoFSRuntimeSegmentWriterCounter = Readonly<{
   trustedTailMismatches: number;
 }>;
 
+export type HizoFSRuntimeInodeLeafLookupCounter = Readonly<{
+  branchPageDecodes: number;
+  branchPageBytesDecoded: number;
+  decodedEntryBytes: number;
+  indexBuilds: number;
+  indexBytesCreated: number;
+  indexedEntries: number;
+  indexedPageBytes: number;
+  selectiveEntryHits: number;
+  selectiveEntryMisses: number;
+  skippedPageBytes: number;
+}>;
+
 export type HizoFSRuntimeDiagnosticsSnapshot = Readonly<{
   phases: Readonly<Record<HizoFSRuntimeDiagnosticPhase, HizoFSRuntimePhaseCounter>>;
   records: Readonly<Record<HizoFSV1PersistedRecordKindDiagnosticName, HizoFSRuntimeRecordCounter>>;
@@ -172,6 +189,7 @@ export type HizoFSRuntimeDiagnosticsSnapshot = Readonly<{
   resources: Readonly<Record<HizoFSRuntimeDiagnosticResource, HizoFSRuntimeResourceCounter>>;
   coordinator: Readonly<Record<HizoFSRuntimeDiagnosticCoordinatorCounter, number>>;
   indexes: Readonly<Record<ImmutableBTreeDiagnosticsObservation["operation"], HizoFSRuntimeIndexCounter>>;
+  inodeLeafLookup: HizoFSRuntimeInodeLeafLookupCounter;
   mutation: HizoFSRuntimeMutationCounter;
   publication: HizoFSRuntimePublicationCounter;
   segmentWriters: Readonly<Record<"data" | "metadata" | "relocation", HizoFSRuntimeSegmentWriterCounter>>;
@@ -248,6 +266,18 @@ type MutableSegmentWriterCounter = {
   rollovers: number;
   trustedTailMatches: number;
   trustedTailMismatches: number;
+};
+type MutableInodeLeafLookupCounter = {
+  branchPageDecodes: number;
+  branchPageBytesDecoded: number;
+  decodedEntryBytes: number;
+  indexBuilds: number;
+  indexBytesCreated: number;
+  indexedEntries: number;
+  indexedPageBytes: number;
+  selectiveEntryHits: number;
+  selectiveEntryMisses: number;
+  skippedPageBytes: number;
 };
 type PhysicalAccessScopeCounters = {
   getFileSizeDuplicateOperations: number;
@@ -419,6 +449,21 @@ function segmentWriterCounters(): Record<"data" | "metadata" | "relocation", Mut
   }])) as Record<"data" | "metadata" | "relocation", MutableSegmentWriterCounter>;
 }
 
+function inodeLeafLookupCounter(): MutableInodeLeafLookupCounter {
+  return {
+    branchPageDecodes: 0,
+    branchPageBytesDecoded: 0,
+    decodedEntryBytes: 0,
+    indexBuilds: 0,
+    indexBytesCreated: 0,
+    indexedEntries: 0,
+    indexedPageBytes: 0,
+    selectiveEntryHits: 0,
+    selectiveEntryMisses: 0,
+    skippedPageBytes: 0,
+  };
+}
+
 function persistedRecordKindDiagnosticName({ recordKind }: {
   recordKind: number;
 }): HizoFSV1PersistedRecordKindDiagnosticName {
@@ -455,13 +500,14 @@ function codecDiagnosticPhase({ format, operation }: {
  * diagnostics unavailable until every required production hook is connected;
  * this accumulator must never be used to manufacture unobserved zero values.
  */
-class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDiagnosticsPort, ImmutableBTreeDiagnosticsPort {
+class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDiagnosticsPort, DecodedInodeIndexPageCacheDiagnosticsPort, ImmutableBTreeDiagnosticsPort {
   readonly #phases = phaseCounters();
   readonly #records = recordCounters();
   readonly #caches = cacheCounters();
   readonly #resources = resourceCounters();
   readonly #coordinator = coordinatorCounters();
   readonly #indexes = indexCounters();
+  readonly #inodeLeafLookup = inodeLeafLookupCounter();
   readonly #mutation = mutationCounter();
   readonly #publication = publicationCounter();
   readonly #segmentWriters = segmentWriterCounters();
@@ -875,6 +921,84 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     }
   }
 
+  recordDecodedInodeIndexPageCacheEvent({ event }: { event: "eviction" | "hit" | "miss" }): void {
+    this.recordCacheEvent({ cache: "decodedInodeIndexPage", event });
+  }
+
+  recordInodeLeafLookup({ observation }: { observation: InodeLeafLookupDiagnosticsObservation }): void {
+    const counter = this.#inodeLeafLookup;
+    switch (observation.event) {
+    case "branch_page_decode":
+      counter.branchPageDecodes = incrementSafe({
+        current: counter.branchPageDecodes,
+        delta: 1,
+        label: "Inode leaf branch page decodes",
+      });
+      counter.branchPageBytesDecoded = incrementSafe({
+        current: counter.branchPageBytesDecoded,
+        delta: observation.pageBytes,
+        label: "Inode leaf branch page bytes decoded",
+      });
+      return;
+    case "index_build":
+      counter.indexBuilds = incrementSafe({ current: counter.indexBuilds, delta: 1, label: "Inode leaf index builds" });
+      counter.indexBytesCreated = incrementSafe({
+        current: counter.indexBytesCreated,
+        delta: observation.indexBytes,
+        label: "Inode leaf index bytes created",
+      });
+      counter.indexedEntries = incrementSafe({
+        current: counter.indexedEntries,
+        delta: observation.indexedEntries,
+        label: "Inode leaf indexed entries",
+      });
+      counter.indexedPageBytes = incrementSafe({
+        current: counter.indexedPageBytes,
+        delta: observation.pageBytes,
+        label: "Inode leaf indexed page bytes",
+      });
+      return;
+    case "selective_entry_hit": {
+      const entryBytes = safeNonNegativeInteger({ label: "Inode selective entry bytes", value: observation.entryBytes });
+      const pageBytes = safeNonNegativeInteger({ label: "Inode selective page bytes", value: observation.pageBytes });
+      if (entryBytes > pageBytes) throw new RangeError("Inode selective entry bytes exceed page bytes");
+      counter.selectiveEntryHits = incrementSafe({
+        current: counter.selectiveEntryHits,
+        delta: 1,
+        label: "Inode selective entry hits",
+      });
+      counter.decodedEntryBytes = incrementSafe({
+        current: counter.decodedEntryBytes,
+        delta: entryBytes,
+        label: "Inode selective decoded entry bytes",
+      });
+      counter.skippedPageBytes = incrementSafe({
+        current: counter.skippedPageBytes,
+        delta: pageBytes - entryBytes,
+        label: "Inode selective skipped page bytes",
+      });
+      return;
+    }
+    case "selective_entry_miss":
+      counter.selectiveEntryMisses = incrementSafe({
+        current: counter.selectiveEntryMisses,
+        delta: 1,
+        label: "Inode selective entry misses",
+      });
+      counter.skippedPageBytes = incrementSafe({
+        current: counter.skippedPageBytes,
+        delta: observation.pageBytes,
+        label: "Inode selective skipped page bytes",
+      });
+      return;
+    default: observation satisfies never;
+    }
+  }
+
+  setDecodedInodeIndexPageCacheUsage({ bytes, entries }: { bytes: number; entries: number }): void {
+    this.setCacheUsage({ bytes, cache: "decodedInodeIndexPage", entries });
+  }
+
   setCacheUsage({ bytes, cache, entries }: {
     bytes: number;
     cache: HizoFSRuntimeDiagnosticCache;
@@ -951,6 +1075,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
       resources: this.#resources,
       coordinator: this.#coordinator,
       indexes: this.#indexes,
+      inodeLeafLookup: this.#inodeLeafLookup,
       mutation: this.#mutation,
       publication: this.#publication,
       segmentWriters: this.#segmentWriters,
@@ -972,7 +1097,7 @@ export class HizoFSRuntimeDiagnosticsUnavailableError extends Error {
  * exhausted counter disables this diagnostics instance without replacing the
  * result or error of the observed filesystem operation.
  */
-export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDiagnosticsPort, ImmutableBTreeDiagnosticsPort {
+export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDiagnosticsPort, DecodedInodeIndexPageCacheDiagnosticsPort, ImmutableBTreeDiagnosticsPort {
   readonly #strict = new StrictHizoFSRuntimeDiagnosticsAccumulator();
   #availability: "available" | "unavailable" = "available";
 
@@ -1047,6 +1172,18 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
 
   recordCacheEvent({ cache, event }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordCacheEvent"]>[0]): void {
     this.#record({ operation: () => this.#strict.recordCacheEvent({ cache, event }) });
+  }
+
+  recordDecodedInodeIndexPageCacheEvent({ event }: { event: "eviction" | "hit" | "miss" }): void {
+    this.recordCacheEvent({ cache: "decodedInodeIndexPage", event });
+  }
+
+  recordInodeLeafLookup({ observation }: { observation: InodeLeafLookupDiagnosticsObservation }): void {
+    this.#record({ operation: () => this.#strict.recordInodeLeafLookup({ observation }) });
+  }
+
+  setDecodedInodeIndexPageCacheUsage({ bytes, entries }: { bytes: number; entries: number }): void {
+    this.setCacheUsage({ bytes, cache: "decodedInodeIndexPage", entries });
   }
 
   setCacheUsage({ bytes, cache, entries }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["setCacheUsage"]>[0]): void {

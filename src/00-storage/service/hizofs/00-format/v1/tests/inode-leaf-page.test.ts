@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHomeRecordReference } from '@/00-storage/service/hizofs/00-format/v1/binary/record-reference';
-import { decodeInodeLeafPage, encodeInodeLeafPage } from '@/00-storage/service/hizofs/00-format/v1/pages/inode-leaf-page';
+import { decodeIndexedInodeLeafEntry, decodeInodeLeafPage, encodeInodeLeafPage, findIndexedInodeLeafEntry, indexInodeLeafPage } from '@/00-storage/service/hizofs/00-format/v1/pages/inode-leaf-page';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
 import { createFileOffset, createInodeNumber, createInodeRevision, createSubvolumeId, createTimestampMilliseconds, createUInt64 } from '@/00-storage/service/hizofs/00-format/v1/scalars';
@@ -75,6 +75,24 @@ describe('Inode Table leaf codec', () => {
     ];
     const bytes = encodeInodeLeafPage({ entries, isRoot: true });
     expect(decodeInodeLeafPage({ bytes, isRoot: true }).entries).toEqual(entries);
+  });
+
+  it('indexes one leaf page and decodes only the selected inode entry', () => {
+    const entries = [1n, 3n, 8n].map(value => ({
+      content: { bytes: Uint8Array.of(Number(value)), type: 'inline' as const },
+      fileSize: createFileOffset({ value: 1n }),
+      inodeKind: 'file' as const,
+      inodeNumber: createInodeNumber({ value }),
+      inodeRevision: createInodeRevision({ value: 1n }),
+      timestamps: noTimestamps,
+    }));
+    const bytes = encodeInodeLeafPage({ entries, isRoot: true });
+    const index = indexInodeLeafPage({ bytes, isRoot: true });
+    const selected = findIndexedInodeLeafEntry({ index, inodeNumber: createInodeNumber({ value: 3n }) });
+    expect(selected).toBe(1);
+    if (selected === undefined) throw new Error('selected inode entry is missing');
+    expect(decodeIndexedInodeLeafEntry({ bytes, entryIndex: selected, index })).toEqual(entries[1]);
+    expect(findIndexedInodeLeafEntry({ index, inodeNumber: createInodeNumber({ value: 2n }) })).toBeUndefined();
   });
 
   it('matches the independent inline namespace known-answer bytes', () => {

@@ -22,7 +22,7 @@ function measuredRuntimeDiagnostics({ resetHighWaterMarks, snapshotRuntimeDiagno
       } catch (cause: unknown) {
         if (!(cause instanceof HizoFSRuntimeDiagnosticsUnavailableError)) throw cause;
         return {
-          schemaVersion: 7,
+          schemaVersion: 8,
           type: 'unavailable',
           reason: 'runtime diagnostics recording failed',
         };
@@ -30,6 +30,7 @@ function measuredRuntimeDiagnostics({ resetHighWaterMarks, snapshotRuntimeDiagno
       const {
         caches,
         coordinator,
+        inodeLeafLookup,
         indexes,
         phases,
         mutation,
@@ -41,10 +42,11 @@ function measuredRuntimeDiagnostics({ resetHighWaterMarks, snapshotRuntimeDiagno
       } = snapshot;
       unhandledSnapshot satisfies Record<PropertyKey, never>;
       return {
-        schemaVersion: 7,
+        schemaVersion: 8,
         type: 'measured',
         caches,
         coordinator,
+        inodeLeafLookup,
         indexes,
         phases,
         mutation,
@@ -70,6 +72,7 @@ export function createProductionHizoFSBenchmarkRuntimePort(): HizoFSBenchmarkRun
     async createRuntime({ backingDirectory, policy }) {
       const applicationRuntime = await createBrowserHizoFSBenchmarkApplicationRuntime({
         backingDirectory,
+        decodedInodeIndexPageCacheEntryLimit: policy.decodedInodeIndexPageCacheEntryLimit,
         metadataRecordCachePolicy: {
           maximumBytes: policy.metadataObjectCacheByteLimit,
           maximumEntries: policy.metadataObjectCacheEntryLimit,

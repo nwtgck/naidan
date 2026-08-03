@@ -35,7 +35,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 30 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 31 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -324,7 +324,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 23,
+    schemaVersion: 24,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -1870,7 +1870,7 @@ function unavailableRuntimeDiagnostics({ reason }: {
   reason: string;
 }): HizoFSBenchmarkRuntimeDiagnosticsSnapshot {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     type: 'unavailable',
     reason,
   };
@@ -1897,7 +1897,7 @@ function subtractHizoFSRuntimeDiagnostics({
   default: return before satisfies never;
   }
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [
@@ -2011,6 +2011,10 @@ function subtractHizoFSRuntimeDiagnostics({
         after: after.indexes[operation],
       }),
     ])) as HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['indexes'],
+    inodeLeafLookup: subtractHizoFSRuntimeInodeLeafLookupDiagnostics({
+      after: after.inodeLeafLookup,
+      before: before.inodeLeafLookup,
+    }),
     mutation: {
       abandoned: Math.max(after.mutation.abandoned - before.mutation.abandoned, 0),
       completed: Math.max(after.mutation.completed - before.mutation.completed, 0),
@@ -2382,7 +2386,7 @@ function aggregateHizoFSRuntimeDiagnostics({
     throw new Error('HizoFS measured runtime diagnostics aggregate requires at least one sample');
   }
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [
@@ -2506,6 +2510,9 @@ function aggregateHizoFSRuntimeDiagnostics({
         diagnostics: measured.map(value => value.indexes[operation]),
       }),
     ])) as HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['indexes'],
+    inodeLeafLookup: aggregateHizoFSRuntimeInodeLeafLookupDiagnostics({
+      diagnostics: measured.map(value => value.inodeLeafLookup),
+    }),
     mutation: {
       abandoned: measured.reduce((sum, value) => sum + value.mutation.abandoned, 0),
       completed: measured.reduce((sum, value) => sum + value.mutation.completed, 0),
@@ -2570,6 +2577,52 @@ function aggregateHizoFSRuntimeIndexDiagnostics({
       (sum, value) => sum + value.unchangedPageReuses,
       0,
     ),
+  };
+}
+
+function subtractHizoFSRuntimeInodeLeafLookupDiagnostics({
+  after,
+  before,
+}: {
+  after: HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['inodeLeafLookup'];
+  before: HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['inodeLeafLookup'];
+}): HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['inodeLeafLookup'] {
+  return {
+    branchPageDecodes: Math.max(after.branchPageDecodes - before.branchPageDecodes, 0),
+    branchPageBytesDecoded: Math.max(
+      after.branchPageBytesDecoded - before.branchPageBytesDecoded,
+      0,
+    ),
+    decodedEntryBytes: Math.max(after.decodedEntryBytes - before.decodedEntryBytes, 0),
+    indexBuilds: Math.max(after.indexBuilds - before.indexBuilds, 0),
+    indexBytesCreated: Math.max(after.indexBytesCreated - before.indexBytesCreated, 0),
+    indexedEntries: Math.max(after.indexedEntries - before.indexedEntries, 0),
+    indexedPageBytes: Math.max(after.indexedPageBytes - before.indexedPageBytes, 0),
+    selectiveEntryHits: Math.max(after.selectiveEntryHits - before.selectiveEntryHits, 0),
+    selectiveEntryMisses: Math.max(after.selectiveEntryMisses - before.selectiveEntryMisses, 0),
+    skippedPageBytes: Math.max(after.skippedPageBytes - before.skippedPageBytes, 0),
+  };
+}
+
+function aggregateHizoFSRuntimeInodeLeafLookupDiagnostics({
+  diagnostics,
+}: {
+  diagnostics: readonly HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['inodeLeafLookup'][];
+}): HizoFSBenchmarkMeasuredRuntimeDiagnosticsSnapshot['inodeLeafLookup'] {
+  return {
+    branchPageDecodes: diagnostics.reduce((sum, value) => sum + value.branchPageDecodes, 0),
+    branchPageBytesDecoded: diagnostics.reduce(
+      (sum, value) => sum + value.branchPageBytesDecoded,
+      0,
+    ),
+    decodedEntryBytes: diagnostics.reduce((sum, value) => sum + value.decodedEntryBytes, 0),
+    indexBuilds: diagnostics.reduce((sum, value) => sum + value.indexBuilds, 0),
+    indexBytesCreated: diagnostics.reduce((sum, value) => sum + value.indexBytesCreated, 0),
+    indexedEntries: diagnostics.reduce((sum, value) => sum + value.indexedEntries, 0),
+    indexedPageBytes: diagnostics.reduce((sum, value) => sum + value.indexedPageBytes, 0),
+    selectiveEntryHits: diagnostics.reduce((sum, value) => sum + value.selectiveEntryHits, 0),
+    selectiveEntryMisses: diagnostics.reduce((sum, value) => sum + value.selectiveEntryMisses, 0),
+    skippedPageBytes: diagnostics.reduce((sum, value) => sum + value.skippedPageBytes, 0),
   };
 }
 

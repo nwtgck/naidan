@@ -355,6 +355,80 @@ export function encodeInodeLeafPage({ entries, isRoot }: { entries: readonly Ino
   return bytes;
 }
 
+
+export type InodeLeafPageIndex = Readonly<{
+  entryLengths: Uint32Array;
+  entryOffsets: Uint32Array;
+  inodeNumbers: BigUint64Array;
+}>;
+
+export function indexInodeLeafPage({ bytes, isRoot }: {
+  bytes: Uint8Array;
+  isRoot: boolean;
+}): InodeLeafPageIndex {
+  const header = decodeCommonPageHeader({ bytes, family: 'inode', isRoot });
+  if (header.level !== 0) throw new TypeError('Inode Table leaf page must have level 0');
+  const entryLengths = new Uint32Array(header.itemCount);
+  const entryOffsets = new Uint32Array(header.itemCount);
+  const inodeNumbers = new BigUint64Array(header.itemCount);
+  let offset = COMMON_PAGE_HEADER_SIZE;
+  let previous: bigint | undefined;
+  for (let index = 0; index < header.itemCount; index += 1) {
+    if (offset + FIXED_SIZES.inodeLeafEntryPrefix > bytes.byteLength) throw new RangeError('inode entry prefix exceeds page boundary');
+    const length = readU16Be({ bytes, offset });
+    if (length < FIXED_SIZES.inodeLeafEntryPrefix || offset + length > bytes.byteLength) throw new RangeError('inode entry length is invalid');
+    const inodeNumber = readU64Be({ bytes, offset: offset + 4 });
+    if (inodeNumber < 1n || (previous !== undefined && inodeNumber <= previous)) {
+      throw new TypeError('Inode Numbers must be strictly ascending');
+    }
+    entryOffsets[index] = offset;
+    entryLengths[index] = length;
+    inodeNumbers[index] = inodeNumber;
+    previous = inodeNumber;
+    offset += length;
+  }
+  if (offset !== bytes.byteLength) throw new RangeError('Inode Table page contains trailing bytes');
+  return { entryLengths, entryOffsets, inodeNumbers };
+}
+
+export function findIndexedInodeLeafEntry({ index, inodeNumber }: {
+  index: InodeLeafPageIndex;
+  inodeNumber: InodeNumber;
+}): number | undefined {
+  let lower = 0;
+  let upper = index.inodeNumbers.length;
+  while (lower < upper) {
+    const middle = lower + Math.floor((upper - lower) / 2);
+    const current = index.inodeNumbers[middle];
+    if (current === undefined) throw new Error('Inode leaf-page index lookup invariant failed');
+    if (current < inodeNumber) lower = middle + 1;
+    else upper = middle;
+  }
+  return lower < index.inodeNumbers.length && index.inodeNumbers[lower] === inodeNumber ? lower : undefined;
+}
+
+export function decodeIndexedInodeLeafEntry({ bytes, entryIndex, index }: {
+  bytes: Uint8Array;
+  entryIndex: number;
+  index: InodeLeafPageIndex;
+}): InodeLeafEntry {
+  if (!Number.isSafeInteger(entryIndex) || entryIndex < 0 || entryIndex >= index.inodeNumbers.length) {
+    throw new RangeError('Inode leaf-page entry index is out of range');
+  }
+  const offset = index.entryOffsets[entryIndex];
+  const length = index.entryLengths[entryIndex];
+  const expectedInodeNumber = index.inodeNumbers[entryIndex];
+  if (offset === undefined || length === undefined || expectedInodeNumber === undefined) {
+    throw new Error('Inode leaf-page index entry is missing');
+  }
+  if (offset + length > bytes.byteLength || readU16Be({ bytes, offset }) !== length) {
+    throw new RangeError('Inode leaf-page index no longer matches page bytes');
+  }
+  const entry = decodeInodeEntry({ bytes: bytes.subarray(offset, offset + length) });
+  if (entry.inodeNumber !== expectedInodeNumber) throw new TypeError('Inode leaf-page index identity mismatch');
+  return entry;
+}
+
 export function decodeInodeLeafPage({ bytes, isRoot }: { bytes: Uint8Array; isRoot: boolean }): InodeLeafPage {
   const header = decodeCommonPageHeader({ bytes, family: 'inode', isRoot });
   if (header.level !== 0) throw new TypeError('Inode Table leaf page must have level 0');
