@@ -21,7 +21,7 @@ import {
   readAuthenticatedSegmentIndex,
   type AuthenticatedSegmentIndex,
 } from "./segment-footer-store";
-import type { AuthenticatedStoreDiagnosticsPort } from "./runtime-diagnostics-port";
+import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
 export type AuthenticatedSegmentMaintenanceOwnership =
   | "abandoned_unsealed"

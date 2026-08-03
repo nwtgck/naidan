@@ -16,7 +16,7 @@ import {
 } from "./bootstrap-segment-store";
 import { AuthenticatedStoreError, authenticatedStoreError } from "./errors";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
-import type { AuthenticatedStoreDiagnosticsPort } from "./runtime-diagnostics-port";
+import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import {
   createInitialSuperblockCopies,
   openSuperblockCopies,

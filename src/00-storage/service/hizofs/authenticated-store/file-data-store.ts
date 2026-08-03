@@ -10,7 +10,7 @@ import type { FileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
 import type { HizoFSWritableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import { authenticatedStoreError } from "./errors";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
-import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "./runtime-diagnostics-port";
+import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import {
   encodedHizoFSRecord,
   type AuthenticatedSegmentWriter,

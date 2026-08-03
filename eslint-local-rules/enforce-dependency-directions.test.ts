@@ -321,6 +321,24 @@ import type { Dto } from '@/00-storage/00-dto/dto';`,
     });
 
     it.each([
+      ['src/00-storage/service/hizofs/authenticated-store/open.ts', '@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics'],
+      ['src/00-storage/service/hizofs/indexes/tree.ts', '@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics'],
+      ['src/00-storage/service/hizofs/maintenance/gc.ts', '@/00-storage/service/hizofs/diagnostics/maintenance-diagnostics'],
+      ['src/00-storage/service/hizofs/worker/composition-root.ts', '@/00-storage/service/hizofs/diagnostics/runtime-diagnostics'],
+      ['src/00-storage/service/hizofs/diagnostics/runtime-diagnostics.ts', '@/00-storage/service/hizofs/00-format'],
+    ])('allows diagnostics ownership direction %s -> %s', async (filePath, importPath) => {
+      await expectAllowed({ code: `import { value } from '${importPath}';`, filePath });
+    });
+
+    it.each([
+      ['src/00-storage/service/hizofs/diagnostics/runtime-diagnostics.ts', '@/00-storage/service/hizofs/filesystem/index'],
+      ['src/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics.ts', '@/00-storage/service/hizofs/physical-store/backend'],
+      ['src/00-storage/service/hizofs/physical-store/backend.ts', '@/00-storage/service/hizofs/diagnostics/runtime-diagnostics'],
+    ])('rejects reverse diagnostics ownership direction %s -> %s', async (filePath, importPath) => {
+      await expectForbidden({ code: `import { value } from '${importPath}';`, filePath });
+    });
+
+    it.each([
       ['src/00-storage/service/hizofs/01-crypto/key-application/derived-keys.ts', '@/00-storage/service/hizofs/00-format'],
       ['src/00-storage/service/hizofs/authenticated-store/open.ts', '@/00-storage/service/hizofs/01-crypto/index'],
       ['src/00-storage/service/hizofs/authenticated-store/open.ts', '@/00-storage/service/hizofs/physical-store/backend'],

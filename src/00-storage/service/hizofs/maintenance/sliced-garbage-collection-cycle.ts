@@ -15,7 +15,7 @@ import {
 import {
   MaintenanceDiagnostics,
   type MaintenanceYieldReason,
-} from "@/00-storage/service/hizofs/maintenance/maintenance-diagnostics";
+} from "@/00-storage/service/hizofs/diagnostics/maintenance-diagnostics";
 import type { HizoFSMaintenancePolicy } from "@/00-storage/service/hizofs/maintenance/maintenance-policy";
 import type {
   MaintenanceRootSnapshot,

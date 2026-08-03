@@ -19,7 +19,7 @@ import type {
   AuthenticatedCryptoDiagnosticsObservation,
   AuthenticatedPhysicalAccessReasonObservation,
   AuthenticatedRecordDiagnosticsObservation,
-} from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
 function deterministicRandomSource(): RandomByteSource {
   let next = 1;

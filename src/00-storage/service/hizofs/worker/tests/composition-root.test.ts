@@ -61,7 +61,7 @@ import {
   type CanonicalContainerDirectory,
 } from "@/00-storage/service/hizofs/physical-store/paths";
 import { createContainerCoordinationScope, parseContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
-import { HizoFSRuntimeDiagnosticsAccumulator } from "@/00-storage/service/hizofs/runtime/runtime-diagnostics";
+import { HizoFSRuntimeDiagnosticsAccumulator } from "@/00-storage/service/hizofs/diagnostics/runtime-diagnostics";
 import { InMemoryCrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/testing/in-memory-cross-realm-lock-port";
 import {
   createAuthenticatedApplicationReadSessionResources,

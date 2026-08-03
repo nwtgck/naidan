@@ -17,7 +17,7 @@ import type { RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import type {
   AuthenticatedCryptoDiagnosticsObservation,
   AuthenticatedStoreDiagnosticsPort,
-} from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import {
   CredentialUpdatePublicationError,
   addCredentialPassphrase,

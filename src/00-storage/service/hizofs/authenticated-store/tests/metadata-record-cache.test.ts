@@ -10,7 +10,7 @@ import {
   AuthenticatedMetadataRecordCache,
   type AuthenticatedMetadataRecord,
 } from "@/00-storage/service/hizofs/authenticated-store/metadata-record-cache";
-import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
 type MetadataDiagnosticsState = {
   currentBytes: number;

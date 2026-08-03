@@ -57,7 +57,7 @@ function detachedEvent({ event, sequence }: {
   }
 }
 
-export class MaintenanceDiagnostics {
+class StrictMaintenanceDiagnostics {
   #events: MaintenanceDiagnosticEvent[] = [];
   #maximumEvents: number;
   #nextSequence = 1;
@@ -83,7 +83,53 @@ export class MaintenanceDiagnostics {
   }
 }
 
+
+export class MaintenanceDiagnosticsUnavailableError extends Error {
+  constructor() {
+    super("HizoFS maintenance diagnostics are unavailable because observation recording failed");
+    this.name = "MaintenanceDiagnosticsUnavailableError";
+  }
+}
+
+/** Central fail-open facade for optional maintenance observations. */
+export class MaintenanceDiagnostics {
+  readonly #strict: StrictMaintenanceDiagnostics;
+  #availability: "available" | "unavailable" = "available";
+
+  constructor({ maximumEvents }: { maximumEvents: number }) {
+    this.#strict = new StrictMaintenanceDiagnostics({ maximumEvents });
+  }
+
+  record({ event }: Parameters<StrictMaintenanceDiagnostics["record"]>[0]): void {
+    switch (this.#availability) {
+    case "available": break;
+    case "unavailable": return;
+    default: this.#availability satisfies never;
+    }
+    try {
+      this.#strict.record({ event });
+    } catch {
+      this.#availability = "unavailable";
+    }
+  }
+
+  snapshot(): readonly MaintenanceDiagnosticEvent[] {
+    switch (this.#availability) {
+    case "available": break;
+    case "unavailable": throw new MaintenanceDiagnosticsUnavailableError();
+    default: this.#availability satisfies never;
+    }
+    try {
+      return this.#strict.snapshot();
+    } catch {
+      this.#availability = "unavailable";
+      throw new MaintenanceDiagnosticsUnavailableError();
+    }
+  }
+}
+
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  StrictMaintenanceDiagnostics,
 };

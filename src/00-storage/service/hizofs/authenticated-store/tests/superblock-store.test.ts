@@ -30,7 +30,7 @@ import { authenticatedHizoFSPhysicalBytes, type AuthenticatedHizoFSPhysicalBytes
 import type {
   AuthenticatedCryptoDiagnosticsObservation,
   AuthenticatedStoreDiagnosticsPort,
-} from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import {
   createInitialSuperblockCopies,
   openSuperblockCopies,

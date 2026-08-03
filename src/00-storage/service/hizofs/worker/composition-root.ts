@@ -97,7 +97,7 @@ import {
 import { prepareFileTruncatePlan } from "@/00-storage/service/hizofs/filesystem/file/file-truncate-plan";
 import { prepareFileWritePlan } from "@/00-storage/service/hizofs/filesystem/file/file-write-plan";
 import { createDirectoryPageTreePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
-import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
+import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import type { ContainerCoordinationKey } from "@/00-storage/service/hizofs/filesystem/container-coordination-key";
 import { createFileExtentTreePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/file-extent-tree";
 import {
@@ -157,7 +157,7 @@ import type {
   ReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
-import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics";
 import {
   hasCrashDurableWritableSemantics,
   type HizoFSCrashDurableWritableBackend,
@@ -168,7 +168,7 @@ import {
   type HizoFSWritableFile,
 } from "@/00-storage/service/hizofs/physical-store/backend";
 import { OpfsWritableBackend } from "@/00-storage/service/hizofs/physical-store/opfs/opfs-writable-backend";
-import { HizoFSRuntimeDiagnosticsAccumulator, type HizoFSRuntimeDiagnosticPhase, type HizoFSRuntimeDiagnosticsSnapshot } from "@/00-storage/service/hizofs/runtime/runtime-diagnostics";
+import { HizoFSRuntimeDiagnosticsAccumulator, type HizoFSRuntimeDiagnosticPhase, type HizoFSRuntimeDiagnosticsSnapshot } from "@/00-storage/service/hizofs/diagnostics/runtime-diagnostics";
 import type { ContainerRuntimeMaintenanceRootCapture } from "@/00-storage/service/hizofs/runtime/container-runtime";
 import type { SessionOperationAuthority } from "@/00-storage/service/hizofs/runtime/session-lifecycle";
 import {

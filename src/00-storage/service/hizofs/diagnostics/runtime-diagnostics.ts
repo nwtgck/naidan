@@ -6,8 +6,8 @@ import {
 import type {
   ImmutableBTreeDiagnosticsObservation,
   ImmutableBTreeDiagnosticsPort,
-} from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
-import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
+import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import type {
   AuthenticatedPhysicalAccessReason,
   AuthenticatedCodecDiagnosticsObservation,
@@ -19,8 +19,8 @@ import type {
   AuthenticatedRecordDiagnosticsObservation,
   AuthenticatedSegmentWriterDiagnosticsObservation,
   AuthenticatedStoreDiagnosticsPort,
-} from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
-import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics";
+import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from "@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics";
 
 export const HIZOFS_RUNTIME_DIAGNOSTIC_PHASES = Object.freeze([
   "record_encode",
@@ -455,7 +455,7 @@ function codecDiagnosticPhase({ format, operation }: {
  * diagnostics unavailable until every required production hook is connected;
  * this accumulator must never be used to manufacture unobserved zero values.
  */
-export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDiagnosticsPort, ImmutableBTreeDiagnosticsPort {
+class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDiagnosticsPort, ImmutableBTreeDiagnosticsPort {
   readonly #phases = phaseCounters();
   readonly #records = recordCounters();
   readonly #caches = cacheCounters();
@@ -958,7 +958,134 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
   }
 }
 
+
+export class HizoFSRuntimeDiagnosticsUnavailableError extends Error {
+  constructor() {
+    super("HizoFS runtime diagnostics are unavailable because observation recording failed");
+    this.name = "HizoFSRuntimeDiagnosticsUnavailableError";
+  }
+}
+
+/**
+ * Central fail-open facade for optional HizoFS observations. Core owners inject
+ * this object, never the strict accumulator. A malformed observation or
+ * exhausted counter disables this diagnostics instance without replacing the
+ * result or error of the observed filesystem operation.
+ */
+export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDiagnosticsPort, ImmutableBTreeDiagnosticsPort {
+  readonly #strict = new StrictHizoFSRuntimeDiagnosticsAccumulator();
+  #availability: "available" | "unavailable" = "available";
+
+  #record({ operation }: { operation: () => void }): void {
+    switch (this.#availability) {
+    case "available": break;
+    case "unavailable": return;
+    default: this.#availability satisfies never;
+    }
+    try {
+      operation();
+    } catch {
+      this.#availability = "unavailable";
+    }
+  }
+
+  recordPhase({ durationMs, phase }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordPhase"]>[0]): void {
+    this.#record({ operation: () => this.#strict.recordPhase({ durationMs, phase }) });
+  }
+
+  recordRecord({ cacheHit, operation, physicalBytes, plaintextBytes, recordKind }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordRecord"]>[0]): void {
+    this.#record({
+      operation: () => this.#strict.recordRecord({ cacheHit, operation, physicalBytes, plaintextBytes, recordKind }),
+    });
+  }
+
+  recordCodecOperation({ durationMs, format, operation }: AuthenticatedCodecDiagnosticsObservation): void {
+    this.#record({ operation: () => this.#strict.recordCodecOperation({ durationMs, format, operation }) });
+  }
+
+  recordCryptoOperation({ durationMs, operation }: AuthenticatedCryptoDiagnosticsObservation): void {
+    this.#record({ operation: () => this.#strict.recordCryptoOperation({ durationMs, operation }) });
+  }
+
+  recordPersistedRecord({ operation, physicalBytes, plaintextBytes, recordKind }: AuthenticatedRecordDiagnosticsObservation): void {
+    this.#record({
+      operation: () => this.#strict.recordPersistedRecord({ operation, physicalBytes, plaintextBytes, recordKind }),
+    });
+  }
+
+  recordPublicationOperation({ durationMs }: AuthenticatedPublicationDiagnosticsObservation): void {
+    this.#record({ operation: () => this.#strict.recordPublicationOperation({ durationMs }) });
+  }
+
+  recordIndexOperation({ durationMs, operation, structural }: ImmutableBTreeDiagnosticsObservation): void {
+    this.#record({ operation: () => this.#strict.recordIndexOperation({ durationMs, operation, structural }) });
+  }
+
+  recordMetadataCacheEvent({ event, recordKind, scope }: AuthenticatedMetadataCacheEventObservation): void {
+    this.#record({ operation: () => this.#strict.recordMetadataCacheEvent({ event, recordKind, scope }) });
+  }
+
+  recordMutationScopeEvent({ observation }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordMutationScopeEvent"]>[0]): void {
+    this.#record({ operation: () => this.#strict.recordMutationScopeEvent({ observation }) });
+  }
+
+  recordPublicationScopeEvent({ event }: AuthenticatedPublicationScopeEventObservation): void {
+    this.#record({ operation: () => this.#strict.recordPublicationScopeEvent({ event }) });
+  }
+
+  recordPhysicalAccess({ identity, operation }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordPhysicalAccess"]>[0]): void {
+    this.#record({ operation: () => this.#strict.recordPhysicalAccess({ identity, operation }) });
+  }
+
+  recordPhysicalAccessReason({ identity, operation, reason }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordPhysicalAccessReason"]>[0]): void {
+    this.#record({ operation: () => this.#strict.recordPhysicalAccessReason({ identity, operation, reason }) });
+  }
+
+  recordSegmentWriterEvent({ event, segmentClass }: AuthenticatedSegmentWriterDiagnosticsObservation): void {
+    this.#record({ operation: () => this.#strict.recordSegmentWriterEvent({ event, segmentClass }) });
+  }
+
+  recordCacheEvent({ cache, event }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordCacheEvent"]>[0]): void {
+    this.#record({ operation: () => this.#strict.recordCacheEvent({ cache, event }) });
+  }
+
+  setCacheUsage({ bytes, cache, entries }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["setCacheUsage"]>[0]): void {
+    this.#record({ operation: () => this.#strict.setCacheUsage({ bytes, cache, entries }) });
+  }
+
+  setMetadataCacheUsage({ bytes, entries, scope }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["setMetadataCacheUsage"]>[0]): void {
+    this.#record({ operation: () => this.#strict.setMetadataCacheUsage({ bytes, entries, scope }) });
+  }
+
+  setResourceUsage({ bytes, operations, resource }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["setResourceUsage"]>[0]): void {
+    this.#record({ operation: () => this.#strict.setResourceUsage({ bytes, operations, resource }) });
+  }
+
+  incrementCoordinator({ counter }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["incrementCoordinator"]>[0]): void {
+    this.#record({ operation: () => this.#strict.incrementCoordinator({ counter }) });
+  }
+
+  resetHighWaterMarks(): void {
+    this.#record({ operation: () => this.#strict.resetHighWaterMarks() });
+  }
+
+  snapshot(): HizoFSRuntimeDiagnosticsSnapshot {
+    switch (this.#availability) {
+    case "available": break;
+    case "unavailable": throw new HizoFSRuntimeDiagnosticsUnavailableError();
+    default: this.#availability satisfies never;
+    }
+    try {
+      return this.#strict.snapshot();
+    } catch {
+      this.#availability = "unavailable";
+      throw new HizoFSRuntimeDiagnosticsUnavailableError();
+    }
+  }
+}
+
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  StrictHizoFSRuntimeDiagnosticsAccumulator,
 };

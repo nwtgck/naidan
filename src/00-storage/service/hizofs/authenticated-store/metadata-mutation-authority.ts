@@ -31,7 +31,7 @@ import { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
 import {
   measureAuthenticatedPublicationOperation,
   type AuthenticatedStoreDiagnosticsPort,
-} from "./runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import {
   appendPreparedMutationCommit,
   publishPreparedMutationCommit,

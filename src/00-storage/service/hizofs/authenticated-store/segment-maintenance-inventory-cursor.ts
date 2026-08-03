@@ -25,7 +25,7 @@ import {
   type AuthenticatedSegmentMaintenanceDescriptor,
   type AuthenticatedSegmentMaintenanceDescriptorResult,
 } from "./segment-maintenance-descriptor";
-import type { AuthenticatedStoreDiagnosticsPort } from "./runtime-diagnostics-port";
+import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
 export type AuthenticatedSegmentMaintenanceInventoryDescriptor = Readonly<{
   descriptor: AuthenticatedSegmentMaintenanceDescriptor;

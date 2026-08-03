@@ -12,7 +12,7 @@ import {
   type FileInodeEntry,
   type HomeRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
-import type { ImmutableBTreeDiagnosticsObservation } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
+import type { ImmutableBTreeDiagnosticsObservation } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import {
   prepareFileTruncateMutation,
   prepareFileWriteMutation,

@@ -1,3 +1,4 @@
+import { HizoFSRuntimeDiagnosticsUnavailableError } from '@/00-storage/service/hizofs/diagnostics/runtime-diagnostics';
 import {
   createBrowserHizoFSBenchmarkApplicationRuntime,
   type BrowserHizoFSBenchmarkApplicationRuntime,
@@ -15,7 +16,17 @@ function measuredRuntimeDiagnostics({ resetHighWaterMarks, snapshotRuntimeDiagno
 }): HizoFSBenchmarkRuntimeDiagnostics {
   return {
     snapshot() {
-      const snapshot = snapshotRuntimeDiagnostics();
+      let snapshot;
+      try {
+        snapshot = snapshotRuntimeDiagnostics();
+      } catch (cause: unknown) {
+        if (!(cause instanceof HizoFSRuntimeDiagnosticsUnavailableError)) throw cause;
+        return {
+          schemaVersion: 7,
+          type: 'unavailable',
+          reason: 'runtime diagnostics recording failed',
+        };
+      }
       const {
         caches,
         coordinator,
@@ -89,4 +100,5 @@ export function createProductionHizoFSBenchmarkRuntimePort(): HizoFSBenchmarkRun
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  measuredRuntimeDiagnostics,
 };

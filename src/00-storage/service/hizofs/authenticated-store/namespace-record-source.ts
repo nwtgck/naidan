@@ -10,7 +10,7 @@ import type { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
 import {
   measureAuthenticatedCodecOperation,
   type AuthenticatedStoreDiagnosticsPort,
-} from "./runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
 export type AuthenticatedNamespaceRecord = Readonly<{
   plaintext: Uint8Array;

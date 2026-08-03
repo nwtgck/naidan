@@ -4,7 +4,7 @@ import {
   type ImmutableBTreeDiagnosticOperation,
   type ImmutableBTreeDiagnosticsPort,
   type MutableImmutableBTreeStructuralDiagnostics,
-} from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/indexes/diagnostics-hooks";
 import {
   assertLocallyValidImmutableBTreePage,
   findBranchChildIndex,

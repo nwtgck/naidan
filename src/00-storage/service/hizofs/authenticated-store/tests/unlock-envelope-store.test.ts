@@ -13,7 +13,7 @@ import type {
   AuthenticatedCodecDiagnosticsObservation,
   AuthenticatedCryptoDiagnosticsObservation,
   AuthenticatedStoreDiagnosticsPort,
-} from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import {

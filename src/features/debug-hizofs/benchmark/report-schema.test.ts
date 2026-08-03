@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port';
-import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizofs/indexes/runtime-diagnostics-port';
+import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics';
+import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics';
 import { createHizoFSBenchmarkPresetConfiguration } from './presets';
 import { HIZOFS_BENCHMARK_RUNTIME_PHASES } from './runtime-port';
 import {

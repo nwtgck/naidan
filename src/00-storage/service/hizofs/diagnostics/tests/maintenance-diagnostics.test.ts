@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MaintenanceDiagnostics } from "@/00-storage/service/hizofs/maintenance/maintenance-diagnostics";
+import {
+  MaintenanceDiagnostics,
+  MaintenanceDiagnosticsUnavailableError,
+  TEST_ONLY,
+} from "@/00-storage/service/hizofs/diagnostics/maintenance-diagnostics";
 
 describe("maintenance diagnostics", () => {
   it("retains only a bounded deterministic suffix of non-secret events", () => {
@@ -13,13 +17,20 @@ describe("maintenance diagnostics", () => {
     ]);
   });
 
-  it("returns detached frozen snapshots and rejects invalid bounds or counters", () => {
+  it("returns detached frozen snapshots and keeps strict validation in diagnostics-owned tests", () => {
     expect(() => new MaintenanceDiagnostics({ maximumEvents: 0 })).toThrow();
-    const diagnostics = new MaintenanceDiagnostics({ maximumEvents: 1 });
+    const diagnostics = new TEST_ONLY.StrictMaintenanceDiagnostics({ maximumEvents: 1 });
     expect(() => diagnostics.record({ event: { copiedBytes: -1, type: "compaction_progress" } })).toThrow();
     diagnostics.record({ event: { removedSegments: 1, type: "sweep_progress" } });
     const snapshot = diagnostics.snapshot();
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot[0])).toBe(true);
+  });
+
+  it("isolates invalid event recording from the maintenance operation", () => {
+    const diagnostics = new MaintenanceDiagnostics({ maximumEvents: 1 });
+    expect(() => diagnostics.record({ event: { copiedBytes: -1, type: "compaction_progress" } })).not.toThrow();
+    expect(() => diagnostics.record({ event: { removedSegments: 1, type: "sweep_progress" } })).not.toThrow();
+    expect(() => diagnostics.snapshot()).toThrow(MaintenanceDiagnosticsUnavailableError);
   });
 });

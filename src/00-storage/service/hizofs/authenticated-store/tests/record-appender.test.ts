@@ -15,7 +15,7 @@ import { createAuthenticatedSegmentWriter, encodedHizoFSRecord } from "@/00-stor
 import type {
   AuthenticatedCryptoDiagnosticsObservation,
   AuthenticatedRecordDiagnosticsObservation,
-} from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
 
 class FileSizeBlockingBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {

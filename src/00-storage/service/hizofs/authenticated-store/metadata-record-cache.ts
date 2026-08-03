@@ -3,7 +3,7 @@ import {
   encodeHomeRecordReference,
   type HomeRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
-import type { AuthenticatedStoreDiagnosticsPort } from "./runtime-diagnostics-port";
+import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
 export type AuthenticatedMetadataRecordCachePolicy = Readonly<{
   maximumBytes: number;

@@ -31,7 +31,7 @@ import {
   measureAuthenticatedCryptoOperation,
   readExactWithFileSizeWithAuthenticatedReason,
   type AuthenticatedStoreDiagnosticsPort,
-} from "./runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import { authenticatedStoreError } from "./errors";
 import { authenticatedSegmentPath } from "./segment-location";
 

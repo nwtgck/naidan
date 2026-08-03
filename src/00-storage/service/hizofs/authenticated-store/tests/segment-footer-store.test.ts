@@ -21,7 +21,7 @@ import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/phys
 import type {
   AuthenticatedCryptoDiagnosticsObservation,
   AuthenticatedStoreDiagnosticsPort,
-} from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
 function deterministicRandomSource(): RandomByteSource {
   let next = 1;

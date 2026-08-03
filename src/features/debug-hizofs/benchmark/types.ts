@@ -1,7 +1,7 @@
 import { HIZOFS_V1_PERSISTED_RECORD_KIND_DIAGNOSTIC_NAMES } from '@/00-storage/service/hizofs/00-format';
-import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port';
-import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizofs/indexes/runtime-diagnostics-port';
-import { HIZOFS_RUNTIME_DIAGNOSTIC_PHASES } from '@/00-storage/service/hizofs/runtime/runtime-diagnostics';
+import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics';
+import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics';
+import { HIZOFS_RUNTIME_DIAGNOSTIC_PHASES } from '@/00-storage/service/hizofs/diagnostics/runtime-diagnostics';
 import { z } from 'zod';
 
 // IMPORTANT: Benchmark configuration and report JSON are ephemeral developer

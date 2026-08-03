@@ -90,6 +90,7 @@ function classifyPath({ rootDir, filePath }) {
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/compatibility` })) return 'hizofs-compatibility';
   if (relativePath === `${hizofsRoot}/01-crypto` || relativePath === `${hizofsRoot}/01-crypto/index` || relativePath === `${hizofsRoot}/01-crypto/index.ts`) return 'hizofs-crypto-public';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/01-crypto` })) return 'hizofs-crypto-internal';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/diagnostics` })) return 'hizofs-diagnostics';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/authenticated-store` })) return 'hizofs-authenticated-store';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/physical-store` })) return 'hizofs-physical-store';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/indexes` })) return 'hizofs-indexes';
@@ -165,12 +166,15 @@ function isAllowedHizoFSDependency({ sourceCategory, targetCategory }) {
     return ['hizofs-crypto-internal', 'hizofs-crypto-public', 'hizofs-format-public'].includes(targetCategory);
   }
   if (sourceCategory === 'hizofs-physical-store') return targetCategory === 'hizofs-physical-store';
+  if (sourceCategory === 'hizofs-diagnostics') {
+    return ['hizofs-diagnostics', 'hizofs-format-public'].includes(targetCategory);
+  }
   if (sourceCategory === 'hizofs-authenticated-store') {
-    return ['hizofs-authenticated-store', 'hizofs-format-public', 'hizofs-crypto-public', 'hizofs-physical-store'].includes(targetCategory);
+    return ['hizofs-authenticated-store', 'hizofs-diagnostics', 'hizofs-format-public', 'hizofs-crypto-public', 'hizofs-physical-store'].includes(targetCategory);
   }
   if (HIZOFS_LOGICAL_CATEGORIES.has(sourceCategory)) {
     return HIZOFS_LOGICAL_CATEGORIES.has(targetCategory)
-      || ['hizofs-authenticated-store', 'hizofs-format-public'].includes(targetCategory);
+      || ['hizofs-authenticated-store', 'hizofs-diagnostics', 'hizofs-format-public'].includes(targetCategory);
   }
   if (sourceCategory === 'hizofs-inspection') {
     return ['hizofs-inspection', 'hizofs-api', 'hizofs-authenticated-store', 'hizofs-format-public', 'hizofs-crypto-public'].includes(targetCategory);
@@ -186,13 +190,14 @@ function isAllowedHizoFSDependency({ sourceCategory, targetCategory }) {
       || targetCategory === 'hizofs-worker'
       || targetCategory === 'hizofs-api'
       || targetCategory === 'hizofs-authenticated-store'
+      || targetCategory === 'hizofs-diagnostics'
       || targetCategory === 'hizofs-format-public'
       || targetCategory === 'hizofs-crypto-public'
       || targetCategory === 'hizofs-physical-store'
       || HIZOFS_LOGICAL_CATEGORIES.has(targetCategory);
   }
   if (sourceCategory === 'hizofs-worker-entry') return ['hizofs-worker-entry', 'hizofs-composition'].includes(targetCategory);
-  if (sourceCategory === 'hizofs-worker') return ['hizofs-worker-entry', 'hizofs-worker', 'hizofs-composition', 'hizofs-api', 'hizofs-runtime'].includes(targetCategory);
+  if (sourceCategory === 'hizofs-worker') return ['hizofs-worker-entry', 'hizofs-worker', 'hizofs-composition', 'hizofs-api', 'hizofs-diagnostics', 'hizofs-runtime'].includes(targetCategory);
   if (sourceCategory === 'hizofs-root') return ['hizofs-api', 'hizofs-worker-entry', 'hizofs-worker', 'hizofs-composition', 'hizofs-compatibility'].includes(targetCategory);
 
   if (sourceCategory === 'naidan-control-format') return targetCategory === 'hizofs-compatibility';

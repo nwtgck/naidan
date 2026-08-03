@@ -46,7 +46,7 @@ import {
   measureAuthenticatedCryptoOperation,
   readExactWithAuthenticatedReason,
   type AuthenticatedStoreDiagnosticsPort,
-} from "./runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import { authenticatedSegmentPath, segmentIdIsUsedAcrossClasses } from "./segment-location";
 import { sealAuthenticatedSegment, type AuthenticatedSegmentIndex } from "./segment-footer-store";
 import { readAuthenticatedSegmentDescriptor } from "./segment-prefix-reader";

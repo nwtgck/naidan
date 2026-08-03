@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { HIZOFS_V1_FORMAT_CONSTANTS } from "@/00-storage/service/hizofs/00-format";
-import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
+import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import {
   HIZOFS_RUNTIME_DIAGNOSTIC_PHASES,
   HizoFSRuntimeDiagnosticsAccumulator,
-} from "@/00-storage/service/hizofs/runtime/runtime-diagnostics";
+  HizoFSRuntimeDiagnosticsUnavailableError,
+  TEST_ONLY,
+} from "@/00-storage/service/hizofs/diagnostics/runtime-diagnostics";
 
 describe("HizoFS runtime diagnostics", () => {
   it("projects authenticated-store numeric record kinds through the canonical format authority", () => {
@@ -100,7 +102,8 @@ describe("HizoFS runtime diagnostics", () => {
       plaintextBytesWritten: 17,
       writeOperations: 1,
     });
-    expect(() => diagnostics.recordPersistedRecord({
+    const strictDiagnostics = new TEST_ONLY.StrictHizoFSRuntimeDiagnosticsAccumulator();
+    expect(() => strictDiagnostics.recordPersistedRecord({
       operation: "read",
       physicalBytes: 1,
       plaintextBytes: 1,
@@ -421,8 +424,8 @@ describe("HizoFS runtime diagnostics", () => {
     });
   });
 
-  it("rejects invalid measurements instead of corrupting counters", () => {
-    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+  it("keeps strict validation available to diagnostics-owned tests", () => {
+    const diagnostics = new TEST_ONLY.StrictHizoFSRuntimeDiagnosticsAccumulator();
     const before = diagnostics.snapshot();
     expect(() => diagnostics.recordPhase({ durationMs: Number.NaN, phase: "record_decode" })).toThrow();
     expect(() => diagnostics.recordRecord({
@@ -438,5 +441,19 @@ describe("HizoFS runtime diagnostics", () => {
       resource: "writerPendingChunkWrites",
     })).toThrow();
     expect(diagnostics.snapshot()).toEqual(before);
+  });
+
+  it("isolates recording failure from the observed operation and marks the snapshot unavailable", () => {
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+
+    expect(() => diagnostics.recordPhase({
+      durationMs: Number.NaN,
+      phase: "record_decode",
+    })).not.toThrow();
+    expect(() => diagnostics.recordPhase({
+      durationMs: 1,
+      phase: "record_encode",
+    })).not.toThrow();
+    expect(() => diagnostics.snapshot()).toThrow(HizoFSRuntimeDiagnosticsUnavailableError);
   });
 });

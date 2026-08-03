@@ -21,7 +21,7 @@ import {
 import type {
   ImmutableBTreeDiagnosticOperation,
   ImmutableBTreeDiagnosticsPort,
-} from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 
 export type RootInodeTableMutation = ImmutableBTreeMutation<InodeNumber, InodeLeafEntry>;
 export type RootInodeTablePageStore = ImmutableBTreePageStore<

@@ -1,7 +1,8 @@
+import { HizoFSRuntimeDiagnosticsUnavailableError } from '@/00-storage/service/hizofs/diagnostics/runtime-diagnostics';
 import { InMemoryOpfsDirectoryHandle } from '@/00-storage/service/test-support/in-memory-opfs';
 import { cleanHizoFSBenchmarkData, runHizoFSBenchmark } from '@/features/debug-hizofs/benchmark/engine';
 import { createHizoFSBenchmarkPresetConfiguration } from '@/features/debug-hizofs/benchmark/presets';
-import { createProductionHizoFSBenchmarkRuntimePort } from '@/features/debug-hizofs/benchmark/production-runtime-port';
+import { createProductionHizoFSBenchmarkRuntimePort, TEST_ONLY } from '@/features/debug-hizofs/benchmark/production-runtime-port';
 import { createBenchmarkRuntimePolicy } from '@/features/debug-hizofs/benchmark/runtime-port';
 import type { HizoFSBenchmarkConfiguration } from '@/features/debug-hizofs/benchmark/types';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -49,6 +50,32 @@ afterEach(() => {
 });
 
 describe('production HizoFS benchmark runtime port', () => {
+  it('reports centralized diagnostics recording failure as unavailable', () => {
+    const diagnostics = TEST_ONLY.measuredRuntimeDiagnostics({
+      resetHighWaterMarks: () => undefined,
+      snapshotRuntimeDiagnostics: () => {
+        throw new HizoFSRuntimeDiagnosticsUnavailableError();
+      },
+    });
+
+    expect(diagnostics.snapshot()).toEqual({
+      reason: 'runtime diagnostics recording failed',
+      schemaVersion: 7,
+      type: 'unavailable',
+    });
+  });
+
+  it('does not hide non-diagnostics snapshot failures', () => {
+    const diagnostics = TEST_ONLY.measuredRuntimeDiagnostics({
+      resetHighWaterMarks: () => undefined,
+      snapshotRuntimeDiagnostics: () => {
+        throw new Error('unexpected snapshot failure');
+      },
+    });
+
+    expect(() => diagnostics.snapshot()).toThrow('unexpected snapshot failure');
+  });
+
   it('preserves data across a normal authenticated reopen', async () => {
     const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
     const configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });

@@ -47,7 +47,7 @@ import {
 import {
   measureAuthenticatedCryptoOperation,
   type AuthenticatedStoreDiagnosticsPort,
-} from "./runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
 export type AuthenticatedSegmentFooter = Readonly<{
   header: SegmentFooterHeaderV1;

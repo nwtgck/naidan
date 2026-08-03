@@ -26,7 +26,7 @@ import {
   ImmutableBTreeReader,
   type ImmutableBTreePage,
 } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
-import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
+import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 
 const MAXIMUM_SINGLE_NAMESPACE_READ_BYTES = 64 * 1024 * 1024;
 

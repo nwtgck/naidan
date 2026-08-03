@@ -11,3 +11,15 @@ Choose a destination by compatibility responsibility, not by filename suffix.
 - Never import debug features from HizoFS core.
 - HizoFS core, API, runtime, and Worker own only generic filesystem, session, and Transition contracts. They must not name, type, import, or branch on Naidan application features such as Wesh, Chat, or File Explorer.
 - Only separately reviewed exact debug roots may receive deep-import exceptions; future `debug-*` names inherit nothing.
+
+## Strict diagnostics terminology
+
+Within HizoFS, `diagnostics` means optional observation-only logic. Removing or
+not injecting diagnostics must not change filesystem return values, errors,
+persisted bytes, authentication, durability, publication, recovery,
+concurrency decisions, algorithm selection, or resource bounds.
+
+Logic that changes any of those properties is not diagnostics, even when it
+exists mainly for benchmarking, debugging, validation, or performance analysis.
+Detailed ownership, failure-isolation, privacy, and hot-path rules are defined
+by `diagnostics/AGENTS.md`.

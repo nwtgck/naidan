@@ -2,7 +2,7 @@ import {
   HIZOFS_V1_PERSISTED_RECORD_KIND_DIAGNOSTIC_NAMES,
   type HizoFSV1PersistedRecordKindDiagnosticName,
 } from "@/00-storage/service/hizofs/00-format";
-import { HIZOFS_RUNTIME_DIAGNOSTIC_PHASES } from "@/00-storage/service/hizofs/runtime/runtime-diagnostics";
+import { HIZOFS_RUNTIME_DIAGNOSTIC_PHASES } from "@/00-storage/service/hizofs/diagnostics/runtime-diagnostics";
 import type {
   StorageDirectoryHandle,
   StorageFileSystemSession,

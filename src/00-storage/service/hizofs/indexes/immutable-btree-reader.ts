@@ -13,7 +13,7 @@ import {
   measureImmutableBTreeOperation,
   type ImmutableBTreeDiagnosticsPort,
   type MutableImmutableBTreeStructuralDiagnostics,
-} from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/indexes/diagnostics-hooks";
 
 export type {
   ImmutableBTreeBranchChild,

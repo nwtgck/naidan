@@ -6,7 +6,7 @@ import {
 import type {
   ImmutableBTreeDiagnosticsObservation,
   ImmutableBTreeDiagnosticsPort,
-} from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/indexes/diagnostics-hooks";
 
 type Entry = Readonly<{ key: number; value: string }>;
 type Page = ImmutableBTreePage<number, Entry, string>;

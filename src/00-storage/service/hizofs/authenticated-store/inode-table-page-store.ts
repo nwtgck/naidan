@@ -17,7 +17,7 @@ import { authenticatedStoreError } from "./errors";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import type { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
 import { readAuthenticatedNamespaceHomeRecord } from "./namespace-record-source";
-import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "./runtime-diagnostics-port";
+import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import {
   encodedHizoFSRecord,
   type AuthenticatedSegmentWriter,

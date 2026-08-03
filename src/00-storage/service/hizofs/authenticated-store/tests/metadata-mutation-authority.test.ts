@@ -30,7 +30,7 @@ import type {
   AuthenticatedMutationScopeEventObservation,
   AuthenticatedSegmentWriterDiagnosticsObservation,
   AuthenticatedStoreDiagnosticsPort,
-} from "@/00-storage/service/hizofs/authenticated-store/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import {
   createInitialSuperblockCopies,
   openSuperblockCopies,

@@ -17,7 +17,7 @@ import {
 import type {
   ImmutableBTreeDiagnosticOperation,
   ImmutableBTreeDiagnosticsPort,
-} from "@/00-storage/service/hizofs/indexes/runtime-diagnostics-port";
+} from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import { ImmutableBTreeReader } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
 
 export type DirectoryPageTreeMutation = ImmutableBTreeMutation<string, DirectoryLeafEntry>;
