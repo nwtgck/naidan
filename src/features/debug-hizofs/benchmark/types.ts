@@ -357,7 +357,6 @@ const hizoFSRuntimeDiagnosticsSchema = z.discriminatedUnion('type', [
 const hizoFSPhysicalStoreClassCountsSchema = z.object({
   metadata: z.number().int().nonnegative(),
   data: z.number().int().nonnegative(),
-  relocation: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
 }).strict();
 
@@ -548,8 +547,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(27),
-  benchmarkImplementationVersion: z.literal(38),
+  schemaVersion: z.literal(28),
+  benchmarkImplementationVersion: z.literal(40),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),

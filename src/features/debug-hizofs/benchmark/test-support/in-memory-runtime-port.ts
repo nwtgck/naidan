@@ -1,4 +1,9 @@
-import { HIZOFS_SUPERBLOCK_FILES } from "@/00-storage/service/hizofs/00-format";
+import {
+  HIZOFS_SUPERBLOCK_FILES,
+  parseSegmentId,
+  segmentIdToRelativePath,
+  type SegmentId,
+} from "@/00-storage/service/hizofs/00-format";
 import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from "@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics";
 import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import type {
@@ -285,17 +290,43 @@ function createMutationPublishingWritable({ writable, recordMutation }: {
   };
 }
 
+function deterministicBenchmarkSegmentId({ publicationSequence }: {
+  readonly publicationSequence: number;
+}): SegmentId {
+  if (!Number.isSafeInteger(publicationSequence) || publicationSequence < 0 || publicationSequence >= 0xffff_ffff) {
+    throw new RangeError("benchmark publication sequence is outside the deterministic Segment ID range");
+  }
+  const value = publicationSequence + 1;
+  const bytes = new Uint8Array(16);
+  bytes[12] = (value >>> 24) & 0xff;
+  bytes[13] = (value >>> 16) & 0xff;
+  bytes[14] = (value >>> 8) & 0xff;
+  bytes[15] = value & 0xff;
+  return parseSegmentId({ bytes });
+}
+
 async function writePhysicalPublication({ backingDirectory, publicationSequence }: {
   readonly backingDirectory: FileSystemDirectoryHandle;
   readonly publicationSequence: number;
 }): Promise<void> {
-  const segments = await backingDirectory.getDirectoryHandle("segments", { create: true });
-  const metadata = await segments.getDirectoryHandle("metadata", { create: true });
-  const shard = await metadata.getDirectoryHandle("00", { create: true });
-  const segment = await shard.getFileHandle(
-    `${String(publicationSequence).padStart(8, "0")}.seg`,
-    { create: true },
-  );
+  const relativePath = segmentIdToRelativePath({
+    id: deterministicBenchmarkSegmentId({ publicationSequence }),
+    segmentClass: "metadata",
+  });
+  const [segmentRootName, segmentClassDirectory, shardDirectory, segmentFilename, ...unexpected] = relativePath.split("/");
+  if (
+    unexpected.length !== 0
+    || segmentRootName === undefined
+    || segmentClassDirectory === undefined
+    || shardDirectory === undefined
+    || segmentFilename === undefined
+  ) {
+    throw new Error("canonical benchmark Segment path shape invariant failed");
+  }
+  const segments = await backingDirectory.getDirectoryHandle(segmentRootName, { create: true });
+  const metadata = await segments.getDirectoryHandle(segmentClassDirectory, { create: true });
+  const shard = await metadata.getDirectoryHandle(shardDirectory, { create: true });
+  const segment = await shard.getFileHandle(segmentFilename, { create: true });
   const segmentWritable = await segment.createWritable({ keepExistingData: false });
   await segmentWritable.write(new Uint8Array([publicationSequence & 0xff]));
   await segmentWritable.close();

@@ -196,8 +196,8 @@ function createBackingStoreDiagnostics(): HizoFSBenchmarkDiagnostics['backingSto
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 27,
-    benchmarkImplementationVersion: 38,
+    schemaVersion: 28,
+    benchmarkImplementationVersion: 40,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -351,12 +351,12 @@ function createReport(): HizoFSBenchmarkReport {
               objects: { before: 1, after: 3, created: 2, removed: 0 },
               physicalStore: {
                 before: {
-                  segmentFiles: { metadata: 1, data: 0, relocation: 0, total: 1 },
-                  segmentShards: { metadata: 1, data: 0, relocation: 0, total: 1 },
+                  segmentFiles: { metadata: 1, data: 0, total: 1 },
+                  segmentShards: { metadata: 1, data: 0, total: 1 },
                 },
                 after: {
-                  segmentFiles: { metadata: 3, data: 0, relocation: 0, total: 3 },
-                  segmentShards: { metadata: 2, data: 0, relocation: 0, total: 2 },
+                  segmentFiles: { metadata: 3, data: 0, total: 3 },
+                  segmentShards: { metadata: 2, data: 0, total: 2 },
                 },
               },
               commits: { superblockPublications: 1 },

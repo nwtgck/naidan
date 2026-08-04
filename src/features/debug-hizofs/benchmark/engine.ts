@@ -1,6 +1,12 @@
 import {
   HIZOFS_SUPERBLOCK_FILES,
   HIZOFS_UNLOCK_ENVELOPE_FILES,
+  HIZOFS_V1_FORMAT_CONSTANTS,
+  parseSegmentClassDirectoryName,
+  parseSegmentFilename,
+  parseSegmentShardDirectoryName,
+  segmentIdToRelativePath,
+  type SegmentClass,
 } from '@/00-storage/service/hizofs/00-format';
 import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics';
 import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics';
@@ -38,7 +44,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 38 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 40 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -328,7 +334,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 27,
+    schemaVersion: 28,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -4449,49 +4455,69 @@ function getWriteChunkByteLength({ data }: { data: FileSystemWriteChunkType }): 
   return 0;
 }
 
+type CanonicalTrackedSegmentPath = Readonly<{
+  physicalPath: string;
+  segmentClass: SegmentClass;
+  shard: string;
+}>;
+
+function parseCanonicalTrackedSegmentPath({
+  relativePath,
+}: {
+  relativePath: readonly string[];
+}): CanonicalTrackedSegmentPath | undefined {
+  const [segmentRoot, segmentClassDirectory, shardDirectory, segmentFilename, ...unexpected] = relativePath;
+  if (
+    unexpected.length !== 0
+    || segmentRoot !== HIZOFS_V1_FORMAT_CONSTANTS.container.segmentDirectoryName
+    || segmentClassDirectory === undefined
+    || shardDirectory === undefined
+    || segmentFilename === undefined
+  ) {
+    return undefined;
+  }
+  try {
+    const segmentClass = parseSegmentClassDirectoryName({ value: segmentClassDirectory });
+    const shard = parseSegmentShardDirectoryName({ value: shardDirectory });
+    const segmentId = parseSegmentFilename({ value: segmentFilename });
+    const physicalPath = relativePath.join('/');
+    if (physicalPath !== segmentIdToRelativePath({ id: segmentId, segmentClass })) return undefined;
+    return { physicalPath, segmentClass, shard };
+  } catch {
+    return undefined;
+  }
+}
+
 function snapshotPhysicalStoreShape({
   objectPaths,
 }: {
   objectPaths: ReadonlySet<string>;
 }): PhysicalStoreShape {
-  const segmentFiles = { metadata: 0, data: 0, relocation: 0 };
+  const segmentFiles = { metadata: 0, data: 0 };
   const segmentShards = {
     metadata: new Set<string>(),
     data: new Set<string>(),
-    relocation: new Set<string>(),
   };
   for (const objectPath of objectPaths) {
-    const [segments, segmentClass, shard] = objectPath.split('/');
-    if (segments !== 'segments' || shard === undefined) continue;
-    switch (segmentClass) {
-    case 'metadata':
-    case 'data':
-    case 'relocation':
-      segmentFiles[segmentClass] += 1;
-      segmentShards[segmentClass].add(shard);
-      break;
-    default:
-      break;
-    }
+    const tracked = parseCanonicalTrackedSegmentPath({ relativePath: objectPath.split('/') });
+    if (tracked === undefined) continue;
+    segmentFiles[tracked.segmentClass] += 1;
+    segmentShards[tracked.segmentClass].add(tracked.shard);
   }
   const metadataFiles = segmentFiles.metadata;
   const dataFiles = segmentFiles.data;
-  const relocationFiles = segmentFiles.relocation;
   const metadataShards = segmentShards.metadata.size;
   const dataShards = segmentShards.data.size;
-  const relocationShards = segmentShards.relocation.size;
   return {
     segmentFiles: {
       metadata: metadataFiles,
       data: dataFiles,
-      relocation: relocationFiles,
-      total: metadataFiles + dataFiles + relocationFiles,
+      total: metadataFiles + dataFiles,
     },
     segmentShards: {
       metadata: metadataShards,
       data: dataShards,
-      relocation: relocationShards,
-      total: metadataShards + dataShards + relocationShards,
+      total: metadataShards + dataShards,
     },
   };
 }
@@ -4512,11 +4538,13 @@ async function initializeHizoFSPhysicalDiagnostics({
 }): Promise<void> {
   physicalDiagnostics.objectPaths.clear();
   try {
-    const segmentsDirectory = await backingDirectory.getDirectoryHandle('segments');
-    for (const segmentType of ['metadata', 'data', 'relocation'] as const) {
+    const segmentRootName = HIZOFS_V1_FORMAT_CONSTANTS.container.segmentDirectoryName;
+    const segmentsDirectory = await backingDirectory.getDirectoryHandle(segmentRootName);
+    for (const segmentClass of ['metadata', 'data'] as const satisfies readonly SegmentClass[]) {
+      const segmentClassDirectory = HIZOFS_V1_FORMAT_CONSTANTS.container.segmentClassDirectories[segmentClass];
       let typeDirectory: FileSystemDirectoryHandle;
       try {
-        typeDirectory = await segmentsDirectory.getDirectoryHandle(segmentType);
+        typeDirectory = await segmentsDirectory.getDirectoryHandle(segmentClassDirectory);
       } catch (error) {
         if (isNotFoundError({ error })) continue;
         throw error;
@@ -4531,13 +4559,13 @@ async function initializeHizoFSPhysicalDiagnostics({
             of (shardHandle as FileSystemDirectoryHandle).entries()
           ) {
             switch (segmentHandle.kind) {
-            case 'file':
-              if (segmentName.endsWith('.seg')) {
-                physicalDiagnostics.objectPaths.add(
-                  `segments/${segmentType}/${shardName}/${segmentName}`,
-                );
-              }
+            case 'file': {
+              const tracked = parseCanonicalTrackedSegmentPath({
+                relativePath: [segmentRootName, segmentClassDirectory, shardName, segmentName],
+              });
+              if (tracked !== undefined) physicalDiagnostics.objectPaths.add(tracked.physicalPath);
               break;
+            }
             case 'directory':
               break;
             default: {
@@ -4571,7 +4599,6 @@ function recordCommittedPhysicalWrite({
   relativePath: readonly string[];
   physicalDiagnostics: HizoFSPhysicalDiagnosticTracker;
 }): void {
-  const physicalPath = relativePath.join('/');
   if (isSuperblockPublicationMarkerPath({ relativePath })) {
     // A successful logical publication converges both A/B copies. Count one
     // canonical copy as the completion marker so physical redundancy does not
@@ -4579,8 +4606,9 @@ function recordCommittedPhysicalWrite({
     physicalDiagnostics.superblockPublications += 1;
     return;
   }
-  if (isImmutableObjectPhysicalPath({ relativePath })) {
-    physicalDiagnostics.objectPaths.add(physicalPath);
+  const trackedSegment = parseCanonicalTrackedSegmentPath({ relativePath });
+  if (trackedSegment !== undefined) {
+    physicalDiagnostics.objectPaths.add(trackedSegment.physicalPath);
   }
 }
 
@@ -4606,21 +4634,6 @@ function isSuperblockPublicationMarkerPath({
 }): boolean {
   return relativePath.length === 1
     && relativePath[0] === HIZOFS_SUPERBLOCK_FILES[0];
-}
-
-function isImmutableObjectPhysicalPath({
-  relativePath,
-}: {
-  relativePath: readonly string[];
-}): boolean {
-  return relativePath.length === 4
-    && relativePath[0] === 'segments'
-    && (
-      relativePath[1] === 'metadata'
-      || relativePath[1] === 'data'
-      || relativePath[1] === 'relocation'
-    )
-    && relativePath[3]?.endsWith('.seg') === true;
 }
 
 function validateBenchmarkConfiguration({
@@ -4697,4 +4710,6 @@ export const TEST_ONLY = {
   createPatternBytes,
   createCountingDirectoryHandle,
   createCountingSyncAccessHandle,
+  parseCanonicalTrackedSegmentPath,
+  snapshotPhysicalStoreShape,
 };

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseSegmentId, segmentIdToRelativePath } from '@/00-storage/service/hizofs/00-format';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { createHizoFSBenchmarkPresetConfiguration } from './presets';
 import {
@@ -40,6 +41,44 @@ function createTinyConfiguration(): HizoFSBenchmarkConfiguration {
 }
 
 describe('HizoFS benchmark engine', () => {
+
+  it('tracks only canonical V1 Segment paths and derives exact physical shape', () => {
+    const metadataPath = segmentIdToRelativePath({
+      id: parseSegmentId({ bytes: new Uint8Array(16).fill(1) }),
+      segmentClass: 'metadata',
+    });
+    const dataPath = segmentIdToRelativePath({
+      id: parseSegmentId({ bytes: new Uint8Array(16).fill(2) }),
+      segmentClass: 'data',
+    });
+    expect(TEST_ONLY.parseCanonicalTrackedSegmentPath({
+      relativePath: metadataPath.split('/'),
+    })).toMatchObject({
+      physicalPath: metadataPath,
+      segmentClass: 'metadata',
+      shard: '01',
+    });
+    expect(TEST_ONLY.parseCanonicalTrackedSegmentPath({
+      relativePath: dataPath.split('/'),
+    })).toMatchObject({
+      physicalPath: dataPath,
+      segmentClass: 'data',
+      shard: '02',
+    });
+    expect(TEST_ONLY.parseCanonicalTrackedSegmentPath({
+      relativePath: metadataPath.replace(/[^/]+$/u, 'legacy.seg').split('/'),
+    })).toBeUndefined();
+    expect(TEST_ONLY.parseCanonicalTrackedSegmentPath({
+      relativePath: ['segments', 'relocation', '01', 'legacy.seg'],
+    })).toBeUndefined();
+
+    expect(TEST_ONLY.snapshotPhysicalStoreShape({
+      objectPaths: new Set([metadataPath, dataPath, 'segments/metadata/01/legacy.seg']),
+    })).toEqual({
+      segmentFiles: { metadata: 1, data: 1, total: 2 },
+      segmentShards: { metadata: 1, data: 1, total: 2 },
+    });
+  });
 
   it('fails closed when the production runtime capability is not connected', async () => {
     const report = await runHizoFSBenchmark({
