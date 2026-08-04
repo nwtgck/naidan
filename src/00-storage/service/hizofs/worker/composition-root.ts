@@ -49,6 +49,7 @@ import {
   type OpenedEmptyEncryptedContainer,
 } from "@/00-storage/service/hizofs/authenticated-store/empty-container-store";
 import { AuthenticatedStoreError } from "@/00-storage/service/hizofs/authenticated-store/errors";
+import { AuthenticatedSegmentWriterOwner } from "@/00-storage/service/hizofs/authenticated-store/active-segment-writer-owner";
 import {
   openAuthenticatedUnlockEnvelopeAuthority,
   openUnlockEnvelopeCopies,
@@ -1682,6 +1683,14 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     diagnostics: recordDiagnostics,
     policy: metadataRecordCachePolicy ?? APPLICATION_METADATA_RECORD_CACHE_POLICY,
   });
+  const metadataWriterOwner = new AuthenticatedSegmentWriterOwner({
+    backend,
+    diagnostics: recordDiagnostics,
+    fileSystemId: opened.fileSystemId,
+    randomSource,
+    rootKey: opened.rootKey,
+    segmentClass: "metadata",
+  });
   const namespaceValidationCache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 256 });
   const decodedInodeLeafPageIndexCache = new DecodedInodeLeafPageIndexCache({
     diagnostics: decodedInodeIndexPageCacheDiagnostics,
@@ -2000,6 +2009,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         rootKey: opened.rootKey,
         sharedMetadataRecordCache: metadataRecordCache,
         supportedFeatureBits,
+        writerOwner: metadataWriterOwner,
       });
       try {
         const result = await prepare({
@@ -2483,6 +2493,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       rootKey: opened.rootKey,
       sharedMetadataRecordCache: metadataRecordCache,
       supportedFeatureBits,
+      writerOwner: metadataWriterOwner,
     });
     const contentPort = {
       extentPageStore: createFileExtentTreePageStore({ pagePort: {
@@ -2834,10 +2845,36 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     releaseResources: async () => {
       if (released) return;
       released = true;
-      decodedInodeLeafPageIndexCache.dispose();
-      metadataRecordCache.dispose();
-      namespaceValidationCache.clear();
-      opened.rootKey.destroy();
+      const failures: unknown[] = [];
+      try {
+        await metadataWriterOwner.close();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      try {
+        decodedInodeLeafPageIndexCache.dispose();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      try {
+        metadataRecordCache.dispose();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      try {
+        namespaceValidationCache.clear();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      try {
+        opened.rootKey.destroy();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) {
+        throw new AggregateError(failures, "HizoFS application session resource release failed");
+      }
     },
     workerMountGrantIssuer: async ({ accessMode, path }) => await issueHizoFSWorkerMountGrant({
       accessMode,

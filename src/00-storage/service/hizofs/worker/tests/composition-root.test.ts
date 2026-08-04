@@ -2381,6 +2381,7 @@ describe("HizoFS worker composition root", () => {
       expect(initial.phases.record_encode.operationCount).toBeGreaterThan(0);
       expect(initial.phases.record_decode.operationCount).toBeGreaterThan(0);
       expect(initial.phases.physical_write_at.operationCount).toBeGreaterThan(0);
+      const metadataSegmentsBeforeMutations = initial.segmentWriters.metadata.created;
 
       const file = await runtime.session.root.getFileHandle({ create: true, name: "measured.bin" });
       const bytes = new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes + 32).fill(73);
@@ -2408,6 +2409,8 @@ describe("HizoFS worker composition root", () => {
         .toBe(afterBulkTarget.phases.commit_publication.operationCount + 1);
       expect(afterBulkCommit.phases.index_build.operationCount)
         .toBeGreaterThan(afterBulkTarget.phases.index_build.operationCount);
+      expect(afterBulkCommit.segmentWriters.metadata.created)
+        .toBe(metadataSegmentsBeforeMutations + 1);
       await expect(bulk.targetDirectory.getFileHandle({ create: false, name: "bulk-a" }))
         .resolves.toBeDefined();
       await expect(bulk.targetDirectory.getFileHandle({ create: false, name: "bulk-b" }))
@@ -2850,17 +2853,24 @@ describe("HizoFS worker composition root", () => {
   });
 
   it("recreates the exact non-empty portable container bytes", async () => {
-    const backend = await createNonemptyPortableFixtureBackend();
+    const firstBackend = await createNonemptyPortableFixtureBackend();
+    const secondBackend = await createNonemptyPortableFixtureBackend();
+    const firstFiles = await collectPortableContainerFiles({
+      backend: firstBackend,
+      directory: CANONICAL_CONTAINER_ROOT,
+    });
+    const secondFiles = await collectPortableContainerFiles({
+      backend: secondBackend,
+      directory: CANONICAL_CONTAINER_ROOT,
+    });
     expect(nonemptyContainerPortable).toMatchObject({
       fileSystemId: "57XP043891T62-modnaes",
       passphrase: "correct horse battery staple",
       schema: "hizofs-v1-nonempty-container-fixture",
       schemaVersion: 1,
     });
-    expect(await collectPortableContainerFiles({
-      backend,
-      directory: CANONICAL_CONTAINER_ROOT,
-    })).toEqual(nonemptyContainerPortable.files);
+    expect(secondFiles).toEqual(firstFiles);
+    expect(firstFiles).toEqual(nonemptyContainerPortable.files);
   });
 
   it("reopens the non-empty portable container through normal authenticated reads", async () => {

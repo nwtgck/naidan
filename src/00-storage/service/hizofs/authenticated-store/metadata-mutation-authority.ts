@@ -38,10 +38,11 @@ import {
   type PublishedPreparedMutationCommit,
 } from "./prepared-mutation-commit-store";
 import {
-  AuthenticatedSegmentCapacityError,
-  createAuthenticatedSegmentWriter,
-  type AuthenticatedSegmentWriter,
-} from "./record-appender";
+  AuthenticatedSegmentWriterOwner,
+  type ActiveSegmentWriterReleaseDisposition,
+  type AuthenticatedSegmentWriterLease,
+} from "./active-segment-writer-owner";
+import type { AuthenticatedSegmentWriter } from "./record-appender";
 import {
   resolveMutationSuperblockPublication,
   type MutationSuperblockPublicationResolution,
@@ -71,43 +72,47 @@ export class AuthenticatedMetadataMutationAuthority {
   readonly #supportedFeatureBits: FeatureBits;
   #mutationDiagnosticsOpen = true;
   #operationInProgress = false;
-  #pageWriter: AuthenticatedSegmentWriter;
-  #pageWriterHasRecords = false;
   #state: AuthenticatedMetadataMutationAuthorityState = "active";
+  readonly #writerLease: AuthenticatedSegmentWriterLease;
+  #writerLeaseReleased = false;
+  readonly #writerReleaseDisposition: ActiveSegmentWriterReleaseDisposition;
 
   private constructor({
     backend,
     diagnostics,
     fileSystemId,
     metadataRecordCache,
-    pageWriter,
     randomSource,
     relocationIndexRootPhysicalRef,
     rootKey,
     sharedMetadataRecordCache,
     supportedFeatureBits,
+    writerLease,
+    writerReleaseDisposition,
   }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
     fileSystemId: FileSystemId;
     metadataRecordCache: AuthenticatedMetadataRecordCache;
-    pageWriter: AuthenticatedSegmentWriter;
     randomSource?: RandomByteSource;
     relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
     rootKey: FileSystemRootKey;
     sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
     supportedFeatureBits: FeatureBits;
+    writerLease: AuthenticatedSegmentWriterLease;
+    writerReleaseDisposition: ActiveSegmentWriterReleaseDisposition;
   }) {
     this.#backend = backend;
     this.#diagnostics = diagnostics;
     this.#fileSystemId = fileSystemId;
     this.#metadataRecordCache = metadataRecordCache;
-    this.#pageWriter = pageWriter;
     this.#randomSource = randomSource;
     this.#relocationIndexRootPhysicalRef = relocationIndexRootPhysicalRef;
     this.#rootKey = rootKey;
     this.#sharedMetadataRecordCache = sharedMetadataRecordCache;
     this.#supportedFeatureBits = supportedFeatureBits;
+    this.#writerLease = writerLease;
+    this.#writerReleaseDisposition = writerReleaseDisposition;
   }
 
   static async create({
@@ -119,6 +124,7 @@ export class AuthenticatedMetadataMutationAuthority {
     rootKey,
     sharedMetadataRecordCache,
     supportedFeatureBits,
+    writerOwner,
   }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
@@ -128,6 +134,7 @@ export class AuthenticatedMetadataMutationAuthority {
     rootKey: FileSystemRootKey;
     sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
     supportedFeatureBits: FeatureBits;
+    writerOwner?: AuthenticatedSegmentWriterOwner;
   }): Promise<AuthenticatedMetadataMutationAuthority> {
     diagnostics?.recordMutationScopeEvent?.({ observation: { event: "begin" } });
     const metadataRecordCache = new AuthenticatedMetadataRecordCache({
@@ -136,7 +143,7 @@ export class AuthenticatedMetadataMutationAuthority {
       policy: MUTATION_METADATA_RECORD_CACHE_POLICY,
     });
     try {
-      const pageWriter = await createAuthenticatedSegmentWriter({
+      const mutationLocalWriterOwner = writerOwner ?? new AuthenticatedSegmentWriterOwner({
         backend,
         diagnostics,
         fileSystemId,
@@ -149,12 +156,13 @@ export class AuthenticatedMetadataMutationAuthority {
         diagnostics,
         fileSystemId,
         metadataRecordCache,
-        pageWriter,
         randomSource,
         relocationIndexRootPhysicalRef,
         rootKey,
         sharedMetadataRecordCache,
         supportedFeatureBits,
+        writerLease: mutationLocalWriterOwner.acquire(),
+        writerReleaseDisposition: writerOwner === undefined ? "discard" : "reuse",
       });
     } catch (error: unknown) {
       metadataRecordCache.dispose();
@@ -186,37 +194,16 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome } });
   }
 
-  async #createPageWriter(): Promise<AuthenticatedSegmentWriter> {
-    return await createAuthenticatedSegmentWriter({
-      backend: this.#backend,
-      diagnostics: this.#diagnostics,
-      fileSystemId: this.#fileSystemId,
-      randomSource: this.#randomSource,
-      rootKey: this.#rootKey,
-      segmentClass: "metadata",
-    });
+  #releaseWriterLease(): void {
+    if (this.#writerLeaseReleased) return;
+    this.#writerLeaseReleased = true;
+    this.#writerLease.release({ disposition: this.#writerReleaseDisposition });
   }
 
   async #appendMetadataRecordWithRollover({ append }: {
     append: ({ writer }: { writer: AuthenticatedSegmentWriter }) => Promise<HomeRecordReference>;
   }): Promise<HomeRecordReference> {
-    try {
-      const reference = await append({ writer: this.#pageWriter });
-      this.#pageWriterHasRecords = true;
-      return reference;
-    } catch (error: unknown) {
-      if (!(error instanceof AuthenticatedSegmentCapacityError) || !this.#pageWriterHasRecords) throw error;
-      this.#pageWriter.abandon();
-      this.#diagnostics?.recordSegmentWriterEvent?.({
-        event: "rollover",
-        segmentClass: "metadata",
-      });
-      this.#pageWriter = await this.#createPageWriter();
-      this.#pageWriterHasRecords = false;
-      const reference = await append({ writer: this.#pageWriter });
-      this.#pageWriterHasRecords = true;
-      return reference;
-    }
+    return await this.#writerLease.append({ append });
   }
 
   async readFileExtentPage({ isRoot, reference }: {
@@ -368,7 +355,6 @@ export class AuthenticatedMetadataMutationAuthority {
                 writer,
               }),
             });
-            this.#pageWriter.abandon();
             return await publishPreparedMutationCommit({
               backend: this.#backend,
               base,
@@ -384,7 +370,7 @@ export class AuthenticatedMetadataMutationAuthority {
               supportedFeatureBits: this.#supportedFeatureBits,
             });
           } finally {
-            this.#pageWriter.abandon();
+            this.#releaseWriterLease();
           }
         },
       });
@@ -421,7 +407,7 @@ export class AuthenticatedMetadataMutationAuthority {
   abandon(): void {
     switch (this.#state) {
     case "active":
-      this.#pageWriter.abandon();
+      this.#releaseWriterLease();
       this.#state = "closed";
       this.#closeMutationDiagnostics({ outcome: "abandoned" });
       return;
@@ -441,6 +427,7 @@ export async function createAuthenticatedMetadataMutationAuthority({
   rootKey,
   sharedMetadataRecordCache,
   supportedFeatureBits,
+  writerOwner,
 }: Parameters<typeof AuthenticatedMetadataMutationAuthority.create>[0]): Promise<AuthenticatedMetadataMutationAuthority> {
   return await AuthenticatedMetadataMutationAuthority.create({
     backend,
@@ -451,6 +438,7 @@ export async function createAuthenticatedMetadataMutationAuthority({
     rootKey,
     sharedMetadataRecordCache,
     supportedFeatureBits,
+    writerOwner,
   });
 }
 

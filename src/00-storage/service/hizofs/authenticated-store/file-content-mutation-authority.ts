@@ -77,6 +77,7 @@ export class AuthenticatedFileContentMutationAuthority {
     rootKey,
     sharedMetadataRecordCache,
     supportedFeatureBits,
+    writerOwner,
   }: Parameters<typeof createAuthenticatedMetadataMutationAuthority>[0]): Promise<AuthenticatedFileContentMutationAuthority> {
     const parameters = {
       backend,
@@ -87,6 +88,7 @@ export class AuthenticatedFileContentMutationAuthority {
       rootKey,
       sharedMetadataRecordCache,
       supportedFeatureBits,
+      writerOwner,
     };
     return new AuthenticatedFileContentMutationAuthority({
       metadata: await createAuthenticatedMetadataMutationAuthority(parameters),
@@ -273,7 +275,9 @@ export async function createAuthenticatedFileContentMutationAuthority({
   randomSource,
   relocationIndexRootPhysicalRef,
   rootKey,
+  sharedMetadataRecordCache,
   supportedFeatureBits,
+  writerOwner,
 }: Parameters<typeof AuthenticatedFileContentMutationAuthority.create>[0]): Promise<AuthenticatedFileContentMutationAuthority> {
   return await AuthenticatedFileContentMutationAuthority.create({
     backend,
@@ -282,7 +286,9 @@ export async function createAuthenticatedFileContentMutationAuthority({
     randomSource,
     relocationIndexRootPhysicalRef,
     rootKey,
+    sharedMetadataRecordCache,
     supportedFeatureBits,
+    writerOwner,
   });
 }
 

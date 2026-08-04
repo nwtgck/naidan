@@ -286,6 +286,10 @@ export class AuthenticatedSegmentWriter {
     } as ActiveSegmentWriterCapability;
   }
 
+  public hasRecords(): boolean {
+    return this.#frameCount !== 0;
+  }
+
   public static async create({ backend, diagnostics, fileSystemId, randomSource, rootKey, segmentClass }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
