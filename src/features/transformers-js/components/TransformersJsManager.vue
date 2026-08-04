@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NAIDAN_OPFS_MODELS_DIRECTORY_NAME } from '@/00-storage/service/opfs/naidan-opfs-root-directory-registry';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { transformersJsService } from '@/features/transformers-js';
@@ -248,13 +249,13 @@ const handleImportLocalModel = async ({ event }: { event: Event }) => {
   const pathSegments = relativePath.split('/');
   let modelName = pathSegments[0];
 
-  // If the user selected a folder named 'models' or 'local',
+  // If the user selected the configured model-cache root or a folder named 'local',
   // try to take the actual model name from the next level
-  if ((modelName === 'models' || modelName === 'local') && pathSegments.length > 1) {
+  if ((modelName === NAIDAN_OPFS_MODELS_DIRECTORY_NAME || modelName === 'local') && pathSegments.length > 1) {
     modelName = pathSegments[1]!;
   }
 
-  if (!modelName || modelName === 'models' || modelName === 'local') {
+  if (!modelName || modelName === NAIDAN_OPFS_MODELS_DIRECTORY_NAME || modelName === 'local') {
     addToast({ message: await ensureStrings.TransformersJsManager__could_not_determine_a_valid_model_name_from_folder_structure() });
     return;
   }

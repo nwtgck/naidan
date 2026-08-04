@@ -5,6 +5,7 @@ import {
   installDevelopmentUnverifiedOpfsPersistenceRuntime,
 } from "@/00-storage/service/naidan-opfs/development-persistence-runtime";
 import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from "@/00-storage/service/naidan-opfs/opfs-storage-location";
+import { getNaidanOpfsSpecialFileSystemDirectoryName } from "@/00-storage/service/opfs/naidan-opfs-root-directory-registry";
 import { HIZOFS_TRIAL_DEBUG_MARKER } from "@/00-storage/service/naidan-opfs/trial-debug";
 import { TEST_ONLY as RETIRED_PROGRESS_TEST_ONLY } from "@/00-storage/service/naidan-opfs/retired-local-transition-progress-cleanup";
 import { listNativePlainApplicationNamespaceEntryNames } from "@/00-storage/service/naidan-opfs/native-plain-application-namespace";
@@ -12,6 +13,7 @@ import {
   NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS,
 } from "@/00-storage/service/naidan-persistence-control/00-format";
 import { OPFSStorageProvider } from "@/00-storage/service/opfs-storage";
+import type { OpfsSpecialFileSystemType } from "@/00-storage/service/opfs/opfs-special-file-system";
 import {
   createInMemoryOpfsStorageManager,
   InMemoryOpfsDirectoryHandle,
@@ -66,6 +68,65 @@ async function readFileBytes({ directory, name }: {
 }): Promise<Uint8Array> {
   const file = await (await directory.getFileHandle(name, { create: false })).getFile();
   return new Uint8Array(await file.arrayBuffer());
+}
+
+const MANAGED_SPECIAL_FILE_CASES = [
+  { bytes: Uint8Array.of(41, 42), type: "chat_wesh" },
+  { bytes: Uint8Array.of(51, 52, 53), type: "debug_wesh" },
+  { bytes: Uint8Array.of(61, 62, 63, 64), type: "tmp" },
+] as const satisfies readonly Readonly<{
+  bytes: Uint8Array<ArrayBuffer>;
+  type: OpfsSpecialFileSystemType;
+}>[];
+
+async function writeEncryptedManagedRootFile({ bytes, provider, type }: {
+  bytes: Uint8Array<ArrayBuffer>;
+  provider: OPFSStorageProvider;
+  type: OpfsSpecialFileSystemType;
+}): Promise<void> {
+  const access = await provider.openSpecialFileSystemDirectory({
+    create: true,
+    path: "/",
+    type,
+  });
+  if (access?.type !== "storage_directory") {
+    throw new Error("Expected encrypted managed root storage directory");
+  }
+  const file = await access.handle.getFileHandle({
+    create: true,
+    name: "transition-value.bin",
+  });
+  const writable = await file.createWritable({ keepExistingData: false });
+  await writable.write({ data: bytes, position: 0 });
+  await writable.close();
+}
+
+async function readEncryptedManagedRootFile({ provider, type }: {
+  provider: OPFSStorageProvider;
+  type: OpfsSpecialFileSystemType;
+}): Promise<Uint8Array<ArrayBuffer>> {
+  const access = await provider.openSpecialFileSystemDirectory({
+    create: false,
+    path: "/",
+    type,
+  });
+  if (access?.type !== "storage_directory") {
+    throw new Error("Expected encrypted managed root storage directory");
+  }
+  const file = await access.handle.getFileHandle({
+    create: false,
+    name: "transition-value.bin",
+  });
+  const readable = await file.openReadable({ mimeType: "application/octet-stream" });
+  try {
+    return new Uint8Array(await new Response(readable.stream({
+      end: undefined,
+      signal: undefined,
+      start: 0,
+    })).arrayBuffer());
+  } finally {
+    await readable.close();
+  }
 }
 
 async function expectNoPersistentTransitionProgress({ storageRoot }: {
@@ -232,6 +293,9 @@ describe("browserless production HizoFS disable system", () => {
       await encryptedAfterReload.saveSettings({
         settings: settings({ endpointUrl: "http://encrypted-before-disable" }),
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await writeEncryptedManagedRootFile({ bytes, provider: encryptedAfterReload, type });
+      }
       const storageRoot = await root.getDirectoryHandle(
         NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
         { create: false },
@@ -263,6 +327,16 @@ describe("browserless production HizoFS disable system", () => {
       expect(await plainAfterReload.loadSettings()).toMatchObject({
         endpoint: { url: "http://encrypted-before-disable" },
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        const directory = await root.getDirectoryHandle(
+          getNaidanOpfsSpecialFileSystemDirectoryName({ type }),
+          { create: false },
+        );
+        await expect(readFileBytes({
+          directory: directory as unknown as FileSystemDirectoryHandle,
+          name: "transition-value.bin",
+        })).resolves.toEqual(bytes);
+      }
       await plainAfterReload.saveSettings({
         settings: settings({ endpointUrl: "http://plain-after-disable" }),
       });
@@ -357,6 +431,9 @@ describe("browserless production HizoFS disable system", () => {
       await encrypted.saveSettings({
         settings: settings({ endpointUrl: "http://encrypted-before-interruption" }),
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await writeEncryptedManagedRootFile({ bytes, provider: encrypted, type });
+      }
 
       await expect(encrypted.disableEncryption({
         onProgress: ({ progress }) => {
@@ -396,6 +473,12 @@ describe("browserless production HizoFS disable system", () => {
       expect(await encryptedAfterConvergence.loadSettings()).toMatchObject({
         endpoint: { url: "http://encrypted-before-interruption" },
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await expect(readEncryptedManagedRootFile({
+          provider: encryptedAfterConvergence,
+          type,
+        })).resolves.toEqual(bytes);
+      }
       await encryptedAfterConvergence.disableEncryption({
         onProgress: undefined,
         signal: undefined,
@@ -408,6 +491,16 @@ describe("browserless production HizoFS disable system", () => {
       expect(await plainAfterRetry.loadSettings()).toMatchObject({
         endpoint: { url: "http://encrypted-before-interruption" },
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        const directory = await root.getDirectoryHandle(
+          getNaidanOpfsSpecialFileSystemDirectoryName({ type }),
+          { create: false },
+        );
+        await expect(readFileBytes({
+          directory: directory as unknown as FileSystemDirectoryHandle,
+          name: "transition-value.bin",
+        })).resolves.toEqual(bytes);
+      }
       await plainAfterRetry.dispose();
     } finally {
       uninstallRuntime();
@@ -447,6 +540,9 @@ describe("browserless production HizoFS disable system", () => {
       await encrypted.saveSettings({
         settings: settings({ endpointUrl: "http://plain-after-post-switch-disable" }),
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await writeEncryptedManagedRootFile({ bytes, provider: encrypted, type });
+      }
       await expect(encrypted.disableEncryption({
         onProgress: ({ progress }) => {
           if (progress.phase !== "switching_authority" || interruptedAfterAuthoritySwitch) return;
@@ -473,6 +569,16 @@ describe("browserless production HizoFS disable system", () => {
       await expect(plainAfterReload.loadSettings()).resolves.toMatchObject({
         endpoint: { url: "http://plain-after-post-switch-disable" },
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        const directory = await root.getDirectoryHandle(
+          getNaidanOpfsSpecialFileSystemDirectoryName({ type }),
+          { create: false },
+        );
+        await expect(readFileBytes({
+          directory: directory as unknown as FileSystemDirectoryHandle,
+          name: "transition-value.bin",
+        })).resolves.toEqual(bytes);
+      }
       const storageRoot = await root.getDirectoryHandle(
         NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
         { create: false },

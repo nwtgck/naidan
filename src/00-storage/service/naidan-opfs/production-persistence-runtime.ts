@@ -1483,13 +1483,18 @@ async function convergeNativePersistenceTransition({
     default: return authority.phase satisfies never;
     }
   case 'encrypt': {
-    const convergence = await runConvergence({ plainTargetDisposition: 'preserve' });
     switch (expectedPhase) {
-    case 'building_target': break;
-    case 'cleaning_up_source': await cleanupPlainSourceAfterConvergence(); break;
-    default: expectedPhase satisfies never;
+    case 'building_target':
+      return await runConvergence({ plainTargetDisposition: 'preserve' });
+    case 'cleaning_up_source':
+      // Keep the authenticated cleaning-up-source state durable until the
+      // plaintext namespace is actually gone. A cleanup failure therefore
+      // remains an explicit, retryable transition instead of becoming a
+      // stable encrypted state with silently retained plaintext.
+      await cleanupPlainSourceAfterConvergence();
+      return await runConvergence({ plainTargetDisposition: 'preserve' });
+    default: return expectedPhase satisfies never;
     }
-    return convergence;
   }
   case 're_encrypt':
     return await runConvergence({ plainTargetDisposition: 'preserve' });
@@ -1536,6 +1541,7 @@ async function cleanupNativePlainEnableSourceAfterAuthoritySwitch({
     });
   } catch (cause: unknown) {
     reportRetiredPlainCleanupFailure({ cause, fileSystemId, remainingEntryCount });
+    throw cause;
   }
 }
 
@@ -2528,16 +2534,21 @@ export async function runNativeHizoFSEnableTransition({
       }
       switch (result.state) {
       case 'stable': {
+        await cleanupRetiredLocalTransitionProgress({ exclusiveGate, storageRoot });
+        return fileSystemId;
+      }
+      case 'authority_switched':
+        // Persistence Control now names the HizoFS target as authority but
+        // deliberately remains in cleaning_up_source until plaintext cleanup
+        // succeeds. The next loop iteration is allowed to publish stable mode
+        // only after this operation completes.
         await cleanupNativePlainEnableSourceAfterAuthoritySwitch({
           binding,
           lockManager,
           nativeNamespaceRoot,
           signal,
         });
-        await cleanupRetiredLocalTransitionProgress({ exclusiveGate, storageRoot });
-        return fileSystemId;
-      }
-      case 'authority_switched':
+        break;
       case 'copying':
       case 'retired_cleanup':
       case 'verifying': break;

@@ -36,7 +36,10 @@ import {
   volumeToDto,
 } from '@/00-storage/mapper/mappers';
 import { IStorageProvider } from '@/00-storage/service/interface';
-import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from '@/00-storage/service/naidan-opfs/opfs-storage-location';
+import {
+  getNaidanOpfsSpecialFileSystemDirectoryName,
+  NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+} from '@/00-storage/service/opfs/naidan-opfs-root-directory-registry';
 import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
 import {
   NaidanOpfsLayoutDirectoryHandle,
@@ -1289,7 +1292,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
     type: OpfsSpecialFileSystemType,
     create: boolean,
   }): Promise<StorageVolumeAccess | null> {
-    const name = this.getSpecialFileSystemName({ type });
+    const name = getNaidanOpfsSpecialFileSystemDirectoryName({ type });
     try {
       return {
         type: 'storage_directory',
@@ -1413,7 +1416,7 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
   }): Promise<void> {
     try {
       await this.namespaceRoot.removeEntry({
-        name: this.getSpecialFileSystemName({ type }),
+        name: getNaidanOpfsSpecialFileSystemDirectoryName({ type }),
         recursive: true,
       });
     } catch (error) {
@@ -1438,25 +1441,6 @@ export class NaidanOpfsStorageBackend extends IStorageProvider {
       }
     }
     return segments;
-  }
-
-  private getSpecialFileSystemName({
-    type,
-  }: {
-    type: OpfsSpecialFileSystemType,
-  }): string {
-    switch (type) {
-    case 'chat_wesh':
-      return 'naidan-chat-wesh';
-    case 'debug_wesh':
-      return 'naidan-debug-wesh';
-    case 'tmp':
-      return 'naidan-tmp';
-    default: {
-      const _ex: never = type;
-      throw new Error(`Unhandled OPFS special filesystem type: ${String(_ex)}`);
-    }
-    }
   }
 
 }

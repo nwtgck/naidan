@@ -11,6 +11,7 @@ import {
   NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS,
 } from '@/00-storage/service/naidan-persistence-control/00-format';
 import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
+import type { OpfsSpecialFileSystemType } from '@/00-storage/service/opfs/opfs-special-file-system';
 import {
   createInMemoryOpfsStorageManager,
   InMemoryOpfsDirectoryHandle,
@@ -54,6 +55,61 @@ function containerEntryNames({ entries }: { entries: readonly string[] }): reado
   const persistenceControlDirectoryName =
     NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS.storage.collectionDirectoryName;
   return entries.filter(name => name !== persistenceControlDirectoryName);
+}
+
+const MANAGED_SPECIAL_FILE_CASES = [
+  { bytes: Uint8Array.of(71, 72), type: 'chat_wesh' },
+  { bytes: Uint8Array.of(81, 82, 83), type: 'debug_wesh' },
+  { bytes: Uint8Array.of(91, 92, 93, 94), type: 'tmp' },
+] as const satisfies readonly Readonly<{
+  bytes: Uint8Array<ArrayBuffer>;
+  type: OpfsSpecialFileSystemType;
+}>[];
+
+async function openEncryptedManagedRoot({ create, provider, type }: {
+  create: boolean;
+  provider: OPFSStorageProvider;
+  type: OpfsSpecialFileSystemType;
+}) {
+  const access = await provider.openSpecialFileSystemDirectory({
+    create,
+    path: '/',
+    type,
+  });
+  if (access?.type !== 'storage_directory') {
+    throw new Error('Expected encrypted managed root storage directory');
+  }
+  return access.handle;
+}
+
+async function writeEncryptedManagedRootFile({ bytes, provider, type }: {
+  bytes: Uint8Array<ArrayBuffer>;
+  provider: OPFSStorageProvider;
+  type: OpfsSpecialFileSystemType;
+}): Promise<void> {
+  const directory = await openEncryptedManagedRoot({ create: true, provider, type });
+  const file = await directory.getFileHandle({ create: true, name: 'transition-value.bin' });
+  const writable = await file.createWritable({ keepExistingData: false });
+  await writable.write({ data: bytes, position: 0 });
+  await writable.close();
+}
+
+async function readEncryptedManagedRootFile({ provider, type }: {
+  provider: OPFSStorageProvider;
+  type: OpfsSpecialFileSystemType;
+}): Promise<Uint8Array<ArrayBuffer>> {
+  const directory = await openEncryptedManagedRoot({ create: false, provider, type });
+  const file = await directory.getFileHandle({ create: false, name: 'transition-value.bin' });
+  const readable = await file.openReadable({ mimeType: 'application/octet-stream' });
+  try {
+    return new Uint8Array(await new Response(readable.stream({
+      end: undefined,
+      signal: undefined,
+      start: 0,
+    })).arrayBuffer());
+  } finally {
+    await readable.close();
+  }
 }
 
 async function expectNoPersistentTransitionProgress({ storageRoot }: {
@@ -139,6 +195,9 @@ describe('browserless production HizoFS re-encrypt system', () => {
       await encryptedSource.saveSettings({
         settings: settings({ endpointUrl: 'http://encrypted-before-reencrypt' }),
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await writeEncryptedManagedRootFile({ bytes, provider: encryptedSource, type });
+      }
 
       const storageRoot = await root.getDirectoryHandle(
         NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
@@ -172,6 +231,9 @@ describe('browserless production HizoFS re-encrypt system', () => {
       expect(await targetAfterReload.loadSettings()).toMatchObject({
         endpoint: { url: 'http://encrypted-before-reencrypt' },
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await expect(readEncryptedManagedRootFile({ provider: targetAfterReload, type })).resolves.toEqual(bytes);
+      }
       await targetAfterReload.saveSettings({
         settings: settings({ endpointUrl: 'http://encrypted-after-reencrypt' }),
       });
@@ -216,6 +278,9 @@ describe('browserless production HizoFS re-encrypt system', () => {
         endpointUrl: 'http://reencrypt-source-before-interruption',
         root,
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await writeEncryptedManagedRootFile({ bytes, provider: encryptedSource, type });
+      }
       const storageRoot = await root.getDirectoryHandle(
         NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
         { create: false },
@@ -264,6 +329,9 @@ describe('browserless production HizoFS re-encrypt system', () => {
       await expect(sourceAfterRestart.loadSettings()).resolves.toMatchObject({
         endpoint: { url: 'http://reencrypt-source-before-interruption' },
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await expect(readEncryptedManagedRootFile({ provider: sourceAfterRestart, type })).resolves.toEqual(bytes);
+      }
       await vi.waitFor(async () => {
         expect(containerEntryNames({
           entries: await listEntryNames({
@@ -282,6 +350,9 @@ describe('browserless production HizoFS re-encrypt system', () => {
       await expect(targetAfterRetry.loadSettings()).resolves.toMatchObject({
         endpoint: { url: 'http://reencrypt-source-before-interruption' },
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await expect(readEncryptedManagedRootFile({ provider: targetAfterRetry, type })).resolves.toEqual(bytes);
+      }
       await vi.waitFor(async () => {
         const [targetContainerName, ...unexpectedTargetContainers] = containerEntryNames({
           entries: await listEntryNames({
@@ -315,6 +386,9 @@ describe('browserless production HizoFS re-encrypt system', () => {
         endpointUrl: 'http://reencrypt-target-after-post-switch-interruption',
         root,
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await writeEncryptedManagedRootFile({ bytes, provider: encryptedSource, type });
+      }
       const storageRoot = await root.getDirectoryHandle(
         NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
         { create: false },
@@ -358,6 +432,9 @@ describe('browserless production HizoFS re-encrypt system', () => {
       await expect(targetAfterReload.loadSettings()).resolves.toMatchObject({
         endpoint: { url: 'http://reencrypt-target-after-post-switch-interruption' },
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await expect(readEncryptedManagedRootFile({ provider: targetAfterReload, type })).resolves.toEqual(bytes);
+      }
       await vi.waitFor(async () => {
         const [targetContainerName, ...unexpectedTargetContainers] = containerEntryNames({
           entries: await listEntryNames({
@@ -414,6 +491,9 @@ describe('browserless production HizoFS re-encrypt system', () => {
         endpointUrl: 'http://reencrypt-before-authority-response-loss',
         root,
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await writeEncryptedManagedRootFile({ bytes, provider: encryptedSource, type });
+      }
       const storageRoot = await root.getDirectoryHandle(
         NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
         { create: false },
@@ -461,6 +541,9 @@ describe('browserless production HizoFS re-encrypt system', () => {
       await expect(targetWithDeferredCleanup.loadSettings()).resolves.toMatchObject({
         endpoint: { url: 'http://reencrypt-before-authority-response-loss' },
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await expect(readEncryptedManagedRootFile({ provider: targetWithDeferredCleanup, type })).resolves.toEqual(bytes);
+      }
       await targetWithDeferredCleanup.saveSettings({
         settings: settings({ endpointUrl: 'http://reencrypt-target-after-cleanup-failure' }),
       });
@@ -487,6 +570,9 @@ describe('browserless production HizoFS re-encrypt system', () => {
       await expect(targetAfterCleanupRetry.loadSettings()).resolves.toMatchObject({
         endpoint: { url: 'http://reencrypt-target-after-cleanup-failure' },
       });
+      for (const { bytes, type } of MANAGED_SPECIAL_FILE_CASES) {
+        await expect(readEncryptedManagedRootFile({ provider: targetAfterCleanupRetry, type })).resolves.toEqual(bytes);
+      }
       await targetAfterCleanupRetry.dispose();
 
       const rejectedForeignCredential = new OPFSStorageProvider();

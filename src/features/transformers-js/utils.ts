@@ -1,3 +1,5 @@
+import { NAIDAN_OPFS_MODELS_DIRECTORY_NAME } from '@/00-storage/service/opfs/naidan-opfs-root-directory-registry';
+
 /**
  * Interface to extend FileSystemFileHandle with the non-standard createWritable method.
  */
@@ -19,10 +21,10 @@ export function urlToPath({ url }: { url: string }): string | null {
 
     if (isLocalOrigin) {
       const first = pathParts[0];
-      if (first === 'user' || first === 'local' || first === 'models') {
+      if (first === 'user' || first === 'local' || first === NAIDAN_OPFS_MODELS_DIRECTORY_NAME) {
         let startIndex = 0;
         switch (first) {
-        case 'models':
+        case NAIDAN_OPFS_MODELS_DIRECTORY_NAME:
           startIndex++;
           break;
         case 'user':
@@ -36,21 +38,21 @@ export function urlToPath({ url }: { url: string }): string | null {
         if (pathParts[startIndex] === 'user' || pathParts[startIndex] === 'local') startIndex++;
 
         const cleanParts = pathParts.slice(startIndex);
-        const resolved = `models/user/${cleanParts.join('/')}`;
+        const resolved = `${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}/user/${cleanParts.join('/')}`;
         return resolved;
       }
       return null;
     }
 
-    const resolved = `models/${parsed.hostname}/${pathParts.join('/')}`;
+    const resolved = `${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}/${parsed.hostname}/${pathParts.join('/')}`;
     return resolved;
   } catch {
     const parts = url.split('/').filter(p => !!p);
     const first = parts[0];
-    if (first === 'user' || first === 'local' || first === 'models') {
+    if (first === 'user' || first === 'local' || first === NAIDAN_OPFS_MODELS_DIRECTORY_NAME) {
       let startIndex = 0;
       switch (first) {
-      case 'models':
+      case NAIDAN_OPFS_MODELS_DIRECTORY_NAME:
         startIndex++;
         break;
       case 'user':
@@ -62,7 +64,7 @@ export function urlToPath({ url }: { url: string }): string | null {
       }
       }
       if (parts[startIndex] === 'user' || parts[startIndex] === 'local') startIndex++;
-      const resolved = `models/user/${parts.slice(startIndex).join('/')}`;
+      const resolved = `${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}/user/${parts.slice(startIndex).join('/')}`;
       return resolved;
     }
     return null;

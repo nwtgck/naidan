@@ -5,11 +5,15 @@ import {
 import type {
   NaidanPersistenceControlExclusiveGate,
 } from "@/00-storage/service/naidan-opfs/persistence-control-exclusive-gate";
+import {
+  NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+} from "@/00-storage/service/opfs/naidan-opfs-root-directory-registry";
+
+export { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from "@/00-storage/service/opfs/naidan-opfs-root-directory-registry";
 
 type HizoFSMode = Extract<NaidanPersistenceModeV1, { readonly type: "hizofs" }>;
 type FileSystemId = HizoFSMode["activeFileSystemId"];
 
-export const NAIDAN_OPFS_STORAGE_DIRECTORY_NAME = "naidan-storage";
 
 export type NaidanOpfsContainerDirectoryReservation =
   | Readonly<{ type: "collision" }>

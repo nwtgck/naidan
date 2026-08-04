@@ -1,4 +1,9 @@
 import { storageService } from '@/00-storage/service';
+import {
+  getNaidanOpfsSpecialFileSystemDirectoryName,
+  NAIDAN_OPFS_MODELS_DIRECTORY_NAME,
+  NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+} from '@/00-storage/service/opfs/naidan-opfs-root-directory-registry';
 import type { OpfsSpecialFileSystemType } from '@/00-storage/service/opfs/opfs-special-file-system';
 import {
   FEATURE_FLAGS_STORAGE_KEY,
@@ -7,7 +12,6 @@ import {
   LOCK_CHAT_CONTENT_PREFIX,
   LOCK_METADATA,
   OPFS_TMP_CLEANUP_LOCK_KEY,
-  OPFS_TMP_DIR,
   OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY,
   STORAGE_BOOTSTRAP_KEY,
   STORAGE_KEY_PREFIX,
@@ -73,8 +77,6 @@ type DeleteSelectorResult =
   | { status: 'deleted' }
   | { status: 'skipped', message: string };
 
-const NAIDAN_STORAGE_DIR = 'naidan-storage';
-const MODELS_DIR = 'models';
 const HOST_VOLUME_DB_NAME = 'naidan-volumes';
 const LOCAL_STORAGE_NAIDAN_SYNC_PREFIX = `${STORAGE_KEY_PREFIX}sync:`;
 const LOCAL_STORAGE_UNAVAILABLE_MESSAGE = 'localStorage is unavailable in this runtime.';
@@ -167,95 +169,95 @@ export const DATA_DELETION_OPTIONS = [
   {
     id: 'opfs-naidan-storage',
     group: 'opfs',
-    label: 'OPFS: /naidan-storage',
+    label: `OPFS: /${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}`,
     description: 'OPFSStorageProvider persistent application data.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}` },
     advanced: false,
   },
   {
     id: 'opfs-naidan-storage-settings',
     group: 'opfs',
-    label: 'OPFS: /naidan-storage/settings.json',
+    label: `OPFS: /${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/settings.json`,
     description: 'OPFS settings file.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/settings.json` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/settings.json` },
     advanced: true,
   },
   {
     id: 'opfs-naidan-storage-hierarchy',
     group: 'opfs',
-    label: 'OPFS: /naidan-storage/hierarchy.json',
+    label: `OPFS: /${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/hierarchy.json`,
     description: 'OPFS sidebar hierarchy file.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/hierarchy.json` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/hierarchy.json` },
     advanced: true,
   },
   {
     id: 'opfs-naidan-storage-chat-metas',
     group: 'opfs',
-    label: 'OPFS: /naidan-storage/chat-metas',
+    label: `OPFS: /${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/chat-metas`,
     description: 'OPFS chat metadata directory.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/chat-metas` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/chat-metas` },
     advanced: true,
   },
   {
     id: 'opfs-naidan-storage-chat-contents',
     group: 'opfs',
-    label: 'OPFS: /naidan-storage/chat-contents',
+    label: `OPFS: /${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/chat-contents`,
     description: 'OPFS chat content directory.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/chat-contents` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/chat-contents` },
     advanced: true,
   },
   {
     id: 'opfs-naidan-storage-chat-groups',
     group: 'opfs',
-    label: 'OPFS: /naidan-storage/chat-groups',
+    label: `OPFS: /${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/chat-groups`,
     description: 'OPFS chat group directory.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/chat-groups` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/chat-groups` },
     advanced: true,
   },
   {
     id: 'opfs-naidan-storage-binary-objects',
     group: 'opfs',
-    label: 'OPFS: /naidan-storage/binary-objects',
+    label: `OPFS: /${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/binary-objects`,
     description: 'Binary objects and attachment bodies.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/binary-objects` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/binary-objects` },
     advanced: true,
   },
   {
     id: 'opfs-naidan-storage-volumes',
     group: 'opfs',
-    label: 'OPFS: /naidan-storage/volumes',
+    label: `OPFS: /${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/volumes`,
     description: 'Managed OPFS volume directory.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/volumes` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/volumes` },
     advanced: true,
   },
   {
     id: 'opfs-naidan-storage-volume-shards',
     group: 'opfs',
-    label: 'OPFS: /naidan-storage/volume-shards',
+    label: `OPFS: /${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/volume-shards`,
     description: 'Managed OPFS volume shards.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/volume-shards` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/volume-shards` },
     advanced: true,
   },
   {
     id: 'opfs-naidan-storage-migration-state',
     group: 'opfs',
-    label: 'OPFS: /naidan-storage/migration-state.json',
+    label: `OPFS: /${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/migration-state.json`,
     description: 'Storage migration state.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/migration-state.json` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/migration-state.json` },
     advanced: true,
   },
   {
     id: 'opfs-naidan-storage-uploaded-files',
     group: 'opfs',
-    label: 'OPFS: /naidan-storage/uploaded-files',
+    label: `OPFS: /${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/uploaded-files`,
     description: 'Legacy uploaded files area.',
-    selector: { kind: 'opfsPath', path: `/${NAIDAN_STORAGE_DIR}/uploaded-files` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_STORAGE_DIRECTORY_NAME}/uploaded-files` },
     advanced: true,
   },
   {
     id: 'opfs-naidan-tmp',
     group: 'opfs',
-    label: 'OPFS: /naidan-tmp',
+    label: `OPFS: /${getNaidanOpfsSpecialFileSystemDirectoryName({ type: 'tmp' })}`,
     description: 'Temporary working directories.',
     selector: { kind: 'opfsSpecialFileSystem', type: 'tmp' },
     advanced: false,
@@ -263,23 +265,23 @@ export const DATA_DELETION_OPTIONS = [
   {
     id: 'opfs-models',
     group: 'opfs',
-    label: 'OPFS: /models',
+    label: `OPFS: /${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}`,
     description: 'Transformers.js model cache.',
-    selector: { kind: 'opfsPath', path: `/${MODELS_DIR}` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}` },
     advanced: false,
   },
   {
     id: 'opfs-models-user',
     group: 'opfs',
-    label: 'OPFS: /models/user',
+    label: `OPFS: /${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}/user`,
     description: 'User-provided local model cache.',
-    selector: { kind: 'opfsPath', path: `/${MODELS_DIR}/user` },
+    selector: { kind: 'opfsPath', path: `/${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}/user` },
     advanced: true,
   },
   {
     id: 'opfs-models-remote',
     group: 'opfs',
-    label: 'OPFS: /models/<remote-host>/...',
+    label: `OPFS: /${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}/<remote-host>/...`,
     description: 'Remote model cache directories.',
     selector: { kind: 'opfsRemoteModels' },
     advanced: true,
@@ -476,7 +478,7 @@ function selectorIncludes({ parent, child }: { parent: DataDeletionSelector, chi
     case 'opfsPath':
       return isSameOrChildPath({ parentPath: parent.path, childPath: child.path });
     case 'opfsRemoteModels':
-      return isSameOrChildPath({ parentPath: parent.path, childPath: `/${MODELS_DIR}` });
+      return isSameOrChildPath({ parentPath: parent.path, childPath: `/${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}` });
     case 'localStoragePrefix':
     case 'localStorageKey':
     case 'localStorageUnknownNaidanKeys':
@@ -686,18 +688,7 @@ function getOpfsSpecialFileSystemDisplayPath({
 }: {
   type: OpfsSpecialFileSystemType,
 }): string {
-  switch (type) {
-  case 'chat_wesh':
-    return '/naidan-chat-wesh';
-  case 'debug_wesh':
-    return '/naidan-debug-wesh';
-  case 'tmp':
-    return `/${OPFS_TMP_DIR}`;
-  default: {
-    const _ex: never = type;
-    throw new Error(`Unhandled OPFS special filesystem type: ${String(_ex)}`);
-  }
-  }
+  return `/${getNaidanOpfsSpecialFileSystemDirectoryName({ type })}`;
 }
 
 async function previewOpfsSpecialFileSystem({
@@ -776,18 +767,18 @@ async function previewRemoteModelsSelector(): Promise<{ entries: readonly DataDe
     };
   }
 
-  const models = await getChildDirectoryIfExists({ parent: root, name: MODELS_DIR });
+  const models = await getChildDirectoryIfExists({ parent: root, name: NAIDAN_OPFS_MODELS_DIRECTORY_NAME });
   if (models === undefined) {
     return {
       entries: [],
-      notes: [`OPFS path not found: /${MODELS_DIR}`],
+      notes: [`OPFS path not found: /${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}`],
     };
   }
 
   const entries: DataDeletionPreviewEntry[] = [];
   for await (const child of models.values()) {
     if (child.kind === 'directory' && child.name !== 'user') {
-      entries.push({ path: `/${MODELS_DIR}/${child.name}`, location: 'OPFS' });
+      entries.push({ path: `/${NAIDAN_OPFS_MODELS_DIRECTORY_NAME}/${child.name}`, location: 'OPFS' });
     }
   }
 
@@ -823,7 +814,7 @@ async function deleteOpfsPath({ path }: { path: string }): Promise<DeleteSelecto
 async function deleteRemoteModelDirectories(): Promise<DeleteSelectorResult> {
   const root = await getOpfsRoot();
   if (root === undefined) return { status: 'skipped', message: OPFS_UNAVAILABLE_MESSAGE };
-  const models = await getChildDirectoryIfExists({ parent: root, name: MODELS_DIR });
+  const models = await getChildDirectoryIfExists({ parent: root, name: NAIDAN_OPFS_MODELS_DIRECTORY_NAME });
   if (models === undefined) return { status: 'deleted' };
   const names: string[] = [];
   for await (const child of models.values()) {

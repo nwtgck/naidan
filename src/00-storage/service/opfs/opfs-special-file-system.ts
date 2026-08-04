@@ -1,10 +1,8 @@
 import type { IStorageProvider } from '@/00-storage/service/interface';
 import type { StorageVolumeAccess } from '@/00-storage/service/volume-access';
+import type { OpfsSpecialFileSystemType } from './naidan-opfs-root-directory-registry';
 
-export type OpfsSpecialFileSystemType =
-  | 'chat_wesh'
-  | 'debug_wesh'
-  | 'tmp';
+export type { OpfsSpecialFileSystemType } from './naidan-opfs-root-directory-registry';
 
 export interface OpfsSpecialFileSystemBackend extends IStorageProvider {
   openSpecialFileSystemDirectory({

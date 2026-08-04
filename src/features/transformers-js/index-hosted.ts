@@ -1,3 +1,4 @@
+import { NAIDAN_OPFS_MODELS_DIRECTORY_NAME } from '@/00-storage/service/opfs/naidan-opfs-root-directory-registry';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import { createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
 import { createTransformersJsScannerWorkerClient } from '@/features/transformers-js/scanner/worker/client';
@@ -425,7 +426,7 @@ export const transformersJsService = {
       const root = await navigator.storage.getDirectory();
       let modelsDir: FileSystemDirectoryHandle;
       try {
-        modelsDir = await root.getDirectoryHandle('models', { create: false });
+        modelsDir = await root.getDirectoryHandle(NAIDAN_OPFS_MODELS_DIRECTORY_NAME, { create: false });
       } catch {
         return [];
       }
@@ -584,7 +585,7 @@ export const transformersJsService = {
 
   async importFile({ modelName, fileName, data }: { modelName: string, fileName: string, data: ArrayBuffer | ReadableStream }) {
     const root = await navigator.storage.getDirectory();
-    const modelsDir = await root.getDirectoryHandle('models', { create: true });
+    const modelsDir = await root.getDirectoryHandle(NAIDAN_OPFS_MODELS_DIRECTORY_NAME, { create: true });
     const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
     const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
 
@@ -617,7 +618,7 @@ export const transformersJsService = {
 
   async deleteModel({ modelId }: { modelId: string }) {
     const root = await navigator.storage.getDirectory();
-    const modelsDir = await root.getDirectoryHandle('models', { create: true });
+    const modelsDir = await root.getDirectoryHandle(NAIDAN_OPFS_MODELS_DIRECTORY_NAME, { create: true });
 
     if (modelId.startsWith('user/')) {
       const name = modelId.substring(5);
