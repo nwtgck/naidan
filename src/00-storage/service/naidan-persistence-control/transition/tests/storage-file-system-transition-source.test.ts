@@ -59,6 +59,7 @@ function session({ root }: { root: StorageDirectoryHandle }): StorageFileSystemS
     root,
     capabilities: { atomicMove: 'unsupported', directBlob: 'supported', symbolicLink: 'supported', wholeFileClone: 'unsupported' },
     close: vi.fn(),
+    sync: vi.fn(async () => undefined),
   };
 }
 

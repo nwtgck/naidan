@@ -179,6 +179,7 @@ function testFileSystemSession({ close = async () => undefined }: {
     },
     close,
     root: Object.freeze({}) as StorageDirectoryHandle,
+    sync: async () => undefined,
   };
 }
 
@@ -272,6 +273,24 @@ class FaultInjectingMutablePhysical extends MutablePhysical {
     if (this.#publishCalls === 1 && this.#fault === 'after_first_publish') throw this.#failure;
   }
 }
+
+describe('native HizoFS graceful runtime shutdown result', () => {
+  it('accepts shared-runtime retention while another application session remains', () => {
+    expect(() => PRODUCTION_RUNTIME_TEST_ONLY.acceptGracefulRuntimeShutdownResult({
+      result: { blocker: 'session_attached', status: 'retained' },
+    })).not.toThrow();
+  });
+
+  it('projects a retained dirty runtime as a typed shutdown blocker', () => {
+    expect(() => PRODUCTION_RUNTIME_TEST_ONLY.acceptGracefulRuntimeShutdownResult({
+      result: { blocker: 'working_candidate_not_empty', status: 'retained' },
+    })).toThrow(expect.objectContaining({
+      blocker: 'working_candidate_not_empty',
+      code: 'runtime_shutdown_blocked',
+      name: 'NativeHizoFSRuntimeGracefulShutdownError',
+    }));
+  });
+});
 
 describe('createNativeHizoFSEnableTransitionTarget', () => {
   it('binds HizoFS target creation to the exact Naidan OPFS reservation', async () => {
@@ -2342,6 +2361,7 @@ describe('registerCredentialBoundApplicationSession', () => {
     const convergedFileSystemId = testFileSystemId({ value: 'DEFGHIJKLM_NOPQRSTUVW' });
     const reopenedFileSystemId = testFileSystemId({ value: 'EFGHIJKLMN_OPQRSTUVWX' });
     const close = vi.fn(async () => undefined);
+    const gracefullyShutdownRuntime = vi.fn(async () => undefined);
     const runDisable = vi.fn();
 
     await expect(PRODUCTION_RUNTIME_TEST_ONLY.completeNativeHizoFSReturnToPlainWith({
@@ -2349,12 +2369,14 @@ describe('registerCredentialBoundApplicationSession', () => {
         authoritativeEndpoint: { fileSystemId: reopenedFileSystemId, type: 'hizofs' },
         fileSystemId: reopenedFileSystemId,
         fileSystemSession: testFileSystemSession({ close }),
+        gracefullyShutdownRuntime,
       },
       convergedFileSystemId,
       runDisable,
     })).rejects.toThrow('return-to-plain reopened a different encrypted authority');
 
     expect(close).toHaveBeenCalledOnce();
+    expect(gracefullyShutdownRuntime).toHaveBeenCalledOnce();
     expect(runDisable).not.toHaveBeenCalled();
   });
 
@@ -2372,6 +2394,7 @@ describe('registerCredentialBoundApplicationSession', () => {
             throw closeFailure;
           },
         }),
+        gracefullyShutdownRuntime: vi.fn(async () => undefined),
       },
       convergedFileSystemId,
       runDisable: vi.fn(),
@@ -2391,6 +2414,7 @@ describe('registerCredentialBoundApplicationSession', () => {
         authoritativeEndpoint: { fileSystemId, type: 'hizofs' },
         fileSystemId,
         fileSystemSession: testFileSystemSession({ close }),
+        gracefullyShutdownRuntime: vi.fn(async () => undefined),
       },
       convergedFileSystemId: fileSystemId,
       runDisable: async ({ session }) => {
@@ -2415,6 +2439,7 @@ describe('registerCredentialBoundApplicationSession', () => {
             throw closeFailure;
           },
         }),
+        gracefullyShutdownRuntime: vi.fn(async () => undefined),
       },
       convergedFileSystemId: fileSystemId,
       runDisable: async () => {
@@ -2429,17 +2454,20 @@ describe('registerCredentialBoundApplicationSession', () => {
   it('does not construct a post-transition application session after successful disable', async () => {
     const fileSystemId = testFileSystemId({ value: 'JKLMNOPQR_STUVWXYZ012' });
     const close = vi.fn(async () => undefined);
+    const gracefullyShutdownRuntime = vi.fn(async () => undefined);
     await expect(PRODUCTION_RUNTIME_TEST_ONLY.completeNativeHizoFSReturnToPlainWith({
       opened: {
         authoritativeEndpoint: { fileSystemId, type: 'hizofs' },
         fileSystemId,
         fileSystemSession: testFileSystemSession({ close }),
+        gracefullyShutdownRuntime,
       },
       convergedFileSystemId: fileSystemId,
       runDisable: async ({ session }) => await session.close(),
     })).resolves.toBeUndefined();
 
     expect(close).toHaveBeenCalledOnce();
+    expect(gracefullyShutdownRuntime).toHaveBeenCalledOnce();
   });
 
 

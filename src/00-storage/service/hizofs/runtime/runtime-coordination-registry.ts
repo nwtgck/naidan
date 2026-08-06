@@ -1,5 +1,7 @@
 import type { ContainerCoordinationKey } from "@/00-storage/service/hizofs/filesystem/container-coordination-key";
 
+export type RuntimeCoordinationRegistryActivityState = "active" | "idle";
+
 export type RuntimeCoordinationErrorCode =
   | "maintenance_active"
   | "publication_in_progress"
@@ -40,6 +42,14 @@ export class RuntimeCoordinationRegistry {
     const created = { maintenanceActive: false, publicationActive: false, writerActive: false };
     this.#states.set(coordinationKey, created);
     return created;
+  }
+
+  activityState({ coordinationKey }: {
+    coordinationKey: ContainerCoordinationKey;
+  }): RuntimeCoordinationRegistryActivityState {
+    const state = this.#states.get(coordinationKey);
+    if (state === undefined) return "idle";
+    return state.maintenanceActive || state.publicationActive || state.writerActive ? "active" : "idle";
   }
 
   acquireWriter({ coordinationKey }: {

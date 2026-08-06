@@ -62,6 +62,11 @@ export type OpfsPersistenceUnlockedMaintenanceResult =
   | { readonly state: 'plain_namespace_in_use' }
   | { readonly remainingEntryCount: number; readonly removedEntryCount: number; readonly state: 'completed' };
 
+export interface OpfsPersistenceManagementCleanHeadBarrier {
+  ensureCleanHead(): Promise<void>;
+  release(): void;
+}
+
 export interface OpfsPersistenceUnlockedSession {
   /** Writable behavior is explicit; release qualification remains a separate gate. */
   readonly writableProfile: OpfsPersistenceWritableProfile;
@@ -69,6 +74,7 @@ export interface OpfsPersistenceUnlockedSession {
   readonly fileSystemId: FileSystemId;
   readonly fileSystemSession: StorageFileSystemSession;
   close(): Promise<void>;
+  openManagementCleanHeadBarrier(): OpfsPersistenceManagementCleanHeadBarrier;
 }
 
 export type OpfsPersistenceRetainedCredential = Readonly<{

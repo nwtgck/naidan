@@ -159,6 +159,13 @@ export interface StorageFileSystemSession {
    */
   createReadSnapshot?(): Promise<StorageFileSystemSession>;
 
+  /**
+   * Waits for all filesystem mutations accepted before this call to satisfy
+   * the implementation's strong crash-durability contract. Implementations
+   * that cannot demonstrate that contract reject with a typed sync error.
+   */
+  sync(): Promise<void>;
+
   close(): Promise<void>;
 }
 

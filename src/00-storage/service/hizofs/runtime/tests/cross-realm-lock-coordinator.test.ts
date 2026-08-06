@@ -65,6 +65,15 @@ class RecordingLockPort implements CrossRealmLockPort {
     }, released: completion.promise };
   }
 
+  async tryAcquire({ mode, name }: {
+    mode: CrossRealmLockMode;
+    name: string;
+  }): Promise<CrossRealmLockLease | undefined> {
+    const existing = this.held.get(name);
+    if (existing !== undefined && (mode === "exclusive" || existing.mode === "exclusive")) return undefined;
+    return await this.acquire({ mode, name });
+  }
+
   async queryHeldLockNames(): Promise<readonly string[]> {
     return this.queriedNames ?? [...this.held.keys()];
   }
@@ -242,6 +251,29 @@ describe("cross-realm lock coordinator", () => {
     expect(port.held.size).toBe(0);
   });
 
+  it("holds a runtime-owner lease under a lock distinct from mutation authority", async () => {
+    const port = new RecordingLockPort();
+    const coordinator = new CrossRealmLockCoordinator({
+      lockPort: port,
+      maxHeldLockNames: 64,
+      scopeToken: scopeToken(1),
+    });
+    const owner = await coordinator.acquireRuntimeOwner();
+    expect(port.acquisitions).toEqual([expect.objectContaining({
+      mode: "exclusive",
+      name: expect.stringContaining("/runtime-owner/"),
+    })]);
+    const writer = await coordinator.acquireWriter();
+    expect(port.acquisitions[1]?.name).toContain("/authority/");
+    expect(port.acquisitions[1]?.name).not.toBe(port.acquisitions[0]?.name);
+    writer.release();
+    await writer.released;
+    owner.release();
+    owner.release();
+    await owner.released;
+    expect(port.held.size).toBe(0);
+  });
+
   it("holds writer authority and serializes publication under a separate short gate", async () => {
     const port = new RecordingLockPort();
     const coordinator = new CrossRealmLockCoordinator({ lockPort: port, maxHeldLockNames: 64, scopeToken: scopeToken(1) });
@@ -271,6 +303,33 @@ describe("cross-realm lock coordinator", () => {
       scopeToken: scopeToken(1),
     });
     await expect(coordinator.beginMaintenance()).rejects.toMatchObject({ code: "held_lock_limit_exceeded" });
+  });
+
+
+  it("provides a non-blocking runtime-owner acquisition boundary", async () => {
+    const port = new RecordingLockPort();
+    const first = new CrossRealmLockCoordinator({ lockPort: port, maxHeldLockNames: 64, scopeToken: scopeToken(1) });
+    const second = new CrossRealmLockCoordinator({ lockPort: port, maxHeldLockNames: 64, scopeToken: scopeToken(1) });
+    const held = await first.acquireRuntimeOwner();
+    await expect(second.tryAcquireRuntimeOwner()).resolves.toBeUndefined();
+    held.release();
+    await held.released;
+    const acquired = await second.tryAcquireRuntimeOwner();
+    expect(acquired).toBeDefined();
+    acquired?.release();
+    await acquired?.released;
+  });
+
+  it("fails explicitly when a lock port cannot provide non-blocking acquisition", async () => {
+    const coordinator = new CrossRealmLockCoordinator({
+      lockPort: {
+        acquire: async () => ({ release: () => undefined, released: Promise.resolve() }),
+        queryHeldLockNames: async () => [],
+      },
+      maxHeldLockNames: 64,
+      scopeToken: scopeToken(1),
+    });
+    await expect(coordinator.tryAcquireRuntimeOwner()).rejects.toMatchObject({ code: "try_acquire_unsupported" });
   });
 
 });

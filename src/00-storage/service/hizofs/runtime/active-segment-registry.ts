@@ -3,6 +3,8 @@ import type { ContainerCoordinationKey } from "@/00-storage/service/hizofs/files
 
 export type ActiveSegmentReferenceKind = "backend_handle" | "read_lease" | "snapshot_cache";
 
+export type ActiveSegmentRegistryActivityState = "active" | "idle";
+
 export type ActiveSegmentRegistryErrorCode =
   | "deletion_active"
   | "invalid_reference_limit"
@@ -119,6 +121,18 @@ export class ActiveSegmentRegistry {
         if (!state.deletionActive) container.segments.delete(identity);
       }
     } };
+  }
+
+  activityState({ coordinationKey }: {
+    coordinationKey: ContainerCoordinationKey;
+  }): ActiveSegmentRegistryActivityState {
+    const container = this.#containers.get(coordinationKey);
+    if (container === undefined) return "idle";
+    if (container.referenceCount > 0) return "active";
+    for (const state of container.segments.values()) {
+      if (state.deletionActive) return "active";
+    }
+    return "idle";
   }
 
   async beginDeletion({ coordinationKey, segmentId }: {

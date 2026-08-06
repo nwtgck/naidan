@@ -134,7 +134,10 @@ function mutationPort({ markCommitPoint = true }: {
   }) => {
     calls.push([name, request]);
     authority.assertPublicationAllowed();
-    if (markCommitPoint) authority.markCommitPointCrossed();
+    if (markCommitPoint) {
+      authority.markCandidateAccepted();
+      authority.markCommitPointCrossed();
+    }
   };
   const port: HizoFSApplicationMutationPort = {
     async cloneFile(request) {
@@ -196,14 +199,17 @@ function createPort({ includeSubvolume = false, markCommitPoint = true }: {
 } = {}) {
   const runtimeState = runtime();
   const mutations = mutationPort({ markCommitPoint });
+  const sync = vi.fn(async () => undefined);
   return {
     mutations,
     port: createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
       mutationPort: mutations.port,
       namespace: namespace({ includeSubvolume }),
       runtimeSession: runtimeState.session,
+      sync,
     } }),
     runtimeState,
+    sync,
   };
 }
 
@@ -245,6 +251,7 @@ describe("runtime-bound HizoFS application session port", () => {
       mutationPort: mutationPort().port,
       namespace: missingNamespace,
       runtimeSession: runtimeState.session,
+      sync: async () => undefined,
     } });
 
     await expect(port.stat({ path: ["missing"] })).rejects.toMatchObject({
@@ -285,6 +292,7 @@ describe("runtime-bound HizoFS application session port", () => {
       mutationPort: mutations.port,
       namespace: namespace(),
       runtimeSession: runtimeState.session,
+      sync: async () => undefined,
     } });
 
     await port.moveEntry({
@@ -301,6 +309,117 @@ describe("runtime-bound HizoFS application session port", () => {
       "close-writer",
     ]);
     expect(mutations.calls[0]?.[0]).toBe("move-no-change");
+  });
+
+  it("rejects a durable commit point that has no accepted working candidate", async () => {
+    const runtimeState = runtime();
+    const mutations = mutationPort({ markCommitPoint: false });
+    mutations.port.createFile = async ({ authority }) => {
+      authority.markCommitPointCrossed();
+    };
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      namespace: namespace(),
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+
+    await expect(port.createFile({ name: "invalid", path: [] }))
+      .rejects.toThrow("before accepting a working candidate");
+    expect(runtimeState.calls.at(-1)).toBe("close-writer");
+  });
+
+  it("tracks working-candidate acceptance separately and still requires durable publication", async () => {
+    const runtimeState = runtime();
+    const mutations = mutationPort({ markCommitPoint: false });
+    mutations.port.createDirectory = async ({ authority, ...request }) => {
+      mutations.calls.push(["mkdir-accepted", request]);
+      expect(authority.candidateAccepted()).toBe(false);
+      expect(authority.commitPointCrossed()).toBe(false);
+      authority.markCandidateAccepted();
+      expect(authority.candidateAccepted()).toBe(true);
+      expect(authority.commitPointCrossed()).toBe(false);
+    };
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      namespace: namespace(),
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+
+    await expect(port.createDirectory({ name: "accepted-only", path: [] })).rejects.toMatchObject({
+      code: "commit_point_not_crossed",
+      message: expect.stringContaining("working-candidate acceptance"),
+    });
+    expect(runtimeState.calls.at(-1)).toBe("close-writer");
+  });
+
+  it("allows accepted-only success when the runtime applied lazy publication", async () => {
+    const runtimeState = runtime();
+    const mutations = mutationPort({ markCommitPoint: false });
+    mutations.port.createDirectory = async ({ authority, ...request }) => {
+      mutations.calls.push(["mkdir-lazy-accepted", request]);
+      authority.markCandidateAccepted();
+    };
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      mutationSuccessCondition: "working_candidate_acceptance",
+      namespace: namespace(),
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+
+    await expect(port.createDirectory({ name: "accepted-only", path: [] })).resolves.toBeUndefined();
+    expect(runtimeState.calls).toEqual([
+      "acquire-writer",
+      "run-publication",
+      "close-writer",
+    ]);
+  });
+
+  it("allows an accepted working candidate to advance to the durable commit point", async () => {
+    const runtimeState = runtime();
+    const mutations = mutationPort({ markCommitPoint: false });
+    mutations.port.createFile = async ({ authority, ...request }) => {
+      mutations.calls.push(["create-file-accepted", request]);
+      authority.markCandidateAccepted();
+      authority.markCommitPointCrossed();
+      expect(authority.candidateAccepted()).toBe(true);
+      expect(authority.commitPointCrossed()).toBe(true);
+    };
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      namespace: namespace(),
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+
+    await expect(port.createFile({ name: "durable", path: [] })).resolves.toBeUndefined();
+    expect(runtimeState.calls).toEqual([
+      "acquire-writer",
+      "run-publication",
+      "commit-point",
+      "close-writer",
+    ]);
+  });
+
+  it("rejects no-change or duplicate acceptance after a working candidate is installed", async () => {
+    const runtimeState = runtime();
+    const mutations = mutationPort({ markCommitPoint: false });
+    mutations.port.createDirectory = async ({ authority }) => {
+      authority.markCandidateAccepted();
+      expect(() => authority.markCandidateAccepted()).toThrow("more than one working candidate");
+      expect(() => authority.markNoChangeResolved()).toThrow("after accepting a working candidate");
+      authority.markCommitPointCrossed();
+    };
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      namespace: namespace(),
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+
+    await expect(port.createDirectory({ name: "candidate", path: [] })).resolves.toBeUndefined();
   });
 
   it("fails closed when a mutation returns before marking the publication commit point", async () => {
@@ -386,6 +505,7 @@ describe("runtime-bound HizoFS application session port", () => {
       mutationPort: mutations.port,
       namespace: readNamespace,
       runtimeSession: runtimeState.session,
+      sync: async () => undefined,
     } });
     const readable = await port.openReadable({ path: ["file"] });
     const writable = await port.openWritable({ keepExistingData: true, path: ["file"] });
@@ -435,6 +555,7 @@ describe("runtime-bound HizoFS application session port", () => {
       mutationPort: mutations.port,
       namespace: namespace(),
       runtimeSession: runtimeState.session,
+      sync: async () => undefined,
     } });
 
     const opening = port.openWritable({ keepExistingData: true, path: ["file"] });
@@ -458,5 +579,16 @@ describe("runtime-bound HizoFS application session port", () => {
     await expect(opening).rejects.toMatchObject({ code: "session_closed" });
     expect(mutations.calls.map(([name]) => name)).toContain("abort-delayed");
     expect(runtimeState.calls).toEqual(["acquire-writer", "close-session", "close-writer"]);
+  });
+
+  it("forwards sync through the operation gate and rejects it after close", async () => {
+    const { port, sync } = createPort();
+
+    await port.sync();
+    expect(sync).toHaveBeenCalledOnce();
+
+    await port.close();
+    await expect(port.sync()).rejects.toMatchObject({ code: "session_closed" });
+    expect(sync).toHaveBeenCalledOnce();
   });
 });

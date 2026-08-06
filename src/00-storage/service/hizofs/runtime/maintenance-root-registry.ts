@@ -5,6 +5,8 @@ import {
 } from "@/00-storage/service/hizofs/00-format";
 import type { ContainerCoordinationKey } from "@/00-storage/service/hizofs/filesystem/container-coordination-key";
 
+export type MaintenanceRootRegistryActivityState = "active" | "idle";
+
 export type RuntimeMaintenanceRootSets = Readonly<{
   inspectorPinnedRoots: readonly HomeRecordReference[];
   readerPinnedRoots: readonly HomeRecordReference[];
@@ -208,6 +210,26 @@ export class MaintenanceRootRegistry {
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootRegistration {
     return this.#acquire({ category: "writer_dependency", commitReference, coordinationKey });
+  }
+
+  activityState({ coordinationKey }: {
+    coordinationKey: ContainerCoordinationKey;
+  }): MaintenanceRootRegistryActivityState {
+    const scope = this.#scopes.get(coordinationKey);
+    if (scope === undefined) return "idle";
+    return scope.captureActive || scope.registrationCount > 0 ? "active" : "idle";
+  }
+
+  isSoleWriterDependencyRoot({ commitReference, coordinationKey }: {
+    commitReference: HomeRecordReference;
+    coordinationKey: ContainerCoordinationKey;
+  }): boolean {
+    const scope = this.#scopes.get(coordinationKey);
+    if (scope === undefined || scope.captureActive || scope.registrationCount !== 1) return false;
+    const identity = referenceIdentity({
+      encodedReference: encodeHomeRecordReference({ reference: commitReference }),
+    });
+    return scope.categories.writer_dependency.get(identity)?.count === 1;
   }
 
   captureRoots({ coordinationKey }: {

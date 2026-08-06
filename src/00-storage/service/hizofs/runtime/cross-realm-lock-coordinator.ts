@@ -19,6 +19,10 @@ export interface CrossRealmLockPort {
     mode: CrossRealmLockMode;
     name: string;
   }): Promise<CrossRealmLockLease>;
+  tryAcquire?({ mode, name }: {
+    mode: CrossRealmLockMode;
+    name: string;
+  }): Promise<CrossRealmLockLease | undefined>;
   queryHeldLockNames(): Promise<readonly string[]>;
 }
 
@@ -27,7 +31,8 @@ export type CrossRealmCoordinatorErrorCode =
   | "invalid_held_lock_limit"
   | "invalid_held_reader_pin"
   | "lease_released"
-  | "publication_in_progress";
+  | "publication_in_progress"
+  | "try_acquire_unsupported";
 
 export class CrossRealmCoordinatorError extends Error {
   readonly code: CrossRealmCoordinatorErrorCode;
@@ -47,6 +52,11 @@ export type CrossRealmReaderPin = Readonly<{
 
 export type CrossRealmMaintenanceLease = Readonly<{
   pinnedCommitReferences: readonly HomeRecordReference[];
+  release: () => void;
+  released: Promise<void>;
+}>;
+
+export type CrossRealmRuntimeOwnerLease = Readonly<{
   release: () => void;
   released: Promise<void>;
 }>;
@@ -71,6 +81,12 @@ function publicationLockName({ scopeToken }: {
   scopeToken: ContainerCoordinationScopeToken;
 }): string {
   return `${LOCK_PREFIX}/publication/${scopeToken}`;
+}
+
+function runtimeOwnerLockName({ scopeToken }: {
+  scopeToken: ContainerCoordinationScopeToken;
+}): string {
+  return `${LOCK_PREFIX}/runtime-owner/${scopeToken}`;
 }
 
 function readerRegistrationLockName({ scopeToken }: {
@@ -265,6 +281,46 @@ export class CrossRealmLockCoordinator {
         pin.release();
       },
       released: pin.released,
+    };
+  }
+
+  async acquireRuntimeOwner(): Promise<CrossRealmRuntimeOwnerLease> {
+    const owner = await this.#lockPort.acquire({
+      mode: "exclusive",
+      name: runtimeOwnerLockName({ scopeToken: this.#scopeToken }),
+    });
+    let active = true;
+    return {
+      release: () => {
+        if (!active) return;
+        active = false;
+        owner.release();
+      },
+      released: owner.released,
+    };
+  }
+
+  async tryAcquireRuntimeOwner(): Promise<CrossRealmRuntimeOwnerLease | undefined> {
+    const tryAcquire = this.#lockPort.tryAcquire;
+    if (tryAcquire === undefined) {
+      throw new CrossRealmCoordinatorError({
+        code: "try_acquire_unsupported",
+        message: "cross-realm lock port does not support non-blocking runtime-owner acquisition",
+      });
+    }
+    const owner = await tryAcquire.call(this.#lockPort, {
+      mode: "exclusive",
+      name: runtimeOwnerLockName({ scopeToken: this.#scopeToken }),
+    });
+    if (owner === undefined) return undefined;
+    let active = true;
+    return {
+      release: () => {
+        if (!active) return;
+        active = false;
+        owner.release();
+      },
+      released: owner.released,
     };
   }
 

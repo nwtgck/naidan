@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY } from '@/00-storage/service/naidan-opfs/production-persistence-runtime';
 import type { IStorageProvider } from '@/00-storage/service/interface';
 import type { CapturedPersistenceControlAuthority } from '@/00-storage/service/naidan-persistence-control/store/persistence-control-authority-handshake';
 import type { PersistenceControlReadablePhysicalPort } from '@/00-storage/service/naidan-persistence-control/store';
@@ -24,6 +25,7 @@ type FileSystemId = Extract<
 type RuntimeOptions = Parameters<typeof TEST_ONLY.createDevelopmentOpfsPersistenceRuntimeWith>[0];
 
 const runtimePolicy: RuntimeOptions['runtimePolicy'] = {
+  lazyDurability: NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY,
   maxDirectoryIteratorEntries: 32,
   maxHeldLockNames: 64,
   maxMaintenanceRootRegistrations: 32,
@@ -51,6 +53,7 @@ function fileSystemSession(): StorageFileSystemSession & { close: ReturnType<typ
     },
     close: vi.fn(async () => undefined),
     root: {} as StorageDirectoryHandle,
+    sync: vi.fn(async () => undefined),
   };
 }
 
@@ -63,11 +66,17 @@ function backend(): IStorageProvider & { dispose: ReturnType<typeof vi.fn> } {
 function port({
   applicationBackend = backend(),
   backendFailure,
+  gracefullyShutdownRuntime = vi.fn(async () => undefined),
+  managementEnsureCleanHead = vi.fn(async () => undefined),
+  managementRelease = vi.fn(() => undefined),
   openedSession = fileSystemSession(),
   openType = 'opened',
 }: {
   applicationBackend?: IStorageProvider;
   backendFailure?: unknown;
+  gracefullyShutdownRuntime?: () => Promise<void>;
+  managementEnsureCleanHead?: () => Promise<void>;
+  managementRelease?: () => void;
   openedSession?: StorageFileSystemSession;
   openType?: 'credential_rejected' | 'opened';
 } = {}): RuntimePort {
@@ -98,6 +107,11 @@ function port({
         authoritativeEndpoint: { fileSystemId, type: 'hizofs' } as const,
         fileSystemId,
         fileSystemSession: openedSession,
+        gracefullyShutdownRuntime,
+        openManagementCleanHeadBarrier: () => ({
+          ensureCleanHead: managementEnsureCleanHead,
+          release: managementRelease,
+        }),
         selected: {} as never,
         type: 'opened',
       } as const;
@@ -194,7 +208,8 @@ describe('development-unverified OPFS Persistence runtime', () => {
   it('returns a writable provider session with idempotent complete cleanup', async () => {
     const openedSession = fileSystemSession();
     const applicationBackend = backend();
-    const runtimePort = port({ applicationBackend, openedSession });
+    const gracefullyShutdownRuntime = vi.fn(async () => undefined);
+    const runtimePort = port({ applicationBackend, gracefullyShutdownRuntime, openedSession });
     const subject = runtime({ runtimePort });
 
     const opened = await subject.unlockWithPassphrase({
@@ -217,17 +232,98 @@ describe('development-unverified OPFS Persistence runtime', () => {
     await opened.close();
     expect(applicationBackend.dispose).toHaveBeenCalledTimes(1);
     expect(openedSession.close).toHaveBeenCalledTimes(1);
+    expect(gracefullyShutdownRuntime).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves backend, session, and graceful shutdown failures during provider close', async () => {
+    const backendFailure = new Error('backend dispose failed');
+    const sessionFailure = new Error('session close failed');
+    const shutdownFailure = new Error('runtime shutdown failed');
+    const applicationBackend = backend();
+    applicationBackend.dispose.mockRejectedValue(backendFailure);
+    const openedSession = fileSystemSession();
+    openedSession.close.mockRejectedValue(sessionFailure);
+    const gracefullyShutdownRuntime = vi.fn(async () => {
+      throw shutdownFailure;
+    });
+    const subject = runtime({
+      runtimePort: port({ applicationBackend, gracefullyShutdownRuntime, openedSession }),
+    });
+    const opened = await subject.unlockWithPassphrase({ passphrase: 'passphrase', storageRoot });
+
+    await expect(opened.close()).rejects.toMatchObject({
+      errors: [backendFailure, sessionFailure, shutdownFailure],
+    });
+    expect(applicationBackend.dispose).toHaveBeenCalledOnce();
+    expect(openedSession.close).toHaveBeenCalledOnce();
+    expect(gracefullyShutdownRuntime).toHaveBeenCalledOnce();
+  });
+
+  it('retains the transition barrier when filesystem close fails and completes shutdown on retry', async () => {
+    const events: string[] = [];
+    const closeFailure = new Error('session close failed once');
+    const openedSession = fileSystemSession();
+    openedSession.close
+      .mockImplementationOnce(async () => {
+        events.push('filesystem_close_failed');
+        throw closeFailure;
+      })
+      .mockImplementationOnce(async () => {
+        events.push('filesystem_close_succeeded');
+      });
+    const applicationBackend = backend();
+    applicationBackend.dispose.mockImplementation(async () => {
+      events.push('backend_dispose');
+    });
+    const managementRelease = vi.fn(() => {
+      events.push('barrier_release');
+    });
+    const gracefullyShutdownRuntime = vi.fn(async () => {
+      events.push('runtime_shutdown');
+    });
+    const runtimePort = port({
+      applicationBackend,
+      gracefullyShutdownRuntime,
+      managementRelease,
+      openedSession,
+    });
+    const subject = runtime({ runtimePort });
+    const opened = await subject.unlockWithPassphrase({ passphrase: 'passphrase', storageRoot });
+    await subject.runTransition({
+      nativeNamespaceRoot,
+      onProgress: undefined,
+      request: { operation: 'disable', session: opened },
+      signal: undefined,
+      storageRoot,
+    });
+
+    await expect(opened.close()).rejects.toBe(closeFailure);
+    expect(events).toEqual(['backend_dispose', 'filesystem_close_failed']);
+    expect(managementRelease).not.toHaveBeenCalled();
+    expect(gracefullyShutdownRuntime).not.toHaveBeenCalled();
+
+    await expect(opened.close()).resolves.toBeUndefined();
+    expect(events).toEqual([
+      'backend_dispose',
+      'filesystem_close_failed',
+      'filesystem_close_succeeded',
+      'barrier_release',
+      'runtime_shutdown',
+    ]);
+    expect(applicationBackend.dispose).toHaveBeenCalledOnce();
   });
 
   it('closes the opened filesystem session when backend initialization fails', async () => {
     const openedSession = fileSystemSession();
     const failure = new Error('backend init failed');
-    const runtimePort = port({ backendFailure: failure, openedSession });
+    const gracefullyShutdownRuntime = vi.fn(async () => undefined);
+    const runtimePort = port({ backendFailure: failure, gracefullyShutdownRuntime, openedSession });
     const subject = runtime({ runtimePort });
 
     await expect(subject.unlockWithPassphrase({ passphrase: 'passphrase', storageRoot }))
       .rejects.toBe(failure);
     expect(openedSession.close).toHaveBeenCalledTimes(1);
+    expect(gracefullyShutdownRuntime).toHaveBeenCalledTimes(1);
   });
 
   it('runs native enable and returns a reload-only completion result', async () => {
@@ -301,8 +397,32 @@ describe('development-unverified OPFS Persistence runtime', () => {
     expect(runtimePort.openApplicationSession).not.toHaveBeenCalled();
   });
 
-  it('runs native disable without constructing a plain application session', async () => {
-    const runtimePort = port();
+  it('holds the management barrier until the source session is closed after disable', async () => {
+    const events: string[] = [];
+    const openedSession = fileSystemSession();
+    openedSession.close.mockImplementation(async () => {
+      events.push('filesystem_close');
+    });
+    const applicationBackend = backend();
+    applicationBackend.dispose.mockImplementation(async () => {
+      events.push('backend_dispose');
+    });
+    const runtimePort = port({
+      applicationBackend,
+      gracefullyShutdownRuntime: vi.fn(async () => {
+        events.push('runtime_shutdown');
+      }),
+      managementEnsureCleanHead: vi.fn(async () => {
+        events.push('ensure');
+      }),
+      managementRelease: vi.fn(() => {
+        events.push('barrier_release');
+      }),
+      openedSession,
+    });
+    vi.mocked(runtimePort.runDisableTransition).mockImplementation(async () => {
+      events.push('transition');
+    });
     const subject = runtime({ runtimePort });
     const opened = await subject.unlockWithPassphrase({ passphrase: 'passphrase', storageRoot });
 
@@ -313,6 +433,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
       signal: undefined,
       storageRoot,
     })).resolves.toEqual({ type: 'completed' });
+    expect(events).toEqual(['ensure', 'transition']);
     expect(runtimePort.runDisableTransition).toHaveBeenCalledWith({
       lockManager,
       nativeNamespaceRoot,
@@ -321,7 +442,16 @@ describe('development-unverified OPFS Persistence runtime', () => {
       signal: undefined,
       storageRoot,
     });
-    expect(runtimePort.createBackend).toHaveBeenCalledTimes(1);
+
+    await opened.close();
+    expect(events).toEqual([
+      'ensure',
+      'transition',
+      'backend_dispose',
+      'filesystem_close',
+      'barrier_release',
+      'runtime_shutdown',
+    ]);
   });
 
   it('forwards the complete retained credential set without reopening after re-encryption', async () => {
@@ -357,6 +487,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
       storageRoot,
     });
     expect(runtimePort.openApplicationSession).toHaveBeenCalledTimes(1);
+    await opened.close();
   });
 
   it('rejects an empty retained credential set before invoking production re-encrypt', async () => {
@@ -413,7 +544,21 @@ describe('development-unverified OPFS Persistence runtime', () => {
   it('replaces the active session passphrase without replacing the application session', async () => {
     const openedSession = fileSystemSession();
     const applicationBackend = backend();
-    const runtimePort = port({ applicationBackend, openedSession });
+    const events: string[] = [];
+    const runtimePort = port({
+      applicationBackend,
+      managementEnsureCleanHead: vi.fn(async () => {
+        events.push('ensure');
+      }),
+      managementRelease: vi.fn(() => {
+        events.push('release');
+      }),
+      openedSession,
+    });
+    vi.mocked(runtimePort.changeSessionPassphrase).mockImplementation(async ({ fileSystemSession }) => {
+      events.push('change');
+      return fileSystemSession;
+    });
     const subject = runtime({ runtimePort });
     const opened = await subject.unlockWithPassphrase({ passphrase: 'old passphrase', storageRoot });
 
@@ -428,6 +573,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
       replacementPassphrase: 'replacement',
     });
     expect(runtimePort.captureAuthority).toHaveBeenCalledTimes(2);
+    expect(events).toEqual(['ensure', 'change', 'release']);
   });
 
   it('converges an interrupted transition without restoring work progress', async () => {

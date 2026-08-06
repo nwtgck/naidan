@@ -105,6 +105,9 @@ function createPort(): HizoFSApplicationSessionPort & {
     async removeEntry(request) {
       calls.push(["removeEntry", request]);
     },
+    async sync() {
+      calls.push(["sync", undefined]);
+    },
     async stat({ path }) {
       calls.push(["stat", [...path]]);
       const value = stats.get(key({ path }));
@@ -404,5 +407,45 @@ describe("HizoFS StorageFileSystemSession adapter", () => {
     expect(abort).toHaveBeenCalledTimes(1);
     expect(close).toHaveBeenCalledTimes(1);
     await expect(file.stat()).rejects.toThrow("session is closed");
+  });
+
+  it("forwards filesystem-wide sync through the open session", async () => {
+    const port = createPort();
+    const session = createHizoFSStorageFileSystemSession({ port });
+
+    await session.sync();
+
+    expect(port.calls).toContainEqual(["sync", undefined]);
+  });
+
+  it("waits for an admitted sync before closing and rejects later sync calls", async () => {
+    const port = createPort();
+    const session = createHizoFSStorageFileSystemSession({ port });
+    const pendingSync = deferred<void>();
+    port.sync = async () => {
+      port.calls.push(["sync-start", undefined]);
+      await pendingSync.promise;
+      port.calls.push(["sync-finish", undefined]);
+    };
+
+    const syncing = session.sync();
+    await Promise.resolve();
+    const closing = session.close();
+
+    expect(port.calls).toContainEqual(["sync-start", undefined]);
+    expect(port.calls.some(([name]) => name === "close")).toBe(false);
+    await expect(session.sync()).rejects.toMatchObject({
+      code: "session_closed",
+      implementation: "hizofs",
+      retryable: false,
+    });
+
+    pendingSync.resolve(undefined);
+    await syncing;
+    await closing;
+    expect(port.calls.slice(-2)).toEqual([
+      ["sync-finish", undefined],
+      ["close", undefined],
+    ]);
   });
 });

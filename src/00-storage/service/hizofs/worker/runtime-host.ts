@@ -3,6 +3,7 @@ import {
   createHizoFSStorageFileSystemSession,
   createRuntimeBoundHizoFSApplicationSessionPort,
   type HizoFSApplicationMutationPort,
+  type HizoFSApplicationMutationSuccessCondition,
   type HizoFSApplicationRuntimeSession,
   type HizoFSApplicationRuntimeWriter,
   type HizoFSApplicationSessionNamespace,
@@ -13,13 +14,29 @@ import {
 } from "@/00-storage/service/hizofs/api";
 import type { StorageFileSystemSession } from "@/00-storage/service/storage-file-system/types";
 import {
+  createStorageFileSystemSyncError,
+  requireStorageFileSystemSyncDurability,
+  type StorageFileSystemSyncDurability,
+} from "@/00-storage/service/storage-file-system/sync-error";
+import {
   ContainerRuntime,
+  type ContainerRuntimeAuthenticatedApplicationGeneration,
+  type ContainerRuntimeHostDisposalResult,
   type ContainerRuntimeMaintenanceRootCapture,
+  type ContainerRuntimeManagementCleanHeadBarrier,
   type ContainerRuntimeSession,
 } from "@/00-storage/service/hizofs/runtime/container-runtime";
 import type { ContainerCoordinationScope } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
 import type { CrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/cross-realm-lock-coordinator";
-import type { HizoFSRuntimePolicy } from "@/00-storage/service/hizofs/runtime/runtime-policy";
+import type { HizoFSRuntimeOwnerOpenPolicy } from "@/00-storage/service/hizofs/runtime/runtime-owner-coordinator";
+import type {
+  HizoFSLazyPublicationRolloutGateReceipt,
+  HizoFSRuntimePolicy,
+  HizoFSWritableDurabilityProfile,
+} from "@/00-storage/service/hizofs/runtime/runtime-policy";
+import type { DurableGenerationIdentity } from "@/00-storage/service/hizofs/runtime/application-generation-identity";
+import type { AuthenticatedDurableApplicationGenerationAuthority } from "@/00-storage/service/hizofs/runtime/authenticated-application-generation";
+import { WorkingCandidateCoordinatorError, type WorkingCandidateAdmission } from "@/00-storage/service/hizofs/runtime/working-candidate-coordinator";
 import {
   createBrowserWebLockManagerPort,
   type BrowserWebLockManager,
@@ -44,6 +61,18 @@ export function createBrowserHizoFSWorkerRuntimeHost({ lockManager, policy, scop
     policy,
     scope,
   });
+}
+
+function mutationSuccessConditionFromPublicationMode({ mode }: {
+  mode: ReturnType<ContainerRuntimeAuthenticatedApplicationGeneration["publicationModeApplied"]>;
+}): HizoFSApplicationMutationSuccessCondition {
+  switch (mode) {
+  case "immediate_publication_requested":
+  case "immediate_publication_unqualified": return "durable_publication";
+  case "lazy_publication_development":
+  case "lazy_publication_strict": return "working_candidate_acceptance";
+  default: return mode satisfies never;
+  }
 }
 
 async function closeRuntimeSessionAfterFailure({ cause, message, session }: {
@@ -127,6 +156,7 @@ async function createPinnedReadSnapshotPort({
   assertOperationAllowed,
   createResources,
   parent,
+  syncDurability,
 }: {
   assertOperationAllowed?: () => void;
   createResources: () => Readonly<{
@@ -135,6 +165,7 @@ async function createPinnedReadSnapshotPort({
     namespace: HizoFSApplicationSessionNamespace;
   }>;
   parent: ContainerRuntimeSession;
+  syncDurability: StorageFileSystemSyncDurability;
 }): Promise<HizoFSApplicationSessionPort> {
   assertOperationAllowed?.();
   const resources = createResources();
@@ -146,6 +177,10 @@ async function createPinnedReadSnapshotPort({
       mutationPort: resources.mutationPort,
       namespace: resources.namespace,
       runtimeSession: new PinnedReadSnapshotRuntimeSession({ parent, pin }),
+      sync: async () => requireStorageFileSystemSyncDurability({
+        durability: syncDurability,
+        implementation: "hizofs",
+      }),
     } });
   } catch (cause: unknown) {
     try {
@@ -161,22 +196,94 @@ async function createPinnedReadSnapshotPort({
   }
 }
 
+
+export type HizoFSWorkerRuntimeHostErrorCode = "runtime_owner_busy";
+
+export class HizoFSWorkerRuntimeHostError extends Error {
+  readonly code: HizoFSWorkerRuntimeHostErrorCode;
+
+  constructor({ code, message }: { code: HizoFSWorkerRuntimeHostErrorCode; message: string }) {
+    super(message);
+    this.name = "HizoFSWorkerRuntimeHostError";
+    this.code = code;
+  }
+}
+
 export class HizoFSWorkerRuntimeHost {
   #runtime: ContainerRuntime;
 
-  constructor({ crossRealmLockPort, policy, scope }: {
+  constructor({ crossRealmLockPort, lazyPublicationRollout, policy, scope }: {
     crossRealmLockPort: CrossRealmLockPort;
+    /** Trusted composition seam. The browser factory intentionally does not expose it. */
+    lazyPublicationRollout?: HizoFSLazyPublicationRolloutGateReceipt;
     policy: HizoFSRuntimePolicy;
     scope: ContainerCoordinationScope;
   }) {
     this.#runtime = new ContainerRuntime({
       crossRealmLockPort,
+      ...(lazyPublicationRollout === undefined ? {} : { lazyPublicationRollout }),
       limits: policy,
       scope,
     });
   }
 
+  async #openSessionWithRuntimeOwnerPolicy<Captured, Verified>({
+    captureAuthority,
+    createSessionResources,
+    recheckAuthority,
+    runtimeOwnerPolicy,
+    verifyCapturedAuthority,
+  }: {
+    captureAuthority: () => Promise<Captured>;
+    createSessionResources: ({ captured, verified }: {
+      captured: Captured;
+      verified: Verified;
+    }) => Readonly<{ releaseResources: () => Promise<void> }>;
+    recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
+    runtimeOwnerPolicy: HizoFSRuntimeOwnerOpenPolicy;
+    verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
+  }): Promise<ContainerRuntimeSession> {
+    const input = { captureAuthority, createSessionResources, recheckAuthority, verifyCapturedAuthority };
+    switch (runtimeOwnerPolicy) {
+    case "wait": return await this.#runtime.openSessionWithAuthorityHandshake(input);
+    case "reject_if_busy": {
+      const session = await this.#runtime.tryOpenSessionWithAuthorityHandshake(input);
+      if (session !== undefined) return session;
+      throw new HizoFSWorkerRuntimeHostError({
+        code: "runtime_owner_busy",
+        message: "another runtime currently owns this HizoFS container",
+      });
+    }
+    default: return runtimeOwnerPolicy satisfies never;
+    }
+  }
+
   async openSession<Captured, Verified>({
+    captureAuthority,
+    createSessionResources,
+    recheckAuthority,
+    runtimeOwnerPolicy = "wait",
+    verifyCapturedAuthority,
+  }: {
+    captureAuthority: () => Promise<Captured>;
+    createSessionResources: ({ captured, verified }: {
+      captured: Captured;
+      verified: Verified;
+    }) => Readonly<{ releaseResources: () => Promise<void> }>;
+    recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
+    runtimeOwnerPolicy?: HizoFSRuntimeOwnerOpenPolicy;
+    verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
+  }): Promise<ContainerRuntimeSession> {
+    return await this.#openSessionWithRuntimeOwnerPolicy({
+      captureAuthority,
+      createSessionResources,
+      recheckAuthority,
+      runtimeOwnerPolicy,
+      verifyCapturedAuthority,
+    });
+  }
+
+  async tryOpenSession<Captured, Verified>({
     captureAuthority,
     createSessionResources,
     recheckAuthority,
@@ -189,8 +296,8 @@ export class HizoFSWorkerRuntimeHost {
     }) => Readonly<{ releaseResources: () => Promise<void> }>;
     recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
     verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
-  }): Promise<ContainerRuntimeSession> {
-    return await this.#runtime.openSessionWithAuthorityHandshake({
+  }): Promise<ContainerRuntimeSession | undefined> {
+    return await this.#runtime.tryOpenSessionWithAuthorityHandshake({
       captureAuthority,
       createSessionResources,
       recheckAuthority,
@@ -202,16 +309,30 @@ export class HizoFSWorkerRuntimeHost {
     assertOperationAllowed,
     captureAuthority,
     createApplicationSessionResources,
+    observeAuthenticatedDurableAuthority,
+    observeAuthenticatedDurableIdentity,
+    observeWritableDurabilityProfile,
     recheckAuthority,
     registerRuntimeSession,
+    runtimeOwnerPolicy = "wait",
     rootName,
     rootPath,
     verifyCapturedAuthority,
   }: {
     assertOperationAllowed?: () => void;
     captureAuthority: () => Promise<Captured>;
-    createApplicationSessionResources: ({ captured, verified }: {
+    createApplicationSessionResources: ({
+      authenticatedGeneration,
+      captured,
+      openWorkingCandidateAdmission,
+      verified,
+    }: {
+      authenticatedGeneration: ContainerRuntimeAuthenticatedApplicationGeneration | undefined;
       captured: Captured;
+      openWorkingCandidateAdmission: <Candidate extends object>({ durableBaseIdentity, operationLabel }: {
+        durableBaseIdentity: DurableGenerationIdentity;
+        operationLabel: string;
+      }) => WorkingCandidateAdmission<Candidate>;
       verified: Verified;
     }) => Readonly<{
       createReadSnapshotResources?: () => Readonly<{
@@ -222,17 +343,29 @@ export class HizoFSWorkerRuntimeHost {
       mutationPort: HizoFSApplicationMutationPort;
       namespace: HizoFSApplicationSessionNamespace;
       releaseResources: () => Promise<void>;
+      syncDurability: StorageFileSystemSyncDurability;
       workerMountGrantIssuer?: HizoFSWorkerMountGrantIssuer;
     }>;
+    observeAuthenticatedDurableAuthority?: ({ verified }: {
+      verified: Verified;
+    }) => AuthenticatedDurableApplicationGenerationAuthority;
+    observeAuthenticatedDurableIdentity?: ({ verified }: {
+      verified: Verified;
+    }) => DurableGenerationIdentity;
+    observeWritableDurabilityProfile?: ({ verified }: {
+      verified: Verified;
+    }) => HizoFSWritableDurabilityProfile;
     recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
     registerRuntimeSession?: ({ runtimeSession }: {
       runtimeSession: HizoFSApplicationRuntimeSession;
     }) => void;
     rootName?: string;
     rootPath?: readonly string[];
+    runtimeOwnerPolicy?: HizoFSRuntimeOwnerOpenPolicy;
     verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
   }): Promise<StorageFileSystemSession> {
     let applicationResources: Readonly<{
+      authenticatedGeneration: ContainerRuntimeAuthenticatedApplicationGeneration | undefined;
       createReadSnapshotResources: (() => Readonly<{
         commitReference: Parameters<ContainerRuntimeSession["acquireReaderPin"]>[0]["commitReference"];
         mutationPort: HizoFSApplicationMutationPort;
@@ -240,30 +373,123 @@ export class HizoFSWorkerRuntimeHost {
       }>) | undefined;
       mutationPort: HizoFSApplicationMutationPort;
       namespace: HizoFSApplicationSessionNamespace;
+      recheckSyncAuthority: () => Promise<void>;
+      syncDurability: StorageFileSystemSyncDurability;
       workerMountGrantIssuer: HizoFSWorkerMountGrantIssuer | undefined;
     }> | undefined;
-    const session = await this.#runtime.openSessionWithAuthorityHandshake({
+    const session = await this.#openSessionWithRuntimeOwnerPolicy({
       captureAuthority,
       createSessionResources: ({ captured, verified }) => {
-        const resources = createApplicationSessionResources({ captured, verified });
+        const observedDurableAuthority = observeAuthenticatedDurableAuthority?.({ verified });
+        const observedDurableIdentity = observedDurableAuthority?.identity
+          ?? observeAuthenticatedDurableIdentity?.({ verified });
+        const publicationState = this.#runtime.workingCandidatePublicationState();
+        switch (publicationState) {
+        case "empty":
+        case "installed":
+        case "publishing":
+          break;
+        case "outcome_unknown":
+          if (observedDurableIdentity === undefined) {
+            throw new TypeError(
+              "outcome-unknown runtime requires an authenticated durable identity before application resources open",
+            );
+          }
+          if (observedDurableAuthority === undefined) {
+            this.#runtime.resolveWorkingCandidateOutcomeUnknownAgainstDurableAuthority({
+              observedDurableIdentity,
+            });
+          } else {
+            this.#runtime.resolveWorkingCandidateOutcomeUnknownAgainstAuthenticatedDurableAuthority({
+              observedDurableAuthority,
+            });
+          }
+          break;
+        case "poisoned":
+          throw new TypeError("poisoned runtime cannot open application resources");
+        default:
+          return publicationState satisfies never;
+        }
+        const authenticatedGeneration = observedDurableAuthority === undefined
+          ? undefined
+          : this.#runtime.attachAuthenticatedApplicationGeneration({
+            durableAuthority: observedDurableAuthority,
+            ...(observeWritableDurabilityProfile === undefined
+              ? {}
+              : { writableProfile: observeWritableDurabilityProfile({ verified }) }),
+          });
+        let candidateAdmissionsOpen = true;
+        const openWorkingCandidateAdmission = <Candidate extends object>({
+          durableBaseIdentity,
+          operationLabel,
+        }: {
+          durableBaseIdentity: DurableGenerationIdentity;
+          operationLabel: string;
+        }): WorkingCandidateAdmission<Candidate> => {
+          if (!candidateAdmissionsOpen) {
+            throw new WorkingCandidateCoordinatorError({
+              cause: undefined,
+              code: "admission_closed",
+              message: `${operationLabel} cannot reserve a candidate after its application session resources closed`,
+            });
+          }
+          return this.#runtime.openWorkingCandidateAdmission<Candidate>({
+            durableBaseIdentity,
+            operationLabel,
+          });
+        };
+        let resources: ReturnType<typeof createApplicationSessionResources>;
+        try {
+          resources = createApplicationSessionResources({
+            authenticatedGeneration,
+            captured,
+            openWorkingCandidateAdmission,
+            verified,
+          });
+        } catch (cause: unknown) {
+          candidateAdmissionsOpen = false;
+          throw cause;
+        }
         const {
           createReadSnapshotResources,
           mutationPort,
           namespace,
           releaseResources,
+          syncDurability,
           workerMountGrantIssuer,
           ...unhandledResources
         } = resources;
         unhandledResources satisfies Record<PropertyKey, never>;
         applicationResources = {
+          authenticatedGeneration,
           createReadSnapshotResources,
           mutationPort,
           namespace,
+          recheckSyncAuthority: async () => {
+            try {
+              await recheckAuthority({ captured });
+            } catch (cause: unknown) {
+              throw createStorageFileSystemSyncError({
+                cause,
+                code: "authority_epoch_lost",
+                implementation: "hizofs",
+                message: "HizoFS sync authority epoch is no longer current",
+                retryable: false,
+              });
+            }
+          },
+          syncDurability,
           workerMountGrantIssuer,
         };
-        return { releaseResources };
+        return {
+          releaseResources: async () => {
+            candidateAdmissionsOpen = false;
+            await releaseResources();
+          },
+        };
       },
       recheckAuthority,
+      runtimeOwnerPolicy,
       verifyCapturedAuthority,
     });
     if (applicationResources === undefined) {
@@ -273,7 +499,46 @@ export class HizoFSWorkerRuntimeHost {
         session,
       });
     }
-    const createReadSnapshotResources = applicationResources.createReadSnapshotResources;
+    const resolvedApplicationResources = applicationResources;
+    const createReadSnapshotResources = resolvedApplicationResources.createReadSnapshotResources;
+    const sync = async (): Promise<void> => {
+      const target = resolvedApplicationResources.authenticatedGeneration?.captureSyncTarget();
+      await session.syncDurableState({
+        assertDurabilityDemonstrated: () => requireStorageFileSystemSyncDurability({
+          durability: resolvedApplicationResources.syncDurability,
+          implementation: "hizofs",
+        }),
+        recheckAuthority: resolvedApplicationResources.recheckSyncAuthority,
+      });
+      try {
+        await resolvedApplicationResources.authenticatedGeneration?.requestExplicitFlush();
+      } catch (cause: unknown) {
+        const publicationState = this.#runtime.workingCandidatePublicationState();
+        switch (publicationState) {
+        case "outcome_unknown":
+        case "poisoned": throw createStorageFileSystemSyncError({
+          cause,
+          code: "durable_publication_outcome_unknown",
+          implementation: "hizofs",
+          message: "HizoFS cannot determine whether the captured working generation became durable",
+          retryable: false,
+        });
+        case "empty":
+        case "installed":
+        case "publishing": throw createStorageFileSystemSyncError({
+          cause,
+          code: "durable_publication_failed",
+          implementation: "hizofs",
+          message: "HizoFS could not flush the captured working generation",
+          retryable: true,
+        });
+        default: return publicationState satisfies never;
+        }
+      }
+      if (target !== undefined) {
+        await resolvedApplicationResources.authenticatedGeneration?.waitForSyncTarget({ target });
+      }
+    };
     try {
       registerRuntimeSession?.({ runtimeSession: session });
       return createHizoFSStorageFileSystemSession({
@@ -284,15 +549,22 @@ export class HizoFSWorkerRuntimeHost {
               ...(assertOperationAllowed === undefined ? {} : { assertOperationAllowed }),
               createResources: createReadSnapshotResources,
               parent: session,
+              syncDurability: resolvedApplicationResources.syncDurability,
             }),
           }),
-          mutationPort: applicationResources.mutationPort,
-          namespace: applicationResources.namespace,
+          mutationPort: resolvedApplicationResources.mutationPort,
+          mutationSuccessCondition: resolvedApplicationResources.authenticatedGeneration === undefined
+            ? "durable_publication"
+            : mutationSuccessConditionFromPublicationMode({
+              mode: resolvedApplicationResources.authenticatedGeneration.publicationModeApplied(),
+            }),
+          namespace: resolvedApplicationResources.namespace,
           runtimeSession: session,
+          sync,
         } }),
         rootName,
         rootPath,
-        workerMountGrantIssuer: applicationResources.workerMountGrantIssuer,
+        workerMountGrantIssuer: resolvedApplicationResources.workerMountGrantIssuer,
       });
     } catch (cause: unknown) {
       return await closeRuntimeSessionAfterFailure({
@@ -349,6 +621,26 @@ export class HizoFSWorkerRuntimeHost {
     }
   }
 
+  openManagementCleanHeadBarrier(): ContainerRuntimeManagementCleanHeadBarrier {
+    return this.#runtime.openManagementCleanHeadBarrier();
+  }
+
+  async disposeIfIdleAndSafe(): Promise<ContainerRuntimeHostDisposalResult> {
+    return await this.#runtime.disposeIfIdleAndSafe();
+  }
+
+  async flushAndDisposeIfIdleAndSafe(): Promise<ContainerRuntimeHostDisposalResult> {
+    return await this.#runtime.flushAndDisposeIfIdleAndSafe();
+  }
+
+  workingCandidatePublicationState(): ReturnType<ContainerRuntime["workingCandidatePublicationState"]> {
+    return this.#runtime.workingCandidatePublicationState();
+  }
+
+  async beginCleanHeadMaintenanceRootCapture(): Promise<ContainerRuntimeMaintenanceRootCapture> {
+    return await this.#runtime.beginCleanHeadMaintenanceRootCapture();
+  }
+
   async beginMaintenanceRootCapture(): Promise<ContainerRuntimeMaintenanceRootCapture> {
     return await this.#runtime.beginMaintenanceRootCapture();
   }
@@ -389,4 +681,5 @@ export class HizoFSWorkerRuntimeHost {
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
   closeRuntimeSessionAfterFailure,
+  mutationSuccessConditionFromPublicationMode,
 };

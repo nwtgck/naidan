@@ -20,6 +20,7 @@ import {
 } from '@/00-storage/service/naidan-opfs/opfs-storage-location';
 import type { StorageDirectoryHandle, StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
 
+import { NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY } from "@/00-storage/service/naidan-opfs/production-persistence-runtime";
 const workerMocks = {
   createScope: vi.fn(),
   createRuntimeHost: vi.fn(),
@@ -151,6 +152,7 @@ function fileSystemSession({ close = async () => undefined }: {
     },
     close,
     root: Object.freeze({}) as StorageDirectoryHandle,
+    sync: async () => undefined,
   };
 }
 
@@ -160,6 +162,7 @@ const lockManager = {
 } as unknown as NativeOpenOptions['lockManager'];
 
 const runtimePolicy: NativeOpenOptions['runtimePolicy'] = {
+  lazyDurability: NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY,
   maxDirectoryIteratorEntries: 32,
   maxHeldLockNames: 64,
   maxMaintenanceRootRegistrations: 32,
@@ -195,8 +198,30 @@ describe('native credential-required application session composition', () => {
     const authority = Object.freeze({ kind: 'opaque-authority' });
     const releaseResources = vi.fn(async () => undefined);
     const scope = Object.freeze({ kind: 'scope' });
-    const runtimeHost = Object.freeze({ kind: 'runtime-host' });
-    const session = fileSystemSession();
+    const flushAndCaptureCleanGeneration = vi.fn(async () => Object.freeze({ kind: 'clean-generation' }));
+    const releaseManagementBarrier = vi.fn(() => undefined);
+    const openManagementCleanHeadBarrier = vi.fn(() => Object.freeze({
+      flushAndCaptureCleanGeneration,
+      release: releaseManagementBarrier,
+    }));
+    const runtimeHost = Object.freeze({ kind: 'runtime-host', openManagementCleanHeadBarrier });
+    let registeredRuntimeHost: unknown;
+    const flushAndDisposeScopeIfIdleAndSafe = vi.fn()
+      .mockResolvedValueOnce({ blocker: 'session_attached', status: 'retained' })
+      .mockResolvedValueOnce({ status: 'evicted' });
+    const runtimeHostRegistry: NonNullable<NativeOpenWithOptions['runtimeHostRegistry']> = {
+      flushAndDisposeScopeIfIdleAndSafe,
+      getOrCreate: ({ createHost, lockManager: receivedLockManager, policy, scope: receivedScope }) => {
+        registeredRuntimeHost ??= createHost({
+          lockManager: receivedLockManager,
+          policy,
+          scope: receivedScope,
+        });
+        return registeredRuntimeHost as never;
+      },
+    } as NonNullable<NativeOpenWithOptions['runtimeHostRegistry']>;
+    const sessionClose = vi.fn(async () => undefined);
+    const session = fileSystemSession({ close: sessionClose });
 
     workerMocks.openContainer.mockImplementation(async ({ containerRoot, openProfile, verifyProofAuthority }) => {
       expect(containerRoot).toBe(container);
@@ -210,9 +235,11 @@ describe('native credential-required application session composition', () => {
       authority: receivedAuthority,
       recheckAuthority,
       runtimeHost: receivedRuntimeHost,
+      runtimeOwnerPolicy,
     }) => {
       expect(receivedAuthority).toBe(authority);
       expect(receivedRuntimeHost).toBe(runtimeHost);
+      expect(runtimeOwnerPolicy).toBe('wait');
       await recheckAuthority();
       return session;
     });
@@ -224,23 +251,63 @@ describe('native credential-required application session composition', () => {
       nativeNamespaceRoot: namespace.root,
       passphrase: 'correct horse battery staple',
       physical,
+      runtimeHostRegistry,
+      runtimePolicy,
+    });
+    const secondResult = await PRODUCTION_RUNTIME_TEST_ONLY.openNativeCredentialRequiredApplicationSessionWith({
+      captured,
+      hizofsRuntime,
+      lockManager,
+      nativeNamespaceRoot: namespace.root,
+      passphrase: 'correct horse battery staple',
+      physical,
+      runtimeHostRegistry,
       runtimePolicy,
     });
 
     expect(result).toMatchObject({
       authoritativeEndpoint: { fileSystemId: activeFileSystemId, type: 'hizofs' },
       fileSystemId: activeFileSystemId,
-      fileSystemSession: session,
       type: 'opened',
     });
+    expect(secondResult).toMatchObject({
+      authoritativeEndpoint: { fileSystemId: activeFileSystemId, type: 'hizofs' },
+      fileSystemId: activeFileSystemId,
+      type: 'opened',
+    });
+    expect(workerMocks.createScope).toHaveBeenCalledTimes(2);
     expect(workerMocks.createScope).toHaveBeenCalledWith({
       canonicalBackingLocation: naidanOpfsContainerOriginRelativePath({ fileSystemId: activeFileSystemId }),
     });
+    expect(workerMocks.createRuntimeHost).toHaveBeenCalledOnce();
     expect(workerMocks.createRuntimeHost).toHaveBeenCalledWith({ lockManager, policy: runtimePolicy, scope });
-    expect(workerMocks.transferSession).toHaveBeenCalledOnce();
+    expect(workerMocks.transferSession).toHaveBeenCalledTimes(2);
+    expect(workerMocks.transferSession.mock.calls[0]?.[0].runtimeHost).toBe(runtimeHost);
+    expect(workerMocks.transferSession.mock.calls[1]?.[0].runtimeHost).toBe(runtimeHost);
+    if (result.type !== 'opened' || secondResult.type !== 'opened') {
+      throw new Error('expected two HizoFS application sessions');
+    }
+    expect(result.fileSystemSession).toBe(session);
+    expect(secondResult.fileSystemSession).toBe(session);
+    expect(result.fileSystemSession.root).toBe(session.root);
+    expect(secondResult.fileSystemSession.root).toBe(session.root);
+    const managementBarrier = result.openManagementCleanHeadBarrier();
+    await managementBarrier.ensureCleanHead();
+    managementBarrier.release();
+    expect(openManagementCleanHeadBarrier).toHaveBeenCalledOnce();
+    expect(flushAndCaptureCleanGeneration).toHaveBeenCalledOnce();
+    expect(releaseManagementBarrier).toHaveBeenCalledOnce();
+    await result.fileSystemSession.close();
+    await result.gracefullyShutdownRuntime();
+    await secondResult.fileSystemSession.close();
+    await secondResult.gracefullyShutdownRuntime();
+    expect(sessionClose).toHaveBeenCalledTimes(2);
+    expect(flushAndDisposeScopeIfIdleAndSafe).toHaveBeenCalledTimes(2);
+    expect(flushAndDisposeScopeIfIdleAndSafe).toHaveBeenNthCalledWith(1, { lockManager, scope });
+    expect(flushAndDisposeScopeIfIdleAndSafe).toHaveBeenNthCalledWith(2, { lockManager, scope });
     expect(releaseResources).not.toHaveBeenCalled();
-    expect(namespace.getStorage).toHaveBeenCalledOnce();
-    expect(namespace.getContainer).toHaveBeenCalledOnce();
+    expect(namespace.getStorage).toHaveBeenCalledTimes(2);
+    expect(namespace.getContainer).toHaveBeenCalledTimes(2);
   });
 
   it('registers plain authority for an encrypt building phase after releasing proof-only HizoFS', async () => {

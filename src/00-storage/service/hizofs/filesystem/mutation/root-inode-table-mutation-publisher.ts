@@ -62,6 +62,7 @@ export async function publishRootInodeTableMutation({
       assertPublicationAllowed,
       base: baseSuperblock,
       commitPayload: prepared.commitPayload,
+      onCandidatePrepared: undefined,
       publicationPort,
     });
     return {

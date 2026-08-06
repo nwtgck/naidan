@@ -22,12 +22,14 @@ import {
 } from '@/00-storage/service/naidan-persistence-control/store';
 import type { PersistenceControlRootKeyDerivationCapability } from '@/00-storage/service/naidan-persistence-control/crypto';
 import {
+  DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
   createBrowserContainerCoordinationScope,
   createBrowserHizoFSTransitionTargetContainer,
   openBrowserHizoFSTransitionTargetEndpointSession,
   publishBrowserHizoFSTransitionTargetCandidate,
   verifyBrowserHizoFSTransitionTargetNormalOpen,
   createBrowserHizoFSWorkerRuntimeHost,
+  HizoFSRuntimeHostRegistry,
   openAuthenticatedDevelopmentWritableApplicationSessionFromCapability,
   openBrowserAuthenticatedDevelopmentWritableContainerCapability,
   openAuthenticatedReadOnlyApplicationSessionFromCapability,
@@ -37,6 +39,7 @@ import {
   openBrowserAuthenticatedReadOnlyContainerCapability,
   type AuthenticatedDevelopmentWritableContainerCapability,
   type AuthenticatedReadOnlyContainerCapability,
+  type HizoFSRuntimeOwnerOpenPolicy,
 } from '@/00-storage/service/hizofs/worker-entry';
 import {
   capturePersistenceControlAuthority,
@@ -68,10 +71,12 @@ import { createNativeOpfsFileSystemSession } from '@/00-storage/service/storage-
 import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
 import type {
   OpfsEncryptionInspection,
+  OpfsPersistenceManagementCleanHeadBarrier,
   OpfsPersistenceRetainedCredential,
   OpfsPersistenceUnlockedSession,
 } from './persistence-runtime-contract';
 import { projectPersistenceRuntimeInspection } from './persistence-runtime-inspection';
+
 import {
   NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
   naidanOpfsContainerOriginRelativePath,
@@ -121,6 +126,8 @@ import {
 } from './trial-debug';
 import type { OpfsEncryptionTransitionProgressListener } from './transition-progress';
 
+
+export const NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY = DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY;
 
 type HizoFSMode = Extract<NaidanPersistenceControlV1['mode'], { readonly type: 'hizofs' }>;
 type FileSystemId = HizoFSMode['activeFileSystemId'];
@@ -172,11 +179,108 @@ export type CredentialBoundApplicationSessionOpenResult =
       readonly authoritativeEndpoint: NaidanPersistenceEndpointV1;
       readonly fileSystemId: FileSystemId;
       readonly fileSystemSession: StorageFileSystemSession;
+      readonly gracefullyShutdownRuntime: () => Promise<void>;
+      readonly openManagementCleanHeadBarrier: () => OpfsPersistenceManagementCleanHeadBarrier;
       readonly selected: SelectedPersistenceControlAuthority;
       readonly type: 'opened';
     };
 
 type BrowserHizoFSRuntimeHostOptions = Parameters<typeof createBrowserHizoFSWorkerRuntimeHost>[0];
+type BrowserHizoFSRuntimeHost = ReturnType<typeof createBrowserHizoFSWorkerRuntimeHost>;
+type BrowserHizoFSRuntimeHostRegistry = Pick<
+  HizoFSRuntimeHostRegistry<BrowserHizoFSRuntimeHostOptions['lockManager'], BrowserHizoFSRuntimeHost>,
+  'flushAndDisposeScopeIfIdleAndSafe' | 'getOrCreate'
+>;
+
+const browserHizoFSRuntimeHostRegistry = new HizoFSRuntimeHostRegistry<
+  BrowserHizoFSRuntimeHostOptions['lockManager'],
+  BrowserHizoFSRuntimeHost
+>();
+
+type BrowserHizoFSRuntimeHostDisposalBlocker = Extract<
+  Awaited<ReturnType<BrowserHizoFSRuntimeHost['flushAndDisposeIfIdleAndSafe']>>,
+  { readonly status: 'retained' }
+>['blocker'];
+
+type CredentialBoundRegisteredApplicationSession = Readonly<{
+  fileSystemSession: StorageFileSystemSession;
+  gracefullyShutdownRuntime: () => Promise<void>;
+  openManagementCleanHeadBarrier: () => OpfsPersistenceManagementCleanHeadBarrier;
+}>;
+
+type CredentialBoundApplicationSessionFactoryResult =
+  | CredentialBoundRegisteredApplicationSession
+  | StorageFileSystemSession;
+
+function createNoopManagementCleanHeadBarrierFactory(): () => OpfsPersistenceManagementCleanHeadBarrier {
+  return () => {
+    let released = false;
+    const requireActive = (): void => {
+      if (released) throw new TypeError('management clean-head barrier is already released');
+    };
+    return Object.freeze({
+      ensureCleanHead: async () => requireActive(),
+      release: () => {
+        requireActive();
+        released = true;
+      },
+    });
+  };
+}
+
+function normalizeCredentialBoundApplicationSession({ value }: {
+  value: CredentialBoundApplicationSessionFactoryResult;
+}): CredentialBoundRegisteredApplicationSession {
+  return 'fileSystemSession' in value
+    ? value
+    : Object.freeze({
+      fileSystemSession: value,
+      gracefullyShutdownRuntime: async () => undefined,
+      openManagementCleanHeadBarrier: createNoopManagementCleanHeadBarrierFactory(),
+    });
+}
+
+export class NativeHizoFSRuntimeGracefulShutdownError extends Error {
+  readonly blocker: BrowserHizoFSRuntimeHostDisposalBlocker;
+  readonly code = 'runtime_shutdown_blocked' as const;
+
+  constructor({ blocker }: { blocker: BrowserHizoFSRuntimeHostDisposalBlocker }) {
+    super(`HizoFS runtime graceful shutdown is blocked by ${blocker}`);
+    this.name = 'NativeHizoFSRuntimeGracefulShutdownError';
+    this.blocker = blocker;
+  }
+}
+
+function acceptGracefulRuntimeShutdownResult({ result }: {
+  result:
+    | Awaited<ReturnType<BrowserHizoFSRuntimeHost['flushAndDisposeIfIdleAndSafe']>>
+    | Awaited<ReturnType<BrowserHizoFSRuntimeHostRegistry['flushAndDisposeScopeIfIdleAndSafe']>>;
+}): void {
+  switch (result.status) {
+  case 'absent':
+  case 'disposed':
+  case 'evicted': return;
+  case 'retained':
+    switch (result.blocker) {
+    case 'session_attached':
+    case 'session_open_in_flight': return;
+    case 'active_segment_resource':
+    case 'explicit_flush_in_flight':
+    case 'maintenance_root_resource':
+    case 'management_barrier_active':
+    case 'runtime_coordination_active':
+    case 'runtime_owner_acquiring':
+    case 'runtime_owner_failed':
+    case 'runtime_owner_releasing':
+    case 'working_candidate_not_empty':
+    case 'working_generation_not_durable': throw new NativeHizoFSRuntimeGracefulShutdownError({
+      blocker: result.blocker,
+    });
+    default: return result.blocker satisfies never;
+    }
+  default: return result satisfies never;
+  }
+}
 
 type NativeHizoFSTransitionTargetCreationPort = Readonly<{
   createTargetContainer: typeof createBrowserHizoFSTransitionTargetContainer;
@@ -1968,7 +2072,31 @@ type OpenedNativeReturnToPlainSession = Readonly<{
   authoritativeEndpoint: NaidanPersistenceEndpointV1;
   fileSystemId: FileSystemId;
   fileSystemSession: StorageFileSystemSession;
+  gracefullyShutdownRuntime: () => Promise<void>;
 }>;
+
+async function closeOpenedNativeReturnToPlainSession({ opened }: {
+  opened: OpenedNativeReturnToPlainSession;
+}): Promise<void> {
+  const failures: unknown[] = [];
+  try {
+    await opened.fileSystemSession.close();
+  } catch (cause: unknown) {
+    failures.push(cause);
+  }
+  try {
+    await opened.gracefullyShutdownRuntime();
+  } catch (cause: unknown) {
+    failures.push(cause);
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(
+      failures,
+      'return-to-plain session close and graceful runtime shutdown both failed',
+    );
+  }
+}
 
 async function completeNativeHizoFSReturnToPlainWith({
   convergedFileSystemId,
@@ -1986,7 +2114,7 @@ async function completeNativeHizoFSReturnToPlainWith({
     })) {
     const cause = new TypeError('return-to-plain reopened a different encrypted authority');
     try {
-      await opened.fileSystemSession.close();
+      await closeOpenedNativeReturnToPlainSession({ opened });
     } catch (closeCause: unknown) {
       throw new AggregateError([cause, closeCause], 'return-to-plain authority rejection and encrypted-session cleanup both failed');
     }
@@ -1999,7 +2127,7 @@ async function completeNativeHizoFSReturnToPlainWith({
     async close() {
       if (closed) return;
       closed = true;
-      await opened.fileSystemSession.close();
+      await closeOpenedNativeReturnToPlainSession({ opened });
     },
   };
   try {
@@ -2614,11 +2742,12 @@ type NativeCredentialCandidateOpenResult =
 type NativeHizoFSRuntimePort = {
   readonly createCoordinationScope: typeof createBrowserContainerCoordinationScope;
   readonly createRuntimeHost: typeof createBrowserHizoFSWorkerRuntimeHost;
-  readonly openApplicationSessionFromCapability: ({ authority, canonicalBackingLocation, recheckAuthority, runtimeHost }: {
+  readonly openApplicationSessionFromCapability: ({ authority, canonicalBackingLocation, recheckAuthority, runtimeHost, runtimeOwnerPolicy }: {
     authority: NativeCredentialCandidateAuthority;
     canonicalBackingLocation: string;
     recheckAuthority: () => Promise<void>;
     runtimeHost: ReturnType<typeof createBrowserHizoFSWorkerRuntimeHost>;
+    runtimeOwnerPolicy: HizoFSRuntimeOwnerOpenPolicy;
   }) => Promise<StorageFileSystemSession>;
   readonly openContainerCapability: ({ containerRoot, openProfile, passphrase, verifyProofAuthority }: {
     containerRoot: FileSystemDirectoryHandle;
@@ -2631,7 +2760,7 @@ type NativeHizoFSRuntimePort = {
 const browserNativeHizoFSRuntimePort: NativeHizoFSRuntimePort = Object.freeze({
   createCoordinationScope: createBrowserContainerCoordinationScope,
   createRuntimeHost: createBrowserHizoFSWorkerRuntimeHost,
-  openApplicationSessionFromCapability: async ({ authority, canonicalBackingLocation, recheckAuthority, runtimeHost }) => {
+  openApplicationSessionFromCapability: async ({ authority, canonicalBackingLocation, recheckAuthority, runtimeHost, runtimeOwnerPolicy }) => {
     switch (authority.type) {
     case 'development_writable':
       return await openAuthenticatedDevelopmentWritableApplicationSessionFromCapability({
@@ -2639,12 +2768,14 @@ const browserNativeHizoFSRuntimePort: NativeHizoFSRuntimePort = Object.freeze({
         canonicalBackingLocation,
         recheckAuthority,
         runtimeHost,
+        runtimeOwnerPolicy,
       });
     case 'root_key_proof':
       return await openAuthenticatedReadOnlyApplicationSessionFromCapability({
         authority: authority.authority,
         recheckAuthority,
         runtimeHost,
+        runtimeOwnerPolicy,
       });
     default: return authority satisfies never;
     }
@@ -2890,19 +3021,42 @@ function credentialBoundAuthoritativeEndpoint({ control }: {
   }
 }
 
+async function closeCredentialBoundRegisteredApplicationSession({ applicationSession }: {
+  applicationSession: CredentialBoundRegisteredApplicationSession;
+}): Promise<void> {
+  const failures: unknown[] = [];
+  try {
+    await applicationSession.fileSystemSession.close();
+  } catch (closeCause: unknown) {
+    failures.push(closeCause);
+  }
+  try {
+    await applicationSession.gracefullyShutdownRuntime();
+  } catch (shutdownCause: unknown) {
+    failures.push(shutdownCause);
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(
+      failures,
+      'application session close and graceful runtime shutdown both failed',
+    );
+  }
+}
+
 async function throwAfterApplicationSessionCleanup({
+  applicationSession,
   cause,
-  fileSystemSession,
   releaseResources,
 }: {
+  applicationSession: CredentialBoundRegisteredApplicationSession | undefined;
   cause: unknown;
-  fileSystemSession: StorageFileSystemSession | undefined;
   releaseResources: () => Promise<void>;
 }): Promise<never> {
   const cleanupFailures: unknown[] = [];
-  if (fileSystemSession !== undefined) {
+  if (applicationSession !== undefined) {
     try {
-      await fileSystemSession.close();
+      await closeCredentialBoundRegisteredApplicationSession({ applicationSession });
     } catch (closeCause: unknown) {
       cleanupFailures.push(closeCause);
     }
@@ -2986,31 +3140,33 @@ async function openApplicationSessionAfterRequiredRecheck({
 }: {
   openSession: ({ recheckAuthority }: {
     recheckAuthority: () => Promise<void>;
-  }) => Promise<StorageFileSystemSession>;
+  }) => Promise<CredentialBoundApplicationSessionFactoryResult>;
   recheckAuthority: () => Promise<void>;
   releaseResources: () => Promise<void>;
-}): Promise<StorageFileSystemSession> {
+}): Promise<CredentialBoundRegisteredApplicationSession> {
   const recheckStatus: ApplicationSessionRecheckStatus = {
     failure: undefined,
     state: 'not_called',
   };
-  let fileSystemSession: StorageFileSystemSession | undefined;
+  let applicationSession: CredentialBoundRegisteredApplicationSession | undefined;
   try {
-    fileSystemSession = await openSession({
-      recheckAuthority: async () => {
-        beginApplicationSessionAuthorityRecheck({ status: recheckStatus });
-        try {
-          await recheckAuthority();
-        } catch (cause: unknown) {
-          failApplicationSessionAuthorityRecheck({ cause, status: recheckStatus });
-          throw cause;
-        }
-        completeApplicationSessionAuthorityRecheck({ status: recheckStatus });
-      },
+    applicationSession = normalizeCredentialBoundApplicationSession({
+      value: await openSession({
+        recheckAuthority: async () => {
+          beginApplicationSessionAuthorityRecheck({ status: recheckStatus });
+          try {
+            await recheckAuthority();
+          } catch (cause: unknown) {
+            failApplicationSessionAuthorityRecheck({ cause, status: recheckStatus });
+            throw cause;
+          }
+          completeApplicationSessionAuthorityRecheck({ status: recheckStatus });
+        },
+      }),
     });
 
     switch (recheckStatus.state) {
-    case 'succeeded': return fileSystemSession;
+    case 'succeeded': return applicationSession;
     case 'not_called': throw new Error('application session opener returned without rechecking Persistence Control authority');
     case 'running': throw new Error('application session opener returned before awaiting Persistence Control authority recheck');
     case 'failed': throw new Error(
@@ -3022,8 +3178,8 @@ async function openApplicationSessionAfterRequiredRecheck({
     }
   } catch (cause: unknown) {
     return await throwAfterApplicationSessionCleanup({
+      applicationSession,
       cause,
-      fileSystemSession,
       releaseResources,
     });
   }
@@ -3051,10 +3207,10 @@ export async function registerCredentialBoundApplicationSession<Authority>({
     authority: Authority;
     fileSystemId: FileSystemId;
     recheckAuthority: () => Promise<void>;
-  }) => Promise<StorageFileSystemSession>;
+  }) => Promise<CredentialBoundApplicationSessionFactoryResult>;
   openPlainApplicationSession: ({ recheckAuthority }: {
     recheckAuthority: () => Promise<void>;
-  }) => Promise<StorageFileSystemSession>;
+  }) => Promise<CredentialBoundApplicationSessionFactoryResult>;
   physical: PersistenceControlReadablePhysicalPort;
 }): Promise<CredentialBoundApplicationSessionOpenResult> {
   switch (opened.type) {
@@ -3073,7 +3229,7 @@ export async function registerCredentialBoundApplicationSession<Authority>({
   } catch (cause: unknown) {
     return await throwAfterApplicationSessionCleanup({
       cause,
-      fileSystemSession: undefined,
+      applicationSession: undefined,
       releaseResources: opened.releaseResources,
     });
   }
@@ -3086,7 +3242,7 @@ export async function registerCredentialBoundApplicationSession<Authority>({
     case 'root_key_proof':
       return await throwAfterApplicationSessionCleanup({
         cause: new TypeError('root-key-proof-only credential authority cannot open an authoritative HizoFS session'),
-        fileSystemSession: undefined,
+        applicationSession: undefined,
         releaseResources: opened.releaseResources,
       });
     default: return requiredProfile satisfies never;
@@ -3094,11 +3250,11 @@ export async function registerCredentialBoundApplicationSession<Authority>({
     if (authoritativeEndpoint.fileSystemId !== opened.fileSystemId) {
       return await throwAfterApplicationSessionCleanup({
         cause: new TypeError('opened credential authority does not match the authoritative HizoFS endpoint'),
-        fileSystemSession: undefined,
+        applicationSession: undefined,
         releaseResources: opened.releaseResources,
       });
     }
-    const fileSystemSession = await openApplicationSessionAfterRequiredRecheck({
+    const applicationSession = await openApplicationSessionAfterRequiredRecheck({
       openSession: async ({ recheckAuthority: requiredRecheck }) => await openHizoFSApplicationSession({
         authority: opened.authority,
         fileSystemId: opened.fileSystemId,
@@ -3110,7 +3266,9 @@ export async function registerCredentialBoundApplicationSession<Authority>({
     return {
       authoritativeEndpoint,
       fileSystemId: opened.fileSystemId,
-      fileSystemSession,
+      fileSystemSession: applicationSession.fileSystemSession,
+      gracefullyShutdownRuntime: applicationSession.gracefullyShutdownRuntime,
+      openManagementCleanHeadBarrier: applicationSession.openManagementCleanHeadBarrier,
       selected: opened.selected,
       type: 'opened',
     };
@@ -3121,7 +3279,7 @@ export async function registerCredentialBoundApplicationSession<Authority>({
     case 'normal_read':
       return await throwAfterApplicationSessionCleanup({
         cause: new TypeError('normal-read credential authority cannot be discarded for a plain authoritative endpoint'),
-        fileSystemSession: undefined,
+        applicationSession: undefined,
         releaseResources: opened.releaseResources,
       });
     default: return requiredProfile satisfies never;
@@ -3130,7 +3288,7 @@ export async function registerCredentialBoundApplicationSession<Authority>({
     // transition says plain storage owns the namespace. Release its root key
     // before exposing the native session, then exact-recheck the control.
     await opened.releaseResources();
-    const fileSystemSession = await openApplicationSessionAfterRequiredRecheck({
+    const applicationSession = await openApplicationSessionAfterRequiredRecheck({
       openSession: openPlainApplicationSession,
       recheckAuthority,
       releaseResources: async () => undefined,
@@ -3138,7 +3296,9 @@ export async function registerCredentialBoundApplicationSession<Authority>({
     return {
       authoritativeEndpoint,
       fileSystemId: opened.fileSystemId,
-      fileSystemSession,
+      fileSystemSession: applicationSession.fileSystemSession,
+      gracefullyShutdownRuntime: applicationSession.gracefullyShutdownRuntime,
+      openManagementCleanHeadBarrier: applicationSession.openManagementCleanHeadBarrier,
       selected: opened.selected,
       type: 'opened',
     };
@@ -3405,6 +3565,7 @@ async function openNativeCredentialRequiredApplicationSessionWith({
   nativeNamespaceRoot,
   passphrase,
   physical,
+  runtimeHostRegistry,
   runtimePolicy,
 }: {
   captured: CapturedPersistenceControlAuthority;
@@ -3413,6 +3574,7 @@ async function openNativeCredentialRequiredApplicationSessionWith({
   nativeNamespaceRoot: FileSystemDirectoryHandle;
   passphrase: string;
   physical: PersistenceControlReadablePhysicalPort;
+  runtimeHostRegistry?: BrowserHizoFSRuntimeHostRegistry;
   runtimePolicy: BrowserHizoFSRuntimeHostOptions['policy'];
 }): Promise<CredentialBoundApplicationSessionOpenResult> {
   const opened = await openNativeCapturedCredentialRequiredPersistenceRuntimeWith({
@@ -3429,21 +3591,63 @@ async function openNativeCredentialRequiredApplicationSessionWith({
       const scope = await hizofsRuntime.createCoordinationScope({
         canonicalBackingLocation: naidanOpfsContainerOriginRelativePath({ fileSystemId }),
       });
-      const runtimeHost = hizofsRuntime.createRuntimeHost({
-        lockManager,
-        policy: runtimePolicy,
-        scope,
-      });
-      return await hizofsRuntime.openApplicationSessionFromCapability({
+      const runtimeHost = runtimeHostRegistry === undefined
+        ? hizofsRuntime.createRuntimeHost({
+          lockManager,
+          policy: runtimePolicy,
+          scope,
+        })
+        : runtimeHostRegistry.getOrCreate({
+          createHost: hizofsRuntime.createRuntimeHost,
+          lockManager,
+          policy: runtimePolicy,
+          scope,
+        });
+      const fileSystemSession = await hizofsRuntime.openApplicationSessionFromCapability({
         authority,
         canonicalBackingLocation: naidanOpfsContainerOriginRelativePath({ fileSystemId }),
         recheckAuthority,
         runtimeHost,
+        runtimeOwnerPolicy: 'wait',
+      });
+      let activeManagementBarrier: OpfsPersistenceManagementCleanHeadBarrier | undefined;
+      return Object.freeze({
+        fileSystemSession,
+        gracefullyShutdownRuntime: async () => {
+          const result = runtimeHostRegistry === undefined
+            ? await runtimeHost.flushAndDisposeIfIdleAndSafe()
+            : await runtimeHostRegistry.flushAndDisposeScopeIfIdleAndSafe({ lockManager, scope });
+          acceptGracefulRuntimeShutdownResult({ result });
+        },
+        openManagementCleanHeadBarrier: () => {
+          const existing = activeManagementBarrier;
+          if (existing !== undefined) return existing;
+          const runtimeBarrier = runtimeHost.openManagementCleanHeadBarrier();
+          let released = false;
+          const barrier: OpfsPersistenceManagementCleanHeadBarrier = Object.freeze({
+            ensureCleanHead: async () => {
+              if (released) throw new TypeError('management clean-head barrier is already released');
+              await runtimeBarrier.flushAndCaptureCleanGeneration();
+            },
+            release: () => {
+              if (released) throw new TypeError('management clean-head barrier is already released');
+              runtimeBarrier.release();
+              released = true;
+              if (activeManagementBarrier === barrier) activeManagementBarrier = undefined;
+            },
+          });
+          activeManagementBarrier = barrier;
+          return barrier;
+        },
       });
     },
     openPlainApplicationSession: async ({ recheckAuthority }) => {
       await recheckAuthority();
-      return createNativeOpfsFileSystemSession({ root: nativeNamespaceRoot });
+      return Object.freeze({
+        fileSystemSession: createNativeOpfsFileSystemSession({ root: nativeNamespaceRoot }),
+        gracefullyShutdownRuntime: async () => undefined,
+        openManagementCleanHeadBarrier: createNoopManagementCleanHeadBarrierFactory(),
+      });
     },
     physical,
   });
@@ -3471,6 +3675,7 @@ export async function openNativeCredentialRequiredApplicationSession({
     nativeNamespaceRoot,
     passphrase,
     physical,
+    runtimeHostRegistry: browserHizoFSRuntimeHostRegistry,
     runtimePolicy,
   });
 }
@@ -3785,6 +3990,7 @@ export async function inspectCredentialAwarePersistenceRuntime({
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  acceptGracefulRuntimeShutdownResult,
   reportNativeEnableTrialFailure,
   completeNativeHizoFSReturnToPlainWith,
   consumeOneNativePlainDirectoryKey,

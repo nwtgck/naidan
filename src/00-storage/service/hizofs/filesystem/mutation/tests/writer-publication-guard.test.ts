@@ -4,14 +4,32 @@ import {
   createInodeNumber,
   createInodeRevision,
   createSubvolumeId,
+  parseMutationId,
 } from "@/00-storage/service/hizofs/00-format";
+import { createTestingHomeRecordReference } from "@/00-storage/service/hizofs/runtime/testing/home-record-reference-fixture";
+import {
+  createDurableGenerationIdentity,
+  createSuccessorWorkingGenerationIdentity,
+  createWorkingGenerationAuthorityEpoch,
+  createWorkingGenerationIdentity,
+  createWorkingGenerationNumber,
+  sameDurableGenerationIdentity,
+} from "@/00-storage/service/hizofs/runtime/application-generation-identity";
 import {
   evaluateWriterPublicationEligibility,
   type CapturedWriterIdentity,
 } from "@/00-storage/service/hizofs/filesystem/mutation/writer-publication-guard";
 
+const authorityEpoch = createWorkingGenerationAuthorityEpoch();
+const baseWorkingGeneration = createWorkingGenerationIdentity({
+  authorityEpoch,
+  commitReference: createTestingHomeRecordReference({ offset: 64n }),
+  generationNumber: createWorkingGenerationNumber({ value: 7n }),
+  mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(1) }),
+});
+
 const captured: CapturedWriterIdentity = {
-  baseCommitSequence: createCommitSequence({ value: 7n }),
+  baseWorkingGeneration,
   inodeNumber: createInodeNumber({ value: 42n }),
   inodeRevision: createInodeRevision({ value: 3n }),
   subvolumeId: createSubvolumeId({ value: 2n }),
@@ -30,7 +48,7 @@ function currentInode(): CurrentWriterInode {
 
 function current(overrides: Partial<CurrentWriterState> = {}): CurrentWriterState {
   return {
-    commitSequence: createCommitSequence({ value: 7n }),
+    workingGeneration: baseWorkingGeneration,
     inode: currentInode(),
     ordinaryDirectoryEntryReachability: 1,
     ...overrides,
@@ -42,11 +60,41 @@ describe("writer publication guard", () => {
     expect(evaluateWriterPublicationEligibility({ captured, current: current() })).toEqual({ type: "eligible" });
   });
 
-  it("rejects stale base Commit and stale inode revision", () => {
+  it("rejects a successor working candidate while durable Commit Sequence remains unchanged", () => {
+    const durableBefore = createDurableGenerationIdentity({
+      commitReference: createTestingHomeRecordReference({ offset: 64n }),
+      commitSequence: createCommitSequence({ value: 7n }),
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(9) }),
+    });
+    const durableAfter = createDurableGenerationIdentity({
+      commitReference: createTestingHomeRecordReference({ offset: 64n }),
+      commitSequence: createCommitSequence({ value: 7n }),
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(9) }),
+    });
+    const successor = createSuccessorWorkingGenerationIdentity({
+      commitReference: createTestingHomeRecordReference({ offset: 128n }),
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(2) }),
+      previous: baseWorkingGeneration,
+    });
+
+    expect(sameDurableGenerationIdentity({ left: durableBefore, right: durableAfter })).toBe(true);
     expect(evaluateWriterPublicationEligibility({
       captured,
-      current: current({ commitSequence: createCommitSequence({ value: 8n }) }),
-    })).toEqual({ reason: "base_commit_changed", type: "conflict" });
+      current: current({ workingGeneration: successor }),
+    })).toEqual({ reason: "working_generation_changed", type: "conflict" });
+  });
+
+  it("rejects stale working generation and stale inode revision", () => {
+    expect(evaluateWriterPublicationEligibility({
+      captured,
+      current: current({
+        workingGeneration: createSuccessorWorkingGenerationIdentity({
+          commitReference: createTestingHomeRecordReference({ offset: 128n }),
+          mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(2) }),
+          previous: baseWorkingGeneration,
+        }),
+      }),
+    })).toEqual({ reason: "working_generation_changed", type: "conflict" });
     expect(evaluateWriterPublicationEligibility({
       captured,
       current: current({ inode: { ...currentInode(), inodeRevision: createInodeRevision({ value: 4n }) } }),

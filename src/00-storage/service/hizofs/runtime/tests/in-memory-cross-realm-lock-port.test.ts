@@ -76,4 +76,17 @@ describe("in-memory cross-realm lock model", () => {
     existingPin.release();
     newPin.release();
   });
+
+  it("reports a busy exclusive lock without enqueuing a non-blocking request", async () => {
+    const port = new InMemoryCrossRealmLockPort();
+    const held = await port.acquire({ mode: "exclusive", name: "runtime-owner" });
+    await expect(port.tryAcquire({ mode: "exclusive", name: "runtime-owner" })).resolves.toBeUndefined();
+    held.release();
+    await held.released;
+    const acquired = await port.tryAcquire({ mode: "exclusive", name: "runtime-owner" });
+    expect(acquired).toBeDefined();
+    acquired?.release();
+    await acquired?.released;
+  });
+
 });

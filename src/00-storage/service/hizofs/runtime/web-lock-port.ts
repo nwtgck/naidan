@@ -10,8 +10,9 @@ export interface WebLockManagerPort {
   query(): Promise<Readonly<{
     held: readonly Readonly<{ name: string | null }>[];
   }>>;
-  request<T>({ callback, mode, name }: {
-    callback: () => Promise<T>;
+  request<T>({ callback, ifAvailable, mode, name }: {
+    callback: ({ granted }: { granted: boolean }) => Promise<T>;
+    ifAvailable?: boolean;
     mode: CrossRealmLockMode;
     name: string;
   }): Promise<T>;
@@ -27,12 +28,16 @@ export function createBrowserWebLockManagerPort({ manager }: {
         held: (snapshot.held ?? []).map(({ name }) => ({ name: name ?? null })),
       };
     },
-    request: async ({ callback, mode, name }) => await manager.request(name, { mode }, callback),
+    request: async ({ callback, ifAvailable, mode, name }) => {
+      const options: LockOptions = ifAvailable === undefined ? { mode } : { ifAvailable, mode };
+      return await manager.request(name, options, async lock => await callback({ granted: lock !== null }));
+    },
   };
 }
 
 export type WebLocksCrossRealmLockPortErrorCode =
-  | "invalid_lock_query";
+  | "invalid_lock_query"
+  | "unexpected_lock_unavailable";
 
 export class WebLocksCrossRealmLockPortError extends Error {
   readonly code: WebLocksCrossRealmLockPortErrorCode;
@@ -60,24 +65,31 @@ export class WebLocksCrossRealmLockPort implements CrossRealmLockPort {
     this.#manager = manager;
   }
 
-  async acquire({ mode, name }: {
+  async #requestLease({ ifAvailable, mode, name }: {
+    ifAvailable: boolean;
     mode: CrossRealmLockMode;
     name: string;
-  }): Promise<CrossRealmLockLease> {
-    const granted = Promise.withResolvers<void>();
+  }): Promise<CrossRealmLockLease | undefined> {
+    const granted = Promise.withResolvers<boolean>();
     const releaseRequested = Promise.withResolvers<void>();
     const request = this.#manager.request({
-      callback: async () => {
-        granted.resolve();
+      callback: async ({ granted: lockGranted }) => {
+        granted.resolve(lockGranted);
+        if (!lockGranted) return;
         await releaseRequested.promise;
       },
+      ifAvailable: ifAvailable ? true : undefined,
       mode,
       name,
     });
     void request.catch(cause => {
       granted.reject(cause);
     });
-    await granted.promise;
+    const lockGranted = await granted.promise;
+    if (!lockGranted) {
+      await request;
+      return undefined;
+    }
     let active = true;
     return {
       release: () => {
@@ -87,6 +99,25 @@ export class WebLocksCrossRealmLockPort implements CrossRealmLockPort {
       },
       released: request.then(() => undefined),
     };
+  }
+
+  async acquire({ mode, name }: {
+    mode: CrossRealmLockMode;
+    name: string;
+  }): Promise<CrossRealmLockLease> {
+    const lease = await this.#requestLease({ ifAvailable: false, mode, name });
+    if (lease !== undefined) return lease;
+    throw new WebLocksCrossRealmLockPortError({
+      code: "unexpected_lock_unavailable",
+      message: "blocking Web Locks acquisition completed without granting a lock",
+    });
+  }
+
+  async tryAcquire({ mode, name }: {
+    mode: CrossRealmLockMode;
+    name: string;
+  }): Promise<CrossRealmLockLease | undefined> {
+    return await this.#requestLease({ ifAvailable: true, mode, name });
   }
 
   async queryHeldLockNames(): Promise<readonly string[]> {

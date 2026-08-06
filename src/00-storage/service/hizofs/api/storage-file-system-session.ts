@@ -1,6 +1,7 @@
 import type { StorageBinaryObjectReadHandle } from "@/00-storage/service/binary-object-io";
 import { OrdinaryEntryCreatePlanError } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-plan";
 import { isStorageEntryNotFoundError } from "@/00-storage/service/storage-file-system/errors";
+import { createStorageFileSystemSyncError } from "@/00-storage/service/storage-file-system/sync-error";
 import type {
   StorageDirectoryHandle,
   StorageDirectoryWorkerMountAccessMode,
@@ -103,6 +104,7 @@ export interface HizoFSApplicationSessionPort {
     recursive: boolean;
   }): Promise<void>;
   stat({ path }: { path: readonly string[] }): Promise<HizoFSApplicationStat>;
+  sync(): Promise<void>;
 }
 
 
@@ -537,6 +539,21 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
   async close(): Promise<void> {
     this.#closePromise ??= this.#close();
     await this.#closePromise;
+  }
+
+  async sync(): Promise<void> {
+    switch (this.#state) {
+    case "open": break;
+    case "closed":
+    case "closing": throw createStorageFileSystemSyncError({
+      code: "session_closed",
+      implementation: "hizofs",
+      message: "HizoFS application session is closed",
+      retryable: false,
+    });
+    default: return this.#state satisfies never;
+    }
+    await this.runOperation({ operation: async () => await this.port.sync() });
   }
 
   async createReadSnapshot(): Promise<StorageFileSystemSession> {

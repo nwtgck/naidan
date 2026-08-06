@@ -32,6 +32,7 @@ function authority(): {
             wholeFileClone: 'supported',
           },
           close,
+          sync: vi.fn(async () => undefined),
         };
         return { fileSystemId: 'debug-file-system', fileSystemSession };
       },

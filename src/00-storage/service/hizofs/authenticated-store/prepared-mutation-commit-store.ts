@@ -1,6 +1,9 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
+  decodeFileSystemCommitPayload,
+  decodeRequiredHomeRecordReference,
   encodeFileSystemCommitPayload,
+  encodeHomeRecordReference,
   type FeatureBits,
   type FileSystemCommitPayload,
   type FileSystemId,
@@ -31,6 +34,54 @@ export type PublishedPreparedMutationCommit = Readonly<{
   commitHomeRef: HomeRecordReference;
   superblock: OpenedSuperblockCopies;
 }>;
+
+export type PreparedMutationCommitCandidate = Readonly<{
+  commitHomeRef: HomeRecordReference;
+  commitPayload: FileSystemCommitPayload;
+}>;
+
+type PreparedMutationCommitCandidateAuthority = Readonly<{
+  commitHomeRef: HomeRecordReference;
+  commitPayload: FileSystemCommitPayload;
+}>;
+
+const PREPARED_MUTATION_COMMIT_CANDIDATE_AUTHORITY = new WeakMap<
+  PreparedMutationCommitCandidate,
+  PreparedMutationCommitCandidateAuthority
+>();
+
+function cloneCommitPayload({ payload }: { payload: FileSystemCommitPayload }): FileSystemCommitPayload {
+  return decodeFileSystemCommitPayload({ bytes: encodeFileSystemCommitPayload({ payload }) });
+}
+
+function cloneCommitHomeRef({ reference }: { reference: HomeRecordReference }): HomeRecordReference {
+  return decodeRequiredHomeRecordReference({ bytes: encodeHomeRecordReference({ reference }) });
+}
+
+function exposePreparedMutationCommitCandidate({ authority }: {
+  authority: PreparedMutationCommitCandidateAuthority;
+}): PreparedMutationCommitCandidate {
+  const candidate = Object.freeze({
+    get commitHomeRef(): HomeRecordReference {
+      return cloneCommitHomeRef({ reference: authority.commitHomeRef });
+    },
+    get commitPayload(): FileSystemCommitPayload {
+      return cloneCommitPayload({ payload: authority.commitPayload });
+    },
+  });
+  PREPARED_MUTATION_COMMIT_CANDIDATE_AUTHORITY.set(candidate, authority);
+  return candidate;
+}
+
+function requirePreparedMutationCommitCandidateAuthority({ candidate }: {
+  candidate: PreparedMutationCommitCandidate;
+}): PreparedMutationCommitCandidateAuthority {
+  const authority = PREPARED_MUTATION_COMMIT_CANDIDATE_AUTHORITY.get(candidate);
+  if (authority === undefined) {
+    throw new TypeError("prepared mutation Commit candidate is not authenticated by this runtime");
+  }
+  return authority;
+}
 
 /**
  * Carries the exact authenticated authority that may have crossed the first
@@ -80,6 +131,65 @@ export async function appendPreparedMutationCommit({
   case "physical_only": throw new Error("File System Commit cannot be a physical-only record");
   default: return appended satisfies never;
   }
+}
+
+export async function appendPreparedMutationCommitCandidate({ commitPayload, writer }: {
+  commitPayload: FileSystemCommitPayload;
+  writer: AuthenticatedSegmentWriter;
+}): Promise<PreparedMutationCommitCandidate> {
+  const canonicalCommitPayload = cloneCommitPayload({ payload: commitPayload });
+  const authority: PreparedMutationCommitCandidateAuthority = Object.freeze({
+    commitHomeRef: cloneCommitHomeRef({
+      reference: await appendPreparedMutationCommit({
+        commitPayload: canonicalCommitPayload,
+        writer,
+      }),
+    }),
+    commitPayload: canonicalCommitPayload,
+  });
+  return exposePreparedMutationCommitCandidate({ authority });
+}
+
+export async function publishPreparedMutationCommitCandidate({
+  backend,
+  base,
+  beforeFirstAuthorityWrite,
+  candidate,
+  diagnostics,
+  fileSystemId,
+  firstPublicationSequence,
+  randomSource,
+  rootKey,
+  secondPublicationSequence,
+  supportedFeatureBits,
+}: {
+  backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  base: OpenedSuperblockCopies;
+  beforeFirstAuthorityWrite?: () => void;
+  candidate: PreparedMutationCommitCandidate;
+  diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  fileSystemId: FileSystemId;
+  firstPublicationSequence: PublicationSequence;
+  randomSource?: RandomByteSource;
+  rootKey: FileSystemRootKey;
+  secondPublicationSequence: PublicationSequence;
+  supportedFeatureBits: FeatureBits;
+}): Promise<PublishedPreparedMutationCommit> {
+  const authority = requirePreparedMutationCommitCandidateAuthority({ candidate });
+  return await publishPreparedMutationCommit({
+    backend,
+    base,
+    beforeFirstAuthorityWrite,
+    commitHomeRef: authority.commitHomeRef,
+    commitPayload: authority.commitPayload,
+    diagnostics,
+    fileSystemId,
+    firstPublicationSequence,
+    randomSource,
+    rootKey,
+    secondPublicationSequence,
+    supportedFeatureBits,
+  });
 }
 
 export async function publishPreparedMutationCommit({
@@ -175,14 +285,13 @@ export async function appendAndPublishPreparedMutationCommit({
     segmentClass: "metadata",
   });
   try {
-    const commitHomeRef = await appendPreparedMutationCommit({ commitPayload, writer });
+    const candidate = await appendPreparedMutationCommitCandidate({ commitPayload, writer });
     writer.abandon();
-    return await publishPreparedMutationCommit({
+    return await publishPreparedMutationCommitCandidate({
       backend,
       base,
       beforeFirstAuthorityWrite,
-      commitHomeRef,
-      commitPayload,
+      candidate,
       diagnostics,
       fileSystemId,
       firstPublicationSequence,

@@ -25,14 +25,15 @@ class FakeWebLockManager implements WebLockManagerPort {
   }
 
   async request<T>({ callback, mode: _mode, name }: {
-    callback: () => Promise<T>;
+    callback: ({ granted }: { granted: boolean }) => Promise<T>;
+    ifAvailable?: boolean;
     mode: "exclusive" | "shared";
     name: string;
   }): Promise<T> {
     this.held.add(name);
     this.requestStarted.resolve(undefined);
     try {
-      return await callback();
+      return await callback({ granted: true });
     } finally {
       this.held.delete(name);
       this.requestFinished.resolve(undefined);
@@ -40,7 +41,8 @@ class FakeWebLockManager implements WebLockManagerPort {
   }
 }
 
-function browserRequest({ onRequest }: {
+function browserRequest({ granted = true, onRequest }: {
+  granted?: boolean;
   onRequest?: ({ name, options }: { name: string; options: LockOptions }) => void;
 } = {}): LockManager["request"] {
   const request = async <T>(
@@ -52,7 +54,7 @@ function browserRequest({ onRequest }: {
     const callback = typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
     if (callback === undefined) throw new Error("browser lock callback is required");
     onRequest?.({ name, options });
-    return await callback(null);
+    return await callback(granted ? ({} as Lock) : null);
   };
   return request as LockManager["request"];
 }
@@ -90,10 +92,26 @@ describe("Web Locks cross-realm port", () => {
     }]);
   });
 
+
+
+  it("returns unavailable without waiting when tryAcquire cannot grant the lock", async () => {
+    const calls: unknown[] = [];
+    const manager = createBrowserWebLockManagerPort({ manager: {
+      query: async () => ({ held: [] }),
+      request: browserRequest({ granted: false, onRequest: call => calls.push(call) }),
+    } });
+    const port = new WebLocksCrossRealmLockPort({ manager });
+    await expect(port.tryAcquire({ mode: "exclusive", name: "runtime-owner" })).resolves.toBeUndefined();
+    expect(calls).toEqual([{
+      name: "runtime-owner",
+      options: { ifAvailable: true, mode: "exclusive" },
+    }]);
+  });
+
   it("returns a unique sorted held-name snapshot", async () => {
     const manager: WebLockManagerPort = {
       query: async () => ({ held: [{ name: "z" }, { name: "a" }, { name: "z" }] }),
-      request: async ({ callback }) => await callback(),
+      request: async ({ callback }) => await callback({ granted: true }),
     };
     const port = new WebLocksCrossRealmLockPort({ manager });
     await expect(port.queryHeldLockNames()).resolves.toEqual(["a", "z"]);
@@ -102,7 +120,7 @@ describe("Web Locks cross-realm port", () => {
   it("fails closed when held lock enumeration has no canonical name", async () => {
     const manager: WebLockManagerPort = {
       query: async () => ({ held: [{ name: null }] }),
-      request: async ({ callback }) => await callback(),
+      request: async ({ callback }) => await callback({ granted: true }),
     };
     const port = new WebLocksCrossRealmLockPort({ manager });
     await expect(port.queryHeldLockNames()).rejects.toMatchObject({ code: "invalid_lock_query" });

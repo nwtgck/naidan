@@ -1,19 +1,22 @@
 import type {
-  CommitSequence,
   InodeNumber,
   InodeRevision,
   SubvolumeId,
 } from "@/00-storage/service/hizofs/00-format";
+import {
+  sameWorkingGenerationIdentity,
+  type WorkingGenerationIdentity,
+} from "@/00-storage/service/hizofs/runtime/application-generation-identity";
 
 export type CapturedWriterIdentity = Readonly<{
-  baseCommitSequence: CommitSequence;
+  baseWorkingGeneration: WorkingGenerationIdentity;
   inodeNumber: InodeNumber;
   inodeRevision: InodeRevision;
   subvolumeId: SubvolumeId;
 }>;
 
 export type CurrentWriterPublicationState = Readonly<{
-  commitSequence: CommitSequence;
+  workingGeneration: WorkingGenerationIdentity;
   inode: Readonly<{
     inodeNumber: InodeNumber;
     inodeRevision: InodeRevision;
@@ -23,7 +26,7 @@ export type CurrentWriterPublicationState = Readonly<{
 }>;
 
 export type WriterPublicationConflictReason =
-  | "base_commit_changed"
+  | "working_generation_changed"
   | "inode_revision_changed"
   | "inode_unlinked_or_replaced"
   | "ordinary_reachability_invalid";
@@ -36,8 +39,11 @@ export function evaluateWriterPublicationEligibility({ captured, current }: {
   captured: CapturedWriterIdentity;
   current: CurrentWriterPublicationState;
 }): WriterPublicationEligibility {
-  if (current.commitSequence !== captured.baseCommitSequence) {
-    return { reason: "base_commit_changed", type: "conflict" };
+  if (!sameWorkingGenerationIdentity({
+    left: current.workingGeneration,
+    right: captured.baseWorkingGeneration,
+  })) {
+    return { reason: "working_generation_changed", type: "conflict" };
   }
   if (current.inode === null
     || current.inode.inodeNumber !== captured.inodeNumber

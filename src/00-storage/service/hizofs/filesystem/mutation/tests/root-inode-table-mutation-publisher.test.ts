@@ -110,25 +110,34 @@ function fixture() {
     return pageReference;
   });
   const pagePort: RootInodeTablePagePort = { readPage, writePage };
-  const publish = vi.fn(async (request: Parameters<PreparedMutationCommitPublicationPort["publish"]>[0]) => {
+  const appendCandidate = vi.fn(async ({ commitPayload }: Parameters<PreparedMutationCommitPublicationPort["appendCandidate"]>[0]) => ({
+    commitHomeRef: reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+      offset: 960n,
+    }),
+    commitPayload,
+  }));
+  const publish = vi.fn(async (request: Parameters<PreparedMutationCommitPublicationPort["publishCandidate"]>[0]) => {
     request.beforeFirstAuthorityWrite();
     return {
-      commitHomeRef: reference({
-        kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
-        offset: 960n,
-      }),
+      commitHomeRef: request.candidate.commitHomeRef,
       superblock: {
         ...request.base,
         logicalState: {
           ...request.base.logicalState,
-          activeCommitSequence: request.commitPayload.commitSequence,
-          activeMutationId: request.commitPayload.mutationId,
+          activeCommitHomeRef: request.candidate.commitHomeRef,
+          activeCommitSequence: request.candidate.commitPayload.commitSequence,
+          activeMutationId: request.candidate.commitPayload.mutationId,
+          fallbackCommitHomeRef: request.base.logicalState.activeCommitHomeRef,
         },
       },
     };
   });
-  const publicationPort: PreparedMutationCommitPublicationPort = { publish };
-  return { baseCommit, baseSuperblock, pagePort, publicationPort, publish, readPage, writePage };
+  const publicationPort: PreparedMutationCommitPublicationPort = {
+    appendCandidate,
+    publishCandidate: publish,
+  };
+  return { appendCandidate, baseCommit, baseSuperblock, pagePort, publicationPort, publish, readPage, writePage };
 }
 
 describe("root Inode Table mutation publisher", () => {
@@ -148,8 +157,9 @@ describe("root Inode Table mutation publisher", () => {
     if (result.type !== "published") throw new Error("expected published mutation");
     expect(result.commitPayload.commitSequence).toBe(2n);
     expect(value.writePage).toHaveBeenCalledWith(expect.objectContaining({ isRoot: true }));
+    expect(value.appendCandidate).toHaveBeenCalledWith({ commitPayload: result.commitPayload });
     expect(value.publish).toHaveBeenCalledWith(expect.objectContaining({
-      commitPayload: result.commitPayload,
+      candidate: expect.objectContaining({ commitPayload: result.commitPayload }),
       firstPublicationSequence: 3n,
       secondPublicationSequence: 4n,
     }));

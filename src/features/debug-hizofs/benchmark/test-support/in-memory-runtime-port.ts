@@ -151,6 +151,7 @@ function createSession({ root }: {
       wholeFileClone: "supported",
     },
     async close() {},
+    async sync() {},
   };
 }
 

@@ -117,4 +117,18 @@ describe('native plain application namespace', () => {
     await expect(storage.getDirectoryHandle(containerName, { create: false })).resolves.toBeDefined();
     await expect(nativeRoot.getDirectoryHandle('models', { create: false })).resolves.toBeDefined();
   });
+
+  it('forwards filesystem sync to the unqualified native OPFS boundary', async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'root' });
+    const session = createNativePlainApplicationNamespaceSession({
+      nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+    });
+
+    await expect(session.sync()).rejects.toMatchObject({
+      code: 'durability_not_demonstrated',
+      implementation: 'native_opfs',
+      retryable: false,
+    });
+    await session.close();
+  });
 });

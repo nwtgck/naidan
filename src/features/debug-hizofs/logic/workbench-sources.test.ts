@@ -20,6 +20,7 @@ function debugAuthority(): HizoFSDebugWorkspaceAuthority {
           wholeFileClone: 'supported',
         },
         async close() {},
+        async sync() {},
       };
       return { fileSystemId: 'debug-file-system', fileSystemSession };
     },

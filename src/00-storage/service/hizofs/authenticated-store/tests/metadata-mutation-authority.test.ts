@@ -26,6 +26,7 @@ import { readAuthenticatedDirectoryPage } from "@/00-storage/service/hizofs/auth
 import { readAuthenticatedInodeTablePage } from "@/00-storage/service/hizofs/authenticated-store/inode-table-page-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import { createAuthenticatedMetadataMutationAuthority } from "@/00-storage/service/hizofs/authenticated-store/metadata-mutation-authority";
+import { PreparedMutationCommitPublicationError } from "@/00-storage/service/hizofs/authenticated-store/prepared-mutation-commit-store";
 import type {
   AuthenticatedMutationScopeEventObservation,
   AuthenticatedSegmentWriterDiagnosticsObservation,
@@ -178,6 +179,59 @@ function exactCapacityFill({
   throw new Error("metadata capacity fixture cannot force Commit rollover");
 }
 
+async function createCandidateAuthorityFixture({ diagnostics }: {
+  diagnostics: AuthenticatedStoreDiagnosticsProbe;
+}) {
+  const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+  const randomSource = deterministicRandomSource();
+  const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+  const rootKey = generateFileSystemRootKey({ randomSource });
+  const bootstrap = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
+  const base = await createInitialSuperblockCopies({
+    backend,
+    fileSystemId,
+    logicalState: {
+      activeCommitHomeRef: bootstrap.activeCommitHomeRef,
+      activeCommitSequence: bootstrap.activeCommitSequence,
+      activeMutationId: bootstrap.activeMutationId,
+      fallbackCommitHomeRef: null,
+      minimumUnlockSequence: createUnlockSequence({ value: 1n }),
+      relocationIndexRootPhysicalRef: null,
+      requiredFeatureBits: createFeatureBits({ value: 0n }),
+    },
+    randomSource,
+    rootKey,
+    supportedFeatureBits: createFeatureBits({ value: 0n }),
+  });
+  const opened = await readBootstrapRoot({
+    authority: {
+      commitHomeRef: bootstrap.activeCommitHomeRef,
+      commitSequence: bootstrap.activeCommitSequence,
+      mutationId: bootstrap.activeMutationId,
+      type: "active",
+    },
+    backend,
+    fileSystemId,
+    relocationIndexRootPhysicalRef: null,
+    rootKey,
+  });
+  const authority = await createAuthenticatedMetadataMutationAuthority({
+    backend,
+    diagnostics,
+    fileSystemId,
+    randomSource,
+    relocationIndexRootPhysicalRef: null,
+    rootKey,
+    supportedFeatureBits: createFeatureBits({ value: 0n }),
+  });
+  const commitPayload = createFileSystemCommitPayload({ payload: {
+    ...opened.commit,
+    commitSequence: createCommitSequence({ value: 2n }),
+    mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(37) }),
+  } });
+  return { authority, backend, base, commitPayload, fileSystemId, rootKey };
+}
+
 describe("authenticated metadata mutation authority", () => {
   it("reuses authenticated immutable metadata only within the active mutation and clears it on abandon", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
@@ -295,10 +349,35 @@ describe("authenticated metadata mutation authority", () => {
       rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
       rootInodeTableRootHomeRef: newRoot,
     } });
-    const published = await authority.publish({
+    const candidate = await authority.appendCandidate({ commitPayload });
+    expect(authority.resourceUsage()).toEqual({
+      appendedMetadataFrameBytes: directoryRoot.frameLength + newRoot.frameLength + candidate.commitHomeRef.frameLength,
+      unpublishedPhysicalBytes: directoryRoot.frameLength + newRoot.frameLength + candidate.commitHomeRef.frameLength,
+    });
+    expect(authority.state()).toBe("candidate_prepared");
+    await expect(openSuperblockCopies({
+      backend,
+      fileSystemId,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    })).resolves.toMatchObject({ logicalState: { activeCommitSequence: 1n } });
+    const forgedCandidate = Object.freeze({
+      commitHomeRef: candidate.commitHomeRef,
+      commitPayload: candidate.commitPayload,
+    });
+    await expect(authority.publishCandidate({
       base,
       beforeFirstAuthorityWrite: () => undefined,
-      commitPayload,
+      candidate: forgedCandidate,
+      firstPublicationSequence: createPublicationSequence({ value: 3n }),
+      secondPublicationSequence: createPublicationSequence({ value: 4n }),
+    })).rejects.toThrow("does not belong to this authority");
+    expect(authority.state()).toBe("candidate_prepared");
+
+    const published = await authority.publishCandidate({
+      base,
+      beforeFirstAuthorityWrite: () => undefined,
+      candidate,
       firstPublicationSequence: createPublicationSequence({ value: 3n }),
       secondPublicationSequence: createPublicationSequence({ value: 4n }),
     });
@@ -351,6 +430,172 @@ describe("authenticated metadata mutation authority", () => {
       supportedFeatureBits: createFeatureBits({ value: 0n }),
     })).resolves.toMatchObject({ logicalState: { activeCommitSequence: 2n } });
     rootKey.destroy();
+  });
+
+  it("abandons an authenticated candidate without advancing durable authority", async () => {
+    const diagnostics = new AuthenticatedStoreDiagnosticsProbe();
+    const fixture = await createCandidateAuthorityFixture({ diagnostics });
+    const candidate = await fixture.authority.appendCandidate({ commitPayload: fixture.commitPayload });
+    expect(fixture.authority.state()).toBe("candidate_prepared");
+
+    fixture.authority.abandon();
+
+    expect(fixture.authority.state()).toBe("closed");
+    expect(diagnostics.snapshot().mutation).toMatchObject({
+      abandoned: 1,
+      completed: 0,
+      failed: 0,
+    });
+    await expect(fixture.authority.publishCandidate({
+      base: fixture.base,
+      beforeFirstAuthorityWrite: () => undefined,
+      candidate,
+      firstPublicationSequence: createPublicationSequence({ value: 3n }),
+      secondPublicationSequence: createPublicationSequence({ value: 4n }),
+    })).rejects.toThrow("mutation authority is closed");
+    await expect(openSuperblockCopies({
+      backend: fixture.backend,
+      fileSystemId: fixture.fileSystemId,
+      rootKey: fixture.rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    })).resolves.toMatchObject({ logicalState: { activeCommitSequence: 1n } });
+    fixture.rootKey.destroy();
+  });
+
+  it("transfers one prepared candidate into a runtime-owned publication authority", async () => {
+    const diagnostics = new AuthenticatedStoreDiagnosticsProbe();
+    const fixture = await createCandidateAuthorityFixture({ diagnostics });
+    const candidate = await fixture.authority.appendCandidate({ commitPayload: fixture.commitPayload });
+
+    const publicationAuthority = fixture.authority.detachPreparedCandidatePublication({ candidate });
+
+    expect(fixture.authority.state()).toBe("closed");
+    expect(publicationAuthority.state()).toBe("ready");
+    await expect(fixture.authority.publishCandidate({
+      base: fixture.base,
+      beforeFirstAuthorityWrite: () => undefined,
+      candidate,
+      firstPublicationSequence: createPublicationSequence({ value: 3n }),
+      secondPublicationSequence: createPublicationSequence({ value: 4n }),
+    })).rejects.toThrow("mutation authority is closed");
+    await expect(fixture.authority.resolvePublication({
+      base: fixture.base,
+      intendedLogicalState: fixture.base.logicalState,
+    })).rejects.toThrow("before a publication outcome requires resolution");
+
+    await Promise.resolve();
+    const published = await publicationAuthority.publishCandidate({
+      base: fixture.base,
+      beforeFirstAuthorityWrite: () => undefined,
+      candidate,
+      firstPublicationSequence: createPublicationSequence({ value: 3n }),
+      secondPublicationSequence: createPublicationSequence({ value: 4n }),
+    });
+
+    expect(publicationAuthority.state()).toBe("closed");
+    expect(published.superblock.logicalState.activeCommitSequence).toBe(2n);
+    expect(diagnostics.snapshot().mutation).toMatchObject({
+      abandoned: 0,
+      completed: 1,
+      failed: 0,
+    });
+    await expect(publicationAuthority.resolvePublication({
+      base: fixture.base,
+      intendedLogicalState: published.superblock.logicalState,
+    })).resolves.toMatchObject({ type: "published" });
+    await expect(fixture.authority.resolvePublication({
+      base: fixture.base,
+      intendedLogicalState: published.superblock.logicalState,
+    })).resolves.toMatchObject({ type: "published" });
+    fixture.rootKey.destroy();
+  });
+
+  it("keeps a definitely not-published detached candidate retryable", async () => {
+    const diagnostics = new AuthenticatedStoreDiagnosticsProbe();
+    const fixture = await createCandidateAuthorityFixture({ diagnostics });
+    const candidate = await fixture.authority.appendCandidate({ commitPayload: fixture.commitPayload });
+    const publicationAuthority = fixture.authority.detachPreparedCandidatePublication({ candidate });
+    let failure: PreparedMutationCommitPublicationError | undefined;
+
+    try {
+      await publicationAuthority.publishCandidate({
+        base: fixture.base,
+        beforeFirstAuthorityWrite: () => {
+          throw new Error("runtime publication revoked");
+        },
+        candidate,
+        firstPublicationSequence: createPublicationSequence({ value: 3n }),
+        secondPublicationSequence: createPublicationSequence({ value: 4n }),
+      });
+    } catch (cause: unknown) {
+      if (!(cause instanceof PreparedMutationCommitPublicationError)) throw cause;
+      failure = cause;
+    }
+    if (failure === undefined) throw new Error("detached candidate publication unexpectedly succeeded");
+
+    expect(publicationAuthority.state()).toBe("ready");
+    expect(failure.outcome).toBe("not_published");
+    expect(diagnostics.snapshot().mutation).toMatchObject({
+      abandoned: 0,
+      completed: 0,
+      failed: 0,
+    });
+    const published = await publicationAuthority.publishCandidate({
+      base: fixture.base,
+      beforeFirstAuthorityWrite: () => undefined,
+      candidate,
+      firstPublicationSequence: createPublicationSequence({ value: 3n }),
+      secondPublicationSequence: createPublicationSequence({ value: 4n }),
+    });
+    expect(publicationAuthority.state()).toBe("closed");
+    expect(published.superblock.logicalState.activeCommitSequence).toBe(2n);
+    expect(diagnostics.snapshot().mutation).toMatchObject({
+      abandoned: 0,
+      completed: 1,
+      failed: 0,
+    });
+    fixture.rootKey.destroy();
+  });
+
+  it("closes candidate publication failure and resolves it against durable authority", async () => {
+    const diagnostics = new AuthenticatedStoreDiagnosticsProbe();
+    const fixture = await createCandidateAuthorityFixture({ diagnostics });
+    const candidate = await fixture.authority.appendCandidate({ commitPayload: fixture.commitPayload });
+    let failure: PreparedMutationCommitPublicationError | undefined;
+    try {
+      await fixture.authority.publishCandidate({
+        base: fixture.base,
+        beforeFirstAuthorityWrite: () => {
+          throw new Error("publication revoked");
+        },
+        candidate,
+        firstPublicationSequence: createPublicationSequence({ value: 3n }),
+        secondPublicationSequence: createPublicationSequence({ value: 4n }),
+      });
+    } catch (cause: unknown) {
+      if (!(cause instanceof PreparedMutationCommitPublicationError)) throw cause;
+      failure = cause;
+    }
+    if (failure === undefined) throw new Error("candidate publication unexpectedly succeeded");
+
+    expect(failure.outcome).toBe("not_published");
+    expect(fixture.authority.state()).toBe("closed");
+    expect(diagnostics.snapshot().mutation).toMatchObject({
+      abandoned: 0,
+      completed: 0,
+      failed: 1,
+    });
+    await expect(fixture.authority.resolvePublication({
+      base: fixture.base,
+      intendedLogicalState: failure.intendedLogicalState,
+    })).resolves.toMatchObject({ type: "not_published" });
+    await expect(openSuperblockCopies({
+      backend: fixture.backend,
+      fileSystemId: fixture.fileSystemId,
+      rootKey: fixture.rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    })).resolves.toMatchObject({ logicalState: { activeCommitSequence: 1n } });
+    fixture.rootKey.destroy();
   });
 
   it("rolls metadata page writes into a fresh segment when one mutation exceeds the record area", async () => {

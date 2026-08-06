@@ -9,6 +9,8 @@ import { createAuthenticatedSegmentWriter } from "./record-appender";
 import { appendAuthenticatedFileData } from "./file-data-store";
 import {
   AuthenticatedMetadataMutationAuthority,
+  type AuthenticatedMutationResourceUsage,
+  type AuthenticatedPreparedMutationPublicationAuthority,
   createAuthenticatedMetadataMutationAuthority,
 } from "./metadata-mutation-authority";
 
@@ -40,7 +42,11 @@ function segmentCanFit({ frameCount, nextFrameLength, recordAreaBytes }: {
   return frameCount < DATA_FRAME_LIMIT && recordAreaBytes + nextFrameLength <= DATA_AREA_BYTES;
 }
 
-export type AuthenticatedFileContentMutationAuthorityState = "active" | "closed" | "publishing";
+export type AuthenticatedFileContentMutationAuthorityState =
+  | "active"
+  | "candidate_prepared"
+  | "closed"
+  | "publishing";
 
 /**
  * Owns exactly the additional data-segment capability needed by file content
@@ -51,6 +57,7 @@ export type AuthenticatedFileContentMutationAuthorityState = "active" | "closed"
 export class AuthenticatedFileContentMutationAuthority {
   readonly #metadata: AuthenticatedMetadataMutationAuthority;
   readonly #parameters: Parameters<typeof createAuthenticatedMetadataMutationAuthority>[0];
+  #appendedDataFrameBytes = 0;
   #dataFrameCount = 0;
   #dataRecordAreaBytes = 0;
   #dataWriter: AuthenticatedSegmentWriter | undefined;
@@ -100,9 +107,22 @@ export class AuthenticatedFileContentMutationAuthority {
     return this.#state;
   }
 
+  resourceUsage(): AuthenticatedMutationResourceUsage {
+    const metadata = this.#metadata.resourceUsage();
+    const unpublishedPhysicalBytes = metadata.unpublishedPhysicalBytes + this.#appendedDataFrameBytes;
+    if (!Number.isSafeInteger(unpublishedPhysicalBytes)) {
+      throw new Error("file content mutation resource usage exceeds the safe integer bound");
+    }
+    return Object.freeze({
+      appendedMetadataFrameBytes: metadata.appendedMetadataFrameBytes,
+      unpublishedPhysicalBytes,
+    });
+  }
+
   #requireActive({ operation }: { operation: string }): void {
     switch (this.#state) {
     case "active": break;
+    case "candidate_prepared": throw new Error(`cannot ${operation}: file content mutation candidate is already prepared`);
     case "closed": throw new Error(`cannot ${operation}: file content mutation authority is closed`);
     case "publishing": throw new Error(`cannot ${operation}: file content mutation authority is publishing`);
     default: return this.#state satisfies never;
@@ -140,6 +160,10 @@ export class AuthenticatedFileContentMutationAuthority {
         bytes,
         writer: await this.#writerFor({ frameLength }),
       });
+      this.#appendedDataFrameBytes += frameLength;
+      if (!Number.isSafeInteger(this.#appendedDataFrameBytes)) {
+        throw new Error("File Data frame byte count exceeds the safe integer bound");
+      }
       this.#dataFrameCount += 1;
       this.#dataRecordAreaBytes += frameLength;
       return reference;
@@ -214,6 +238,72 @@ export class AuthenticatedFileContentMutationAuthority {
     }
   }
 
+  async appendCandidate({
+    commitPayload,
+  }: Parameters<AuthenticatedMetadataMutationAuthority["appendCandidate"]>[0]): Promise<Awaited<ReturnType<AuthenticatedMetadataMutationAuthority["appendCandidate"]>>> {
+    this.#requireActive({ operation: "append file content Commit candidate" });
+    this.#operationInProgress = true;
+    this.#dataWriter?.abandon();
+    this.#dataWriter = undefined;
+    try {
+      const candidate = await this.#metadata.appendCandidate({ commitPayload });
+      this.#state = "candidate_prepared";
+      return candidate;
+    } catch (cause: unknown) {
+      this.#state = "closed";
+      throw cause;
+    } finally {
+      this.#operationInProgress = false;
+    }
+  }
+
+  detachPreparedCandidatePublication({ candidate }: {
+    candidate: Awaited<ReturnType<AuthenticatedMetadataMutationAuthority["appendCandidate"]>>;
+  }): AuthenticatedPreparedMutationPublicationAuthority {
+    switch (this.#state) {
+    case "candidate_prepared": break;
+    case "active": throw new Error("cannot detach file content publication authority before a candidate is prepared");
+    case "closed": throw new Error("cannot detach file content publication authority: authority is closed");
+    case "publishing": throw new Error("cannot detach file content publication authority during publication");
+    default: return this.#state satisfies never;
+    }
+    if (this.#operationInProgress) throw new Error("file content mutation authority operation already in progress");
+    const detached = this.#metadata.detachPreparedCandidatePublication({ candidate });
+    this.#state = "closed";
+    return detached;
+  }
+
+  async publishCandidate({
+    base,
+    beforeFirstAuthorityWrite,
+    candidate,
+    firstPublicationSequence,
+    secondPublicationSequence,
+  }: Parameters<AuthenticatedMetadataMutationAuthority["publishCandidate"]>[0]): Promise<Awaited<ReturnType<AuthenticatedMetadataMutationAuthority["publishCandidate"]>>> {
+    switch (this.#state) {
+    case "candidate_prepared": break;
+    case "active": throw new Error("cannot publish file content candidate before it is prepared");
+    case "closed": throw new Error("cannot publish file content candidate: authority is closed");
+    case "publishing": throw new Error("cannot publish file content candidate: authority is publishing");
+    default: return this.#state satisfies never;
+    }
+    if (this.#operationInProgress) throw new Error("file content mutation authority operation already in progress");
+    this.#operationInProgress = true;
+    this.#state = "publishing";
+    try {
+      return await this.#metadata.publishCandidate({
+        base,
+        beforeFirstAuthorityWrite,
+        candidate,
+        firstPublicationSequence,
+        secondPublicationSequence,
+      });
+    } finally {
+      this.#operationInProgress = false;
+      this.#state = "closed";
+    }
+  }
+
   async publish({
     base,
     beforeFirstAuthorityWrite,
@@ -246,6 +336,7 @@ export class AuthenticatedFileContentMutationAuthority {
     switch (this.#state) {
     case "closed": return await this.#metadata.resolvePublication({ base, intendedLogicalState });
     case "active":
+    case "candidate_prepared":
     case "publishing": throw new Error("cannot resolve publication before the file content mutation authority is closed");
     default: return this.#state satisfies never;
     }
@@ -254,6 +345,7 @@ export class AuthenticatedFileContentMutationAuthority {
   abandon(): void {
     switch (this.#state) {
     case "active":
+    case "candidate_prepared":
       if (this.#operationInProgress) {
         throw new Error("cannot abandon file content mutation authority while an operation is in progress");
       }

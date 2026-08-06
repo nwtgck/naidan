@@ -12,6 +12,7 @@ import { InMemoryOpfsDirectoryHandle } from "@/00-storage/service/test-support/i
 import { createContainerCoordinationScope, parseContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
 import { InMemoryCrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/testing/in-memory-cross-realm-lock-port";
 import {
+  createBrowserContainerCoordinationScope,
   openAuthenticatedDevelopmentWritableApplicationSessionFromCapability,
   openBrowserAuthenticatedDevelopmentWritableContainerCapability,
   openHizoFSWorkerMountGrant,
@@ -25,6 +26,7 @@ import type {
 } from "@/00-storage/service/storage-file-system/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY } from "@/00-storage/service/hizofs/runtime/runtime-policy";
 const PASSPHRASE = "correct horse battery staple";
 let fixtureSequence = 0;
 let originalLocks: LockManager;
@@ -68,6 +70,7 @@ function ownerRuntimeHost(): HizoFSWorkerRuntimeHost {
   return new HizoFSWorkerRuntimeHost({
     crossRealmLockPort: new InMemoryCrossRealmLockPort(),
     policy: {
+      lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
       maxDirectoryIteratorEntries: 256,
       maxHeldLockNames: 64,
       maxMaintenanceRootRegistrations: 64,
@@ -82,7 +85,13 @@ function ownerRuntimeHost(): HizoFSWorkerRuntimeHost {
   });
 }
 
-async function createOwnerSession(): Promise<{
+async function createOwnerSession({
+  createRuntimeHost = async () => ownerRuntimeHost(),
+}: {
+  createRuntimeHost?: ({ canonicalBackingLocation }: {
+    canonicalBackingLocation: string;
+  }) => Promise<HizoFSWorkerRuntimeHost>;
+} = {}): Promise<{
   readonly backingDirectory: InMemoryOpfsDirectoryHandle;
   readonly canonicalBackingLocation: string;
   readonly session: StorageFileSystemSession;
@@ -111,7 +120,7 @@ async function createOwnerSession(): Promise<{
     canonicalBackingLocation,
     recheckAuthority: async () => undefined,
     rootName: backingDirectory.name,
-    runtimeHost: ownerRuntimeHost(),
+    runtimeHost: await createRuntimeHost({ canonicalBackingLocation }),
   });
   return { backingDirectory, canonicalBackingLocation, session };
 }
@@ -158,6 +167,11 @@ describe("HizoFS Worker mount grants", () => {
     });
     try {
       expect(workerSession.root.name).toBe("mounted");
+      await expect(workerSession.sync()).rejects.toMatchObject({
+        code: "durability_not_demonstrated",
+        implementation: "hizofs",
+        retryable: false,
+      });
       await expect(workerSession.root.getDirectoryHandle({ name: "sibling", create: false }))
         .rejects.toThrow();
       const file = await workerSession.root.getFileHandle({ name: "worker.txt", create: true });
@@ -177,6 +191,126 @@ describe("HizoFS Worker mount grants", () => {
     } finally {
       await workerSession.close();
     }
+  });
+
+  it("keeps the default Worker mount policy blocking until the runtime owner is released", async () => {
+    const crossRealmLockPort = new InMemoryCrossRealmLockPort();
+    const fixture = await createOwnerSession({
+      createRuntimeHost: async ({ canonicalBackingLocation }) => new HizoFSWorkerRuntimeHost({
+        crossRealmLockPort,
+        policy: {
+          lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+          maxDirectoryIteratorEntries: 256,
+          maxHeldLockNames: 64,
+          maxMaintenanceRootRegistrations: 64,
+          maxReaderPins: 16,
+          maxSegmentReferences: 256,
+        },
+        scope: await createBrowserContainerCoordinationScope({ canonicalBackingLocation }),
+      }),
+    });
+    const mounted = await fixture.session.root.getDirectoryHandle({ name: "mounted", create: true });
+    const grant = await requireGrant({ accessMode: "read_write", directory: mounted });
+    const runtimeHostRegistry = {
+      getOrCreate: ({ policy, scope }: Parameters<
+        NonNullable<Parameters<typeof openHizoFSWorkerMountGrant>[0]["runtimeHostRegistry"]>["getOrCreate"]
+      >[0]) => new HizoFSWorkerRuntimeHost({ crossRealmLockPort, policy, scope }),
+    };
+    let opened = false;
+    const opening = openHizoFSWorkerMountGrant({
+      grant,
+      resolveBackingDirectory: async () => fixture.backingDirectory as unknown as FileSystemDirectoryHandle,
+      runtimeHostRegistry,
+    }).then(session => {
+      opened = true;
+      return session;
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(opened).toBe(false);
+    await fixture.session.close();
+    const workerSession = await opening;
+    expect(opened).toBe(true);
+    await workerSession.close();
+  });
+
+  it("can reject a Worker mount immediately when another runtime owns the container", async () => {
+    const crossRealmLockPort = new InMemoryCrossRealmLockPort();
+    const fixture = await createOwnerSession({
+      createRuntimeHost: async ({ canonicalBackingLocation }) => new HizoFSWorkerRuntimeHost({
+        crossRealmLockPort,
+        policy: {
+          lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+          maxDirectoryIteratorEntries: 256,
+          maxHeldLockNames: 64,
+          maxMaintenanceRootRegistrations: 64,
+          maxReaderPins: 16,
+          maxSegmentReferences: 256,
+        },
+        scope: await createBrowserContainerCoordinationScope({ canonicalBackingLocation }),
+      }),
+    });
+    const mounted = await fixture.session.root.getDirectoryHandle({ name: "mounted", create: true });
+    const grant = await requireGrant({ accessMode: "read_write", directory: mounted });
+    const runtimeHostRegistry = {
+      getOrCreate: ({ policy, scope }: Parameters<
+        NonNullable<Parameters<typeof openHizoFSWorkerMountGrant>[0]["runtimeHostRegistry"]>["getOrCreate"]
+      >[0]) => new HizoFSWorkerRuntimeHost({ crossRealmLockPort, policy, scope }),
+    };
+
+    try {
+      await expect(openHizoFSWorkerMountGrant({
+        grant,
+        resolveBackingDirectory: async () => fixture.backingDirectory as unknown as FileSystemDirectoryHandle,
+        runtimeHostRegistry,
+        runtimeOwnerPolicy: "reject_if_busy",
+      })).rejects.toMatchObject({
+        code: "runtime_owner_busy",
+        name: "HizoFSWorkerRuntimeHostError",
+      });
+    } finally {
+      await fixture.session.close();
+    }
+  });
+
+  it("reuses one same-realm runtime host across Worker mount grant opens", async () => {
+    const fixture = await createOwnerSession();
+    const first = await fixture.session.root.getDirectoryHandle({ name: "first", create: true });
+    const second = await fixture.session.root.getDirectoryHandle({ name: "second", create: true });
+    const firstGrant = await requireGrant({ accessMode: "read", directory: first });
+    const secondGrant = await requireGrant({ accessMode: "read", directory: second });
+    await fixture.session.close();
+
+    let createdHost: HizoFSWorkerRuntimeHost | undefined;
+    let createCount = 0;
+    const runtimeHostRegistry = {
+      getOrCreate: ({ createHost, lockManager, policy, scope }: Parameters<
+        NonNullable<Parameters<typeof openHizoFSWorkerMountGrant>[0]["runtimeHostRegistry"]>["getOrCreate"]
+      >[0]) => {
+        if (createdHost === undefined) {
+          createCount += 1;
+          createdHost = createHost({ lockManager, policy, scope });
+        }
+        return createdHost;
+      },
+    };
+    const resolveBackingDirectory = async () => fixture.backingDirectory as unknown as FileSystemDirectoryHandle;
+
+    const firstSession = await openHizoFSWorkerMountGrant({
+      grant: firstGrant,
+      resolveBackingDirectory,
+      runtimeHostRegistry,
+    });
+    await firstSession.close();
+    const secondSession = await openHizoFSWorkerMountGrant({
+      grant: secondGrant,
+      resolveBackingDirectory,
+      runtimeHostRegistry,
+    });
+    await secondSession.close();
+
+    expect(createCount).toBe(1);
   });
 
   it("preserves read-only access mode at the capability boundary", async () => {

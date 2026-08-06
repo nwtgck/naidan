@@ -58,16 +58,22 @@ function record({ value }: { value: number }) {
 async function appendOne({ lease, value }: {
   lease: AuthenticatedSegmentWriterLease;
   value: number;
-}): Promise<Readonly<{ segmentId: SegmentId; writer: AuthenticatedSegmentWriter }>> {
+}): Promise<Readonly<{ frameLength: number; segmentId: SegmentId; writer: AuthenticatedSegmentWriter }>> {
+  let frameLength: number | undefined;
   let observedWriter: AuthenticatedSegmentWriter | undefined;
   await lease.append({
     append: async ({ writer }) => {
       observedWriter = writer;
-      return await writer.append({ records: [record({ value })] });
+      const [appended] = await writer.append({ records: [record({ value })] });
+      if (appended === undefined) throw new Error("appended Record is missing");
+      frameLength = appended.physicalReference.frameLength;
+      return appended;
     },
   });
-  if (observedWriter === undefined) throw new Error("active Segment writer was not observed");
-  return { segmentId: observedWriter.physicalSegmentId, writer: observedWriter };
+  if (observedWriter === undefined || frameLength === undefined) {
+    throw new Error("active Segment writer append was not observed");
+  }
+  return { frameLength, segmentId: observedWriter.physicalSegmentId, writer: observedWriter };
 }
 
 describe("authenticated active Segment writer owner", () => {
@@ -76,10 +82,12 @@ describe("authenticated active Segment writer owner", () => {
     try {
       const firstLease = value.owner.acquire();
       const first = await appendOne({ lease: firstLease, value: 1 });
+      expect(firstLease.usage()).toEqual({ appendedEncryptedFrameBytes: first.frameLength });
       firstLease.release({ disposition: "reuse" });
 
       const secondLease = value.owner.acquire();
       const second = await appendOne({ lease: secondLease, value: 2 });
+      expect(secondLease.usage()).toEqual({ appendedEncryptedFrameBytes: second.frameLength });
       secondLease.release({ disposition: "reuse" });
 
       expect(second.segmentId).toEqual(first.segmentId);
@@ -138,6 +146,7 @@ describe("authenticated active Segment writer owner", () => {
     try {
       const firstLease = value.owner.acquire();
       const first = await appendOne({ lease: firstLease, value: 1 });
+      expect(firstLease.usage()).toEqual({ appendedEncryptedFrameBytes: first.frameLength });
       firstLease.release({ disposition: "reuse" });
 
       const rolloverLease = value.owner.acquire();
@@ -165,6 +174,27 @@ describe("authenticated active Segment writer owner", () => {
       expect(retriedWriter).not.toBe(first.writer);
       await value.owner.close();
       expect(retriedWriter?.state).toBe("sealed");
+    } finally {
+      value.rootKey.destroy();
+    }
+  });
+
+  it("counts durable Record Frame bytes even when the mutation callback fails afterward", async () => {
+    const value = fixture();
+    try {
+      const lease = value.owner.acquire();
+      let frameLength = 0;
+      await expect(lease.append({
+        append: async ({ writer }) => {
+          const [appended] = await writer.append({ records: [record({ value: 3 })] });
+          if (appended === undefined) throw new Error("appended Record is missing");
+          frameLength = appended.physicalReference.frameLength;
+          throw new Error("mutation failed after durable append");
+        },
+      })).rejects.toThrow("mutation failed after durable append");
+      expect(lease.usage()).toEqual({ appendedEncryptedFrameBytes: frameLength });
+      lease.release({ disposition: "discard" });
+      await value.owner.close();
     } finally {
       value.rootKey.destroy();
     }

@@ -21,6 +21,7 @@ import {
 } from "@/00-storage/service/test-support/in-memory-opfs";
 import { InMemoryWebLockManager } from "@/00-storage/service/test-support/in-memory-web-locks";
 
+import { NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY } from "@/00-storage/service/naidan-opfs/production-persistence-runtime";
 const PASSPHRASE = "correct horse battery staple";
 
 function settings({ endpointUrl }: { endpointUrl: string }): Settings {
@@ -134,6 +135,7 @@ function runtime() {
   return createDevelopmentOpfsPersistenceRuntime({
     lockManager: lockManager(),
     runtimePolicy: {
+      lazyDurability: NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY,
       maxDirectoryIteratorEntries: 4_096,
       maxHeldLockNames: 1_024,
       maxMaintenanceRootRegistrations: 1_024,

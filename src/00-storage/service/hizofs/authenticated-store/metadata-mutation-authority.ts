@@ -33,14 +33,17 @@ import {
   type AuthenticatedStoreDiagnosticsPort,
 } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import {
-  appendPreparedMutationCommit,
-  publishPreparedMutationCommit,
+  appendPreparedMutationCommitCandidate,
+  PreparedMutationCommitPublicationError,
+  publishPreparedMutationCommitCandidate,
+  type PreparedMutationCommitCandidate,
   type PublishedPreparedMutationCommit,
 } from "./prepared-mutation-commit-store";
 import {
   AuthenticatedSegmentWriterOwner,
   type ActiveSegmentWriterReleaseDisposition,
   type AuthenticatedSegmentWriterLease,
+  type AuthenticatedSegmentWriterLeaseUsage,
 } from "./active-segment-writer-owner";
 import type { AuthenticatedSegmentWriter } from "./record-appender";
 import {
@@ -50,7 +53,233 @@ import {
   type SuperblockLogicalState,
 } from "./superblock-store";
 
-export type AuthenticatedMetadataMutationAuthorityState = "active" | "closed" | "publishing";
+export type AuthenticatedMutationResourceUsage = Readonly<{
+  appendedMetadataFrameBytes: number;
+  unpublishedPhysicalBytes: number;
+}>;
+
+export type AuthenticatedMetadataMutationAuthorityState =
+  | "active"
+  | "candidate_prepared"
+  | "closed"
+  | "publishing";
+
+export type AuthenticatedPreparedMutationPublicationAuthorityState =
+  | "closed"
+  | "publishing"
+  | "ready"
+  | "resolution_pending";
+
+const AUTHENTICATED_PREPARED_MUTATION_PUBLICATION_AUTHORITY = Symbol(
+  "authenticated prepared mutation publication authority",
+);
+
+/**
+ * Runtime-owned authority for one exact authenticated Commit candidate after
+ * mutation-local metadata work and its writer lease have ended. It deliberately
+ * does not retain an application-operation publication assertion; the runtime
+ * supplies its current-authority gate immediately before the first Superblock
+ * authority write.
+ */
+export class AuthenticatedPreparedMutationPublicationAuthority {
+  readonly #backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  readonly #candidate: PreparedMutationCommitCandidate;
+  readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
+  readonly #fileSystemId: FileSystemId;
+  readonly #metadataRecordCache: AuthenticatedMetadataRecordCache;
+  readonly #randomSource: RandomByteSource | undefined;
+  readonly #rootKey: FileSystemRootKey;
+  #state: AuthenticatedPreparedMutationPublicationAuthorityState = "ready";
+  readonly #supportedFeatureBits: FeatureBits;
+
+  constructor({
+    authority,
+    backend,
+    candidate,
+    diagnostics,
+    fileSystemId,
+    metadataRecordCache,
+    randomSource,
+    rootKey,
+    supportedFeatureBits,
+  }: {
+    authority: typeof AUTHENTICATED_PREPARED_MUTATION_PUBLICATION_AUTHORITY;
+    backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+    candidate: PreparedMutationCommitCandidate;
+    diagnostics?: AuthenticatedStoreDiagnosticsPort;
+    fileSystemId: FileSystemId;
+    metadataRecordCache: AuthenticatedMetadataRecordCache;
+    randomSource?: RandomByteSource;
+    rootKey: FileSystemRootKey;
+    supportedFeatureBits: FeatureBits;
+  }) {
+    if (authority !== AUTHENTICATED_PREPARED_MUTATION_PUBLICATION_AUTHORITY) {
+      throw new TypeError("detached publication authority requires authenticated construction");
+    }
+    this.#backend = backend;
+    this.#candidate = candidate;
+    this.#diagnostics = diagnostics;
+    this.#fileSystemId = fileSystemId;
+    this.#metadataRecordCache = metadataRecordCache;
+    this.#randomSource = randomSource;
+    this.#rootKey = rootKey;
+    this.#supportedFeatureBits = supportedFeatureBits;
+  }
+
+  state(): AuthenticatedPreparedMutationPublicationAuthorityState {
+    return this.#state;
+  }
+
+  #closeDiagnostics({ outcome }: { outcome: "abandoned" | "failed" | "published" }): void {
+    this.#metadataRecordCache.dispose();
+    this.#diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome } });
+  }
+
+  async publishCandidate({
+    base,
+    beforeFirstAuthorityWrite,
+    candidate,
+    firstPublicationSequence,
+    secondPublicationSequence,
+  }: {
+    base: OpenedSuperblockCopies;
+    beforeFirstAuthorityWrite: () => void;
+    candidate: PreparedMutationCommitCandidate;
+    firstPublicationSequence: PublicationSequence;
+    secondPublicationSequence: PublicationSequence;
+  }): Promise<PublishedPreparedMutationCommit> {
+    switch (this.#state) {
+    case "ready": break;
+    case "closed": throw new Error("cannot publish candidate: detached publication authority is closed");
+    case "publishing": throw new Error("cannot publish candidate: detached publication authority is publishing");
+    case "resolution_pending": throw new Error(
+      "cannot publish candidate: detached publication authority requires outcome resolution",
+    );
+    default: return this.#state satisfies never;
+    }
+    if (candidate !== this.#candidate) {
+      throw new TypeError("prepared mutation candidate does not belong to this detached publication authority");
+    }
+    this.#state = "publishing";
+    let firstAuthorityWriteMayHaveStarted = false;
+    try {
+      const published = await measureAuthenticatedPublicationOperation({
+        diagnostics: this.#diagnostics,
+        run: async () => await publishPreparedMutationCommitCandidate({
+          backend: this.#backend,
+          base,
+          beforeFirstAuthorityWrite: () => {
+            beforeFirstAuthorityWrite();
+            firstAuthorityWriteMayHaveStarted = true;
+          },
+          candidate,
+          diagnostics: this.#diagnostics,
+          fileSystemId: this.#fileSystemId,
+          firstPublicationSequence,
+          randomSource: this.#randomSource,
+          rootKey: this.#rootKey,
+          secondPublicationSequence,
+          supportedFeatureBits: this.#supportedFeatureBits,
+        }),
+      });
+      this.#state = "closed";
+      this.#closeDiagnostics({ outcome: "published" });
+      return published;
+    } catch (cause: unknown) {
+      if (!firstAuthorityWriteMayHaveStarted) {
+        this.#state = "ready";
+      } else if (!(cause instanceof PreparedMutationCommitPublicationError)) {
+        this.#state = "resolution_pending";
+      } else {
+        switch (cause.outcome) {
+        case "not_published": this.#state = "ready"; break;
+        case "committed_redundancy_degraded":
+        case "outcome_resolution_required":
+        case undefined: this.#state = "resolution_pending"; break;
+        default: cause.outcome satisfies never;
+        }
+      }
+      throw cause;
+    }
+  }
+
+  async resolvePublication({ base, intendedLogicalState }: {
+    base: OpenedSuperblockCopies;
+    intendedLogicalState: SuperblockLogicalState;
+  }): Promise<MutationSuperblockPublicationResolution> {
+    const stateBeforeResolution = this.#state;
+    switch (stateBeforeResolution) {
+    case "closed":
+    case "resolution_pending": break;
+    case "publishing": throw new Error("cannot resolve publication while the detached publication authority is publishing");
+    case "ready": throw new Error("cannot resolve publication before a publication outcome requires resolution");
+    default: return stateBeforeResolution satisfies never;
+    }
+    const resolution = await resolveMutationSuperblockPublication({
+      backend: this.#backend,
+      base,
+      diagnostics: this.#diagnostics,
+      fileSystemId: this.#fileSystemId,
+      intendedLogicalState,
+      rootKey: this.#rootKey,
+      supportedFeatureBits: this.#supportedFeatureBits,
+    });
+    switch (stateBeforeResolution) {
+    case "closed": return resolution;
+    case "resolution_pending": break;
+    default: return stateBeforeResolution satisfies never;
+    }
+    switch (resolution.type) {
+    case "not_published":
+      this.#state = "ready";
+      return resolution;
+    case "publication_conflict":
+      this.#state = "closed";
+      this.#closeDiagnostics({ outcome: "failed" });
+      return resolution;
+    case "published":
+      this.#state = "closed";
+      this.#closeDiagnostics({ outcome: "published" });
+      return resolution;
+    default: return resolution satisfies never;
+    }
+  }
+
+  completeExternallyResolvedPublication({ outcome }: {
+    outcome: "not_published" | "published";
+  }): void {
+    switch (this.#state) {
+    case "closed": return;
+    case "resolution_pending":
+      this.#state = "closed";
+      switch (outcome) {
+      case "not_published": this.#closeDiagnostics({ outcome: "abandoned" }); return;
+      case "published": this.#closeDiagnostics({ outcome: "published" }); return;
+      default: return outcome satisfies never;
+      }
+    case "publishing": throw new Error(
+      "cannot complete external publication resolution while the detached authority is publishing",
+    );
+    case "ready": throw new Error(
+      "cannot complete external publication resolution before an outcome requires resolution",
+    );
+    default: return this.#state satisfies never;
+    }
+  }
+
+  abandon(): void {
+    switch (this.#state) {
+    case "ready":
+      this.#state = "closed";
+      this.#closeDiagnostics({ outcome: "abandoned" });
+      return;
+    case "closed": return;
+    case "publishing": throw new Error("cannot abandon detached publication authority during publication");
+    case "resolution_pending": throw new Error("cannot abandon detached publication authority with an unresolved publication outcome");
+    default: return this.#state satisfies never;
+    }
+  }
+}
 
 // Mutation-local plaintext is intentionally smaller than the session cache.
 // The full Home Record Reference remains the identity, and disposal is coupled
@@ -71,7 +300,10 @@ export class AuthenticatedMetadataMutationAuthority {
   readonly #sharedMetadataRecordCache: AuthenticatedMetadataRecordCache | undefined;
   readonly #supportedFeatureBits: FeatureBits;
   #mutationDiagnosticsOpen = true;
+  #releasedWriterUsage: AuthenticatedSegmentWriterLeaseUsage | undefined;
   #operationInProgress = false;
+  #detachedPublicationAuthority: AuthenticatedPreparedMutationPublicationAuthority | undefined;
+  #preparedCandidate: PreparedMutationCommitCandidate | undefined;
   #state: AuthenticatedMetadataMutationAuthorityState = "active";
   readonly #writerLease: AuthenticatedSegmentWriterLease;
   #writerLeaseReleased = false;
@@ -175,9 +407,20 @@ export class AuthenticatedMetadataMutationAuthority {
     return this.#state;
   }
 
+  resourceUsage(): AuthenticatedMutationResourceUsage {
+    const appendedMetadataFrameBytes = (
+      this.#releasedWriterUsage ?? this.#writerLease.usage()
+    ).appendedEncryptedFrameBytes;
+    return Object.freeze({
+      appendedMetadataFrameBytes,
+      unpublishedPhysicalBytes: appendedMetadataFrameBytes,
+    });
+  }
+
   #requireActive({ operation }: { operation: string }): void {
     switch (this.#state) {
     case "active": break;
+    case "candidate_prepared": throw new Error(`cannot ${operation}: mutation candidate is already prepared`);
     case "closed": throw new Error(`cannot ${operation}: mutation authority is closed`);
     case "publishing": throw new Error(`cannot ${operation}: mutation authority is publishing`);
     default: return this.#state satisfies never;
@@ -196,13 +439,14 @@ export class AuthenticatedMetadataMutationAuthority {
 
   #releaseWriterLease(): void {
     if (this.#writerLeaseReleased) return;
+    this.#releasedWriterUsage = this.#writerLease.usage();
     this.#writerLeaseReleased = true;
     this.#writerLease.release({ disposition: this.#writerReleaseDisposition });
   }
 
-  async #appendMetadataRecordWithRollover({ append }: {
-    append: ({ writer }: { writer: AuthenticatedSegmentWriter }) => Promise<HomeRecordReference>;
-  }): Promise<HomeRecordReference> {
+  async #appendMetadataRecordWithRollover<Result>({ append }: {
+    append: ({ writer }: { writer: AuthenticatedSegmentWriter }) => Promise<Result>;
+  }): Promise<Result> {
     return await this.#writerLease.append({ append });
   }
 
@@ -328,6 +572,113 @@ export class AuthenticatedMetadataMutationAuthority {
     }
   }
 
+  async appendCandidate({ commitPayload }: {
+    commitPayload: FileSystemCommitPayload;
+  }): Promise<PreparedMutationCommitCandidate> {
+    this.#requireActive({ operation: "append the prepared Commit candidate" });
+    this.#operationInProgress = true;
+    try {
+      const candidate = await this.#appendMetadataRecordWithRollover({
+        append: async ({ writer }) => await appendPreparedMutationCommitCandidate({
+          commitPayload,
+          writer,
+        }),
+      });
+      this.#preparedCandidate = candidate;
+      this.#releaseWriterLease();
+      this.#state = "candidate_prepared";
+      return candidate;
+    } catch (cause: unknown) {
+      this.#releaseWriterLease();
+      this.#state = "closed";
+      this.#closeMutationDiagnostics({ outcome: "failed" });
+      throw cause;
+    } finally {
+      this.#operationInProgress = false;
+    }
+  }
+
+  detachPreparedCandidatePublication({ candidate }: {
+    candidate: PreparedMutationCommitCandidate;
+  }): AuthenticatedPreparedMutationPublicationAuthority {
+    switch (this.#state) {
+    case "candidate_prepared": break;
+    case "active": throw new Error("cannot detach publication authority before a candidate is prepared");
+    case "closed": throw new Error("cannot detach publication authority: mutation authority is closed");
+    case "publishing": throw new Error("cannot detach publication authority during publication");
+    default: return this.#state satisfies never;
+    }
+    if (candidate !== this.#preparedCandidate) {
+      throw new TypeError("prepared mutation candidate does not belong to this authority");
+    }
+    const detached = new AuthenticatedPreparedMutationPublicationAuthority({
+      authority: AUTHENTICATED_PREPARED_MUTATION_PUBLICATION_AUTHORITY,
+      backend: this.#backend,
+      candidate,
+      diagnostics: this.#diagnostics,
+      fileSystemId: this.#fileSystemId,
+      metadataRecordCache: this.#metadataRecordCache,
+      randomSource: this.#randomSource,
+      rootKey: this.#rootKey,
+      supportedFeatureBits: this.#supportedFeatureBits,
+    });
+    this.#detachedPublicationAuthority = detached;
+    this.#preparedCandidate = undefined;
+    this.#mutationDiagnosticsOpen = false;
+    this.#state = "closed";
+    return detached;
+  }
+
+  async publishCandidate({
+    base,
+    beforeFirstAuthorityWrite,
+    candidate,
+    firstPublicationSequence,
+    secondPublicationSequence,
+  }: {
+    base: OpenedSuperblockCopies;
+    beforeFirstAuthorityWrite: () => void;
+    candidate: PreparedMutationCommitCandidate;
+    firstPublicationSequence: PublicationSequence;
+    secondPublicationSequence: PublicationSequence;
+  }): Promise<PublishedPreparedMutationCommit> {
+    switch (this.#state) {
+    case "candidate_prepared": break;
+    case "active": throw new Error("cannot publish candidate before it is prepared");
+    case "closed": throw new Error("cannot publish candidate: mutation authority is closed");
+    case "publishing": throw new Error("cannot publish candidate: mutation authority is publishing");
+    default: return this.#state satisfies never;
+    }
+    if (candidate !== this.#preparedCandidate) {
+      throw new TypeError("prepared mutation candidate does not belong to this authority");
+    }
+    this.#state = "publishing";
+    let outcome: "failed" | "published" = "failed";
+    try {
+      const published = await measureAuthenticatedPublicationOperation({
+        diagnostics: this.#diagnostics,
+        run: async () => await publishPreparedMutationCommitCandidate({
+          backend: this.#backend,
+          base,
+          beforeFirstAuthorityWrite,
+          candidate,
+          diagnostics: this.#diagnostics,
+          fileSystemId: this.#fileSystemId,
+          firstPublicationSequence,
+          randomSource: this.#randomSource,
+          rootKey: this.#rootKey,
+          secondPublicationSequence,
+          supportedFeatureBits: this.#supportedFeatureBits,
+        }),
+      });
+      outcome = "published";
+      return published;
+    } finally {
+      this.#state = "closed";
+      this.#closeMutationDiagnostics({ outcome });
+    }
+  }
+
   async publish({
     base,
     beforeFirstAuthorityWrite,
@@ -349,18 +700,17 @@ export class AuthenticatedMetadataMutationAuthority {
         diagnostics: this.#diagnostics,
         run: async () => {
           try {
-            const commitHomeRef = await this.#appendMetadataRecordWithRollover({
-              append: async ({ writer }) => await appendPreparedMutationCommit({
+            const candidate = await this.#appendMetadataRecordWithRollover({
+              append: async ({ writer }) => await appendPreparedMutationCommitCandidate({
                 commitPayload,
                 writer,
               }),
             });
-            return await publishPreparedMutationCommit({
+            return await publishPreparedMutationCommitCandidate({
               backend: this.#backend,
               base,
               beforeFirstAuthorityWrite,
-              commitHomeRef,
-              commitPayload,
+              candidate,
               diagnostics: this.#diagnostics,
               fileSystemId: this.#fileSystemId,
               firstPublicationSequence,
@@ -387,8 +737,13 @@ export class AuthenticatedMetadataMutationAuthority {
     intendedLogicalState: SuperblockLogicalState;
   }): Promise<MutationSuperblockPublicationResolution> {
     switch (this.#state) {
-    case "closed": break;
+    case "closed":
+      if (this.#detachedPublicationAuthority !== undefined) {
+        return await this.#detachedPublicationAuthority.resolvePublication({ base, intendedLogicalState });
+      }
+      break;
     case "active":
+    case "candidate_prepared":
     case "publishing":
       throw new Error("cannot resolve publication before the mutation authority is closed");
     default: return this.#state satisfies never;
@@ -407,11 +762,28 @@ export class AuthenticatedMetadataMutationAuthority {
   abandon(): void {
     switch (this.#state) {
     case "active":
+    case "candidate_prepared":
       this.#releaseWriterLease();
       this.#state = "closed";
       this.#closeMutationDiagnostics({ outcome: "abandoned" });
       return;
-    case "closed": return;
+    case "closed": {
+      const detached = this.#detachedPublicationAuthority;
+      if (detached === undefined) return;
+      const detachedState = detached.state();
+      switch (detachedState) {
+      case "resolution_pending":
+        // Generic mutation cleanup must not destroy the only authority capable
+        // of resolving a publication whose commit point may have been crossed.
+        return;
+      case "closed":
+      case "publishing":
+      case "ready":
+        detached.abandon();
+        return;
+      default: return detachedState satisfies never;
+      }
+    }
     case "publishing": throw new Error("cannot abandon mutation authority during publication");
     default: return this.#state satisfies never;
     }

@@ -255,6 +255,7 @@ export class AuthenticatedSegmentWriter {
   #frameCount = 0;
   #nextOffset = BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
   #operationInProgress = false;
+  #persistedFrameBytes = 0;
   #state: SegmentWriterState = "active";
 
   private constructor({ backend, diagnostics, fileSystemId, path, randomSource, rootKey, segmentClass, segmentId }: {
@@ -288,6 +289,10 @@ export class AuthenticatedSegmentWriter {
 
   public hasRecords(): boolean {
     return this.#frameCount !== 0;
+  }
+
+  public persistedFrameBytes(): number {
+    return this.#persistedFrameBytes;
   }
 
   public static async create({ backend, diagnostics, fileSystemId, randomSource, rootKey, segmentClass }: {
@@ -515,6 +520,10 @@ export class AuthenticatedSegmentWriter {
       });
       this.#nextOffset = nextOffset;
       this.#frameCount += frames.length;
+      this.#persistedFrameBytes += batch.byteLength;
+      if (!Number.isSafeInteger(this.#persistedFrameBytes)) {
+        throw new Error("persisted Record Frame byte count exceeds the safe integer bound");
+      }
       for (const key of batchNonceKeys) this.#usedNonceKeys.add(key);
       for (const frame of frames) {
         this.#diagnostics?.recordPersistedRecord({

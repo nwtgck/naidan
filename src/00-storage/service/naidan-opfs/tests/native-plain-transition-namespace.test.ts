@@ -18,6 +18,7 @@ function session(): StorageFileSystemSession {
     },
     close: vi.fn(async () => undefined),
     root: createInMemoryStorageRoot({ name: 'root' }),
+    sync: vi.fn(async () => undefined),
   };
 }
 

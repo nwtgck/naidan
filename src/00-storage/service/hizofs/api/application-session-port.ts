@@ -19,7 +19,9 @@ import type {
 
 export type HizoFSApplicationPublicationAuthority = Readonly<{
   assertPublicationAllowed: () => void;
+  candidateAccepted: () => boolean;
   commitPointCrossed: () => boolean;
+  markCandidateAccepted: () => void;
   markCommitPointCrossed: () => void;
   markNoChangeResolved: () => void;
   noChangeResolved: () => boolean;
@@ -96,6 +98,10 @@ export interface HizoFSApplicationMutationPort {
 
 export type HizoFSApplicationSessionNamespace = ReadOnlyNamespace;
 
+export type HizoFSApplicationMutationSuccessCondition =
+  | "durable_publication"
+  | "working_candidate_acceptance";
+
 export type HizoFSApplicationRuntimeSession = Readonly<{
   acquireWriter(): Promise<HizoFSApplicationRuntimeWriter>;
   close(): Promise<void>;
@@ -111,8 +117,10 @@ export type HizoFSApplicationSessionComposition = Readonly<{
   assertOperationAllowed?: () => void;
   createReadSnapshot?: () => Promise<HizoFSApplicationSessionPort>;
   mutationPort: HizoFSApplicationMutationPort;
+  mutationSuccessCondition?: HizoFSApplicationMutationSuccessCondition;
   namespace: HizoFSApplicationSessionNamespace;
   runtimeSession: HizoFSApplicationRuntimeSession;
+  sync: () => Promise<void>;
 }>;
 
 export type HizoFSApplicationSessionPortErrorCode =
@@ -148,16 +156,33 @@ function applicationBoundaryError({ cause }: { cause: unknown }): unknown {
 function applicationAuthority({ authority }: {
   authority: SessionOperationAuthority;
 }): HizoFSApplicationPublicationAuthority {
+  let candidateAccepted = false;
   let noChangeResolved = false;
   return {
     assertPublicationAllowed: authority.assertPublicationAllowed,
+    candidateAccepted: () => candidateAccepted,
     commitPointCrossed: authority.commitPointCrossed,
+    markCandidateAccepted: () => {
+      authority.assertPublicationAllowed();
+      if (candidateAccepted) throw new TypeError("cannot accept more than one working candidate");
+      if (noChangeResolved) throw new TypeError("cannot accept a working candidate after resolving no change");
+      if (authority.commitPointCrossed()) {
+        throw new TypeError("cannot accept a working candidate after durable publication");
+      }
+      candidateAccepted = true;
+    },
     markCommitPointCrossed: () => {
+      if (!candidateAccepted) {
+        throw new TypeError("cannot mark durable publication before accepting a working candidate");
+      }
       if (noChangeResolved) throw new TypeError("cannot publish after resolving a no-change mutation");
       authority.markCommitPointCrossed();
     },
     markNoChangeResolved: () => {
       authority.assertPublicationAllowed();
+      if (candidateAccepted) {
+        throw new TypeError("cannot resolve no change after accepting a working candidate");
+      }
       if (authority.commitPointCrossed()) {
         throw new TypeError("cannot resolve a no-change mutation after durable publication");
       }
@@ -167,14 +192,26 @@ function applicationAuthority({ authority }: {
   };
 }
 
-function requireMutationResolution({ authority, operation }: {
+function requireMutationResolution({ authority, condition, operation }: {
   authority: HizoFSApplicationPublicationAuthority;
+  condition: HizoFSApplicationMutationSuccessCondition;
   operation: string;
 }): void {
-  if (authority.commitPointCrossed() || authority.noChangeResolved()) return;
+  if (authority.noChangeResolved()) return;
+  switch (condition) {
+  case "durable_publication":
+    if (authority.commitPointCrossed()) return;
+    break;
+  case "working_candidate_acceptance":
+    if (authority.candidateAccepted()) return;
+    break;
+  default: return condition satisfies never;
+  }
   throw new HizoFSApplicationSessionPortError({
     code: "commit_point_not_crossed",
-    message: `${operation} returned without durable publication or an explicit no-change result`,
+    message: authority.candidateAccepted()
+      ? `${operation} returned after working-candidate acceptance but before durable publication`
+      : `${operation} returned without durable publication or an explicit no-change result`,
   });
 }
 
@@ -218,17 +255,20 @@ async function closeWithPrimaryFailure({ close, primary }: {
 class RuntimeBoundExplicitBulk implements HizoFSApplicationExplicitBulkBuilder {
   #active = true;
   #assertOperationAllowed: () => void;
+  #mutationSuccessCondition: HizoFSApplicationMutationSuccessCondition;
   #onClosed: () => void;
   #prepared: HizoFSApplicationPreparedExplicitBulk;
   #writer: HizoFSApplicationRuntimeWriter;
 
-  constructor({ assertOperationAllowed, onClosed, prepared, writer }: {
+  constructor({ assertOperationAllowed, mutationSuccessCondition, onClosed, prepared, writer }: {
     assertOperationAllowed: () => void;
+    mutationSuccessCondition: HizoFSApplicationMutationSuccessCondition;
     onClosed: () => void;
     prepared: HizoFSApplicationPreparedExplicitBulk;
     writer: HizoFSApplicationRuntimeWriter;
   }) {
     this.#assertOperationAllowed = assertOperationAllowed;
+    this.#mutationSuccessCondition = mutationSuccessCondition;
     this.#onClosed = onClosed;
     this.#prepared = prepared;
     this.#writer = writer;
@@ -269,7 +309,11 @@ class RuntimeBoundExplicitBulk implements HizoFSApplicationExplicitBulkBuilder {
         this.#assertOperationAllowed();
         const mutationAuthority = applicationAuthority({ authority });
         await this.#prepared.commit({ authority: mutationAuthority });
-        requireMutationResolution({ authority: mutationAuthority, operation: "explicit bulk commit" });
+        requireMutationResolution({
+          authority: mutationAuthority,
+          condition: this.#mutationSuccessCondition,
+          operation: "explicit bulk commit",
+        });
       } });
     } });
   }
@@ -284,17 +328,20 @@ class RuntimeBoundExplicitBulk implements HizoFSApplicationExplicitBulkBuilder {
 class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
   #active = true;
   #assertOperationAllowed: () => void;
+  #mutationSuccessCondition: HizoFSApplicationMutationSuccessCondition;
   #onClosed: () => void;
   #prepared: HizoFSApplicationPreparedWritable;
   #writer: HizoFSApplicationRuntimeWriter;
 
-  constructor({ assertOperationAllowed, onClosed, prepared, writer }: {
+  constructor({ assertOperationAllowed, mutationSuccessCondition, onClosed, prepared, writer }: {
     assertOperationAllowed: () => void;
+    mutationSuccessCondition: HizoFSApplicationMutationSuccessCondition;
     onClosed: () => void;
     prepared: HizoFSApplicationPreparedWritable;
     writer: HizoFSApplicationRuntimeWriter;
   }) {
     this.#assertOperationAllowed = assertOperationAllowed;
+    this.#mutationSuccessCondition = mutationSuccessCondition;
     this.#onClosed = onClosed;
     this.#prepared = prepared;
     this.#writer = writer;
@@ -337,7 +384,11 @@ class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
         this.#assertOperationAllowed();
         const mutationAuthority = applicationAuthority({ authority });
         await this.#prepared.commit({ authority: mutationAuthority });
-        requireMutationResolution({ authority: mutationAuthority, operation: "file commit" });
+        requireMutationResolution({
+          authority: mutationAuthority,
+          condition: this.#mutationSuccessCondition,
+          operation: "file commit",
+        });
       } });
     } });
   }
@@ -361,16 +412,28 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
   #closePromise: Promise<void> | undefined;
   #assertOperationAllowed: () => void;
   #mutationPort: HizoFSApplicationMutationPort;
+  #mutationSuccessCondition: HizoFSApplicationMutationSuccessCondition;
   #namespace: ReadOnlyNamespace;
   #openPreparedMutations = new Set<Readonly<{ abort({ reason }: { reason: unknown }): Promise<void> }>>();
   #runtimeSession: HizoFSApplicationRuntimeSession;
+  #sync: () => Promise<void>;
   #state: "closed" | "closing" | "open" = "open";
 
-  constructor({ assertOperationAllowed = () => undefined, createReadSnapshot, mutationPort, namespace, runtimeSession }: HizoFSApplicationSessionComposition) {
+  constructor({
+    assertOperationAllowed = () => undefined,
+    createReadSnapshot,
+    mutationPort,
+    mutationSuccessCondition = "durable_publication",
+    namespace,
+    runtimeSession,
+    sync,
+  }: HizoFSApplicationSessionComposition) {
     this.#assertOperationAllowed = assertOperationAllowed;
     this.#mutationPort = mutationPort;
+    this.#mutationSuccessCondition = mutationSuccessCondition;
     this.#namespace = namespace;
     this.#runtimeSession = runtimeSession;
+    this.#sync = sync;
     if (createReadSnapshot !== undefined) {
       this.createReadSnapshot = async () => {
         this.#assertOpen();
@@ -422,7 +485,11 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
         this.#assertOperationAllowed();
         const mutationAuthority = applicationAuthority({ authority });
         await run({ authority: mutationAuthority });
-        requireMutationResolution({ authority: mutationAuthority, operation });
+        requireMutationResolution({
+          authority: mutationAuthority,
+          condition: this.#mutationSuccessCondition,
+          operation,
+        });
       } });
     } catch (cause: unknown) {
       primary = applicationBoundaryError({ cause });
@@ -636,6 +703,7 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     }
     const builder = new RuntimeBoundExplicitBulk({
       assertOperationAllowed: this.#assertOperationAllowed,
+      mutationSuccessCondition: this.#mutationSuccessCondition,
       onClosed: () => {
         this.#openPreparedMutations.delete(builder);
       },
@@ -677,6 +745,7 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     }
     const writable = new RuntimeBoundWritable({
       assertOperationAllowed: this.#assertOperationAllowed,
+      mutationSuccessCondition: this.#mutationSuccessCondition,
       onClosed: () => {
         this.#openPreparedMutations.delete(writable);
       },
@@ -709,6 +778,12 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
         recursive,
       }),
     });
+  }
+
+  async sync(): Promise<void> {
+    this.#assertOpen();
+    this.#assertOperationAllowed();
+    await this.#sync();
   }
 
   async stat({ path }: { path: readonly string[] }): Promise<HizoFSApplicationStat> {

@@ -194,6 +194,7 @@ export function createNativePlainApplicationNamespaceSession({ nativeNamespaceRo
     capabilities: nativeSession.capabilities,
     close: async () => await nativeSession.close(),
     root: projectedRoot,
+    sync: async () => await nativeSession.sync(),
   };
 }
 

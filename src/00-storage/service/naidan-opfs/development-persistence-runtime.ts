@@ -16,6 +16,7 @@ import type {
 import {
   captureNativePersistenceControlAuthority,
   inspectNativeCredentialAwarePersistenceRuntime,
+  NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY,
   openNativeCredentialRequiredApplicationSession,
   replaceNativeAuthenticatedDevelopmentWritableSessionPassphrase,
   runNativeHizoFSConvergeTransition,
@@ -125,6 +126,7 @@ type DevelopmentRuntimePort = Readonly<{
 let didWarnAboutDevelopmentProfile = false;
 
 const DEFAULT_DEVELOPMENT_RUNTIME_POLICY: DevelopmentRuntimePolicy = Object.freeze({
+  lazyDurability: NAIDAN_HIZOFS_LAZY_DURABILITY_POLICY,
   maxDirectoryIteratorEntries: 4_096,
   maxHeldLockNames: 1_024,
   maxMaintenanceRootRegistrations: 1_024,
@@ -188,23 +190,44 @@ const browserPort: DevelopmentRuntimePort = Object.freeze({
   openApplicationSession: openNativeCredentialRequiredApplicationSession,
 });
 
-async function closeUnlockedResources({ backend, fileSystemSession }: {
-  backend: IStorageProvider;
-  fileSystemSession: StorageFileSystemSession;
-}): Promise<void> {
-  const failures: unknown[] = [];
+async function runWithManagementCleanHeadBarrier<Result>({ operation, session }: {
+  operation: () => Promise<Result>;
+  session: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceUnlockedSession;
+}): Promise<Result> {
+  const barrier = session.openManagementCleanHeadBarrier();
+  await barrier.ensureCleanHead();
+  let result: Result | undefined;
+  let operationFailure: unknown;
   try {
-    await backend.dispose();
+    result = await operation();
   } catch (cause: unknown) {
-    failures.push(cause);
+    operationFailure = cause;
   }
   try {
-    await fileSystemSession.close();
-  } catch (cause: unknown) {
-    failures.push(cause);
+    barrier.release();
+  } catch (releaseFailure: unknown) {
+    if (operationFailure !== undefined) {
+      throw new AggregateError(
+        [operationFailure, releaseFailure],
+        'management operation and clean-head barrier release both failed',
+      );
+    }
+    throw releaseFailure;
   }
-  if (failures.length === 1) throw failures[0];
-  if (failures.length > 1) throw new AggregateError(failures, 'development HizoFS session cleanup failed');
+  if (operationFailure !== undefined) throw operationFailure;
+  return result as Result;
+}
+
+async function runWithManagementCleanHeadBarrierRetainedForSessionShutdown<Result>({ operation, session }: {
+  operation: () => Promise<Result>;
+  session: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceUnlockedSession;
+}): Promise<Result> {
+  const barrier = session.openManagementCleanHeadBarrier();
+  await barrier.ensureCleanHead();
+  // WHY: authority-switch operations must not reopen the retired source
+  // runtime between publication and provider teardown. The session close path
+  // releases this barrier only after the filesystem session is closed.
+  return await operation();
 }
 
 async function createDevelopmentUnlockedSession({ opened, port }: {
@@ -215,27 +238,108 @@ async function createDevelopmentUnlockedSession({ opened, port }: {
   try {
     backend = await port.createBackend({ fileSystemSession: opened.fileSystemSession });
   } catch (cause: unknown) {
+    const cleanupFailures: unknown[] = [];
     try {
       await opened.fileSystemSession.close();
     } catch (closeCause: unknown) {
+      cleanupFailures.push(closeCause);
+    }
+    try {
+      await opened.gracefullyShutdownRuntime();
+    } catch (shutdownCause: unknown) {
+      cleanupFailures.push(shutdownCause);
+    }
+    if (cleanupFailures.length !== 0) {
       throw new AggregateError(
-        [cause, closeCause],
+        [cause, ...cleanupFailures],
         'development HizoFS backend initialization and cleanup failed',
       );
     }
     throw cause;
   }
-  let closed = false;
+  let activeManagementBarrier: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceManagementCleanHeadBarrier | undefined;
+  let backendDisposed = false;
+  let fileSystemSessionClosed = false;
+  let runtimeShutdown = false;
+  let closeOperation: Promise<void> | undefined;
+  const openManagementCleanHeadBarrier = (): import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceManagementCleanHeadBarrier => {
+    const existing = activeManagementBarrier;
+    if (existing !== undefined) return existing;
+    const underlying = opened.openManagementCleanHeadBarrier();
+    let released = false;
+    const barrier = Object.freeze({
+      ensureCleanHead: async () => {
+        if (released) throw new TypeError('management clean-head barrier is already released');
+        await underlying.ensureCleanHead();
+      },
+      release: () => {
+        if (released) throw new TypeError('management clean-head barrier is already released');
+        underlying.release();
+        released = true;
+        if (activeManagementBarrier === barrier) activeManagementBarrier = undefined;
+      },
+    });
+    activeManagementBarrier = barrier;
+    return barrier;
+  };
+  const close = async (): Promise<void> => {
+    if (backendDisposed && fileSystemSessionClosed && activeManagementBarrier === undefined && runtimeShutdown) return;
+    const existing = closeOperation;
+    if (existing !== undefined) return await existing;
+    const operation = (async () => {
+      const failures: unknown[] = [];
+      if (!backendDisposed) {
+        try {
+          await backend.dispose();
+          backendDisposed = true;
+        } catch (cause: unknown) {
+          failures.push(cause);
+        }
+      }
+      if (activeManagementBarrier !== undefined) {
+        try {
+          activeManagementBarrier.release();
+        } catch (cause: unknown) {
+          failures.push(cause);
+        }
+      }
+      if (activeManagementBarrier === undefined && !runtimeShutdown) {
+        try {
+          // The runtime still owns secret-bearing candidate publication
+          // authority through the application session. Flush before closing
+          // that session, otherwise graceful provider shutdown can silently
+          // discard an accepted working generation.
+          await opened.gracefullyShutdownRuntime();
+          runtimeShutdown = true;
+        } catch (cause: unknown) {
+          failures.push(cause);
+        }
+      }
+      if (runtimeShutdown && !fileSystemSessionClosed) {
+        try {
+          await opened.fileSystemSession.close();
+          fileSystemSessionClosed = true;
+        } catch (cause: unknown) {
+          failures.push(cause);
+        }
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) throw new AggregateError(failures, 'development HizoFS session cleanup failed');
+    })();
+    closeOperation = operation;
+    try {
+      await operation;
+    } finally {
+      if (closeOperation === operation) closeOperation = undefined;
+    }
+  };
   return {
     backend,
-    close: async () => {
-      if (closed) return;
-      closed = true;
-      await closeUnlockedResources({ backend, fileSystemSession: opened.fileSystemSession });
-    },
+    close,
     writableProfile: 'development-unverified',
     fileSystemId: opened.fileSystemId,
     fileSystemSession: opened.fileSystemSession,
+    openManagementCleanHeadBarrier,
   };
 }
 
@@ -267,6 +371,10 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
       await port.runStablePlainRetiredCleanup({ lockManager, nativeNamespaceRoot, storageRoot });
     },
     runUnlockedMaintenance: async ({ nativeNamespaceRoot, session, storageRoot }) => {
+      // Retired-container cleanup owns Persistence Control publication and
+      // removes only non-active container directories. Holding the active
+      // filesystem management barrier here would block foreground mutations
+      // for an opportunistic background task without protecting active roots.
       await port.runStableHizoFSRetiredContainerCleanup({
         lockManager,
         nativeNamespaceRoot,
@@ -307,19 +415,22 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
       default: return opened satisfies never;
       }
     },
-    changePassphrase: async ({ passphrase, session, storageRoot }) => {
-      const physical = port.createPhysical({ storageRoot });
-      const captured = await port.captureAuthority({ physical });
-      const fileSystemSession = await port.changeSessionPassphrase({
-        fileSystemSession: session.fileSystemSession,
-        recheckAuthority: async () => await recheckPersistenceControlAuthority({ captured, physical }),
-        replacementPassphrase: passphrase,
-      });
-      if (fileSystemSession !== session.fileSystemSession) {
-        throw new TypeError('credential update replaced the active HizoFS application session');
-      }
-      return session;
-    },
+    changePassphrase: async ({ passphrase, session, storageRoot }) => await runWithManagementCleanHeadBarrier({
+      operation: async () => {
+        const physical = port.createPhysical({ storageRoot });
+        const captured = await port.captureAuthority({ physical });
+        const fileSystemSession = await port.changeSessionPassphrase({
+          fileSystemSession: session.fileSystemSession,
+          recheckAuthority: async () => await recheckPersistenceControlAuthority({ captured, physical }),
+          replacementPassphrase: passphrase,
+        });
+        if (fileSystemSession !== session.fileSystemSession) {
+          throw new TypeError('credential update replaced the active HizoFS application session');
+        }
+        return session;
+      },
+      session,
+    }),
     runTransition: async ({ nativeNamespaceRoot, onProgress, request, signal, storageRoot }) => {
       switch (request.operation) {
       case 'enable': {
@@ -352,17 +463,20 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
         default: return converged satisfies never;
         }
       }
-      case 'disable': {
-        await port.runDisableTransition({
-          lockManager,
-          nativeNamespaceRoot,
-          onProgress,
-          session: request.session,
-          signal,
-          storageRoot,
-        });
-        return { type: 'completed' };
-      }
+      case 'disable': return await runWithManagementCleanHeadBarrierRetainedForSessionShutdown({
+        operation: async () => {
+          await port.runDisableTransition({
+            lockManager,
+            nativeNamespaceRoot,
+            onProgress,
+            session: request.session,
+            signal,
+            storageRoot,
+          });
+          return { type: 'completed' as const };
+        },
+        session: request.session,
+      });
       case 'return_to_plain': {
         const returned = await port.runReturnToPlainTransition({
           lockManager,
@@ -383,16 +497,21 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
         if (request.retainedCredentials[0] === undefined) {
           throw new RangeError('OPFS re-encrypt requires at least one retained credential');
         }
-        await port.runReencryptTransition({
-          lockManager,
-          nativeNamespaceRoot,
-          onProgress,
-          retainedCredentials: request.retainedCredentials,
+        return await runWithManagementCleanHeadBarrierRetainedForSessionShutdown({
+          operation: async () => {
+            await port.runReencryptTransition({
+              lockManager,
+              nativeNamespaceRoot,
+              onProgress,
+              retainedCredentials: request.retainedCredentials,
+              session: request.session,
+              signal,
+              storageRoot,
+            });
+            return { type: 'completed' as const };
+          },
           session: request.session,
-          signal,
-          storageRoot,
         });
-        return { type: 'completed' };
       }
       default: return request satisfies never;
       }

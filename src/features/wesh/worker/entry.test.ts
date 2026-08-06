@@ -125,6 +125,7 @@ describe('wesh.worker', () => {
           wholeFileClone: 'supported',
         },
         close: closeFirst,
+        sync: vi.fn(async () => undefined),
       })
       .mockResolvedValueOnce({
         root: secondMountedRoot,
@@ -135,6 +136,7 @@ describe('wesh.worker', () => {
           wholeFileClone: 'supported',
         },
         close: closeSecond,
+        sync: vi.fn(async () => undefined),
       });
     await import('./entry');
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY } from "@/00-storage/service/hizofs/runtime/runtime-policy";
 import { createFeatureBits, createSubvolumeId, createTimestampMilliseconds } from '@/00-storage/service/hizofs/00-format';
 import { createEmptyEncryptedContainer, openEmptyEncryptedContainer } from '@/00-storage/service/hizofs/authenticated-store/empty-container-store';
 import type { AuthenticatedHizoFSPhysicalBytes } from '@/00-storage/service/hizofs/authenticated-store/physical-bytes';
@@ -80,6 +81,7 @@ function runtimeHost(): HizoFSWorkerRuntimeHost {
   return new HizoFSWorkerRuntimeHost({
     crossRealmLockPort: new InMemoryCrossRealmLockPort(),
     policy: {
+      lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
       maxDirectoryIteratorEntries: 4_096,
       maxHeldLockNames: 1_024,
       maxMaintenanceRootRegistrations: 1_024,
@@ -104,17 +106,21 @@ async function openApplicationSession({
   operationTimestamp: () => bigint;
   passphrase: string;
   randomSource: RandomByteSource;
-}): Promise<StorageFileSystemSession> {
+}): Promise<Readonly<{
+  fileSystemSession: StorageFileSystemSession;
+  runtimeHost: HizoFSWorkerRuntimeHost;
+}>> {
   const opened = await openEmptyEncryptedContainer({
     backend,
     passphrase,
     supportedFeatureBits: SUPPORTED_FEATURE_BITS,
   });
-  return await openAuthenticatedReadWriteApplicationSession({
+  const host = runtimeHost();
+  const fileSystemSession = await openAuthenticatedReadWriteApplicationSession({
     captureAuthority: async () => ({ revision: 1 }),
     recheckAuthority: async () => undefined,
     rootName: 'development.hizofs',
-    runtimeHost: runtimeHost(),
+    runtimeHost: host,
     verifyCapturedAuthority: async () => ({
       backend: developmentBackend({ backend }),
       canonicalBackingLocation: 'development.hizofs',
@@ -128,12 +134,13 @@ async function openApplicationSession({
       operationTimestamp: () => createTimestampMilliseconds({ value: operationTimestamp() }),
       randomSource,
       removalLimits: { deleteBatchSize: 64, maxVisitedInodes: 100_000 },
-      recheckGenerationAuthority: async () => undefined,
+      recheckDurableGenerationAuthority: async () => undefined,
       rootSubvolumeId: createSubvolumeId({ value: 1n }),
       supportedFeatureBits: SUPPORTED_FEATURE_BITS,
       writableProfile: 'development-unverified',
     }),
   });
+  return { fileSystemSession, runtimeHost: host };
 }
 
 async function createTestRuntimePort({
@@ -191,10 +198,8 @@ async function createTestRuntimePort({
     runStablePlainRetiredCleanup: async () => {
       throw new Error('stable-plain cleanup is not used by the restart fixture');
     },
-    openApplicationSession: async ({ passphrase }) => ({
-      authoritativeEndpoint: { fileSystemId, type: 'hizofs' },
-      fileSystemId,
-      fileSystemSession: await openApplicationSession({
+    openApplicationSession: async ({ passphrase }) => {
+      const { fileSystemSession, runtimeHost } = await openApplicationSession({
         backend,
         operationTimestamp: () => {
           const current = nextTimestamp;
@@ -203,10 +208,30 @@ async function createTestRuntimePort({
         },
         passphrase,
         randomSource,
-      }),
-      selected: {} as never,
-      type: 'opened',
-    }),
+      });
+      return {
+        authoritativeEndpoint: { fileSystemId, type: 'hizofs' },
+        fileSystemId,
+        fileSystemSession,
+        gracefullyShutdownRuntime: async () => {
+          const barrier = runtimeHost.openManagementCleanHeadBarrier();
+          await barrier.flushAndCaptureCleanGeneration();
+          barrier.release();
+          await fileSystemSession.close();
+        },
+        openManagementCleanHeadBarrier: () => {
+          const barrier = runtimeHost.openManagementCleanHeadBarrier();
+          return {
+            ensureCleanHead: async () => {
+              await barrier.flushAndCaptureCleanGeneration();
+            },
+            release: barrier.release,
+          };
+        },
+        selected: {} as never,
+        type: 'opened',
+      };
+    },
   };
 }
 
@@ -245,6 +270,7 @@ describe('development HizoFS normal provider restart', () => {
         lockManager: {} as DevelopmentRuntimeOptions['lockManager'],
         port: runtimePort,
         runtimePolicy: {
+          lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
           maxDirectoryIteratorEntries: 4_096,
           maxHeldLockNames: 1_024,
           maxMaintenanceRootRegistrations: 1_024,

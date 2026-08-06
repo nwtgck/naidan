@@ -5,6 +5,8 @@ import {
   type RuntimeMaintenanceRootRegistration,
 } from "@/00-storage/service/hizofs/runtime/maintenance-root-registry";
 
+export type ReaderPinRegistryActivityState = "active" | "idle";
+
 export type ReaderPinRegistryErrorCode =
   | "invalid_pin_limit"
   | "pin_limit_exceeded";
@@ -54,6 +56,13 @@ export class ReaderPinRegistry {
     const created: ScopeState = { pinCount: 0 };
     this.#scopes.set(coordinationKey, created);
     return created;
+  }
+
+  activityState({ coordinationKey }: {
+    coordinationKey: ContainerCoordinationKey;
+  }): ReaderPinRegistryActivityState {
+    const scope = this.#scopes.get(coordinationKey);
+    return scope === undefined || scope.pinCount === 0 ? "idle" : "active";
   }
 
   acquire({ commitReference, coordinationKey }: {

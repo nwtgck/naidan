@@ -95,11 +95,10 @@ export class InMemoryCrossRealmLockPort implements CrossRealmLockPort {
     }
   }
 
-  async acquire({ mode, name }: {
+  #canAcquireImmediately({ mode, state }: {
     mode: CrossRealmLockMode;
-    name: string;
-  }): Promise<CrossRealmLockLease> {
-    const state = this.#state({ name });
+    state: LockState;
+  }): boolean {
     const modeAllowsImmediate = (() => {
       switch (mode) {
       case "shared": return true;
@@ -107,14 +106,28 @@ export class InMemoryCrossRealmLockPort implements CrossRealmLockPort {
       default: return mode satisfies never;
       }
     })();
-    const canAcquireImmediately = state.pending.length === 0
-      && !state.exclusiveHeld
-      && modeAllowsImmediate;
-    if (canAcquireImmediately) return this.#lease({ mode, name, state });
+    return state.pending.length === 0 && !state.exclusiveHeld && modeAllowsImmediate;
+  }
+
+  async acquire({ mode, name }: {
+    mode: CrossRealmLockMode;
+    name: string;
+  }): Promise<CrossRealmLockLease> {
+    const state = this.#state({ name });
+    if (this.#canAcquireImmediately({ mode, state })) return this.#lease({ mode, name, state });
     return await new Promise<CrossRealmLockLease>(resolvePromise => {
       state.pending.push({ mode, resolve: ({ lease }) => resolvePromise(lease) });
       this.#drain({ name, state });
     });
+  }
+
+  async tryAcquire({ mode, name }: {
+    mode: CrossRealmLockMode;
+    name: string;
+  }): Promise<CrossRealmLockLease | undefined> {
+    const state = this.#state({ name });
+    if (!this.#canAcquireImmediately({ mode, state })) return undefined;
+    return this.#lease({ mode, name, state });
   }
 
   async queryHeldLockNames(): Promise<readonly string[]> {

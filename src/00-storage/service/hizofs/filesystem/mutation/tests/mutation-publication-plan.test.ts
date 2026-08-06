@@ -4,9 +4,25 @@ import {
   createPublicationSequence,
   UINT64_MAXIMUM,
 } from "@/00-storage/service/hizofs/00-format";
-import { prepareMutationPublicationPlan } from "@/00-storage/service/hizofs/filesystem/mutation/mutation-publication-plan";
+import {
+  prepareMutationCandidateSequencePlan,
+  prepareMutationPublicationPlan,
+  prepareMutationSuperblockPublicationPlan,
+} from "@/00-storage/service/hizofs/filesystem/mutation/mutation-publication-plan";
 
 describe("mutation publication sequence preflight", () => {
+  it("reserves candidate and durable publication sequence spaces independently", () => {
+    expect(prepareMutationCandidateSequencePlan({
+      durableCommitSequence: createCommitSequence({ value: 7n }),
+    })).toEqual({ newCommitSequence: 8n });
+    expect(prepareMutationSuperblockPublicationPlan({
+      maximumStructurallyObservedPublicationSequence: createPublicationSequence({ value: 10n }),
+    })).toEqual({
+      firstPublicationSequence: 11n,
+      secondPublicationSequence: 12n,
+    });
+  });
+
   it("reserves exactly two fresh physical sequences and base plus one Commit", () => {
     expect(prepareMutationPublicationPlan({
       baseCommitSequence: createCommitSequence({ value: 7n }),
@@ -29,7 +45,7 @@ describe("mutation publication sequence preflight", () => {
     });
   });
 
-  it("rejects exhausted Commit or Publication Sequence space before candidate creation", () => {
+  it("rejects exhausted Commit space before candidate creation and Publication space before flush", () => {
     expect(() => prepareMutationPublicationPlan({
       baseCommitSequence: createCommitSequence({ value: UINT64_MAXIMUM }),
       maximumStructurallyObservedPublicationSequence: createPublicationSequence({ value: 1n }),

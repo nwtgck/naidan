@@ -66,6 +66,10 @@ describe("authenticated file content mutation authority", () => {
         type: "leaf",
       },
     });
+    expect(authority.resourceUsage()).toEqual({
+      appendedMetadataFrameBytes: directoryRoot.frameLength + extentRoot.frameLength,
+      unpublishedPhysicalBytes: directoryRoot.frameLength + extentRoot.frameLength + fileDataHomeRef.frameLength,
+    });
     authority.abandon();
 
     expect(authority.state()).toBe("closed");

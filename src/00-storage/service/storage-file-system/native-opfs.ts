@@ -2,6 +2,7 @@ import {
   createBlobStorageBinaryObjectReadHandle,
   type StorageBinaryObjectReadHandle,
 } from '@/00-storage/service/binary-object-io';
+import { createStorageFileSystemSyncError } from '@/00-storage/service/storage-file-system/sync-error';
 import type {
   StorageDirectoryHandle,
   StorageEntryHandle,
@@ -293,6 +294,14 @@ export function createNativeOpfsFileSystemSession({ root }: {
       symbolicLink: 'unsupported',
       atomicMove: 'unsupported',
       wholeFileClone: 'unsupported',
+    },
+    async sync() {
+      throw createStorageFileSystemSyncError({
+        code: "durability_not_demonstrated",
+        implementation: "native_opfs",
+        message: "native OPFS does not demonstrate filesystem-wide crash durability",
+        retryable: false,
+      });
     },
     async close() {},
   };

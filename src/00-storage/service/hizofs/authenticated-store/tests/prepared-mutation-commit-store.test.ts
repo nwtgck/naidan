@@ -13,7 +13,12 @@ import {
   readBootstrapRoot,
 } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
-import { appendAndPublishPreparedMutationCommit } from "@/00-storage/service/hizofs/authenticated-store/prepared-mutation-commit-store";
+import {
+  appendAndPublishPreparedMutationCommit,
+  appendPreparedMutationCommitCandidate,
+  publishPreparedMutationCommitCandidate,
+} from "@/00-storage/service/hizofs/authenticated-store/prepared-mutation-commit-store";
+import { createAuthenticatedSegmentWriter } from "@/00-storage/service/hizofs/authenticated-store/record-appender";
 import {
   createInitialSuperblockCopies,
   openSuperblockCopies,
@@ -77,6 +82,128 @@ async function setup() {
 }
 
 describe("prepared mutation Commit authority store", () => {
+  it("keeps an authenticated candidate separate from durable Superblock publication", async () => {
+    const fixture = await setup();
+    const writer = await createAuthenticatedSegmentWriter({
+      backend: fixture.backend,
+      fileSystemId: fixture.fileSystemId,
+      randomSource: fixture.randomSource,
+      rootKey: fixture.rootKey,
+      segmentClass: "metadata",
+    });
+    try {
+      const candidate = await appendPreparedMutationCommitCandidate({
+        commitPayload: fixture.commitPayload,
+        writer,
+      });
+      writer.abandon();
+
+      const beforePublication = await openSuperblockCopies({
+        backend: fixture.backend,
+        fileSystemId: fixture.fileSystemId,
+        rootKey: fixture.rootKey,
+        supportedFeatureBits: createFeatureBits({ value: 0n }),
+      });
+      expect(beforePublication.logicalState.activeCommitSequence).toBe(1n);
+
+      const candidateRoot = await readBootstrapRoot({
+        authority: {
+          commitHomeRef: candidate.commitHomeRef,
+          commitSequence: candidate.commitPayload.commitSequence,
+          mutationId: candidate.commitPayload.mutationId,
+          type: "active",
+        },
+        backend: fixture.backend,
+        fileSystemId: fixture.fileSystemId,
+        relocationIndexRootPhysicalRef: null,
+        rootKey: fixture.rootKey,
+      });
+      expect(candidateRoot.commit).toEqual(fixture.commitPayload);
+
+      const published = await publishPreparedMutationCommitCandidate({
+        backend: fixture.backend,
+        base: fixture.base,
+        candidate,
+        fileSystemId: fixture.fileSystemId,
+        firstPublicationSequence: createPublicationSequence({ value: 3n }),
+        randomSource: fixture.randomSource,
+        rootKey: fixture.rootKey,
+        secondPublicationSequence: createPublicationSequence({ value: 4n }),
+        supportedFeatureBits: createFeatureBits({ value: 0n }),
+      });
+      expect(published.superblock.logicalState.activeCommitSequence).toBe(2n);
+      expect(published.commitHomeRef).toEqual(candidate.commitHomeRef);
+    } finally {
+      writer.abandon();
+      fixture.rootKey.destroy();
+    }
+  });
+
+  it("keeps candidate authority immutable and rejects forged candidate values", async () => {
+    const fixture = await setup();
+    const writer = await createAuthenticatedSegmentWriter({
+      backend: fixture.backend,
+      fileSystemId: fixture.fileSystemId,
+      randomSource: fixture.randomSource,
+      rootKey: fixture.rootKey,
+      segmentClass: "metadata",
+    });
+    try {
+      const candidate = await appendPreparedMutationCommitCandidate({
+        commitPayload: fixture.commitPayload,
+        writer,
+      });
+      writer.abandon();
+      const expectedHomeRef = candidate.commitHomeRef;
+      const exposedPayload = candidate.commitPayload;
+      exposedPayload.mutationId.fill(93);
+      exposedPayload.rootInodeTableRootHomeRef.segmentId.fill(94);
+      candidate.commitHomeRef.segmentId.fill(95);
+
+      const forgedCandidate = Object.freeze({
+        commitHomeRef: candidate.commitHomeRef,
+        commitPayload: candidate.commitPayload,
+      });
+      await expect(publishPreparedMutationCommitCandidate({
+        backend: fixture.backend,
+        base: fixture.base,
+        candidate: forgedCandidate,
+        fileSystemId: fixture.fileSystemId,
+        firstPublicationSequence: createPublicationSequence({ value: 3n }),
+        randomSource: fixture.randomSource,
+        rootKey: fixture.rootKey,
+        secondPublicationSequence: createPublicationSequence({ value: 4n }),
+        supportedFeatureBits: createFeatureBits({ value: 0n }),
+      })).rejects.toThrow("not authenticated by this runtime");
+
+      const stillDurableBase = await openSuperblockCopies({
+        backend: fixture.backend,
+        fileSystemId: fixture.fileSystemId,
+        rootKey: fixture.rootKey,
+        supportedFeatureBits: createFeatureBits({ value: 0n }),
+      });
+      expect(stillDurableBase.logicalState.activeCommitSequence).toBe(1n);
+
+      const published = await publishPreparedMutationCommitCandidate({
+        backend: fixture.backend,
+        base: fixture.base,
+        candidate,
+        fileSystemId: fixture.fileSystemId,
+        firstPublicationSequence: createPublicationSequence({ value: 3n }),
+        randomSource: fixture.randomSource,
+        rootKey: fixture.rootKey,
+        secondPublicationSequence: createPublicationSequence({ value: 4n }),
+        supportedFeatureBits: createFeatureBits({ value: 0n }),
+      });
+      expect(published.commitHomeRef).toEqual(expectedHomeRef);
+      expect(published.superblock.logicalState.activeMutationId).toEqual(fixture.commitPayload.mutationId);
+      expect(published.superblock.logicalState.activeCommitHomeRef).toEqual(expectedHomeRef);
+    } finally {
+      writer.abandon();
+      fixture.rootKey.destroy();
+    }
+  });
+
   it("durably appends the Commit before converging the Superblock pair", async () => {
     const fixture = await setup();
     const published = await appendAndPublishPreparedMutationCommit({

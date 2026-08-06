@@ -82,4 +82,15 @@ describe('native OPFS storage file-system adapter', () => {
       replace: false,
     })).rejects.toThrow('does not provide a whole-file clone operation');
   });
+
+  it('rejects filesystem-wide sync when crash durability is not demonstrated', async () => {
+    const nativeRoot = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const session = createNativeOpfsFileSystemSession({ root: nativeRoot });
+
+    await expect(session.sync()).rejects.toMatchObject({
+      code: 'durability_not_demonstrated',
+      implementation: 'native_opfs',
+      retryable: false,
+    });
+  });
 });
