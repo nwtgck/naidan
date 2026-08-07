@@ -20,6 +20,7 @@ export function createHizoFSBenchmarkPresetConfiguration({
   case 'quick':
     return createConfiguration({
       preset,
+      backingStoreDiagnosticsMode: 'basic',
       warmupIterations: 0,
       measuredIterations: 1,
       workloads: DEFAULT_WORKLOADS,
@@ -37,6 +38,7 @@ export function createHizoFSBenchmarkPresetConfiguration({
   case 'standard':
     return createConfiguration({
       preset,
+      backingStoreDiagnosticsMode: 'basic',
       warmupIterations: 1,
       measuredIterations: 3,
       workloads: DEFAULT_WORKLOADS,
@@ -54,6 +56,7 @@ export function createHizoFSBenchmarkPresetConfiguration({
   case 'stress':
     return createConfiguration({
       preset,
+      backingStoreDiagnosticsMode: 'detailed',
       warmupIterations: 1,
       measuredIterations: 5,
       workloads: [...DEFAULT_WORKLOADS, 'hizofs_maintenance'],
@@ -124,6 +127,7 @@ export function estimateHizoFSBenchmarkWrittenBytes({
 
 function createConfiguration({
   preset,
+  backingStoreDiagnosticsMode,
   warmupIterations,
   measuredIterations,
   workloads,
@@ -139,6 +143,7 @@ function createConfiguration({
   cloneSourceFileSizeBytes,
 }: {
   preset: Exclude<HizoFSBenchmarkPreset, 'custom'>;
+  backingStoreDiagnosticsMode: HizoFSBenchmarkConfiguration['backingStoreDiagnosticsMode'];
   warmupIterations: number;
   measuredIterations: number;
   workloads: readonly HizoFSBenchmarkWorkload[];
@@ -161,7 +166,7 @@ function createConfiguration({
     warmupIterations,
     measuredIterations,
     storeLifecycle: 'reuse_without_gc',
-    backingStoreDiagnosticsMode: 'detailed',
+    backingStoreDiagnosticsMode,
     workloads: [...workloads],
     smallFiles: {
       count: smallFileCount,

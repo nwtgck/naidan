@@ -90,6 +90,9 @@ export function createProductionHizoFSBenchmarkRuntimePort(): HizoFSBenchmarkRun
         async createBulkBuilder() {
           return await applicationRuntime.createBulkBuilder();
         },
+        async settleAcceptedGeneration() {
+          await applicationRuntime.settleAcceptedGeneration();
+        },
         async collectGarbage() {
           throw new Error('production HizoFS garbage-collection diagnostics are not connected');
         },

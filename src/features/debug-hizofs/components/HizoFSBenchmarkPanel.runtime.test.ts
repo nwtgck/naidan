@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHizoFSBenchmarkPresetConfiguration } from '@/features/debug-hizofs/benchmark/presets';
+import { serializeHizoFSBenchmarkFullReport } from '@/features/debug-hizofs/benchmark/report';
 import type {
   HizoFSBenchmarkConfiguration,
   HizoFSBenchmarkReport,
@@ -27,8 +28,8 @@ function createReport({
   configuration?: HizoFSBenchmarkConfiguration;
 } = {}): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 28,
-    benchmarkImplementationVersion: 41,
+    schemaVersion: 29,
+    benchmarkImplementationVersion: 42,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-a',
@@ -42,7 +43,9 @@ function createReport({
       hardwareConcurrency: 2,
     },
     measurementModel: {
-      caseDurationScope: 'workload_public_api_calls_only',
+      caseDurationScope: 'workload_public_api_calls_plus_hizofs_settlement',
+      acceptedDurationScope: 'workload_public_api_calls_only',
+      settlementDurationScope: 'hizofs_product_clean_head_barrier_only',
       lifecycleDurationScope: 'separate_lifecycle_events',
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
@@ -131,6 +134,9 @@ function createReport({
 describe('HizoFSBenchmarkPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:benchmark-download');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     mocks.createClient.mockResolvedValue({
       runBenchmark: mocks.runBenchmark,
       cancelCurrentOperation: mocks.cancelCurrentOperation,
@@ -260,6 +266,36 @@ describe('HizoFSBenchmarkPanel', () => {
     expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(
       expect.stringContaining('"reportType": "hizofs_benchmark"'),
     );
+  });
+
+  it('downloads the full JSON as a compressed ZIP archive', async () => {
+    const expectedReport = createReport({
+      configuration: createHizoFSBenchmarkPresetConfiguration({ preset: 'standard' }),
+    });
+    mocks.runBenchmark.mockResolvedValueOnce(expectedReport);
+    const wrapper = mount(HizoFSBenchmarkPanel);
+
+    await wrapper.get('[data-testid="hizofs-benchmark-run"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="hizofs-benchmark-download-full-zip"]').trigger('click');
+    await flushPromises();
+
+    await vi.waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledOnce());
+    const blob = vi.mocked(URL.createObjectURL).mock.calls[0]?.[0];
+    expect(blob).toBeInstanceOf(Blob);
+    if (!(blob instanceof Blob)) throw new Error('ZIP download did not create a Blob');
+    expect(blob.type).toBe('application/zip');
+
+    expect(blob.size).toBeGreaterThan(0);
+    const { default: JSZip } = await import('jszip');
+    const archive = await JSZip.loadAsync(await blob.arrayBuffer());
+    const file = archive.file('hizofs-benchmark-run-a.json');
+    expect(file).not.toBeNull();
+    if (file === null) throw new Error('ZIP archive did not contain the full benchmark JSON');
+    await expect(file.async('string')).resolves.toBe(
+      serializeHizoFSBenchmarkFullReport({ report: expectedReport }),
+    );
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:benchmark-download');
   });
 
   it('runs a benchmark study sequentially and exports a combined report', async () => {

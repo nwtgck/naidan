@@ -28,7 +28,7 @@ export type AuthenticatedMutationScopeEventObservation =
   | Readonly<{ event: "begin" }>
   | Readonly<{
     event: "end";
-    outcome: "abandoned" | "failed" | "published";
+    outcome: "abandoned" | "accepted" | "failed" | "published";
   }>;
 
 export type AuthenticatedSegmentWriterDiagnosticsObservation = Readonly<{

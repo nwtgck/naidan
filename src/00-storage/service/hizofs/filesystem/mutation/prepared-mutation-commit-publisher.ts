@@ -55,6 +55,7 @@ export type PreparedMutationCommitDurablePublicationPort = Readonly<{
 
 export type ResolvablePreparedMutationCommitDurablePublicationPort =
   PreparedMutationCommitDurablePublicationPort & Readonly<{
+    completeWorkingAcceptance: () => void;
     completeExternallyResolvedPublication: ({ outcome }: {
       outcome: "not_published" | "published";
     }) => void;

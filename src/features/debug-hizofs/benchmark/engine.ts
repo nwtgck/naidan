@@ -27,6 +27,7 @@ import type {
   StorageDirectoryHandle,
   StorageFileHandle,
   StorageFileSystemSession,
+  StorageWritableFile,
 } from '@/00-storage/service/storage-file-system/types';
 import {
   hizoFSBenchmarkConfigurationSchema,
@@ -44,7 +45,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 41 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 42 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -100,6 +101,29 @@ type BenchmarkContext = {
   readonly apiCounters: BenchmarkApiCounters;
   readonly memoryTracker: BenchmarkMemoryTracker;
 };
+
+async function runHizoFSWritableTransaction({ operation, writable }: {
+  operation: () => Promise<void>;
+  writable: StorageWritableFile;
+}): Promise<void> {
+  let commitStarted = false;
+  try {
+    await operation();
+    commitStarted = true;
+    await writable.close();
+  } catch (cause: unknown) {
+    if (commitStarted) throw cause;
+    try {
+      await writable.abort({ reason: cause });
+    } catch (abortCause: unknown) {
+      throw new AggregateError(
+        [cause, abortCause],
+        'HizoFS benchmark writable operation and abort both failed',
+      );
+    }
+    throw cause;
+  }
+}
 
 type CaseSample = {
   readonly workload: HizoFSBenchmarkWorkload;
@@ -212,6 +236,7 @@ async function runHizoFSBenchmarkWithLockHeld({
         runtimePort,
       });
     }
+    let benchmarkOperationFailure: unknown;
     try {
       for (let iteration = 0; iteration < totalIterations; iteration += 1) {
         assertActive();
@@ -303,9 +328,27 @@ async function runHizoFSBenchmarkWithLockHeld({
           });
         }
       }
-    } finally {
-      if (sharedContexts !== undefined) await closeBenchmarkContexts({ contexts: sharedContexts });
+    } catch (cause: unknown) {
+      benchmarkOperationFailure = cause;
     }
+    let benchmarkCloseFailure: unknown;
+    if (sharedContexts !== undefined) {
+      try {
+        await closeBenchmarkContexts({ contexts: sharedContexts });
+      } catch (cause: unknown) {
+        benchmarkCloseFailure = cause;
+      }
+    }
+    if (benchmarkOperationFailure !== undefined) {
+      if (benchmarkCloseFailure !== undefined) {
+        throw new AggregateError(
+          [benchmarkOperationFailure, benchmarkCloseFailure],
+          'benchmark operation and context close both failed',
+        );
+      }
+      throw benchmarkOperationFailure;
+    }
+    if (benchmarkCloseFailure !== undefined) throw benchmarkCloseFailure;
   } catch (error) {
     status = isAbortError({ error }) ? 'cancelled' : 'failed';
     failure = {
@@ -334,7 +377,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 28,
+    schemaVersion: 29,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -349,7 +392,9 @@ async function runHizoFSBenchmarkWithLockHeld({
       hardwareConcurrency: getHardwareConcurrency(),
     },
     measurementModel: {
-      caseDurationScope: 'workload_public_api_calls_only',
+      caseDurationScope: 'workload_public_api_calls_plus_hizofs_settlement',
+      acceptedDurationScope: 'workload_public_api_calls_only',
+      settlementDurationScope: 'hizofs_product_clean_head_barrier_only',
       lifecycleDurationScope: 'separate_lifecycle_events',
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
@@ -1759,6 +1804,27 @@ async function measureCase({
   beginMemoryMeasurement({ tracker: context.memoryTracker });
   const startedAt = performance.now();
   const operationResult = await operation();
+  const acceptedAt = performance.now();
+  let settlementDurationMs: number | undefined;
+  switch (context.kind) {
+  case 'hizofs': {
+    const runtime = context.hizoFSRuntime;
+    if (runtime === undefined) {
+      throw new TypeError('HizoFS benchmark context has no runtime to sync');
+    }
+    const settlementStartedAt = performance.now();
+    await runtime.settleAcceptedGeneration();
+    settlementDurationMs = Math.max(performance.now() - settlementStartedAt, 0);
+    break;
+  }
+  case 'raw_opfs':
+    settlementDurationMs = undefined;
+    break;
+  default: {
+    const _ex: never = context.kind;
+    throw new Error(`Unhandled benchmark context: ${String(_ex)}`);
+  }
+  }
   const checksum = typeof operationResult === 'number'
     ? operationResult
     : operationResult.checksum;
@@ -1768,6 +1834,7 @@ async function measureCase({
   const foregroundLatency = typeof operationResult === 'number'
     ? undefined
     : operationResult.foregroundLatency;
+  const acceptedDurationMs = Math.max(acceptedAt - startedAt, 0);
   const durationMs = Math.max(performance.now() - startedAt, 0);
   const after = readHizoFSDiagnosticBaseline({ context });
   return {
@@ -1780,6 +1847,8 @@ async function measureCase({
       iteration,
       phase,
       includedInAggregates: phase === 'measured',
+      acceptedDurationMs,
+      settlementDurationMs,
       durationMs,
       operationCount,
       bytesProcessed,
@@ -2926,14 +2995,13 @@ async function writeBackendFile({
     }
     case 'hizofs': {
       const writable = await (file as StorageFileHandle).createWritable({ keepExistingData });
-      try {
-        context.apiCounters.writeCalls += 1;
-        await writable.write({ position, data: bytes });
-        await writable.close();
-      } catch (error) {
-        await writable.abort({ reason: error });
-        throw error;
-      }
+      await runHizoFSWritableTransaction({
+        operation: async () => {
+          context.apiCounters.writeCalls += 1;
+          await writable.write({ position, data: bytes });
+        },
+        writable,
+      });
       break;
     }
     default: {
@@ -2995,23 +3063,22 @@ async function writeBackendFileByBlocks({
     }
     case 'hizofs': {
       const writable = await (file as StorageFileHandle).createWritable({ keepExistingData });
-      try {
-        let written = 0;
-        while (written < sizeBytes) {
-          assertActive();
-          const length = Math.min(block.byteLength, sizeBytes - written);
-          await writable.write({
-            position: startPosition + written,
-            data: length === block.byteLength ? block : block.subarray(0, length),
-          });
-          context.apiCounters.writeCalls += 1;
-          written += length;
-        }
-        await writable.close();
-      } catch (error) {
-        await writable.abort({ reason: error });
-        throw error;
-      }
+      await runHizoFSWritableTransaction({
+        operation: async () => {
+          let written = 0;
+          while (written < sizeBytes) {
+            assertActive();
+            const length = Math.min(block.byteLength, sizeBytes - written);
+            await writable.write({
+              position: startPosition + written,
+              data: length === block.byteLength ? block : block.subarray(0, length),
+            });
+            context.apiCounters.writeCalls += 1;
+            written += length;
+          }
+        },
+        writable,
+      });
       break;
     }
     default: {
@@ -3209,17 +3276,16 @@ async function randomWriteBackendFile({
     }
     case 'hizofs': {
       const writable = await (file as StorageFileHandle).createWritable({ keepExistingData: true });
-      try {
-        for (const position of positions) {
-          assertActive();
-          context.apiCounters.writeCalls += 1;
-          await writable.write({ position, data: block });
-        }
-        await writable.close();
-      } catch (error) {
-        await writable.abort({ reason: error });
-        throw error;
-      }
+      await runHizoFSWritableTransaction({
+        operation: async () => {
+          for (const position of positions) {
+            assertActive();
+            context.apiCounters.writeCalls += 1;
+            await writable.write({ position, data: block });
+          }
+        },
+        writable,
+      });
       break;
     }
     default: {
@@ -3260,13 +3326,10 @@ async function truncateBackendFile({
   }
   case 'hizofs': {
     const writable = await (file as StorageFileHandle).createWritable({ keepExistingData: true });
-    try {
-      await writable.truncate({ size });
-      await writable.close();
-    } catch (error) {
-      await writable.abort({ reason: error });
-      throw error;
-    }
+    await runHizoFSWritableTransaction({
+      operation: async () => await writable.truncate({ size }),
+      writable,
+    });
     break;
   }
   default: {
@@ -4676,6 +4739,12 @@ function getErrorName({ error }: { error: unknown }): string {
 }
 
 function getErrorMessage({ error }: { error: unknown }): string {
+  if (error instanceof AggregateError) {
+    const nested = error.errors.map((cause) => getErrorMessage({ error: cause }));
+    return nested.length === 0
+      ? error.message
+      : `${error.message}: ${nested.join('; ')}`;
+  }
   if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
     return error.message;
   }

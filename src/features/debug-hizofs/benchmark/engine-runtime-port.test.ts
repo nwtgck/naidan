@@ -29,6 +29,7 @@ async function runTestBenchmark({
 function createTinyConfiguration(): HizoFSBenchmarkConfiguration {
   return {
     ...createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),
+    backingStoreDiagnosticsMode: 'detailed',
     backendMode: 'compare' as const,
     workloads: ['small_files'],
     smallFiles: {
@@ -297,7 +298,9 @@ describe('HizoFS benchmark engine', () => {
 
     expect(report.status).toBe('completed');
     expect(report.measurementModel).toEqual({
-      caseDurationScope: 'workload_public_api_calls_only',
+      caseDurationScope: 'workload_public_api_calls_plus_hizofs_settlement',
+      acceptedDurationScope: 'workload_public_api_calls_only',
+      settlementDurationScope: 'hizofs_product_clean_head_barrier_only',
       lifecycleDurationScope: 'separate_lifecycle_events',
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,

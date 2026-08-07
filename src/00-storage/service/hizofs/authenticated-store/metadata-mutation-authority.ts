@@ -87,6 +87,7 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
   readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
   readonly #fileSystemId: FileSystemId;
   readonly #metadataRecordCache: AuthenticatedMetadataRecordCache;
+  #mutationDiagnosticsOpen = true;
   readonly #randomSource: RandomByteSource | undefined;
   readonly #rootKey: FileSystemRootKey;
   #state: AuthenticatedPreparedMutationPublicationAuthorityState = "ready";
@@ -130,9 +131,26 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
     return this.#state;
   }
 
-  #closeDiagnostics({ outcome }: { outcome: "abandoned" | "failed" | "published" }): void {
+  #closeDiagnostics({ outcome }: {
+    outcome: "abandoned" | "accepted" | "failed" | "published";
+  }): void {
+    if (!this.#mutationDiagnosticsOpen) return;
+    this.#mutationDiagnosticsOpen = false;
     this.#metadataRecordCache.dispose();
     this.#diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome } });
+  }
+
+  completeWorkingAcceptance(): void {
+    switch (this.#state) {
+    case "ready":
+      this.#closeDiagnostics({ outcome: "accepted" });
+      return;
+    case "closed":
+    case "publishing":
+    case "resolution_pending":
+      throw new Error(`cannot complete working acceptance while detached publication is ${this.#state}`);
+    default: return this.#state satisfies never;
+    }
   }
 
   async publishCandidate({

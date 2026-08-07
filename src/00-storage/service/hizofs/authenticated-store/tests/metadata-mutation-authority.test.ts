@@ -111,6 +111,7 @@ class AuthenticatedStoreDiagnosticsProbe implements AuthenticatedStoreDiagnostic
     switch (observation.outcome) {
     case "abandoned": this.#mutation.abandoned += 1; break;
     case "failed": this.#mutation.failed += 1; break;
+    case "accepted":
     case "published": this.#mutation.completed += 1; break;
     default: observation.outcome satisfies never;
     }

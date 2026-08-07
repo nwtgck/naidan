@@ -691,6 +691,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
       case "failed":
         this.#mutation.failed = incrementSafe({ current: this.#mutation.failed, delta: 1, label: "failed mutation diagnostics" });
         break;
+      case "accepted":
       case "published":
         this.#mutation.completed = incrementSafe({ current: this.#mutation.completed, delta: 1, label: "completed mutation diagnostics" });
         break;

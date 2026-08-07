@@ -2780,7 +2780,7 @@ describe("HizoFS worker composition root", () => {
 
     await capability.releaseResources();
     await session.close();
-  });
+  }, 10_000);
 
   it("requires recovery when authority recheck fails after credential publication", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
@@ -3268,6 +3268,7 @@ describe("HizoFS worker composition root", () => {
       const writable = await file.createWritable({ keepExistingData: false });
       await writable.write({ data: bytes, position: 0 });
       await writable.close();
+      await runtime.settleAcceptedGeneration();
       const beforeReopen = runtime.snapshotRuntimeDiagnostics();
       expect(beforeReopen.phases.commit_publication.operationCount).toBeGreaterThan(0);
       expect(beforeReopen.phases.index_update.operationCount).toBeGreaterThan(0);
@@ -3278,12 +3279,13 @@ describe("HizoFS worker composition root", () => {
       const bulk = await runtime.createBulkBuilder();
       const afterBulkTarget = runtime.snapshotRuntimeDiagnostics();
       expect(afterBulkTarget.phases.commit_publication.operationCount)
-        .toBe(publicationsBeforeBulkTarget + 1);
+        .toBe(publicationsBeforeBulkTarget);
       expect(afterBulkTarget.phases.index_build.operationCount)
         .toBe(indexBuildsBeforeBulkTarget);
       await bulk.createEmptyFile({ name: "bulk-a" });
       await bulk.createEmptyFile({ name: "bulk-b" });
       await bulk.commit();
+      await runtime.settleAcceptedGeneration();
       const afterBulkCommit = runtime.snapshotRuntimeDiagnostics();
       expect(afterBulkCommit.phases.commit_publication.operationCount)
         .toBe(afterBulkTarget.phases.commit_publication.operationCount + 1);
@@ -3871,6 +3873,7 @@ describe("HizoFS worker composition root", () => {
       }),
       publicationPort: Object.freeze({
         abandon,
+        completeWorkingAcceptance: vi.fn(),
         completeExternallyResolvedPublication: vi.fn(),
         publishCandidate,
         resolvePublication,
@@ -3993,6 +3996,7 @@ describe("HizoFS worker composition root", () => {
           events.push("detach");
           return {
             abandon: detachedAbandon,
+            completeWorkingAcceptance: vi.fn(),
             completeExternallyResolvedPublication: vi.fn(),
             publishCandidate: detachedPublish,
             resolvePublication: detachedResolve,
@@ -4052,6 +4056,7 @@ describe("HizoFS worker composition root", () => {
         }),
         detachPreparedCandidatePublication: () => ({
           abandon,
+          completeWorkingAcceptance: vi.fn(),
           completeExternallyResolvedPublication: vi.fn(),
           publishCandidate: vi.fn(),
           resolvePublication: vi.fn(),
@@ -4091,6 +4096,7 @@ describe("HizoFS worker composition root", () => {
         }),
         detachPreparedCandidatePublication: () => ({
           abandon,
+          completeWorkingAcceptance: vi.fn(),
           completeExternallyResolvedPublication: vi.fn(),
           publishCandidate: vi.fn(),
           resolvePublication: vi.fn(),

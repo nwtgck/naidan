@@ -458,31 +458,59 @@ async function copyHumanSummary(): Promise<void> {
   await copyText({ text: lines.join('\n'), status: 'Markdown summary copied' });
 }
 
-function downloadFullJson(): void {
+type FullJsonDownload = Readonly<{
+  fileName: string;
+  text: string;
+}>;
+
+function currentFullJsonDownload(): FullJsonDownload | undefined {
   const currentStudyReport = studyReport.value;
   if (currentStudyReport !== undefined) {
-    downloadJson({
+    return {
       text: serializeHizoFSBenchmarkStudyFullReport({ report: currentStudyReport }),
       fileName: `hizofs-benchmark-study-${currentStudyReport.studyId}.json`,
-    });
-    return;
+    };
   }
   const currentReport = report.value;
-  if (currentReport === undefined) return;
-  downloadJson({
+  if (currentReport === undefined) return undefined;
+  return {
     text: serializeHizoFSBenchmarkFullReport({ report: currentReport }),
     fileName: `hizofs-benchmark-${currentReport.runId}.json`,
+  };
+}
+
+function downloadFullJson(): void {
+  const download = currentFullJsonDownload();
+  if (download === undefined) return;
+  downloadBlob({
+    blob: new Blob([download.text], { type: 'application/json' }),
+    fileName: download.fileName,
   });
 }
 
-function downloadJson({
-  text,
-  fileName,
-}: {
-  text: string;
-  fileName: string;
-}): void {
-  const blob = new Blob([text], { type: 'application/json' });
+async function downloadFullJsonZip(): Promise<void> {
+  const download = currentFullJsonDownload();
+  if (download === undefined) return;
+  try {
+    const { default: JSZip } = await import('jszip');
+    const archive = new JSZip();
+    archive.file(download.fileName, download.text);
+    const blob = await archive.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+      mimeType: 'application/zip',
+    });
+    downloadBlob({
+      blob,
+      fileName: download.fileName.replace(/\.json$/u, '.zip'),
+    });
+  } catch (error) {
+    errorMessage.value = toErrorMessage({ error });
+  }
+}
+
+function downloadBlob({ blob, fileName }: { blob: Blob; fileName: string }): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -739,6 +767,7 @@ onBeforeUnmount(() => {
               <button type="button" data-testid="hizofs-benchmark-copy-summary" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copySummaryJson">Copy summary JSON</button>
               <button type="button" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copyHumanSummary">Copy Markdown summary</button>
               <button type="button" data-testid="hizofs-benchmark-download-full" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="downloadFullJson"><DownloadIcon tw-class="mr-1 inline h-3.5 w-3.5" />Download full JSON</button>
+              <button type="button" data-testid="hizofs-benchmark-download-full-zip" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="downloadFullJsonZip"><DownloadIcon tw-class="mr-1 inline h-3.5 w-3.5" />Download full JSON ZIP</button>
             </div>
           </header>
           <div tw-class="border-b border-gray-200 px-4 py-2 text-[10px] text-gray-500 dark:border-gray-700">Completed {{ studyReport.completedVariantCount }} of {{ studyReport.plannedVariantCount }} planned variants. Each variant owns an isolated benchmark run and full diagnostics.</div>
@@ -767,6 +796,7 @@ onBeforeUnmount(() => {
               <button type="button" data-testid="hizofs-benchmark-copy-summary" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copySummaryJson">Copy summary JSON</button>
               <button type="button" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="copyHumanSummary">Copy Markdown summary</button>
               <button type="button" data-testid="hizofs-benchmark-download-full" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="downloadFullJson"><DownloadIcon tw-class="mr-1 inline h-3.5 w-3.5" />Download full JSON</button>
+              <button type="button" data-testid="hizofs-benchmark-download-full-zip" tw-class="rounded border border-gray-300 px-2.5 py-1.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" @click="downloadFullJsonZip"><DownloadIcon tw-class="mr-1 inline h-3.5 w-3.5" />Download full JSON ZIP</button>
             </div>
           </header>
           <div tw-class="border-b border-gray-200 px-4 py-2 text-[10px] text-gray-500 dark:border-gray-700">Duration ratio is HizoFS median duration divided by raw OPFS median duration.</div>

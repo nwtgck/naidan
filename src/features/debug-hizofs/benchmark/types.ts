@@ -454,6 +454,8 @@ const benchmarkSampleSchema = z.object({
   iteration: z.number().int().nonnegative(),
   phase: z.union([z.literal('warmup'), z.literal('measured')]),
   includedInAggregates: z.boolean(),
+  acceptedDurationMs: z.number().nonnegative(),
+  settlementDurationMs: z.union([z.number().nonnegative(), z.undefined()]),
   durationMs: z.number().nonnegative(),
   operationCount: z.number().int().nonnegative(),
   bytesProcessed: z.number().int().nonnegative(),
@@ -547,8 +549,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(28),
-  benchmarkImplementationVersion: z.literal(41),
+  schemaVersion: z.literal(29),
+  benchmarkImplementationVersion: z.literal(42),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -566,7 +568,9 @@ export const hizoFSBenchmarkReportSchema = z.object({
     hardwareConcurrency: z.union([z.number().int().positive(), z.undefined()]),
   }).strict(),
   measurementModel: z.object({
-    caseDurationScope: z.literal('workload_public_api_calls_only'),
+    caseDurationScope: z.literal('workload_public_api_calls_plus_hizofs_settlement'),
+    acceptedDurationScope: z.literal('workload_public_api_calls_only'),
+    settlementDurationScope: z.literal('hizofs_product_clean_head_barrier_only'),
     lifecycleDurationScope: z.literal('separate_lifecycle_events'),
     memoryScope: z.literal('benchmark_harness_buffers_only'),
     browserHeapMeasured: z.literal(false),

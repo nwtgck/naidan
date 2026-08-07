@@ -196,8 +196,8 @@ function createBackingStoreDiagnostics(): HizoFSBenchmarkDiagnostics['backingSto
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 28,
-    benchmarkImplementationVersion: 41,
+    schemaVersion: 29,
+    benchmarkImplementationVersion: 42,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -211,7 +211,9 @@ function createReport(): HizoFSBenchmarkReport {
       hardwareConcurrency: 2,
     },
     measurementModel: {
-      caseDurationScope: 'workload_public_api_calls_only',
+      caseDurationScope: 'workload_public_api_calls_plus_hizofs_settlement',
+      acceptedDurationScope: 'workload_public_api_calls_only',
+      settlementDurationScope: 'hizofs_product_clean_head_barrier_only',
       lifecycleDurationScope: 'separate_lifecycle_events',
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
@@ -268,6 +270,8 @@ function createReport(): HizoFSBenchmarkReport {
             iteration: 0,
             phase: 'measured',
             includedInAggregates: true,
+            acceptedDurationMs: 1,
+            settlementDurationMs: undefined,
             durationMs: 1,
             operationCount: 1,
             bytesProcessed: 0,
@@ -323,6 +327,8 @@ function createReport(): HizoFSBenchmarkReport {
             iteration: 0,
             phase: 'measured',
             includedInAggregates: true,
+            acceptedDurationMs: 1,
+            settlementDurationMs: 1,
             durationMs: 2,
             operationCount: 1,
             bytesProcessed: 64,
@@ -417,7 +423,9 @@ describe('HizoFS benchmark report serialization', () => {
     expect(full).toMatchObject({
       reportType: 'hizofs_benchmark',
       measurementModel: {
-        caseDurationScope: 'workload_public_api_calls_only',
+        caseDurationScope: 'workload_public_api_calls_plus_hizofs_settlement',
+        acceptedDurationScope: 'workload_public_api_calls_only',
+        settlementDurationScope: 'hizofs_product_clean_head_barrier_only',
         lifecycleDurationScope: 'separate_lifecycle_events',
         memoryScope: 'benchmark_harness_buffers_only',
       },

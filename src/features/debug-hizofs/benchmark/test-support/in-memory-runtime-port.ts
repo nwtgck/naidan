@@ -114,6 +114,7 @@ export function createInMemoryBenchmarkRuntimePort(): InMemoryBenchmarkRuntimePo
               },
             };
           },
+          async settleAcceptedGeneration() {},
           async collectGarbage({ dryRun, sweepPolicy }) {
             observations.garbageCollectionCalls += 1;
             return {

@@ -85,6 +85,8 @@ export interface HizoFSBenchmarkRuntime {
 
   createBulkBuilder(): Promise<HizoFSBenchmarkBulkBuilder | undefined>;
 
+  settleAcceptedGeneration(): Promise<void>;
+
   collectGarbage({ dryRun, sweepPolicy, signal }: {
     readonly dryRun: boolean;
     readonly sweepPolicy:

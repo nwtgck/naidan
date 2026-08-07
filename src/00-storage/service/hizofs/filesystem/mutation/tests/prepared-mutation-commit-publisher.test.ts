@@ -173,6 +173,8 @@ describe("prepared mutation Commit publisher", () => {
           expect(candidate.commitPayload).toEqual(commitPayload);
           return {
             abandon,
+            completeWorkingAcceptance: vi.fn(),
+            completeExternallyResolvedPublication: vi.fn(),
             publishCandidate: detachedPublish,
             resolvePublication: detachedResolve,
           };

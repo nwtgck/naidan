@@ -183,6 +183,7 @@ export type ContainerRuntimeAuthenticatedApplicationGeneration = Readonly<{
     durableAuthority: AuthenticatedDurableApplicationGenerationAuthority;
     expectedWorkingIdentity: WorkingGenerationIdentity;
   }) => AuthenticatedApplicationGenerationDescriptor;
+  waitForInFlightPublication: () => Promise<boolean>;
   waitForSyncTarget: ({ target }: { target: WorkingGenerationIdentity }) => Promise<void>;
 }>;
 
@@ -881,6 +882,12 @@ export class ContainerRuntime {
           expectedWorkingIdentity,
         })
       ),
+      waitForInFlightPublication: async () => {
+        const operation = this.#flushOperation;
+        if (operation === undefined) return false;
+        await operation;
+        return true;
+      },
       waitForSyncTarget: async ({ target }) => await this.#requireWorkingGenerations().waitForSyncTarget({ target }),
     });
   }

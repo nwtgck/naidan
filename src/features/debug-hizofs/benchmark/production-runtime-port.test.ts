@@ -152,6 +152,7 @@ describe('production HizoFS benchmark runtime port', () => {
     for (let index = 0; index < entryCount; index += 1) {
       await runtime.session.root.getFileHandle({ create: true, name: `metadata-${index}` });
     }
+    await runtime.settleAcceptedGeneration();
 
     const beforeClose = runtime.diagnostics.snapshot();
     expect(beforeClose.type).toBe('measured');
@@ -163,11 +164,11 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(beforeClose.phases.physical_read_exact.operationCount).toBeLessThan(entryCount * 20);
     expect(beforeClose.mutation.completed - beforeOperations.mutation.completed).toBe(entryCount);
     expect(beforeClose.segmentWriters.metadata.created - beforeOperations.segmentWriters.metadata.created)
-      .toBe(entryCount);
+      .toBe(1);
     expect(beforeClose.publication.getFileSize.operations - beforeOperations.publication.getFileSize.operations)
-      .toBe(entryCount);
+      .toBe(0);
     expect(beforeClose.publication.readExact.operations - beforeOperations.publication.readExact.operations)
-      .toBe(entryCount);
+      .toBe(0);
 
     await runtime.close();
     const afterClose = runtime.diagnostics.snapshot();
@@ -195,6 +196,7 @@ describe('production HizoFS benchmark runtime port', () => {
       await writable.write({ position: 4096, data: new Uint8Array(4096).fill(2) });
       await writable.write({ position: 8192, data: new Uint8Array(4096).fill(3) });
       await writable.close();
+      await runtime.settleAcceptedGeneration();
 
       const after = runtime.diagnostics.snapshot();
       expect(after.type).toBe('measured');
@@ -315,8 +317,8 @@ describe('production HizoFS benchmark runtime port', () => {
       overlapping: 0,
       getFileSize: {
         duplicateOperations: 1,
-        operations: 3,
-        observedUniqueTargets: 2,
+        operations: 2,
+        observedUniqueTargets: 1,
       },
       physicalAccessReasons: {
         append_read_back: {
@@ -327,7 +329,7 @@ describe('production HizoFS benchmark runtime port', () => {
         },
         segment_descriptor: {
           getFileSize: { duplicateOperations: 0, operations: 0, observedUniqueTargets: 0 },
-          readExact: { duplicateOperations: 0, operations: 1, observedUniqueTargets: 1 },
+          readExact: { duplicateOperations: 0, operations: 0, observedUniqueTargets: 0 },
         },
         trusted_tail: {
           getFileSize: { duplicateOperations: 1, operations: 2, observedUniqueTargets: 1 },
@@ -335,8 +337,8 @@ describe('production HizoFS benchmark runtime port', () => {
       },
       readExact: {
         duplicateOperations: 0,
-        operations: 3,
-        observedUniqueTargets: 3,
+        operations: 2,
+        observedUniqueTargets: 2,
       },
     });
     expect(runtimeDiagnostics.publication).toMatchObject({
@@ -344,13 +346,13 @@ describe('production HizoFS benchmark runtime port', () => {
       overlapping: 0,
       getFileSize: {
         duplicateOperations: 0,
-        operations: 1,
-        observedUniqueTargets: 1,
+        operations: 0,
+        observedUniqueTargets: 0,
       },
       readExact: {
         duplicateOperations: 0,
-        operations: 1,
-        observedUniqueTargets: 1,
+        operations: 0,
+        observedUniqueTargets: 0,
       },
     });
     expect(runtimeDiagnostics.indexes.update).toMatchObject({
@@ -375,8 +377,8 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(runtimeDiagnostics.segmentWriters.metadata).toMatchObject({
       appendOperations: 2,
       appendReadBackVerifications: 2,
-      created: 1,
-      descriptorValidations: 1,
+      created: 0,
+      descriptorValidations: 0,
       trustedTailMatches: 2,
       trustedTailMismatches: 0,
     });
@@ -418,8 +420,8 @@ describe('production HizoFS benchmark runtime port', () => {
       runtimePort: createProductionHizoFSBenchmarkRuntimePort(),
     });
 
-    expect(report.status).toBe('completed');
     expect(report.failure).toBeUndefined();
+    expect(report.status).toBe('completed');
     const measuredRuntime = (caseId: string) => {
       const runtime = report.results.find(result => result.caseId === caseId)
         ?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime;
@@ -496,8 +498,8 @@ describe('production HizoFS benchmark runtime port', () => {
       runtimePort: createProductionHizoFSBenchmarkRuntimePort(),
     });
 
-    expect(report.status).toBe('completed');
     expect(report.failure).toBeUndefined();
+    expect(report.status).toBe('completed');
     expect(report.cleanup).toMatchObject({ attempted: true, completed: true });
     expect(report.results.map(({ caseId }) => caseId)).toEqual([
       'small_files_create_empty',
@@ -526,8 +528,7 @@ describe('production HizoFS benchmark runtime port', () => {
       operations: 0,
       pageReads: 0,
     });
-    expect(smallFileWriteRuntime.phases.physical_provision_directory_hierarchy.operationCount)
-      .toBeGreaterThan(0);
+    expect(smallFileWriteRuntime.phases.physical_provision_directory_hierarchy.operationCount).toBe(0);
     const randomWriteSample = report.results.find(result => result.caseId === 'random_write')
       ?.backends.hizofs?.samples[0];
     const randomWriteRuntime = randomWriteSample?.hizoFSDiagnostics?.runtime;

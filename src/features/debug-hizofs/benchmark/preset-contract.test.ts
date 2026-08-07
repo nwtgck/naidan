@@ -14,6 +14,15 @@ describe('HizoFS benchmark presets', () => {
     }
   });
 
+  it('keeps quick and standard diagnostics lightweight while stress stays detailed', () => {
+    expect(createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }).backingStoreDiagnosticsMode)
+      .toBe('basic');
+    expect(createHizoFSBenchmarkPresetConfiguration({ preset: 'standard' }).backingStoreDiagnosticsMode)
+      .toBe('basic');
+    expect(createHizoFSBenchmarkPresetConfiguration({ preset: 'stress' }).backingStoreDiagnosticsMode)
+      .toBe('detailed');
+  });
+
   it('estimates more writes for the stress preset than quick', () => {
     const quick = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });
     const stress = createHizoFSBenchmarkPresetConfiguration({ preset: 'stress' });

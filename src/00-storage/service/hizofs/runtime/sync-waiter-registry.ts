@@ -21,9 +21,11 @@ export class SyncWaiterRegistryError extends Error {
   }
 }
 
+type VoidPromiseResolvers = ReturnType<typeof Promise.withResolvers<void>>;
+
 type SyncWaiter = Readonly<{
-  reject: (cause: unknown) => void;
-  resolve: () => void;
+  reject: VoidPromiseResolvers["reject"];
+  resolve: VoidPromiseResolvers["resolve"];
   target: WorkingGenerationIdentity;
 }>;
 
@@ -119,9 +121,9 @@ export class SyncWaiterRegistry {
         message: "HizoFS runtime sync waiter limit reached",
       });
     }
-    return new Promise<void>((resolve, reject) => {
-      this.#waiters.add(Object.freeze({ reject, resolve, target }));
-    });
+    const { promise, reject, resolve } = Promise.withResolvers<void>();
+    this.#waiters.add(Object.freeze({ reject, resolve, target }));
+    return promise;
   }
 
   advanceDurableGeneration({ durable }: { durable: WorkingGenerationIdentity }): void {

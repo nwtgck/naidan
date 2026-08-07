@@ -24,8 +24,8 @@ function createReport({
   status: HizoFSBenchmarkReport['status'];
 }): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 28,
-    benchmarkImplementationVersion: 41,
+    schemaVersion: 29,
+    benchmarkImplementationVersion: 42,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: `run-${status}`,
@@ -39,7 +39,9 @@ function createReport({
       hardwareConcurrency: 2,
     },
     measurementModel: {
-      caseDurationScope: 'workload_public_api_calls_only',
+      caseDurationScope: 'workload_public_api_calls_plus_hizofs_settlement',
+      acceptedDurationScope: 'workload_public_api_calls_only',
+      settlementDurationScope: 'hizofs_product_clean_head_barrier_only',
       lifecycleDurationScope: 'separate_lifecycle_events',
       memoryScope: 'benchmark_harness_buffers_only',
       browserHeapMeasured: false,
