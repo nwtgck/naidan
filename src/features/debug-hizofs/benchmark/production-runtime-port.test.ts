@@ -60,7 +60,7 @@ describe('production HizoFS benchmark runtime port', () => {
 
     expect(diagnostics.snapshot()).toEqual({
       reason: 'runtime diagnostics recording failed',
-      schemaVersion: 9,
+      schemaVersion: 10,
       type: 'unavailable',
     });
   });

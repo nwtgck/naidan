@@ -5,8 +5,10 @@ import {
   createRecordFrameHeader,
   createUInt64,
   encodeRecordFrameHeader,
+  encodeSegmentFooterIndexEntry,
   encodeSegmentHeader,
   segmentClassForRecordKind,
+  segmentFooterIndexEntryFromFrame,
   segmentHeaderAuthenticatedPrefix,
   segmentIdToShard,
   type FileSystemId,
@@ -44,17 +46,20 @@ import {
   type AuthenticatedStoreDiagnosticsPort,
 } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import { authenticatedSegmentPath, segmentIdIsUsedInOtherClass } from "./segment-location";
-import { sealAuthenticatedSegment, type AuthenticatedSegmentIndex } from "./segment-footer-store";
+import { sealAuthenticatedSegment } from "./segment-footer-store";
 import { readAuthenticatedSegmentDescriptor } from "./segment-prefix-reader";
 import { tryCreateAuthenticatedWholeFile } from "./whole-file";
 
-declare const activeSegmentWriterCapabilityBrand: unique symbol;
+const activeSegmentWriterCapabilityBrand: unique symbol = Symbol("active-segment-writer-capability");
 declare const encodedRecordBrand: unique symbol;
 
 export type ActiveSegmentWriterCapability = Readonly<{
   backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  expectedFileSize: bigint;
   fileSystemId: FileSystemId;
+  footerIndexBytes: Uint8Array;
+  frameCount: number;
   physicalSegmentId: SegmentId;
   randomSource?: RandomByteSource;
   rootKey: FileSystemRootKey;
@@ -255,7 +260,8 @@ export class AuthenticatedSegmentWriter {
   private readonly rootKey: FileSystemRootKey;
   private readonly segmentClassValue: SegmentClass;
   private readonly segmentId: SegmentId;
-  private readonly sealCapability: ActiveSegmentWriterCapability;
+  private durableFooterIndexBytes = new Uint8Array();
+  private durableFooterIndexLength = 0;
   private readonly usedNonceKeys = new Set<string>();
   private explicitAbandonRequested = false;
   private frameCount = 0;
@@ -282,15 +288,40 @@ export class AuthenticatedSegmentWriter {
     this.rootKey = rootKey;
     this.segmentClassValue = segmentClass;
     this.segmentId = segmentId;
-    this.sealCapability = {
-      backend,
-      diagnostics,
-      fileSystemId,
-      physicalSegmentId: segmentId,
-      randomSource,
-      rootKey,
-      segmentClass,
-    } as ActiveSegmentWriterCapability;
+  }
+
+  private releaseDurableFooterIndex(): void {
+    this.durableFooterIndexBytes = new Uint8Array();
+    this.durableFooterIndexLength = 0;
+  }
+
+  private appendDurableFooterIndex({ frames }: {
+    frames: readonly Readonly<{ header: RecordFrameHeaderV1; physicalOffset: bigint }>[];
+  }): void {
+    const entrySize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentFooterIndexEntry;
+    const maximumBytes = frameMaximumCount({ segmentClass: this.segmentClassValue }) * entrySize;
+    const requiredBytes = this.durableFooterIndexLength + frames.length * entrySize;
+    if (requiredBytes > maximumBytes) {
+      throw new Error("active Segment durable Footer index exceeds its format bound");
+    }
+    if (this.durableFooterIndexBytes.byteLength < requiredBytes) {
+      const doubled = this.durableFooterIndexBytes.byteLength === 0
+        ? 4096
+        : this.durableFooterIndexBytes.byteLength * 2;
+      const capacity = Math.min(maximumBytes, Math.max(requiredBytes, doubled));
+      const grown = new Uint8Array(capacity);
+      grown.set(this.durableFooterIndexBytes.subarray(0, this.durableFooterIndexLength));
+      this.durableFooterIndexBytes = grown;
+    }
+    let offset = this.durableFooterIndexLength;
+    for (const frame of frames) {
+      const bytes = encodeSegmentFooterIndexEntry({
+        entry: segmentFooterIndexEntryFromFrame({ frame }),
+      });
+      this.durableFooterIndexBytes.set(bytes, offset);
+      offset += entrySize;
+    }
+    this.durableFooterIndexLength = requiredBytes;
   }
 
   public hasRecords(): boolean {
@@ -427,6 +458,7 @@ export class AuthenticatedSegmentWriter {
     case "active":
       this.explicitAbandonRequested = true;
       this.stateValue = "abandoned";
+      if (!this.operationInProgress) this.releaseDurableFooterIndex();
       return;
     default:
       return this.stateValue satisfies never;
@@ -465,7 +497,7 @@ export class AuthenticatedSegmentWriter {
       });
 
       const batchNonceKeys = new Set<string>();
-      const frames: Array<{ bytes: Uint8Array; header: RecordFrameHeaderV1; result: AppendedRecord }> = [];
+      const frames: Array<{ bytes: Uint8Array; header: RecordFrameHeaderV1; physicalOffset: bigint; result: AppendedRecord }> = [];
       let nextOffset = this.nextOffset;
       for (const record of recordSnapshots) {
         const nonce = freshRecordNonce({
@@ -525,7 +557,7 @@ export class AuthenticatedSegmentWriter {
             physicalReference,
             type: "home",
           };
-        frames.push({ bytes, header, result });
+        frames.push({ bytes, header, physicalOffset: nextOffset, result });
         nextOffset = end;
       }
 
@@ -593,8 +625,13 @@ export class AuthenticatedSegmentWriter {
         recordCount: frames.length,
         segmentClass: this.segmentClassValue,
       } });
+      this.appendDurableFooterIndex({ frames });
       this.nextOffset = nextOffset;
       this.frameCount += frames.length;
+      if (this.durableFooterIndexLength
+        !== this.frameCount * HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentFooterIndexEntry) {
+        throw new Error("active Segment durable Footer index count invariant failed");
+      }
       this.persistedFrameBytesValue += batch.byteLength;
       if (!Number.isSafeInteger(this.persistedFrameBytesValue)) {
         throw new Error("persisted Record Frame byte count exceeds the safe integer bound");
@@ -615,26 +652,57 @@ export class AuthenticatedSegmentWriter {
       return frames.map(frame => frame.result);
     } finally {
       this.operationInProgress = false;
+      switch (this.stateValue) {
+      case "active":
+        break;
+      case "abandoned":
+      case "sealed":
+        this.releaseDurableFooterIndex();
+        break;
+      default:
+        this.stateValue satisfies never;
+      }
     }
   }
 
-  public async seal(): Promise<AuthenticatedSegmentIndex> {
+  public async seal(): Promise<void> {
     requireActiveWriter({ operation: "seal", state: this.stateValue });
     if (this.operationInProgress) throw new Error("segment writer operation already in progress");
     this.operationInProgress = true;
     try {
       if (this.frameCount === 0) throw new RangeError("an empty active Segment must not be sealed");
       this.stateValue = "abandoned";
-      const sealed = await sealAuthenticatedSegment({
-        writerCapability: this.sealCapability,
+      await sealAuthenticatedSegment({
+        writerCapability: {
+          [activeSegmentWriterCapabilityBrand]: true,
+          backend: this.backend,
+          diagnostics: this.diagnostics,
+          expectedFileSize: this.nextOffset,
+          fileSystemId: this.fileSystemId,
+          footerIndexBytes: this.durableFooterIndexBytes.subarray(0, this.durableFooterIndexLength),
+          frameCount: this.frameCount,
+          physicalSegmentId: this.segmentId,
+          randomSource: this.randomSource,
+          rootKey: this.rootKey,
+          segmentClass: this.segmentClassValue,
+        },
       });
       this.stateValue = "sealed";
       if (this.explicitAbandonRequested) {
         throw new Error("segment writer was explicitly abandoned during seal");
       }
-      return sealed;
     } finally {
       this.operationInProgress = false;
+      switch (this.stateValue) {
+      case "active":
+        break;
+      case "abandoned":
+      case "sealed":
+        this.releaseDurableFooterIndex();
+        break;
+      default:
+        this.stateValue satisfies never;
+      }
     }
   }
 }

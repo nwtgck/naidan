@@ -10,6 +10,8 @@ import {
   encodeSegmentFooterHeader,
   encodeSegmentFooterIndexEntry,
   encodeSegmentFooterTrailer,
+  formatBytesEqual,
+  segmentClassForRecordKind,
   segmentFooterCandidateStructureIsValid,
   segmentFooterIndexEntryFromFrame,
   segmentFooterIndexEntryMatchesFrame,
@@ -34,6 +36,7 @@ import {
 import type { HizoFSWritableBackend, HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import type { ActiveSegmentWriterCapability } from "./record-appender";
 import { authenticatedStoreError } from "./errors";
+import { authenticatedSegmentPath } from "./segment-location";
 import { runAndCloseAuthenticatedFile } from "./file-operation";
 import {
   authenticatedHizoFSPhysicalBytes,
@@ -45,7 +48,9 @@ import {
   type AuthenticatedSegmentFrame,
 } from "./segment-prefix-reader";
 import {
+  getFileSizeWithAuthenticatedReason,
   measureAuthenticatedCryptoOperation,
+  readExactWithAuthenticatedReason,
   type AuthenticatedStoreDiagnosticsPort,
 } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
@@ -252,6 +257,65 @@ export async function readAuthenticatedSegmentIndex({ backend, diagnostics, file
   }
 }
 
+function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
+  return left.byteLength === right.byteLength && left.every((value, index) => value === right[index]);
+}
+
+async function createSegmentFooterPublication({
+  diagnostics,
+  fileSystemId,
+  entryCount,
+  footerOffset,
+  physicalSegmentId,
+  plaintextIndex,
+  randomSource,
+  rootKey,
+  segmentClass,
+}: {
+  diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  fileSystemId: FileSystemId;
+  entryCount: number;
+  footerOffset: bigint;
+  physicalSegmentId: SegmentId;
+  plaintextIndex: Uint8Array;
+  randomSource?: RandomByteSource;
+  rootKey: FileSystemRootKey;
+  segmentClass: SegmentClass;
+}): Promise<Readonly<{ footer: AuthenticatedSegmentFooter; footerBytes: Uint8Array }>> {
+  const headerSize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader;
+  const nonce = generateSegmentFooterNonce({ randomSource });
+  const header = createSegmentFooterHeader({
+    entryCount,
+    nonce,
+    physicalSegmentId,
+    segmentClass,
+    segmentDataLength: createUInt64({ value: footerOffset - BigInt(headerSize) }),
+  });
+  const footerHeaderBytes = encodeSegmentFooterHeader({ header });
+  const totalLength = calculateSegmentFooterTotalLength({ entryCount });
+  const footerTrailerBytes = encodeSegmentFooterTrailer({ trailer: { footerTotalLength: totalLength, physicalSegmentId } });
+  const sealedIndex = await measureAuthenticatedCryptoOperation({
+    diagnostics,
+    operation: "encrypt",
+    run: async () => await encryptSegmentFooter({
+      fileSystemId,
+      footerHeader: footerHeaderBytes,
+      footerTrailer: footerTrailerBytes,
+      nonce,
+      physicalSegmentId,
+      plaintext: plaintextSegmentFooterBytes({ bytes: plaintextIndex }),
+      rootKey,
+    }),
+  });
+  return Object.freeze({
+    footer: Object.freeze({ header, physicalOffset: footerOffset, totalLength }),
+    footerBytes: concatenate({
+      chunks: [footerHeaderBytes, sealedIndex, footerTrailerBytes],
+      totalLength,
+    }),
+  });
+}
+
 type SegmentSealInput = Readonly<{
   backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   diagnostics?: AuthenticatedStoreDiagnosticsPort;
@@ -350,37 +414,20 @@ async function sealAuthenticatedSegmentInternal({
     throw authenticatedStoreError({ code: "control_plane_corrupt", message: "Segment changed while preparing its footer" });
   }
 
-  const entries = current.frames.map(frame => segmentFooterIndexEntryFromFrame({ frame }));
-  const entryBytes = entries.map(entry => encodeSegmentFooterIndexEntry({ entry }));
+  const entryBytes = current.frames.map(frame => encodeSegmentFooterIndexEntry({
+    entry: segmentFooterIndexEntryFromFrame({ frame }),
+  }));
   const plaintextIndexLength = entryBytes.reduce((total, bytes) => total + bytes.byteLength, 0);
-  const plaintextIndex = concatenate({ chunks: entryBytes, totalLength: plaintextIndexLength });
-  const nonce = generateSegmentFooterNonce({ randomSource });
-  const header = createSegmentFooterHeader({
-    entryCount: entries.length,
-    nonce,
-    physicalSegmentId,
-    segmentClass,
-    segmentDataLength: createUInt64({ value: footerOffset - BigInt(headerSize) }),
-  });
-  const footerHeaderBytes = encodeSegmentFooterHeader({ header });
-  const totalLength = calculateSegmentFooterTotalLength({ entryCount: entries.length });
-  const footerTrailerBytes = encodeSegmentFooterTrailer({ trailer: { footerTotalLength: totalLength, physicalSegmentId } });
-  const sealedIndex = await measureAuthenticatedCryptoOperation({
+  const { footerBytes } = await createSegmentFooterPublication({
     diagnostics,
-    operation: "encrypt",
-    run: async () => await encryptSegmentFooter({
-      fileSystemId,
-      footerHeader: footerHeaderBytes,
-      footerTrailer: footerTrailerBytes,
-      nonce,
-      physicalSegmentId,
-      plaintext: plaintextSegmentFooterBytes({ bytes: plaintextIndex }),
-      rootKey,
-    }),
-  });
-  const footerBytes = concatenate({
-    chunks: [footerHeaderBytes, sealedIndex, footerTrailerBytes],
-    totalLength,
+    entryCount: current.frames.length,
+    fileSystemId,
+    footerOffset,
+    physicalSegmentId,
+    plaintextIndex: concatenate({ chunks: entryBytes, totalLength: plaintextIndexLength }),
+    randomSource,
+    rootKey,
+    segmentClass,
   });
 
   const file = await backend.openFileForUpdate({ path: descriptor.path });
@@ -418,12 +465,127 @@ async function sealAuthenticatedSegmentInternal({
   }
 }
 
+async function sealAuthenticatedSegmentFromWriterProof({
+  backend,
+  diagnostics,
+  expectedFileSize,
+  fileSystemId,
+  footerIndexBytes,
+  frameCount,
+  physicalSegmentId,
+  randomSource,
+  rootKey,
+  segmentClass,
+}: ActiveSegmentWriterCapability): Promise<void> {
+  if (frameCount === 0) {
+    throw authenticatedStoreError({
+      code: "control_plane_corrupt",
+      message: "active Segment writer cannot seal an empty durable Footer index",
+    });
+  }
+
+  // A fresh writer authenticated the Segment Header when it was created, and
+  // every entry represented here was derived from a Record Frame that was
+  // written, synced, explicitly closed, and byte-for-byte read back by that
+  // same exclusive writer. Re-reading every Record Frame here would repeat an
+  // already-established proof at O(frame count) physical I/O cost. Keep the
+  // restart/reader path strict; only the fresh-writer construction path may
+  // publish from this compact durable Footer index.
+  const entrySize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentFooterIndexEntry;
+  if (footerIndexBytes.byteLength !== frameCount * entrySize) {
+    throw authenticatedStoreError({
+      code: "control_plane_corrupt",
+      message: "active Segment durable Footer index length is inconsistent",
+    });
+  }
+  let expectedOffset = BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
+  for (let index = 0; index < frameCount; index += 1) {
+    const entry = decodeSegmentFooterIndexEntry({
+      bytes: footerIndexBytes.subarray(index * entrySize, (index + 1) * entrySize),
+    });
+    const physicalOnly = entry.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page;
+    const expectedFlags = physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0;
+    if (entry.physicalOffset !== expectedOffset
+      || entry.homeOffset !== expectedOffset
+      || !formatBytesEqual({ left: entry.homeSegmentId, right: physicalSegmentId })
+      || entry.flags !== expectedFlags
+      || segmentClassForRecordKind({ recordKind: entry.recordKind }) !== segmentClass) {
+      throw authenticatedStoreError({
+        code: "control_plane_corrupt",
+        message: "active Segment durable Footer index violates Segment identity",
+      });
+    }
+    expectedOffset += BigInt(entry.frameLength);
+  }
+  if (expectedOffset !== expectedFileSize) {
+    throw authenticatedStoreError({
+      code: "control_plane_corrupt",
+      message: "active Segment durable Footer index does not match its trusted tail",
+    });
+  }
+
+  const path = authenticatedSegmentPath({ segmentClass, segmentId: physicalSegmentId });
+  const observedFileSize = await getFileSizeWithAuthenticatedReason({
+    backend,
+    diagnostics,
+    path,
+    reason: "trusted_tail",
+  });
+  if (observedFileSize !== expectedFileSize) {
+    throw authenticatedStoreError({
+      code: "control_plane_corrupt",
+      message: "active Segment changed while preparing its footer",
+    });
+  }
+
+  const { footerBytes } = await createSegmentFooterPublication({
+    diagnostics,
+    entryCount: frameCount,
+    fileSystemId,
+    footerOffset: expectedFileSize,
+    physicalSegmentId,
+    plaintextIndex: footerIndexBytes,
+    randomSource,
+    rootKey,
+    segmentClass,
+  });
+  const file = await backend.openFileForUpdate({ path });
+  await runAndCloseAuthenticatedFile({
+    backend,
+    file,
+    operation: async () => {
+      await backend.writeAt({
+        bytes: authenticatedHizoFSPhysicalBytes({ bytes: footerBytes }),
+        file,
+        offset: expectedFileSize,
+      });
+      await backend.syncFileData({ file });
+    },
+    operationLabel: "active Segment Footer publication",
+  });
+
+  const readBack = await readExactWithAuthenticatedReason({
+    backend,
+    diagnostics,
+    length: footerBytes.byteLength,
+    offset: expectedFileSize,
+    path,
+    reason: "segment_footer_read_back",
+  });
+  if (!bytesEqual({ left: readBack, right: footerBytes })) {
+    throw authenticatedStoreError({
+      code: "control_plane_corrupt",
+      message: "active Segment Footer durable read-back differs",
+    });
+  }
+}
+
 export async function sealAuthenticatedSegment({ writerCapability }: {
   writerCapability: ActiveSegmentWriterCapability;
-}): Promise<AuthenticatedSegmentIndex> {
-  // The brand is created only with a fresh runtime writer. A segment discovered
-  // after restart therefore cannot accidentally be promoted from unsealed to sealed.
-  return await sealAuthenticatedSegmentInternal(writerCapability);
+}): Promise<void> {
+  // The capability is created only by a fresh runtime writer. A Segment
+  // discovered after restart therefore cannot use the writer-owned fast seal.
+  await sealAuthenticatedSegmentFromWriterProof(writerCapability);
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

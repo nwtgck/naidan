@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseTransitionOperationId } from '@/00-storage/service/naidan-persistence-control/00-format';
 import { createNativePlainDisableTransitionDriver } from '@/00-storage/service/naidan-opfs/native-plain-disable-transition-driver';
+import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from '@/00-storage/service/opfs/naidan-opfs-root-directory-registry';
 import { TEST_ONLY as RUNTIME_TEST_ONLY } from '@/00-storage/service/naidan-opfs/persistence-runtime-contract';
 import type { NativePlainTransitionRuntime } from '@/00-storage/service/naidan-opfs/native-plain-transition-runtime-state';
 
@@ -26,7 +27,13 @@ function fixture({ lifecycle, names = [] }: {
     },
   } as unknown as FileSystemDirectoryHandle;
   const root = {
-    getDirectoryHandle: vi.fn(async () => storage),
+    getDirectoryHandle: vi.fn(async (name: string, options?: { create?: boolean }) => {
+      expect(options).toEqual({ create: false });
+      if (name === NAIDAN_OPFS_STORAGE_DIRECTORY_NAME) return storage;
+      const error = new Error(`missing native OPFS root: ${name}`);
+      error.name = 'NotFoundError';
+      throw error;
+    }),
   } as unknown as FileSystemDirectoryHandle;
   return {
     currentLifecycle,

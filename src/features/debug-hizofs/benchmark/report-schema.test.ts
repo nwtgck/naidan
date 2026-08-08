@@ -64,7 +64,7 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
     trustedTailMismatches: 0,
   });
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     type: 'measured',
     phases: Object.fromEntries(HIZOFS_BENCHMARK_RUNTIME_PHASES.map(name => [name, phase()])) as HizoFSBenchmarkDiagnostics['runtime'] extends { readonly type: 'measured'; readonly phases: infer T } ? T : never,
     records: {
@@ -199,8 +199,8 @@ function createBackingStoreDiagnostics(): HizoFSBenchmarkDiagnostics['backingSto
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 32,
-    benchmarkImplementationVersion: 47,
+    schemaVersion: 33,
+    benchmarkImplementationVersion: 48,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -509,7 +509,7 @@ describe('HizoFS benchmark report serialization', () => {
               : {
                 ...hizofs.hizoFSDiagnosticsTotals,
                 runtime: {
-                  schemaVersion: 9 as const,
+                  schemaVersion: 10 as const,
                   type: 'unavailable' as const,
                   reason: 'production counters are unavailable',
                 },
@@ -521,7 +521,7 @@ describe('HizoFS benchmark report serialization', () => {
                 : {
                   ...sample.hizoFSDiagnostics,
                   runtime: {
-                    schemaVersion: 9 as const,
+                    schemaVersion: 10 as const,
                     type: 'unavailable' as const,
                     reason: 'production counters are unavailable',
                   },
@@ -535,7 +535,7 @@ describe('HizoFS benchmark report serialization', () => {
     const parsed = hizoFSBenchmarkReportSchema.parse({ ...report, results });
     expect(parsed.results[0]?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime)
       .toEqual({
-        schemaVersion: 9,
+        schemaVersion: 10,
         type: 'unavailable',
         reason: 'production counters are unavailable',
       });

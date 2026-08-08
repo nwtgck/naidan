@@ -284,7 +284,7 @@ const hizoFSRuntimeInodeLeafLookupCounterSchema = z.object({
 }).strict();
 
 const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(9),
+  schemaVersion: z.literal(10),
   type: z.literal('measured'),
   phases: z.object(Object.fromEntries(
     HIZOFS_RUNTIME_DIAGNOSTIC_PHASES.map(phase => [
@@ -352,7 +352,7 @@ const hizoFSMeasuredRuntimeDiagnosticsSchema = z.object({
 }).strict();
 
 const hizoFSUnavailableRuntimeDiagnosticsSchema = z.object({
-  schemaVersion: z.literal(9),
+  schemaVersion: z.literal(10),
   type: z.literal('unavailable'),
   reason: z.string().min(1),
 }).strict();
@@ -557,8 +557,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(32),
-  benchmarkImplementationVersion: z.literal(47),
+  schemaVersion: z.literal(33),
+  benchmarkImplementationVersion: z.literal(48),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),

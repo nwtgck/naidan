@@ -65,6 +65,7 @@ export const AUTHENTICATED_PHYSICAL_ACCESS_REASONS = Object.freeze([
   "append_read_back",
   "authenticated_record_resolution",
   "segment_descriptor",
+  "segment_footer_read_back",
   "trusted_tail",
 ] as const);
 

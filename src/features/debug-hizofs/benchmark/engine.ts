@@ -45,7 +45,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 47 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 48 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -377,7 +377,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 32,
+    schemaVersion: 33,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -1978,7 +1978,7 @@ function unavailableRuntimeDiagnostics({ reason }: {
   reason: string;
 }): HizoFSBenchmarkRuntimeDiagnosticsSnapshot {
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     type: 'unavailable',
     reason,
   };
@@ -2005,7 +2005,7 @@ function subtractHizoFSRuntimeDiagnostics({
   default: return before satisfies never;
   }
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [
@@ -2580,7 +2580,7 @@ function aggregateHizoFSRuntimeDiagnostics({
     throw new Error('HizoFS measured runtime diagnostics aggregate requires at least one sample');
   }
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     type: 'measured',
     phases: Object.fromEntries(
       HIZOFS_BENCHMARK_RUNTIME_PHASES.map(phase => [

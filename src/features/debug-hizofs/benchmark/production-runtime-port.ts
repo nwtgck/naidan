@@ -22,7 +22,7 @@ function measuredRuntimeDiagnostics({ resetHighWaterMarks, snapshotRuntimeDiagno
       } catch (cause: unknown) {
         if (!(cause instanceof HizoFSRuntimeDiagnosticsUnavailableError)) throw cause;
         return {
-          schemaVersion: 9,
+          schemaVersion: 10,
           type: 'unavailable',
           reason: 'runtime diagnostics recording failed',
         };
@@ -42,7 +42,7 @@ function measuredRuntimeDiagnostics({ resetHighWaterMarks, snapshotRuntimeDiagno
       } = snapshot;
       unhandledSnapshot satisfies Record<PropertyKey, never>;
       return {
-        schemaVersion: 9,
+        schemaVersion: 10,
         type: 'measured',
         caches,
         coordinator,

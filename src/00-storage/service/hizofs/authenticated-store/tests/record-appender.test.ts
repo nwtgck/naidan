@@ -12,8 +12,10 @@ import {
   readAuthenticatedPhysicalRecord,
 } from "@/00-storage/service/hizofs/authenticated-store/record-reader";
 import { createAuthenticatedSegmentWriter, encodedHizoFSRecord } from "@/00-storage/service/hizofs/authenticated-store/record-appender";
+import { readAuthenticatedSegmentIndex } from "@/00-storage/service/hizofs/authenticated-store/segment-footer-store";
 import type {
   AuthenticatedCryptoDiagnosticsObservation,
+  AuthenticatedPhysicalAccessReasonObservation,
   AuthenticatedRecordDiagnosticsObservation,
 } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
@@ -57,6 +59,45 @@ class FileSizeBlockingBackend extends InMemoryCrashDurabilityBackend<Authenticat
   }
 }
 
+
+class SealReadCountingBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
+  public readExactOperations = 0;
+  public readExactWithFileSizeOperations = 0;
+  public reportExtraFileByte = false;
+  public corruptNextReadExact = false;
+
+  public resetSealReadCounters(): void {
+    this.readExactOperations = 0;
+    this.readExactWithFileSizeOperations = 0;
+  }
+
+  public override async getFileSize(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["getFileSize"]>[0],
+  ): Promise<bigint | undefined> {
+    const size = await super.getFileSize(input);
+    return size === undefined || !this.reportExtraFileByte ? size : size + 1n;
+  }
+
+  public override async readExact(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["readExact"]>[0],
+  ): Promise<Uint8Array> {
+    this.readExactOperations += 1;
+    const bytes = await super.readExact(input);
+    if (!this.corruptNextReadExact) return bytes;
+    this.corruptNextReadExact = false;
+    const corrupted = Uint8Array.from(bytes);
+    if (corrupted.byteLength === 0) throw new Error("cannot corrupt an empty exact read");
+    corrupted[0] = (corrupted[0] ?? 0) ^ 0xff;
+    return corrupted;
+  }
+
+  public override async readExactWithFileSize(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["readExactWithFileSize"]>[0],
+  ): Promise<Readonly<{ bytes: Uint8Array; fileSize: bigint }>> {
+    this.readExactWithFileSizeOperations += 1;
+    return await super.readExactWithFileSize(input);
+  }
+}
 
 class PhysicalAccessRecordingBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
   readonly events: string[] = [];
@@ -294,13 +335,109 @@ describe("authenticated record appender", () => {
       homeReference: results[0].homeReference,
       rootKey: value.rootKey,
     })).resolves.toMatchObject({ plaintext: new Uint8Array([1, 2, 3]) });
-    await expect(writer.seal()).resolves.toMatchObject({ state: "sealed" });
+    await expect(writer.seal()).resolves.toBeUndefined();
     expect(writer.state).toBe("sealed");
     await expect(writer.append({ records: [
       encodedHizoFSRecord({ plaintext: new Uint8Array(), recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit }),
     ] })).rejects.toThrow("sealed");
     expect(value.backend.openHandleCount()).toBe(0);
     value.rootKey.destroy();
+  });
+
+  it("seals an active writer from its durable append index without rescanning Record Frames", async () => {
+    const backend = new SealReadCountingBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const physicalAccessReasons: AuthenticatedPhysicalAccessReasonObservation[] = [];
+    const writer = await createAuthenticatedSegmentWriter({
+      backend,
+      diagnostics: {
+        recordCodecOperation: () => {},
+        recordCryptoOperation: () => {},
+        recordPersistedRecord: () => {},
+        recordPhysicalAccessReason: observation => physicalAccessReasons.push(observation),
+        recordPublicationOperation: () => {},
+      },
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    const records = Array.from({ length: 64 }, (_, index) => encodedHizoFSRecord({
+      plaintext: Uint8Array.of(index),
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    }));
+    await writer.append({ records });
+
+    backend.resetSealReadCounters();
+    physicalAccessReasons.length = 0;
+    await writer.seal();
+
+    expect(writer.state).toBe("sealed");
+    expect(backend.readExactWithFileSizeOperations).toBe(0);
+    expect(backend.readExactOperations).toBe(1);
+    expect(physicalAccessReasons).toContainEqual(expect.objectContaining({
+      operation: "read_exact",
+      reason: "segment_footer_read_back",
+    }));
+
+    const reopened = await readAuthenticatedSegmentIndex({
+      backend,
+      fileSystemId,
+      physicalSegmentId: writer.physicalSegmentId,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    expect(reopened).toMatchObject({ state: "sealed" });
+    expect(reopened.frames).toHaveLength(records.length);
+    rootKey.destroy();
+  });
+
+  it("rejects active-writer sealing when the trusted tail changed", async () => {
+    const backend = new SealReadCountingBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const writer = await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    await writer.append({ records: [encodedHizoFSRecord({
+      plaintext: Uint8Array.of(1),
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    })] });
+    backend.reportExtraFileByte = true;
+
+    await expect(writer.seal()).rejects.toThrow("changed while preparing its footer");
+    expect(writer.state).toBe("abandoned");
+    rootKey.destroy();
+  });
+
+  it("does not report active-writer seal success when Footer read-back differs", async () => {
+    const backend = new SealReadCountingBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const writer = await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    await writer.append({ records: [encodedHizoFSRecord({
+      plaintext: Uint8Array.of(1),
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    })] });
+    backend.corruptNextReadExact = true;
+
+    await expect(writer.seal()).rejects.toThrow("Footer durable read-back differs");
+    expect(writer.state).toBe("abandoned");
+    rootKey.destroy();
   });
 
   it("returns only a Physical Reference for a physical-only Relocation Index record", async () => {
