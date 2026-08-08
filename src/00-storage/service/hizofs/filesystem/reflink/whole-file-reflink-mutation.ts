@@ -4,7 +4,7 @@ import {
   createInodeRevision,
   encodeDirectoryEntry,
   encodeFilenameComponent,
-  encodeInodeLeafPage,
+  assertInodeLeafEntryFitsMetadataPage,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
   type TimestampMilliseconds,
@@ -139,7 +139,7 @@ export async function prepareWholeFileReflinkMutation({
     inodeRevision: createInodeRevision({ value: destinationParent.inodeRevision + 1n }),
     timestamps: { ...destinationParent.timestamps, modifiedAt: operationTimestamp },
   };
-  encodeInodeLeafPage({ entries: [updatedDestinationParent], isRoot: false });
+  assertInodeLeafEntryFitsMetadataPage({ entry: updatedDestinationParent });
 
   return {
     rootInodeTableChanges: [

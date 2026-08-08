@@ -23,7 +23,6 @@ import {
 const authorityEpoch = createWorkingGenerationAuthorityEpoch();
 const baseWorkingGeneration = createWorkingGenerationIdentity({
   authorityEpoch,
-  commitReference: createTestingHomeRecordReference({ offset: 64n }),
   generationNumber: createWorkingGenerationNumber({ value: 7n }),
   mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(1) }),
 });
@@ -72,7 +71,6 @@ describe("writer publication guard", () => {
       mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(9) }),
     });
     const successor = createSuccessorWorkingGenerationIdentity({
-      commitReference: createTestingHomeRecordReference({ offset: 128n }),
       mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(2) }),
       previous: baseWorkingGeneration,
     });
@@ -89,7 +87,6 @@ describe("writer publication guard", () => {
       captured,
       current: current({
         workingGeneration: createSuccessorWorkingGenerationIdentity({
-          commitReference: createTestingHomeRecordReference({ offset: 128n }),
           mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(2) }),
           previous: baseWorkingGeneration,
         }),

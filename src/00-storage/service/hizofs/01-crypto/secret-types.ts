@@ -32,6 +32,12 @@ export class FileSystemRootKey {
  * Exact composition roots use this bridge when an opaque cross-realm grant
  * must carry the Root Key without publishing it through feature-layer DTOs.
  */
+export function cloneFileSystemRootKey({ rootKey }: { rootKey: FileSystemRootKey }): FileSystemRootKey {
+  const secret = SECRET_BYTES.get(rootKey);
+  if (secret === undefined || rootKey.isDestroyed()) throw new TypeError('File System Root Key has been destroyed');
+  return FileSystemRootKey.create({ bytes: secret });
+}
+
 export async function withFileSystemRootKeyBytes<T>({ rootKey, useBytes }: {
   rootKey: FileSystemRootKey;
   useBytes: ({ bytes }: { bytes: Uint8Array }) => Promise<T> | T;

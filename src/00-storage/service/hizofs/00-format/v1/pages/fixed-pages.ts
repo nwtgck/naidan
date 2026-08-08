@@ -186,24 +186,40 @@ export function decodeInodeBranchPage({ bytes, isRoot }: { bytes: Uint8Array; is
   };
 }
 
+export function assertFileExtentLeafEntryValid({ entry }: { entry: FileExtentLeafEntry }): void {
+  if (!Number.isInteger(entry.byteLength) || entry.byteLength < 1 || entry.byteLength > HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes) {
+    throw new RangeError('extent byte length is outside the File Data plaintext bound');
+  }
+  if (!Number.isInteger(entry.dataOffset) || entry.dataOffset < 0 || entry.dataOffset > 0xffff_ffff) {
+    throw new RangeError('extent data offset is outside u32');
+  }
+  if (entry.dataOffset + entry.byteLength > HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes) {
+    throw new RangeError('extent data range exceeds the maximum File Data payload');
+  }
+  if (entry.fileOffset + BigInt(entry.byteLength) > UINT64_MAXIMUM) {
+    throw new RangeError('extent file range exceeds u64');
+  }
+  assertReferenceKind({ expected: RECORD_KINDS.file_data, label: 'extent File Data reference', reference: entry.fileDataHomeRef });
+}
+
 function validateExtentEntries({ entries }: { entries: readonly FileExtentLeafEntry[] }): void {
   let previousEnd: bigint | undefined;
   for (const entry of entries) {
-    if (!Number.isInteger(entry.byteLength) || entry.byteLength < 1 || entry.byteLength > HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes) {
-      throw new RangeError('extent byte length is outside the File Data plaintext bound');
-    }
-    if (!Number.isInteger(entry.dataOffset) || entry.dataOffset < 0 || entry.dataOffset > 0xffff_ffff) {
-      throw new RangeError('extent data offset is outside u32');
-    }
-    if (entry.dataOffset + entry.byteLength > HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes) {
-      throw new RangeError('extent data range exceeds the maximum File Data payload');
-    }
-    const end = entry.fileOffset + BigInt(entry.byteLength);
-    if (end > UINT64_MAXIMUM) throw new RangeError('extent file range exceeds u64');
+    assertFileExtentLeafEntryValid({ entry });
     if (previousEnd !== undefined && entry.fileOffset < previousEnd) throw new TypeError('extent entries overlap or are not strictly ordered');
-    assertReferenceKind({ expected: RECORD_KINDS.file_data, label: 'extent File Data reference', reference: entry.fileDataHomeRef });
-    previousEnd = end;
+    previousEnd = entry.fileOffset + BigInt(entry.byteLength);
   }
+}
+
+
+export function assertFileExtentBranchEntryValid({ entry }: {
+  entry: UInt64BranchEntry<FileOffset>;
+}): void {
+  assertReferenceKind({
+    expected: RECORD_KINDS.file_extent_page,
+    label: 'branch child reference',
+    reference: entry.childPageHomeRef,
+  });
 }
 
 export function encodeFileExtentPage({ isRoot, page }: { isRoot: boolean; page: FileExtentPage }): Uint8Array {

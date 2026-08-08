@@ -24,6 +24,7 @@ describe("DirtyResourceBudget", () => {
       acceptedMutationCount: 0,
       dirtyMetadataBytes: 7,
       pendingAdmissionCount: 1,
+      stagedCommitMaterializationHeadroomBytes: 0,
       unpublishedPhysicalBytes: 11,
     });
 
@@ -33,6 +34,7 @@ describe("DirtyResourceBudget", () => {
       acceptedMutationCount: 1,
       dirtyMetadataBytes: 7,
       pendingAdmissionCount: 0,
+      stagedCommitMaterializationHeadroomBytes: 0,
       unpublishedPhysicalBytes: 11,
     });
   });
@@ -53,6 +55,7 @@ describe("DirtyResourceBudget", () => {
       acceptedMutationCount: 0,
       dirtyMetadataBytes: 7,
       pendingAdmissionCount: 1,
+      stagedCommitMaterializationHeadroomBytes: 0,
       unpublishedPhysicalBytes: 11,
     });
     admission.commitAccepted();
@@ -60,6 +63,7 @@ describe("DirtyResourceBudget", () => {
       acceptedMutationCount: 1,
       dirtyMetadataBytes: 7,
       pendingAdmissionCount: 0,
+      stagedCommitMaterializationHeadroomBytes: 0,
       unpublishedPhysicalBytes: 11,
     });
   });
@@ -79,6 +83,7 @@ describe("DirtyResourceBudget", () => {
       acceptedMutationCount: 0,
       dirtyMetadataBytes: 0,
       pendingAdmissionCount: 1,
+      stagedCommitMaterializationHeadroomBytes: 0,
       unpublishedPhysicalBytes: 0,
     });
 
@@ -87,6 +92,7 @@ describe("DirtyResourceBudget", () => {
       acceptedMutationCount: 0,
       dirtyMetadataBytes: 0,
       pendingAdmissionCount: 0,
+      stagedCommitMaterializationHeadroomBytes: 0,
       unpublishedPhysicalBytes: 0,
     });
   });
@@ -104,6 +110,7 @@ describe("DirtyResourceBudget", () => {
       acceptedMutationCount: 0,
       dirtyMetadataBytes: 0,
       pendingAdmissionCount: 0,
+      stagedCommitMaterializationHeadroomBytes: 0,
       unpublishedPhysicalBytes: 0,
     });
   });
@@ -167,6 +174,7 @@ describe("DirtyResourceBudget", () => {
       acceptedMutationCount: 0,
       dirtyMetadataBytes: 0,
       pendingAdmissionCount: 0,
+      stagedCommitMaterializationHeadroomBytes: 0,
       unpublishedPhysicalBytes: 0,
     });
   });
@@ -181,4 +189,91 @@ describe("DirtyResourceBudget", () => {
 
     expect(() => admission.rollback()).toThrowError(expect.objectContaining({ code: "admission_closed" }));
   });
+  it("owns one staged Commit headroom across accepted replacement mutations", () => {
+    const value = budget();
+    const first = value.reserveAdmission({ dirtyMetadataBytes: 0, unpublishedPhysicalBytes: 0 });
+    first.replaceReservation({ dirtyMetadataBytes: 3, unpublishedPhysicalBytes: 4 });
+    first.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    first.commitAccepted();
+
+    const second = value.reserveAdmission({ dirtyMetadataBytes: 0, unpublishedPhysicalBytes: 0 });
+    second.replaceReservation({ dirtyMetadataBytes: 2, unpublishedPhysicalBytes: 3 });
+    second.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    second.commitAccepted();
+
+    expect(value.snapshot()).toMatchObject({
+      acceptedMutationCount: 2,
+      dirtyMetadataBytes: 10,
+      stagedCommitMaterializationHeadroomBytes: 5,
+      unpublishedPhysicalBytes: 12,
+    });
+  });
+
+  it("rolls back only the staged Commit headroom introduced by that admission", () => {
+    const value = budget();
+    const first = value.reserveAdmission({ dirtyMetadataBytes: 0, unpublishedPhysicalBytes: 0 });
+    first.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    first.rollback();
+    expect(value.snapshot()).toMatchObject({
+      dirtyMetadataBytes: 0,
+      stagedCommitMaterializationHeadroomBytes: 0,
+      unpublishedPhysicalBytes: 0,
+    });
+
+    const accepted = value.reserveAdmission({ dirtyMetadataBytes: 0, unpublishedPhysicalBytes: 0 });
+    accepted.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    accepted.commitAccepted();
+    const replacement = value.reserveAdmission({ dirtyMetadataBytes: 0, unpublishedPhysicalBytes: 0 });
+    replacement.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    replacement.rollback();
+    expect(value.snapshot()).toMatchObject({
+      dirtyMetadataBytes: 5,
+      stagedCommitMaterializationHeadroomBytes: 5,
+      unpublishedPhysicalBytes: 5,
+    });
+  });
+
+  it("charges each materialization append attempt as risk while retaining one retry headroom", () => {
+    const value = budget();
+    const admission = value.reserveAdmission({ dirtyMetadataBytes: 3, unpublishedPhysicalBytes: 4 });
+    admission.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    admission.commitAccepted();
+
+    const failed = value.beginStagedCommitMaterializationAttempt({ frameBytes: 5 });
+    expect(value.snapshot()).toMatchObject({
+      dirtyMetadataBytes: 13,
+      stagedCommitMaterializationHeadroomBytes: 5,
+      unpublishedPhysicalBytes: 14,
+    });
+    failed.fail();
+
+    const succeeded = value.beginStagedCommitMaterializationAttempt({ frameBytes: 5 });
+    expect(value.snapshot()).toMatchObject({
+      dirtyMetadataBytes: 18,
+      stagedCommitMaterializationHeadroomBytes: 5,
+      unpublishedPhysicalBytes: 19,
+    });
+    succeeded.completeReusableCandidate();
+    expect(value.snapshot()).toMatchObject({
+      dirtyMetadataBytes: 13,
+      stagedCommitMaterializationHeadroomBytes: 0,
+      unpublishedPhysicalBytes: 14,
+    });
+  });
+
+  it("refuses a materialization append attempt before I/O when retry headroom would exceed a hard limit", () => {
+    const value = budget({ maximumDirtyMetadataBytes: 9, maximumUnpublishedPhysicalBytes: 9 });
+    const admission = value.reserveAdmission({ dirtyMetadataBytes: 0, unpublishedPhysicalBytes: 0 });
+    admission.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    admission.commitAccepted();
+
+    expect(() => value.beginStagedCommitMaterializationAttempt({ frameBytes: 5 }))
+      .toThrowError(expect.objectContaining({ code: "dirty_metadata_byte_limit_reached" }));
+    expect(value.snapshot()).toMatchObject({
+      dirtyMetadataBytes: 5,
+      stagedCommitMaterializationHeadroomBytes: 5,
+      unpublishedPhysicalBytes: 5,
+    });
+  });
+
 });

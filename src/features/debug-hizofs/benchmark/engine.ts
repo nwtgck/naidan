@@ -45,7 +45,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 42 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 43 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -377,7 +377,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 29,
+    schemaVersion: 30,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -1915,6 +1915,11 @@ function createHizoFSDiagnostics({
 }): HizoFSBenchmarkDiagnostics | undefined {
   if (before === undefined || after === undefined) return undefined;
   const counters = subtractBackingStoreCounters({ before: before.counters, after: after.counters });
+  const runtime = subtractHizoFSRuntimeDiagnostics({
+    before: before.runtime,
+    after: after.runtime,
+  });
+  const commitMaterializations = fileSystemCommitMaterializations({ runtime });
   return {
     backingStore: counters,
     objects: {
@@ -1934,10 +1939,7 @@ function createHizoFSDiagnostics({
       plaintextBytesProcessed,
       ciphertextBytesWritten: counters.bytesWritten,
     },
-    runtime: subtractHizoFSRuntimeDiagnostics({
-      before: before.runtime,
-      after: after.runtime,
-    }),
+    runtime,
     amplification: {
       backingReadBytesPerLogicalByte: ratioOptional({
         numerator: counters.bytesRead,
@@ -1951,12 +1953,25 @@ function createHizoFSDiagnostics({
         numerator: Math.max(after.objectCount - before.objectCount, 0),
         denominator: operationCount,
       }),
+      commitMaterializationsPerOperation: commitMaterializations === undefined
+        ? undefined
+        : ratioOptional({ numerator: commitMaterializations, denominator: operationCount }),
       superblockPublicationsPerOperation: ratioOptional({
         numerator: Math.max(after.superblockPublications - before.superblockPublications, 0),
         denominator: operationCount,
       }),
     },
   };
+}
+
+function fileSystemCommitMaterializations({ runtime }: {
+  runtime: HizoFSBenchmarkDiagnostics['runtime'];
+}): number | undefined {
+  switch (runtime.type) {
+  case 'measured': return runtime.records.file_system_commit.writeOperations;
+  case 'unavailable': return undefined;
+  default: return runtime satisfies never;
+  }
 }
 
 function unavailableRuntimeDiagnostics({ reason }: {
@@ -2504,15 +2519,17 @@ function aggregateHizoFSDiagnosticsTotals({
     ciphertextBytesWritten += diagnostic.crypto.ciphertextBytesWritten;
   }
   for (const sample of samples) operationCount += sample.operationCount;
+  const runtime = aggregateHizoFSRuntimeDiagnostics({
+    diagnostics: diagnostics.map(diagnostic => diagnostic.runtime),
+  });
+  const commitMaterializations = fileSystemCommitMaterializations({ runtime });
 
   return {
     backingStore,
     objectChanges: { created, removed },
     commits: { superblockPublications },
     crypto: { plaintextBytesProcessed, ciphertextBytesWritten },
-    runtime: aggregateHizoFSRuntimeDiagnostics({
-      diagnostics: diagnostics.map(diagnostic => diagnostic.runtime),
-    }),
+    runtime,
     amplification: {
       backingReadBytesPerLogicalByte: ratioOptional({
         numerator: backingStore.bytesRead,
@@ -2526,6 +2543,9 @@ function aggregateHizoFSDiagnosticsTotals({
         numerator: created,
         denominator: operationCount,
       }),
+      commitMaterializationsPerOperation: commitMaterializations === undefined
+        ? undefined
+        : ratioOptional({ numerator: commitMaterializations, denominator: operationCount }),
       superblockPublicationsPerOperation: ratioOptional({
         numerator: superblockPublications,
         denominator: operationCount,

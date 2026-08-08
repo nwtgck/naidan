@@ -21,6 +21,15 @@ function commitReference(seed: number) {
   } });
 }
 
+function pageReference(seed: number) {
+  return createHomeRecordReference({ fields: {
+    byteOffset: createUInt64({ value: BigInt(seed * 64) }),
+    frameLength: 96,
+    recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    segmentId: parseSegmentId({ bytes: Uint8Array.from({ length: 16 }, (_, index) => seed + index) }),
+  } });
+}
+
 describe("maintenance root registry", () => {
   it("captures every explicit root category under one epoch", () => {
     const key = coordinationKey();
@@ -30,13 +39,15 @@ describe("maintenance root registry", () => {
     registry.acquireInspectorPinnedRoot({ commitReference: commitReference(3), coordinationKey: key });
     registry.acquireWriterDependencyRoot({ commitReference: commitReference(4), coordinationKey: key });
     registry.acquireUnknownFeatureRoot({ commitReference: commitReference(5), coordinationKey: key });
+    registry.acquireWriterWorkingPageRoot({ pageReference: pageReference(6), coordinationKey: key });
 
     const capture = registry.captureRoots({ coordinationKey: key });
-    expect(capture.maintenanceRootEpoch).toBe(5);
+    expect(capture.maintenanceRootEpoch).toBe(6);
     expect(capture.rootSets.readerPinnedRoots).toHaveLength(1);
     expect(capture.rootSets.sourceSegmentPinnedRoots).toHaveLength(1);
     expect(capture.rootSets.inspectorPinnedRoots).toHaveLength(1);
     expect(capture.rootSets.writerDependencyRoots).toHaveLength(1);
+    expect(capture.rootSets.writerWorkingPageRoots).toEqual([pageReference(6)]);
     expect(capture.rootSets.unknownFeatureRoots).toHaveLength(1);
     capture.release();
   });
@@ -80,6 +91,10 @@ describe("maintenance root registry", () => {
     const capture = registry.captureRoots({ coordinationKey: key });
     expect(() => registry.acquireUnknownFeatureRoot({
       commitReference: commitReference(1),
+      coordinationKey: key,
+    })).toThrowError(expect.objectContaining({ code: "registration_blocked" }));
+    expect(() => registry.acquireWriterWorkingPageRoot({
+      pageReference: pageReference(2),
       coordinationKey: key,
     })).toThrowError(expect.objectContaining({ code: "registration_blocked" }));
     expect(() => registry.captureRoots({ coordinationKey: key }))

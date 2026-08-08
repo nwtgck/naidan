@@ -18,8 +18,11 @@ import { WorkingGenerationCoordinatorError } from "@/00-storage/service/hizofs/r
 import {
   createAuthenticatedApplicationGenerationDescriptor,
   createAuthenticatedDurableApplicationGenerationAuthority,
+  createAuthenticatedStagedApplicationGenerationDescriptor,
   type AuthenticatedApplicationGenerationDescriptor,
   type AuthenticatedDurableApplicationGenerationAuthority,
+  type AuthenticatedStagedApplicationGenerationDescriptor,
+  type AuthenticatedWorkingApplicationGenerationDescriptor,
 } from "@/00-storage/service/hizofs/runtime/authenticated-application-generation";
 import {
   createDurableGenerationIdentity,
@@ -130,12 +133,17 @@ import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/
 import type { ContainerCoordinationKey } from "@/00-storage/service/hizofs/filesystem/container-coordination-key";
 import { createFileExtentTreePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/file-extent-tree";
 import {
+  materializeStagedMutationCommitCandidateThroughPort,
   prepareDeferredMutationCommitPublication,
+  prepareStagedMutationCommit,
   publishPreparedMutationCommit,
   publishPreparedMutationCommitCandidateThroughPort,
   type DeferredPreparedMutationCommitPublication,
+  type DetachablePreparedMutationCommitPublicationPort,
   type PreparedMutationCommitCandidate,
+  STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES,
   type PublishedPreparedMutationCommit,
+  type StagedPreparedMutationCommit,
 } from "@/00-storage/service/hizofs/filesystem/mutation/prepared-mutation-commit-publisher";
 import {
   createRootInodeTablePageStore,
@@ -175,6 +183,7 @@ import type {
 } from "@/00-storage/service/hizofs/filesystem/reflink/whole-file-reflink-plan";
 import {
   FileSystemRootKey,
+  cloneFileSystemRootKey,
   deriveContainerCoordinationScopeTokenValue,
   generateFileSystemId,
   generateBenchmarkSecret,
@@ -200,7 +209,11 @@ import {
   type HizoFSWritableBackend,
   type HizoFSWritableFile,
 } from "@/00-storage/service/hizofs/physical-store/backend";
-import { OpfsWritableBackend } from "@/00-storage/service/hizofs/physical-store/opfs/opfs-writable-backend";
+import {
+  OpfsWritableBackend,
+  type OpfsWritableBackendFileHandleCacheDiagnosticsPort,
+  type OpfsWritableBackendFileHandleCachePolicy,
+} from "@/00-storage/service/hizofs/physical-store/opfs/opfs-writable-backend";
 import { HizoFSRuntimeDiagnosticsAccumulator, type HizoFSRuntimeDiagnosticPhase, type HizoFSRuntimeDiagnosticsSnapshot } from "@/00-storage/service/hizofs/diagnostics/runtime-diagnostics";
 import type { ContainerRuntimeMaintenanceRootCapture } from "@/00-storage/service/hizofs/runtime/container-runtime";
 import type { SessionOperationAuthority } from "@/00-storage/service/hizofs/runtime/session-lifecycle";
@@ -268,6 +281,51 @@ const APPLICATION_METADATA_RECORD_CACHE_POLICY = Object.freeze({
   maximumBytes: 8 * 1024 * 1024,
   maximumEntries: 16 * 1024,
 });
+
+export const DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT = 1_024;
+
+function createHizoFSOpfsFileHandleCachePolicy({ diagnostics, maximumEntries }: {
+  diagnostics: HizoFSRuntimeDiagnosticsAccumulator | undefined;
+  maximumEntries: number;
+}): OpfsWritableBackendFileHandleCachePolicy {
+  const segmentPrefix = `${HIZOFS_V1_FORMAT_CONSTANTS.container.segmentDirectoryName}/`;
+  const cacheDiagnostics: OpfsWritableBackendFileHandleCacheDiagnosticsPort | undefined = diagnostics === undefined
+    ? undefined
+    : Object.freeze({
+      recordEvent: ({ event }) => diagnostics.recordCacheEvent({
+        cache: "backingFileHandle",
+        event,
+      }),
+      setUsage: ({ entries }) => diagnostics.setCacheUsage({
+        bytes: 0,
+        cache: "backingFileHandle",
+        entries,
+      }),
+    });
+  return Object.freeze({
+    diagnostics: cacheDiagnostics,
+    maximumEntries,
+    // WHY: authenticated Segment IDs bind immutable segment paths and HizoFS
+    // never reuses them. Authority files such as Superblocks and Unlock
+    // Envelopes remain uncached so every authority observation reacquires the
+    // live OPFS entry rather than trusting a retained file capability.
+    shouldCache: ({ path }) => path.startsWith(segmentPrefix),
+  });
+}
+
+function createHizoFSOpfsWritableBackend({ diagnostics, fileHandleCacheEntryLimit, root }: {
+  diagnostics: HizoFSRuntimeDiagnosticsAccumulator | undefined;
+  fileHandleCacheEntryLimit: number;
+  root: FileSystemDirectoryHandle;
+}): OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes> {
+  return new OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>({
+    fileHandleCachePolicy: createHizoFSOpfsFileHandleCachePolicy({
+      diagnostics,
+      maximumEntries: fileHandleCacheEntryLimit,
+    }),
+    root,
+  });
+}
 
 async function issueHizoFSWorkerMountGrant({
   accessMode,
@@ -649,7 +707,7 @@ async function runCredentialPublicationOperation<Value>({
   // may already own the foreground writer and must be allowed to finish before
   // the management barrier captures and publishes its accepted generation.
   const writer = await runtimeSession.acquireWriter();
-  const barrier = managementRuntimeHost.openManagementCleanHeadBarrier();
+  const barrier = managementRuntimeHost.openManagementCleanHeadBarrier({ writerOwnership: "caller_owned" });
   const failures: unknown[] = [];
   let value: Value | undefined;
   try {
@@ -1036,11 +1094,13 @@ export async function openAuthenticatedDevelopmentWritableContainerCapability({
  * then delegates to the backend-independent authenticated capability open.
  */
 export async function openBrowserAuthenticatedDevelopmentWritableContainerCapability({
+  backingFileHandleCacheEntryLimit,
   containerRoot,
   passphrase,
   runtimeDiagnostics,
   verifyProofAuthority,
 }: {
+  backingFileHandleCacheEntryLimit: number;
   containerRoot: FileSystemDirectoryHandle;
   passphrase: string;
   runtimeDiagnostics?: HizoFSRuntimeDiagnosticsAccumulator;
@@ -1049,7 +1109,11 @@ export async function openBrowserAuthenticatedDevelopmentWritableContainerCapabi
     rootKeyProof: FileSystemRootKeyProofDerivationCapability;
   }) => Promise<void>;
 }): Promise<AuthenticatedDevelopmentWritableContainerCapabilityOpenResult> {
-  const backend = new OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>({ root: containerRoot });
+  const backend = createHizoFSOpfsWritableBackend({
+    diagnostics: runtimeDiagnostics,
+    fileHandleCacheEntryLimit: backingFileHandleCacheEntryLimit,
+    root: containerRoot,
+  });
   return await openAuthenticatedDevelopmentWritableContainerCapability({
     backend: runtimeDiagnostics === undefined
       ? backend
@@ -1076,7 +1140,11 @@ export async function openBrowserAuthenticatedReadOnlyContainerCapability({
     rootKeyProof: FileSystemRootKeyProofDerivationCapability;
   }) => Promise<void>;
 }): Promise<AuthenticatedReadOnlyContainerCapabilityOpenResult> {
-  const backend = new OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>({ root: containerRoot });
+  const backend = createHizoFSOpfsWritableBackend({
+    diagnostics: undefined,
+    fileHandleCacheEntryLimit: DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
+    root: containerRoot,
+  });
   switch (openProfile) {
   case "normal_read":
     return await openAuthenticatedReadOnlyContainerCapability({ backend, passphrase, verifyProofAuthority });
@@ -1154,7 +1222,7 @@ function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): b
  * when several accepted generations supersede one another in memory.
  */
 function createMutationCandidatePlanningBaseCommit({ base }: {
-  base: AuthenticatedApplicationGenerationDescriptor;
+  base: AuthenticatedWorkingApplicationGenerationDescriptor;
 }): FileSystemCommitPayload {
   return createFileSystemCommitPayload({ payload: {
     ...base.commit,
@@ -1262,7 +1330,14 @@ function createPreparedMutationSelectedCandidatePublisher({
       default: return outcome satisfies never;
       }
     },
-    publish: async () => {
+    publish: async ({ onCandidateMaterialized }) => {
+      onCandidateMaterialized({
+        candidateDurableIdentity: createDurableGenerationIdentity({
+          commitReference: deferred.candidate.commitHomeRef,
+          commitSequence: deferred.candidate.commitPayload.commitSequence,
+          mutationId: deferred.candidate.commitPayload.mutationId,
+        }),
+      });
       try {
         const publication = await publishPreparedMutationCommitCandidateThroughPort({
           assertPublicationAllowed: assertRuntimePublicationAllowed,
@@ -1348,6 +1423,292 @@ function createPreparedMutationSelectedCandidatePublisher({
 }
 
 
+type StagedMutationCommitMaterializationAuthority =
+  DetachablePreparedMutationCommitPublicationPort & Readonly<{
+    abandon: () => void;
+  }>;
+
+function createPublishedStagedSuccessor({ candidate, stagedSuccessor, superblock }: {
+  candidate: PreparedMutationCommitCandidate;
+  stagedSuccessor: AuthenticatedStagedApplicationGenerationDescriptor;
+  superblock: Parameters<typeof createAuthenticatedDurableApplicationGenerationAuthority>[0]["superblock"];
+}): AuthenticatedApplicationGenerationDescriptor {
+  if (!bytesEqual({
+    left: encodeFileSystemCommitPayload({ payload: candidate.commitPayload }),
+    right: encodeFileSystemCommitPayload({ payload: stagedSuccessor.commit }),
+  })) {
+    throw new TypeError("materialized staged Commit does not match its accepted working payload");
+  }
+  return createAuthenticatedApplicationGenerationDescriptor({
+    commit: stagedSuccessor.commit,
+    commitReference: candidate.commitHomeRef,
+    durableAuthority: createAuthenticatedDurableApplicationGenerationAuthority({
+      commit: stagedSuccessor.commit,
+      commitReference: candidate.commitHomeRef,
+      superblock,
+    }),
+    workingIdentity: stagedSuccessor.workingIdentity,
+  });
+}
+
+/**
+ * Owns a Commit payload that is already accepted as the latest working
+ * generation but has no physical Commit frame yet. Materialization happens at
+ * flush time under a fresh short-lived metadata writer authority. The runtime
+ * receives the exact physical candidate identity before the first Superblock
+ * authority write so maintenance roots and outcome-unknown handling never
+ * invent or guess a Commit reference.
+ */
+function createStagedMutationSelectedCandidatePublisher({
+  assertRuntimePublicationAllowed,
+  baseDurableAuthority,
+  createMaterializationAuthority,
+  releasePublicationResources = () => undefined,
+  staged,
+  stagedSuccessor,
+}: {
+  assertRuntimePublicationAllowed: () => void;
+  baseDurableAuthority: AuthenticatedDurableApplicationGenerationAuthority;
+  createMaterializationAuthority: () => Promise<StagedMutationCommitMaterializationAuthority>;
+  releasePublicationResources?: () => void;
+  staged: StagedPreparedMutationCommit;
+  stagedSuccessor: AuthenticatedStagedApplicationGenerationDescriptor;
+}): ContainerRuntimeSelectedCandidatePublisher {
+  if (!sameDurableGenerationIdentity({
+    left: stagedSuccessor.durableAuthority.identity,
+    right: baseDurableAuthority.identity,
+  })) {
+    throw new TypeError("staged mutation successor does not retain its durable publication base");
+  }
+  if (!bytesEqual({
+    left: encodeFileSystemCommitPayload({ payload: staged.commitPayload }),
+    right: encodeFileSystemCommitPayload({ payload: stagedSuccessor.commit }),
+  })) {
+    throw new TypeError("staged mutation publisher payload does not match its working successor");
+  }
+  let deferred: DeferredPreparedMutationCommitPublication | undefined;
+  let closed = false;
+  let publicationResourcesReleased = false;
+  const releaseRetainedPublicationResources = (): void => {
+    if (publicationResourcesReleased) return;
+    publicationResourcesReleased = true;
+    releasePublicationResources();
+  };
+
+  const candidateDurableIdentity = ({ candidate }: {
+    candidate: PreparedMutationCommitCandidate;
+  }): DurableGenerationIdentity => createDurableGenerationIdentity({
+    commitReference: candidate.commitHomeRef,
+    commitSequence: candidate.commitPayload.commitSequence,
+    mutationId: candidate.commitPayload.mutationId,
+  });
+
+  const abandonDeferred = ({ value }: {
+    value: DeferredPreparedMutationCommitPublication;
+  }): void => value.publicationPort.abandon();
+
+  return Object.freeze({
+    abandon: () => {
+      if (closed) return;
+      closed = true;
+      const current = deferred;
+      deferred = undefined;
+      try {
+        if (current !== undefined) abandonDeferred({ value: current });
+      } finally {
+        releaseRetainedPublicationResources();
+      }
+    },
+    completeOutcomeUnknownResolution: ({ outcome }) => {
+      const current = deferred;
+      if (current === undefined) {
+        throw new TypeError("staged mutation has no materialized publication authority to resolve");
+      }
+      try {
+        switch (outcome) {
+        case "confirmed_not_published":
+          current.publicationPort.completeExternallyResolvedPublication({ outcome: "not_published" });
+          break;
+        case "confirmed_published":
+          current.publicationPort.completeExternallyResolvedPublication({ outcome: "published" });
+          break;
+        default: outcome satisfies never;
+        }
+      } finally {
+        closed = true;
+        deferred = undefined;
+        releaseRetainedPublicationResources();
+      }
+    },
+    publish: async ({ onCandidateMaterialized, onMaterializationAppendAttempt }) => {
+      if (closed) throw new TypeError("staged mutation selected-candidate publisher is closed");
+      let current = deferred;
+      if (current === undefined) {
+        let materializationAuthority: StagedMutationCommitMaterializationAuthority | undefined;
+        let materializationResourceAttempt: ReturnType<typeof onMaterializationAppendAttempt> | undefined;
+        try {
+          materializationAuthority = await createMaterializationAuthority();
+          const candidate = await materializeStagedMutationCommitCandidateThroughPort({
+            assertPublicationAllowed: assertRuntimePublicationAllowed,
+            base: baseDurableAuthority.superblock,
+            beforeAppendAttempt: () => {
+              if (materializationResourceAttempt !== undefined) {
+                throw new TypeError("staged Commit materialization append attempt was already opened");
+              }
+              materializationResourceAttempt = onMaterializationAppendAttempt({
+                frameBytes: STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES,
+              });
+            },
+            publicationPort: materializationAuthority,
+            staged,
+          });
+          const detachedPublicationPort = materializationAuthority.detachPreparedCandidatePublication({ candidate });
+          detachedPublicationPort.completeWorkingAcceptance();
+          const materialized = Object.freeze({ candidate, publicationPort: detachedPublicationPort });
+          try {
+            onCandidateMaterialized({ candidateDurableIdentity: candidateDurableIdentity({ candidate }) });
+            materializationResourceAttempt?.completeReusableCandidate();
+            materializationResourceAttempt = undefined;
+          } catch (cause: unknown) {
+            const failures: unknown[] = [cause];
+            try {
+              materializationResourceAttempt?.fail();
+              materializationResourceAttempt = undefined;
+            } catch (cleanupCause: unknown) {
+              failures.push(cleanupCause);
+            }
+            try {
+              detachedPublicationPort.abandon();
+            } catch (cleanupCause: unknown) {
+              failures.push(cleanupCause);
+            }
+            return Object.freeze({
+              cause: failures.length === 1
+                ? cause
+                : new AggregateError(failures, "staged Commit materialization binding cleanup failed"),
+              refreshedDurableAuthority: baseDurableAuthority,
+              type: "not_published" as const,
+            });
+          }
+          deferred = materialized;
+          current = materialized;
+        } catch (cause: unknown) {
+          const failures: unknown[] = [cause];
+          try {
+            materializationResourceAttempt?.fail();
+          } catch (cleanupCause: unknown) {
+            failures.push(cleanupCause);
+          }
+          try {
+            materializationAuthority?.abandon();
+          } catch (cleanupCause: unknown) {
+            failures.push(cleanupCause);
+          }
+          return Object.freeze({
+            cause: failures.length === 1
+              ? cause
+              : new AggregateError(failures, "staged Commit materialization and authority cleanup both failed"),
+            refreshedDurableAuthority: baseDurableAuthority,
+            type: "not_published" as const,
+          });
+        }
+      } else {
+        onCandidateMaterialized({
+          candidateDurableIdentity: candidateDurableIdentity({ candidate: current.candidate }),
+        });
+      }
+
+      try {
+        const publication = await publishPreparedMutationCommitCandidateThroughPort({
+          assertPublicationAllowed: assertRuntimePublicationAllowed,
+          base: baseDurableAuthority.superblock,
+          candidate: current.candidate,
+          publicationPort: current.publicationPort,
+        });
+        return Object.freeze({
+          durableSuccessor: createPublishedStagedSuccessor({
+            candidate: current.candidate,
+            stagedSuccessor,
+            superblock: publication.superblock,
+          }),
+          type: "published" as const,
+        });
+      } catch (cause: unknown) {
+        if (!(cause instanceof PreparedMutationCommitPublicationError)) {
+          return Object.freeze({
+            cause,
+            refreshedDurableAuthority: baseDurableAuthority,
+            type: "not_published" as const,
+          });
+        }
+        switch (cause.outcome) {
+        case "not_published": return Object.freeze({
+          cause,
+          refreshedDurableAuthority: baseDurableAuthority,
+          type: "not_published" as const,
+        });
+        case "committed_redundancy_degraded":
+        case "outcome_resolution_required":
+        case undefined: break;
+        default: return cause.outcome satisfies never;
+        }
+
+        let resolution;
+        try {
+          resolution = await current.publicationPort.resolvePublication({
+            base: baseDurableAuthority.superblock,
+            intendedLogicalState: cause.intendedLogicalState,
+          });
+        } catch (resolutionCause: unknown) {
+          return Object.freeze({
+            cause: new AggregateError(
+              [cause, resolutionCause],
+              "staged mutation publication outcome could not be resolved",
+            ),
+            type: "outcome_unknown" as const,
+          });
+        }
+        switch (resolution.type) {
+        case "not_published": return Object.freeze({
+          cause,
+          refreshedDurableAuthority: createAuthenticatedDurableApplicationGenerationAuthority({
+            commit: baseDurableAuthority.commit,
+            commitReference: baseDurableAuthority.commitReference,
+            superblock: resolution.superblock,
+          }),
+          type: "not_published" as const,
+        });
+        case "publication_conflict": return Object.freeze({
+          cause: new AggregateError([cause], "staged mutation publication resolved to a conflicting durable authority"),
+          type: "outcome_unknown" as const,
+        });
+        case "published":
+          switch (resolution.superblock.copyState) {
+          case "normal": return Object.freeze({
+            durableSuccessor: createPublishedStagedSuccessor({
+              candidate: current.candidate,
+              stagedSuccessor,
+              superblock: resolution.superblock,
+            }),
+            type: "published" as const,
+          });
+          case "superblock_redundancy_degraded": return Object.freeze({
+            cause: new AggregateError(
+              [cause],
+              "staged mutation committed without converged Superblock copies",
+            ),
+            type: "outcome_unknown" as const,
+          });
+          default: return resolution.superblock.copyState satisfies never;
+          }
+        default: return resolution satisfies never;
+        }
+      }
+    },
+  });
+}
+
+
 /**
  * Transfers one exact detached candidate into runtime ownership. A rejected
  * admission leaves the publisher owned by the caller; a successful call makes
@@ -1381,6 +1742,81 @@ function installPreparedMutationSelectedCandidate({
   admission.commitAcceptedSuccessor({ publisher, successor });
   deferred.publicationPort.completeWorkingAcceptance();
   return publisher;
+}
+
+function prepareAndInstallStagedMutationSelectedCandidate({
+  admission,
+  assertCandidatePreparationAllowed,
+  assertRuntimePublicationAllowed,
+  base,
+  commitPayload,
+  createMaterializationAuthority,
+  prepareWorkingAcceptance,
+  releasePublicationResources = () => undefined,
+  resourceUsage,
+}: {
+  admission: ContainerRuntimeAcceptedMutationAdmission;
+  assertCandidatePreparationAllowed: () => void;
+  assertRuntimePublicationAllowed: () => void;
+  base: AuthenticatedWorkingApplicationGenerationDescriptor;
+  commitPayload: FileSystemCommitPayload;
+  createMaterializationAuthority: () => Promise<StagedMutationCommitMaterializationAuthority>;
+  prepareWorkingAcceptance: () => void;
+  releasePublicationResources?: () => void;
+  resourceUsage: AuthenticatedMutationResourceUsage;
+}): Readonly<{
+  publisher: ContainerRuntimeSelectedCandidatePublisher;
+  successor: AuthenticatedStagedApplicationGenerationDescriptor;
+}> {
+  let publisher: ContainerRuntimeSelectedCandidatePublisher | undefined;
+  try {
+    const staged = prepareStagedMutationCommit({
+      assertPublicationAllowed: assertCandidatePreparationAllowed,
+      base: base.durableAuthority.superblock,
+      commitPayload,
+    });
+    const successor = createAuthenticatedStagedApplicationGenerationDescriptor({
+      commit: staged.commitPayload,
+      durableAuthority: base.durableAuthority,
+      workingIdentity: createSuccessorWorkingGenerationIdentity({
+        mutationId: staged.commitPayload.mutationId,
+        previous: base.workingIdentity,
+      }),
+    });
+    publisher = createStagedMutationSelectedCandidatePublisher({
+      assertRuntimePublicationAllowed,
+      baseDurableAuthority: base.durableAuthority,
+      createMaterializationAuthority,
+      releasePublicationResources,
+      staged,
+      stagedSuccessor: successor,
+    });
+    admission.replaceResourceReservation({
+      dirtyMetadataBytes: resourceUsage.appendedMetadataFrameBytes,
+      unpublishedPhysicalBytes: resourceUsage.unpublishedPhysicalBytes,
+    });
+    admission.reserveStagedCommitMaterializationHeadroom({
+      bytes: STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES,
+    });
+    prepareWorkingAcceptance();
+    admission.commitAcceptedStagedSuccessor({ publisher, successor });
+    return Object.freeze({ publisher, successor });
+  } catch (cause: unknown) {
+    const failures: unknown[] = [cause];
+    try {
+      if (publisher === undefined) releasePublicationResources();
+      else publisher.abandon();
+    } catch (cleanupCause: unknown) {
+      failures.push(cleanupCause);
+    }
+    try {
+      admission.rollback();
+    } catch (cleanupCause: unknown) {
+      failures.push(cleanupCause);
+    }
+    if (failures.length === 1) throw cause;
+    throw new AggregateError(failures, "staged mutation admission cleanup failed");
+  }
 }
 
 async function prepareAndInstallDeferredMutationSelectedCandidate({
@@ -2073,9 +2509,21 @@ export async function publishAuthenticatedOrdinaryEntryRemoval({
 }
 
 type AuthenticatedWritableApplicationGeneration =
+  AuthenticatedWorkingApplicationGenerationDescriptor & Readonly<{
+    resolver: ReadOnlyNamespaceResolver;
+  }>;
+
+type MaterializedAuthenticatedWritableApplicationGeneration =
   AuthenticatedApplicationGenerationDescriptor & Readonly<{
     resolver: ReadOnlyNamespaceResolver;
   }>;
+
+function requireMaterializedWritableGeneration({ generation }: {
+  generation: AuthenticatedWritableApplicationGeneration;
+}): MaterializedAuthenticatedWritableApplicationGeneration {
+  if ("commitReference" in generation) return generation;
+  throw new TypeError("operation requires a materialized writable application generation");
+}
 
 type AuthenticatedCredentialAuthorityUpdate = Readonly<{
   superblock: OpenedSuperblockCopies;
@@ -2107,7 +2555,13 @@ export type AuthenticatedApplicationReadWriteSessionResources = Readonly<{
     commitReference: HomeRecordReference;
     mutationPort: import("@/00-storage/service/hizofs/api").HizoFSApplicationMutationPort;
     namespace: HizoFSApplicationSessionNamespace;
-  }>;
+    releasePreparation?: () => void;
+  }> | Promise<Readonly<{
+    commitReference: HomeRecordReference;
+    mutationPort: import("@/00-storage/service/hizofs/api").HizoFSApplicationMutationPort;
+    namespace: HizoFSApplicationSessionNamespace;
+    releasePreparation?: () => void;
+  }>>;
   mutationPort: import("@/00-storage/service/hizofs/api").HizoFSApplicationMutationPort;
   namespace: HizoFSApplicationSessionNamespace;
   releaseResources: () => Promise<void>;
@@ -2177,7 +2631,7 @@ function openAcceptedApplicationMutationAdmission({
 }: {
   authenticatedGeneration: ContainerRuntimeAuthenticatedApplicationGeneration;
   dirtyMetadataBytes: number;
-  expectedBase: AuthenticatedApplicationGenerationDescriptor;
+  expectedBase: AuthenticatedWorkingApplicationGenerationDescriptor;
   unpublishedPhysicalBytes: number;
 }): ContainerRuntimeAcceptedMutationAdmission {
   try {
@@ -2205,11 +2659,11 @@ async function openStableAcceptedApplicationMutationAdmission({
 }: {
   authenticatedGeneration: ContainerRuntimeAuthenticatedApplicationGeneration;
   dirtyMetadataBytes: number;
-  expectedBase: AuthenticatedApplicationGenerationDescriptor;
+  expectedBase: AuthenticatedWorkingApplicationGenerationDescriptor;
   unpublishedPhysicalBytes: number;
 }): Promise<Readonly<{
   admission: ContainerRuntimeAcceptedMutationAdmission;
-  base: AuthenticatedApplicationGenerationDescriptor;
+  base: AuthenticatedWorkingApplicationGenerationDescriptor;
 }>> {
   try {
     return {
@@ -2314,6 +2768,46 @@ function writableGeneration({
   });
 }
 
+function writableGenerationFromDescriptor({
+  backend,
+  decodedInodeLeafPageIndexCache,
+  descriptor,
+  fileSystemId,
+  indexDiagnostics,
+  metadataRecordCache,
+  namespaceValidationCache,
+  recordDiagnostics,
+  rootKey,
+}: {
+  backend: HizoFSReadableBackend;
+  decodedInodeLeafPageIndexCache: DecodedInodeLeafPageIndexCache;
+  descriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
+  fileSystemId: OpenedEmptyEncryptedContainer["fileSystemId"];
+  indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
+  metadataRecordCache: AuthenticatedMetadataRecordCache;
+  namespaceValidationCache: ReadOnlyNamespaceValidationCache;
+  recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
+  rootKey: OpenedEmptyEncryptedContainer["rootKey"];
+}): AuthenticatedWritableApplicationGeneration {
+  return Object.freeze({
+    ...descriptor,
+    resolver: createAuthenticatedReadOnlyNamespaceResolver({
+      commit: descriptor.commit,
+      decodedInodeLeafPageIndexCache,
+      indexDiagnostics,
+      recordSource: createAuthenticatedNamespaceRecordSource({
+        backend,
+        diagnostics: recordDiagnostics,
+        fileSystemId,
+        metadataRecordCache,
+        relocationIndexRootPhysicalRef: descriptor.superblock.logicalState.relocationIndexRootPhysicalRef,
+        rootKey,
+      }),
+      validationCache: namespaceValidationCache,
+    }),
+  });
+}
+
 function stableGenerationNamespace({ current }: {
   current: () => AuthenticatedWritableApplicationGeneration;
 }): ReadOnlyNamespace {
@@ -2367,9 +2861,57 @@ function requireWritableFile({ inode }: {
  * Owns one mutable application generation without exposing its root key,
  * physical backend, authenticated writer, or Superblock authority. Every read
  * captures one immutable resolver. Every mutation runs under the runtime writer
- * lease, rechecks external authority, publishes a converged Commit, and only
- * then swaps the generation visible to later reads.
+ * lease and rechecks external authority before admitting a working generation.
+ * Runtime-owned background publication or an explicit durability barrier later
+ * advances that accepted generation to the durable Superblock authority.
  */
+function acquireWorkingGenerationRootDependency({ generation, runtimeHost }: {
+  generation: AuthenticatedWorkingApplicationGenerationDescriptor;
+  runtimeHost: Pick<
+    import("@/00-storage/service/hizofs/worker/runtime-host").HizoFSWorkerRuntimeHost,
+    "acquireWriterDependencyRoot" | "acquireWriterWorkingPageRoot"
+  >;
+}): Readonly<{ release: () => void }> {
+  switch (generation.workingRootAuthority.type) {
+  case "materialized_commit":
+    return runtimeHost.acquireWriterDependencyRoot({
+      commitReference: generation.workingRootAuthority.commitReference,
+    });
+  case "direct_working_pages": {
+    const registrations = [
+      runtimeHost.acquireWriterWorkingPageRoot({
+        pageReference: generation.workingRootAuthority.rootInodeTableRootHomeRef,
+      }),
+      ...(generation.workingRootAuthority.nestedSubvolumeTableRootHomeRef === null
+        ? []
+        : [runtimeHost.acquireWriterWorkingPageRoot({
+          pageReference: generation.workingRootAuthority.nestedSubvolumeTableRootHomeRef,
+        })]),
+    ];
+    let active = true;
+    return Object.freeze({
+      release: () => {
+        if (!active) return;
+        active = false;
+        const failures: unknown[] = [];
+        for (const registration of registrations) {
+          try {
+            registration.release();
+          } catch (cause: unknown) {
+            failures.push(cause);
+          }
+        }
+        if (failures.length === 1) throw failures[0];
+        if (failures.length > 1) {
+          throw new AggregateError(failures, "working generation root dependency cleanup failed");
+        }
+      },
+    });
+  }
+  default: return generation.workingRootAuthority satisfies never;
+  }
+}
+
 export function createAuthenticatedApplicationReadWriteSessionResources({
   authenticatedGeneration,
   backend,
@@ -2399,7 +2941,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   metadataRecordCachePolicy?: AuthenticatedMetadataRecordCachePolicy;
   runtimeHost: Pick<
     import("@/00-storage/service/hizofs/worker/runtime-host").HizoFSWorkerRuntimeHost,
-    "acquireWriterDependencyRoot"
+    "acquireWriterDependencyRoot" | "acquireWriterWorkingPageRoot" | "openManagementCleanHeadBarrier"
   >;
 }>): AuthenticatedApplicationReadWriteSessionResources {
   switch (writableProfile) {
@@ -2496,12 +3038,17 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     workingIdentity,
   });
   const generationFromDescriptor = ({ descriptor }: {
-    descriptor: AuthenticatedApplicationGenerationDescriptor;
-  }): AuthenticatedWritableApplicationGeneration => createGeneration({
-    commit: descriptor.commit,
-    commitReference: descriptor.commitReference,
-    durableAuthority: descriptor.durableAuthority,
-    workingIdentity: descriptor.workingIdentity,
+    descriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
+  }): AuthenticatedWritableApplicationGeneration => writableGenerationFromDescriptor({
+    backend,
+    decodedInodeLeafPageIndexCache,
+    descriptor,
+    fileSystemId: opened.fileSystemId,
+    indexDiagnostics,
+    metadataRecordCache,
+    namespaceValidationCache,
+    recordDiagnostics,
+    rootKey: opened.rootKey,
   });
   let generationDescriptor = authenticatedGeneration.capture();
   let generation = generationFromDescriptor({ descriptor: generationDescriptor });
@@ -2509,7 +3056,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     mutationIdentity({ mutationId: generationDescriptor.commit.mutationId }),
   ]);
   const adoptGenerationDescriptor = ({ descriptor }: {
-    descriptor: AuthenticatedApplicationGenerationDescriptor;
+    descriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
   }): AuthenticatedWritableApplicationGeneration => {
     generationDescriptor = descriptor;
     usedMutationIds.add(mutationIdentity({ mutationId: descriptor.commit.mutationId }));
@@ -2525,12 +3072,18 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   };
   const descriptorFromGeneration = ({ value }: {
     value: AuthenticatedWritableApplicationGeneration;
-  }): AuthenticatedApplicationGenerationDescriptor => createAuthenticatedApplicationGenerationDescriptor({
-    commit: value.commit,
-    commitReference: value.commitReference,
-    durableAuthority: value.durableAuthority,
-    workingIdentity: value.workingIdentity,
-  });
+  }): AuthenticatedWorkingApplicationGenerationDescriptor => value;
+  const materializedDescriptorFromGeneration = ({ value }: {
+    value: AuthenticatedWritableApplicationGeneration;
+  }): AuthenticatedApplicationGenerationDescriptor => {
+    const materialized = requireMaterializedWritableGeneration({ generation: value });
+    return createAuthenticatedApplicationGenerationDescriptor({
+      commit: materialized.commit,
+      commitReference: materialized.commitReference,
+      durableAuthority: materialized.durableAuthority,
+      workingIdentity: materialized.workingIdentity,
+    });
+  };
   const openRuntimeMutationAdmission = ({ base }: {
     base: AuthenticatedWritableApplicationGeneration;
   }): ContainerRuntimeImmediateMutationAdmission<PreparedMutationCommitCandidate> => (
@@ -2540,7 +3093,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     // atomically after candidate append and before candidate acceptance or
     // Superblock publication.
       dirtyMetadataBytes: 0,
-      expectedBase: descriptorFromGeneration({ value: base }),
+      expectedBase: materializedDescriptorFromGeneration({ value: base }),
       unpublishedPhysicalBytes: 0,
     })
   );
@@ -2555,7 +3108,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     admission: ContainerRuntimeImmediateMutationAdmission<PreparedMutationCommitCandidate>;
     successor: AuthenticatedWritableApplicationGeneration;
   }): AuthenticatedWritableApplicationGeneration => {
-    const descriptor = descriptorFromGeneration({ value: successor });
+    const descriptor = materializedDescriptorFromGeneration({ value: successor });
     admission.commitDurableSuccessor({ successor: descriptor });
     return adoptGenerationDescriptor({ descriptor: authenticatedGeneration.capture() });
   };
@@ -2579,7 +3132,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     commitReference,
     durableAuthority: createDurableAuthority({ commit, commitReference, superblock }),
     workingIdentity: createSuccessorWorkingGenerationIdentity({
-      commitReference,
       mutationId: commit.mutationId,
       previous: base.workingIdentity,
     }),
@@ -2593,7 +3145,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     commitReference: candidate.commitHomeRef,
     durableAuthority: base.durableAuthority,
     workingIdentity: createSuccessorWorkingGenerationIdentity({
-      commitReference: candidate.commitHomeRef,
       mutationId: commitPayload.mutationId,
       previous: base.workingIdentity,
     }),
@@ -2601,16 +3152,19 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   const promoteWorkingCandidateGeneration = ({ candidate, publication }: {
     candidate: AuthenticatedWritableApplicationGeneration;
     publication: PublishedPreparedMutationCommit;
-  }): AuthenticatedWritableApplicationGeneration => createGeneration({
-    commit: candidate.commit,
-    commitReference: candidate.commitReference,
-    durableAuthority: createDurableAuthority({
-      commit: candidate.commit,
-      commitReference: candidate.commitReference,
-      superblock: publication.superblock,
-    }),
-    workingIdentity: candidate.workingIdentity,
-  });
+  }): AuthenticatedWritableApplicationGeneration => {
+    const materialized = requireMaterializedWritableGeneration({ generation: candidate });
+    return createGeneration({
+      commit: materialized.commit,
+      commitReference: materialized.commitReference,
+      durableAuthority: createDurableAuthority({
+        commit: materialized.commit,
+        commitReference: materialized.commitReference,
+        superblock: publication.superblock,
+      }),
+      workingIdentity: materialized.workingIdentity,
+    });
+  };
   const createInstalledWorkingCandidateSlot = ({ base, operationLabel, runtimeAdmission }: {
     base: AuthenticatedWritableApplicationGeneration;
     operationLabel: string;
@@ -2650,7 +3204,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         });
         runtimeAdmission.installSelectedCandidate({
           candidate,
-          successor: descriptorFromGeneration({ value: created }),
+          successor: materializedDescriptorFromGeneration({ value: created }),
         });
         candidateGeneration = created;
       },
@@ -2696,16 +3250,19 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   const refreshDurableAuthoritySuperblock = ({ current, superblock }: {
     current: AuthenticatedWritableApplicationGeneration;
     superblock: OpenedSuperblockCopies;
-  }): AuthenticatedWritableApplicationGeneration => createGeneration({
-    commit: current.commit,
-    commitReference: current.commitReference,
-    durableAuthority: createDurableAuthority({
-      commit: current.durableAuthority.commit,
-      commitReference: current.durableAuthority.commitReference,
-      superblock,
-    }),
-    workingIdentity: current.workingIdentity,
-  });
+  }): AuthenticatedWritableApplicationGeneration => {
+    const materialized = requireMaterializedWritableGeneration({ generation: current });
+    return createGeneration({
+      commit: materialized.commit,
+      commitReference: materialized.commitReference,
+      durableAuthority: createDurableAuthority({
+        commit: materialized.durableAuthority.commit,
+        commitReference: materialized.durableAuthority.commitReference,
+        superblock,
+      }),
+      workingIdentity: materialized.workingIdentity,
+    });
+  };
   const assertCurrentWorkingGeneration = ({ captured, operationLabel }: {
     captured: WorkingGenerationIdentity;
     operationLabel: string;
@@ -3013,13 +3570,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     commitPayload: FileSystemCommitPayload;
   }>;
 
-  const assertRuntimePublicationAllowed = (): void => {
-    if (released) throw new TypeError("released application resources cannot publish a working candidate");
-    if (opened.rootKey.isDestroyed()) {
-      throw new TypeError("destroyed application root key cannot publish a working candidate");
-    }
-  };
-
   const cleanupMetadataMutationAuthorityAfterFailure = ({
     authority,
     cause,
@@ -3071,9 +3621,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     // writer has either transferred a successor into runtime ownership or
     // settled without mutation. The root intentionally follows the working
     // generation rather than only the durable Superblock authority.
-    const writerDependency = runtimeHost.acquireWriterDependencyRoot({
-      commitReference: base.commitReference,
-    });
+    const writerDependency = acquireWorkingGenerationRootDependency({ generation: base, runtimeHost });
     const performMutation = async (): Promise<void> => {
       const mutationId = await generateMutationId({
         isUsed: async ({ id }) => usedMutationIds.has(mutationIdentity({ mutationId: id })),
@@ -3134,7 +3682,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           inheritValidatedInodeTableSuccessor({ base: base.commit, successor: prepared.commitPayload });
           const expectedPublishedIdentity = createWorkingGenerationIdentity({
             authorityEpoch: candidate.workingIdentity.authorityEpoch,
-            commitReference: publication.commitHomeRef,
             generationNumber: candidate.workingIdentity.generationNumber,
             mutationId: prepared.commitPayload.mutationId,
           });
@@ -3188,7 +3735,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       case "lazy_publication_development":
       case "lazy_publication_strict": {
         let admission: ContainerRuntimeAcceptedMutationAdmission;
-        let admittedBaseDescriptor: AuthenticatedApplicationGenerationDescriptor;
+        let admittedBaseDescriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
         try {
           ({ admission, base: admittedBaseDescriptor } = await openStableAcceptedApplicationMutationAdmission({
             authenticatedGeneration,
@@ -3216,29 +3763,40 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             applicationAuthority.markNoChangeResolved();
             return;
           }
-          const installed = await prepareAndInstallDeferredMutationSelectedCandidate({
+          const publicationRootKey = cloneFileSystemRootKey({ rootKey: opened.rootKey });
+          const installed = prepareAndInstallStagedMutationSelectedCandidate({
             admission,
             assertCandidatePreparationAllowed: () => {
               assertCurrentWorkingGeneration({
                 captured: base.workingIdentity,
-                operationLabel: "deferred mutation candidate preparation",
+                operationLabel: "staged mutation candidate preparation",
               });
               applicationAuthority.assertPublicationAllowed();
             },
-            assertRuntimePublicationAllowed,
+            assertRuntimePublicationAllowed: () => {
+              if (publicationRootKey.isDestroyed()) {
+                throw new TypeError("released staged publication resources cannot publish a working candidate");
+              }
+            },
             base: admittedBaseDescriptor,
             commitPayload: prepared.commitPayload,
-            createSuccessor: ({ candidate }) => descriptorFromGeneration({
-              value: createWorkingCandidateSuccessorGeneration({
-                base: admittedBase,
-                candidate,
-                commitPayload: prepared.commitPayload,
-              }),
+            createMaterializationAuthority: async () => await createAuthenticatedMetadataMutationAuthority({
+              backend,
+              diagnostics: recordDiagnostics,
+              fileSystemId: opened.fileSystemId,
+              mutationScopeDiagnostics: "suppress",
+              randomSource,
+              relocationIndexRootPhysicalRef:
+                admittedBaseDescriptor.durableAuthority.superblock.logicalState.relocationIndexRootPhysicalRef,
+              rootKey: publicationRootKey,
+              supportedFeatureBits,
             }),
-            publicationPort: metadataAuthority,
+            prepareWorkingAcceptance: () => metadataAuthority.prepareWorkingAcceptanceWithoutCandidate(),
+            releasePublicationResources: () => publicationRootKey.destroy(),
             resourceUsage: metadataAuthority.resourceUsage(),
           });
           accepted = true;
+          metadataAuthority.completeWorkingAcceptanceWithoutCandidate();
           inheritValidatedInodeTableSuccessor({ base: base.commit, successor: prepared.commitPayload });
           const captured = authenticatedGeneration.capture();
           if (!sameWorkingGenerationIdentity({
@@ -3600,9 +4158,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       ownerView: "mutable_live",
       target: { empty: true, fresh: true },
     });
-    const writerDependency = runtimeHost.acquireWriterDependencyRoot({
-      commitReference: base.commitReference,
-    });
+    const writerDependency = acquireWorkingGenerationRootDependency({ generation: base, runtimeHost });
     let writerDependencyActive = true;
     const releaseWriterDependency = (): void => {
       if (!writerDependencyActive) return;
@@ -3896,7 +4452,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             const installedCandidate = candidateSlot.requireGeneration();
             const expectedPublishedIdentity = createWorkingGenerationIdentity({
               authorityEpoch: installedCandidate.workingIdentity.authorityEpoch,
-              commitReference: publication.commitHomeRef,
               generationNumber: installedCandidate.workingIdentity.generationNumber,
               mutationId: commitPayload.mutationId,
             });
@@ -3976,7 +4531,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         case "lazy_publication_development":
         case "lazy_publication_strict": {
           let admission: ContainerRuntimeAcceptedMutationAdmission;
-          let admittedBaseDescriptor: AuthenticatedApplicationGenerationDescriptor;
+          let admittedBaseDescriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
           try {
             ({ admission, base: admittedBaseDescriptor } = await openStableAcceptedApplicationMutationAdmission({
               authenticatedGeneration,
@@ -3989,7 +4544,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             fileAuthority.abandon();
             throw cause;
           }
-          const admittedBase = generationFromDescriptor({ descriptor: admittedBaseDescriptor });
           let commitPayload: FileSystemCommitPayload;
           try {
             commitPayload = await prepareCommitPayload({
@@ -4003,25 +4557,40 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           }
           let accepted = false;
           try {
-            const installed = await prepareAndInstallDeferredMutationSelectedCandidate({
+            const publicationRootKey = cloneFileSystemRootKey({ rootKey: opened.rootKey });
+            const installed = prepareAndInstallStagedMutationSelectedCandidate({
               admission,
               assertCandidatePreparationAllowed: () => {
                 assertCurrentWorkingGeneration({
                   captured: base.workingIdentity,
-                  operationLabel: "deferred file mutation candidate preparation",
+                  operationLabel: "staged file mutation candidate preparation",
                 });
                 applicationAuthority.assertPublicationAllowed();
               },
-              assertRuntimePublicationAllowed,
+              assertRuntimePublicationAllowed: () => {
+                if (publicationRootKey.isDestroyed()) {
+                  throw new TypeError("released staged publication resources cannot publish a working candidate");
+                }
+              },
               base: admittedBaseDescriptor,
               commitPayload,
-              createSuccessor: ({ candidate }) => descriptorFromGeneration({
-                value: createWorkingCandidateSuccessorGeneration({ base: admittedBase, candidate, commitPayload }),
+              createMaterializationAuthority: async () => await createAuthenticatedMetadataMutationAuthority({
+                backend,
+                diagnostics: recordDiagnostics,
+                fileSystemId: opened.fileSystemId,
+                mutationScopeDiagnostics: "suppress",
+                randomSource,
+                relocationIndexRootPhysicalRef:
+                  admittedBaseDescriptor.durableAuthority.superblock.logicalState.relocationIndexRootPhysicalRef,
+                rootKey: publicationRootKey,
+                supportedFeatureBits,
               }),
-              publicationPort: fileAuthority,
+              prepareWorkingAcceptance: () => fileAuthority.prepareWorkingAcceptanceWithoutCandidate(),
+              releasePublicationResources: () => publicationRootKey.destroy(),
               resourceUsage: fileAuthority.resourceUsage(),
             });
             accepted = true;
+            fileAuthority.completeWorkingAcceptanceWithoutCandidate();
             inheritValidatedInodeTableSuccessor({ base: base.commit, successor: commitPayload });
             const captured = authenticatedGeneration.capture();
             if (!sameWorkingGenerationIdentity({
@@ -4096,11 +4665,9 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         },
       }),
     };
-    let writerDependency: ReturnType<typeof runtimeHost.acquireWriterDependencyRoot>;
+    let writerDependency: Readonly<{ release: () => void }>;
     try {
-      writerDependency = runtimeHost.acquireWriterDependencyRoot({
-        commitReference: base.commitReference,
-      });
+      writerDependency = acquireWorkingGenerationRootDependency({ generation: base, runtimeHost });
     } catch (cause: unknown) {
       try {
         fileAuthority.abandon();
@@ -4206,24 +4773,61 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   };
 
   const namespace = stableGenerationNamespace({ current: currentGeneration });
+  const adoptManagementCleanGeneration: AuthenticatedManagementCleanGenerationAdopter = ({ descriptor }) => {
+    const current = currentGeneration();
+    if (!sameWorkingGenerationIdentity({
+      left: current.workingIdentity,
+      right: descriptor.workingIdentity,
+    })) {
+      throw new TypeError("management clean generation does not match the application working generation");
+    }
+    adoptGenerationDescriptor({ descriptor });
+  };
   return {
-    adoptManagementCleanGeneration: ({ descriptor }) => {
-      const current = currentGeneration();
-      if (!sameWorkingGenerationIdentity({
-        left: current.workingIdentity,
-        right: descriptor.workingIdentity,
-      })) {
-        throw new TypeError("management clean generation does not match the application working generation");
+    adoptManagementCleanGeneration,
+    createReadSnapshotResources: async () => {
+      let captured = currentGeneration();
+      if ("commitReference" in captured) {
+        return {
+          commitReference: captured.commitReference,
+          mutationPort: readOnlyMutationPort(),
+          namespace: stableGenerationNamespace({ current: () => captured }),
+        };
       }
-      adoptGenerationDescriptor({ descriptor });
-    },
-    createReadSnapshotResources: () => {
-      const captured = currentGeneration();
-      return {
-        commitReference: captured.commitReference,
-        mutationPort: readOnlyMutationPort(),
-        namespace: stableGenerationNamespace({ current: () => captured }),
+
+      const barrier = runtimeHost.openManagementCleanHeadBarrier({});
+      let released = false;
+      const releasePreparation = (): void => {
+        if (released) return;
+        barrier.release();
+        released = true;
       };
+      try {
+        // WHY: cross-realm reader pins are encoded as physical Commit
+        // references. A staged working generation therefore must become the
+        // exact clean materialized head while mutation admission is fenced;
+        // the runtime host keeps this barrier until the reader pin is held.
+        const descriptor = await barrier.flushAndCaptureCleanGeneration();
+        adoptManagementCleanGeneration({ descriptor });
+        captured = currentGeneration();
+        const materialized = requireMaterializedWritableGeneration({ generation: captured });
+        return {
+          commitReference: materialized.commitReference,
+          mutationPort: readOnlyMutationPort(),
+          namespace: stableGenerationNamespace({ current: () => materialized }),
+          releasePreparation,
+        };
+      } catch (cause: unknown) {
+        try {
+          releasePreparation();
+        } catch (cleanupCause: unknown) {
+          throw new AggregateError(
+            [cause, cleanupCause],
+            "HizoFS staged read-snapshot preparation and clean-head barrier release both failed",
+          );
+        }
+        throw cause;
+      }
     },
     mutationPort,
     namespace,
@@ -4262,16 +4866,45 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       }
     },
     syncDurability: syncDurabilityForWritableProfile({ writableProfile }),
-    workerMountGrantIssuer: async ({ accessMode, path }) => await issueHizoFSWorkerMountGrant({
-      accessMode,
-      canonicalBackingLocation,
-      currentResolver: () => currentGeneration().resolver,
-      fileSystemId: opened.fileSystemId,
-      path,
-      rootKey: opened.rootKey,
-      unlockingSlotId: activeUnlockingSlotId,
-      unlockSequence: activeUnlockSequence,
-    }),
+    workerMountGrantIssuer: async ({ accessMode, path }) => {
+      const barrier = runtimeHost.openManagementCleanHeadBarrier({});
+      let operationFailure: unknown;
+      let grant: StorageDirectoryWorkerMountGrant | undefined;
+      try {
+        // WHY: a Worker grant is opened by an independent runtime that can
+        // observe only persisted authority. Seal the inode identity only after
+        // the issuing runtime has a clean durable head, and keep mutation
+        // admission blocked until the grant payload is complete.
+        const descriptor = await barrier.flushAndCaptureCleanGeneration();
+        adoptManagementCleanGeneration({ descriptor });
+        grant = await issueHizoFSWorkerMountGrant({
+          accessMode,
+          canonicalBackingLocation,
+          currentResolver: () => currentGeneration().resolver,
+          fileSystemId: opened.fileSystemId,
+          path,
+          rootKey: opened.rootKey,
+          unlockingSlotId: activeUnlockingSlotId,
+          unlockSequence: activeUnlockSequence,
+        });
+      } catch (cause: unknown) {
+        operationFailure = cause;
+      }
+      try {
+        barrier.release();
+      } catch (releaseFailure: unknown) {
+        if (operationFailure !== undefined) {
+          throw new AggregateError(
+            [operationFailure, releaseFailure],
+            "Worker mount grant issuance and clean-head barrier release both failed",
+          );
+        }
+        throw releaseFailure;
+      }
+      if (operationFailure !== undefined) throw operationFailure;
+      if (grant === undefined) throw new TypeError("Worker mount grant issuance completed without a grant");
+      return grant;
+    },
   };
 }
 
@@ -4666,7 +5299,11 @@ export async function openHizoFSWorkerMountGrant({
       canonicalBackingLocation: plaintext.canonicalBackingLocation,
       fileSystemId,
     });
-    const backend = new OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>({ root: backingDirectory });
+    const backend = createHizoFSOpfsWritableBackend({
+      diagnostics: undefined,
+      fileHandleCacheEntryLimit: DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
+      root: backingDirectory,
+    });
     const opened = await openEmptyEncryptedContainerWithRootKey({
       backend,
       expectedUnlockSequence,
@@ -4986,7 +5623,11 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
     rootKeyProof: FileSystemRootKeyProofDerivationCapability;
   }) => Promise<void>;
 }): Promise<TransitionTargetEndpointSession> {
-  const backend = new OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>({ root: containerRoot });
+  const backend = createHizoFSOpfsWritableBackend({
+    diagnostics: undefined,
+    fileHandleCacheEntryLimit: DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
+    root: containerRoot,
+  });
   const opened = await openEmptyEncryptedContainer({
     backend,
     passphrase,
@@ -5214,7 +5855,11 @@ export async function publishBrowserHizoFSTransitionTargetCandidate({
     rootKeyProof: FileSystemRootKeyProofDerivationCapability;
   }) => Promise<void>;
 }): Promise<PublishedBrowserHizoFSTransitionTarget> {
-  const backend = new OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>({ root: containerRoot });
+  const backend = createHizoFSOpfsWritableBackend({
+    diagnostics: undefined,
+    fileHandleCacheEntryLimit: DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
+    root: containerRoot,
+  });
   const opened = await openEmptyEncryptedContainer({
     backend,
     passphrase,
@@ -5351,7 +5996,11 @@ export async function verifyBrowserHizoFSTransitionTargetNormalOpen({
     rootKeyProof: FileSystemRootKeyProofDerivationCapability;
   }) => Promise<void>;
 }): Promise<Readonly<{ credentialSlotCount: number }>> {
-  const backend = new OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>({ root: containerRoot });
+  const backend = createHizoFSOpfsWritableBackend({
+    diagnostics: undefined,
+    fileHandleCacheEntryLimit: DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
+    root: containerRoot,
+  });
   const authority = await openAuthenticatedReadOnlyContainerAuthority({
     backend,
     passphrase,
@@ -5431,7 +6080,9 @@ export async function createBrowserHizoFSTransitionTargetContainer({
     switch (reservation.type) {
     case "collision": continue;
     case "reserved": {
-      const backend = new OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>({
+      const backend = createHizoFSOpfsWritableBackend({
+        diagnostics: undefined,
+        fileHandleCacheEntryLimit: DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
         root: reservation.containerRoot,
       });
       try {
@@ -5486,7 +6137,7 @@ async function settleBenchmarkAcceptedGeneration({ session }: {
 }): Promise<void> {
   const state = developmentWritableCredentialStateBySession.get(session);
   if (state === undefined) throw new TypeError("HizoFS benchmark session is foreign");
-  const barrier = state.managementRuntimeHost.openManagementCleanHeadBarrier();
+  const barrier = state.managementRuntimeHost.openManagementCleanHeadBarrier({});
   let operationFailure: unknown;
   try {
     const descriptor = await barrier.flushAndCaptureCleanGeneration();
@@ -5574,16 +6225,20 @@ async function createBenchmarkExplicitBulkBuilder({ session, targetName }: {
  */
 export async function createBrowserHizoFSBenchmarkApplicationRuntime({
   backingDirectory,
+  backingFileHandleCacheEntryLimit = DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
   decodedInodeIndexPageCacheEntryLimit,
   metadataRecordCachePolicy,
 }: {
   readonly backingDirectory: FileSystemDirectoryHandle;
+  readonly backingFileHandleCacheEntryLimit?: number;
   readonly decodedInodeIndexPageCacheEntryLimit?: number;
   readonly metadataRecordCachePolicy?: AuthenticatedMetadataRecordCachePolicy;
 }): Promise<BrowserHizoFSBenchmarkApplicationRuntime> {
   const runtimeDiagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
   const backend = instrumentHizoFSWritableBackend({
-    backend: new OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>({
+    backend: createHizoFSOpfsWritableBackend({
+      diagnostics: runtimeDiagnostics,
+      fileHandleCacheEntryLimit: backingFileHandleCacheEntryLimit,
       root: backingDirectory,
     }),
     diagnostics: runtimeDiagnostics,
@@ -5615,6 +6270,7 @@ export async function createBrowserHizoFSBenchmarkApplicationRuntime({
       throw new TypeError("cannot reopen a closed HizoFS benchmark runtime");
     }
     const opened = await openBrowserAuthenticatedDevelopmentWritableContainerCapability({
+      backingFileHandleCacheEntryLimit,
       containerRoot: backingDirectory,
       passphrase: currentPassphrase,
       runtimeDiagnostics,
@@ -5813,6 +6469,7 @@ async function captureAuthenticatedMaintenanceRootsWithReader<Authority>({
           relocationIndexRoots: current.relocationIndexRoots,
           unknownFeatureRoots: runtimeCapture.unknownFeatureRoots,
           writerDependencyRoots: runtimeCapture.writerDependencyRoots,
+          writerWorkingPageRoots: runtimeCapture.writerWorkingPageRoots,
         },
       });
     },
@@ -5922,9 +6579,11 @@ export const TEST_ONLY = {
   captureAuthenticatedMaintenanceRootsWithReader,
   createMutationCandidatePlanningBaseCommit,
   createPreparedMutationSelectedCandidatePublisher,
+  createStagedMutationSelectedCandidatePublisher,
   installPreparedMutationSelectedCandidate,
   instrumentHizoFSWritableBackend,
   prepareAndInstallDeferredMutationSelectedCandidate,
+  prepareAndInstallStagedMutationSelectedCandidate,
   releaseBenchmarkCapabilityAfterSessionOpenFailure,
   settleRootCapture,
   settleTransitionEndpointClose,

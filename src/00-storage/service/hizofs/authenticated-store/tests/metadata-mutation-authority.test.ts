@@ -26,6 +26,7 @@ import { readAuthenticatedDirectoryPage } from "@/00-storage/service/hizofs/auth
 import { readAuthenticatedInodeTablePage } from "@/00-storage/service/hizofs/authenticated-store/inode-table-page-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import { createAuthenticatedMetadataMutationAuthority } from "@/00-storage/service/hizofs/authenticated-store/metadata-mutation-authority";
+import { AuthenticatedSegmentWriterOwner } from "@/00-storage/service/hizofs/authenticated-store/active-segment-writer-owner";
 import { PreparedMutationCommitPublicationError } from "@/00-storage/service/hizofs/authenticated-store/prepared-mutation-commit-store";
 import type {
   AuthenticatedMutationScopeEventObservation,
@@ -285,6 +286,54 @@ describe("authenticated metadata mutation authority", () => {
       currentEntries: 0,
       maximumEntries: 1,
     });
+  });
+
+  it("releases the shared metadata writer lease before staged acceptance becomes visible", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const writerOwner = new AuthenticatedSegmentWriterOwner({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    const authority = await createAuthenticatedMetadataMutationAuthority({
+      backend,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+      writerOwner,
+    });
+
+    expect(() => writerOwner.acquire()).toThrow("already has a lease");
+    authority.prepareWorkingAcceptanceWithoutCandidate();
+
+    const publicationLease = writerOwner.acquire();
+    publicationLease.release({ disposition: "reuse" });
+    expect(authority.state()).toBe("active");
+    authority.completeWorkingAcceptanceWithoutCandidate();
+    expect(authority.state()).toBe("closed");
+    await expect(writerOwner.close()).resolves.toBeUndefined();
+    rootKey.destroy();
+  });
+
+  it("closes accepted metadata mutation authority without materializing a Commit candidate", async () => {
+    const diagnostics = new AuthenticatedStoreDiagnosticsProbe();
+    const fixture = await createCandidateAuthorityFixture({ diagnostics });
+    const before = fixture.authority.resourceUsage();
+
+    fixture.authority.completeWorkingAcceptanceWithoutCandidate();
+
+    expect(fixture.authority.state()).toBe("closed");
+    expect(fixture.authority.resourceUsage()).toEqual(before);
+    expect(() => fixture.authority.completeWorkingAcceptanceWithoutCandidate()).toThrowError(
+      /mutation authority is closed/,
+    );
   });
 
   it("provides structurally compatible page and Commit publication ports", async () => {

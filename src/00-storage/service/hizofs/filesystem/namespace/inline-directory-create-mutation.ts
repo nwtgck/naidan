@@ -3,7 +3,7 @@ import {
   createInodeRevision,
   encodeDirectoryEntry,
   encodeFilenameComponent,
-  encodeInodeLeafPage,
+  assertInodeLeafEntryFitsMetadataPage,
   HIZOFS_V1_FORMAT_CONSTANTS,
   UINT64_MAXIMUM,
   type DirectoryInodeEntry,
@@ -122,7 +122,7 @@ export function prepareInlineDirectoryCreateMutationFromCandidate({
 }): InlineDirectoryCreateMutation {
   // The authoritative inode codec enforces the inline-directory byte bound and
   // canonical UTF-8 entry ordering before any page mutation is prepared.
-  encodeInodeLeafPage({ entries: [candidateParent], isRoot: false });
+  assertInodeLeafEntryFitsMetadataPage({ entry: candidateParent });
 
   return {
     changes: [

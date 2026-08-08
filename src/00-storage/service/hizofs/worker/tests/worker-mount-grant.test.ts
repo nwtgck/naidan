@@ -13,6 +13,7 @@ import { createContainerCoordinationScope, parseContainerCoordinationScopeToken 
 import { InMemoryCrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/testing/in-memory-cross-realm-lock-port";
 import {
   createBrowserContainerCoordinationScope,
+  DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
   openAuthenticatedDevelopmentWritableApplicationSessionFromCapability,
   openBrowserAuthenticatedDevelopmentWritableContainerCapability,
   openHizoFSWorkerMountGrant,
@@ -109,6 +110,7 @@ async function createOwnerSession({
   });
   created.rootKey.destroy();
   const capability = await openBrowserAuthenticatedDevelopmentWritableContainerCapability({
+    backingFileHandleCacheEntryLimit: DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
     containerRoot: backingDirectory as unknown as FileSystemDirectoryHandle,
     passphrase: PASSPHRASE,
     verifyProofAuthority: async () => undefined,
@@ -191,6 +193,26 @@ describe("HizoFS Worker mount grants", () => {
     } finally {
       await workerSession.close();
     }
+  });
+
+  it("waits for a prepared writable before sealing a Worker mount grant", async () => {
+    const fixture = await createOwnerSession();
+    const mounted = await fixture.session.root.getDirectoryHandle({ name: "mounted", create: true });
+    const file = await mounted.getFileHandle({ name: "held.txt", create: true });
+    const writable = await file.createWritable({ keepExistingData: false });
+    await writable.write({ position: 0, data: new Uint8Array([1, 2, 3]) });
+
+    let grantSettled = false;
+    const grantOperation = requireGrant({ accessMode: "read", directory: mounted }).then(grant => {
+      grantSettled = true;
+      return grant;
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(grantSettled).toBe(false);
+
+    await writable.close();
+    await expect(grantOperation).resolves.toMatchObject({ accessMode: "read" });
+    await fixture.session.close();
   });
 
   it("keeps the default Worker mount policy blocking until the runtime owner is released", async () => {
@@ -461,7 +483,12 @@ describe("HizoFS Worker mount grants", () => {
     const mounted = await fixture.session.root.getDirectoryHandle({ name: "mounted", create: true });
     const grant = await requireGrant({ accessMode: "read_write", directory: mounted });
     await fixture.session.root.removeEntry({ name: "mounted", recursive: true });
-    await fixture.session.root.getDirectoryHandle({ name: "mounted", create: true });
+    const replacement = await fixture.session.root.getDirectoryHandle({ name: "mounted", create: true });
+    // Grant issuance is a cross-runtime capability boundary and therefore
+    // settles the current working generation before sealing its inode identity.
+    // Issuing a replacement grant makes the new inode durable so the old grant
+    // must be rejected by an independently reopened runtime.
+    await requireGrant({ accessMode: "read_write", directory: replacement });
     await fixture.session.close();
 
     await expect(openHizoFSWorkerMountGrant({

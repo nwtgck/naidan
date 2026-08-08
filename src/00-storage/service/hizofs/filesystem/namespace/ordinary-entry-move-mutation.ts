@@ -4,7 +4,7 @@ import {
   createInodeRevision,
   encodeDirectoryEntry,
   encodeFilenameComponent,
-  encodeInodeLeafPage,
+  assertInodeLeafEntryFitsMetadataPage,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
   type TimestampMilliseconds,
@@ -182,7 +182,7 @@ async function mutateParent({ changes, destinationName, directoryPageStore, oper
     ...incrementParent({ operationTimestamp, parent }),
     content,
   };
-  encodeInodeLeafPage({ entries: [updated], isRoot: false });
+  assertInodeLeafEntryFitsMetadataPage({ entry: updated });
   return updated;
 }
 

@@ -72,6 +72,7 @@ export function createProductionHizoFSBenchmarkRuntimePort(): HizoFSBenchmarkRun
     async createRuntime({ backingDirectory, policy }) {
       const applicationRuntime = await createBrowserHizoFSBenchmarkApplicationRuntime({
         backingDirectory,
+        backingFileHandleCacheEntryLimit: policy.backingFileHandleCacheEntryLimit,
         decodedInodeIndexPageCacheEntryLimit: policy.decodedInodeIndexPageCacheEntryLimit,
         metadataRecordCachePolicy: {
           maximumBytes: policy.metadataObjectCacheByteLimit,

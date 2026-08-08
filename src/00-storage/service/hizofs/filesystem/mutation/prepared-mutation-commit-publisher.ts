@@ -1,5 +1,7 @@
 import {
+  decodeFileSystemCommitPayload,
   encodeFileSystemCommitPayload,
+  HIZOFS_V1_FORMAT_CONSTANTS,
   type FileSystemCommitPayload,
   type HomeRecordReference,
   type PublicationSequence,
@@ -23,6 +25,22 @@ export type PreparedMutationCommitCandidate = Readonly<{
   commitHomeRef: HomeRecordReference;
   commitPayload: FileSystemCommitPayload;
 }>;
+
+function align8({ value }: { value: number }): number {
+  return Math.ceil(value / 8) * 8;
+}
+
+/**
+ * Exact encrypted record-area bytes reserved while one accepted staged Commit
+ * still awaits physical materialization. This uses the same V1 frame equation
+ * as authenticated record append and does not include Segment container
+ * overhead, matching existing mutation resource accounting.
+ */
+export const STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES = align8({
+  value: HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader
+    + HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.fileSystemCommitPayload
+    + HIZOFS_V1_FORMAT_CONSTANTS.crypto.tagBytes,
+});
 
 export type PreparedMutationCommitCandidateAppendRequest = Readonly<{
   commitPayload: FileSystemCommitPayload;
@@ -78,6 +96,10 @@ export type DeferredPreparedMutationCommitPublication = Readonly<{
   publicationPort: ResolvablePreparedMutationCommitDurablePublicationPort;
 }>;
 
+export type StagedPreparedMutationCommit = Readonly<{
+  commitPayload: FileSystemCommitPayload;
+}>;
+
 export type DetachablePreparedMutationCommitPublicationPort =
   Omit<PreparedMutationCommitPublicationPort, "detachPreparedCandidatePublication"> & Readonly<{
     detachPreparedCandidatePublication: ({ candidate }: {
@@ -114,19 +136,69 @@ function assertCandidatePlan({ base, commitPayload }: {
   }
 }
 
+
+export function prepareStagedMutationCommit({
+  assertPublicationAllowed,
+  base,
+  commitPayload,
+}: {
+  assertPublicationAllowed: () => void;
+  base: OpenedSuperblockCopies;
+  commitPayload: FileSystemCommitPayload;
+}): StagedPreparedMutationCommit {
+  assertCandidatePlan({ base, commitPayload });
+  assertPublicationAllowed();
+  // WHY: a staged working generation must not retain aliases into caller-owned
+  // mutable byte arrays. The authoritative codec both validates and clones all
+  // nested Home Record References and the Mutation ID without physical I/O.
+  const stagedPayload = decodeFileSystemCommitPayload({
+    bytes: encodeFileSystemCommitPayload({ payload: commitPayload }),
+  });
+  return Object.freeze({ commitPayload: stagedPayload });
+}
+
+export async function materializeStagedMutationCommitCandidateThroughPort({
+  assertPublicationAllowed,
+  base,
+  beforeAppendAttempt,
+  publicationPort,
+  staged,
+}: {
+  assertPublicationAllowed: () => void;
+  base: OpenedSuperblockCopies;
+  beforeAppendAttempt: () => void;
+  publicationPort: PreparedMutationCommitPublicationPort;
+  staged: StagedPreparedMutationCommit;
+}): Promise<PreparedMutationCommitCandidate> {
+  // WHY: the flush boundary revalidates the staged Sequence and Mutation ID
+  // against the current durable authority before any Commit frame is appended.
+  // A stale staged payload therefore cannot create new physical garbage merely
+  // because another authority advanced while it was waiting to flush.
+  return await appendPreparedMutationCommitCandidateThroughPort({
+    assertPublicationAllowed,
+    base,
+    beforeAppendAttempt,
+    commitPayload: staged.commitPayload,
+    publicationPort,
+  });
+}
+
 export async function appendPreparedMutationCommitCandidateThroughPort({
   assertPublicationAllowed,
   base,
+  beforeAppendAttempt,
   commitPayload,
   publicationPort,
 }: {
   assertPublicationAllowed: () => void;
   base: OpenedSuperblockCopies;
+  beforeAppendAttempt?: (() => void) | undefined;
   commitPayload: FileSystemCommitPayload;
   publicationPort: PreparedMutationCommitPublicationPort;
 }): Promise<PreparedMutationCommitCandidate> {
   assertCandidatePlan({ base, commitPayload });
   assertPublicationAllowed();
+  beforeAppendAttempt?.();
   const candidate = await publicationPort.appendCandidate({ commitPayload });
   if (!sameCommitPayload({ left: candidate.commitPayload, right: commitPayload })) {
     throw new TypeError("authenticated mutation candidate does not match the prepared Commit payload");

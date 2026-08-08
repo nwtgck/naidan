@@ -222,7 +222,7 @@ function encodeKindBody({ entry }: { entry: InodeLeafEntry }): Uint8Array {
   }
 }
 
-function encodeInodeEntry({ entry }: { entry: InodeLeafEntry }): Uint8Array {
+export function encodeInodeLeafEntry({ entry }: { entry: InodeLeafEntry }): Uint8Array {
   if (entry.inodeNumber < 1n) throw new RangeError('Inode Number must be at least 1');
   if (entry.inodeRevision < 1n) throw new RangeError('inode revision must be at least 1');
   const timestamps = encodeTimestamps({ timestamps: entry.timestamps });
@@ -238,6 +238,14 @@ function encodeInodeEntry({ entry }: { entry: InodeLeafEntry }): Uint8Array {
   bytes.set(timestamps.bytes, FIXED_SIZES.inodeLeafEntryPrefix);
   bytes.set(kindBody, FIXED_SIZES.inodeLeafEntryPrefix + timestamps.bytes.byteLength);
   return bytes;
+}
+
+
+export function assertInodeLeafEntryFitsMetadataPage({ entry }: { entry: InodeLeafEntry }): void {
+  const encoded = encodeInodeLeafEntry({ entry });
+  if (COMMON_PAGE_HEADER_SIZE + encoded.byteLength > LIMITS.metadataPlaintextBytes) {
+    throw new RangeError('Inode Table page exceeds the metadata plaintext maximum');
+  }
 }
 
 function decodeFileBody({ bytes, offset }: { bytes: Uint8Array; offset: number }): FileInodeEntry['content'] & Readonly<{ fileSize: FileOffset }> {
@@ -339,7 +347,7 @@ export function encodeInodeLeafPage({ entries, isRoot }: { entries: readonly Ino
   let previous: InodeNumber | undefined;
   for (const entry of entries) {
     if (previous !== undefined && entry.inodeNumber <= previous) throw new TypeError('Inode Numbers must be strictly ascending');
-    const encoded = encodeInodeEntry({ entry });
+    const encoded = encodeInodeLeafEntry({ entry });
     encodedEntries.push(encoded);
     totalLength += encoded.byteLength;
     previous = entry.inodeNumber;

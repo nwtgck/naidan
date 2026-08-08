@@ -66,9 +66,10 @@ export async function readAuthenticatedFileExtentPage({
   }
 }
 
-export async function appendAuthenticatedFileExtentPage({ isRoot, page, writer }: {
+export async function appendAuthenticatedFileExtentPage({ isRoot, page, sharedMetadataRecordCache, writer }: {
   isRoot: boolean;
   page: FileExtentPage;
+  sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
   writer: AuthenticatedSegmentWriter;
 }): Promise<HomeRecordReference> {
   switch (writer.segmentClass) {
@@ -76,15 +77,26 @@ export async function appendAuthenticatedFileExtentPage({ isRoot, page, writer }
   case "data": throw new TypeError("File Extent pages require a metadata Segment writer");
   default: return writer.segmentClass satisfies never;
   }
-  const [appended] = await writer.append({ records: [encodedHizoFSRecord({
+  const encoded = encodedHizoFSRecord({
     plaintext: writer.encodeRecordPayload({ encode: () => encodeFileExtentPage({ isRoot, page }) }),
     recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
-  })] });
-  if (appended === undefined) throw new Error("File Extent page append result is missing");
-  switch (appended.type) {
-  case "home": return appended.homeReference;
-  case "physical_only": throw new Error("File Extent page cannot be a physical-only record");
-  default: return appended satisfies never;
+  });
+  try {
+    const [appended] = await writer.append({ records: [encoded] });
+    if (appended === undefined) throw new Error("File Extent page append result is missing");
+    switch (appended.type) {
+    case "home":
+      sharedMetadataRecordCache?.admitAuthenticatedWrite({
+        plaintext: encoded.plaintext,
+        recordKind: encoded.recordKind,
+        reference: appended.homeReference,
+      });
+      return appended.homeReference;
+    case "physical_only": throw new Error("File Extent page cannot be a physical-only record");
+    default: return appended satisfies never;
+    }
+  } finally {
+    encoded.plaintext.fill(0);
   }
 }
 

@@ -1,9 +1,8 @@
 import {
-  COMMON_PAGE_HEADER_SIZE,
   HIZOFS_V1_FORMAT_CONSTANTS,
   createCommitSequence,
   createFileSystemCommitPayload,
-  encodeInodeLeafPage,
+  encodeInodeLeafEntry,
   parseMutationId,
   type FileSystemCommitPayload,
   type HomeRecordReference,
@@ -110,10 +109,6 @@ function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): b
   return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
 }
 
-function inodeEntryBytes({ entry }: { entry: InodeLeafEntry }): Uint8Array {
-  return encodeInodeLeafPage({ entries: [entry], isRoot: false });
-}
-
 function sameMutationId({ left, right }: { left: MutationId; right: MutationId }): boolean {
   return bytesEqual({ left, right });
 }
@@ -127,13 +122,21 @@ export async function applyRootInodeTableMutations({
   pageStore: RootInodeTablePageStore;
   rootReference: HomeRecordReference;
 }): Promise<HomeRecordReference> {
+  const encodedEntries = new WeakMap<InodeLeafEntry, Uint8Array>();
+  const entryBytes = ({ entry }: { entry: InodeLeafEntry }): Uint8Array => {
+    const cached = encodedEntries.get(entry);
+    if (cached !== undefined) return cached;
+    const encoded = encodeInodeLeafEntry({ entry });
+    encodedEntries.set(entry, encoded);
+    return encoded;
+  };
   const writer = new CanonicalBTreeWriter<InodeNumber, InodeLeafEntry, HomeRecordReference>({
     compareKeys: ({ left, right }) => left < right ? -1 : left > right ? 1 : 0,
     encodedBranchChildByteLength: () => HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.inodeBranchChild,
-    encodedLeafEntryByteLength: ({ entry }) => inodeEntryBytes({ entry }).byteLength - COMMON_PAGE_HEADER_SIZE,
+    encodedLeafEntryByteLength: ({ entry }) => entryBytes({ entry }).byteLength,
     entriesEqual: ({ left, right }) => bytesEqual({
-      left: inodeEntryBytes({ entry: left }),
-      right: inodeEntryBytes({ entry: right }),
+      left: entryBytes({ entry: left }),
+      right: entryBytes({ entry: right }),
     }),
     getEntryKey: ({ entry }) => entry.inodeNumber,
     pageStore,

@@ -27,7 +27,6 @@ export type DurableGenerationIdentity = Readonly<{
 
 export type WorkingGenerationIdentity = Readonly<{
   authorityEpoch: WorkingGenerationAuthorityEpoch;
-  commitReference: HomeRecordReference;
   generationNumber: WorkingGenerationNumber;
   mutationId: MutationId;
 }>;
@@ -83,31 +82,26 @@ export function createDurableGenerationIdentity({ commitReference, commitSequenc
 
 export function createWorkingGenerationIdentity({
   authorityEpoch,
-  commitReference,
   generationNumber,
   mutationId,
 }: {
   authorityEpoch: WorkingGenerationAuthorityEpoch;
-  commitReference: HomeRecordReference;
   generationNumber: WorkingGenerationNumber;
   mutationId: MutationId;
 }): WorkingGenerationIdentity {
   return Object.freeze({
     authorityEpoch,
-    commitReference: cloneCommitReference({ reference: commitReference }),
     generationNumber,
     mutationId: cloneMutationId({ mutationId }),
   });
 }
 
-export function createSuccessorWorkingGenerationIdentity({ commitReference, mutationId, previous }: {
-  commitReference: HomeRecordReference;
+export function createSuccessorWorkingGenerationIdentity({ mutationId, previous }: {
   mutationId: MutationId;
   previous: WorkingGenerationIdentity;
 }): WorkingGenerationIdentity {
   return createWorkingGenerationIdentity({
     authorityEpoch: previous.authorityEpoch,
-    commitReference,
     generationNumber: createWorkingGenerationNumber({ value: previous.generationNumber + 1n }),
     mutationId,
   });
@@ -128,7 +122,6 @@ export function sameWorkingGenerationIdentity({ left, right }: {
 }): boolean {
   return left.authorityEpoch === right.authorityEpoch
     && left.generationNumber === right.generationNumber
-    && sameCommitReference({ left: left.commitReference, right: right.commitReference })
     && sameBytes({ left: left.mutationId, right: right.mutationId });
 }
 

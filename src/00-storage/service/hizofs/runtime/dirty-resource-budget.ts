@@ -22,13 +22,20 @@ export type DirtyResourceBudgetSnapshot = Readonly<{
   acceptedMutationCount: number;
   dirtyMetadataBytes: number;
   pendingAdmissionCount: number;
+  stagedCommitMaterializationHeadroomBytes: number;
   unpublishedPhysicalBytes: number;
 }>;
 
 export type DirtyResourceAdmission = Readonly<{
   commitAccepted: () => void;
   replaceReservation: ({ dirtyMetadataBytes, unpublishedPhysicalBytes }: ResourceDelta) => void;
+  reserveStagedCommitMaterializationHeadroom: ({ bytes }: { bytes: number }) => void;
   rollback: () => void;
+}>;
+
+export type DirtyResourceStagedCommitMaterializationAttempt = Readonly<{
+  completeReusableCandidate: () => void;
+  fail: () => void;
 }>;
 
 type ResourceDelta = Readonly<{
@@ -70,7 +77,9 @@ export class DirtyResourceBudget {
     | "maximumDirtyMetadataBytes"
     | "maximumUnpublishedPhysicalBytes"
   >;
+  #materializationAttemptActive = false;
   #pendingAdmissionCount = 0;
+  #stagedCommitMaterializationHeadroomBytes = 0;
   #unpublishedPhysicalBytes = 0;
 
   constructor({ policy }: { policy: HizoFSLazyDurabilityPolicy }) {
@@ -86,7 +95,92 @@ export class DirtyResourceBudget {
       acceptedMutationCount: this.#acceptedMutationCount,
       dirtyMetadataBytes: this.#dirtyMetadataBytes,
       pendingAdmissionCount: this.#pendingAdmissionCount,
+      stagedCommitMaterializationHeadroomBytes: this.#stagedCommitMaterializationHeadroomBytes,
       unpublishedPhysicalBytes: this.#unpublishedPhysicalBytes,
+    });
+  }
+
+  #addToBothByteBudgets({ bytes }: { bytes: number }): void {
+    const nextDirtyMetadataBytes = checkedAdd({
+      left: this.#dirtyMetadataBytes,
+      name: "dirty metadata bytes",
+      right: bytes,
+    });
+    if (nextDirtyMetadataBytes > this.#limits.maximumDirtyMetadataBytes) {
+      throw new DirtyResourceBudgetError({
+        code: "dirty_metadata_byte_limit_reached",
+        message: "dirty metadata byte limit reached",
+      });
+    }
+    const nextUnpublishedPhysicalBytes = checkedAdd({
+      left: this.#unpublishedPhysicalBytes,
+      name: "unpublished physical bytes",
+      right: bytes,
+    });
+    if (nextUnpublishedPhysicalBytes > this.#limits.maximumUnpublishedPhysicalBytes) {
+      throw new DirtyResourceBudgetError({
+        code: "unpublished_physical_byte_limit_reached",
+        message: "unpublished physical byte limit reached",
+      });
+    }
+    this.#dirtyMetadataBytes = nextDirtyMetadataBytes;
+    this.#unpublishedPhysicalBytes = nextUnpublishedPhysicalBytes;
+  }
+
+  beginStagedCommitMaterializationAttempt({ frameBytes }: {
+    frameBytes: number;
+  }): DirtyResourceStagedCommitMaterializationAttempt {
+    validateDelta({ name: "staged Commit materialization frame bytes", value: frameBytes });
+    if (frameBytes === 0) {
+      throw new DirtyResourceBudgetError({
+        code: "invalid_resource_delta",
+        message: "staged Commit materialization frame bytes must be positive",
+      });
+    }
+    if (this.#materializationAttemptActive) {
+      throw new DirtyResourceBudgetError({
+        code: "admission_closed",
+        message: "staged Commit materialization attempt is already active",
+      });
+    }
+    if (this.#pendingAdmissionCount !== 0) {
+      throw new DirtyResourceBudgetError({
+        code: "publication_with_active_admission",
+        message: "staged Commit materialization cannot begin while mutation admission is active",
+      });
+    }
+    if (this.#stagedCommitMaterializationHeadroomBytes !== frameBytes) {
+      throw new DirtyResourceBudgetError({
+        code: "invalid_resource_delta",
+        message: "staged Commit materialization frame does not match the reserved dirty-epoch headroom",
+      });
+    }
+
+    // WHY: once the append-attempt boundary is crossed the backend may have
+    // written any portion of the encrypted frame even if the operation later
+    // fails. Charge the full frame as physical-write risk and retain the
+    // existing frame-sized headroom for a bounded retry before allowing I/O.
+    this.#addToBothByteBudgets({ bytes: frameBytes });
+    this.#materializationAttemptActive = true;
+    let active = true;
+    const close = (): void => {
+      if (!active) {
+        throw new DirtyResourceBudgetError({
+          code: "admission_closed",
+          message: "staged Commit materialization attempt is already closed",
+        });
+      }
+      active = false;
+      this.#materializationAttemptActive = false;
+    };
+    return Object.freeze({
+      completeReusableCandidate: () => {
+        close();
+        this.#dirtyMetadataBytes -= this.#stagedCommitMaterializationHeadroomBytes;
+        this.#unpublishedPhysicalBytes -= this.#stagedCommitMaterializationHeadroomBytes;
+        this.#stagedCommitMaterializationHeadroomBytes = 0;
+      },
+      fail: () => close(),
     });
   }
 
@@ -130,6 +224,7 @@ export class DirtyResourceBudget {
     this.#dirtyMetadataBytes = nextDirtyMetadataBytes;
     this.#unpublishedPhysicalBytes = nextUnpublishedPhysicalBytes;
     let active = true;
+    let introducedStagedCommitMaterializationHeadroom = false;
     let reservedDirtyMetadataBytes = dirtyMetadataBytes;
     let reservedUnpublishedPhysicalBytes = unpublishedPhysicalBytes;
     const requireActive = (): void => {
@@ -186,16 +281,44 @@ export class DirtyResourceBudget {
         reservedDirtyMetadataBytes = replacementDirtyMetadataBytes;
         reservedUnpublishedPhysicalBytes = replacementUnpublishedPhysicalBytes;
       },
+      reserveStagedCommitMaterializationHeadroom: ({ bytes }) => {
+        requireActive();
+        validateDelta({ name: "staged Commit materialization headroom bytes", value: bytes });
+        if (bytes === 0) {
+          throw new DirtyResourceBudgetError({
+            code: "invalid_resource_delta",
+            message: "staged Commit materialization headroom bytes must be positive",
+          });
+        }
+        const existing = this.#stagedCommitMaterializationHeadroomBytes;
+        if (existing !== 0) {
+          if (existing !== bytes) {
+            throw new DirtyResourceBudgetError({
+              code: "invalid_resource_delta",
+              message: "staged Commit materialization headroom size changed within one dirty epoch",
+            });
+          }
+          return;
+        }
+        this.#addToBothByteBudgets({ bytes });
+        this.#stagedCommitMaterializationHeadroomBytes = bytes;
+        introducedStagedCommitMaterializationHeadroom = true;
+      },
       rollback: () => {
         close();
         this.#dirtyMetadataBytes -= reservedDirtyMetadataBytes;
         this.#unpublishedPhysicalBytes -= reservedUnpublishedPhysicalBytes;
+        if (introducedStagedCommitMaterializationHeadroom) {
+          this.#dirtyMetadataBytes -= this.#stagedCommitMaterializationHeadroomBytes;
+          this.#unpublishedPhysicalBytes -= this.#stagedCommitMaterializationHeadroomBytes;
+          this.#stagedCommitMaterializationHeadroomBytes = 0;
+        }
       },
     });
   }
 
   resetAfterDurablePublication(): void {
-    if (this.#pendingAdmissionCount !== 0) {
+    if (this.#pendingAdmissionCount !== 0 || this.#materializationAttemptActive) {
       throw new DirtyResourceBudgetError({
         code: "publication_with_active_admission",
         message: "dirty resource budget cannot reset while mutation admission is active",
@@ -203,6 +326,7 @@ export class DirtyResourceBudget {
     }
     this.#acceptedMutationCount = 0;
     this.#dirtyMetadataBytes = 0;
+    this.#stagedCommitMaterializationHeadroomBytes = 0;
     this.#unpublishedPhysicalBytes = 0;
   }
 }

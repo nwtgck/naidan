@@ -1,6 +1,7 @@
 import {
-  COMMON_PAGE_HEADER_SIZE,
-  encodeFileExtentPage,
+  assertFileExtentBranchEntryValid,
+  assertFileExtentLeafEntryValid,
+  HIZOFS_V1_FORMAT_CONSTANTS,
   encodeHomeRecordReference,
   type FileExtentLeafEntry,
   type FileExtentPage,
@@ -120,21 +121,17 @@ function createWriter({ pageStore }: {
 }): CanonicalBTreeWriter<FileOffset, FileExtentLeafEntry, HomeRecordReference> {
   return new CanonicalBTreeWriter({
     compareKeys: compareOffsets,
-    encodedBranchChildByteLength: ({ child }) => encodeFileExtentPage({
-      isRoot: false,
-      page: {
-        entries: [{
-          childPageHomeRef: child.childPageReference,
-          upperBound: child.upperBound,
-        }],
-        level: 1,
-        type: "branch",
-      },
-    }).byteLength - COMMON_PAGE_HEADER_SIZE,
-    encodedLeafEntryByteLength: ({ entry }) => encodeFileExtentPage({
-      isRoot: false,
-      page: { entries: [entry], level: 0, type: "leaf" },
-    }).byteLength - COMMON_PAGE_HEADER_SIZE,
+    encodedBranchChildByteLength: ({ child }) => {
+      assertFileExtentBranchEntryValid({ entry: {
+        childPageHomeRef: child.childPageReference,
+        upperBound: child.upperBound,
+      } });
+      return HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.inodeBranchChild;
+    },
+    encodedLeafEntryByteLength: ({ entry }) => {
+      assertFileExtentLeafEntryValid({ entry });
+      return HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.fileExtentLeafEntry;
+    },
     entriesEqual,
     getEntryKey: ({ entry }) => entry.fileOffset,
     pageStore,

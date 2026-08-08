@@ -227,6 +227,14 @@ export function encodeDirectoryEntry({ entry }: { entry: DirectoryLeafEntry }): 
   return bytes;
 }
 
+
+export function assertDirectoryLeafEntryFitsMetadataPage({ entry }: { entry: DirectoryLeafEntry }): void {
+  const encoded = encodeDirectoryEntry({ entry });
+  if (COMMON_PAGE_HEADER_SIZE + encoded.byteLength > HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes) {
+    throw new RangeError('page exceeds the V1 metadata plaintext maximum');
+  }
+}
+
 export function decodeDirectoryEntry({ bytes }: { bytes: Uint8Array }): DirectoryLeafEntry {
   if (bytes.byteLength < FIXED_SIZES.directoryEntryPrefix) throw new RangeError('directory entry is shorter than its prefix');
   const entryLength = readU16Be({ bytes, offset: 0 });
@@ -252,6 +260,16 @@ export function decodeDirectoryEntry({ bytes }: { bytes: Uint8Array }): Director
     return { name, subvolumeId: createSubvolumeId({ value: targetId }), targetType: 'subvolume' };
   }
   throw new TypeError('directory target type is unknown');
+}
+
+
+export function encodedDirectoryBranchEntryByteLength({ entry }: { entry: DirectoryBranchEntry }): number {
+  assertHomeReferenceKind({
+    expected: KINDS.directory_page,
+    label: 'directory branch child reference',
+    reference: entry.childPageHomeRef,
+  });
+  return FIXED_SIZES.directoryBranchChildPrefix + encodeFilenameComponent({ value: entry.upperBoundName }).byteLength;
 }
 
 export function encodeDirectoryPage({ isRoot, page }: { isRoot: boolean; page: DirectoryPage }): Uint8Array {

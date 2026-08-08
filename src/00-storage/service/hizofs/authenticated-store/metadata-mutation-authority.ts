@@ -100,6 +100,7 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
     diagnostics,
     fileSystemId,
     metadataRecordCache,
+    mutationScopeDiagnostics,
     randomSource,
     rootKey,
     supportedFeatureBits,
@@ -110,6 +111,7 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
     fileSystemId: FileSystemId;
     metadataRecordCache: AuthenticatedMetadataRecordCache;
+    mutationScopeDiagnostics: MutationScopeDiagnosticsMode;
     randomSource?: RandomByteSource;
     rootKey: FileSystemRootKey;
     supportedFeatureBits: FeatureBits;
@@ -122,6 +124,7 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
     this.#diagnostics = diagnostics;
     this.#fileSystemId = fileSystemId;
     this.#metadataRecordCache = metadataRecordCache;
+    this.#mutationDiagnosticsOpen = shouldRecordMutationScopeDiagnostics({ mode: mutationScopeDiagnostics });
     this.#randomSource = randomSource;
     this.#rootKey = rootKey;
     this.#supportedFeatureBits = supportedFeatureBits;
@@ -307,11 +310,24 @@ const MUTATION_METADATA_RECORD_CACHE_POLICY = Object.freeze({
   maximumEntries: 256,
 });
 
+type MutationScopeDiagnosticsMode = "record" | "suppress";
+
+function shouldRecordMutationScopeDiagnostics({ mode }: {
+  mode: MutationScopeDiagnosticsMode;
+}): boolean {
+  switch (mode) {
+  case "record": return true;
+  case "suppress": return false;
+  default: return mode satisfies never;
+  }
+}
+
 export class AuthenticatedMetadataMutationAuthority {
   readonly #backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
   readonly #fileSystemId: FileSystemId;
   readonly #metadataRecordCache: AuthenticatedMetadataRecordCache;
+  readonly #mutationScopeDiagnostics: MutationScopeDiagnosticsMode;
   readonly #randomSource: RandomByteSource | undefined;
   readonly #relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
   readonly #rootKey: FileSystemRootKey;
@@ -323,6 +339,7 @@ export class AuthenticatedMetadataMutationAuthority {
   #detachedPublicationAuthority: AuthenticatedPreparedMutationPublicationAuthority | undefined;
   #preparedCandidate: PreparedMutationCommitCandidate | undefined;
   #state: AuthenticatedMetadataMutationAuthorityState = "active";
+  #workingAcceptancePrepared = false;
   readonly #writerLease: AuthenticatedSegmentWriterLease;
   #writerLeaseReleased = false;
   readonly #writerReleaseDisposition: ActiveSegmentWriterReleaseDisposition;
@@ -332,6 +349,7 @@ export class AuthenticatedMetadataMutationAuthority {
     diagnostics,
     fileSystemId,
     metadataRecordCache,
+    mutationScopeDiagnostics,
     randomSource,
     relocationIndexRootPhysicalRef,
     rootKey,
@@ -344,6 +362,7 @@ export class AuthenticatedMetadataMutationAuthority {
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
     fileSystemId: FileSystemId;
     metadataRecordCache: AuthenticatedMetadataRecordCache;
+    mutationScopeDiagnostics: MutationScopeDiagnosticsMode;
     randomSource?: RandomByteSource;
     relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
     rootKey: FileSystemRootKey;
@@ -356,6 +375,8 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#diagnostics = diagnostics;
     this.#fileSystemId = fileSystemId;
     this.#metadataRecordCache = metadataRecordCache;
+    this.#mutationScopeDiagnostics = mutationScopeDiagnostics;
+    this.#mutationDiagnosticsOpen = shouldRecordMutationScopeDiagnostics({ mode: mutationScopeDiagnostics });
     this.#randomSource = randomSource;
     this.#relocationIndexRootPhysicalRef = relocationIndexRootPhysicalRef;
     this.#rootKey = rootKey;
@@ -369,6 +390,7 @@ export class AuthenticatedMetadataMutationAuthority {
     backend,
     diagnostics,
     fileSystemId,
+    mutationScopeDiagnostics = "record",
     randomSource,
     relocationIndexRootPhysicalRef,
     rootKey,
@@ -379,6 +401,7 @@ export class AuthenticatedMetadataMutationAuthority {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
     fileSystemId: FileSystemId;
+    mutationScopeDiagnostics?: MutationScopeDiagnosticsMode;
     randomSource?: RandomByteSource;
     relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
     rootKey: FileSystemRootKey;
@@ -386,7 +409,10 @@ export class AuthenticatedMetadataMutationAuthority {
     supportedFeatureBits: FeatureBits;
     writerOwner?: AuthenticatedSegmentWriterOwner;
   }): Promise<AuthenticatedMetadataMutationAuthority> {
-    diagnostics?.recordMutationScopeEvent?.({ observation: { event: "begin" } });
+    const recordMutationScopeDiagnostics = shouldRecordMutationScopeDiagnostics({ mode: mutationScopeDiagnostics });
+    if (recordMutationScopeDiagnostics) {
+      diagnostics?.recordMutationScopeEvent?.({ observation: { event: "begin" } });
+    }
     const metadataRecordCache = new AuthenticatedMetadataRecordCache({
       diagnosticScope: "mutation",
       diagnostics,
@@ -406,6 +432,7 @@ export class AuthenticatedMetadataMutationAuthority {
         diagnostics,
         fileSystemId,
         metadataRecordCache,
+        mutationScopeDiagnostics,
         randomSource,
         relocationIndexRootPhysicalRef,
         rootKey,
@@ -416,7 +443,9 @@ export class AuthenticatedMetadataMutationAuthority {
       });
     } catch (error: unknown) {
       metadataRecordCache.dispose();
-      diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome: "failed" } });
+      if (recordMutationScopeDiagnostics) {
+        diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome: "failed" } });
+      }
       throw error;
     }
   }
@@ -444,10 +473,13 @@ export class AuthenticatedMetadataMutationAuthority {
     default: return this.#state satisfies never;
     }
     if (this.#operationInProgress) throw new Error("mutation authority operation already in progress");
+    if (this.#workingAcceptancePrepared) {
+      throw new Error(`cannot ${operation}: mutation authority writer lease is released for working acceptance`);
+    }
   }
 
   #closeMutationDiagnostics({ outcome }: {
-    outcome: "abandoned" | "failed" | "published";
+    outcome: "abandoned" | "accepted" | "failed" | "published";
   }): void {
     if (!this.#mutationDiagnosticsOpen) return;
     this.#mutationDiagnosticsOpen = false;
@@ -499,7 +531,12 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#operationInProgress = true;
     try {
       return await this.#appendMetadataRecordWithRollover({
-        append: async ({ writer }) => await appendAuthenticatedFileExtentPage({ isRoot, page, writer }),
+        append: async ({ writer }) => await appendAuthenticatedFileExtentPage({
+          isRoot,
+          page,
+          sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
+          writer,
+        }),
       });
     } finally {
       this.#operationInProgress = false;
@@ -540,6 +577,7 @@ export class AuthenticatedMetadataMutationAuthority {
         append: async ({ writer }) => await appendAuthenticatedInodeTablePage({
           isRoot,
           page,
+          sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
           writer,
         }),
       });
@@ -582,6 +620,7 @@ export class AuthenticatedMetadataMutationAuthority {
         append: async ({ writer }) => await appendAuthenticatedDirectoryPage({
           isRoot,
           page,
+          sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
           writer,
         }),
       });
@@ -636,6 +675,7 @@ export class AuthenticatedMetadataMutationAuthority {
       diagnostics: this.#diagnostics,
       fileSystemId: this.#fileSystemId,
       metadataRecordCache: this.#metadataRecordCache,
+      mutationScopeDiagnostics: this.#mutationScopeDiagnostics,
       randomSource: this.#randomSource,
       rootKey: this.#rootKey,
       supportedFeatureBits: this.#supportedFeatureBits,
@@ -750,6 +790,43 @@ export class AuthenticatedMetadataMutationAuthority {
     }
   }
 
+  prepareWorkingAcceptanceWithoutCandidate(): void {
+    switch (this.#state) {
+    case "active": break;
+    case "candidate_prepared": throw new Error(
+      "cannot prepare working acceptance: mutation candidate is already prepared",
+    );
+    case "closed": throw new Error("cannot prepare working acceptance: mutation authority is closed");
+    case "publishing": throw new Error("cannot prepare working acceptance during publication");
+    default: return this.#state satisfies never;
+    }
+    if (this.#operationInProgress) throw new Error("mutation authority operation already in progress");
+    if (this.#workingAcceptancePrepared) return;
+
+    // WHY: a staged successor may become background-publishable as soon as
+    // runtime acceptance closes the mutation admission. Release the shared
+    // Segment writer lease first, while that admission still fences flush and
+    // maintenance, so Commit materialization cannot race the foreground lease.
+    this.#releaseWriterLease();
+    this.#workingAcceptancePrepared = true;
+  }
+
+  completeWorkingAcceptanceWithoutCandidate(): void {
+    switch (this.#state) {
+    case "active": break;
+    case "candidate_prepared": throw new Error(
+      "cannot complete working acceptance: mutation candidate is already prepared",
+    );
+    case "closed": throw new Error("cannot complete working acceptance: mutation authority is closed");
+    case "publishing": throw new Error("cannot complete working acceptance during publication");
+    default: return this.#state satisfies never;
+    }
+    if (this.#operationInProgress) throw new Error("mutation authority operation already in progress");
+    this.prepareWorkingAcceptanceWithoutCandidate();
+    this.#state = "closed";
+    this.#closeMutationDiagnostics({ outcome: "accepted" });
+  }
+
   async resolvePublication({ base, intendedLogicalState }: {
     base: OpenedSuperblockCopies;
     intendedLogicalState: SuperblockLogicalState;
@@ -812,6 +889,7 @@ export async function createAuthenticatedMetadataMutationAuthority({
   backend,
   diagnostics,
   fileSystemId,
+  mutationScopeDiagnostics,
   randomSource,
   relocationIndexRootPhysicalRef,
   rootKey,
@@ -823,6 +901,7 @@ export async function createAuthenticatedMetadataMutationAuthority({
     backend,
     diagnostics,
     fileSystemId,
+    mutationScopeDiagnostics,
     randomSource,
     relocationIndexRootPhysicalRef,
     rootKey,

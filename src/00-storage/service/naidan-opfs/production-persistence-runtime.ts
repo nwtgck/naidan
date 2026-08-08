@@ -22,6 +22,7 @@ import {
 } from '@/00-storage/service/naidan-persistence-control/store';
 import type { PersistenceControlRootKeyDerivationCapability } from '@/00-storage/service/naidan-persistence-control/crypto';
 import {
+  DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
   DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
   createBrowserContainerCoordinationScope,
   createBrowserHizoFSTransitionTargetContainer,
@@ -2784,6 +2785,7 @@ const browserNativeHizoFSRuntimePort: NativeHizoFSRuntimePort = Object.freeze({
     switch (openProfile) {
     case 'normal_read': {
       const opened = await openBrowserAuthenticatedDevelopmentWritableContainerCapability({
+        backingFileHandleCacheEntryLimit: DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
         containerRoot,
         passphrase,
         verifyProofAuthority,
@@ -3622,7 +3624,7 @@ async function openNativeCredentialRequiredApplicationSessionWith({
         openManagementCleanHeadBarrier: () => {
           const existing = activeManagementBarrier;
           if (existing !== undefined) return existing;
-          const runtimeBarrier = runtimeHost.openManagementCleanHeadBarrier();
+          const runtimeBarrier = runtimeHost.openManagementCleanHeadBarrier({});
           let released = false;
           const barrier: OpfsPersistenceManagementCleanHeadBarrier = Object.freeze({
             ensureCleanHead: async () => {

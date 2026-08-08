@@ -13,10 +13,16 @@ export type RuntimeMaintenanceRootSets = Readonly<{
   sourceSegmentPinnedRoots: readonly HomeRecordReference[];
   unknownFeatureRoots: readonly HomeRecordReference[];
   writerDependencyRoots: readonly HomeRecordReference[];
+  writerWorkingPageRoots: readonly HomeRecordReference[];
 }>;
 
 export type RuntimeMaintenanceRootRegistration = Readonly<{
   commitReference: HomeRecordReference;
+  release: () => void;
+}>;
+
+export type RuntimeMaintenancePageRootRegistration = Readonly<{
+  pageReference: HomeRecordReference;
   release: () => void;
 }>;
 
@@ -53,7 +59,8 @@ type RootCategory =
   | "reader_pinned"
   | "source_segment_pinned"
   | "unknown_feature"
-  | "writer_dependency";
+  | "writer_dependency"
+  | "writer_working_page";
 
 type ScopeState = {
   captureActive: boolean;
@@ -82,6 +89,7 @@ function categoryEntries({ category, scope }: {
   case "source_segment_pinned": return scope.categories.source_segment_pinned;
   case "unknown_feature": return scope.categories.unknown_feature;
   case "writer_dependency": return scope.categories.writer_dependency;
+  case "writer_working_page": return scope.categories.writer_working_page;
   default: return category satisfies never;
   }
 }
@@ -117,6 +125,7 @@ export class MaintenanceRootRegistry {
         source_segment_pinned: new Map(),
         unknown_feature: new Map(),
         writer_dependency: new Map(),
+        writer_working_page: new Map(),
       },
       maintenanceRootEpoch: 0,
       registrationCount: 0,
@@ -125,11 +134,11 @@ export class MaintenanceRootRegistry {
     return created;
   }
 
-  #acquire({ category, commitReference, coordinationKey }: {
+  #acquire({ category, reference, coordinationKey }: {
     category: RootCategory;
-    commitReference: HomeRecordReference;
+    reference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
-  }): RuntimeMaintenanceRootRegistration {
+  }): Readonly<{ reference: HomeRecordReference; release: () => void }> {
     const scope = this.#scope({ coordinationKey });
     if (scope.captureActive) {
       throw new MaintenanceRootRegistryError({
@@ -149,7 +158,7 @@ export class MaintenanceRootRegistry {
         message: "maintenance root registration cannot advance the root epoch",
       });
     }
-    const encodedReference = encodeHomeRecordReference({ reference: commitReference }).slice();
+    const encodedReference = encodeHomeRecordReference({ reference }).slice();
     const identity = referenceIdentity({ encodedReference });
     const entries = categoryEntries({ category, scope });
     const existing = entries.get(identity);
@@ -162,7 +171,7 @@ export class MaintenanceRootRegistry {
     scope.maintenanceRootEpoch += 1;
     let active = true;
     return {
-      commitReference: cloneReference({ encodedReference }),
+      reference: cloneReference({ encodedReference }),
       release: () => {
         if (!active) return;
         active = false;
@@ -181,35 +190,53 @@ export class MaintenanceRootRegistry {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootRegistration {
-    return this.#acquire({ category: "inspector_pinned", commitReference, coordinationKey });
+    const registration = this.#acquire({ category: "inspector_pinned", reference: commitReference, coordinationKey });
+    return Object.freeze({ commitReference: registration.reference, release: registration.release });
   }
 
   acquireReaderPinnedRoot({ commitReference, coordinationKey }: {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootRegistration {
-    return this.#acquire({ category: "reader_pinned", commitReference, coordinationKey });
+    const registration = this.#acquire({ category: "reader_pinned", reference: commitReference, coordinationKey });
+    return Object.freeze({ commitReference: registration.reference, release: registration.release });
   }
 
   acquireSourceSegmentPinnedRoot({ commitReference, coordinationKey }: {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootRegistration {
-    return this.#acquire({ category: "source_segment_pinned", commitReference, coordinationKey });
+    const registration = this.#acquire({ category: "source_segment_pinned", reference: commitReference, coordinationKey });
+    return Object.freeze({ commitReference: registration.reference, release: registration.release });
   }
 
   acquireUnknownFeatureRoot({ commitReference, coordinationKey }: {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootRegistration {
-    return this.#acquire({ category: "unknown_feature", commitReference, coordinationKey });
+    const registration = this.#acquire({ category: "unknown_feature", reference: commitReference, coordinationKey });
+    return Object.freeze({ commitReference: registration.reference, release: registration.release });
   }
 
   acquireWriterDependencyRoot({ commitReference, coordinationKey }: {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootRegistration {
-    return this.#acquire({ category: "writer_dependency", commitReference, coordinationKey });
+    const registration = this.#acquire({ category: "writer_dependency", reference: commitReference, coordinationKey });
+    return Object.freeze({ commitReference: registration.reference, release: registration.release });
+  }
+
+
+  acquireWriterWorkingPageRoot({ pageReference, coordinationKey }: {
+    pageReference: HomeRecordReference;
+    coordinationKey: ContainerCoordinationKey;
+  }): RuntimeMaintenancePageRootRegistration {
+    const registration = this.#acquire({
+      category: "writer_working_page",
+      reference: pageReference,
+      coordinationKey,
+    });
+    return Object.freeze({ pageReference: registration.reference, release: registration.release });
   }
 
   activityState({ coordinationKey }: {
@@ -232,6 +259,27 @@ export class MaintenanceRootRegistry {
     return scope.categories.writer_dependency.get(identity)?.count === 1;
   }
 
+  isExactSoleWriterWorkingPageRoots({ coordinationKey, pageReferences }: {
+    coordinationKey: ContainerCoordinationKey;
+    pageReferences: readonly HomeRecordReference[];
+  }): boolean {
+    if (pageReferences.length === 0) return false;
+    const scope = this.#scopes.get(coordinationKey);
+    if (scope === undefined || scope.captureActive || scope.registrationCount !== pageReferences.length) return false;
+    const expectedCounts = new Map<string, number>();
+    for (const pageReference of pageReferences) {
+      const identity = referenceIdentity({
+        encodedReference: encodeHomeRecordReference({ reference: pageReference }),
+      });
+      expectedCounts.set(identity, (expectedCounts.get(identity) ?? 0) + 1);
+    }
+    if (scope.categories.writer_working_page.size !== expectedCounts.size) return false;
+    for (const [identity, expectedCount] of expectedCounts) {
+      if (scope.categories.writer_working_page.get(identity)?.count !== expectedCount) return false;
+    }
+    return true;
+  }
+
   captureRoots({ coordinationKey }: {
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootCapture {
@@ -252,6 +300,7 @@ export class MaintenanceRootRegistry {
         sourceSegmentPinnedRoots: capturedReferences({ entries: scope.categories.source_segment_pinned }),
         unknownFeatureRoots: capturedReferences({ entries: scope.categories.unknown_feature }),
         writerDependencyRoots: capturedReferences({ entries: scope.categories.writer_dependency }),
+        writerWorkingPageRoots: capturedReferences({ entries: scope.categories.writer_working_page }),
       }),
       release: () => {
         if (!active) return;

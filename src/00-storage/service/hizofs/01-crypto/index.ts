@@ -9,6 +9,7 @@ export * from './data-plane/superblock';
 export * from './random/purpose-random';
 export {
   FileSystemRootKey,
+  cloneFileSystemRootKey,
   withFileSystemRootKeyProofDerivationCapability,
   type FileSystemRootKeyProofDerivationCapability,
 } from './secret-types';

@@ -48,6 +48,9 @@ type DevelopmentRuntimePort = Readonly<{
   createBackend: ({ fileSystemSession }: {
     fileSystemSession: StorageFileSystemSession;
   }) => Promise<IStorageProvider>;
+  // The HizoFS credential-publication implementation owns writer acquisition
+  // and its management clean-head barrier. Wrapping this call in a second
+  // barrier would invert the required writer-before-barrier ordering.
   changeSessionPassphrase: ({ fileSystemSession, recheckAuthority, replacementPassphrase }: {
     fileSystemSession: StorageFileSystemSession;
     recheckAuthority: () => Promise<void>;
@@ -190,34 +193,6 @@ const browserPort: DevelopmentRuntimePort = Object.freeze({
   openApplicationSession: openNativeCredentialRequiredApplicationSession,
 });
 
-async function runWithManagementCleanHeadBarrier<Result>({ operation, session }: {
-  operation: () => Promise<Result>;
-  session: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceUnlockedSession;
-}): Promise<Result> {
-  const barrier = session.openManagementCleanHeadBarrier();
-  await barrier.ensureCleanHead();
-  let result: Result | undefined;
-  let operationFailure: unknown;
-  try {
-    result = await operation();
-  } catch (cause: unknown) {
-    operationFailure = cause;
-  }
-  try {
-    barrier.release();
-  } catch (releaseFailure: unknown) {
-    if (operationFailure !== undefined) {
-      throw new AggregateError(
-        [operationFailure, releaseFailure],
-        'management operation and clean-head barrier release both failed',
-      );
-    }
-    throw releaseFailure;
-  }
-  if (operationFailure !== undefined) throw operationFailure;
-  return result as Result;
-}
-
 async function runWithManagementCleanHeadBarrierRetainedForSessionShutdown<Result>({ operation, session }: {
   operation: () => Promise<Result>;
   session: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceUnlockedSession;
@@ -258,6 +233,7 @@ async function createDevelopmentUnlockedSession({ opened, port }: {
     throw cause;
   }
   let activeManagementBarrier: import('@/00-storage/service/naidan-opfs/persistence-runtime-contract').OpfsPersistenceManagementCleanHeadBarrier | undefined;
+  let activeManagementBarrierHasCleanHead = false;
   let backendDisposed = false;
   let fileSystemSessionClosed = false;
   let runtimeShutdown = false;
@@ -271,12 +247,16 @@ async function createDevelopmentUnlockedSession({ opened, port }: {
       ensureCleanHead: async () => {
         if (released) throw new TypeError('management clean-head barrier is already released');
         await underlying.ensureCleanHead();
+        activeManagementBarrierHasCleanHead = true;
       },
       release: () => {
         if (released) throw new TypeError('management clean-head barrier is already released');
         underlying.release();
         released = true;
-        if (activeManagementBarrier === barrier) activeManagementBarrier = undefined;
+        if (activeManagementBarrier === barrier) {
+          activeManagementBarrier = undefined;
+          activeManagementBarrierHasCleanHead = false;
+        }
       },
     });
     activeManagementBarrier = barrier;
@@ -296,31 +276,48 @@ async function createDevelopmentUnlockedSession({ opened, port }: {
           failures.push(cause);
         }
       }
-      if (activeManagementBarrier !== undefined) {
+      if (!fileSystemSessionClosed && activeManagementBarrier === undefined) {
+        openManagementCleanHeadBarrier();
+      }
+      if (!fileSystemSessionClosed
+        && activeManagementBarrier !== undefined
+        && !activeManagementBarrierHasCleanHead) {
         try {
-          activeManagementBarrier.release();
+          // WHY: normal provider close must settle accepted working state while
+          // the application session still owns its publication capability.
+          // Keep a failed barrier for fencing, but retry its settlement on the
+          // next close attempt rather than stranding the session permanently.
+          await activeManagementBarrier.ensureCleanHead();
         } catch (cause: unknown) {
           failures.push(cause);
         }
       }
-      if (activeManagementBarrier === undefined && !runtimeShutdown) {
-        try {
-          // The runtime still owns secret-bearing candidate publication
-          // authority through the application session. Flush before closing
-          // that session, otherwise graceful provider shutdown can silently
-          // discard an accepted working generation.
-          await opened.gracefullyShutdownRuntime();
-          runtimeShutdown = true;
-        } catch (cause: unknown) {
-          failures.push(cause);
+      if (activeManagementBarrier !== undefined && activeManagementBarrierHasCleanHead) {
+        // WHY: keep mutation admission fenced until the application session no
+        // longer owns the retired/closing authority. Transition paths already
+        // arrive here with a clean head; normal close establishes one above.
+        if (!fileSystemSessionClosed) {
+          try {
+            await opened.fileSystemSession.close();
+            fileSystemSessionClosed = true;
+          } catch (cause: unknown) {
+            failures.push(cause);
+          }
         }
-      }
-      if (runtimeShutdown && !fileSystemSessionClosed) {
-        try {
-          await opened.fileSystemSession.close();
-          fileSystemSessionClosed = true;
-        } catch (cause: unknown) {
-          failures.push(cause);
+        if (fileSystemSessionClosed && activeManagementBarrier !== undefined) {
+          try {
+            activeManagementBarrier.release();
+          } catch (cause: unknown) {
+            failures.push(cause);
+          }
+        }
+        if (fileSystemSessionClosed && activeManagementBarrier === undefined && !runtimeShutdown) {
+          try {
+            await opened.gracefullyShutdownRuntime();
+            runtimeShutdown = true;
+          } catch (cause: unknown) {
+            failures.push(cause);
+          }
         }
       }
       if (failures.length === 1) throw failures[0];
@@ -415,22 +412,19 @@ function createDevelopmentOpfsPersistenceRuntimeWith({ lockManager, port, runtim
       default: return opened satisfies never;
       }
     },
-    changePassphrase: async ({ passphrase, session, storageRoot }) => await runWithManagementCleanHeadBarrier({
-      operation: async () => {
-        const physical = port.createPhysical({ storageRoot });
-        const captured = await port.captureAuthority({ physical });
-        const fileSystemSession = await port.changeSessionPassphrase({
-          fileSystemSession: session.fileSystemSession,
-          recheckAuthority: async () => await recheckPersistenceControlAuthority({ captured, physical }),
-          replacementPassphrase: passphrase,
-        });
-        if (fileSystemSession !== session.fileSystemSession) {
-          throw new TypeError('credential update replaced the active HizoFS application session');
-        }
-        return session;
-      },
-      session,
-    }),
+    changePassphrase: async ({ passphrase, session, storageRoot }) => {
+      const physical = port.createPhysical({ storageRoot });
+      const captured = await port.captureAuthority({ physical });
+      const fileSystemSession = await port.changeSessionPassphrase({
+        fileSystemSession: session.fileSystemSession,
+        recheckAuthority: async () => await recheckPersistenceControlAuthority({ captured, physical }),
+        replacementPassphrase: passphrase,
+      });
+      if (fileSystemSession !== session.fileSystemSession) {
+        throw new TypeError('credential update replaced the active HizoFS application session');
+      }
+      return session;
+    },
     runTransition: async ({ nativeNamespaceRoot, onProgress, request, signal, storageRoot }) => {
       switch (request.operation) {
       case 'enable': {

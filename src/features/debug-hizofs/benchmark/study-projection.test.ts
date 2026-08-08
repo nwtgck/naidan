@@ -24,8 +24,8 @@ function createReport({
   status: HizoFSBenchmarkReport['status'];
 }): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 29,
-    benchmarkImplementationVersion: 42,
+    schemaVersion: 30,
+    benchmarkImplementationVersion: 43,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: `run-${status}`,
@@ -108,30 +108,12 @@ describe('HizoFS benchmark studies', () => {
       baseConfiguration: createConfiguration(),
     });
 
-    expect(variants).toHaveLength(22);
+    expect(variants).toHaveLength(4);
     expect(variants.map(variant => variant.variantId)).toEqual([
-      'file-chunk-256kib',
-      'file-chunk-512kib',
-      'file-chunk-1024kib',
-      'file-chunk-2048kib',
-      'file-chunk-4096kib',
-      'write-concurrency-1',
-      'write-concurrency-2',
-      'write-concurrency-4',
-      'write-concurrency-8',
-      'read-prefetch-1',
-      'read-prefetch-2',
-      'read-prefetch-4',
-      'read-prefetch-8',
       'backing-handle-cache-0',
       'backing-handle-cache-256',
       'backing-handle-cache-1024',
       'backing-handle-cache-4096',
-      'chunk-cache-disabled',
-      'chunk-cache-8mib-read-only',
-      'chunk-cache-16mib-read-only',
-      'chunk-cache-32mib-read-only',
-      'chunk-cache-8mib-read-write',
     ]);
     expect(variants.every(variant => (
       variant.configuration.backendMode === 'hizofs_only'
@@ -139,15 +121,15 @@ describe('HizoFS benchmark studies', () => {
       && variant.configuration.benchmarkDataRetention === 'delete_after_run'
       && variant.configuration.measuredIterations <= 3
     ))).toBe(true);
-    expect(variants.slice(0, 5).map(variant => ({
-      chunkSize: variant.configuration.hizoFSRuntimePolicy.fileChunkSize,
+    expect(variants.map(variant => ({
+      entryLimit: variant.configuration.hizoFSRuntimePolicy.backingFileHandleCacheEntryLimit,
       workloads: variant.configuration.workloads,
-    }))).toEqual([256, 512, 1024, 2048, 4096].map(kib => ({
-      chunkSize: kib * 1024,
+    }))).toEqual([0, 256, 1024, 4096].map(entryLimit => ({
+      entryLimit,
       workloads: ['sequential_io', 'random_access'],
     })));
     expect(variants[0]?.configuration.runLabel)
-      .toBe('baseline / policy_matrix/file-chunk-256kib');
+      .toBe('baseline / policy_matrix/backing-handle-cache-0');
   });
 
   it('builds bounded garbage-collection policy variants', () => {
@@ -201,13 +183,13 @@ describe('HizoFS benchmark studies', () => {
         },
         writeConcurrency: 2,
       },
-      ...[1, 2, 4, 8].map(writeConcurrency => ({
+      {
         sequentialIo: {
           fileSizeBytes: 256 * 1024 * 1024,
           blockSizeBytes: 256 * 1024,
         },
-        writeConcurrency,
-      })),
+        writeConcurrency: 2,
+      },
     ]);
     expect(variants.every(variant => (
       variant.configuration.workloads.length === 1

@@ -11,6 +11,7 @@ import {
 } from "@/00-storage/service/hizofs/worker/runtime-host";
 import { createContainerCoordinationScope, parseContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
 import { InMemoryCrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/testing/in-memory-cross-realm-lock-port";
+import type { CrossRealmLockMode, CrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/cross-realm-lock-coordinator";
 import { createTestingHomeRecordReference } from "@/00-storage/service/hizofs/runtime/testing/home-record-reference-fixture";
 import { createTestingAuthenticatedDurableApplicationGenerationAuthority } from "@/00-storage/service/hizofs/runtime/testing/authenticated-application-generation-fixture";
 import {
@@ -23,7 +24,7 @@ function host({
   crossRealmLockPort = new InMemoryCrossRealmLockPort(),
   lazyPublicationRollout,
 }: {
-  crossRealmLockPort?: InMemoryCrossRealmLockPort;
+  crossRealmLockPort?: CrossRealmLockPort;
   lazyPublicationRollout?: HizoFSLazyPublicationRolloutGateReceipt;
 } = {}) {
   return new HizoFSWorkerRuntimeHost({
@@ -65,6 +66,26 @@ function minimalApplicationResources({ releaseResources = async () => undefined 
     releaseResources,
     syncDurability: "demonstrated" as const,
   };
+}
+
+class ObservedReaderPinPort implements CrossRealmLockPort {
+  #inner = new InMemoryCrossRealmLockPort();
+  readerPinAcquired = false;
+
+  constructor(private readonly failReaderPin = false) {}
+
+  async acquire({ mode, name }: { mode: CrossRealmLockMode; name: string }) {
+    if (name.includes("/reader-pin/") && this.failReaderPin) {
+      throw new Error("reader pin acquisition failed");
+    }
+    const lease = await this.#inner.acquire({ mode, name });
+    if (name.includes("/reader-pin/")) this.readerPinAcquired = true;
+    return lease;
+  }
+
+  async queryHeldLockNames(): Promise<readonly string[]> {
+    return await this.#inner.queryHeldLockNames();
+  }
 }
 
 function browserRequest(): LockManager["request"] {
@@ -287,7 +308,7 @@ describe("HizoFS worker runtime host", () => {
   it("delegates management clean-head barrier acquisition to the container runtime", () => {
     const value = host();
 
-    expect(() => value.openManagementCleanHeadBarrier()).toThrowError(
+    expect(() => value.openManagementCleanHeadBarrier({})).toThrowError(
       "working generation coordinator is not initialized for this runtime",
     );
   });
@@ -541,6 +562,57 @@ describe("HizoFS worker runtime host", () => {
     await afterSnapshotClose.released;
     await session.close();
     expect(releaseResources).toHaveBeenCalledOnce();
+  });
+
+  it("keeps snapshot preparation active until the reader pin is acquired", async () => {
+    const crossRealmLockPort = new ObservedReaderPinPort();
+    const releasePreparation = vi.fn(() => {
+      expect(crossRealmLockPort.readerPinAcquired).toBe(true);
+    });
+    const value = host({ crossRealmLockPort });
+    const session = await value.openApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      createApplicationSessionResources: () => ({
+        ...minimalApplicationResources(),
+        createReadSnapshotResources: () => ({
+          commitReference: createTestingHomeRecordReference(),
+          mutationPort: {} as HizoFSApplicationMutationPort,
+          namespace: minimalApplicationResources().namespace,
+          releasePreparation,
+        }),
+      }),
+      recheckAuthority: async () => undefined,
+      verifyCapturedAuthority: async () => "verified",
+    });
+
+    const snapshot = await session.createReadSnapshot?.();
+    expect(snapshot).toBeDefined();
+    expect(releasePreparation).toHaveBeenCalledOnce();
+    await snapshot?.close();
+    await session.close();
+  });
+
+  it("releases snapshot preparation when reader-pin acquisition fails", async () => {
+    const releasePreparation = vi.fn(() => undefined);
+    const value = host({ crossRealmLockPort: new ObservedReaderPinPort(true) });
+    const session = await value.openApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      createApplicationSessionResources: () => ({
+        ...minimalApplicationResources(),
+        createReadSnapshotResources: () => ({
+          commitReference: createTestingHomeRecordReference(),
+          mutationPort: {} as HizoFSApplicationMutationPort,
+          namespace: minimalApplicationResources().namespace,
+          releasePreparation,
+        }),
+      }),
+      recheckAuthority: async () => undefined,
+      verifyCapturedAuthority: async () => "verified",
+    });
+
+    await expect(session.createReadSnapshot?.()).rejects.toThrow("reader pin acquisition failed");
+    expect(releasePreparation).toHaveBeenCalledOnce();
+    await session.close();
   });
 
   it("preserves the primary runtime-session failure after successful cleanup", async () => {

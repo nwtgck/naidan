@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { hasCrashDurableWritableSemantics } from "@/00-storage/service/hizofs/physical-store/backend";
 import { canonicalContainerDirectory, canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
-import { OpfsWritableBackend } from "@/00-storage/service/hizofs/physical-store/opfs/opfs-writable-backend";
+import {
+  OpfsWritableBackend,
+  type OpfsWritableBackendFileHandleCachePolicy,
+} from "@/00-storage/service/hizofs/physical-store/opfs/opfs-writable-backend";
 
 declare const authenticatedBytesBrand: unique symbol;
 type AuthenticatedBytes = Uint8Array & { readonly [authenticatedBytesBrand]: true };
@@ -227,17 +230,98 @@ function authenticatedBytes(values: readonly number[]): AuthenticatedBytes {
   return Uint8Array.from(values) as AuthenticatedBytes;
 }
 
-function createBackend(root = new TestDirectoryHandle("root")): {
+function createBackend({
+  fileHandleCachePolicy,
+  root = new TestDirectoryHandle("root"),
+}: {
+  fileHandleCachePolicy?: OpfsWritableBackendFileHandleCachePolicy;
+  root?: TestDirectoryHandle;
+} = {}): {
   backend: OpfsWritableBackend<AuthenticatedBytes>;
   root: TestDirectoryHandle;
 } {
   return {
-    backend: new OpfsWritableBackend<AuthenticatedBytes>({ root: root as unknown as FileSystemDirectoryHandle }),
+    backend: new OpfsWritableBackend<AuthenticatedBytes>({
+      fileHandleCachePolicy,
+      root: root as unknown as FileSystemDirectoryHandle,
+    }),
     root,
   };
 }
 
 describe("OPFS writable backend", () => {
+  it("reuses only eligible bounded file handles without repeating directory traversal", async () => {
+    const events: Array<"eviction" | "hit" | "miss"> = [];
+    const usages: number[] = [];
+    const { backend, root } = createBackend({
+      fileHandleCachePolicy: {
+        diagnostics: {
+          recordEvent: ({ event }) => events.push(event),
+          setUsage: ({ entries }) => usages.push(entries),
+        },
+        maximumEntries: 2,
+        shouldCache: ({ path }) => path.startsWith("segments/"),
+      },
+    });
+    await backend.provisionDirectoryHierarchy({
+      path: canonicalContainerDirectory({ value: "segments/metadata/aa" }),
+    });
+    const firstPath = canonicalContainerPath({ value: "segments/metadata/aa/first.enc" });
+    const secondPath = canonicalContainerPath({ value: "segments/metadata/aa/second.enc" });
+    const thirdPath = canonicalContainerPath({ value: "segments/metadata/aa/third.enc" });
+    for (const path of [firstPath, secondPath, thirdPath]) {
+      const file = await backend.createFileExclusive({ path });
+      await backend.closeFile({ file });
+    }
+
+    const lookupsBeforeFirstRead = root.directoryHandleLookups;
+    await backend.getFileSize({ path: secondPath });
+    expect(root.directoryHandleLookups).toBe(lookupsBeforeFirstRead);
+    expect(events).toContain("hit");
+
+    // The third create evicts the oldest retained path. Reopening it must traverse
+    // the directory hierarchy again rather than trusting a stale unbounded cache.
+    const lookupsBeforeEvictedRead = root.directoryHandleLookups;
+    await backend.getFileSize({ path: firstPath });
+    expect(root.directoryHandleLookups).toBeGreaterThan(lookupsBeforeEvictedRead);
+    expect(events).toContain("eviction");
+    expect(events).toContain("miss");
+    expect(Math.max(...usages)).toBe(2);
+  });
+
+  it("does not retain ineligible authority-style paths and invalidates removed handles", async () => {
+    const events: Array<"eviction" | "hit" | "miss"> = [];
+    const { backend, root } = createBackend({
+      fileHandleCachePolicy: {
+        diagnostics: {
+          recordEvent: ({ event }) => events.push(event),
+          setUsage: () => undefined,
+        },
+        maximumEntries: 8,
+        shouldCache: ({ path }) => path.startsWith("segments/"),
+      },
+    });
+    const authorityPath = canonicalContainerPath({ value: "superblock-a" });
+    const authority = await backend.createFileExclusive({ path: authorityPath });
+    await backend.closeFile({ file: authority });
+    const authorityLookupsBefore = root.directoryHandleLookups;
+    await backend.getFileSize({ path: authorityPath });
+    await backend.getFileSize({ path: authorityPath });
+    expect(root.directoryHandleLookups).toBe(authorityLookupsBefore);
+    expect(events).toEqual([]);
+
+    await backend.provisionDirectoryHierarchy({
+      path: canonicalContainerDirectory({ value: "segments/metadata/ab" }),
+    });
+    const cachedPath = canonicalContainerPath({ value: "segments/metadata/ab/cached.enc" });
+    const cached = await backend.createFileExclusive({ path: cachedPath });
+    await backend.closeFile({ file: cached });
+    await backend.getFileSize({ path: cachedPath });
+    const lookupsBeforeRemove = root.directoryHandleLookups;
+    await backend.removeFile({ path: cachedPath });
+    await expect(backend.getFileSize({ path: cachedPath })).resolves.toBeUndefined();
+    expect(root.directoryHandleLookups).toBeGreaterThan(lookupsBeforeRemove);
+  });
   it("provisions a directory hierarchy with one prefix traversal", async () => {
     const { backend, root } = createBackend();
     const path = canonicalContainerDirectory({ value: "segments/metadata/ab" });
@@ -526,7 +610,7 @@ describe("OPFS writable backend", () => {
     const root = new TestDirectoryHandle("root");
     const native = await root.getFileHandle("unsupported.enc", { create: true });
     native.syncAccessAvailable = false;
-    const { backend } = createBackend(root);
+    const { backend } = createBackend({ root });
     const file = await backend.openFileForUpdate({
       path: canonicalContainerPath({ value: "unsupported.enc" }),
     });
@@ -556,7 +640,7 @@ describe("OPFS writable backend", () => {
     const native = await root.getFileHandle("unsupported.enc", { create: true });
     native.syncAccessAvailable = false;
     native.writableAvailable = false;
-    const { backend } = createBackend(root);
+    const { backend } = createBackend({ root });
     const file = await backend.openFileForUpdate({
       path: canonicalContainerPath({ value: "unsupported.enc" }),
     });

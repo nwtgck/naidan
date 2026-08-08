@@ -1,8 +1,7 @@
 import {
-  COMMON_PAGE_HEADER_SIZE,
   compareUnsignedBytes,
   encodeDirectoryEntry,
-  encodeDirectoryPage,
+  encodedDirectoryBranchEntryByteLength,
   encodeFilenameComponent,
   encodeHomeRecordReference,
   type DirectoryLeafEntry,
@@ -126,23 +125,24 @@ function createDirectoryPageTreeReader({ pageStore }: {
 function createDirectoryPageTreeWriter({ pageStore }: {
   pageStore: DirectoryPageTreePageStore;
 }): CanonicalBTreeWriter<string, DirectoryLeafEntry, HomeRecordReference> {
+  const encodedEntries = new WeakMap<DirectoryLeafEntry, Uint8Array>();
+  const entryBytes = ({ entry }: { entry: DirectoryLeafEntry }): Uint8Array => {
+    const cached = encodedEntries.get(entry);
+    if (cached !== undefined) return cached;
+    const encoded = encodeDirectoryEntry({ entry });
+    encodedEntries.set(entry, encoded);
+    return encoded;
+  };
   return new CanonicalBTreeWriter({
     compareKeys: compareDirectoryNames,
-    encodedBranchChildByteLength: ({ child }) => encodeDirectoryPage({
-      isRoot: false,
-      page: {
-        entries: [{
-          childPageHomeRef: child.childPageReference,
-          upperBoundName: child.upperBound,
-        }],
-        level: 1,
-        type: "branch",
-      },
-    }).byteLength - COMMON_PAGE_HEADER_SIZE,
-    encodedLeafEntryByteLength: ({ entry }) => encodeDirectoryEntry({ entry }).byteLength,
+    encodedBranchChildByteLength: ({ child }) => encodedDirectoryBranchEntryByteLength({ entry: {
+      childPageHomeRef: child.childPageReference,
+      upperBoundName: child.upperBound,
+    } }),
+    encodedLeafEntryByteLength: ({ entry }) => entryBytes({ entry }).byteLength,
     entriesEqual: ({ left, right }) => bytesEqual({
-      left: encodeDirectoryEntry({ entry: left }),
-      right: encodeDirectoryEntry({ entry: right }),
+      left: entryBytes({ entry: left }),
+      right: entryBytes({ entry: right }),
     }),
     getEntryKey: ({ entry }) => entry.name,
     pageStore,

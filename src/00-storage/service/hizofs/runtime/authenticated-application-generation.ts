@@ -19,13 +19,48 @@ export type AuthenticatedDurableApplicationGenerationAuthority = Readonly<{
   superblock: OpenedSuperblockCopies;
 }>;
 
+export type MaterializedWorkingGenerationRootAuthority = Readonly<{
+  commitReference: HomeRecordReference;
+  type: "materialized_commit";
+}>;
+
+export type DirectWorkingGenerationRootAuthority = Readonly<{
+  nestedSubvolumeTableRootHomeRef: HomeRecordReference | null;
+  rootInodeTableRootHomeRef: HomeRecordReference;
+  type: "direct_working_pages";
+}>;
+
+export type WorkingGenerationRootAuthority =
+  | MaterializedWorkingGenerationRootAuthority
+  | DirectWorkingGenerationRootAuthority;
+
 export type AuthenticatedApplicationGenerationDescriptor = Readonly<{
   commit: FileSystemCommitPayload;
   commitReference: HomeRecordReference;
   durableAuthority: AuthenticatedDurableApplicationGenerationAuthority;
   superblock: OpenedSuperblockCopies;
   workingIdentity: WorkingGenerationIdentity;
+  workingRootAuthority: WorkingGenerationRootAuthority;
 }>;
+
+export type AuthenticatedStagedApplicationGenerationDescriptor = Readonly<{
+  commit: FileSystemCommitPayload;
+  durableAuthority: AuthenticatedDurableApplicationGenerationAuthority;
+  superblock: OpenedSuperblockCopies;
+  workingIdentity: WorkingGenerationIdentity;
+  workingRootAuthority: DirectWorkingGenerationRootAuthority;
+}>;
+
+export type AuthenticatedWorkingApplicationGenerationDescriptor =
+  | AuthenticatedApplicationGenerationDescriptor
+  | AuthenticatedStagedApplicationGenerationDescriptor;
+
+export function requireMaterializedApplicationGenerationDescriptor({ descriptor }: {
+  descriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
+}): AuthenticatedApplicationGenerationDescriptor {
+  if ("commitReference" in descriptor) return descriptor;
+  throw new TypeError("working application generation has not materialized a Commit reference");
+}
 
 function assertAuthenticatedDurableApplicationGenerationAuthority({ authority }: {
   authority: AuthenticatedDurableApplicationGenerationAuthority;
@@ -71,6 +106,20 @@ export function createAuthenticatedDurableApplicationGenerationAuthority({
   return authority;
 }
 
+function assertWorkingApplicationGenerationIdentity({ commit, workingIdentity }: {
+  commit: FileSystemCommitPayload;
+  workingIdentity: WorkingGenerationIdentity;
+}): void {
+  const expectedWorkingIdentity = createWorkingGenerationIdentity({
+    authorityEpoch: workingIdentity.authorityEpoch,
+    generationNumber: workingIdentity.generationNumber,
+    mutationId: commit.mutationId,
+  });
+  if (!sameWorkingGenerationIdentity({ left: workingIdentity, right: expectedWorkingIdentity })) {
+    throw new TypeError("working application generation identity does not match its mutation payload");
+  }
+}
+
 export function createAuthenticatedApplicationGenerationDescriptor({
   commit,
   commitReference,
@@ -83,21 +132,41 @@ export function createAuthenticatedApplicationGenerationDescriptor({
   workingIdentity: WorkingGenerationIdentity;
 }): AuthenticatedApplicationGenerationDescriptor {
   assertAuthenticatedDurableApplicationGenerationAuthority({ authority: durableAuthority });
-  const expectedWorkingIdentity = createWorkingGenerationIdentity({
-    authorityEpoch: workingIdentity.authorityEpoch,
-    commitReference,
-    generationNumber: workingIdentity.generationNumber,
-    mutationId: commit.mutationId,
-  });
-  if (!sameWorkingGenerationIdentity({ left: workingIdentity, right: expectedWorkingIdentity })) {
-    throw new TypeError("working application generation identity does not match its candidate Commit");
-  }
+  assertWorkingApplicationGenerationIdentity({ commit, workingIdentity });
   return Object.freeze({
     commit,
-    commitReference: workingIdentity.commitReference,
+    commitReference,
     durableAuthority,
     superblock: durableAuthority.superblock,
     workingIdentity,
+    workingRootAuthority: Object.freeze({
+      commitReference,
+      type: "materialized_commit" as const,
+    }),
+  });
+}
+
+export function createAuthenticatedStagedApplicationGenerationDescriptor({
+  commit,
+  durableAuthority,
+  workingIdentity,
+}: {
+  commit: FileSystemCommitPayload;
+  durableAuthority: AuthenticatedDurableApplicationGenerationAuthority;
+  workingIdentity: WorkingGenerationIdentity;
+}): AuthenticatedStagedApplicationGenerationDescriptor {
+  assertAuthenticatedDurableApplicationGenerationAuthority({ authority: durableAuthority });
+  assertWorkingApplicationGenerationIdentity({ commit, workingIdentity });
+  return Object.freeze({
+    commit,
+    durableAuthority,
+    superblock: durableAuthority.superblock,
+    workingIdentity,
+    workingRootAuthority: Object.freeze({
+      nestedSubvolumeTableRootHomeRef: commit.nestedSubvolumeTableRootHomeRef,
+      rootInodeTableRootHomeRef: commit.rootInodeTableRootHomeRef,
+      type: "direct_working_pages" as const,
+    }),
   });
 }
 

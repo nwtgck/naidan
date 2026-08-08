@@ -2,8 +2,8 @@ import {
   createFileOffset,
   createInodeNumber,
   createInodeRevision,
-  encodeDirectoryPage,
-  encodeInodeLeafPage,
+  assertDirectoryLeafEntryFitsMetadataPage,
+  assertInodeLeafEntryFitsMetadataPage,
   UINT64_MAXIMUM,
   type DirectoryLeafEntry,
   type InodeLeafEntry,
@@ -150,8 +150,8 @@ export function prepareOrdinaryEntryCreatePlan({
 
   // Reuse the authoritative codecs as validators. This planner must not
   // duplicate filename, symlink-target, inline-content, or inode constraints.
-  encodeDirectoryPage({ isRoot: false, page: { entries: [directoryEntry], level: 0, type: "leaf" } });
-  encodeInodeLeafPage({ entries: [inode], isRoot: false });
+  assertDirectoryLeafEntryFitsMetadataPage({ entry: directoryEntry });
+  assertInodeLeafEntryFitsMetadataPage({ entry: inode });
 
   return {
     directoryEntry,

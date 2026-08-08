@@ -38,6 +38,23 @@ type OpfsWritableFileHandle = Omit<FileSystemFileHandle, 'createWritable'> & {
   createWritable?: FileSystemFileHandle['createWritable'];
 };
 
+
+type OpfsResolvedFile = Readonly<{
+  fileHandle: OpfsWritableFileHandle;
+  name: string;
+  parent: FileSystemDirectoryHandle;
+}>;
+
+export type OpfsWritableBackendFileHandleCacheDiagnosticsPort = Readonly<{
+  recordEvent: ({ event }: { event: "eviction" | "hit" | "miss" }) => void;
+  setUsage: ({ entries }: { entries: number }) => void;
+}>;
+
+export type OpfsWritableBackendFileHandleCachePolicy = Readonly<{
+  diagnostics: OpfsWritableBackendFileHandleCacheDiagnosticsPort | undefined;
+  maximumEntries: number;
+  shouldCache: ({ path }: { path: CanonicalContainerPath }) => boolean;
+}>;
 type OpfsWritableFileState = {
   access:
     | {
@@ -143,12 +160,23 @@ export class OpfsWritableBackend<AuthenticatedPhysicalBytes extends Uint8Array>
 implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSDirectoryCursorBackend {
   public readonly capabilities = CAPABILITIES;
 
+  readonly #fileHandleCache = new Map<CanonicalContainerPath, OpfsResolvedFile>();
+  readonly #fileHandleCachePolicy: OpfsWritableBackendFileHandleCachePolicy | undefined;
   readonly #handles = new WeakMap<HizoFSWritableFile, OpfsWritableFileState>();
   readonly #openPathCounts = new Map<CanonicalContainerPath, number>();
   readonly #root: FileSystemDirectoryHandle;
 
-  public constructor({ root }: { root: FileSystemDirectoryHandle }) {
+  public constructor({ fileHandleCachePolicy, root }: {
+    fileHandleCachePolicy?: OpfsWritableBackendFileHandleCachePolicy;
+    root: FileSystemDirectoryHandle;
+  }) {
+    if (fileHandleCachePolicy !== undefined
+      && (!Number.isSafeInteger(fileHandleCachePolicy.maximumEntries) || fileHandleCachePolicy.maximumEntries < 0)) {
+      throw new RangeError('OPFS file-handle cache maximum entries must be a non-negative safe integer');
+    }
+    this.#fileHandleCachePolicy = fileHandleCachePolicy;
     this.#root = root;
+    this.#reportFileHandleCacheUsage();
   }
 
   public async createDirectoryExclusive({
@@ -242,6 +270,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
 
     try {
       const fileHandle = await parent.getFileHandle(name, { create: true }) as OpfsWritableFileHandle;
+      this.#retainResolvedFile({ path, resolved: { fileHandle, name, parent } });
       return await this.#openNativeHandle({ fileHandle, path });
     } catch (error) {
       // OPFS has no atomic exclusive-create primitive. After the absence check, an
@@ -665,8 +694,13 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     try {
       const { name, parent } = await this.#resolveFile({ path });
       await parent.removeEntry(name);
+      this.#evictResolvedFile({ path });
     } catch (error) {
       if (isDomExceptionNamed({ error, name: 'NotFoundError' })) {
+        // A retained capability must not survive evidence that its directory
+        // entry disappeared. Segment paths are never reused, so eviction is
+        // always safer than retrying through a stale orphaned handle.
+        this.#evictResolvedFile({ path });
         throw physicalStoreError({
           code: 'not_found',
           message: `physical file does not exist: ${path}`,
@@ -961,19 +995,57 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     }
   }
 
+  #reportFileHandleCacheUsage(): void {
+    this.#fileHandleCachePolicy?.diagnostics?.setUsage({ entries: this.#fileHandleCache.size });
+  }
+
+  #evictResolvedFile({ path }: { path: CanonicalContainerPath }): void {
+    if (!this.#fileHandleCache.delete(path)) return;
+    this.#reportFileHandleCacheUsage();
+  }
+
+  #retainResolvedFile({ path, resolved }: {
+    path: CanonicalContainerPath;
+    resolved: OpfsResolvedFile;
+  }): void {
+    const policy = this.#fileHandleCachePolicy;
+    if (policy === undefined || policy.maximumEntries === 0 || !policy.shouldCache({ path })) return;
+    this.#fileHandleCache.delete(path);
+    while (this.#fileHandleCache.size >= policy.maximumEntries) {
+      const oldest = this.#fileHandleCache.keys().next().value as CanonicalContainerPath | undefined;
+      if (oldest === undefined) break;
+      this.#fileHandleCache.delete(oldest);
+      policy.diagnostics?.recordEvent({ event: "eviction" });
+    }
+    this.#fileHandleCache.set(path, resolved);
+    this.#reportFileHandleCacheUsage();
+  }
+
   async #resolveFile({
     path,
   }: {
     path: CanonicalContainerPath;
-  }): Promise<{
-    fileHandle: OpfsWritableFileHandle;
-    name: string;
-    parent: FileSystemDirectoryHandle;
-  }> {
+  }): Promise<OpfsResolvedFile> {
+    const policy = this.#fileHandleCachePolicy;
+    const cacheEligible = policy !== undefined
+      && policy.maximumEntries !== 0
+      && policy.shouldCache({ path });
+    if (cacheEligible) {
+      const cached = this.#fileHandleCache.get(path);
+      if (cached !== undefined) {
+        this.#fileHandleCache.delete(path);
+        this.#fileHandleCache.set(path, cached);
+        policy.diagnostics?.recordEvent({ event: "hit" });
+        return cached;
+      }
+      policy.diagnostics?.recordEvent({ event: "miss" });
+    }
     const parent = await this.#resolveDirectory({ path: parentContainerDirectory({ path }) });
     const name = containerEntryName({ path });
     const fileHandle = await parent.getFileHandle(name) as OpfsWritableFileHandle;
-    return { fileHandle, name, parent };
+    const resolved = { fileHandle, name, parent };
+    if (cacheEligible) this.#retainResolvedFile({ path, resolved });
+    return resolved;
   }
 }
 

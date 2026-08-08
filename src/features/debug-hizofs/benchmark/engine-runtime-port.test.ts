@@ -383,7 +383,10 @@ describe('HizoFS benchmark engine', () => {
       },
       objects: { created: 3 },
       commits: { superblockPublications: 3 },
-      amplification: { objectCreatesPerOperation: 1 },
+      amplification: {
+        commitMaterializationsPerOperation: 1,
+        objectCreatesPerOperation: 1,
+      },
       runtime: {
         phases: {
           object_encrypt: { operationCount: expect.any(Number) },
@@ -485,7 +488,15 @@ describe('HizoFS benchmark engine', () => {
     });
     expect(
       writeResult?.backends.hizofs?.samples[0]
+        ?.hizoFSDiagnostics?.amplification.commitMaterializationsPerOperation,
+    ).toBeGreaterThan(0);
+    expect(
+      writeResult?.backends.hizofs?.samples[0]
         ?.hizoFSDiagnostics?.amplification.superblockPublicationsPerOperation,
+    ).toBeGreaterThan(0);
+    expect(
+      writeResult?.backends.hizofs
+        ?.hizoFSDiagnosticsTotals?.amplification.commitMaterializationsPerOperation,
     ).toBeGreaterThan(0);
     expect(
       writeResult?.backends.hizofs

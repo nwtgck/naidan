@@ -152,6 +152,12 @@ describe('production HizoFS benchmark runtime port', () => {
     for (let index = 0; index < entryCount; index += 1) {
       await runtime.session.root.getFileHandle({ create: true, name: `metadata-${index}` });
     }
+    const beforeSettlement = runtime.diagnostics.snapshot();
+    expect(beforeSettlement.type).toBe('measured');
+    if (beforeSettlement.type !== 'measured') throw new Error('production diagnostics are unavailable');
+    expect(beforeSettlement.records.file_system_commit.writeOperations
+      - beforeOperations.records.file_system_commit.writeOperations).toBe(0);
+
     await runtime.settleAcceptedGeneration();
 
     const beforeClose = runtime.diagnostics.snapshot();
@@ -163,8 +169,13 @@ describe('production HizoFS benchmark runtime port', () => {
     // Keep the bound loose enough to measure structural amplification, not host timing.
     expect(beforeClose.phases.physical_read_exact.operationCount).toBeLessThan(entryCount * 20);
     expect(beforeClose.mutation.completed - beforeOperations.mutation.completed).toBe(entryCount);
+    expect(beforeClose.records.file_system_commit.writeOperations
+      - beforeOperations.records.file_system_commit.writeOperations).toBe(1);
+    // Foreground metadata writes and runtime-owned Commit materialization use
+    // separate Segment-writer lifetimes so session close cannot invalidate a
+    // staged candidate's later publication capability.
     expect(beforeClose.segmentWriters.metadata.created - beforeOperations.segmentWriters.metadata.created)
-      .toBe(1);
+      .toBe(2);
     expect(beforeClose.publication.getFileSize.operations - beforeOperations.publication.getFileSize.operations)
       .toBe(0);
     expect(beforeClose.publication.readExact.operations - beforeOperations.publication.readExact.operations)
@@ -177,6 +188,55 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(afterClose.caches.metadata).toMatchObject({ currentBytes: 0, currentEntries: 0 });
   }, 15_000);
 
+
+  it('reads the staged working file without forcing Commit materialization', async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
+    const configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });
+    const runtime = await createProductionHizoFSBenchmarkRuntimePort().createRuntime({
+      backingDirectory: root as unknown as FileSystemDirectoryHandle,
+      policy: createBenchmarkRuntimePolicy({ configuration }),
+    });
+    try {
+      const before = runtime.diagnostics.snapshot();
+      expect(before.type).toBe('measured');
+      if (before.type !== 'measured') throw new Error('production diagnostics are unavailable');
+      const file = await runtime.session.root.getFileHandle({ name: 'staged-read.txt', create: true });
+      const writable = await file.createWritable({ keepExistingData: false });
+      await writable.write({ position: 0, data: new TextEncoder().encode('staged-read') });
+      await writable.close();
+
+      const afterAccepted = runtime.diagnostics.snapshot();
+      expect(afterAccepted.type).toBe('measured');
+      if (afterAccepted.type !== 'measured') throw new Error('production diagnostics are unavailable');
+      expect(afterAccepted.records.file_system_commit.writeOperations
+        - before.records.file_system_commit.writeOperations).toBe(0);
+
+      const readable = await file.openReadable({ mimeType: 'text/plain' });
+      try {
+        await expect(new Response(readable.stream({
+          start: 0,
+          end: undefined,
+          signal: undefined,
+        })).text()).resolves.toBe('staged-read');
+      } finally {
+        await readable.close();
+      }
+      const afterRead = runtime.diagnostics.snapshot();
+      expect(afterRead.type).toBe('measured');
+      if (afterRead.type !== 'measured') throw new Error('production diagnostics are unavailable');
+      expect(afterRead.records.file_system_commit.writeOperations
+        - before.records.file_system_commit.writeOperations).toBe(0);
+
+      await runtime.settleAcceptedGeneration();
+      const afterSettlement = runtime.diagnostics.snapshot();
+      expect(afterSettlement.type).toBe('measured');
+      if (afterSettlement.type !== 'measured') throw new Error('production diagnostics are unavailable');
+      expect(afterSettlement.records.file_system_commit.writeOperations
+        - before.records.file_system_commit.writeOperations).toBe(1);
+    } finally {
+      await runtime.close();
+    }
+  }, 15_000);
 
   it('reuses authenticated metadata within one writable mutation and releases its plaintext', async () => {
     const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
@@ -213,7 +273,7 @@ describe('production HizoFS benchmark runtime port', () => {
       expect(after.mutation.physicalAccessReasons.append_read_back.readExact.operations
         - before.mutation.physicalAccessReasons.append_read_back.readExact.operations).toBeGreaterThan(0);
       expect(after.mutation.physicalAccessReasons.authenticated_record_resolution.readExact.operations
-        - before.mutation.physicalAccessReasons.authenticated_record_resolution.readExact.operations).toBeGreaterThan(0);
+        - before.mutation.physicalAccessReasons.authenticated_record_resolution.readExact.operations).toBe(0);
       expect(after.segmentWriters.metadata.trustedTailMismatches
         - before.segmentWriters.metadata.trustedTailMismatches).toBe(0);
 
@@ -236,6 +296,41 @@ describe('production HizoFS benchmark runtime port', () => {
     }
   }, 15_000);
 
+
+  it('applies the backing file-handle cache policy to segment accesses', async () => {
+    const configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });
+    const basePolicy = createBenchmarkRuntimePolicy({ configuration });
+
+    const runWithEntryLimit = async ({ entryLimit }: { entryLimit: number }) => {
+      const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
+      const runtime = await createProductionHizoFSBenchmarkRuntimePort().createRuntime({
+        backingDirectory: root as unknown as FileSystemDirectoryHandle,
+        policy: { ...basePolicy, backingFileHandleCacheEntryLimit: entryLimit },
+      });
+      try {
+        const file = await runtime.session.root.getFileHandle({ create: true, name: 'cache-probe' });
+        const writable = await file.createWritable({ keepExistingData: false });
+        await writable.write({ data: new Uint8Array(4096).fill(17), position: 0 });
+        await writable.close();
+        await runtime.settleAcceptedGeneration();
+        const snapshot = runtime.diagnostics.snapshot();
+        expect(snapshot.type).toBe('measured');
+        if (snapshot.type !== 'measured') throw new Error('production diagnostics are unavailable');
+        return snapshot.caches.backingFileHandle;
+      } finally {
+        await runtime.close();
+      }
+    };
+
+    const disabled = await runWithEntryLimit({ entryLimit: 0 });
+    expect(disabled).toMatchObject({ currentEntries: 0, hits: 0, misses: 0 });
+
+    const enabled = await runWithEntryLimit({ entryLimit: 32 });
+    expect(enabled.hits).toBeGreaterThan(0);
+    expect(enabled.misses).toBeGreaterThan(0);
+    expect(enabled.currentEntries).toBeGreaterThan(0);
+    expect(enabled.maximumEntries).toBeLessThanOrEqual(32);
+  }, 15_000);
 
   it('applies the reported metadata cache policy to the production runtime', async () => {
     const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
@@ -316,13 +411,13 @@ describe('production HizoFS benchmark runtime port', () => {
       failed: 0,
       overlapping: 0,
       getFileSize: {
-        duplicateOperations: 1,
-        operations: 2,
+        duplicateOperations: 0,
+        operations: 1,
         observedUniqueTargets: 1,
       },
       physicalAccessReasons: {
         append_read_back: {
-          readExact: { duplicateOperations: 0, operations: 2, observedUniqueTargets: 2 },
+          readExact: { duplicateOperations: 0, operations: 1, observedUniqueTargets: 1 },
         },
         authenticated_record_resolution: {
           readExact: { duplicateOperations: 0, operations: 0, observedUniqueTargets: 0 },
@@ -332,13 +427,13 @@ describe('production HizoFS benchmark runtime port', () => {
           readExact: { duplicateOperations: 0, operations: 0, observedUniqueTargets: 0 },
         },
         trusted_tail: {
-          getFileSize: { duplicateOperations: 1, operations: 2, observedUniqueTargets: 1 },
+          getFileSize: { duplicateOperations: 0, operations: 1, observedUniqueTargets: 1 },
         },
       },
       readExact: {
         duplicateOperations: 0,
-        operations: 2,
-        observedUniqueTargets: 2,
+        operations: 1,
+        observedUniqueTargets: 1,
       },
     });
     expect(runtimeDiagnostics.publication).toMatchObject({
@@ -377,16 +472,16 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(runtimeDiagnostics.segmentWriters.metadata).toMatchObject({
       appendOperations: 2,
       appendReadBackVerifications: 2,
-      created: 0,
-      descriptorValidations: 0,
+      created: 1,
+      descriptorValidations: 1,
       trustedTailMatches: 2,
       trustedTailMismatches: 0,
     });
     expect(runtimeDiagnostics.phases.physical_read_exact.operationCount).toBeGreaterThan(0);
     expect(runtimeDiagnostics.phases.physical_list.operationCount).toBe(0);
-    expect(Object.values(runtimeDiagnostics.records).some(counter => counter.readOperations > 0)).toBe(true);
+    expect(Object.values(runtimeDiagnostics.records).some(counter => counter.readOperations > 0)).toBe(false);
     expect(runtimeDiagnostics.caches.metadata.hits).toBeGreaterThan(0);
-    expect(runtimeDiagnostics.caches.metadata.misses).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.caches.metadata.misses).toBe(0);
     expect(runtimeDiagnostics.caches.metadata.currentEntries).toBeGreaterThan(0);
     expect(runtimeDiagnostics.caches.mutationMetadata).toMatchObject({
       currentBytes: 0,
@@ -528,7 +623,9 @@ describe('production HizoFS benchmark runtime port', () => {
       operations: 0,
       pageReads: 0,
     });
-    expect(smallFileWriteRuntime.phases.physical_provision_directory_hierarchy.operationCount).toBe(0);
+    // One candidate-owned materialization writer provisions its immutable
+    // metadata Segment independently of the originating session writer.
+    expect(smallFileWriteRuntime.phases.physical_provision_directory_hierarchy.operationCount).toBe(1);
     const randomWriteSample = report.results.find(result => result.caseId === 'random_write')
       ?.backends.hizofs?.samples[0];
     const randomWriteRuntime = randomWriteSample?.hizoFSDiagnostics?.runtime;

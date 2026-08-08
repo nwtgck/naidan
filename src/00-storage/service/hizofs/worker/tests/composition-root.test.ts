@@ -16,6 +16,8 @@ import {
   parseMutationId,
   parsePublicationId,
   parseSegmentId,
+  type FileSystemCommitPayload,
+  type HomeRecordReference,
   type OpenedSuperblockCopies,
   type SuperblockLogicalState,
 } from "@/00-storage/service/hizofs/00-format";
@@ -37,6 +39,7 @@ import {
 } from "@/00-storage/service/hizofs/authenticated-store/empty-container-store";
 import { createInitialUnlockEnvelopeCopies } from "@/00-storage/service/hizofs/authenticated-store/unlock-envelope-store";
 import { createAuthenticatedMetadataMutationAuthority } from "@/00-storage/service/hizofs/authenticated-store/metadata-mutation-authority";
+import { AuthenticatedSegmentWriterOwner } from "@/00-storage/service/hizofs/authenticated-store/active-segment-writer-owner";
 import { PreparedMutationCommitPublicationError } from "@/00-storage/service/hizofs/authenticated-store/prepared-mutation-commit-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import {
@@ -70,18 +73,24 @@ import {
 } from "@/00-storage/service/hizofs/physical-store/paths";
 import { createContainerCoordinationScope, parseContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
 import { HizoFSRuntimeDiagnosticsAccumulator } from "@/00-storage/service/hizofs/diagnostics/runtime-diagnostics";
-import { createAuthenticatedApplicationGenerationDescriptor } from "@/00-storage/service/hizofs/runtime/authenticated-application-generation";
 import {
+  createAuthenticatedApplicationGenerationDescriptor,
+  createAuthenticatedStagedApplicationGenerationDescriptor,
+} from "@/00-storage/service/hizofs/runtime/authenticated-application-generation";
+import {
+  createDurableGenerationIdentity,
   createSuccessorWorkingGenerationIdentity,
   createWorkingGenerationAuthorityEpoch,
   createWorkingGenerationIdentity,
   createWorkingGenerationNumber,
 } from "@/00-storage/service/hizofs/runtime/application-generation-identity";
 import { createTestingAuthenticatedDurableApplicationGenerationAuthority } from "@/00-storage/service/hizofs/runtime/testing/authenticated-application-generation-fixture";
-import type {
-  DeferredPreparedMutationCommitPublication,
-  ResolvablePreparedMutationCommitDurablePublicationPort,
+import {
+  STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES,
+  type DeferredPreparedMutationCommitPublication,
+  type ResolvablePreparedMutationCommitDurablePublicationPort,
 } from "@/00-storage/service/hizofs/filesystem/mutation/prepared-mutation-commit-publisher";
+import type { CrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/cross-realm-lock-coordinator";
 import { InMemoryCrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/testing/in-memory-cross-realm-lock-port";
 import {
   captureAuthenticatedMaintenanceRoots,
@@ -165,6 +174,7 @@ function maintenanceRuntimeCapture({
       sourceSegmentPinnedRoots: sourcePinned,
       unknownFeatureRoots: [],
       writerDependencyRoots: [],
+      writerWorkingPageRoots: [],
     },
     release,
   };
@@ -265,14 +275,16 @@ function testBrowserLockManager(): LockManager {
 }
 
 function runtimeHost({
+  crossRealmLockPort = new InMemoryCrossRealmLockPort(),
   lazyDurability = DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
   lazyPublicationRollout,
 }: {
+  crossRealmLockPort?: CrossRealmLockPort;
   lazyDurability?: HizoFSLazyDurabilityPolicy;
   lazyPublicationRollout?: HizoFSLazyPublicationRolloutGateReceipt;
 } = {}): HizoFSWorkerRuntimeHost {
   return new HizoFSWorkerRuntimeHost({
-    crossRealmLockPort: new InMemoryCrossRealmLockPort(),
+    crossRealmLockPort,
     ...(lazyPublicationRollout === undefined ? {} : { lazyPublicationRollout }),
     policy: {
       lazyDurability,
@@ -1711,6 +1723,77 @@ describe("HizoFS worker composition root", () => {
     await session.close();
   });
 
+  it("serializes the next public mutation behind in-flight background Commit materialization", async () => {
+    const delegate = new InMemoryCrossRealmLockPort();
+    const publicationLockRequested = Promise.withResolvers<void>();
+    const releasePublicationLock = Promise.withResolvers<void>();
+    let blockNextPublicationLock = false;
+    const crossRealmLockPort: CrossRealmLockPort = {
+      acquire: async ({ mode, name }) => {
+        if (blockNextPublicationLock && mode === "exclusive" && name.includes("/publication/")) {
+          blockNextPublicationLock = false;
+          publicationLockRequested.resolve();
+          await releasePublicationLock.promise;
+        }
+        return await delegate.acquire({ mode, name });
+      },
+      queryHeldLockNames: async () => await delegate.queryHeldLockNames(),
+      tryAcquire: async ({ mode, name }) => await delegate.tryAcquire({ mode, name }),
+    };
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const passphrase = "correct horse battery staple";
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase,
+      randomSource,
+      supportedFeatureBits,
+    });
+    const host = runtimeHost({
+      crossRealmLockPort,
+      lazyDurability: {
+        ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+        maximumDirtyAgeMilliseconds: 1,
+      },
+    });
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: host,
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://background-writer-serialization.hizofs",
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        opened,
+        operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+        randomSource,
+        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+
+    await session.root.getFileHandle({ create: true, name: "first.txt" });
+    blockNextPublicationLock = true;
+    await publicationLockRequested.promise;
+
+    let secondMutationCompleted = false;
+    const secondMutation = session.root.getFileHandle({ create: true, name: "second.txt" }).then(handle => {
+      secondMutationCompleted = true;
+      return handle;
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(secondMutationCompleted).toBe(false);
+
+    releasePublicationLock.resolve();
+    await expect(secondMutation).resolves.toMatchObject({ name: "second.txt" });
+    await session.close();
+  });
+
   it("publishes the automatic development candidate from the dirty-age background trigger", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
@@ -1772,6 +1855,63 @@ describe("HizoFS worker composition root", () => {
     expect(published).toBe(true);
     expect(host.workingCandidatePublicationState()).toBe("empty");
     await session.close();
+  });
+
+  it("keeps a staged lazy candidate publishable after its originating session closes", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const passphrase = "correct horse battery staple";
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase,
+      randomSource,
+      supportedFeatureBits,
+    });
+    const host = runtimeHost({
+      lazyDurability: {
+        ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+        maximumDirtyAgeMilliseconds: 60_000,
+      },
+    });
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: host,
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://session-close-dirty-writeback.hizofs",
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        opened,
+        operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+        randomSource,
+        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+
+    await session.root.getFileHandle({ create: true, name: "after-close.txt" });
+    expect(host.workingCandidatePublicationState()).toBe("installed");
+    await session.close();
+
+    await expect(host.flushAndDisposeIfIdleAndSafe()).resolves.toEqual({ status: "disposed" });
+    const reopened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+    try {
+      expect(reopened.commit.commitSequence).toBe(2n);
+      const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+      try {
+        await expect(resources.namespace.stat({ pathComponents: ["after-close.txt"] }))
+          .resolves.toMatchObject({ kind: "file" });
+      } finally {
+        await resources.releaseResources();
+      }
+    } finally {
+      if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+    }
   });
 
   it("retains a runtime-owned candidate root after session close when publication outcome resolution fails", async () => {
@@ -2106,6 +2246,62 @@ describe("HizoFS worker composition root", () => {
     } finally {
       if (!afterSync.rootKey.isDestroyed()) afterSync.rootKey.destroy();
     }
+    await session.close();
+  });
+
+  it("waits for a prepared writable before materializing a staged read snapshot", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const passphrase = "correct horse battery staple";
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase,
+      randomSource,
+      supportedFeatureBits,
+    });
+    const host = runtimeHost({
+      lazyDurability: {
+        ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+        maximumDirtyAgeMilliseconds: 60_000,
+      },
+    });
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: host,
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://read-snapshot-prepared-writer.hizofs",
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        opened,
+        operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+        randomSource,
+        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+
+    const dirtyFile = await session.root.getFileHandle({ create: true, name: "dirty.txt" });
+    const heldWritable = await dirtyFile.createWritable({ keepExistingData: true });
+    let snapshotSettled = false;
+    if (session.createReadSnapshot === undefined) throw new Error("expected HizoFS read-snapshot support");
+    const snapshotOperation = session.createReadSnapshot().then(snapshot => {
+      snapshotSettled = true;
+      return snapshot;
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(snapshotSettled).toBe(false);
+
+    await heldWritable.close();
+    const snapshot = await snapshotOperation;
+    await expect(snapshot.root.getFileHandle({ create: false, name: "dirty.txt" }))
+      .resolves.toMatchObject({ name: "dirty.txt" });
+    await snapshot.close();
     await session.close();
   });
 
@@ -2590,7 +2786,7 @@ describe("HizoFS worker composition root", () => {
       create: true,
       name: "after-credential-update.bin",
     })).resolves.toBeDefined();
-    const managementBarrier = host.openManagementCleanHeadBarrier();
+    const managementBarrier = host.openManagementCleanHeadBarrier({});
     await managementBarrier.flushAndCaptureCleanGeneration();
     managementBarrier.release();
 
@@ -3291,8 +3487,13 @@ describe("HizoFS worker composition root", () => {
         .toBe(afterBulkTarget.phases.commit_publication.operationCount + 1);
       expect(afterBulkCommit.phases.index_build.operationCount)
         .toBeGreaterThan(afterBulkTarget.phases.index_build.operationCount);
+      // WHY: lazy Commit materialization owns a candidate-scoped writer so a
+      // session may rotate more than one metadata Segment across independent
+      // dirty epochs. This diagnostics contract verifies that physical Segment
+      // creation remains observable without requiring unsafe session-local
+      // writer reuse across runtime-owned candidates.
       expect(afterBulkCommit.segmentWriters.metadata.created)
-        .toBe(metadataSegmentsBeforeMutations + 1);
+        .toBeGreaterThanOrEqual(metadataSegmentsBeforeMutations + 1);
       await expect(bulk.targetDirectory.getFileHandle({ create: false, name: "bulk-a" }))
         .resolves.toBeDefined();
       await expect(bulk.targetDirectory.getFileHandle({ create: false, name: "bulk-b" }))
@@ -3614,6 +3815,7 @@ describe("HizoFS worker composition root", () => {
           sourceSegmentPinnedRoots: [],
           unknownFeatureRoots: [],
           writerDependencyRoots: [],
+          writerWorkingPageRoots: [],
         },
         operation: async () => {
           throw primary;
@@ -3814,7 +4016,6 @@ describe("HizoFS worker composition root", () => {
       durableAuthority,
       workingIdentity: createWorkingGenerationIdentity({
         authorityEpoch: createWorkingGenerationAuthorityEpoch(),
-        commitReference: durableAuthority.commitReference,
         generationNumber: createWorkingGenerationNumber({ value: 0n }),
         mutationId: durableAuthority.commit.mutationId,
       }),
@@ -3830,7 +4031,6 @@ describe("HizoFS worker composition root", () => {
       commitReference,
       durableAuthority,
       workingIdentity: createSuccessorWorkingGenerationIdentity({
-        commitReference,
         mutationId: commit.mutationId,
         previous: base.workingIdentity,
       }),
@@ -3900,7 +4100,6 @@ describe("HizoFS worker composition root", () => {
       durableAuthority: values.base.durableAuthority,
       workingIdentity: createWorkingGenerationIdentity({
         authorityEpoch: values.successor.workingIdentity.authorityEpoch,
-        commitReference: values.successor.commitReference,
         generationNumber: values.successor.workingIdentity.generationNumber,
         mutationId: workingCommit.mutationId,
       }),
@@ -3923,8 +4122,10 @@ describe("HizoFS worker composition root", () => {
     const commitAcceptedSuccessor = vi.fn(() => events.push("accepted"));
     const replaceResourceReservation = vi.fn(() => events.push("reserved"));
     const admission = {
+      commitAcceptedStagedSuccessor: vi.fn(),
       commitAcceptedSuccessor,
       replaceResourceReservation,
+      reserveStagedCommitMaterializationHeadroom: vi.fn(),
       rollback: vi.fn(),
     };
 
@@ -3953,6 +4154,78 @@ describe("HizoFS worker composition root", () => {
     expect(prepared.abandon).toHaveBeenCalledOnce();
   });
 
+  it("releases the foreground Segment writer lease before staged accepted visibility", async () => {
+    const values = selectedCandidatePublisherFixture();
+    const events: string[] = [];
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const writerOwner = new AuthenticatedSegmentWriterOwner({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    const foregroundLease = writerOwner.acquire();
+    const replaceResourceReservation = vi.fn();
+    const reserveStagedCommitMaterializationHeadroom = vi.fn();
+    const prepareWorkingAcceptance = vi.fn(() => {
+      foregroundLease.release({ disposition: "reuse" });
+      events.push("foreground_writer_released");
+    });
+    const commitAcceptedStagedSuccessor = vi.fn(() => {
+      const publicationLease = writerOwner.acquire();
+      publicationLease.release({ disposition: "reuse" });
+      events.push("accepted_visible");
+    });
+    const createMaterializationAuthority = vi.fn(async () => {
+      throw new Error("foreground staging must not open a materialization authority");
+    });
+    const admission = {
+      commitAcceptedStagedSuccessor,
+      commitAcceptedSuccessor: vi.fn(),
+      replaceResourceReservation,
+      reserveStagedCommitMaterializationHeadroom,
+      rollback: vi.fn(),
+    };
+    const resourceUsage = {
+      appendedMetadataFrameBytes: 4_096,
+      unpublishedPhysicalBytes: 8_192,
+    };
+
+    const installed = COMPOSITION_TEST_ONLY.prepareAndInstallStagedMutationSelectedCandidate({
+      admission,
+      assertCandidatePreparationAllowed: vi.fn(),
+      assertRuntimePublicationAllowed: vi.fn(),
+      base: values.base,
+      commitPayload: values.commit,
+      createMaterializationAuthority,
+      prepareWorkingAcceptance,
+      resourceUsage,
+    });
+
+    expect(replaceResourceReservation).toHaveBeenCalledWith({
+      dirtyMetadataBytes: resourceUsage.appendedMetadataFrameBytes,
+      unpublishedPhysicalBytes: resourceUsage.unpublishedPhysicalBytes,
+    });
+    expect(reserveStagedCommitMaterializationHeadroom).toHaveBeenCalledWith({
+      bytes: STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES,
+    });
+    expect(events).toEqual(["foreground_writer_released", "accepted_visible"]);
+    expect(prepareWorkingAcceptance).toHaveBeenCalledOnce();
+    expect(commitAcceptedStagedSuccessor).toHaveBeenCalledWith({
+      publisher: installed.publisher,
+      successor: installed.successor,
+    });
+    expect(createMaterializationAuthority).not.toHaveBeenCalled();
+    expect("commitReference" in installed.successor).toBe(false);
+    installed.publisher.abandon();
+    await expect(writerOwner.close()).resolves.toBeUndefined();
+    rootKey.destroy();
+  });
+
   it("prepares and installs deferred runtime ownership without starting Superblock publication", async () => {
     const values = selectedCandidatePublisherFixture();
     const events: string[] = [];
@@ -3966,8 +4239,10 @@ describe("HizoFS worker composition root", () => {
     });
     const commitAcceptedSuccessor = vi.fn(() => events.push("accepted"));
     const admission = {
+      commitAcceptedStagedSuccessor: vi.fn(),
       commitAcceptedSuccessor,
       replaceResourceReservation: vi.fn(() => events.push("reserved")),
+      reserveStagedCommitMaterializationHeadroom: vi.fn(),
       rollback: vi.fn(),
     };
     let preparationGateChecks = 0;
@@ -4038,8 +4313,10 @@ describe("HizoFS worker composition root", () => {
 
     await expect(COMPOSITION_TEST_ONLY.prepareAndInstallDeferredMutationSelectedCandidate({
       admission: {
+        commitAcceptedStagedSuccessor: vi.fn(),
         commitAcceptedSuccessor: vi.fn(),
         replaceResourceReservation: vi.fn(),
+        reserveStagedCommitMaterializationHeadroom: vi.fn(),
         rollback,
       },
       assertCandidatePreparationAllowed: vi.fn(),
@@ -4078,10 +4355,12 @@ describe("HizoFS worker composition root", () => {
 
     await expect(COMPOSITION_TEST_ONLY.prepareAndInstallDeferredMutationSelectedCandidate({
       admission: {
+        commitAcceptedStagedSuccessor: vi.fn(),
         commitAcceptedSuccessor: vi.fn(),
         replaceResourceReservation: () => {
           throw failure;
         },
+        reserveStagedCommitMaterializationHeadroom: vi.fn(),
         rollback,
       },
       assertCandidatePreparationAllowed: vi.fn(),
@@ -4110,6 +4389,389 @@ describe("HizoFS worker composition root", () => {
     expect(rollback).toHaveBeenCalledOnce();
   });
 
+  const createMaterializationAttemptReceipt = () => Object.freeze({
+    completeReusableCandidate: vi.fn(),
+    fail: vi.fn(),
+  });
+
+  describe("staged mutation selected-candidate publisher", () => {
+    function stagedPublisherFixture() {
+      const values = selectedCandidatePublisherFixture();
+      const stagedSuccessor = createAuthenticatedStagedApplicationGenerationDescriptor({
+        commit: values.commit,
+        durableAuthority: values.base.durableAuthority,
+        workingIdentity: values.successor.workingIdentity,
+      });
+      return { stagedSuccessor, values };
+    }
+
+    it("materializes exactly one Commit at flush before any Superblock authority write", async () => {
+      const { stagedSuccessor, values } = stagedPublisherFixture();
+      const events: string[] = [];
+      const appendCandidate = vi.fn(async () => {
+        events.push("append");
+        return Object.freeze({
+          commitHomeRef: values.commitReference,
+          commitPayload: values.commit,
+        });
+      });
+      const detachedAbandon = vi.fn();
+      const completeWorkingAcceptance = vi.fn(() => events.push("materialization-diagnostics-closed"));
+      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+        assertRuntimePublicationAllowed: () => events.push("gate"),
+        baseDurableAuthority: values.base.durableAuthority,
+        createMaterializationAuthority: async () => {
+          events.push("open-materialization-authority");
+          return {
+            abandon: vi.fn(),
+            appendCandidate,
+            detachPreparedCandidatePublication: ({ candidate }) => {
+              events.push("detach");
+              return {
+                abandon: detachedAbandon,
+                completeWorkingAcceptance,
+                completeExternallyResolvedPublication: vi.fn(),
+                publishCandidate: async ({ beforeFirstAuthorityWrite }) => {
+                  beforeFirstAuthorityWrite();
+                  events.push("superblock-write");
+                  return {
+                    commitHomeRef: candidate.commitHomeRef,
+                    superblock: values.superblock({ copyState: "normal" }),
+                  };
+                },
+                resolvePublication: vi.fn(),
+              };
+            },
+            publishCandidate: vi.fn(),
+          };
+        },
+        staged: Object.freeze({ commitPayload: values.commit }),
+        stagedSuccessor,
+      });
+
+      expect(appendCandidate).not.toHaveBeenCalled();
+      const onCandidateMaterialized = vi.fn(() => events.push("materialized"));
+      const materializationAttempt = createMaterializationAttemptReceipt();
+      const onMaterializationAppendAttempt = vi.fn(({ frameBytes }: { frameBytes: number }) => {
+        events.push("materialization-resource-attempt");
+        expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
+        return materializationAttempt;
+      });
+      const outcome = await publisher.publish({
+        onCandidateMaterialized,
+        onMaterializationAppendAttempt,
+      });
+
+      expect(outcome.type).toBe("published");
+      expect(appendCandidate).toHaveBeenCalledOnce();
+      expect(onCandidateMaterialized).toHaveBeenCalledWith({
+        candidateDurableIdentity: createDurableGenerationIdentity({
+          commitReference: values.commitReference,
+          commitSequence: values.commit.commitSequence,
+          mutationId: values.commit.mutationId,
+        }),
+      });
+      expect(onMaterializationAppendAttempt).toHaveBeenCalledOnce();
+      expect(events.indexOf("materialization-resource-attempt")).toBeLessThan(events.indexOf("append"));
+      expect(events.indexOf("append")).toBeLessThan(events.indexOf("materialized"));
+      expect(events.indexOf("materialized")).toBeLessThan(events.indexOf("superblock-write"));
+      expect(materializationAttempt.completeReusableCandidate).toHaveBeenCalledOnce();
+      expect(materializationAttempt.fail).not.toHaveBeenCalled();
+      expect(completeWorkingAcceptance).toHaveBeenCalledOnce();
+      expect(detachedAbandon).not.toHaveBeenCalled();
+    });
+
+    it("releases retained staged publication resources exactly once on terminal cleanup", async () => {
+      const { stagedSuccessor, values } = stagedPublisherFixture();
+      const releasePublicationResources = vi.fn();
+      const completeExternallyResolvedPublication = vi.fn();
+      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+        assertRuntimePublicationAllowed: () => undefined,
+        baseDurableAuthority: values.base.durableAuthority,
+        createMaterializationAuthority: async () => ({
+          abandon: vi.fn(),
+          appendCandidate: async () => Object.freeze({
+            commitHomeRef: values.commitReference,
+            commitPayload: values.commit,
+          }),
+          detachPreparedCandidatePublication: ({ candidate }) => ({
+            abandon: vi.fn(),
+            completeWorkingAcceptance: vi.fn(),
+            completeExternallyResolvedPublication,
+            publishCandidate: async ({ beforeFirstAuthorityWrite }) => {
+              beforeFirstAuthorityWrite();
+              return {
+                commitHomeRef: candidate.commitHomeRef,
+                superblock: values.superblock({ copyState: "normal" }),
+              };
+            },
+            resolvePublication: vi.fn(),
+          }),
+          publishCandidate: vi.fn(),
+        }),
+        releasePublicationResources,
+        staged: Object.freeze({ commitPayload: values.commit }),
+        stagedSuccessor,
+      });
+
+      await expect(publisher.publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+      })).resolves.toMatchObject({ type: "published" });
+      expect(releasePublicationResources).not.toHaveBeenCalled();
+
+      publisher.completeOutcomeUnknownResolution({ outcome: "confirmed_published" });
+      publisher.abandon();
+
+      expect(completeExternallyResolvedPublication).toHaveBeenCalledWith({ outcome: "published" });
+      expect(releasePublicationResources).toHaveBeenCalledOnce();
+    });
+
+    it("releases retained staged publication resources when abandoned before materialization", () => {
+      const { stagedSuccessor, values } = stagedPublisherFixture();
+      const releasePublicationResources = vi.fn();
+      const createMaterializationAuthority = vi.fn();
+      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+        assertRuntimePublicationAllowed: () => undefined,
+        baseDurableAuthority: values.base.durableAuthority,
+        createMaterializationAuthority,
+        releasePublicationResources,
+        staged: Object.freeze({ commitPayload: values.commit }),
+        stagedSuccessor,
+      });
+
+      publisher.abandon();
+      publisher.abandon();
+
+      expect(createMaterializationAuthority).not.toHaveBeenCalled();
+      expect(releasePublicationResources).toHaveBeenCalledOnce();
+    });
+
+    it("keeps a staged Commit retryable when physical materialization append fails", async () => {
+      const { stagedSuccessor, values } = stagedPublisherFixture();
+      const appendFailure = new Error("Commit append failed before candidate materialization");
+      const abandons: ReturnType<typeof vi.fn>[] = [];
+      const appendCandidate = vi.fn()
+        .mockRejectedValueOnce(appendFailure)
+        .mockResolvedValueOnce(Object.freeze({
+          commitHomeRef: values.commitReference,
+          commitPayload: values.commit,
+        }));
+      const createMaterializationAuthority = vi.fn(async () => {
+        const abandon = vi.fn();
+        abandons.push(abandon);
+        return {
+          abandon,
+          appendCandidate,
+          detachPreparedCandidatePublication: ({ candidate }: {
+            candidate: Readonly<{ commitHomeRef: HomeRecordReference; commitPayload: FileSystemCommitPayload }>;
+          }) => ({
+            abandon: vi.fn(),
+            completeWorkingAcceptance: vi.fn(),
+            completeExternallyResolvedPublication: vi.fn(),
+            publishCandidate: async ({ beforeFirstAuthorityWrite }: { beforeFirstAuthorityWrite: () => void }) => {
+              beforeFirstAuthorityWrite();
+              return {
+                commitHomeRef: candidate.commitHomeRef,
+                superblock: values.superblock({ copyState: "normal" }),
+              };
+            },
+            resolvePublication: vi.fn(),
+          }),
+          publishCandidate: vi.fn(),
+        };
+      });
+      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+        assertRuntimePublicationAllowed: () => undefined,
+        baseDurableAuthority: values.base.durableAuthority,
+        createMaterializationAuthority,
+        staged: Object.freeze({ commitPayload: values.commit }),
+        stagedSuccessor,
+      });
+
+      const firstAttempt = createMaterializationAttemptReceipt();
+      await expect(publisher.publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: ({ frameBytes }) => {
+          expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
+          return firstAttempt;
+        },
+      })).resolves.toEqual({
+        cause: appendFailure,
+        refreshedDurableAuthority: values.base.durableAuthority,
+        type: "not_published",
+      });
+      expect(firstAttempt.fail).toHaveBeenCalledOnce();
+      expect(firstAttempt.completeReusableCandidate).not.toHaveBeenCalled();
+      expect(abandons[0]).toHaveBeenCalledOnce();
+
+      const secondAttempt = createMaterializationAttemptReceipt();
+      await expect(publisher.publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: ({ frameBytes }) => {
+          expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
+          return secondAttempt;
+        },
+      })).resolves.toMatchObject({
+        type: "published",
+      });
+      expect(secondAttempt.completeReusableCandidate).toHaveBeenCalledOnce();
+      expect(secondAttempt.fail).not.toHaveBeenCalled();
+      expect(createMaterializationAuthority).toHaveBeenCalledTimes(2);
+      expect(appendCandidate).toHaveBeenCalledTimes(2);
+    });
+
+    it("refuses materialization before Commit append when resource risk cannot be reserved", async () => {
+      const { stagedSuccessor, values } = stagedPublisherFixture();
+      const appendCandidate = vi.fn(async () => Object.freeze({
+        commitHomeRef: values.commitReference,
+        commitPayload: values.commit,
+      }));
+      const materializationAuthorityAbandon = vi.fn();
+      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+        assertRuntimePublicationAllowed: () => undefined,
+        baseDurableAuthority: values.base.durableAuthority,
+        createMaterializationAuthority: async () => ({
+          abandon: materializationAuthorityAbandon,
+          appendCandidate,
+          detachPreparedCandidatePublication: vi.fn(),
+          publishCandidate: vi.fn(),
+        }),
+        staged: Object.freeze({ commitPayload: values.commit }),
+        stagedSuccessor,
+      });
+      const resourceFailure = new Error("materialization risk exceeds dirty resource limit");
+
+      await expect(publisher.publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: ({ frameBytes }) => {
+          expect(frameBytes).toBe(STAGED_MUTATION_COMMIT_MATERIALIZATION_FRAME_BYTES);
+          throw resourceFailure;
+        },
+      })).resolves.toEqual({
+        cause: resourceFailure,
+        refreshedDurableAuthority: values.base.durableAuthority,
+        type: "not_published",
+      });
+      expect(appendCandidate).not.toHaveBeenCalled();
+      expect(materializationAuthorityAbandon).toHaveBeenCalledOnce();
+    });
+
+    it("reuses one materialized Commit across a definitely-not-published retry", async () => {
+      const { stagedSuccessor, values } = stagedPublisherFixture();
+      const appendCandidate = vi.fn(async () => Object.freeze({
+        commitHomeRef: values.commitReference,
+        commitPayload: values.commit,
+      }));
+      const preAuthorityFailure = new Error("publication gate failed before authority write");
+      const publishCandidate = vi.fn()
+        .mockRejectedValueOnce(preAuthorityFailure)
+        .mockImplementationOnce(async ({ beforeFirstAuthorityWrite, candidate }) => {
+          beforeFirstAuthorityWrite();
+          return {
+            commitHomeRef: candidate.commitHomeRef,
+            superblock: values.superblock({ copyState: "normal" }),
+          };
+        });
+      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+        assertRuntimePublicationAllowed: () => undefined,
+        baseDurableAuthority: values.base.durableAuthority,
+        createMaterializationAuthority: async () => ({
+          abandon: vi.fn(),
+          appendCandidate,
+          detachPreparedCandidatePublication: ({ candidate }) => ({
+            abandon: vi.fn(),
+            completeWorkingAcceptance: vi.fn(),
+            completeExternallyResolvedPublication: vi.fn(),
+            publishCandidate: request => publishCandidate({ ...request, candidate }),
+            resolvePublication: vi.fn(),
+          }),
+          publishCandidate: vi.fn(),
+        }),
+        staged: Object.freeze({ commitPayload: values.commit }),
+        stagedSuccessor,
+      });
+
+      await expect(publisher.publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+      })).resolves.toMatchObject({
+        cause: preAuthorityFailure,
+        type: "not_published",
+      });
+      await expect(publisher.publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+      })).resolves.toMatchObject({
+        type: "published",
+      });
+      expect(appendCandidate).toHaveBeenCalledOnce();
+      expect(publishCandidate).toHaveBeenCalledTimes(2);
+    });
+
+    it("abandons an unreachable materialized Commit and stays retryable when runtime root binding fails", async () => {
+      const { stagedSuccessor, values } = stagedPublisherFixture();
+      const detachedAbandons: ReturnType<typeof vi.fn>[] = [];
+      const appendCandidate = vi.fn(async () => Object.freeze({
+        commitHomeRef: values.commitReference,
+        commitPayload: values.commit,
+      }));
+      const createMaterializationAuthority = vi.fn(async () => {
+        const detachedAbandon = vi.fn();
+        detachedAbandons.push(detachedAbandon);
+        return {
+          abandon: vi.fn(),
+          appendCandidate,
+          detachPreparedCandidatePublication: ({ candidate }: {
+            candidate: Readonly<{ commitHomeRef: HomeRecordReference; commitPayload: FileSystemCommitPayload }>;
+          }) => ({
+            abandon: detachedAbandon,
+            completeWorkingAcceptance: vi.fn(),
+            completeExternallyResolvedPublication: vi.fn(),
+            publishCandidate: async ({ beforeFirstAuthorityWrite }: {
+              beforeFirstAuthorityWrite: () => void;
+            }) => {
+              beforeFirstAuthorityWrite();
+              return {
+                commitHomeRef: candidate.commitHomeRef,
+                superblock: values.superblock({ copyState: "normal" }),
+              };
+            },
+            resolvePublication: vi.fn(),
+          }),
+          publishCandidate: vi.fn(),
+        };
+      });
+      const publisher = COMPOSITION_TEST_ONLY.createStagedMutationSelectedCandidatePublisher({
+        assertRuntimePublicationAllowed: () => undefined,
+        baseDurableAuthority: values.base.durableAuthority,
+        createMaterializationAuthority,
+        staged: Object.freeze({ commitPayload: values.commit }),
+        stagedSuccessor,
+      });
+      const rootFailure = new Error("maintenance root limit reached");
+
+      await expect(publisher.publish({
+        onCandidateMaterialized: () => {
+          throw rootFailure;
+        },
+        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+      })).resolves.toEqual({
+        cause: rootFailure,
+        refreshedDurableAuthority: values.base.durableAuthority,
+        type: "not_published",
+      });
+      expect(detachedAbandons[0]).toHaveBeenCalledOnce();
+
+      await expect(publisher.publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+      })).resolves.toMatchObject({ type: "published" });
+      expect(createMaterializationAuthority).toHaveBeenCalledTimes(2);
+      expect(appendCandidate).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe("prepared mutation selected-candidate publisher", () => {
     it("publishes the exact detached candidate and returns a durable successor", async () => {
       const values = selectedCandidatePublisherFixture();
@@ -4123,12 +4785,16 @@ describe("HizoFS worker composition root", () => {
       });
       const assertRuntimePublicationAllowed = vi.fn();
 
+      const onCandidateMaterialized = vi.fn();
       const outcome = await COMPOSITION_TEST_ONLY.createPreparedMutationSelectedCandidatePublisher({
         assertRuntimePublicationAllowed,
         base: values.base,
         deferred: prepared,
         successor: values.successor,
-      }).publish();
+      }).publish({
+        onCandidateMaterialized,
+        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+      });
 
       expect(outcome).toMatchObject({ type: "published" });
       if (outcome.type !== "published") {
@@ -4136,6 +4802,13 @@ describe("HizoFS worker composition root", () => {
       }
       expect(outcome.durableSuccessor.workingIdentity).toBe(values.successor.workingIdentity);
       expect(outcome.durableSuccessor.durableAuthority.identity.commitSequence).toBe(values.commit.commitSequence);
+      expect(onCandidateMaterialized).toHaveBeenCalledWith({
+        candidateDurableIdentity: createDurableGenerationIdentity({
+          commitReference: values.commitReference,
+          commitSequence: values.commit.commitSequence,
+          mutationId: values.commit.mutationId,
+        }),
+      });
       expect(assertRuntimePublicationAllowed).toHaveBeenCalledTimes(2);
       expect(resolvePublication).not.toHaveBeenCalled();
     });
@@ -4161,7 +4834,10 @@ describe("HizoFS worker composition root", () => {
         base: values.base,
         deferred: prepared,
         successor: values.successor,
-      }).publish();
+      }).publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+      });
 
       expect(outcome).toEqual({
         cause: gateFailure,
@@ -4194,9 +4870,15 @@ describe("HizoFS worker composition root", () => {
         successor: values.successor,
       });
 
-      const outcome = await publisher.publish();
+      const outcome = await publisher.publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+      });
       expect(outcome).toMatchObject({ cause: publicationFailure, type: "not_published" });
-      await expect(publisher.publish()).resolves.toMatchObject({ type: "published" });
+      await expect(publisher.publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+      })).resolves.toMatchObject({ type: "published" });
       expect(publishCandidate).toHaveBeenCalledTimes(2);
     });
 
@@ -4220,7 +4902,10 @@ describe("HizoFS worker composition root", () => {
         base: values.base,
         deferred: prepared,
         successor: values.successor,
-      }).publish()).resolves.toMatchObject({ type: "outcome_unknown" });
+      }).publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+      })).resolves.toMatchObject({ type: "outcome_unknown" });
     });
 
     it("does not acknowledge a published authority until both Superblock copies converge", async () => {
@@ -4246,7 +4931,10 @@ describe("HizoFS worker composition root", () => {
         base: values.base,
         deferred: prepared,
         successor: values.successor,
-      }).publish()).resolves.toMatchObject({ type: "outcome_unknown" });
+      }).publish({
+        onCandidateMaterialized: vi.fn(),
+        onMaterializationAppendAttempt: () => createMaterializationAttemptReceipt(),
+      })).resolves.toMatchObject({ type: "outcome_unknown" });
     });
   });
 });

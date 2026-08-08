@@ -8,6 +8,7 @@ import {
   TEST_ONLY,
   createAuthenticatedFileContentMutationAuthority,
 } from "@/00-storage/service/hizofs/authenticated-store/file-content-mutation-authority";
+import { AuthenticatedSegmentWriterOwner } from "@/00-storage/service/hizofs/authenticated-store/active-segment-writer-owner";
 import { readAuthenticatedDirectoryPage } from "@/00-storage/service/hizofs/authenticated-store/directory-page-store";
 import { readAuthenticatedFileData } from "@/00-storage/service/hizofs/authenticated-store/file-data-store";
 import { readAuthenticatedFileExtentPage } from "@/00-storage/service/hizofs/authenticated-store/file-extent-page-store";
@@ -97,6 +98,72 @@ describe("authenticated file content mutation authority", () => {
       rootKey,
     })).resolves.toMatchObject({ entries: [{ fileOffset: 100n }], type: "leaf" });
     await expect(authority.writeFileData({ bytes: Uint8Array.of(1) })).rejects.toThrow("closed");
+    rootKey.destroy();
+  });
+
+  it("releases the shared metadata writer lease before staged file acceptance becomes visible", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const writerOwner = new AuthenticatedSegmentWriterOwner({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    const authority = await createAuthenticatedFileContentMutationAuthority({
+      backend,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+      writerOwner,
+    });
+
+    expect(() => writerOwner.acquire()).toThrow("already has a lease");
+    authority.prepareWorkingAcceptanceWithoutCandidate();
+
+    const publicationLease = writerOwner.acquire();
+    publicationLease.release({ disposition: "reuse" });
+    expect(authority.state()).toBe("active");
+    authority.completeWorkingAcceptanceWithoutCandidate();
+    expect(authority.state()).toBe("closed");
+    await expect(writerOwner.close()).resolves.toBeUndefined();
+    rootKey.destroy();
+  });
+
+  it("closes accepted file content authority without materializing a Commit candidate", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const authority = await createAuthenticatedFileContentMutationAuthority({
+      backend,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const fileDataHomeRef = await authority.writeFileData({ bytes: Uint8Array.of(4, 5, 6) });
+    const before = authority.resourceUsage();
+
+    authority.completeWorkingAcceptanceWithoutCandidate();
+
+    expect(authority.state()).toBe("closed");
+    expect(authority.resourceUsage()).toEqual(before);
+    await expect(readAuthenticatedFileData({
+      backend,
+      fileSystemId,
+      homeReference: fileDataHomeRef,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+    })).resolves.toEqual(Uint8Array.of(4, 5, 6));
+    await expect(authority.writeFileData({ bytes: Uint8Array.of(7) })).rejects.toThrow("closed");
+    expect(() => authority.completeWorkingAcceptanceWithoutCandidate()).toThrow("closed");
     rootKey.destroy();
   });
 

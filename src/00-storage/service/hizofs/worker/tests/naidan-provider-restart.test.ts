@@ -214,13 +214,13 @@ async function createTestRuntimePort({
         fileSystemId,
         fileSystemSession,
         gracefullyShutdownRuntime: async () => {
-          const barrier = runtimeHost.openManagementCleanHeadBarrier();
+          const barrier = runtimeHost.openManagementCleanHeadBarrier({});
           await barrier.flushAndCaptureCleanGeneration();
           barrier.release();
           await fileSystemSession.close();
         },
         openManagementCleanHeadBarrier: () => {
-          const barrier = runtimeHost.openManagementCleanHeadBarrier();
+          const barrier = runtimeHost.openManagementCleanHeadBarrier({});
           return {
             ensureCleanHead: async () => {
               await barrier.flushAndCaptureCleanGeneration();

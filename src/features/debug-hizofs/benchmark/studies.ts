@@ -114,134 +114,24 @@ function createPolicyMatrix({
     measuredIterations: Math.min(baseConfiguration.measuredIterations, 3),
     storeLifecycle: 'fresh_per_iteration',
   });
-  const variants: HizoFSBenchmarkStudyVariant[] = [];
 
-  for (const fileChunkSize of [
-    256 * 1024,
-    512 * 1024,
-    1024 * 1024,
-    2 * 1024 * 1024,
-    4 * 1024 * 1024,
-  ] as const) {
-    variants.push(createVariant({
-      studyKind: 'policy_matrix',
-      variantId: `file-chunk-${String(fileChunkSize / 1024)}kib`,
-      label: `File chunk size ${String(fileChunkSize / 1024)} KiB`,
-      configuration: {
-        ...studyBase,
-        workloads: ['sequential_io', 'random_access'],
-        hizoFSRuntimePolicy: {
-          ...studyBase.hizoFSRuntimePolicy,
-          fileChunkSize,
-        },
+  // WHY: a policy study is useful only when the requested value reaches the
+  // product runtime. Running variants for disconnected controls wastes browser
+  // time and can falsely imply that equal results compare real implementations.
+  // Add a control back here only when production-runtime-port wires it through.
+  return [0, 256, 1024, 4096].map(entryLimit => createVariant({
+    studyKind: 'policy_matrix',
+    variantId: `backing-handle-cache-${String(entryLimit)}`,
+    label: `Backing file-handle cache ${String(entryLimit)}`,
+    configuration: {
+      ...studyBase,
+      workloads: ['sequential_io', 'random_access'],
+      hizoFSRuntimePolicy: {
+        ...studyBase.hizoFSRuntimePolicy,
+        backingFileHandleCacheEntryLimit: entryLimit,
       },
-    }));
-  }
-
-  for (const concurrency of [1, 2, 4, 8] as const) {
-    variants.push(createVariant({
-      studyKind: 'policy_matrix',
-      variantId: `write-concurrency-${String(concurrency)}`,
-      label: `Chunk write concurrency ${String(concurrency)}`,
-      configuration: {
-        ...studyBase,
-        workloads: ['sequential_io'],
-        hizoFSRuntimePolicy: {
-          ...studyBase.hizoFSRuntimePolicy,
-          fileChunkWriteConcurrency: concurrency,
-        },
-      },
-    }));
-  }
-
-  for (const concurrency of [1, 2, 4, 8] as const) {
-    variants.push(createVariant({
-      studyKind: 'policy_matrix',
-      variantId: `read-prefetch-${String(concurrency)}`,
-      label: `Sequential read prefetch ${String(concurrency)}`,
-      configuration: {
-        ...studyBase,
-        workloads: ['sequential_io'],
-        hizoFSRuntimePolicy: {
-          ...studyBase.hizoFSRuntimePolicy,
-          fileChunkReadPrefetchConcurrency: concurrency,
-        },
-      },
-    }));
-  }
-
-  for (const entryLimit of [0, 256, 1024, 4096] as const) {
-    variants.push(createVariant({
-      studyKind: 'policy_matrix',
-      variantId: `backing-handle-cache-${String(entryLimit)}`,
-      label: `Backing file-handle cache ${String(entryLimit)}`,
-      configuration: {
-        ...studyBase,
-        workloads: ['sequential_io', 'random_access'],
-        hizoFSRuntimePolicy: {
-          ...studyBase.hizoFSRuntimePolicy,
-          backingFileHandleCacheEntryLimit: entryLimit,
-        },
-      },
-    }));
-  }
-
-  const chunkCacheVariants = [
-    {
-      variantId: 'chunk-cache-disabled',
-      label: 'File chunk cache disabled',
-      byteLimit: 0,
-      entryLimit: 0,
-      admission: 'read' as const,
     },
-    {
-      variantId: 'chunk-cache-8mib-read-only',
-      label: 'File chunk cache 8 MiB, read only',
-      byteLimit: 8 * 1024 * 1024,
-      entryLimit: 1024,
-      admission: 'read' as const,
-    },
-    {
-      variantId: 'chunk-cache-16mib-read-only',
-      label: 'File chunk cache 16 MiB, read only',
-      byteLimit: 16 * 1024 * 1024,
-      entryLimit: 2048,
-      admission: 'read' as const,
-    },
-    {
-      variantId: 'chunk-cache-32mib-read-only',
-      label: 'File chunk cache 32 MiB, read only',
-      byteLimit: 32 * 1024 * 1024,
-      entryLimit: 4096,
-      admission: 'read' as const,
-    },
-    {
-      variantId: 'chunk-cache-8mib-read-write',
-      label: 'File chunk cache 8 MiB, read and write',
-      byteLimit: 8 * 1024 * 1024,
-      entryLimit: 1024,
-      admission: 'read_write' as const,
-    },
-  ];
-  for (const chunkCache of chunkCacheVariants) {
-    variants.push(createVariant({
-      studyKind: 'policy_matrix',
-      variantId: chunkCache.variantId,
-      label: chunkCache.label,
-      configuration: {
-        ...studyBase,
-        workloads: ['random_access'],
-        hizoFSRuntimePolicy: {
-          ...studyBase.hizoFSRuntimePolicy,
-          fileChunkCacheByteLimit: chunkCache.byteLimit,
-          fileChunkCacheEntryLimit: chunkCache.entryLimit,
-          fileChunkCacheAdmission: chunkCache.admission,
-        },
-      },
-    }));
-  }
-
-  return variants;
+  }));
 }
 
 function createLargeWriteStudy({
@@ -251,43 +141,41 @@ function createLargeWriteStudy({
 }): readonly HizoFSBenchmarkStudyVariant[] {
   const studyBase = createStudyBaseConfiguration({
     baseConfiguration,
-    backendMode: 'compare',
+    backendMode: 'hizofs_only',
     workloads: ['sequential_io'],
     warmupIterations: 0,
-    measuredIterations: Math.min(baseConfiguration.measuredIterations, 3),
+    measuredIterations: 1,
     storeLifecycle: 'fresh_per_iteration',
   });
-  const variants: HizoFSBenchmarkStudyVariant[] = [createVariant({
-    studyKind: 'large_write',
-    variantId: 'sequential-write-64mib',
-    label: 'Sequential I/O with a 64 MiB file',
-    configuration: {
-      ...studyBase,
-      sequentialIo: {
-        fileSizeBytes: 64 * 1024 * 1024,
-        blockSizeBytes: 256 * 1024,
-      },
-    },
-  })];
-  for (const concurrency of [1, 2, 4, 8] as const) {
-    variants.push(createVariant({
+  // Chunk-write concurrency is not currently a product runtime control. Keep
+  // large-write coverage, but do not rerun the same implementation four times
+  // under labels that only change an ineffective requested value.
+  return [
+    createVariant({
       studyKind: 'large_write',
-      variantId: `sequential-write-256mib-concurrency-${String(concurrency)}`,
-      label: `Sequential 256 MiB write with concurrency ${String(concurrency)}`,
+      variantId: 'sequential-write-64mib',
+      label: 'Sequential I/O with a 64 MiB file',
+      configuration: {
+        ...studyBase,
+        sequentialIo: {
+          fileSizeBytes: 64 * 1024 * 1024,
+          blockSizeBytes: 256 * 1024,
+        },
+      },
+    }),
+    createVariant({
+      studyKind: 'large_write',
+      variantId: 'sequential-write-256mib',
+      label: 'Sequential I/O with a 256 MiB file',
       configuration: {
         ...studyBase,
         sequentialIo: {
           fileSizeBytes: 256 * 1024 * 1024,
           blockSizeBytes: 256 * 1024,
         },
-        hizoFSRuntimePolicy: {
-          ...studyBase.hizoFSRuntimePolicy,
-          fileChunkWriteConcurrency: concurrency,
-        },
       },
-    }));
-  }
-  return variants;
+    }),
+  ];
 }
 
 function createLifecycleMatrix({

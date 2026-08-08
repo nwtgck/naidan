@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHomeRecordReference } from '@/00-storage/service/hizofs/00-format/v1/binary/record-reference';
-import { decodeIndexedInodeLeafEntry, decodeInodeLeafPage, encodeInodeLeafPage, findIndexedInodeLeafEntry, indexInodeLeafPage } from '@/00-storage/service/hizofs/00-format/v1/pages/inode-leaf-page';
+import { assertInodeLeafEntryFitsMetadataPage, decodeIndexedInodeLeafEntry, decodeInodeLeafPage, encodeInodeLeafEntry, encodeInodeLeafPage, findIndexedInodeLeafEntry, indexInodeLeafPage } from '@/00-storage/service/hizofs/00-format/v1/pages/inode-leaf-page';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
 import { createFileOffset, createInodeNumber, createInodeRevision, createSubvolumeId, createTimestampMilliseconds, createUInt64 } from '@/00-storage/service/hizofs/00-format/v1/scalars';
@@ -75,6 +75,34 @@ describe('Inode Table leaf codec', () => {
     ];
     const bytes = encodeInodeLeafPage({ entries, isRoot: true });
     expect(decodeInodeLeafPage({ bytes, isRoot: true }).entries).toEqual(entries);
+  });
+
+  it('validates one inode entry without materializing a complete page', () => {
+    const entry = {
+      content: { bytes: Uint8Array.of(7), type: 'inline' as const },
+      fileSize: createFileOffset({ value: 1n }),
+      inodeKind: 'file' as const,
+      inodeNumber: createInodeNumber({ value: 7n }),
+      inodeRevision: createInodeRevision({ value: 1n }),
+      timestamps: noTimestamps,
+    };
+    expect(() => assertInodeLeafEntryFitsMetadataPage({ entry })).not.toThrow();
+    expect(() => assertInodeLeafEntryFitsMetadataPage({
+      entry: { ...entry, fileSize: createFileOffset({ value: 2n }) },
+    })).toThrow('equal fileSize');
+  });
+
+  it('encodes one inode entry identically to its canonical leaf-page payload slice', () => {
+    const entry = {
+      content: { bytes: Uint8Array.of(1, 2, 3), type: 'inline' as const },
+      fileSize: createFileOffset({ value: 3n }),
+      inodeKind: 'file' as const,
+      inodeNumber: createInodeNumber({ value: 9n }),
+      inodeRevision: createInodeRevision({ value: 2n }),
+      timestamps: { createdAt: null, modifiedAt: createTimestampMilliseconds({ value: 20n }) },
+    };
+    const page = encodeInodeLeafPage({ entries: [entry], isRoot: true });
+    expect(encodeInodeLeafEntry({ entry })).toEqual(page.subarray(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.commonPageHeader));
   });
 
   it('indexes one leaf page and decodes only the selected inode entry', () => {

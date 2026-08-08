@@ -18,6 +18,8 @@ import {
 import {
   createAuthenticatedApplicationGenerationDescriptor,
   createAuthenticatedDurableApplicationGenerationAuthority,
+  createAuthenticatedStagedApplicationGenerationDescriptor,
+  requireMaterializedApplicationGenerationDescriptor,
 } from "@/00-storage/service/hizofs/runtime/authenticated-application-generation";
 import {
   createDurableGenerationIdentity,
@@ -28,7 +30,7 @@ import {
 } from "@/00-storage/service/hizofs/runtime/application-generation-identity";
 import type { HizoFSBackgroundFlushTimerPort } from "@/00-storage/service/hizofs/runtime/background-flush-scheduler";
 import { ContainerRuntime } from "@/00-storage/service/hizofs/runtime/container-runtime";
-import type { CrossRealmLockMode, CrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/cross-realm-lock-coordinator";
+import { CrossRealmLockCoordinator, type CrossRealmLockMode, type CrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/cross-realm-lock-coordinator";
 import { createContainerCoordinationScope, parseContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
 import { InMemoryCrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/testing/in-memory-cross-realm-lock-port";
 
@@ -47,7 +49,6 @@ function candidateIdentities() {
   const baseMutationId = parseMutationId({ bytes: new Uint8Array(16).fill(1) });
   const baseWorking = createWorkingGenerationIdentity({
     authorityEpoch: createWorkingGenerationAuthorityEpoch(),
-    commitReference: baseReference,
     generationNumber: createWorkingGenerationNumber({ value: 0n }),
     mutationId: baseMutationId,
   });
@@ -65,12 +66,13 @@ function candidateIdentities() {
       mutationId: baseMutationId,
     }),
     successor: createSuccessorWorkingGenerationIdentity({
-      commitReference: successorReference,
       mutationId: successorMutationId,
       previous: baseWorking,
     }),
   };
 }
+
+const RUNTIME_SCOPE_TOKEN = parseContainerCoordinationScopeToken({ value: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE" });
 
 function runtime({
   backgroundFlushTimerPort,
@@ -91,7 +93,7 @@ function runtime({
       maxSegmentReferences: 16,
     },
     scope: createContainerCoordinationScope({
-      token: parseContainerCoordinationScopeToken({ value: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE" }),
+      token: RUNTIME_SCOPE_TOKEN,
     }),
   });
 }
@@ -147,22 +149,23 @@ function authenticatedGenerationFixture() {
 function successorDescriptor({ base }: {
   base: ReturnType<ReturnType<ContainerRuntime["attachAuthenticatedApplicationGeneration"]>["capture"]>;
 }) {
-  const successorCommitReference = commitReference({ offset: base.commitReference.byteOffset + 4_096n });
+  const materializedBase = requireMaterializedApplicationGenerationDescriptor({ descriptor: base });
+  const successorCommitReference = commitReference({ offset: materializedBase.commitReference.byteOffset + 4_096n });
   const mutationId = parseMutationId({ bytes: new Uint8Array(16).fill(19) });
   const commit = createFileSystemCommitPayload({ payload: {
-    ...base.commit,
-    commitSequence: createCommitSequence({ value: base.commit.commitSequence + 1n }),
+    ...materializedBase.commit,
+    commitSequence: createCommitSequence({ value: materializedBase.commit.commitSequence + 1n }),
     mutationId,
   } });
   const logicalState = Object.freeze({
-    ...base.superblock.logicalState,
+    ...materializedBase.superblock.logicalState,
     activeCommitHomeRef: successorCommitReference,
     activeCommitSequence: commit.commitSequence,
     activeMutationId: mutationId,
-    fallbackCommitHomeRef: base.durableAuthority.commitReference,
+    fallbackCommitHomeRef: materializedBase.durableAuthority.commitReference,
   });
   const superblock: OpenedSuperblockCopies = Object.freeze({
-    ...base.superblock,
+    ...materializedBase.superblock,
     authenticatedLogicalStates: Object.freeze([logicalState, logicalState]),
     logicalState,
   });
@@ -175,9 +178,8 @@ function successorDescriptor({ base }: {
       superblock,
     }),
     workingIdentity: createSuccessorWorkingGenerationIdentity({
-      commitReference: successorCommitReference,
       mutationId,
-      previous: base.workingIdentity,
+      previous: materializedBase.workingIdentity,
     }),
   });
 }
@@ -188,22 +190,72 @@ function unpublishedSuccessorDescriptor({ base, mutationByte, offset }: {
   mutationByte: number;
   offset: bigint;
 }) {
+  const materializedBase = requireMaterializedApplicationGenerationDescriptor({ descriptor: base });
   const successorCommitReference = commitReference({ offset });
   const mutationId = parseMutationId({ bytes: new Uint8Array(16).fill(mutationByte) });
   const commit = createFileSystemCommitPayload({ payload: {
-    ...base.commit,
-    commitSequence: createCommitSequence({ value: base.durableAuthority.commit.commitSequence + 1n }),
+    ...materializedBase.commit,
+    commitSequence: createCommitSequence({ value: materializedBase.durableAuthority.commit.commitSequence + 1n }),
     mutationId,
   } });
   return createAuthenticatedApplicationGenerationDescriptor({
     commit,
     commitReference: successorCommitReference,
-    durableAuthority: base.durableAuthority,
+    durableAuthority: materializedBase.durableAuthority,
     workingIdentity: createSuccessorWorkingGenerationIdentity({
-      commitReference: successorCommitReference,
       mutationId,
-      previous: base.workingIdentity,
+      previous: materializedBase.workingIdentity,
     }),
+  });
+}
+
+function stagedSuccessorDescriptor({ base, mutationByte }: {
+  base: ReturnType<ReturnType<ContainerRuntime["attachAuthenticatedApplicationGeneration"]>["capture"]>;
+  mutationByte: number;
+}) {
+  const materializedBase = requireMaterializedApplicationGenerationDescriptor({ descriptor: base });
+  const mutationId = parseMutationId({ bytes: new Uint8Array(16).fill(mutationByte) });
+  const commit = createFileSystemCommitPayload({ payload: {
+    ...materializedBase.commit,
+    commitSequence: createCommitSequence({ value: materializedBase.durableAuthority.commit.commitSequence + 1n }),
+    mutationId,
+    rootInodeTableRootHomeRef: inodeTableReference({ offset: 320n + (BigInt(mutationByte) * 8n) }),
+  } });
+  return createAuthenticatedStagedApplicationGenerationDescriptor({
+    commit,
+    durableAuthority: materializedBase.durableAuthority,
+    workingIdentity: createSuccessorWorkingGenerationIdentity({
+      mutationId,
+      previous: materializedBase.workingIdentity,
+    }),
+  });
+}
+
+function publishedDescriptorFromStaged({ commitReference: materializedCommitReference, staged }: {
+  commitReference: ReturnType<typeof commitReference>;
+  staged: ReturnType<typeof stagedSuccessorDescriptor>;
+}) {
+  const logicalState = Object.freeze({
+    ...staged.superblock.logicalState,
+    activeCommitHomeRef: materializedCommitReference,
+    activeCommitSequence: staged.commit.commitSequence,
+    activeMutationId: staged.commit.mutationId,
+    fallbackCommitHomeRef: staged.durableAuthority.commitReference,
+  });
+  const superblock: OpenedSuperblockCopies = Object.freeze({
+    ...staged.superblock,
+    authenticatedLogicalStates: Object.freeze([logicalState, logicalState]),
+    logicalState,
+  });
+  return createAuthenticatedApplicationGenerationDescriptor({
+    commit: staged.commit,
+    commitReference: materializedCommitReference,
+    durableAuthority: createAuthenticatedDurableApplicationGenerationAuthority({
+      commit: staged.commit,
+      commitReference: materializedCommitReference,
+      superblock,
+    }),
+    workingIdentity: staged.workingIdentity,
   });
 }
 
@@ -311,7 +363,7 @@ describe("container runtime", () => {
     const durableAuthority = authenticatedGenerationFixture();
     const first = value.attachAuthenticatedApplicationGeneration({ durableAuthority });
     const second = value.attachAuthenticatedApplicationGeneration({ durableAuthority });
-    const base = first.capture();
+    const base = requireMaterializedApplicationGenerationDescriptor({ descriptor: first.capture() });
     expect(second.capture()).toBe(base);
 
     const admission = first.openImmediateMutationAdmission({
@@ -347,7 +399,7 @@ describe("container runtime", () => {
     const authority = value.attachAuthenticatedApplicationGeneration({
       durableAuthority: authenticatedGenerationFixture(),
     });
-    const base = authority.capture();
+    const base = requireMaterializedApplicationGenerationDescriptor({ descriptor: authority.capture() });
     const candidate = Object.freeze({ label: "immediate candidate" });
     const working = unpublishedSuccessorDescriptor({ base, mutationByte: 29, offset: 36_928n });
     const admission = authority.openImmediateMutationAdmission<typeof candidate>({
@@ -374,7 +426,7 @@ describe("container runtime", () => {
     const discardedAuthority = discardedRuntime.attachAuthenticatedApplicationGeneration({
       durableAuthority: authenticatedGenerationFixture(),
     });
-    const discardedBase = discardedAuthority.capture();
+    const discardedBase = requireMaterializedApplicationGenerationDescriptor({ descriptor: discardedAuthority.capture() });
     const discardedAdmission = discardedAuthority.openImmediateMutationAdmission<object>({
       dirtyMetadataBytes: 1,
       expectedBase: discardedBase,
@@ -393,7 +445,7 @@ describe("container runtime", () => {
     const retainedAuthority = retainedRuntime.attachAuthenticatedApplicationGeneration({
       durableAuthority: authenticatedGenerationFixture(),
     });
-    const retainedBase = retainedAuthority.capture();
+    const retainedBase = requireMaterializedApplicationGenerationDescriptor({ descriptor: retainedAuthority.capture() });
     const retainedAdmission = retainedAuthority.openImmediateMutationAdmission<object>({
       dirtyMetadataBytes: 1,
       expectedBase: retainedBase,
@@ -418,7 +470,7 @@ describe("container runtime", () => {
     const authority = value.attachAuthenticatedApplicationGeneration({
       durableAuthority: authenticatedGenerationFixture(),
     });
-    const base = authority.capture();
+    const base = requireMaterializedApplicationGenerationDescriptor({ descriptor: authority.capture() });
     const admission = authority.openImmediateMutationAdmission({
       dirtyMetadataBytes: 0,
       expectedBase: base,
@@ -615,6 +667,173 @@ describe("container runtime", () => {
     );
   });
 
+  it("serializes background publication behind foreground runtime writer ownership", async () => {
+    const { port, scheduled } = controlledBackgroundFlushTimers();
+    const value = runtime({ backgroundFlushTimerPort: port });
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const working = unpublishedSuccessorDescriptor({ base, mutationByte: 25, offset: 24_640n });
+    let publicationCount = 0;
+    const admission = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    admission.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => {
+          publicationCount += 1;
+          return { durableSuccessor: publishedDescriptorFromWorking({ working }), type: "published" as const };
+        },
+      }),
+      successor: working,
+    });
+
+    const session = await openSession({ value });
+    const writer = await session.acquireWriter();
+    scheduled[0]!.callback();
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(publicationCount).toBe(0);
+
+    await writer.close();
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(publicationCount).toBe(1);
+    await session.close();
+  });
+
+  it("blocks the next foreground runtime writer while background publication owns writer authority", async () => {
+    const { port, scheduled } = controlledBackgroundFlushTimers();
+    const value = runtime({ backgroundFlushTimerPort: port });
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const working = unpublishedSuccessorDescriptor({ base, mutationByte: 27, offset: 26_624n });
+    const publicationStarted = deferred<void>();
+    const finishPublication = deferred<void>();
+    const admission = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    admission.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => {
+          publicationStarted.resolve();
+          await finishPublication.promise;
+          return { durableSuccessor: publishedDescriptorFromWorking({ working }), type: "published" as const };
+        },
+      }),
+      successor: working,
+    });
+
+    const session = await openSession({ value });
+    scheduled[0]!.callback();
+    await publicationStarted.promise;
+    let foregroundWriterAcquired = false;
+    const foregroundWriter = session.acquireWriter().then(writer => {
+      foregroundWriterAcquired = true;
+      return writer;
+    });
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(foregroundWriterAcquired).toBe(false);
+
+    finishPublication.resolve();
+    const writer = await foregroundWriter;
+    expect(foregroundWriterAcquired).toBe(true);
+    await writer.close();
+    await session.close();
+  });
+
+  it("serializes explicit flush behind foreground runtime writer ownership", async () => {
+    const value = runtime();
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const working = unpublishedSuccessorDescriptor({ base, mutationByte: 28, offset: 30_720n });
+    let publicationCount = 0;
+    const admission = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    admission.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => {
+          publicationCount += 1;
+          return { durableSuccessor: publishedDescriptorFromWorking({ working }), type: "published" as const };
+        },
+      }),
+      successor: working,
+    });
+
+    const session = await openSession({ value });
+    const writer = await session.acquireWriter();
+    const flush = authority.requestExplicitFlush();
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(publicationCount).toBe(0);
+
+    await writer.close();
+    await flush;
+    expect(publicationCount).toBe(1);
+    await session.close();
+  });
+
+  it("blocks the next foreground runtime writer while explicit flush owns writer authority", async () => {
+    const value = runtime();
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const working = unpublishedSuccessorDescriptor({ base, mutationByte: 29, offset: 32_704n });
+    const publicationStarted = deferred<void>();
+    const finishPublication = deferred<void>();
+    const admission = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    admission.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => {
+          publicationStarted.resolve();
+          await finishPublication.promise;
+          return { durableSuccessor: publishedDescriptorFromWorking({ working }), type: "published" as const };
+        },
+      }),
+      successor: working,
+    });
+
+    const session = await openSession({ value });
+    const flush = authority.requestExplicitFlush();
+    await publicationStarted.promise;
+    let foregroundWriterAcquired = false;
+    const foregroundWriter = session.acquireWriter().then(writer => {
+      foregroundWriterAcquired = true;
+      return writer;
+    });
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(foregroundWriterAcquired).toBe(false);
+
+    finishPublication.resolve();
+    await flush;
+    const writer = await foregroundWriter;
+    expect(foregroundWriterAcquired).toBe(true);
+    await writer.close();
+    await session.close();
+  });
+
   it("defers background publication while a foreground mutation admission owns generation authority", async () => {
     const { port, scheduled } = controlledBackgroundFlushTimers();
     const value = runtime({ backgroundFlushTimerPort: port });
@@ -705,6 +924,120 @@ describe("container runtime", () => {
     await expect(authority.waitForSyncTarget({ target: working.workingIdentity })).resolves.toBeUndefined();
   });
 
+  it("keeps a staged accepted generation commitless until flush materializes its exact candidate", async () => {
+    const value = runtime();
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const staged = stagedSuccessorDescriptor({ base, mutationByte: 42 });
+    const materializedCommitReference = commitReference({ offset: 88_128n });
+    const published = publishedDescriptorFromStaged({
+      commitReference: materializedCommitReference,
+      staged,
+    });
+    const materializationCallbacks: unknown[] = [];
+    const admission = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    admission.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    admission.commitAcceptedStagedSuccessor({
+      publisher: Object.freeze({
+        abandon: vi.fn(),
+        completeOutcomeUnknownResolution: vi.fn(),
+        publish: async ({ onCandidateMaterialized, onMaterializationAppendAttempt }) => {
+          const materializationAttempt = onMaterializationAppendAttempt({ frameBytes: 5 });
+          const candidateDurableIdentity = createDurableGenerationIdentity({
+            commitReference: materializedCommitReference,
+            commitSequence: staged.commit.commitSequence,
+            mutationId: staged.commit.mutationId,
+          });
+          onCandidateMaterialized({ candidateDurableIdentity });
+          materializationAttempt.completeReusableCandidate();
+          materializationCallbacks.push(candidateDurableIdentity);
+          return { durableSuccessor: published, type: "published" as const };
+        },
+      }),
+      successor: staged,
+    });
+
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      dirtyMetadataBytes: 6,
+      stagedCommitMaterializationHeadroomBytes: 5,
+      unpublishedPhysicalBytes: 6,
+    });
+    const accepted = authority.capture();
+    expect("commitReference" in accepted).toBe(false);
+    expect(accepted.workingRootAuthority).toEqual(staged.workingRootAuthority);
+    expect(materializationCallbacks).toEqual([]);
+
+    await expect(authority.requestExplicitFlush()).resolves.toBeUndefined();
+    expect(materializationCallbacks).toHaveLength(1);
+    const durable = requireMaterializedApplicationGenerationDescriptor({ descriptor: authority.capture() });
+    expect(durable.commitReference).toEqual(materializedCommitReference);
+    expect(durable.workingIdentity).toEqual(staged.workingIdentity);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      dirtyMetadataBytes: 0,
+      stagedCommitMaterializationHeadroomBytes: 0,
+      unpublishedPhysicalBytes: 0,
+    });
+  });
+
+  it("retains materialized Commit and staged page roots when staged publication becomes outcome-unknown", async () => {
+    const value = runtime();
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const staged = stagedSuccessorDescriptor({ base, mutationByte: 43 });
+    const materializedCommitReference = commitReference({ offset: 88_224n });
+    const failure = new Error("staged Superblock publication outcome is unknown");
+    const completeOutcomeUnknownResolution = vi.fn();
+    const admission = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    admission.commitAcceptedStagedSuccessor({
+      publisher: Object.freeze({
+        abandon: vi.fn(),
+        completeOutcomeUnknownResolution,
+        publish: async ({ onCandidateMaterialized }) => {
+          onCandidateMaterialized({
+            candidateDurableIdentity: createDurableGenerationIdentity({
+              commitReference: materializedCommitReference,
+              commitSequence: staged.commit.commitSequence,
+              mutationId: staged.commit.mutationId,
+            }),
+          });
+          return { cause: failure, type: "outcome_unknown" as const };
+        },
+      }),
+      successor: staged,
+    });
+
+    await expect(authority.requestExplicitFlush()).rejects.toBe(failure);
+    expect(value.workingCandidatePublicationState()).toBe("outcome_unknown");
+    const capture = await value.beginMaintenanceRootCapture();
+    try {
+      expect(capture.writerDependencyRoots).toEqual([materializedCommitReference]);
+      expect(capture.writerWorkingPageRoots).toEqual([
+        staged.workingRootAuthority.rootInodeTableRootHomeRef,
+      ]);
+    } finally {
+      capture.release();
+      await capture.released;
+    }
+    await expect(value.disposeIfIdleAndSafe()).resolves.toEqual({
+      blocker: "working_candidate_not_empty",
+      status: "retained",
+    });
+    await expect(authority.requestExplicitFlush()).rejects.toMatchObject({ code: "coordinator_poisoned" });
+    expect(completeOutcomeUnknownResolution).not.toHaveBeenCalled();
+  });
+
   it("retains a not-published candidate for an explicit single-flight retry", async () => {
     const value = runtime();
     const authority = value.attachAuthenticatedApplicationGeneration({
@@ -775,6 +1108,49 @@ describe("container runtime", () => {
     });
   });
 
+  it("waits for foreground writer ownership before fencing a management clean-head flush", async () => {
+    const value = runtime();
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const working = unpublishedSuccessorDescriptor({ base, mutationByte: 34, offset: 63_616n });
+    const admission = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    admission.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => ({
+          durableSuccessor: publishedDescriptorFromWorking({ working }),
+          type: "published" as const,
+        }),
+      }),
+      successor: working,
+    });
+
+    const session = await openSession({ value });
+    const writer = await session.acquireWriter();
+    const barrier = authority.openManagementCleanHeadBarrier({});
+    let settled = false;
+    const settlement = barrier.flushAndCaptureCleanGeneration().then(descriptor => {
+      settled = true;
+      return descriptor;
+    });
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+    expect(value.lazyDurabilityDiagnostics().managementBarrierActive).toBe(false);
+
+    await writer.close();
+    await expect(settlement).resolves.toMatchObject({ workingIdentity: working.workingIdentity });
+    expect(value.lazyDurabilityDiagnostics().managementBarrierActive).toBe(true);
+    barrier.release();
+    await session.close();
+  });
+
   it("holds a clean durable head across a management authority switch", async () => {
     const value = runtime();
     const authority = value.attachAuthenticatedApplicationGeneration({
@@ -800,18 +1176,20 @@ describe("container runtime", () => {
       successor: working,
     });
 
-    const barrier = authority.openManagementCleanHeadBarrier();
-    expect(value.lazyDurabilityDiagnostics().managementBarrierActive).toBe(true);
-    expect(() => authority.openAcceptedMutationAdmission({
-      dirtyMetadataBytes: 1,
-      expectedBase: working,
-      unpublishedPhysicalBytes: 1,
-    })).toThrowError(expect.objectContaining({ code: "management_barrier_active" }));
-    await expect(authority.requestExplicitFlush()).rejects.toMatchObject({ code: "management_barrier_active" });
+    const barrier = authority.openManagementCleanHeadBarrier({});
+    expect(value.lazyDurabilityDiagnostics().managementBarrierActive).toBe(false);
 
     await expect(barrier.flushAndCaptureCleanGeneration()).resolves.toMatchObject({
       workingIdentity: working.workingIdentity,
     });
+    expect(value.lazyDurabilityDiagnostics().managementBarrierActive).toBe(true);
+    const cleanHead = authority.capture();
+    expect(() => authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: cleanHead,
+      unpublishedPhysicalBytes: 1,
+    })).toThrowError(expect.objectContaining({ code: "management_barrier_active" }));
+    await expect(authority.requestExplicitFlush()).rejects.toMatchObject({ code: "management_barrier_active" });
     expect(authority.refreshDurableAuthority({
       durableAuthority: authority.capture().durableAuthority,
       expectedWorkingIdentity: working.workingIdentity,
@@ -858,7 +1236,7 @@ describe("container runtime", () => {
     expect(capture.writerDependencyRoots).toEqual([]);
     expect(() => authority.openAcceptedMutationAdmission({
       dirtyMetadataBytes: 1,
-      expectedBase: authority.capture(),
+      expectedBase: requireMaterializedApplicationGenerationDescriptor({ descriptor: authority.capture() }),
       unpublishedPhysicalBytes: 1,
     })).toThrowError(expect.objectContaining({ code: "management_barrier_active" }));
 
@@ -866,7 +1244,7 @@ describe("container runtime", () => {
     await capture.released;
     const nextAdmission = authority.openAcceptedMutationAdmission({
       dirtyMetadataBytes: 1,
-      expectedBase: authority.capture(),
+      expectedBase: requireMaterializedApplicationGenerationDescriptor({ descriptor: authority.capture() }),
       unpublishedPhysicalBytes: 1,
     });
     nextAdmission.rollback();
@@ -900,9 +1278,10 @@ describe("container runtime", () => {
 
     await expect(value.beginCleanHeadMaintenanceRootCapture()).rejects.toBeInstanceOf(AggregateError);
     expect(value.lazyDurabilityDiagnostics().managementBarrierActive).toBe(true);
+    const cleanHead = authority.capture();
     expect(() => authority.openAcceptedMutationAdmission({
       dirtyMetadataBytes: 1,
-      expectedBase: working,
+      expectedBase: cleanHead,
       unpublishedPhysicalBytes: 1,
     })).toThrowError(expect.objectContaining({ code: "management_barrier_active" }));
   });
@@ -940,7 +1319,7 @@ describe("container runtime", () => {
       successor: working,
     });
 
-    const barrier = authority.openManagementCleanHeadBarrier();
+    const barrier = authority.openManagementCleanHeadBarrier({});
     await expect(barrier.flushAndCaptureCleanGeneration()).rejects.toBe(failure);
     expect(() => barrier.release()).toThrowError(expect.objectContaining({ code: "management_head_not_clean" }));
     await expect(barrier.flushAndCaptureCleanGeneration()).resolves.toMatchObject({
@@ -1019,6 +1398,53 @@ describe("container runtime", () => {
     expect(publicationAttempts).toBe(1);
   });
 
+  it("serializes graceful dirty flush disposal behind cross-realm writer ownership", async () => {
+    const port = new InMemoryCrossRealmLockPort();
+    const value = runtime({ crossRealmLockPort: port });
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const working = unpublishedSuccessorDescriptor({ base, mutationByte: 42, offset: 81_984n });
+    let publicationCount = 0;
+    const admission = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    admission.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => {
+          publicationCount += 1;
+          return { durableSuccessor: publishedDescriptorFromWorking({ working }), type: "published" as const };
+        },
+      }),
+      successor: working,
+    });
+
+    const competingRealm = new CrossRealmLockCoordinator({
+      lockPort: port,
+      maxHeldLockNames: 64,
+      scopeToken: RUNTIME_SCOPE_TOKEN,
+    });
+    const competingWriter = await competingRealm.acquireWriter();
+    let disposed = false;
+    const disposal = value.flushAndDisposeIfIdleAndSafe().then(result => {
+      disposed = true;
+      return result;
+    });
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(publicationCount).toBe(0);
+    expect(disposed).toBe(false);
+
+    competingWriter.release();
+    await competingWriter.released;
+    await expect(disposal).resolves.toEqual({ status: "disposed" });
+    expect(publicationCount).toBe(1);
+  });
+
   it("does not auto-resolve outcome-unknown authority during graceful host disposal", async () => {
     const value = runtime();
     const authority = value.attachAuthenticatedApplicationGeneration({
@@ -1054,7 +1480,7 @@ describe("container runtime", () => {
     const authority = value.attachAuthenticatedApplicationGeneration({ durableAuthority });
     const admission = authority.openImmediateMutationAdmission({
       dirtyMetadataBytes: 1,
-      expectedBase: authority.capture(),
+      expectedBase: requireMaterializedApplicationGenerationDescriptor({ descriptor: authority.capture() }),
       unpublishedPhysicalBytes: 1,
     });
 
@@ -1295,7 +1721,7 @@ describe("container runtime", () => {
     });
     expect(value.workingCandidatePublicationState()).toBe("installed");
     const installed = await value.beginMaintenanceRootCapture();
-    expect(installed.writerDependencyRoots).toEqual([successor.commitReference]);
+    expect(installed.writerDependencyRoots).toEqual([candidateDurable.commitReference]);
     installed.release();
     await installed.released;
     expect(() => value.openWorkingCandidateAdmission({

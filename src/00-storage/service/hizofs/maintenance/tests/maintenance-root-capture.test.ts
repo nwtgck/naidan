@@ -23,6 +23,15 @@ function root({ offset, seed }: { offset: bigint; seed: number }) {
   } });
 }
 
+function pageRoot({ offset, seed }: { offset: bigint; seed: number }) {
+  return createHomeRecordReference({ fields: {
+    byteOffset: createUInt64({ value: offset }),
+    frameLength: 96,
+    recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(seed) }),
+  } });
+}
+
 function relocationRoot({ offset, seed }: { offset: bigint; seed: number }) {
   return createPhysicalRecordReference({ fields: {
     byteOffset: createUInt64({ value: offset }),
@@ -70,12 +79,18 @@ describe("complete maintenance root capture", () => {
         relocationIndexRoots: [relocationRoot({ offset: 704n, seed: 8 })],
         unknownFeatureRoots: [roots[5]!],
         writerDependencyRoots: [roots[4]!],
+        writerWorkingPageRoots: [pageRoot({ offset: 896n, seed: 9 })],
       },
     });
-    expect(captured.snapshot.roots).toHaveLength(7);
+    expect(captured.snapshot.roots).toHaveLength(8);
     expect(captured.snapshot.roots).toContainEqual(expect.objectContaining({
       kind: "physical_relocation_page",
       pageRole: "root",
+    }));
+    expect(captured.snapshot.roots).toContainEqual(expect.objectContaining({
+      kind: "logical_home",
+      pageRole: "root",
+      reference: pageRoot({ offset: 896n, seed: 9 }),
     }));
     expect(captured.counts).toEqual({
       activeCommit: 1,
@@ -85,6 +100,7 @@ describe("complete maintenance root capture", () => {
       relocationIndex: 1,
       unknownFeature: 1,
       writerDependency: 1,
+      writerWorkingPage: 1,
     });
   });
 
@@ -96,6 +112,7 @@ describe("complete maintenance root capture", () => {
       relocationIndexRoots: [],
       unknownFeatureRoots: [],
       writerDependencyRoots: [],
+      writerWorkingPageRoots: [],
     };
     const oversizedCandidateSnapshot = prepareMaintenanceCandidateSnapshot({
       candidateSegments: [candidate({ seed: 8 }), candidate({ seed: 9 })],

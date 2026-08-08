@@ -132,6 +132,59 @@ describe("AuthenticatedMetadataRecordCache", () => {
     });
   });
 
+  it("serves a successfully written immutable metadata record without reloading physical storage", async () => {
+    const { diagnostics, state } = createMetadataDiagnostics();
+    const cache = new AuthenticatedMetadataRecordCache({
+      diagnostics,
+      policy: { maximumBytes: 32, maximumEntries: 4 },
+    });
+    const reference = metadataReference();
+    const writtenPlaintext = new Uint8Array([9, 8, 7]);
+
+    cache.admitAuthenticatedWrite({
+      plaintext: writtenPlaintext,
+      recordKind: reference.recordKind,
+      reference,
+    });
+    writtenPlaintext.fill(0);
+    let loads = 0;
+    const read = await cache.read({
+      load: async () => {
+        loads += 1;
+        return loadedRecord({ bytes: [1, 2, 3], reference });
+      },
+      reference,
+    });
+
+    expect(loads).toBe(0);
+    expect([...read.plaintext]).toEqual([9, 8, 7]);
+    expect(state).toMatchObject({
+      currentBytes: 3,
+      currentEntries: 1,
+      hits: 1,
+      misses: 0,
+    });
+  });
+
+  it("rejects conflicting write admission for one immutable Home Record Reference", () => {
+    const cache = new AuthenticatedMetadataRecordCache({
+      diagnostics: undefined,
+      policy: { maximumBytes: 32, maximumEntries: 4 },
+    });
+    const reference = metadataReference();
+    cache.admitAuthenticatedWrite({
+      plaintext: new Uint8Array([1, 2]),
+      recordKind: reference.recordKind,
+      reference,
+    });
+
+    expect(() => cache.admitAuthenticatedWrite({
+      plaintext: new Uint8Array([1, 3]),
+      recordKind: reference.recordKind,
+      reference,
+    })).toThrow("conflicts with retained immutable plaintext");
+  });
+
   it("returns oversized authenticated metadata without retaining it", async () => {
     const { diagnostics, state } = createMetadataDiagnostics();
     const cache = new AuthenticatedMetadataRecordCache({

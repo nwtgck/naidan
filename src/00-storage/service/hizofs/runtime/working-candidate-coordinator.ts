@@ -1,11 +1,14 @@
-import { encodeHomeRecordReference, type HomeRecordReference } from "@/00-storage/service/hizofs/00-format";
+import type { HomeRecordReference } from "@/00-storage/service/hizofs/00-format";
 import {
   sameDurableGenerationIdentity,
   sameWorkingGenerationIdentity,
   type DurableGenerationIdentity,
   type WorkingGenerationIdentity,
 } from "@/00-storage/service/hizofs/runtime/application-generation-identity";
-import type { RuntimeMaintenanceRootRegistration } from "@/00-storage/service/hizofs/runtime/maintenance-root-registry";
+import type {
+  RuntimeMaintenancePageRootRegistration,
+  RuntimeMaintenanceRootRegistration,
+} from "@/00-storage/service/hizofs/runtime/maintenance-root-registry";
 
 export type WorkingCandidateCoordinatorPublicationState =
   | "empty"
@@ -23,6 +26,7 @@ export type WorkingCandidateCoordinatorErrorCode =
   | "candidate_active"
   | "candidate_identity_mismatch"
   | "candidate_missing"
+  | "candidate_not_materialized"
   | "candidate_owner_mismatch"
   | "coordinator_poisoned"
   | "outcome_resolution_conflict"
@@ -53,30 +57,32 @@ function sameBytes({ left, right }: { left: Uint8Array; right: Uint8Array }): bo
   return true;
 }
 
-function sameCommitReference({ left, right }: {
-  left: HomeRecordReference;
-  right: HomeRecordReference;
-}): boolean {
-  return sameBytes({
-    left: encodeHomeRecordReference({ reference: left }),
-    right: encodeHomeRecordReference({ reference: right }),
-  });
-}
 
 export type WorkingCandidateReleaseDisposition =
   | "confirmed_not_published"
   | "confirmed_published"
   | "discarded";
 
+type WorkingCandidateRootAuthority =
+  | Readonly<{
+      candidateDurableIdentity: DurableGenerationIdentity;
+      commitRootRegistration: RuntimeMaintenanceRootRegistration;
+      stagedRootRegistrations: readonly RuntimeMaintenancePageRootRegistration[];
+      type: "materialized_commit";
+    }>
+  | Readonly<{
+      rootRegistrations: readonly RuntimeMaintenancePageRootRegistration[];
+      type: "staged_working_pages";
+    }>;
+
 type WorkingCandidateSlot = {
   candidate: object;
-  candidateDurableIdentity: DurableGenerationIdentity;
   durableBaseIdentity: DurableGenerationIdentity;
   owner: symbol | undefined;
   releaseCandidate: ({ disposition }: {
     disposition: WorkingCandidateReleaseDisposition;
   }) => void;
-  rootRegistration: RuntimeMaintenanceRootRegistration;
+  rootAuthority: WorkingCandidateRootAuthority;
   state: Exclude<WorkingCandidateCoordinatorPublicationState, "empty" | "poisoned">;
   workingIdentity: WorkingGenerationIdentity;
 };
@@ -97,6 +103,14 @@ export type WorkingCandidateAdmission<Candidate extends object> = Readonly<{
     }) => void;
     workingIdentity: WorkingGenerationIdentity;
   }) => void;
+  installStaged: ({ candidate, releaseCandidate, workingIdentity, workingPageReferences }: {
+    candidate: Candidate;
+    releaseCandidate: ({ disposition }: {
+      disposition: WorkingCandidateReleaseDisposition;
+    }) => void;
+    workingIdentity: WorkingGenerationIdentity;
+    workingPageReferences: readonly HomeRecordReference[];
+  }) => void;
   matchesWorkingIdentity: ({ workingIdentity }: {
     workingIdentity: WorkingGenerationIdentity;
   }) => boolean;
@@ -108,10 +122,13 @@ export type WorkingCandidateAdmission<Candidate extends object> = Readonly<{
 }>;
 
 export type WorkingCandidatePublication<Candidate extends object> = Readonly<{
+  bindMaterializedCandidate: ({ candidateDurableIdentity }: {
+    candidateDurableIdentity: DurableGenerationIdentity;
+  }) => void;
   candidate: Candidate;
-  candidateDurableIdentity: DurableGenerationIdentity;
   completePublished: () => void;
   durableBaseIdentity: DurableGenerationIdentity;
+  requireCandidateDurableIdentity: () => DurableGenerationIdentity;
   restoreInstalled: () => void;
   retainOutcomeUnknown: ({ cause }: { cause: unknown }) => void;
   workingIdentity: WorkingGenerationIdentity;
@@ -128,16 +145,23 @@ export class WorkingCandidateCoordinator {
   readonly #acquireWriterDependencyRoot: ({ commitReference }: {
     commitReference: HomeRecordReference;
   }) => RuntimeMaintenanceRootRegistration;
+  readonly #acquireWriterWorkingPageRoot: ({ pageReference }: {
+    pageReference: HomeRecordReference;
+  }) => RuntimeMaintenancePageRootRegistration;
   #poison: unknown | undefined;
   #reservation: WorkingCandidateReservation | undefined;
   #slot: WorkingCandidateSlot | undefined;
 
-  constructor({ acquireWriterDependencyRoot }: {
+  constructor({ acquireWriterDependencyRoot, acquireWriterWorkingPageRoot }: {
     acquireWriterDependencyRoot: ({ commitReference }: {
       commitReference: HomeRecordReference;
     }) => RuntimeMaintenanceRootRegistration;
+    acquireWriterWorkingPageRoot: ({ pageReference }: {
+      pageReference: HomeRecordReference;
+    }) => RuntimeMaintenancePageRootRegistration;
   }) {
     this.#acquireWriterDependencyRoot = acquireWriterDependencyRoot;
+    this.#acquireWriterWorkingPageRoot = acquireWriterWorkingPageRoot;
   }
 
   publicationState(): WorkingCandidateCoordinatorPublicationState {
@@ -148,9 +172,24 @@ export class WorkingCandidateCoordinator {
 
   retainedInstalledCandidateCommitReference(): HomeRecordReference | undefined {
     const slot = this.#slot;
-    return slot?.state === "installed" && slot.owner === undefined
-      ? slot.rootRegistration.commitReference
-      : undefined;
+    if (slot?.state !== "installed" || slot.owner !== undefined) return undefined;
+    switch (slot.rootAuthority.type) {
+    case "materialized_commit": return slot.rootAuthority.commitRootRegistration.commitReference;
+    case "staged_working_pages": return undefined;
+    default: return slot.rootAuthority satisfies never;
+    }
+  }
+
+  retainedInstalledWorkingPageReferences(): readonly HomeRecordReference[] | undefined {
+    const slot = this.#slot;
+    if (slot?.state !== "installed" || slot.owner !== undefined) return undefined;
+    switch (slot.rootAuthority.type) {
+    case "materialized_commit": return undefined;
+    case "staged_working_pages": return Object.freeze(
+      slot.rootAuthority.rootRegistrations.map(({ pageReference }) => pageReference),
+    );
+    default: return slot.rootAuthority satisfies never;
+    }
   }
 
   /**
@@ -172,7 +211,10 @@ export class WorkingCandidateCoordinator {
     }
     const resolution = sameDurableGenerationIdentity({
       left: observedDurableIdentity,
-      right: slot.candidateDurableIdentity,
+      right: this.#requireMaterializedCandidateIdentity({
+        operationLabel: "outcome-unknown resolution",
+        slot,
+      }),
     })
       ? "confirmed_published"
       : sameDurableGenerationIdentity({
@@ -194,11 +236,7 @@ export class WorkingCandidateCoordinator {
     } catch (cause: unknown) {
       failures.push(cause);
     }
-    try {
-      slot.rootRegistration.release();
-    } catch (cause: unknown) {
-      failures.push(cause);
-    }
+    this.#releaseRootAuthority({ authority: slot.rootAuthority, failures });
     if (failures.length > 0) {
       const cause = failures.length === 1
         ? failures[0]
@@ -214,6 +252,59 @@ export class WorkingCandidateCoordinator {
     this.#reservation = undefined;
     this.#poison = undefined;
     return resolution;
+  }
+
+  #assertCandidateIdentity({ candidateDurableIdentity, durableBaseIdentity, operationLabel, workingIdentity }: {
+    candidateDurableIdentity: DurableGenerationIdentity;
+    durableBaseIdentity: DurableGenerationIdentity;
+    operationLabel: string;
+    workingIdentity: WorkingGenerationIdentity;
+  }): void {
+    if (
+      !sameBytes({ left: candidateDurableIdentity.mutationId, right: workingIdentity.mutationId })
+      || candidateDurableIdentity.commitSequence !== durableBaseIdentity.commitSequence + 1n
+    ) {
+      throw new WorkingCandidateCoordinatorError({
+        cause: undefined,
+        code: "candidate_identity_mismatch",
+        message: `${operationLabel} durable candidate identity disagrees with its working identity or durable base`,
+      });
+    }
+  }
+
+  #releaseRootAuthority({ authority, failures }: {
+    authority: WorkingCandidateRootAuthority;
+    failures: unknown[];
+  }): void {
+    const registrations: readonly Readonly<{ release: () => void }>[] = (() => {
+      switch (authority.type) {
+      case "materialized_commit": return [authority.commitRootRegistration, ...authority.stagedRootRegistrations];
+      case "staged_working_pages": return authority.rootRegistrations;
+      default: return authority satisfies never;
+      }
+    })();
+    for (const registration of registrations) {
+      try {
+        registration.release();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+    }
+  }
+
+  #requireMaterializedCandidateIdentity({ operationLabel, slot }: {
+    operationLabel: string;
+    slot: WorkingCandidateSlot;
+  }): DurableGenerationIdentity {
+    switch (slot.rootAuthority.type) {
+    case "materialized_commit": return slot.rootAuthority.candidateDurableIdentity;
+    case "staged_working_pages": throw new WorkingCandidateCoordinatorError({
+      cause: undefined,
+      code: "candidate_not_materialized",
+      message: `${operationLabel} requires an authenticated materialized Commit candidate`,
+    });
+    default: return slot.rootAuthority satisfies never;
+    }
   }
 
   #assertCoordinatorHealthy({ operationLabel }: { operationLabel: string }): void {
@@ -322,22 +413,14 @@ export class WorkingCandidateCoordinator {
       } catch (cause: unknown) {
         failures.push(cause);
       }
-      try {
-        slot.rootRegistration.release();
-      } catch (cause: unknown) {
-        failures.push(cause);
-      }
+      this.#releaseRootAuthority({ authority: slot.rootAuthority, failures });
       if (!restorePrevious && previous !== undefined) {
         try {
           previous.releaseCandidate({ disposition: "discarded" });
         } catch (cause: unknown) {
           failures.push(cause);
         }
-        try {
-          previous.rootRegistration.release();
-        } catch (cause: unknown) {
-          failures.push(cause);
-        }
+        this.#releaseRootAuthority({ authority: previous.rootAuthority, failures });
       }
       if (failures.length === 1) throw failures[0];
       if (failures.length > 1) {
@@ -376,20 +459,12 @@ export class WorkingCandidateCoordinator {
             message: `${operationLabel} cannot replace its own installed runtime candidate`,
           });
         }
-        if (
-          !sameCommitReference({
-            left: candidateDurableIdentity.commitReference,
-            right: workingIdentity.commitReference,
-          })
-          || !sameBytes({ left: candidateDurableIdentity.mutationId, right: workingIdentity.mutationId })
-          || candidateDurableIdentity.commitSequence !== reservation.durableBaseIdentity.commitSequence + 1n
-        ) {
-          throw new WorkingCandidateCoordinatorError({
-            cause: undefined,
-            code: "candidate_identity_mismatch",
-            message: `${operationLabel} durable candidate identity disagrees with its working identity or durable base`,
-          });
-        }
+        this.#assertCandidateIdentity({
+          candidateDurableIdentity,
+          durableBaseIdentity: reservation.durableBaseIdentity,
+          operationLabel,
+          workingIdentity,
+        });
         const rootRegistration = this.#acquireWriterDependencyRoot({
           commitReference: candidateDurableIdentity.commitReference,
         });
@@ -411,11 +486,84 @@ export class WorkingCandidateCoordinator {
         replacedSlot = current;
         this.#slot = {
           candidate,
-          candidateDurableIdentity,
           durableBaseIdentity: reservation.durableBaseIdentity,
           owner,
           releaseCandidate,
-          rootRegistration,
+          rootAuthority: Object.freeze({
+            candidateDurableIdentity,
+            commitRootRegistration: rootRegistration,
+            stagedRootRegistrations: Object.freeze([]),
+            type: "materialized_commit" as const,
+          }),
+          state: "installed",
+          workingIdentity,
+        };
+      },
+      installStaged: ({ candidate, releaseCandidate, workingIdentity, workingPageReferences }) => {
+        const reservation = requireReservation();
+        const current = this.#slot;
+        if (current?.owner === owner) {
+          throw new WorkingCandidateCoordinatorError({
+            cause: undefined,
+            code: "candidate_active",
+            message: `${operationLabel} cannot replace its own installed runtime candidate`,
+          });
+        }
+        if (workingPageReferences.length === 0) {
+          throw new TypeError("staged working candidate requires at least one direct working-page root");
+        }
+        const rootRegistrations: RuntimeMaintenancePageRootRegistration[] = [];
+        try {
+          for (const pageReference of workingPageReferences) {
+            rootRegistrations.push(this.#acquireWriterWorkingPageRoot({ pageReference }));
+          }
+        } catch (cause: unknown) {
+          const failures: unknown[] = [cause];
+          for (const registration of rootRegistrations.reverse()) {
+            try {
+              registration.release();
+            } catch (cleanupCause: unknown) {
+              failures.push(cleanupCause);
+            }
+          }
+          if (failures.length === 1) throw cause;
+          throw new AggregateError(failures, `${operationLabel} staged working-root acquisition failed`);
+        }
+        if (current !== undefined && (
+          current.state !== "installed"
+          || current.owner !== undefined
+          || !sameDurableGenerationIdentity({
+            left: current.durableBaseIdentity,
+            right: reservation.durableBaseIdentity,
+          })
+        )) {
+          const failures: unknown[] = [];
+          for (const registration of rootRegistrations) {
+            try {
+              registration.release();
+            } catch (cause: unknown) {
+              failures.push(cause);
+            }
+          }
+          if (failures.length > 0) {
+            throw new AggregateError(failures, `${operationLabel} rejected staged-root cleanup failed`);
+          }
+          throw new WorkingCandidateCoordinatorError({
+            cause: undefined,
+            code: "candidate_active",
+            message: `${operationLabel} cannot replace the current runtime candidate`,
+          });
+        }
+        replacedSlot = current;
+        this.#slot = {
+          candidate,
+          durableBaseIdentity: reservation.durableBaseIdentity,
+          owner,
+          releaseCandidate,
+          rootAuthority: Object.freeze({
+            rootRegistrations: Object.freeze(rootRegistrations),
+            type: "staged_working_pages" as const,
+          }),
           state: "installed",
           workingIdentity,
         };
@@ -456,11 +604,7 @@ export class WorkingCandidateCoordinator {
           } catch (cause: unknown) {
             failures.push(cause);
           }
-          try {
-            previous.rootRegistration.release();
-          } catch (cause: unknown) {
-            failures.push(cause);
-          }
+          this.#releaseRootAuthority({ authority: previous.rootAuthority, failures });
           if (failures.length > 0) {
             const cause = failures.length === 1
               ? failures[0]
@@ -477,6 +621,7 @@ export class WorkingCandidateCoordinator {
       },
       retainOutcomeUnknown: ({ cause }) => {
         const slot = requireSlot();
+        this.#requireMaterializedCandidateIdentity({ operationLabel, slot });
         slot.state = "outcome_unknown";
         const previous = replacedSlot;
         replacedSlot = undefined;
@@ -487,11 +632,7 @@ export class WorkingCandidateCoordinator {
           } catch (cleanupCause: unknown) {
             failures.push(cleanupCause);
           }
-          try {
-            previous.rootRegistration.release();
-          } catch (cleanupCause: unknown) {
-            failures.push(cleanupCause);
-          }
+          this.#releaseRootAuthority({ authority: previous.rootAuthority, failures });
           if (failures.length > 0) {
             cause = new AggregateError(
               [cause, ...failures],
@@ -558,10 +699,50 @@ export class WorkingCandidateCoordinator {
       return slot;
     };
     return Object.freeze({
+      bindMaterializedCandidate: ({ candidateDurableIdentity }) => {
+        const current = requireActive();
+        this.#assertCandidateIdentity({
+          candidateDurableIdentity,
+          durableBaseIdentity: current.durableBaseIdentity,
+          operationLabel: "runtime candidate publication",
+          workingIdentity: current.workingIdentity,
+        });
+        switch (current.rootAuthority.type) {
+        case "materialized_commit": {
+          if (!sameDurableGenerationIdentity({
+            left: current.rootAuthority.candidateDurableIdentity,
+            right: candidateDurableIdentity,
+          })) {
+            throw new WorkingCandidateCoordinatorError({
+              cause: undefined,
+              code: "candidate_identity_mismatch",
+              message: "runtime candidate publication cannot replace its materialized candidate identity",
+            });
+          }
+          return;
+        }
+        case "staged_working_pages": {
+          const commitRootRegistration = this.#acquireWriterDependencyRoot({
+            commitReference: candidateDurableIdentity.commitReference,
+          });
+          current.rootAuthority = Object.freeze({
+            candidateDurableIdentity,
+            commitRootRegistration,
+            stagedRootRegistrations: current.rootAuthority.rootRegistrations,
+            type: "materialized_commit" as const,
+          });
+          return;
+        }
+        default: return current.rootAuthority satisfies never;
+        }
+      },
       candidate: slot.candidate as Candidate,
-      candidateDurableIdentity: slot.candidateDurableIdentity,
       completePublished: () => {
         const current = requireActive();
+        this.#requireMaterializedCandidateIdentity({
+          operationLabel: "runtime candidate publication completion",
+          slot: current,
+        });
         active = false;
         this.#slot = undefined;
         const failures: unknown[] = [];
@@ -570,17 +751,17 @@ export class WorkingCandidateCoordinator {
         } catch (cause: unknown) {
           failures.push(cause);
         }
-        try {
-          current.rootRegistration.release();
-        } catch (cause: unknown) {
-          failures.push(cause);
-        }
+        this.#releaseRootAuthority({ authority: current.rootAuthority, failures });
         if (failures.length === 1) throw failures[0];
         if (failures.length > 1) {
           throw new AggregateError(failures, "published working-candidate cleanup failed");
         }
       },
       durableBaseIdentity: slot.durableBaseIdentity,
+      requireCandidateDurableIdentity: () => this.#requireMaterializedCandidateIdentity({
+        operationLabel: "runtime candidate publication",
+        slot: requireActive(),
+      }),
       restoreInstalled: () => {
         const current = requireActive();
         active = false;
@@ -588,6 +769,10 @@ export class WorkingCandidateCoordinator {
       },
       retainOutcomeUnknown: ({ cause }) => {
         const current = requireActive();
+        this.#requireMaterializedCandidateIdentity({
+          operationLabel: "runtime candidate publication outcome retention",
+          slot: current,
+        });
         active = false;
         current.state = "outcome_unknown";
         this.#poison = cause;

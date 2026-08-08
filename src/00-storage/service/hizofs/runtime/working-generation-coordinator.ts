@@ -6,6 +6,7 @@ import {
   DirtyResourceBudget,
   type DirtyResourceAdmission,
   type DirtyResourceBudgetSnapshot,
+  type DirtyResourceStagedCommitMaterializationAttempt,
 } from "@/00-storage/service/hizofs/runtime/dirty-resource-budget";
 import type { HizoFSLazyDurabilityPolicy } from "@/00-storage/service/hizofs/runtime/runtime-policy";
 import { SyncWaiterRegistry } from "@/00-storage/service/hizofs/runtime/sync-waiter-registry";
@@ -37,12 +38,16 @@ export type WorkingGenerationMutationAdmission = Readonly<{
     dirtyMetadataBytes: number;
     unpublishedPhysicalBytes: number;
   }) => void;
+  reserveStagedCommitMaterializationHeadroom: ({ bytes }: { bytes: number }) => void;
   rollback: () => void;
 }>;
 
 export type WorkingGenerationFlushState = "flushing" | "idle" | "stalled";
 
 export type WorkingGenerationFlush = Readonly<{
+  beginStagedCommitMaterializationAttempt: ({ frameBytes }: {
+    frameBytes: number;
+  }) => DirtyResourceStagedCommitMaterializationAttempt;
   complete: ({ durableGeneration }: { durableGeneration: WorkingGenerationIdentity }) => void;
   fail: ({ cause }: { cause: unknown }) => void;
   target: WorkingGenerationIdentity;
@@ -162,6 +167,9 @@ export class WorkingGenerationCoordinator {
       replaceResourceReservation: ({ dirtyMetadataBytes, unpublishedPhysicalBytes }) => {
         requireActive().replaceReservation({ dirtyMetadataBytes, unpublishedPhysicalBytes });
       },
+      reserveStagedCommitMaterializationHeadroom: ({ bytes }) => {
+        requireActive().reserveStagedCommitMaterializationHeadroom({ bytes });
+      },
       rollback: () => close().rollback(),
     });
   }
@@ -219,6 +227,10 @@ export class WorkingGenerationCoordinator {
     };
     const target = this.#workingGeneration;
     return Object.freeze({
+      beginStagedCommitMaterializationAttempt: ({ frameBytes }) => {
+        requireActive();
+        return this.#dirtyResources.beginStagedCommitMaterializationAttempt({ frameBytes });
+      },
       complete: ({ durableGeneration }) => {
         requireActive();
         this.#advanceDurableToCurrentWorkingGeneration({ durableGeneration });

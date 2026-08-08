@@ -37,7 +37,6 @@ function identities() {
   const baseMutationId = mutationId({ value: 1 });
   const baseWorking = createWorkingGenerationIdentity({
     authorityEpoch: createWorkingGenerationAuthorityEpoch(),
-    commitReference: baseReference,
     generationNumber: createWorkingGenerationNumber({ value: 0n }),
     mutationId: baseMutationId,
   });
@@ -55,7 +54,6 @@ function identities() {
       mutationId: baseMutationId,
     }),
     successor: createSuccessorWorkingGenerationIdentity({
-      commitReference: successorReference,
       mutationId: successorMutationId,
       previous: baseWorking,
     }),
@@ -68,6 +66,10 @@ function coordinator() {
     acquireWriterDependencyRoot: ({ commitReference }) => ({
       commitReference,
       release: () => releases.push("released"),
+    }),
+    acquireWriterWorkingPageRoot: ({ pageReference }) => ({
+      pageReference,
+      release: () => releases.push("page-released"),
     }),
   });
   return { releases, value };
@@ -136,7 +138,6 @@ describe("working candidate coordinator", () => {
     const secondReference = commitReference({ offset: 256n });
     const secondMutationId = mutationId({ value: 3 });
     const secondWorking = createSuccessorWorkingGenerationIdentity({
-      commitReference: secondReference,
       mutationId: secondMutationId,
       previous: successor,
     });
@@ -192,6 +193,10 @@ describe("working candidate coordinator", () => {
           },
         };
       },
+      acquireWriterWorkingPageRoot: ({ pageReference }) => ({
+        pageReference,
+        release: () => undefined,
+      }),
     });
     const { candidateDurable, durable, successor } = identities();
     const first = value.openAdmission({
@@ -209,7 +214,6 @@ describe("working candidate coordinator", () => {
     const secondReference = commitReference({ offset: 320n });
     const secondMutationId = mutationId({ value: 4 });
     const secondWorking = createSuccessorWorkingGenerationIdentity({
-      commitReference: secondReference,
       mutationId: secondMutationId,
       previous: successor,
     });
@@ -388,7 +392,7 @@ describe("working candidate coordinator", () => {
     );
   });
 
-  it("rejects a candidate root that disagrees with its working identity", () => {
+  it("rejects a candidate Mutation ID that disagrees with its working identity", () => {
     const { releases, value } = coordinator();
     const { durable, successor } = identities();
     const admission = value.openAdmission({
@@ -401,7 +405,7 @@ describe("working candidate coordinator", () => {
       candidateDurableIdentity: createDurableGenerationIdentity({
         commitReference: commitReference({ offset: 256n }),
         commitSequence: createCommitSequence({ value: 8n }),
-        mutationId: successor.mutationId,
+        mutationId: mutationId({ value: 99 }),
       }),
       releaseCandidate: () => undefined,
       workingIdentity: successor,
@@ -409,6 +413,304 @@ describe("working candidate coordinator", () => {
     expect(value.publicationState()).toBe("empty");
     expect(releases).toEqual([]);
     admission.closeWithoutCandidate();
+  });
+
+  it("retains staged working-page roots without inventing a physical Commit identity", () => {
+    const releases: string[] = [];
+    const commitAcquisitions = vi.fn();
+    const value = new WorkingCandidateCoordinator({
+      acquireWriterDependencyRoot: ({ commitReference }) => {
+        commitAcquisitions(commitReference);
+        return { commitReference, release: () => releases.push("commit") };
+      },
+      acquireWriterWorkingPageRoot: ({ pageReference }) => ({
+        pageReference,
+        release: () => releases.push("page"),
+      }),
+    });
+    const { durable, successor } = identities();
+    const page = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 512n }),
+      frameLength: 96,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(8) }),
+    } });
+    const candidate = Object.freeze({ id: "staged" });
+    const releaseCandidate = vi.fn();
+    const admission = value.openAdmission<typeof candidate>({
+      durableBaseIdentity: durable,
+      operationLabel: "staged mutation",
+    });
+
+    admission.installStaged({
+      candidate,
+      releaseCandidate,
+      workingIdentity: successor,
+      workingPageReferences: [page],
+    });
+    admission.retainInstalled();
+
+    expect(value.publicationState()).toBe("installed");
+    expect(value.retainedInstalledCandidateCommitReference()).toBeUndefined();
+    expect(commitAcquisitions).not.toHaveBeenCalled();
+    expect(releases).toEqual([]);
+
+    const publication = value.openCurrentPublication<typeof candidate>();
+    expect(publication.candidate).toBe(candidate);
+    expect(() => publication.requireCandidateDurableIdentity()).toThrowError(
+      expect.objectContaining({ code: "candidate_not_materialized" }),
+    );
+    expect(() => publication.retainOutcomeUnknown({ cause: new Error("too early") })).toThrowError(
+      expect.objectContaining({ code: "candidate_not_materialized" }),
+    );
+    publication.restoreInstalled();
+    expect(value.publicationState()).toBe("installed");
+    expect(releases).toEqual([]);
+    expect(releaseCandidate).not.toHaveBeenCalled();
+  });
+
+  it("acquires replacement staged roots before releasing the previous staged authority", () => {
+    const events: string[] = [];
+    const value = new WorkingCandidateCoordinator({
+      acquireWriterDependencyRoot: ({ commitReference }) => ({
+        commitReference,
+        release: () => events.push("release:commit"),
+      }),
+      acquireWriterWorkingPageRoot: ({ pageReference }) => {
+        const offset = pageReference.byteOffset.toString();
+        events.push(`acquire:page:${offset}`);
+        return {
+          pageReference,
+          release: () => events.push(`release:page:${offset}`),
+        };
+      },
+    });
+    const { durable, successor } = identities();
+    const firstPage = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 640n }),
+      frameLength: 96,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(11) }),
+    } });
+    const secondPage = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 672n }),
+      frameLength: 96,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(12) }),
+    } });
+    const firstRelease = vi.fn(() => events.push("release:candidate:first"));
+    const first = value.openAdmission({
+      durableBaseIdentity: durable,
+      operationLabel: "first staged mutation",
+    });
+    first.installStaged({
+      candidate: Object.freeze({ id: "first-staged" }),
+      releaseCandidate: firstRelease,
+      workingIdentity: successor,
+      workingPageReferences: [firstPage],
+    });
+    first.retainInstalled();
+
+    const secondMutationId = mutationId({ value: 3 });
+    const secondWorking = createSuccessorWorkingGenerationIdentity({
+      mutationId: secondMutationId,
+      previous: successor,
+    });
+    const secondRelease = vi.fn(() => events.push("release:candidate:second"));
+    const second = value.openAdmission({
+      durableBaseIdentity: durable,
+      operationLabel: "second staged mutation",
+    });
+    second.installStaged({
+      candidate: Object.freeze({ id: "second-staged" }),
+      releaseCandidate: secondRelease,
+      workingIdentity: secondWorking,
+      workingPageReferences: [secondPage],
+    });
+
+    expect(events).toEqual([
+      "acquire:page:640",
+      "acquire:page:672",
+    ]);
+    second.retainInstalled();
+    expect(events).toEqual([
+      "acquire:page:640",
+      "acquire:page:672",
+      "release:candidate:first",
+      "release:page:640",
+    ]);
+    expect(firstRelease).toHaveBeenCalledWith({ disposition: "discarded" });
+    expect(secondRelease).not.toHaveBeenCalled();
+
+    const publication = value.openCurrentPublication();
+    publication.bindMaterializedCandidate({
+      candidateDurableIdentity: createDurableGenerationIdentity({
+        commitReference: commitReference({ offset: 704n }),
+        commitSequence: createCommitSequence({ value: 8n }),
+        mutationId: secondMutationId,
+      }),
+    });
+    publication.completePublished();
+    expect(events).toEqual([
+      "acquire:page:640",
+      "acquire:page:672",
+      "release:candidate:first",
+      "release:page:640",
+      "release:candidate:second",
+      "release:commit",
+      "release:page:672",
+    ]);
+  });
+
+  it("keeps the previous staged candidate installed when replacement root acquisition fails", () => {
+    const { durable, successor } = identities();
+    const firstPage = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 736n }),
+      frameLength: 96,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(13) }),
+    } });
+    const secondPage = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 768n }),
+      frameLength: 96,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(14) }),
+    } });
+    const rootFailure = new Error("replacement staged root unavailable");
+    const releases: string[] = [];
+    const value = new WorkingCandidateCoordinator({
+      acquireWriterDependencyRoot: ({ commitReference }) => ({
+        commitReference,
+        release: () => releases.push("commit"),
+      }),
+      acquireWriterWorkingPageRoot: ({ pageReference }) => {
+        if (pageReference.byteOffset === secondPage.byteOffset) throw rootFailure;
+        return { pageReference, release: () => releases.push("first-page") };
+      },
+    });
+    const firstRelease = vi.fn();
+    const first = value.openAdmission({
+      durableBaseIdentity: durable,
+      operationLabel: "first staged mutation",
+    });
+    first.installStaged({
+      candidate: Object.freeze({ id: "first-staged" }),
+      releaseCandidate: firstRelease,
+      workingIdentity: successor,
+      workingPageReferences: [firstPage],
+    });
+    first.retainInstalled();
+
+    const secondWorking = createSuccessorWorkingGenerationIdentity({
+      mutationId: mutationId({ value: 3 }),
+      previous: successor,
+    });
+    const second = value.openAdmission({
+      durableBaseIdentity: durable,
+      operationLabel: "failed staged replacement",
+    });
+    expect(() => second.installStaged({
+      candidate: Object.freeze({ id: "second-staged" }),
+      releaseCandidate: vi.fn(),
+      workingIdentity: secondWorking,
+      workingPageReferences: [secondPage],
+    })).toThrow(rootFailure);
+    second.closeWithoutCandidate();
+
+    expect(value.publicationState()).toBe("installed");
+    expect(firstRelease).not.toHaveBeenCalled();
+    expect(releases).toEqual([]);
+    const retained = value.openCurrentPublication();
+    expect(retained.workingIdentity).toEqual(successor);
+    retained.restoreInstalled();
+  });
+
+  it("binds a staged candidate to its exact materialized Commit before publication can complete", () => {
+    const releases: string[] = [];
+    const value = new WorkingCandidateCoordinator({
+      acquireWriterDependencyRoot: ({ commitReference }) => ({
+        commitReference,
+        release: () => releases.push("commit"),
+      }),
+      acquireWriterWorkingPageRoot: ({ pageReference }) => ({
+        pageReference,
+        release: () => releases.push("page"),
+      }),
+    });
+    const { candidateDurable, durable, successor } = identities();
+    const page = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 544n }),
+      frameLength: 96,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(9) }),
+    } });
+    const releaseCandidate = vi.fn();
+    const admission = value.openAdmission({
+      durableBaseIdentity: durable,
+      operationLabel: "staged materialization",
+    });
+    admission.installStaged({
+      candidate: Object.freeze({ id: "staged-materialized" }),
+      releaseCandidate,
+      workingIdentity: successor,
+      workingPageReferences: [page],
+    });
+    admission.retainInstalled();
+
+    const publication = value.openCurrentPublication();
+    publication.bindMaterializedCandidate({ candidateDurableIdentity: candidateDurable });
+    expect(publication.requireCandidateDurableIdentity()).toEqual(candidateDurable);
+    publication.completePublished();
+
+    expect(value.publicationState()).toBe("empty");
+    expect(releases).toEqual(["commit", "page"]);
+    expect(releaseCandidate).toHaveBeenCalledWith({ disposition: "confirmed_published" });
+  });
+
+  it("keeps a staged candidate retryable when materialized identity validation fails", () => {
+    const releases: string[] = [];
+    const commitAcquisitions = vi.fn();
+    const value = new WorkingCandidateCoordinator({
+      acquireWriterDependencyRoot: ({ commitReference }) => {
+        commitAcquisitions(commitReference);
+        return { commitReference, release: () => releases.push("commit") };
+      },
+      acquireWriterWorkingPageRoot: ({ pageReference }) => ({
+        pageReference,
+        release: () => releases.push("page"),
+      }),
+    });
+    const { durable, successor } = identities();
+    const page = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 576n }),
+      frameLength: 96,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(10) }),
+    } });
+    const admission = value.openAdmission({
+      durableBaseIdentity: durable,
+      operationLabel: "stale materialization",
+    });
+    admission.installStaged({
+      candidate: Object.freeze({ id: "staged-retry" }),
+      releaseCandidate: () => undefined,
+      workingIdentity: successor,
+      workingPageReferences: [page],
+    });
+    admission.retainInstalled();
+    const publication = value.openCurrentPublication();
+
+    expect(() => publication.bindMaterializedCandidate({
+      candidateDurableIdentity: createDurableGenerationIdentity({
+        commitReference: commitReference({ offset: 608n }),
+        commitSequence: createCommitSequence({ value: 9n }),
+        mutationId: successor.mutationId,
+      }),
+    })).toThrowError(expect.objectContaining({ code: "candidate_identity_mismatch" }));
+    expect(commitAcquisitions).not.toHaveBeenCalled();
+    publication.restoreInstalled();
+    expect(value.publicationState()).toBe("installed");
+    expect(releases).toEqual([]);
   });
 
   it("rejects candidate selection before installation", () => {

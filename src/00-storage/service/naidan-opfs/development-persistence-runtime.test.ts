@@ -252,10 +252,42 @@ describe('development-unverified OPFS Persistence runtime', () => {
     const opened = await subject.unlockWithPassphrase({ passphrase: 'passphrase', storageRoot });
 
     await expect(opened.close()).rejects.toMatchObject({
-      errors: [backendFailure, sessionFailure, shutdownFailure],
+      errors: [backendFailure, sessionFailure],
     });
     expect(applicationBackend.dispose).toHaveBeenCalledOnce();
     expect(openedSession.close).toHaveBeenCalledOnce();
+    // WHY: filesystem close failed while the clean-head barrier is retained,
+    // so runtime disposal must wait for a later close retry.
+    expect(gracefullyShutdownRuntime).not.toHaveBeenCalled();
+  });
+
+  it('retries a retained clean-head barrier before closing the session', async () => {
+    const cleanHeadFailure = new Error('clean-head settlement failed once');
+    const managementEnsureCleanHead = vi.fn()
+      .mockRejectedValueOnce(cleanHeadFailure)
+      .mockResolvedValueOnce(undefined);
+    const managementRelease = vi.fn(() => undefined);
+    const openedSession = fileSystemSession();
+    const gracefullyShutdownRuntime = vi.fn(async () => undefined);
+    const subject = runtime({
+      runtimePort: port({
+        gracefullyShutdownRuntime,
+        managementEnsureCleanHead,
+        managementRelease,
+        openedSession,
+      }),
+    });
+    const opened = await subject.unlockWithPassphrase({ passphrase: 'passphrase', storageRoot });
+
+    await expect(opened.close()).rejects.toBe(cleanHeadFailure);
+    expect(openedSession.close).not.toHaveBeenCalled();
+    expect(managementRelease).not.toHaveBeenCalled();
+    expect(gracefullyShutdownRuntime).not.toHaveBeenCalled();
+
+    await expect(opened.close()).resolves.toBeUndefined();
+    expect(managementEnsureCleanHead).toHaveBeenCalledTimes(2);
+    expect(openedSession.close).toHaveBeenCalledOnce();
+    expect(managementRelease).toHaveBeenCalledOnce();
     expect(gracefullyShutdownRuntime).toHaveBeenCalledOnce();
   });
 
@@ -541,7 +573,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
     })).rejects.toBeInstanceOf(OpfsDevelopmentCredentialRejectedError);
   });
 
-  it('replaces the active session passphrase without replacing the application session', async () => {
+  it('delegates passphrase replacement without opening a duplicate management barrier', async () => {
     const openedSession = fileSystemSession();
     const applicationBackend = backend();
     const events: string[] = [];
@@ -573,7 +605,7 @@ describe('development-unverified OPFS Persistence runtime', () => {
       replacementPassphrase: 'replacement',
     });
     expect(runtimePort.captureAuthority).toHaveBeenCalledTimes(2);
-    expect(events).toEqual(['ensure', 'change', 'release']);
+    expect(events).toEqual(['change']);
   });
 
   it('converges an interrupted transition without restoring work progress', async () => {

@@ -1,7 +1,7 @@
 import {
   UINT64_MAXIMUM,
   createInodeRevision,
-  encodeInodeLeafPage,
+  assertInodeLeafEntryFitsMetadataPage,
   type DirectoryInodeEntry,
 } from "@/00-storage/service/hizofs/00-format";
 import {
@@ -97,7 +97,7 @@ export async function prepareTreeBackedDirectoryCreateMutation({ pageStore, pare
 
   // The authoritative inode codec validates the replacement Directory root
   // reference and all persisted parent fields before the Inode Table changes exist.
-  encodeInodeLeafPage({ entries: [updatedParent], isRoot: false });
+  assertInodeLeafEntryFitsMetadataPage({ entry: updatedParent });
 
   return {
     changes: [

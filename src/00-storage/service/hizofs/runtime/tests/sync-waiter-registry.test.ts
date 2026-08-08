@@ -14,12 +14,10 @@ function generations() {
   const { durable, working } = createTestingWorkingCandidateIdentities();
   const initial = createWorkingGenerationIdentity({
     authorityEpoch: working.authorityEpoch,
-    commitReference: durable.commitReference,
     generationNumber: createWorkingGenerationNumber({ value: 0n }),
     mutationId: durable.mutationId,
   });
   const second = createSuccessorWorkingGenerationIdentity({
-    commitReference: working.commitReference,
     mutationId: working.mutationId,
     previous: initial,
   });
@@ -42,7 +40,6 @@ describe("SyncWaiterRegistry", () => {
   it("resolves only targets at or below the advanced durable generation", async () => {
     const { initial, second } = generations();
     const third = createSuccessorWorkingGenerationIdentity({
-      commitReference: second.commitReference,
       mutationId: second.mutationId,
       previous: second,
     });
@@ -52,8 +49,12 @@ describe("SyncWaiterRegistry", () => {
     });
     let secondResolved = false;
     let thirdResolved = false;
-    const secondWaiter = registry.waitFor({ target: second }).then(() => { secondResolved = true; });
-    const thirdWaiter = registry.waitFor({ target: third }).then(() => { thirdResolved = true; });
+    const secondWaiter = registry.waitFor({ target: second }).then(() => {
+      secondResolved = true;
+    });
+    const thirdWaiter = registry.waitFor({ target: third }).then(() => {
+      thirdResolved = true;
+    });
 
     registry.advanceDurableGeneration({ durable: second });
     await secondWaiter;
@@ -84,7 +85,6 @@ describe("SyncWaiterRegistry", () => {
     const { initial } = generations();
     const stale = createWorkingGenerationIdentity({
       authorityEpoch: createWorkingGenerationAuthorityEpoch(),
-      commitReference: initial.commitReference,
       generationNumber: createWorkingGenerationNumber({ value: 1n }),
       mutationId: initial.mutationId,
     });
@@ -103,7 +103,6 @@ describe("SyncWaiterRegistry", () => {
     const { initial, second } = generations();
     const conflicting = createWorkingGenerationIdentity({
       authorityEpoch: initial.authorityEpoch,
-      commitReference: second.commitReference,
       generationNumber: initial.generationNumber,
       mutationId: second.mutationId,
     });

@@ -1,5 +1,5 @@
 import {
-  encodeInodeLeafPage,
+  assertInodeLeafEntryFitsMetadataPage,
   type DirectoryInodeEntry,
 } from "@/00-storage/service/hizofs/00-format";
 import type { DirectoryPageTreePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
@@ -39,7 +39,7 @@ export async function prepareInlineDirectoryPromotionCreateMutation({
 
   // Directory Page records are immutable and remain unreachable until the
   // replacement parent and its new child inode publish in one Commit.
-  encodeInodeLeafPage({ entries: [updatedParent], isRoot: false });
+  assertInodeLeafEntryFitsMetadataPage({ entry: updatedParent });
 
   return {
     changes: [

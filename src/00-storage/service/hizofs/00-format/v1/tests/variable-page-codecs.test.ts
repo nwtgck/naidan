@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createHomeRecordReference } from '@/00-storage/service/hizofs/00-format/v1/binary/record-reference';
 import {
+  assertDirectoryLeafEntryFitsMetadataPage,
   decodeDirectoryPage,
   decodeNestedSubvolumeLeafPage,
   encodeDirectoryPage,
@@ -70,6 +71,19 @@ describe('variable page codecs', () => {
     const bytes = encodeNestedSubvolumeLeafPage({ entries: [base], isRoot: true });
     bytes[5] = 1;
     expect(() => decodeNestedSubvolumeLeafPage({ bytes, isRoot: true })).toThrow('entry length');
+  });
+
+  it('validates one directory leaf entry without materializing a complete page', () => {
+    const entry = {
+      inodeKind: 'file' as const,
+      inodeNumber: createInodeNumber({ value: 4n }),
+      name: 'entry',
+      targetType: 'inode' as const,
+    };
+    expect(() => assertDirectoryLeafEntryFitsMetadataPage({ entry })).not.toThrow();
+    expect(() => assertDirectoryLeafEntryFitsMetadataPage({
+      entry: { ...entry, inodeNumber: createInodeNumber({ value: 0n }) },
+    })).toThrow('at least 1');
   });
 
   it('round-trips directory inode and Subvolume targets in UTF-8 order', () => {

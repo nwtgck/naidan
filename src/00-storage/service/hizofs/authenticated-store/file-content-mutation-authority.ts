@@ -63,6 +63,7 @@ export class AuthenticatedFileContentMutationAuthority {
   #dataWriter: AuthenticatedSegmentWriter | undefined;
   #operationInProgress = false;
   #state: AuthenticatedFileContentMutationAuthorityState = "active";
+  #workingAcceptancePrepared = false;
 
   private constructor({
     metadata,
@@ -128,6 +129,9 @@ export class AuthenticatedFileContentMutationAuthority {
     default: return this.#state satisfies never;
     }
     if (this.#operationInProgress) throw new Error("file content mutation authority operation already in progress");
+    if (this.#workingAcceptancePrepared) {
+      throw new Error(`cannot ${operation}: file content writer capabilities are released for working acceptance`);
+    }
   }
 
   async #writerFor({ frameLength }: { frameLength: number }): Promise<AuthenticatedSegmentWriter> {
@@ -233,6 +237,61 @@ export class AuthenticatedFileContentMutationAuthority {
     this.#operationInProgress = true;
     try {
       return await this.#metadata.writeInodeTablePage({ isRoot, page });
+    } finally {
+      this.#operationInProgress = false;
+    }
+  }
+
+  prepareWorkingAcceptanceWithoutCandidate(): void {
+    switch (this.#state) {
+    case "active": break;
+    case "candidate_prepared": throw new Error(
+      "cannot prepare file working acceptance: mutation candidate is already prepared",
+    );
+    case "closed": throw new Error("cannot prepare file working acceptance: authority is closed");
+    case "publishing": throw new Error("cannot prepare file working acceptance during publication");
+    default: return this.#state satisfies never;
+    }
+    if (this.#operationInProgress) {
+      throw new Error("file content mutation authority operation already in progress");
+    }
+    if (this.#workingAcceptancePrepared) return;
+    this.#operationInProgress = true;
+    try {
+      // WHY: data writers are operation-scoped and the shared metadata lease
+      // must be gone before the staged successor is visible to background
+      // Commit materialization. The still-open runtime mutation admission is
+      // the authority fence during this hand-off.
+      this.#dataWriter?.abandon();
+      this.#dataWriter = undefined;
+      this.#metadata.prepareWorkingAcceptanceWithoutCandidate();
+      this.#workingAcceptancePrepared = true;
+    } finally {
+      this.#operationInProgress = false;
+    }
+  }
+
+  completeWorkingAcceptanceWithoutCandidate(): void {
+    switch (this.#state) {
+    case "active": break;
+    case "candidate_prepared": throw new Error(
+      "cannot complete file working acceptance: mutation candidate is already prepared",
+    );
+    case "closed": throw new Error("cannot complete file working acceptance: authority is closed");
+    case "publishing": throw new Error("cannot complete file working acceptance during publication");
+    default: return this.#state satisfies never;
+    }
+    if (this.#operationInProgress) {
+      throw new Error("file content mutation authority operation already in progress");
+    }
+    this.prepareWorkingAcceptanceWithoutCandidate();
+    this.#operationInProgress = true;
+    try {
+      this.#metadata.completeWorkingAcceptanceWithoutCandidate();
+      this.#state = "closed";
+    } catch (cause: unknown) {
+      this.#state = "closed";
+      throw cause;
     } finally {
       this.#operationInProgress = false;
     }

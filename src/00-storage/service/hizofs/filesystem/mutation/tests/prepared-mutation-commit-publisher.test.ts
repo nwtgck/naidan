@@ -10,6 +10,7 @@ import {
   createUInt64,
   createSubvolumeId,
   createUnlockSequence,
+  encodeFileSystemCommitPayload,
   parseMutationId,
   parsePublicationId,
   parseSegmentId,
@@ -17,7 +18,9 @@ import {
 import type { OpenedSuperblockCopies } from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
 import {
   appendPreparedMutationCommitCandidateThroughPort,
+  materializeStagedMutationCommitCandidateThroughPort,
   prepareDeferredMutationCommitPublication,
+  prepareStagedMutationCommit,
   publishPreparedMutationCommit,
   publishPreparedMutationCommitCandidateThroughPort,
   type PreparedMutationCommitPublicationPort,
@@ -101,6 +104,111 @@ function successfulPort(): {
 }
 
 describe("prepared mutation Commit publisher", () => {
+  it("stages an isolated Commit payload without physical candidate I/O", () => {
+    const commitPayload = preparedCommit();
+    const expectedBytes = encodeFileSystemCommitPayload({ payload: commitPayload });
+    let gateChecks = 0;
+
+    const staged = prepareStagedMutationCommit({
+      assertPublicationAllowed: () => {
+        gateChecks += 1;
+      },
+      base: baseAuthority(),
+      commitPayload,
+    });
+
+    expect(gateChecks).toBe(1);
+    expect(staged.commitPayload).toEqual(commitPayload);
+    expect(staged.commitPayload).not.toBe(commitPayload);
+    expect(staged.commitPayload.mutationId).not.toBe(commitPayload.mutationId);
+    expect(staged.commitPayload.rootInodeTableRootHomeRef)
+      .not.toBe(commitPayload.rootInodeTableRootHomeRef);
+
+    commitPayload.mutationId[0] = 91;
+    commitPayload.rootInodeTableRootHomeRef.segmentId[0] = 92;
+    expect(encodeFileSystemCommitPayload({ payload: staged.commitPayload })).toEqual(expectedBytes);
+  });
+
+  it("rejects a staged Commit that does not match the next durable Sequence", () => {
+    const commitPayload = createFileSystemCommitPayload({
+      payload: { ...preparedCommit(), commitSequence: createCommitSequence({ value: 3n }) },
+    });
+
+    expect(() => prepareStagedMutationCommit({
+      assertPublicationAllowed: () => undefined,
+      base: baseAuthority(),
+      commitPayload,
+    })).toThrow("prepared Commit Sequence does not match the mutation candidate plan");
+  });
+
+  it("rejects a staged Commit that reuses the durable Mutation ID", () => {
+    const base = baseAuthority();
+    const commitPayload = createFileSystemCommitPayload({
+      payload: { ...preparedCommit(), mutationId: base.logicalState.activeMutationId },
+    });
+
+    expect(() => prepareStagedMutationCommit({
+      assertPublicationAllowed: () => undefined,
+      base,
+      commitPayload,
+    })).toThrow("prepared Commit requires a fresh Mutation ID");
+  });
+
+  it("materializes a staged Commit only at the explicit flush boundary", async () => {
+    const base = baseAuthority();
+    const { appendCandidate, port, publishCandidate } = successfulPort();
+    const staged = prepareStagedMutationCommit({
+      assertPublicationAllowed: () => undefined,
+      base,
+      commitPayload: preparedCommit(),
+    });
+    expect(appendCandidate).not.toHaveBeenCalled();
+
+    const beforeAppendAttempt = vi.fn();
+    const candidate = await materializeStagedMutationCommitCandidateThroughPort({
+      assertPublicationAllowed: () => undefined,
+      base,
+      beforeAppendAttempt,
+      publicationPort: port,
+      staged,
+    });
+
+    expect(candidate.commitPayload).toEqual(staged.commitPayload);
+    expect(beforeAppendAttempt).toHaveBeenCalledOnce();
+    expect(appendCandidate).toHaveBeenCalledOnce();
+    expect(publishCandidate).not.toHaveBeenCalled();
+  });
+
+  it("rejects stale staged Commit materialization before physical append", async () => {
+    const initialBase = baseAuthority();
+    const { appendCandidate, port } = successfulPort();
+    const staged = prepareStagedMutationCommit({
+      assertPublicationAllowed: () => undefined,
+      base: initialBase,
+      commitPayload: preparedCommit(),
+    });
+    const advancedBase = {
+      ...initialBase,
+      logicalState: {
+        ...initialBase.logicalState,
+        activeCommitSequence: createCommitSequence({ value: 2n }),
+        activeMutationId: parseMutationId({ bytes: new Uint8Array(16).fill(29) }),
+      },
+    };
+
+    const beforeAppendAttempt = vi.fn();
+    await expect(materializeStagedMutationCommitCandidateThroughPort({
+      assertPublicationAllowed: () => undefined,
+      base: advancedBase,
+      beforeAppendAttempt,
+      publicationPort: port,
+      staged,
+    })).rejects.toThrow("prepared Commit Sequence does not match the mutation candidate plan");
+    expect(beforeAppendAttempt).not.toHaveBeenCalled();
+    expect(appendCandidate).not.toHaveBeenCalled();
+  });
+
+
   it("passes the exact reserved publication plan through the injected port", async () => {
     const base = baseAuthority();
     const commitPayload = preparedCommit();

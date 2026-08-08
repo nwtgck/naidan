@@ -1,8 +1,8 @@
 import {
   createInodeNumber,
   createInodeRevision,
-  encodeDirectoryPage,
-  encodeInodeLeafPage,
+  assertDirectoryLeafEntryFitsMetadataPage,
+  assertInodeLeafEntryFitsMetadataPage,
   UINT64_MAXIMUM,
   type DirectoryLeafEntry,
   type FileInodeEntry,
@@ -212,13 +212,13 @@ export function prepareWholeFileReflinkPlan({
   };
   // Reuse authoritative codecs so filename, inline-byte, and inode constraints
   // cannot drift into a reflink-specific validator.
-  encodeDirectoryPage({ isRoot: false, page: { entries: [{
+  assertDirectoryLeafEntryFitsMetadataPage({ entry: {
     inodeKind: "file",
     inodeNumber: allocatedInodeNumber,
     name: target.entryName,
     targetType: "inode",
-  }], level: 0, type: "leaf" } });
-  encodeInodeLeafPage({ entries: [inode], isRoot: false });
+  } });
+  assertInodeLeafEntryFitsMetadataPage({ entry: inode });
 
   return {
     destinationParentDirectoryInodeNumber: target.parentDirectoryInodeNumber,

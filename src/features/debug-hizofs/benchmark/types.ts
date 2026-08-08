@@ -179,6 +179,7 @@ const benchmarkAmplificationSchema = z.object({
   backingReadBytesPerLogicalByte: z.union([z.number().nonnegative(), z.undefined()]),
   backingWriteBytesPerLogicalByte: z.union([z.number().nonnegative(), z.undefined()]),
   objectCreatesPerOperation: z.union([z.number().nonnegative(), z.undefined()]),
+  commitMaterializationsPerOperation: z.union([z.number().nonnegative(), z.undefined()]),
   superblockPublicationsPerOperation: z.union([z.number().nonnegative(), z.undefined()]),
 }).strict();
 
@@ -549,8 +550,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(29),
-  benchmarkImplementationVersion: z.literal(42),
+  schemaVersion: z.literal(30),
+  benchmarkImplementationVersion: z.literal(43),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),

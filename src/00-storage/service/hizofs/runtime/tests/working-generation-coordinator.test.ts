@@ -12,17 +12,14 @@ function values() {
   const { durable, working } = createTestingWorkingCandidateIdentities();
   const initial = createWorkingGenerationIdentity({
     authorityEpoch: working.authorityEpoch,
-    commitReference: durable.commitReference,
     generationNumber: createWorkingGenerationNumber({ value: 0n }),
     mutationId: durable.mutationId,
   });
   const first = createSuccessorWorkingGenerationIdentity({
-    commitReference: working.commitReference,
     mutationId: working.mutationId,
     previous: initial,
   });
   const second = createSuccessorWorkingGenerationIdentity({
-    commitReference: first.commitReference,
     mutationId: first.mutationId,
     previous: first,
   });
@@ -72,6 +69,7 @@ describe("WorkingGenerationCoordinator", () => {
       acceptedMutationCount: 1,
       dirtyMetadataBytes: 7,
       pendingAdmissionCount: 0,
+      stagedCommitMaterializationHeadroomBytes: 0,
       unpublishedPhysicalBytes: 11,
     });
   });
@@ -93,6 +91,7 @@ describe("WorkingGenerationCoordinator", () => {
       acceptedMutationCount: 0,
       dirtyMetadataBytes: 0,
       pendingAdmissionCount: 0,
+      stagedCommitMaterializationHeadroomBytes: 0,
       unpublishedPhysicalBytes: 0,
     });
   });
@@ -134,6 +133,7 @@ describe("WorkingGenerationCoordinator", () => {
         acceptedMutationCount: 0,
         dirtyMetadataBytes: 0,
         pendingAdmissionCount: 0,
+        stagedCommitMaterializationHeadroomBytes: 0,
         unpublishedPhysicalBytes: 0,
       },
       durableGeneration: first,
@@ -277,6 +277,52 @@ describe("WorkingGenerationCoordinator", () => {
     );
 
     barrier.close();
+  });
+
+  it("retains one staged Commit headroom across working-generation replacements", () => {
+    const { first, initial, second } = values();
+    const value = coordinator({ initial });
+    const firstAdmission = value.openMutationAdmission({ dirtyMetadataBytes: 3, unpublishedPhysicalBytes: 4 });
+    firstAdmission.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    firstAdmission.accept({ workingGeneration: first });
+    const secondAdmission = value.openMutationAdmission({ dirtyMetadataBytes: 2, unpublishedPhysicalBytes: 3 });
+    secondAdmission.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    secondAdmission.accept({ workingGeneration: second });
+
+    expect(value.snapshot().dirtyResources).toMatchObject({
+      acceptedMutationCount: 2,
+      dirtyMetadataBytes: 10,
+      stagedCommitMaterializationHeadroomBytes: 5,
+      unpublishedPhysicalBytes: 12,
+    });
+  });
+
+  it("accounts materialization attempt risk through the flush capability", () => {
+    const { first, initial } = values();
+    const value = coordinator({ initial });
+    const admission = value.openMutationAdmission({ dirtyMetadataBytes: 3, unpublishedPhysicalBytes: 4 });
+    admission.reserveStagedCommitMaterializationHeadroom({ bytes: 5 });
+    admission.accept({ workingGeneration: first });
+
+    const flush = value.openFlush();
+    const attempt = flush.beginStagedCommitMaterializationAttempt({ frameBytes: 5 });
+    expect(value.snapshot().dirtyResources).toMatchObject({
+      dirtyMetadataBytes: 13,
+      stagedCommitMaterializationHeadroomBytes: 5,
+      unpublishedPhysicalBytes: 14,
+    });
+    attempt.completeReusableCandidate();
+    expect(value.snapshot().dirtyResources).toMatchObject({
+      dirtyMetadataBytes: 8,
+      stagedCommitMaterializationHeadroomBytes: 0,
+      unpublishedPhysicalBytes: 9,
+    });
+    flush.complete({ durableGeneration: first });
+    expect(value.snapshot().dirtyResources).toMatchObject({
+      dirtyMetadataBytes: 0,
+      stagedCommitMaterializationHeadroomBytes: 0,
+      unpublishedPhysicalBytes: 0,
+    });
   });
 
 });

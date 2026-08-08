@@ -28,6 +28,10 @@ function validateBound({ name, value }: { name: string; value: number }): void {
   }
 }
 
+function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
+  return left.byteLength === right.byteLength && left.every((value, index) => value === right[index]);
+}
+
 function referenceIdentity({ reference }: { reference: HomeRecordReference }): string {
   let identity = "";
   for (const byte of encodeHomeRecordReference({ reference })) {
@@ -82,6 +86,57 @@ export class AuthenticatedMetadataRecordCache {
     if (this.#disposed) return;
     this.#disposed = true;
     this.clear();
+  }
+
+  admitAuthenticatedWrite({ plaintext, reference, recordKind }: {
+    plaintext: Uint8Array;
+    reference: HomeRecordReference;
+    recordKind: number;
+  }): void {
+    if (this.#disposed) throw new TypeError("authenticated metadata cache is disposed");
+    if (reference.recordKind !== recordKind) {
+      throw new TypeError("authenticated metadata cache write admission has the wrong Record Kind");
+    }
+    if (!isMetadataReference({ reference })) return;
+
+    const identity = referenceIdentity({ reference });
+    const existing = this.#entries.get(identity);
+    if (existing !== undefined) {
+      if (existing.recordKind !== recordKind || !bytesEqual({ left: existing.plaintext, right: plaintext })) {
+        throw new TypeError("authenticated metadata cache write admission conflicts with retained immutable plaintext");
+      }
+      this.#entries.delete(identity);
+      this.#entries.set(identity, existing);
+      return;
+    }
+    if (
+      this.#policy.maximumBytes === 0
+      || this.#policy.maximumEntries === 0
+      || plaintext.byteLength > this.#policy.maximumBytes
+    ) {
+      return;
+    }
+
+    const retained = plaintext.slice();
+    while (
+      this.#entries.size >= this.#policy.maximumEntries
+      || this.#currentBytes + retained.byteLength > this.#policy.maximumBytes
+    ) {
+      const oldest = this.#entries.entries().next().value as [string, CacheEntry] | undefined;
+      if (oldest === undefined) break;
+      const [oldestIdentity, oldestEntry] = oldest;
+      this.#entries.delete(oldestIdentity);
+      this.#currentBytes -= oldestEntry.plaintext.byteLength;
+      oldestEntry.plaintext.fill(0);
+      this.#diagnostics?.recordMetadataCacheEvent?.({
+        event: "eviction",
+        recordKind: oldestEntry.recordKind,
+        scope: this.#diagnosticScope,
+      });
+    }
+    this.#entries.set(identity, { plaintext: retained, recordKind });
+    this.#currentBytes += retained.byteLength;
+    this.#reportUsage();
   }
 
   async read({ load, reference }: {

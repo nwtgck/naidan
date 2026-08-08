@@ -1,7 +1,7 @@
 import {
   UINT64_MAXIMUM,
   createInodeRevision,
-  encodeInodeLeafPage,
+  assertInodeLeafEntryFitsMetadataPage,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
   type InodeNumber,
@@ -135,7 +135,7 @@ export async function prepareOrdinaryEntryRemovalMutation({
     inodeRevision: createInodeRevision({ value: parent.inodeRevision + 1n }),
     timestamps: { ...parent.timestamps, modifiedAt: operationTimestamp },
   };
-  encodeInodeLeafPage({ entries: [updatedParent], isRoot: false });
+  assertInodeLeafEntryFitsMetadataPage({ entry: updatedParent });
   return {
     parentChange: { entry: updatedParent, type: "set" },
     updatedParent,

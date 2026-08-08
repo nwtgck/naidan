@@ -91,10 +91,12 @@ export async function readAuthenticatedInodeTablePage({
 export async function appendAuthenticatedInodeTablePage({
   isRoot,
   page,
+  sharedMetadataRecordCache,
   writer,
 }: {
   isRoot: boolean;
   page: AuthenticatedInodeTablePage;
+  sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
   writer: AuthenticatedSegmentWriter;
 }): Promise<HomeRecordReference> {
   switch (writer.segmentClass) {
@@ -109,15 +111,27 @@ export async function appendAuthenticatedInodeTablePage({
     default: return page satisfies never;
     }
   } });
-  const [appended] = await writer.append({ records: [encodedHizoFSRecord({
+  const encoded = encodedHizoFSRecord({
     plaintext,
     recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
-  })] });
-  if (appended === undefined) throw new Error("Inode Table page append result is missing");
-  switch (appended.type) {
-  case "home": return appended.homeReference;
-  case "physical_only": throw new Error("Inode Table page cannot be a physical-only record");
-  default: return appended satisfies never;
+  });
+  try {
+    const [appended] = await writer.append({ records: [encoded] });
+    if (appended === undefined) throw new Error("Inode Table page append result is missing");
+    switch (appended.type) {
+    case "home":
+      sharedMetadataRecordCache?.admitAuthenticatedWrite({
+        plaintext: encoded.plaintext,
+        recordKind: encoded.recordKind,
+        reference: appended.homeReference,
+      });
+      return appended.homeReference;
+    case "physical_only": throw new Error("Inode Table page cannot be a physical-only record");
+    default: return appended satisfies never;
+    }
+  } finally {
+    plaintext.fill(0);
+    encoded.plaintext.fill(0);
   }
 }
 

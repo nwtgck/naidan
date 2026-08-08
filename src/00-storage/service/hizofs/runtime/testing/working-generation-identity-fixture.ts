@@ -16,7 +16,6 @@ export function createTestingWorkingCandidateIdentities() {
   const baseMutationId = parseMutationId({ bytes: new Uint8Array(16).fill(1) });
   const baseWorking = createWorkingGenerationIdentity({
     authorityEpoch: createWorkingGenerationAuthorityEpoch(),
-    commitReference: baseReference,
     generationNumber: createWorkingGenerationNumber({ value: 0n }),
     mutationId: baseMutationId,
   });
@@ -41,7 +40,6 @@ export function createTestingWorkingCandidateIdentities() {
       mutationId: conflictingMutationId,
     }),
     working: createSuccessorWorkingGenerationIdentity({
-      commitReference: candidateReference,
       mutationId: candidateMutationId,
       previous: baseWorking,
     }),

@@ -196,8 +196,8 @@ function createBackingStoreDiagnostics(): HizoFSBenchmarkDiagnostics['backingSto
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 29,
-    benchmarkImplementationVersion: 42,
+    schemaVersion: 30,
+    benchmarkImplementationVersion: 43,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -319,6 +319,7 @@ function createReport(): HizoFSBenchmarkReport {
               backingReadBytesPerLogicalByte: 2,
               backingWriteBytesPerLogicalByte: 4,
               objectCreatesPerOperation: 2,
+              commitMaterializationsPerOperation: 1,
               superblockPublicationsPerOperation: 1,
             },
             runtime: createZeroRuntimeDiagnostics(),
@@ -374,6 +375,7 @@ function createReport(): HizoFSBenchmarkReport {
                 backingReadBytesPerLogicalByte: 2,
                 backingWriteBytesPerLogicalByte: 4,
                 objectCreatesPerOperation: 2,
+                commitMaterializationsPerOperation: 1,
                 superblockPublicationsPerOperation: 1,
               },
               runtime: createZeroRuntimeDiagnostics(),

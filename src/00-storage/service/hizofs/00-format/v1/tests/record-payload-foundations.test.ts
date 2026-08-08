@@ -5,6 +5,8 @@ import {
 } from '@/00-storage/service/hizofs/00-format/v1/binary/record-reference';
 import { decodeCommonPageHeader, encodeCommonPageHeader } from '@/00-storage/service/hizofs/00-format/v1/pages/common-page';
 import {
+  assertFileExtentBranchEntryValid,
+  assertFileExtentLeafEntryValid,
   decodeFileExtentPage,
   decodeInodeBranchPage,
   decodeNestedSubvolumeBranchPage,
@@ -136,6 +138,27 @@ describe('record payload foundations', () => {
       isRoot: true,
       page: { entries: [inode.entries[0]!, inode.entries[0]!], level: 1 },
     })).toThrow('strictly ascending');
+  });
+
+  it('validates individual File Extent items without materializing a page', () => {
+    const leafEntry = {
+      byteLength: 4,
+      dataOffset: 0,
+      fileDataHomeRef: homeRef({ kind: KINDS.file_data, seed: 12 }),
+      fileOffset: createFileOffset({ value: 0n }),
+    };
+    expect(() => assertFileExtentLeafEntryValid({ entry: leafEntry })).not.toThrow();
+    expect(() => assertFileExtentLeafEntryValid({
+      entry: { ...leafEntry, fileDataHomeRef: homeRef({ kind: KINDS.directory_page }) },
+    })).toThrow('wrong record kind');
+    expect(() => assertFileExtentBranchEntryValid({ entry: {
+      childPageHomeRef: homeRef({ kind: KINDS.file_extent_page, seed: 13 }),
+      upperBound: createFileOffset({ value: 8n }),
+    } })).not.toThrow();
+    expect(() => assertFileExtentBranchEntryValid({ entry: {
+      childPageHomeRef: homeRef({ kind: KINDS.file_data, seed: 14 }),
+      upperBound: createFileOffset({ value: 8n }),
+    } })).toThrow('wrong record kind');
   });
 
   it('round-trips sparse extent pages and rejects overlap and wrong kinds', () => {

@@ -28,8 +28,8 @@ function createReport({
   configuration?: HizoFSBenchmarkConfiguration;
 } = {}): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 29,
-    benchmarkImplementationVersion: 42,
+    schemaVersion: 30,
+    benchmarkImplementationVersion: 43,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-a',
@@ -342,7 +342,7 @@ describe('HizoFSBenchmarkPanel', () => {
     expect(mocks.runBenchmark).toHaveBeenCalledTimes(2);
     const studyResult = wrapper.get('[data-testid="hizofs-benchmark-study-report"]');
     expect(studyResult.text()).toContain('Study result: cancelled');
-    expect(studyResult.text()).toContain('Completed 1 of 22 planned variants');
+    expect(studyResult.text()).toContain('Completed 1 of 4 planned variants');
     expect(studyResult.text()).toContain('chunk=256.00 KiB');
   });
 

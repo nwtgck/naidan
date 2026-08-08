@@ -24,6 +24,7 @@ import {
   type ContainerRuntimeHostDisposalResult,
   type ContainerRuntimeMaintenanceRootCapture,
   type ContainerRuntimeManagementCleanHeadBarrier,
+  type ContainerRuntimeManagementWriterOwnership,
   type ContainerRuntimeSession,
 } from "@/00-storage/service/hizofs/runtime/container-runtime";
 import type { ContainerCoordinationScope } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
@@ -152,6 +153,15 @@ class PinnedReadSnapshotRuntimeSession implements HizoFSApplicationRuntimeSessio
   }
 }
 
+type PreparedReadSnapshotResources = Readonly<{
+  commitReference: Parameters<ContainerRuntimeSession["acquireReaderPin"]>[0]["commitReference"];
+  mutationPort: HizoFSApplicationMutationPort;
+  namespace: HizoFSApplicationSessionNamespace;
+  releasePreparation?: () => void;
+}>;
+
+type ReadSnapshotResourceFactory = () => PreparedReadSnapshotResources | Promise<PreparedReadSnapshotResources>;
+
 async function createPinnedReadSnapshotPort({
   assertOperationAllowed,
   createResources,
@@ -159,18 +169,28 @@ async function createPinnedReadSnapshotPort({
   syncDurability,
 }: {
   assertOperationAllowed?: () => void;
-  createResources: () => Readonly<{
-    commitReference: Parameters<ContainerRuntimeSession["acquireReaderPin"]>[0]["commitReference"];
-    mutationPort: HizoFSApplicationMutationPort;
-    namespace: HizoFSApplicationSessionNamespace;
-  }>;
+  createResources: ReadSnapshotResourceFactory;
   parent: ContainerRuntimeSession;
   syncDurability: StorageFileSystemSyncDurability;
 }): Promise<HizoFSApplicationSessionPort> {
   assertOperationAllowed?.();
-  const resources = createResources();
-  const pin = await parent.acquireReaderPin({ commitReference: resources.commitReference });
+  const resources = await createResources();
+  let pin: Awaited<ReturnType<ContainerRuntimeSession["acquireReaderPin"]>>;
   try {
+    pin = await parent.acquireReaderPin({ commitReference: resources.commitReference });
+  } catch (cause: unknown) {
+    try {
+      resources.releasePreparation?.();
+    } catch (cleanupCause: unknown) {
+      throw new AggregateError(
+        [cause, cleanupCause],
+        "HizoFS reader-pin acquisition and snapshot preparation cleanup both failed",
+      );
+    }
+    throw cause;
+  }
+  try {
+    resources.releasePreparation?.();
     assertOperationAllowed?.();
     return createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
       ...(assertOperationAllowed === undefined ? {} : { assertOperationAllowed }),
@@ -335,11 +355,7 @@ export class HizoFSWorkerRuntimeHost {
       }) => WorkingCandidateAdmission<Candidate>;
       verified: Verified;
     }) => Readonly<{
-      createReadSnapshotResources?: () => Readonly<{
-        commitReference: Parameters<ContainerRuntimeSession["acquireReaderPin"]>[0]["commitReference"];
-        mutationPort: HizoFSApplicationMutationPort;
-        namespace: HizoFSApplicationSessionNamespace;
-      }>;
+      createReadSnapshotResources?: ReadSnapshotResourceFactory;
       mutationPort: HizoFSApplicationMutationPort;
       namespace: HizoFSApplicationSessionNamespace;
       releaseResources: () => Promise<void>;
@@ -366,11 +382,7 @@ export class HizoFSWorkerRuntimeHost {
   }): Promise<StorageFileSystemSession> {
     let applicationResources: Readonly<{
       authenticatedGeneration: ContainerRuntimeAuthenticatedApplicationGeneration | undefined;
-      createReadSnapshotResources: (() => Readonly<{
-        commitReference: Parameters<ContainerRuntimeSession["acquireReaderPin"]>[0]["commitReference"];
-        mutationPort: HizoFSApplicationMutationPort;
-        namespace: HizoFSApplicationSessionNamespace;
-      }>) | undefined;
+      createReadSnapshotResources: ReadSnapshotResourceFactory | undefined;
       mutationPort: HizoFSApplicationMutationPort;
       namespace: HizoFSApplicationSessionNamespace;
       recheckSyncAuthority: () => Promise<void>;
@@ -621,8 +633,10 @@ export class HizoFSWorkerRuntimeHost {
     }
   }
 
-  openManagementCleanHeadBarrier(): ContainerRuntimeManagementCleanHeadBarrier {
-    return this.#runtime.openManagementCleanHeadBarrier();
+  openManagementCleanHeadBarrier({ writerOwnership }: {
+    writerOwnership?: ContainerRuntimeManagementWriterOwnership;
+  }): ContainerRuntimeManagementCleanHeadBarrier {
+    return this.#runtime.openManagementCleanHeadBarrier({ writerOwnership });
   }
 
   async disposeIfIdleAndSafe(): Promise<ContainerRuntimeHostDisposalResult> {
@@ -667,6 +681,12 @@ export class HizoFSWorkerRuntimeHost {
   Parameters<ContainerRuntime["acquireWriterDependencyRoot"]>[0]):
   ReturnType<ContainerRuntime["acquireWriterDependencyRoot"]> {
     return this.#runtime.acquireWriterDependencyRoot({ commitReference });
+  }
+
+  acquireWriterWorkingPageRoot({ pageReference }:
+  Parameters<ContainerRuntime["acquireWriterWorkingPageRoot"]>[0]):
+  ReturnType<ContainerRuntime["acquireWriterWorkingPageRoot"]> {
+    return this.#runtime.acquireWriterWorkingPageRoot({ pageReference });
   }
 
   async beginSegmentDeletion({ segmentId }: Parameters<ContainerRuntime["beginSegmentDeletion"]>[0]):

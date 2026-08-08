@@ -139,6 +139,50 @@ describe("prepared mutation Commit authority store", () => {
     }
   });
 
+  it("rejects a Commit whose durable append read-back differs without advancing authority", async () => {
+    const fixture = await setup();
+    const writer = await createAuthenticatedSegmentWriter({
+      backend: fixture.backend,
+      fileSystemId: fixture.fileSystemId,
+      randomSource: fixture.randomSource,
+      rootKey: fixture.rootKey,
+      segmentClass: "metadata",
+    });
+    const originalReadExact = fixture.backend.readExact.bind(fixture.backend);
+    let corruptedReadBack = false;
+    fixture.backend.readExact = async ({ length, offset, path }) => {
+      const bytes = await originalReadExact({ length, offset, path });
+      if (corruptedReadBack) return bytes;
+      corruptedReadBack = true;
+      const corrupted = bytes.slice();
+      const finalIndex = corrupted.byteLength - 1;
+      const finalByte = corrupted[finalIndex];
+      if (finalByte === undefined) throw new Error("Commit read-back fixture unexpectedly returned empty bytes");
+      corrupted[finalIndex] = finalByte ^ 0xff;
+      return corrupted;
+    };
+    try {
+      await expect(appendPreparedMutationCommitCandidate({
+        commitPayload: fixture.commitPayload,
+        writer,
+      })).rejects.toThrow("durable record append read-back differs");
+      expect(corruptedReadBack).toBe(true);
+      await expect(appendPreparedMutationCommitCandidate({
+        commitPayload: fixture.commitPayload,
+        writer,
+      })).rejects.toThrow(/abandoned segment writer/);
+      await expect(openSuperblockCopies({
+        backend: fixture.backend,
+        fileSystemId: fixture.fileSystemId,
+        rootKey: fixture.rootKey,
+        supportedFeatureBits: createFeatureBits({ value: 0n }),
+      })).resolves.toMatchObject({ logicalState: { activeCommitSequence: 1n } });
+    } finally {
+      writer.abandon();
+      fixture.rootKey.destroy();
+    }
+  });
+
   it("keeps candidate authority immutable and rejects forged candidate values", async () => {
     const fixture = await setup();
     const writer = await createAuthenticatedSegmentWriter({

@@ -27,12 +27,10 @@ describe("application generation identity", () => {
     const authorityEpoch = createWorkingGenerationAuthorityEpoch();
     const initial = createWorkingGenerationIdentity({
       authorityEpoch,
-      commitReference: reference({ offset: 64n }),
       generationNumber: createWorkingGenerationNumber({ value: 0n }),
       mutationId: mutationId({ seed: 1 }),
     });
     const successor = createSuccessorWorkingGenerationIdentity({
-      commitReference: reference({ offset: 128n }),
       mutationId: mutationId({ seed: 2 }),
       previous: initial,
     });
@@ -42,17 +40,15 @@ describe("application generation identity", () => {
     expect(sameWorkingGenerationIdentity({ left: initial, right: successor })).toBe(false);
   });
 
-  it("requires exact authority epoch, generation, Commit reference, and Mutation ID", () => {
+  it("requires exact authority epoch, generation number, and Mutation ID", () => {
     const authorityEpoch = createWorkingGenerationAuthorityEpoch();
     const base = createWorkingGenerationIdentity({
       authorityEpoch,
-      commitReference: reference({ offset: 64n }),
       generationNumber: createWorkingGenerationNumber({ value: 4n }),
       mutationId: mutationId({ seed: 1 }),
     });
     const exactCopy = createWorkingGenerationIdentity({
       authorityEpoch,
-      commitReference: reference({ offset: 64n }),
       generationNumber: createWorkingGenerationNumber({ value: 4n }),
       mutationId: mutationId({ seed: 1 }),
     });
@@ -62,7 +58,6 @@ describe("application generation identity", () => {
       left: base,
       right: createWorkingGenerationIdentity({
         authorityEpoch: createWorkingGenerationAuthorityEpoch(),
-        commitReference: reference({ offset: 64n }),
         generationNumber: createWorkingGenerationNumber({ value: 4n }),
         mutationId: mutationId({ seed: 1 }),
       }),
@@ -71,16 +66,6 @@ describe("application generation identity", () => {
       left: base,
       right: createWorkingGenerationIdentity({
         authorityEpoch,
-        commitReference: reference({ offset: 128n }),
-        generationNumber: createWorkingGenerationNumber({ value: 4n }),
-        mutationId: mutationId({ seed: 1 }),
-      }),
-    })).toBe(false);
-    expect(sameWorkingGenerationIdentity({
-      left: base,
-      right: createWorkingGenerationIdentity({
-        authorityEpoch,
-        commitReference: reference({ offset: 64n }),
         generationNumber: createWorkingGenerationNumber({ value: 5n }),
         mutationId: mutationId({ seed: 1 }),
       }),
@@ -89,7 +74,6 @@ describe("application generation identity", () => {
       left: base,
       right: createWorkingGenerationIdentity({
         authorityEpoch,
-        commitReference: reference({ offset: 64n }),
         generationNumber: createWorkingGenerationNumber({ value: 4n }),
         mutationId: mutationId({ seed: 2 }),
       }),
@@ -121,7 +105,6 @@ describe("application generation identity", () => {
     const sourceMutationId = mutationId({ seed: 3 });
     const identity = createWorkingGenerationIdentity({
       authorityEpoch: createWorkingGenerationAuthorityEpoch(),
-      commitReference: reference({ offset: 64n }),
       generationNumber: createWorkingGenerationNumber({ value: 0n }),
       mutationId: sourceMutationId,
     });
