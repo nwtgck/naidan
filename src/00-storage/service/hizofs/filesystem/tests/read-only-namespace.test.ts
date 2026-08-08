@@ -58,6 +58,7 @@ function fixture(): Readonly<{
   namespace: ReturnType<typeof createReadOnlyNamespace>;
   pointReads: ReturnType<typeof vi.fn>;
   readExtentFile: ReturnType<typeof vi.fn>;
+  readInodePage: ReturnType<typeof vi.fn>;
   resolver: ReturnType<typeof createReadOnlyNamespaceResolver>;
 }> {
   const entries = new Map<bigint, InodeLeafEntry>([
@@ -123,6 +124,11 @@ function fixture(): Readonly<{
     }
     return { page, type: "branch" as const };
   });
+  const readInodePage = vi.fn(async ({ reference: value }: { reference: HomeRecordReference }) => {
+    const page = inodePages.get(value);
+    if (page === undefined) throw new Error("missing inode page");
+    return page;
+  });
   const source: ReadOnlyNamespacePageSource = {
     readDirectoryPage: async ({ reference: value }) => {
       const page = directoryPages.get(value);
@@ -131,11 +137,7 @@ function fixture(): Readonly<{
     },
     readExtentFile,
     readInodePointPage: pointReads,
-    readInodePage: async ({ reference: value }) => {
-      const page = inodePages.get(value);
-      if (page === undefined) throw new Error("missing inode page");
-      return page;
-    },
+    readInodePage,
   };
   return {
     inodePages,
@@ -146,6 +148,7 @@ function fixture(): Readonly<{
     }),
     pointReads,
     readExtentFile,
+    readInodePage,
     resolver: createReadOnlyNamespaceResolver({
       inodeTableRootHomeRef: inodeRoot,
       rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
@@ -166,9 +169,13 @@ describe("read-only HizoFS namespace", () => {
     expect(pointReads).toHaveBeenCalledWith(expect.objectContaining({ isRoot: false, reference: inodeLeafB }));
   });
 
-  it("exposes validated raw namespace capabilities for mutation planning without duplicating traversal", async () => {
-    const { resolver } = fixture();
-    expect(await resolver.knownInodeNumbers()).toEqual([1n, 2n, 3n, 4n, 5n]);
+  it("exposes a bounded allocator high-water lookup without re-enumerating the validated inode tree", async () => {
+    const { readInodePage, resolver } = fixture();
+    expect(await resolver.maximumKnownInodeNumber()).toBe(5n);
+    readInodePage.mockClear();
+    expect(await resolver.maximumKnownInodeNumber()).toBe(5n);
+    expect(readInodePage).toHaveBeenCalledTimes(2);
+    expect(readInodePage.mock.calls.map(([call]) => call.reference)).toEqual([inodeRoot, inodeLeafB]);
     const root = await resolver.resolveInode({ pathComponents: [] });
     if (root.inodeKind !== "directory") throw new Error("expected root directory");
     expect(await resolver.lookupDirectoryEntry({ directory: root, name: "inline.txt" })).toEqual({

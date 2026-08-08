@@ -11,7 +11,11 @@ import {
 import { AuthenticatedSegmentWriterOwner } from "@/00-storage/service/hizofs/authenticated-store/active-segment-writer-owner";
 import { readAuthenticatedDirectoryPage } from "@/00-storage/service/hizofs/authenticated-store/directory-page-store";
 import { readAuthenticatedFileData } from "@/00-storage/service/hizofs/authenticated-store/file-data-store";
-import { readAuthenticatedFileExtentPage } from "@/00-storage/service/hizofs/authenticated-store/file-extent-page-store";
+import {
+  appendAuthenticatedFileExtentPage,
+  readAuthenticatedFileExtentPage,
+} from "@/00-storage/service/hizofs/authenticated-store/file-extent-page-store";
+import { createAuthenticatedSegmentWriter } from "@/00-storage/service/hizofs/authenticated-store/record-appender";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import {
   generateFileSystemRootKey,
@@ -74,6 +78,9 @@ describe("authenticated file content mutation authority", () => {
     authority.abandon();
 
     expect(authority.state()).toBe("closed");
+    // Metadata pages are provisional until the mutation is flushed for
+    // acceptance. Abandonment drops those pages instead of leaving physical
+    // orphan Records behind. File Data remains operation-scoped and durable.
     await expect(readAuthenticatedDirectoryPage({
       backend,
       fileSystemId,
@@ -81,7 +88,7 @@ describe("authenticated file content mutation authority", () => {
       isRoot: true,
       relocationIndexRootPhysicalRef: null,
       rootKey,
-    })).resolves.toEqual({ entries: [], level: 0, type: "leaf" });
+    })).rejects.toThrow();
     await expect(readAuthenticatedFileData({
       backend,
       fileSystemId,
@@ -96,7 +103,7 @@ describe("authenticated file content mutation authority", () => {
       isRoot: true,
       relocationIndexRootPhysicalRef: null,
       rootKey,
-    })).resolves.toMatchObject({ entries: [{ fileOffset: 100n }], type: "leaf" });
+    })).rejects.toThrow();
     await expect(authority.writeFileData({ bytes: Uint8Array.of(1) })).rejects.toThrow("closed");
     rootKey.destroy();
   });
@@ -172,6 +179,19 @@ describe("authenticated file content mutation authority", () => {
     const randomSource = deterministicRandomSource();
     const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
     const rootKey = generateFileSystemRootKey({ randomSource });
+    const sourceWriter = await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    const extentRoot = await appendAuthenticatedFileExtentPage({
+      isRoot: true,
+      page: { entries: [], level: 0, type: "leaf" },
+      writer: sourceWriter,
+    });
+    await sourceWriter.seal();
     const authority = await createAuthenticatedFileContentMutationAuthority({
       backend,
       fileSystemId,
@@ -179,14 +199,6 @@ describe("authenticated file content mutation authority", () => {
       relocationIndexRootPhysicalRef: null,
       rootKey,
       supportedFeatureBits: createFeatureBits({ value: 0n }),
-    });
-    const extentRoot = await authority.writeFileExtentPage({
-      isRoot: true,
-      page: {
-        entries: [],
-        level: 0,
-        type: "leaf",
-      },
     });
     const originalReadExact = backend.readExact.bind(backend);
     const readEntered = Promise.withResolvers<void>();

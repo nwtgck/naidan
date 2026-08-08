@@ -191,10 +191,7 @@ describe("prepareOrdinaryEntryCreateCommit", () => {
       } }),
       directoryPageStore,
       inodeTablePageStore: inodePageStore,
-      knownInodeNumbers: [parent.inodeNumber, ...existingEntries.map(entry => {
-        if (entry.targetType !== "inode") throw new Error("expected ordinary inode entry");
-        return entry.inodeNumber;
-      })],
+      maximumKnownInodeNumber: createInodeNumber({ value: nextInodeNumber - 1n }),
       mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
       operationTimestamp: createTimestampMilliseconds({ value: 1_700_000_000_000n }),
       parent,
@@ -240,14 +237,7 @@ describe("prepareOrdinaryEntryCreateCommit", () => {
       baseCommit: result.commitPayload,
       directoryPageStore,
       inodeTablePageStore: inodePageStore,
-      knownInodeNumbers: [
-        parent.inodeNumber,
-        ...existingEntries.map(entry => {
-          if (entry.targetType !== "inode") throw new Error("expected ordinary inode entry");
-          return entry.inodeNumber;
-        }),
-        nextInodeNumber,
-      ],
+      maximumKnownInodeNumber: nextInodeNumber,
       mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(8) }),
       operationTimestamp: createTimestampMilliseconds({ value: 1_700_000_000_001n }),
       parent: writtenParent,

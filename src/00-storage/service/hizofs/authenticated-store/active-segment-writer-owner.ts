@@ -144,10 +144,10 @@ export class AuthenticatedSegmentWriterOwner {
       if (cause instanceof AuthenticatedSegmentCapacityError && writer.hasRecords()) {
         await writer.seal();
         this.#writer = undefined;
-        this.#diagnostics?.recordSegmentWriterEvent?.({
+        this.#diagnostics?.recordSegmentWriterEvent?.({ observation: {
           event: "rollover",
           segmentClass: this.#segmentClass,
-        });
+        } });
         return await measuredAppend({ writer: await this.#writerForAppend() });
       }
       switch (writer.state) {

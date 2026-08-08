@@ -257,7 +257,7 @@ export function createAuthenticatedReadOnlyNamespace({
 }): ReadOnlyNamespace {
   const resolver = createAuthenticatedReadOnlyNamespaceResolver({ commit, indexDiagnostics, recordSource });
   const {
-    knownInodeNumbers: _knownInodeNumbers,
+    maximumKnownInodeNumber: _maximumKnownInodeNumber,
     list,
     listBounded,
     listDirectoryEntries: _listDirectoryEntries,

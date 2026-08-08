@@ -33,7 +33,7 @@ export async function prepareWholeFileReflinkCommit({
   destinationParent,
   directoryPageStore,
   inodeTablePageStore,
-  knownInodeNumbers,
+  maximumKnownInodeNumber,
   mutationId,
   operationTimestamp,
   source,
@@ -43,14 +43,14 @@ export async function prepareWholeFileReflinkCommit({
   destinationParent: DirectoryInodeEntry;
   directoryPageStore: DirectoryPageTreePageStore;
   inodeTablePageStore: RootInodeTablePageStore;
-  knownInodeNumbers: readonly InodeNumber[];
+  maximumKnownInodeNumber: InodeNumber | undefined;
   mutationId: MutationId;
   operationTimestamp: TimestampMilliseconds;
   source: WholeFileReflinkSource;
   target: WholeFileReflinkTarget;
 }): Promise<PreparedWholeFileReflinkCommit> {
   const plan = prepareWholeFileReflinkPlan({
-    knownInodeNumbers,
+    maximumKnownInodeNumber,
     nextInodeNumber: baseCommit.nextInodeNumber,
     operationTimestamp,
     source,

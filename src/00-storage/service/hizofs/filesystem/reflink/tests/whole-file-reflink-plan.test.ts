@@ -56,7 +56,7 @@ function planInput({
   container = coordinationKey(),
   destinationEntry = null,
   destinationIsSource = false,
-  knownInodeNumbers = [1n, 2n, 3n, 4n, 5n, 6n, 7n],
+  maximumKnownInodeNumber = 7n,
   nextInodeNumber = 8n,
   parentAccess = "read_write",
   parentDirectoryInodeNumber = 1n,
@@ -68,7 +68,7 @@ function planInput({
   container?: ContainerCoordinationKey;
   destinationEntry?: Parameters<typeof prepareWholeFileReflinkPlan>[0]["target"]["existingEntry"];
   destinationIsSource?: boolean;
-  knownInodeNumbers?: readonly bigint[];
+  maximumKnownInodeNumber?: bigint;
   nextInodeNumber?: bigint;
   parentAccess?: "read" | "read_write";
   parentDirectoryInodeNumber?: bigint;
@@ -78,7 +78,7 @@ function planInput({
   sourceReachable?: boolean;
 }> = {}) {
   return {
-    knownInodeNumbers: knownInodeNumbers.map(value => createInodeNumber({ value })),
+    maximumKnownInodeNumber: createInodeNumber({ value: maximumKnownInodeNumber }),
     nextInodeNumber: createInodeNumber({ value: nextInodeNumber }),
     operationTimestamp: createTimestampMilliseconds({ value: 100n }),
     source: {
@@ -222,7 +222,7 @@ describe("whole-file reflink plan", () => {
   it("rejects allocator exhaustion and a regressed high-water mark", () => {
     expect(errorCode(planInput({ nextInodeNumber: UINT64_MAXIMUM }))).toBe("allocator_exhausted");
     expect(errorCode(planInput({ nextInodeNumber: 4n }))).toBe("allocator_regression");
-    expect(errorCode(planInput({ knownInodeNumbers: [12n], nextInodeNumber: 8n })))
+    expect(errorCode(planInput({ maximumKnownInodeNumber: 12n, nextInodeNumber: 8n })))
       .toBe("allocator_regression");
     expect(errorCode(planInput({
       destinationEntry: {

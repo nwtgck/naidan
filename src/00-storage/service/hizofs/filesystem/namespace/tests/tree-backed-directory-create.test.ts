@@ -142,7 +142,7 @@ function fixture({ revision = 4n }: { revision?: bigint } = {}) {
 
 function plan({ entryName = "a" }: { entryName?: string } = {}) {
   return prepareOrdinaryEntryCreatePlan({
-    knownInodeNumbers: [createInodeNumber({ value: 1n }), createInodeNumber({ value: 2n })],
+    maximumKnownInodeNumber: createInodeNumber({ value: 2n }),
     nextInodeNumber: createInodeNumber({ value: 3n }),
     operationTimestamp,
     request: { type: "file" },
@@ -301,7 +301,7 @@ describe("tree-backed directory creation", () => {
       baseCommit,
       directoryPageStore,
       inodeTablePageStore: inodePageStore,
-      knownInodeNumbers: [parent.inodeNumber, createInodeNumber({ value: 2n })],
+      maximumKnownInodeNumber: createInodeNumber({ value: 2n }),
       mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
       operationTimestamp,
       parent,

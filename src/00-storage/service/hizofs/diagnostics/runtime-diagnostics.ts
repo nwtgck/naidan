@@ -163,8 +163,11 @@ export type HizoFSRuntimeIndexCounter = Readonly<{
 export type HizoFSRuntimeSegmentWriterCounter = Readonly<{
   appendOperations: number;
   appendReadBackVerifications: number;
+  appendedFrameBytes: number;
+  appendedRecords: number;
   created: number;
   descriptorValidations: number;
+  multiRecordAppendOperations: number;
   rollovers: number;
   trustedTailMatches: number;
   trustedTailMismatches: number;
@@ -262,8 +265,11 @@ type MutableIndexCounter = {
 type MutableSegmentWriterCounter = {
   appendOperations: number;
   appendReadBackVerifications: number;
+  appendedFrameBytes: number;
+  appendedRecords: number;
   created: number;
   descriptorValidations: number;
+  multiRecordAppendOperations: number;
   rollovers: number;
   trustedTailMatches: number;
   trustedTailMismatches: number;
@@ -442,8 +448,11 @@ function segmentWriterCounters(): Record<"data" | "metadata" | "relocation", Mut
   return Object.fromEntries((["data", "metadata", "relocation"] as const).map(segmentClass => [segmentClass, {
     appendOperations: 0,
     appendReadBackVerifications: 0,
+    appendedFrameBytes: 0,
+    appendedRecords: 0,
     created: 0,
     descriptorValidations: 0,
+    multiRecordAppendOperations: 0,
     rollovers: 0,
     trustedTailMatches: 0,
     trustedTailMismatches: 0,
@@ -794,11 +803,19 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     });
   }
 
-  recordSegmentWriterEvent({ event, segmentClass }: AuthenticatedSegmentWriterDiagnosticsObservation): void {
+  recordSegmentWriterEvent({ observation }: {
+    observation: AuthenticatedSegmentWriterDiagnosticsObservation;
+  }): void {
+    const { event, segmentClass } = observation;
     const counter = this.#segmentWriters[segmentClass];
     switch (event) {
     case "append_read_back_verified":
       counter.appendReadBackVerifications = incrementSafe({ current: counter.appendReadBackVerifications, delta: 1, label: `${segmentClass} append read-back verifications` });
+      counter.appendedFrameBytes = incrementSafe({ current: counter.appendedFrameBytes, delta: observation.frameBytes, label: `${segmentClass} appended frame bytes` });
+      counter.appendedRecords = incrementSafe({ current: counter.appendedRecords, delta: observation.recordCount, label: `${segmentClass} appended Records` });
+      if (observation.recordCount > 1) {
+        counter.multiRecordAppendOperations = incrementSafe({ current: counter.multiRecordAppendOperations, delta: 1, label: `${segmentClass} multi-Record append operations` });
+      }
       return;
     case "append_started":
       counter.appendOperations = incrementSafe({ current: counter.appendOperations, delta: 1, label: `${segmentClass} append operations` });
@@ -1168,8 +1185,10 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     this.#record({ operation: () => this.#strict.recordPhysicalAccessReason({ identity, operation, reason }) });
   }
 
-  recordSegmentWriterEvent({ event, segmentClass }: AuthenticatedSegmentWriterDiagnosticsObservation): void {
-    this.#record({ operation: () => this.#strict.recordSegmentWriterEvent({ event, segmentClass }) });
+  recordSegmentWriterEvent({ observation }: {
+    observation: AuthenticatedSegmentWriterDiagnosticsObservation;
+  }): void {
+    this.#record({ operation: () => this.#strict.recordSegmentWriterEvent({ observation }) });
   }
 
   recordCacheEvent({ cache, event }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordCacheEvent"]>[0]): void {

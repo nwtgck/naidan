@@ -17,19 +17,19 @@ const operationTimestamp = createTimestampMilliseconds({ value: 1_700_000_000_00
 
 function prepare({
   destinationExists = false,
-  knownInodeNumbers = [parentDirectoryInodeNumber, createInodeNumber({ value: 8n })],
+  maximumKnownInodeNumber = createInodeNumber({ value: 8n }),
   next = nextInodeNumber,
   parentAccess = "read_write",
   request,
 }: {
   destinationExists?: boolean;
-  knownInodeNumbers?: readonly ReturnType<typeof createInodeNumber>[];
+  maximumKnownInodeNumber?: ReturnType<typeof createInodeNumber>;
   next?: ReturnType<typeof createInodeNumber>;
   parentAccess?: "read" | "read_write";
   request: OrdinaryEntryCreateRequest;
 }) {
   return prepareOrdinaryEntryCreatePlan({
-    knownInodeNumbers,
+    maximumKnownInodeNumber,
     nextInodeNumber: next,
     operationTimestamp,
     request,
@@ -96,7 +96,7 @@ describe("prepareOrdinaryEntryCreatePlan", () => {
 
   it("rejects an invalid filename through the authoritative directory codec", () => {
     expect(() => prepareOrdinaryEntryCreatePlan({
-      knownInodeNumbers: [parentDirectoryInodeNumber],
+      maximumKnownInodeNumber: parentDirectoryInodeNumber,
       nextInodeNumber,
       operationTimestamp,
       request: { type: "file" },

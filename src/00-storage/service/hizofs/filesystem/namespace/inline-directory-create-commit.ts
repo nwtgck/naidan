@@ -27,7 +27,7 @@ export type PreparedInlineDirectoryCreateCommit = Readonly<{
 
 export async function prepareInlineDirectoryCreateCommit({
   baseCommit,
-  knownInodeNumbers,
+  maximumKnownInodeNumber,
   mutationId,
   operationTimestamp,
   pageStore,
@@ -36,7 +36,7 @@ export async function prepareInlineDirectoryCreateCommit({
   target,
 }: Readonly<{
   baseCommit: FileSystemCommitPayload;
-  knownInodeNumbers: readonly InodeNumber[];
+  maximumKnownInodeNumber: InodeNumber | undefined;
   mutationId: MutationId;
   operationTimestamp: TimestampMilliseconds;
   pageStore: RootInodeTablePageStore;
@@ -45,7 +45,7 @@ export async function prepareInlineDirectoryCreateCommit({
   target: OrdinaryEntryCreateTarget;
 }>): Promise<PreparedInlineDirectoryCreateCommit> {
   const plan = prepareOrdinaryEntryCreatePlan({
-    knownInodeNumbers,
+    maximumKnownInodeNumber,
     nextInodeNumber: baseCommit.nextInodeNumber,
     operationTimestamp,
     request,

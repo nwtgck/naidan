@@ -503,6 +503,9 @@ function createEmptySegmentWriterDiagnostics(): MutableRuntimeDiagnosticsSnapsho
   return {
     appendOperations: 0,
     appendReadBackVerifications: 0,
+    appendedFrameBytes: 0,
+    appendedRecords: 0,
+    multiRecordAppendOperations: 0,
     created: 0,
     descriptorValidations: 0,
     rollovers: 0,

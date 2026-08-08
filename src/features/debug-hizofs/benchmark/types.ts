@@ -4,11 +4,15 @@ import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizo
 import { HIZOFS_RUNTIME_DIAGNOSTIC_PHASES } from '@/00-storage/service/hizofs/diagnostics/runtime-diagnostics';
 import { z } from 'zod';
 
-// IMPORTANT: Benchmark configuration and report JSON are ephemeral developer
-// diagnostics, not Naidan persistent data or import/export contracts. Their
-// structures may change destructively between Naidan versions. Do not add
-// backward-compatible readers or migrations for old benchmark JSON. Configuration
+// IMPORTANT: Benchmark configuration and report JSON are performance-development
+// diagnostics, not Naidan persistent data or import/export contracts. Evolve this
+// schema freely when additional counters, timings, or attribution can help explain
+// or verify HizoFS performance; preserving old benchmark JSON is not a Naidan
+// compatibility requirement. Do not add backward-compatible readers, aliases, or
+// migrations merely to preserve previous benchmark report shapes. Configuration
 // import intentionally accepts only the schema implemented by the current build.
+// Keep instrumentation bounded and avoid observer effects that materially distort
+// the product path being measured.
 
 export const hizoFSBenchmarkBackendModeSchema = z.union([
   z.literal('compare'),
@@ -256,6 +260,9 @@ const hizoFSRuntimePhysicalAccessReasonsSchema = z.object(Object.fromEntries(
 const hizoFSRuntimeSegmentWriterCounterSchema = z.object({
   appendOperations: z.number().int().nonnegative(),
   appendReadBackVerifications: z.number().int().nonnegative(),
+  appendedFrameBytes: z.number().int().nonnegative(),
+  appendedRecords: z.number().int().nonnegative(),
+  multiRecordAppendOperations: z.number().int().nonnegative(),
   created: z.number().int().nonnegative(),
   descriptorValidations: z.number().int().nonnegative(),
   rollovers: z.number().int().nonnegative(),
@@ -550,8 +557,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(31),
-  benchmarkImplementationVersion: z.literal(44),
+  schemaVersion: z.literal(32),
+  benchmarkImplementationVersion: z.literal(45),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),

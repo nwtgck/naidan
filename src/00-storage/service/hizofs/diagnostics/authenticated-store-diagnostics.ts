@@ -31,17 +31,23 @@ export type AuthenticatedMutationScopeEventObservation =
     outcome: "abandoned" | "accepted" | "failed" | "published";
   }>;
 
-export type AuthenticatedSegmentWriterDiagnosticsObservation = Readonly<{
-  event:
-    | "append_read_back_verified"
-    | "append_started"
-    | "created"
-    | "descriptor_validated"
-    | "rollover"
-    | "trusted_tail_match"
-    | "trusted_tail_mismatch";
-  segmentClass: "data" | "metadata" | "relocation";
-}>;
+export type AuthenticatedSegmentWriterDiagnosticsObservation =
+  | Readonly<{
+    event: "append_read_back_verified";
+    frameBytes: number;
+    recordCount: number;
+    segmentClass: "data" | "metadata" | "relocation";
+  }>
+  | Readonly<{
+    event:
+      | "append_started"
+      | "created"
+      | "descriptor_validated"
+      | "rollover"
+      | "trusted_tail_match"
+      | "trusted_tail_mismatch";
+    segmentClass: "data" | "metadata" | "relocation";
+  }>;
 
 export type AuthenticatedMetadataCacheEventObservation = Readonly<{
   scope?: "mutation" | "session";
@@ -88,10 +94,9 @@ export type AuthenticatedStoreDiagnosticsPort = Readonly<{
   recordPublicationScopeEvent?: ({
     event,
   }: AuthenticatedPublicationScopeEventObservation) => void;
-  recordSegmentWriterEvent?: ({
-    event,
-    segmentClass,
-  }: AuthenticatedSegmentWriterDiagnosticsObservation) => void;
+  recordSegmentWriterEvent?: ({ observation }: {
+    observation: AuthenticatedSegmentWriterDiagnosticsObservation;
+  }) => void;
   recordMetadataCacheEvent?: ({
     scope,
     event,

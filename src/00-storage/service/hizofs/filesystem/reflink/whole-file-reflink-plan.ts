@@ -126,13 +126,13 @@ function validateReplacement({ source, target }: {
 }
 
 export function prepareWholeFileReflinkPlan({
-  knownInodeNumbers,
+  maximumKnownInodeNumber,
   nextInodeNumber,
   operationTimestamp,
   source,
   target,
 }: {
-  knownInodeNumbers: readonly InodeNumber[];
+  maximumKnownInodeNumber: InodeNumber | undefined;
   nextInodeNumber: InodeNumber;
   operationTimestamp: TimestampMilliseconds;
   source: WholeFileReflinkSource;
@@ -189,7 +189,7 @@ export function prepareWholeFileReflinkPlan({
   if (
     nextInodeNumber <= target.parentDirectoryInodeNumber
     || nextInodeNumber <= sourceFile.inodeNumber
-    || knownInodeNumbers.some(inodeNumber => nextInodeNumber <= inodeNumber)
+    || (maximumKnownInodeNumber !== undefined && nextInodeNumber <= maximumKnownInodeNumber)
     || (replacedInodeNumber !== null && nextInodeNumber <= replacedInodeNumber)
   ) {
     throw new WholeFileReflinkPlanError({

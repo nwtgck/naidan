@@ -2048,7 +2048,7 @@ async function prepareAuthenticatedOrdinaryEntryCreate({
   baseCommit,
   baseSuperblock,
   indexDiagnostics,
-  knownInodeNumbers,
+  maximumKnownInodeNumber,
   mutationId,
   operationTimestamp,
   parent,
@@ -2060,7 +2060,7 @@ async function prepareAuthenticatedOrdinaryEntryCreate({
   baseCommit: FileSystemCommitPayload;
   baseSuperblock: OpenedSuperblockCopies;
   indexDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
-  knownInodeNumbers: readonly InodeNumber[];
+  maximumKnownInodeNumber: InodeNumber | undefined;
   mutationId: MutationId;
   operationTimestamp: TimestampMilliseconds;
   parent: DirectoryInodeEntry;
@@ -2078,7 +2078,7 @@ async function prepareAuthenticatedOrdinaryEntryCreate({
       baseCommit,
       directoryPageStore,
       inodeTablePageStore,
-      knownInodeNumbers,
+      maximumKnownInodeNumber,
       mutationId,
       operationTimestamp,
       parent,
@@ -2138,7 +2138,7 @@ async function prepareAuthenticatedWholeFileReflink({
   baseSuperblock,
   destinationParent,
   indexDiagnostics,
-  knownInodeNumbers,
+  maximumKnownInodeNumber,
   mutationId,
   operationTimestamp,
   source,
@@ -2150,7 +2150,7 @@ async function prepareAuthenticatedWholeFileReflink({
   baseSuperblock: OpenedSuperblockCopies;
   destinationParent: DirectoryInodeEntry;
   indexDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
-  knownInodeNumbers: readonly InodeNumber[];
+  maximumKnownInodeNumber: InodeNumber | undefined;
   mutationId: MutationId;
   operationTimestamp: TimestampMilliseconds;
   source: WholeFileReflinkSource;
@@ -2168,7 +2168,7 @@ async function prepareAuthenticatedWholeFileReflink({
       destinationParent,
       directoryPageStore,
       inodeTablePageStore,
-      knownInodeNumbers,
+      maximumKnownInodeNumber,
       mutationId,
       operationTimestamp,
       source,
@@ -2280,7 +2280,7 @@ export async function publishAuthenticatedOrdinaryEntryCreate({
   indexDiagnostics,
   baseCommit,
   baseSuperblock,
-  knownInodeNumbers,
+  maximumKnownInodeNumber,
   mutationId,
   onCandidatePrepared,
   operationTimestamp,
@@ -2293,7 +2293,7 @@ export async function publishAuthenticatedOrdinaryEntryCreate({
   indexDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
   baseCommit: FileSystemCommitPayload;
   baseSuperblock: OpenedSuperblockCopies;
-  knownInodeNumbers: readonly InodeNumber[];
+  maximumKnownInodeNumber: InodeNumber | undefined;
   mutationId: MutationId;
   onCandidatePrepared: MutationCandidatePreparedObserver | undefined;
   operationTimestamp: TimestampMilliseconds;
@@ -2308,7 +2308,7 @@ export async function publishAuthenticatedOrdinaryEntryCreate({
       baseCommit,
       baseSuperblock,
       indexDiagnostics,
-      knownInodeNumbers,
+      maximumKnownInodeNumber,
       mutationId,
       operationTimestamp,
       parent,
@@ -2403,7 +2403,7 @@ export async function publishAuthenticatedWholeFileReflink({
   baseCommit,
   baseSuperblock,
   destinationParent,
-  knownInodeNumbers,
+  maximumKnownInodeNumber,
   mutationId,
   onCandidatePrepared,
   operationTimestamp,
@@ -2416,7 +2416,7 @@ export async function publishAuthenticatedWholeFileReflink({
   baseCommit: FileSystemCommitPayload;
   baseSuperblock: OpenedSuperblockCopies;
   destinationParent: DirectoryInodeEntry;
-  knownInodeNumbers: readonly InodeNumber[];
+  maximumKnownInodeNumber: InodeNumber | undefined;
   mutationId: MutationId;
   onCandidatePrepared: MutationCandidatePreparedObserver | undefined;
   operationTimestamp: TimestampMilliseconds;
@@ -2431,7 +2431,7 @@ export async function publishAuthenticatedWholeFileReflink({
       baseSuperblock,
       destinationParent,
       indexDiagnostics,
-      knownInodeNumbers,
+      maximumKnownInodeNumber,
       mutationId,
       operationTimestamp,
       source,
@@ -3763,6 +3763,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             applicationAuthority.markNoChangeResolved();
             return;
           }
+          await metadataAuthority.flushPendingMetadataRecords();
           const publicationRootKey = cloneFileSystemRootKey({ rootKey: opened.rootKey });
           const installed = prepareAndInstallStagedMutationSelectedCandidate({
             admission,
@@ -3884,7 +3885,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         directory: destinationParent,
         name: newName,
       });
-      const knownInodeNumbers = await base.resolver.knownInodeNumbers();
+      const maximumKnownInodeNumber = await base.resolver.maximumKnownInodeNumber();
       const prepared = await prepareAuthenticatedWholeFileReflink({
         assertPublicationAllowed: authority.assertPublicationAllowed,
         authority: metadataAuthority,
@@ -3892,7 +3893,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         baseCommit: candidateBaseCommit,
         baseSuperblock: base.superblock,
         destinationParent,
-        knownInodeNumbers,
+        maximumKnownInodeNumber,
         mutationId,
         operationTimestamp: timestamp,
         source: {
@@ -3933,14 +3934,14 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           inode: await base.resolver.resolveInode({ pathComponents: [...path] }),
         });
         const destination = await base.resolver.lookupDirectoryEntry({ directory: parent, name });
-        const knownInodeNumbers = await base.resolver.knownInodeNumbers();
+        const maximumKnownInodeNumber = await base.resolver.maximumKnownInodeNumber();
         const prepared = await prepareAuthenticatedOrdinaryEntryCreate({
           assertPublicationAllowed: authority.assertPublicationAllowed,
           authority: metadataAuthority,
           indexDiagnostics,
           baseCommit: candidateBaseCommit,
           baseSuperblock: base.superblock,
-          knownInodeNumbers,
+          maximumKnownInodeNumber,
           mutationId,
           operationTimestamp: timestamp,
           parent,
@@ -4557,6 +4558,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           }
           let accepted = false;
           try {
+            await fileAuthority.flushPendingMetadataRecords();
             const publicationRootKey = cloneFileSystemRootKey({ rootKey: opened.rootKey });
             const installed = prepareAndInstallStagedMutationSelectedCandidate({
               admission,
@@ -5668,6 +5670,7 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
       } }),
     };
     const targetSession = await StreamingNamespaceImportTargetSession.open({
+      beforeSealedCandidateSave: async () => await authority.flushPendingMetadataRecords(),
       createImport: ({ rootMetadata }) => new StreamingNamespaceImport({
         limits,
         nextInodeNumber: opened.commit.nextInodeNumber,

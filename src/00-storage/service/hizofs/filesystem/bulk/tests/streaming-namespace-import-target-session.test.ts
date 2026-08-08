@@ -230,6 +230,33 @@ describe("StreamingNamespaceImportTargetSession", () => {
     expect(port.candidate?.type).toBe("sealed");
   });
 
+  it("runs the sealed-candidate durability gate before runtime staging and retries it without refinalizing", async () => {
+    const port = new MemoryPort();
+    const firstActor = actor();
+    let gateCalls = 0;
+    const session = await StreamingNamespaceImportTargetSession.open({
+      beforeSealedCandidateSave: async () => {
+        gateCalls += 1;
+        if (gateCalls === 1) throw new Error("injected durability gate failure");
+      },
+      createImport: () => firstActor,
+      operationIdentity,
+      restoreImport: () => {
+        throw new Error("unexpected restore");
+      },
+      runtimeStatePort: port,
+    });
+    await session.target.setRootMetadata({ metadata: { createdAt: undefined, modifiedAt: undefined } });
+
+    await expect(session.target.completeNamespace()).rejects.toThrow("injected durability gate failure");
+    expect(port.candidate).toBeUndefined();
+    await session.target.completeNamespace();
+
+    expect(gateCalls).toBe(2);
+    expect(firstActor.finalize).toHaveBeenCalledTimes(1);
+    expect(port.candidate?.type).toBe("sealed");
+  });
+
   it("requires one exact root metadata handshake and rejects changes after initialization", async () => {
     const port = new MemoryPort();
     const firstActor = actor();

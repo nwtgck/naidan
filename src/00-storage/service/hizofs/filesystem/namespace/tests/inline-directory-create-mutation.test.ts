@@ -39,7 +39,7 @@ function parent({ revision = 4n }: { revision?: bigint } = {}): DirectoryInodeEn
 
 function plan({ entryName = "a" }: { entryName?: string } = {}) {
   return prepareOrdinaryEntryCreatePlan({
-    knownInodeNumbers: [createInodeNumber({ value: 1n }), createInodeNumber({ value: 2n })],
+    maximumKnownInodeNumber: createInodeNumber({ value: 2n }),
     nextInodeNumber: createInodeNumber({ value: 3n }),
     operationTimestamp,
     request: { type: "file" },

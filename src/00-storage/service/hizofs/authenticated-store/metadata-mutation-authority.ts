@@ -45,7 +45,11 @@ import {
   type AuthenticatedSegmentWriterLease,
   type AuthenticatedSegmentWriterLeaseUsage,
 } from "./active-segment-writer-owner";
-import type { AuthenticatedSegmentWriter } from "./record-appender";
+import type { AuthenticatedSegmentAppendTarget, AuthenticatedSegmentWriter } from "./record-appender";
+import {
+  AuthenticatedMetadataAppendBatch,
+  AuthenticatedMetadataAppendBatchFlushRequiredError,
+} from "./metadata-append-batch";
 import {
   resolveMutationSuperblockPublication,
   type MutationSuperblockPublicationResolution,
@@ -334,6 +338,7 @@ export class AuthenticatedMetadataMutationAuthority {
   readonly #sharedMetadataRecordCache: AuthenticatedMetadataRecordCache | undefined;
   readonly #supportedFeatureBits: FeatureBits;
   #mutationDiagnosticsOpen = true;
+  #pendingAppendBatch: AuthenticatedMetadataAppendBatch | undefined;
   #releasedWriterUsage: AuthenticatedSegmentWriterLeaseUsage | undefined;
   #operationInProgress = false;
   #detachedPublicationAuthority: AuthenticatedPreparedMutationPublicationAuthority | undefined;
@@ -455,9 +460,17 @@ export class AuthenticatedMetadataMutationAuthority {
   }
 
   resourceUsage(): AuthenticatedMutationResourceUsage {
-    const appendedMetadataFrameBytes = (
+    const persistedMetadataFrameBytes = (
       this.#releasedWriterUsage ?? this.#writerLease.usage()
     ).appendedEncryptedFrameBytes;
+    const provisionalMetadataFrameBytes = this.#pendingAppendBatch?.pendingFrameBytes() ?? 0;
+    const appendedMetadataFrameBytes = persistedMetadataFrameBytes + provisionalMetadataFrameBytes;
+    if (!Number.isSafeInteger(appendedMetadataFrameBytes)) {
+      throw new Error("metadata mutation resource usage exceeds the safe integer bound");
+    }
+    // Provisional frames already own exact immutable references. Count their
+    // eventual physical bytes in the admission reservation even before the
+    // batch is flushed, then the same bytes move into persisted writer usage.
     return Object.freeze({
       appendedMetadataFrameBytes,
       unpublishedPhysicalBytes: appendedMetadataFrameBytes,
@@ -487,17 +500,100 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome } });
   }
 
+  #discardPendingAppendBatch(): void {
+    this.#pendingAppendBatch?.discard();
+    this.#pendingAppendBatch = undefined;
+  }
+
   #releaseWriterLease(): void {
     if (this.#writerLeaseReleased) return;
+    if (this.#pendingAppendBatch?.hasRecords() === true) {
+      throw new Error("cannot release metadata writer lease while a provisional append batch is pending");
+    }
+    this.#pendingAppendBatch?.discard();
+    this.#pendingAppendBatch = undefined;
     this.#releasedWriterUsage = this.#writerLease.usage();
     this.#writerLeaseReleased = true;
     this.#writerLease.release({ disposition: this.#writerReleaseDisposition });
   }
 
+  async #flushPendingAppendBatch(): Promise<void> {
+    const batch = this.#pendingAppendBatch;
+    if (batch === undefined) return;
+    this.#pendingAppendBatch = undefined;
+    if (!batch.hasRecords()) {
+      batch.discard();
+      return;
+    }
+    await this.#writerLease.append({
+      append: async ({ writer }) => {
+        if (!batch.isBoundTo({ writer })) {
+          batch.discard();
+          throw new Error("metadata append batch writer ownership changed before flush");
+        }
+        await batch.flush();
+      },
+    });
+  }
+
+  async #appendMetadataPageWithBatch<Result>({ append }: {
+    append: ({ writer }: { writer: AuthenticatedSegmentAppendTarget }) => Promise<Result>;
+  }): Promise<Result> {
+    while (true) {
+      const outcome = await this.#writerLease.append({
+        append: async ({ writer }) => {
+          const existing = this.#pendingAppendBatch;
+          if (existing !== undefined && !existing.isBoundTo({ writer })) {
+            if (existing.hasRecords()) {
+              throw new Error("metadata append batch writer changed while records were pending");
+            }
+            existing.discard();
+            this.#pendingAppendBatch = undefined;
+          }
+          const batch = this.#pendingAppendBatch ?? new AuthenticatedMetadataAppendBatch({
+            mutationCache: this.#metadataRecordCache,
+            sharedCache: this.#sharedMetadataRecordCache,
+            writer,
+          });
+          this.#pendingAppendBatch = batch;
+          try {
+            return Object.freeze({
+              type: "result" as const,
+              value: await append({ writer: batch.appendTarget() }),
+            });
+          } catch (cause: unknown) {
+            if (cause instanceof AuthenticatedMetadataAppendBatchFlushRequiredError) {
+              return Object.freeze({ type: "flush_required" as const });
+            }
+            throw cause;
+          }
+        },
+      });
+      switch (outcome.type) {
+      case "result": return outcome.value;
+      case "flush_required":
+        await this.#flushPendingAppendBatch();
+        break;
+      default: return outcome satisfies never;
+      }
+    }
+  }
+
   async #appendMetadataRecordWithRollover<Result>({ append }: {
     append: ({ writer }: { writer: AuthenticatedSegmentWriter }) => Promise<Result>;
   }): Promise<Result> {
+    await this.#flushPendingAppendBatch();
     return await this.#writerLease.append({ append });
+  }
+
+  async flushPendingMetadataRecords(): Promise<void> {
+    this.#requireActive({ operation: "flush provisional metadata Records" });
+    this.#operationInProgress = true;
+    try {
+      await this.#flushPendingAppendBatch();
+    } finally {
+      this.#operationInProgress = false;
+    }
   }
 
   async readFileExtentPage({ isRoot, reference }: {
@@ -530,11 +626,11 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#requireActive({ operation: "write a File Extent page" });
     this.#operationInProgress = true;
     try {
-      return await this.#appendMetadataRecordWithRollover({
+      return await this.#appendMetadataPageWithBatch({
         append: async ({ writer }) => await appendAuthenticatedFileExtentPage({
           isRoot,
           page,
-          sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
+          sharedMetadataRecordCache: undefined,
           writer,
         }),
       });
@@ -573,11 +669,11 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#requireActive({ operation: "write an Inode Table page" });
     this.#operationInProgress = true;
     try {
-      return await this.#appendMetadataRecordWithRollover({
+      return await this.#appendMetadataPageWithBatch({
         append: async ({ writer }) => await appendAuthenticatedInodeTablePage({
           isRoot,
           page,
-          sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
+          sharedMetadataRecordCache: undefined,
           writer,
         }),
       });
@@ -616,11 +712,11 @@ export class AuthenticatedMetadataMutationAuthority {
     this.#requireActive({ operation: "write a Directory page" });
     this.#operationInProgress = true;
     try {
-      return await this.#appendMetadataRecordWithRollover({
+      return await this.#appendMetadataPageWithBatch({
         append: async ({ writer }) => await appendAuthenticatedDirectoryPage({
           isRoot,
           page,
-          sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
+          sharedMetadataRecordCache: undefined,
           writer,
         }),
       });
@@ -802,6 +898,9 @@ export class AuthenticatedMetadataMutationAuthority {
     }
     if (this.#operationInProgress) throw new Error("mutation authority operation already in progress");
     if (this.#workingAcceptancePrepared) return;
+    if (this.#pendingAppendBatch?.hasRecords() === true) {
+      throw new Error("cannot prepare working acceptance before provisional metadata Records are flushed");
+    }
 
     // WHY: a staged successor may become background-publishable as soon as
     // runtime acceptance closes the mutation admission. Release the shared
@@ -858,6 +957,7 @@ export class AuthenticatedMetadataMutationAuthority {
     switch (this.#state) {
     case "active":
     case "candidate_prepared":
+      this.#discardPendingAppendBatch();
       this.#releaseWriterLease();
       this.#state = "closed";
       this.#closeMutationDiagnostics({ outcome: "abandoned" });

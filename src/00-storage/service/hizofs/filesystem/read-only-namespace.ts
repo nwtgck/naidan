@@ -11,10 +11,12 @@ import {
   type InodeBranchPage,
   type InodeLeafEntry,
   type InodeLeafPage,
+  createInodeNumber,
   type InodeNumber,
   type InodeRevision,
   type SymlinkInodeEntry,
   type TimestampMilliseconds,
+  UINT64_MAXIMUM,
 } from "@/00-storage/service/hizofs/00-format";
 import {
   ImmutableBTreeReader,
@@ -101,7 +103,7 @@ export type ReadOnlyNamespace = Readonly<{
 // exporting them through ReadOnlyNamespace would turn private persisted structure
 // into an application API. Keep the richer capability explicit and filesystem-owned.
 export type ReadOnlyNamespaceResolver = ReadOnlyNamespace & Readonly<{
-  knownInodeNumbers: () => Promise<readonly InodeNumber[]>;
+  maximumKnownInodeNumber: () => Promise<InodeNumber | undefined>;
   listDirectoryEntries: ({ inode }: { inode: DirectoryInodeEntry }) => Promise<readonly DirectoryLeafEntry[]>;
   listDirectoryEntriesAfterBounded: ({ afterName, inode, maximumEntries }: {
     afterName: string | undefined;
@@ -480,13 +482,15 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
   };
 
   return {
-    knownInodeNumbers: async () => {
+    maximumKnownInodeNumber: async () => {
+      // Allocator regression detection needs only the highest persisted identity.
+      // Keep the full immutable-tree validation proof, but avoid materializing every
+      // inode on every create/reflink as the table grows.
       await validateInodeTable();
-      const inodeNumbers: InodeNumber[] = [];
-      for await (const entry of inodeReader.entries({ rootReference: inodeTableRootHomeRef })) {
-        inodeNumbers.push(entry.inodeNumber);
-      }
-      return inodeNumbers;
+      return (await inodeReader.seekFloor({
+        key: createInodeNumber({ value: UINT64_MAXIMUM }),
+        rootReference: inodeTableRootHomeRef,
+      }))?.inodeNumber;
     },
     list: async ({ pathComponents }) => {
       const inode = requireDirectory({
@@ -538,7 +542,7 @@ export function createReadOnlyNamespace({ inodeTableRootHomeRef, rootDirectoryIn
   // Strip resolver-only capabilities exhaustively. A future capability addition must
   // fail typechecking here instead of leaking through the ordinary read namespace.
   const {
-    knownInodeNumbers: _knownInodeNumbers,
+    maximumKnownInodeNumber: _maximumKnownInodeNumber,
     list,
     listBounded,
     listDirectoryEntries: _listDirectoryEntries,

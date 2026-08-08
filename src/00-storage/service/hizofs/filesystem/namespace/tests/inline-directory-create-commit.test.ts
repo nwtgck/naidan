@@ -80,7 +80,7 @@ describe("prepareInlineDirectoryCreateCommit", () => {
     const { baseCommit, pageStore, parent } = fixture();
     const result = await prepareInlineDirectoryCreateCommit({
       baseCommit,
-      knownInodeNumbers: [parent.inodeNumber],
+      maximumKnownInodeNumber: parent.inodeNumber,
       mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
       operationTimestamp: createTimestampMilliseconds({ value: 1_700_000_000_000n }),
       pageStore,

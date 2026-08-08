@@ -60,11 +60,9 @@ function plan({ existingEntry = null, replace = true }: {
 } = {}) {
   const key = coordinationKey();
   return prepareWholeFileReflinkPlan({
-    knownInodeNumbers: [
-      createInodeNumber({ value: 1n }),
-      createInodeNumber({ value: 4n }),
-      ...(existingEntry?.targetType === "inode" ? [existingEntry.inodeNumber] : []),
-    ],
+    maximumKnownInodeNumber: existingEntry?.targetType === "inode" && existingEntry.inodeNumber > 4n
+      ? existingEntry.inodeNumber
+      : createInodeNumber({ value: 4n }),
     nextInodeNumber: createInodeNumber({ value: 8n }),
     operationTimestamp: createTimestampMilliseconds({ value: 100n }),
     source: {

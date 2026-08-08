@@ -78,6 +78,12 @@ export type AppendedRecord =
     type: "physical_only";
   }>;
 
+export type AuthenticatedSegmentAppendTarget = Readonly<{
+  segmentClass: SegmentClass;
+  append({ records }: { records: readonly EncodedHizoFSRecord[] }): Promise<readonly AppendedRecord[]>;
+  encodeRecordPayload({ encode }: { encode: () => Uint8Array }): Uint8Array;
+}>;
+
 export type SegmentWriterState = "abandoned" | "active" | "sealed";
 
 export class AuthenticatedSegmentCapacityError extends RangeError {
@@ -315,8 +321,8 @@ export class AuthenticatedSegmentWriter {
         path,
       })) continue;
       await readAuthenticatedSegmentDescriptor({ backend, diagnostics, fileSystemId, physicalSegmentId: segmentId, rootKey, segmentClass });
-      diagnostics?.recordSegmentWriterEvent?.({ event: "descriptor_validated", segmentClass });
-      diagnostics?.recordSegmentWriterEvent?.({ event: "created", segmentClass });
+      diagnostics?.recordSegmentWriterEvent?.({ observation: { event: "descriptor_validated", segmentClass } });
+      diagnostics?.recordSegmentWriterEvent?.({ observation: { event: "created", segmentClass } });
       return new AuthenticatedSegmentWriter({ backend, diagnostics, fileSystemId, path, randomSource, rootKey, segmentClass, segmentId });
     }
     throw new Error("Segment ID creation exhausted the collision retry bound");
@@ -346,6 +352,73 @@ export class AuthenticatedSegmentWriter {
     });
   }
 
+  /**
+   * Predicts the exact immutable references a batch would receive without
+   * mutating writer state or generating cryptographic material. This exists so
+   * a mutation-local batch can encode parent records from child references and
+   * then persist the dependency-ordered batch with one canonical append. The
+   * caller must hold the writer lease until the matching append completes.
+   */
+  public previewAppend({ records }: { records: readonly EncodedHizoFSRecord[] }): readonly AppendedRecord[] {
+    requireActiveWriter({ operation: "append", state: this.#state });
+    if (this.#operationInProgress) throw new Error("segment writer operation already in progress");
+    if (records.length === 0) throw new RangeError("record append batch must not be empty");
+    if (this.#frameCount + records.length > frameMaximumCount({ segmentClass: this.#segmentClass })) {
+      throw new AuthenticatedSegmentCapacityError({
+        capacity: "frame_count",
+        message: "record append batch exceeds the segment frame-count bound",
+      });
+    }
+
+    let nextOffset = this.#nextOffset;
+    const results: AppendedRecord[] = [];
+    for (const record of records) {
+      if (segmentClassForRecordKind({ recordKind: record.recordKind }) !== this.#segmentClass) {
+        throw new TypeError("record kind does not belong to the active segment class");
+      }
+      if (record.plaintext.byteLength > plaintextMaximum({ recordKind: record.recordKind })) {
+        throw new RangeError("record plaintext exceeds its V1 bound");
+      }
+      const physicalOnly = record.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page;
+      const header = createRecordFrameHeader({
+        flags: physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0,
+        homeOffset: createUInt64({ value: nextOffset }),
+        homeSegmentId: this.#segmentId,
+        nonce: new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.crypto.nonceBytes),
+        plaintextLength: record.plaintext.byteLength,
+        recordKind: record.recordKind,
+      });
+      const end = nextOffset + BigInt(header.frameLength);
+      const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
+      if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.#segmentClass }))) {
+        throw new AuthenticatedSegmentCapacityError({
+          capacity: "record_area",
+          message: "record append batch exceeds the segment record-area bound",
+        });
+      }
+      const physicalReference = createPhysicalRecordReference({ fields: {
+        byteOffset: header.homeOffset,
+        frameLength: header.frameLength,
+        recordKind: header.recordKind,
+        segmentId: this.#segmentId,
+      } });
+      results.push(physicalOnly
+        ? { physicalReference, type: "physical_only" }
+        : {
+          homeReference: createHomeRecordReference({ fields: {
+            byteOffset: header.homeOffset,
+            frameLength: header.frameLength,
+            recordKind: header.recordKind,
+            segmentId: this.#segmentId,
+          } }),
+          physicalReference,
+          type: "home",
+        });
+      nextOffset = end;
+    }
+    return results;
+  }
+
   public abandon(): void {
     switch (this.#state) {
     case "sealed":
@@ -364,10 +437,10 @@ export class AuthenticatedSegmentWriter {
     requireActiveWriter({ operation: "append", state: this.#state });
     if (this.#operationInProgress) throw new Error("segment writer operation already in progress");
     this.#operationInProgress = true;
-    this.#diagnostics?.recordSegmentWriterEvent?.({
+    this.#diagnostics?.recordSegmentWriterEvent?.({ observation: {
       event: "append_started",
       segmentClass: this.#segmentClass,
-    });
+    } });
     try {
       if (records.length === 0) throw new RangeError("record append batch must not be empty");
       if (this.#frameCount + records.length > frameMaximumCount({ segmentClass: this.#segmentClass })) {
@@ -473,17 +546,17 @@ export class AuthenticatedSegmentWriter {
         state: this.#state,
       });
       if (observedSize !== this.#nextOffset) {
-        this.#diagnostics?.recordSegmentWriterEvent?.({
+        this.#diagnostics?.recordSegmentWriterEvent?.({ observation: {
           event: "trusted_tail_mismatch",
           segmentClass: this.#segmentClass,
-        });
+        } });
         this.#state = "abandoned";
         throw authenticatedStoreError({ code: "control_plane_corrupt", message: "active Segment trusted append tail changed" });
       }
-      this.#diagnostics?.recordSegmentWriterEvent?.({
+      this.#diagnostics?.recordSegmentWriterEvent?.({ observation: {
         event: "trusted_tail_match",
         segmentClass: this.#segmentClass,
-      });
+      } });
       const file = await this.#backend.openFileForUpdate({ path: this.#path });
       await runAndCloseAuthenticatedFile({
         backend: this.#backend,
@@ -514,10 +587,12 @@ export class AuthenticatedSegmentWriter {
       if (!bytesEqual({ left: readBack, right: batch })) {
         throw authenticatedStoreError({ code: "control_plane_corrupt", message: "durable record append read-back differs" });
       }
-      this.#diagnostics?.recordSegmentWriterEvent?.({
+      this.#diagnostics?.recordSegmentWriterEvent?.({ observation: {
         event: "append_read_back_verified",
+        frameBytes: batch.byteLength,
+        recordCount: frames.length,
         segmentClass: this.#segmentClass,
-      });
+      } });
       this.#nextOffset = nextOffset;
       this.#frameCount += frames.length;
       this.#persistedFrameBytes += batch.byteLength;

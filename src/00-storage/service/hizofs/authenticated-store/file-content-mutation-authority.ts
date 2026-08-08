@@ -242,6 +242,16 @@ export class AuthenticatedFileContentMutationAuthority {
     }
   }
 
+  async flushPendingMetadataRecords(): Promise<void> {
+    this.#requireActive({ operation: "flush provisional metadata Records" });
+    this.#operationInProgress = true;
+    try {
+      await this.#metadata.flushPendingMetadataRecords();
+    } finally {
+      this.#operationInProgress = false;
+    }
+  }
+
   prepareWorkingAcceptanceWithoutCandidate(): void {
     switch (this.#state) {
     case "active": break;

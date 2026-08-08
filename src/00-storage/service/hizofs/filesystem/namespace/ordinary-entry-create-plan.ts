@@ -101,13 +101,13 @@ function createInode({
 }
 
 export function prepareOrdinaryEntryCreatePlan({
-  knownInodeNumbers,
+  maximumKnownInodeNumber,
   nextInodeNumber,
   operationTimestamp,
   request,
   target,
 }: Readonly<{
-  knownInodeNumbers: readonly InodeNumber[];
+  maximumKnownInodeNumber: InodeNumber | undefined;
   nextInodeNumber: InodeNumber;
   operationTimestamp: TimestampMilliseconds;
   request: OrdinaryEntryCreateRequest;
@@ -128,7 +128,7 @@ export function prepareOrdinaryEntryCreatePlan({
   }
   if (
     nextInodeNumber <= target.parentDirectoryInodeNumber
-    || knownInodeNumbers.some(inodeNumber => nextInodeNumber <= inodeNumber)
+    || (maximumKnownInodeNumber !== undefined && nextInodeNumber <= maximumKnownInodeNumber)
   ) {
     throw new OrdinaryEntryCreatePlanError({
       code: "allocator_regression",

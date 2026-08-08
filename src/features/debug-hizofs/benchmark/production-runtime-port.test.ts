@@ -472,11 +472,16 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(runtimeDiagnostics.segmentWriters.metadata).toMatchObject({
       appendOperations: 2,
       appendReadBackVerifications: 2,
+      appendedFrameBytes: expect.any(Number),
+      appendedRecords: expect.any(Number),
+      multiRecordAppendOperations: expect.any(Number),
       created: 1,
       descriptorValidations: 1,
       trustedTailMatches: 2,
       trustedTailMismatches: 0,
     });
+    expect(runtimeDiagnostics.segmentWriters.metadata.appendedFrameBytes).toBeGreaterThan(0);
+    expect(runtimeDiagnostics.segmentWriters.metadata.appendedRecords).toBeGreaterThan(0);
     expect(runtimeDiagnostics.phases.physical_read_exact.operationCount).toBeGreaterThan(0);
     expect(runtimeDiagnostics.phases.physical_list.operationCount).toBe(0);
     expect(Object.values(runtimeDiagnostics.records).some(counter => counter.readOperations > 0)).toBe(false);
@@ -489,7 +494,9 @@ describe('production HizoFS benchmark runtime port', () => {
       hits: 0,
       misses: 1,
     });
-    expect(runtimeDiagnostics.caches.mutationMetadata.maximumEntries).toBe(1);
+    // Two dependency-ordered metadata pages may coexist only inside the bounded
+    // mutation-local batch before their single authenticated append succeeds.
+    expect(runtimeDiagnostics.caches.mutationMetadata.maximumEntries).toBe(2);
     expect(Object.values(runtimeDiagnostics.records).reduce((sum, counter) => sum + counter.cacheHits, 0))
       .toBe(runtimeDiagnostics.caches.metadata.hits + runtimeDiagnostics.caches.mutationMetadata.hits);
     expect(Object.values(runtimeDiagnostics.records).reduce((sum, counter) => sum + counter.cacheMisses, 0))
@@ -536,6 +543,12 @@ describe('production HizoFS benchmark runtime port', () => {
       createRuntime.records.directory_page.plaintextBytesWritten
       + createRuntime.records.inode_table_page.plaintextBytesWritten,
     ).toBeLessThan(650_000);
+    // This workload repeatedly rewrites dependent metadata pages. The batching
+    // regression guard proves that at least some of those Records share one
+    // authenticated physical append/read-back cycle.
+    expect(createRuntime.segmentWriters.metadata.appendedRecords)
+      .toBeGreaterThan(createRuntime.segmentWriters.metadata.appendOperations);
+    expect(createRuntime.segmentWriters.metadata.multiRecordAppendOperations).toBeGreaterThan(0);
     for (const caseId of ['small_files_write_existing', 'small_files_read']) {
       const runtime = measuredRuntime(caseId);
       expect(runtime.indexes.validate_structure).toMatchObject({

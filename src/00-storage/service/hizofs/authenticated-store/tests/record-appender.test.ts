@@ -251,6 +251,29 @@ describe("authenticated record appender", () => {
     value.rootKey.destroy();
   });
 
+  it("previews exact references without mutating writer state", async () => {
+    const value = fixture();
+    const writer = await createAuthenticatedSegmentWriter({ ...value, segmentClass: "metadata" });
+    const records = [
+      encodedHizoFSRecord({
+        plaintext: new Uint8Array([1, 2, 3]),
+        recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      }),
+      encodedHizoFSRecord({
+        plaintext: new Uint8Array([4, 5]),
+        recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+      }),
+    ];
+
+    const preview = writer.previewAppend({ records });
+
+    expect(writer.persistedFrameBytes()).toBe(0);
+    const actual = await writer.append({ records });
+    expect(actual).toEqual(preview);
+    expect(writer.persistedFrameBytes()).toBeGreaterThan(0);
+    value.rootKey.destroy();
+  });
+
   it("creates a fresh writer, durably appends a bounded batch, reads it, and seals it", async () => {
     const value = fixture();
     const writer = await createAuthenticatedSegmentWriter({ ...value, segmentClass: "metadata" });

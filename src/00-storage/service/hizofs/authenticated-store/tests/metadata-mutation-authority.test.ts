@@ -118,7 +118,9 @@ class AuthenticatedStoreDiagnosticsProbe implements AuthenticatedStoreDiagnostic
     }
   }
 
-  recordSegmentWriterEvent({ event, segmentClass }: AuthenticatedSegmentWriterDiagnosticsObservation): void {
+  recordSegmentWriterEvent({ observation: { event, segmentClass } }: {
+    observation: AuthenticatedSegmentWriterDiagnosticsObservation;
+  }): void {
     if (segmentClass !== "metadata") return;
     switch (event) {
     case "append_started": this.#metadataWriter.appendOperations += 1; break;
@@ -435,11 +437,14 @@ describe("authenticated metadata mutation authority", () => {
     expect(authority.state()).toBe("closed");
     expect(published.commitHomeRef.segmentId).toEqual(newRoot.segmentId);
     expect(published.superblock.logicalState.activeCommitSequence).toBe(2n);
+    // The two dependency-ordered metadata pages share one durable append; the
+    // Commit remains a separate append because publication consumes its Home
+    // Record Reference only after page materialization succeeds.
     expect(diagnostics.snapshot().segmentWriters.metadata).toMatchObject({
-      appendOperations: 3,
+      appendOperations: 2,
       created: 1,
       rollovers: 0,
-      trustedTailMatches: 3,
+      trustedTailMatches: 2,
       trustedTailMismatches: 0,
     });
     expect(diagnostics.snapshot().mutation).toMatchObject({

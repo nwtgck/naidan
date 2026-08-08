@@ -80,6 +80,7 @@ function rootMetadataFromCheckpoint({ checkpoint }: {
  * timestamps, so no target can synthesize or silently discard root metadata.
  */
 export class StreamingNamespaceImportTargetSession {
+  readonly #beforeSealedCandidateSave: (() => Promise<void>) | undefined;
   readonly #createImport: ({ rootMetadata }: {
     rootMetadata: TransitionNamespaceMetadata;
   }) => StreamingNamespaceImportActor;
@@ -90,8 +91,9 @@ export class StreamingNamespaceImportTargetSession {
   #sealed: SealedStreamingNamespaceImport | undefined;
   #state: StreamingNamespaceImportTargetSessionState;
 
-  private constructor({ actor, createImport, operationIdentity, rootMetadata, runtimeStatePort, sealed }: {
+  private constructor({ actor, beforeSealedCandidateSave, createImport, operationIdentity, rootMetadata, runtimeStatePort, sealed }: {
     actor: StreamingNamespaceImportActor | undefined;
+    beforeSealedCandidateSave: (() => Promise<void>) | undefined;
     createImport: ({ rootMetadata }: {
       rootMetadata: TransitionNamespaceMetadata;
     }) => StreamingNamespaceImportActor;
@@ -101,6 +103,7 @@ export class StreamingNamespaceImportTargetSession {
     sealed: SealedStreamingNamespaceImport | undefined;
   }) {
     this.#actor = actor;
+    this.#beforeSealedCandidateSave = beforeSealedCandidateSave;
     this.#createImport = createImport;
     this.#operationIdentity = operationIdentity;
     this.#rootMetadata = rootMetadata === undefined ? undefined : cloneMetadata({ metadata: rootMetadata });
@@ -109,7 +112,8 @@ export class StreamingNamespaceImportTargetSession {
     this.#state = sealed !== undefined ? "sealed" : actor === undefined ? "awaiting_root" : "active";
   }
 
-  static async open({ createImport, operationIdentity, restoreImport, runtimeStatePort }: {
+  static async open({ beforeSealedCandidateSave, createImport, operationIdentity, restoreImport, runtimeStatePort }: {
+    beforeSealedCandidateSave?: () => Promise<void>;
     createImport: ({ rootMetadata }: {
       rootMetadata: TransitionNamespaceMetadata;
     }) => StreamingNamespaceImportActor;
@@ -124,6 +128,7 @@ export class StreamingNamespaceImportTargetSession {
     case undefined:
       return new StreamingNamespaceImportTargetSession({
         actor: undefined,
+        beforeSealedCandidateSave,
         createImport,
         operationIdentity,
         rootMetadata: undefined,
@@ -133,6 +138,7 @@ export class StreamingNamespaceImportTargetSession {
     case "active":
       return new StreamingNamespaceImportTargetSession({
         actor: restoreImport({ checkpoint: candidate.checkpoint }),
+        beforeSealedCandidateSave,
         createImport,
         operationIdentity,
         rootMetadata: rootMetadataFromCheckpoint({ checkpoint: candidate.checkpoint }),
@@ -143,6 +149,7 @@ export class StreamingNamespaceImportTargetSession {
       validateSealedStreamingNamespaceImport({ sealed: candidate.sealed });
       return new StreamingNamespaceImportTargetSession({
         actor: undefined,
+        beforeSealedCandidateSave,
         createImport,
         operationIdentity,
         rootMetadata: undefined,
@@ -238,6 +245,10 @@ export class StreamingNamespaceImportTargetSession {
       case "sealing": break;
       default: return this.#state satisfies never;
       }
+      // The import actor may return a sealed logical root while its backing
+      // implementation still has bounded provisional writes. Give that owner
+      // one final durability gate before the runtime candidate can be persisted.
+      await this.#beforeSealedCandidateSave?.();
       await this.#saveSealedCandidate();
       this.#state = "sealed";
     },

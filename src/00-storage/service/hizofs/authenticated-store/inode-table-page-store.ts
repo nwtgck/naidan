@@ -20,7 +20,7 @@ import { readAuthenticatedNamespaceHomeRecord } from "./namespace-record-source"
 import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import {
   encodedHizoFSRecord,
-  type AuthenticatedSegmentWriter,
+  type AuthenticatedSegmentAppendTarget,
 } from "./record-appender";
 
 export type AuthenticatedInodeTablePage =
@@ -97,7 +97,7 @@ export async function appendAuthenticatedInodeTablePage({
   isRoot: boolean;
   page: AuthenticatedInodeTablePage;
   sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
-  writer: AuthenticatedSegmentWriter;
+  writer: AuthenticatedSegmentAppendTarget;
 }): Promise<HomeRecordReference> {
   switch (writer.segmentClass) {
   case "metadata": break;

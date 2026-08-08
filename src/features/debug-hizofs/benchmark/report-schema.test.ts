@@ -54,6 +54,9 @@ function createZeroRuntimeDiagnostics(): HizoFSBenchmarkDiagnostics['runtime'] {
   const segmentWriter = () => ({
     appendOperations: 0,
     appendReadBackVerifications: 0,
+    appendedFrameBytes: 0,
+    appendedRecords: 0,
+    multiRecordAppendOperations: 0,
     created: 0,
     descriptorValidations: 0,
     rollovers: 0,
@@ -196,8 +199,8 @@ function createBackingStoreDiagnostics(): HizoFSBenchmarkDiagnostics['backingSto
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 31,
-    benchmarkImplementationVersion: 44,
+    schemaVersion: 32,
+    benchmarkImplementationVersion: 45,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',

@@ -28,7 +28,7 @@ export async function prepareTreeBackedDirectoryCreateCommit({
   baseCommit,
   directoryPageStore,
   inodeTablePageStore,
-  knownInodeNumbers,
+  maximumKnownInodeNumber,
   mutationId,
   operationTimestamp,
   parent,
@@ -38,7 +38,7 @@ export async function prepareTreeBackedDirectoryCreateCommit({
   baseCommit: FileSystemCommitPayload;
   directoryPageStore: DirectoryPageTreePageStore;
   inodeTablePageStore: RootInodeTablePageStore;
-  knownInodeNumbers: readonly InodeNumber[];
+  maximumKnownInodeNumber: InodeNumber | undefined;
   mutationId: MutationId;
   operationTimestamp: TimestampMilliseconds;
   parent: DirectoryInodeEntry;
@@ -46,7 +46,7 @@ export async function prepareTreeBackedDirectoryCreateCommit({
   target: OrdinaryEntryCreateTarget;
 }>): Promise<PreparedTreeBackedDirectoryCreateCommit> {
   const plan = prepareOrdinaryEntryCreatePlan({
-    knownInodeNumbers,
+    maximumKnownInodeNumber,
     nextInodeNumber: baseCommit.nextInodeNumber,
     operationTimestamp,
     request,

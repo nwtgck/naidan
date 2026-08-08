@@ -231,12 +231,17 @@ describe("HizoFS runtime diagnostics", () => {
     diagnostics.recordPhysicalAccess({ identity: "segment-a:0:64", operation: "read_exact" });
     diagnostics.recordPhysicalAccess({ identity: "segment-a:64:64", operation: "read_exact" });
     diagnostics.recordPublicationScopeEvent({ event: "end" });
-    diagnostics.recordSegmentWriterEvent({ event: "descriptor_validated", segmentClass: "metadata" });
-    diagnostics.recordSegmentWriterEvent({ event: "created", segmentClass: "metadata" });
-    diagnostics.recordSegmentWriterEvent({ event: "append_started", segmentClass: "metadata" });
-    diagnostics.recordSegmentWriterEvent({ event: "append_read_back_verified", segmentClass: "metadata" });
-    diagnostics.recordSegmentWriterEvent({ event: "trusted_tail_match", segmentClass: "metadata" });
-    diagnostics.recordSegmentWriterEvent({ event: "rollover", segmentClass: "metadata" });
+    diagnostics.recordSegmentWriterEvent({ observation: { event: "descriptor_validated", segmentClass: "metadata" } });
+    diagnostics.recordSegmentWriterEvent({ observation: { event: "created", segmentClass: "metadata" } });
+    diagnostics.recordSegmentWriterEvent({ observation: { event: "append_started", segmentClass: "metadata" } });
+    diagnostics.recordSegmentWriterEvent({ observation: {
+      event: "append_read_back_verified",
+      frameBytes: 512,
+      recordCount: 3,
+      segmentClass: "metadata",
+    } });
+    diagnostics.recordSegmentWriterEvent({ observation: { event: "trusted_tail_match", segmentClass: "metadata" } });
+    diagnostics.recordSegmentWriterEvent({ observation: { event: "rollover", segmentClass: "metadata" } });
 
     const snapshot = diagnostics.snapshot();
     expect(snapshot.publication).toEqual({
@@ -262,6 +267,9 @@ describe("HizoFS runtime diagnostics", () => {
     expect(snapshot.segmentWriters.metadata).toEqual({
       appendOperations: 1,
       appendReadBackVerifications: 1,
+      appendedFrameBytes: 512,
+      appendedRecords: 3,
+      multiRecordAppendOperations: 1,
       created: 1,
       descriptorValidations: 1,
       rollovers: 1,

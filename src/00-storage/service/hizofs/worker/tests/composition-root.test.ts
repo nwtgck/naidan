@@ -479,7 +479,7 @@ function ordinaryCreateRequest({
     baseCommit: baseCommitRoot.commit,
     baseSuperblock,
     indexDiagnostics: undefined,
-    knownInodeNumbers: [baseCommitRoot.rootDirectoryInode.inodeNumber],
+    maximumKnownInodeNumber: baseCommitRoot.rootDirectoryInode.inodeNumber,
     mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(23) }),
     onCandidatePrepared: undefined,
     operationTimestamp: createTimestampMilliseconds({ value: 1_700_000_000_000n }),

@@ -104,7 +104,10 @@ function fixture(): Readonly<{
     truncated: false,
   }));
   const resolver: ReadOnlyNamespaceResolver = {
-    knownInodeNumbers: async () => [...byNumber.keys()],
+    maximumKnownInodeNumber: async () => {
+      const numbers = [...byNumber.keys()];
+      return numbers.length === 0 ? undefined : createInodeNumber({ value: numbers.reduce((left, right) => left > right ? left : right) });
+    },
     list: async () => [fileEntry, symlinkEntry],
     listBounded: async () => ({ entries: [fileEntry, symlinkEntry], truncated: false }),
     listDirectoryEntries: async () => [fileEntry, symlinkEntry],

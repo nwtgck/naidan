@@ -49,7 +49,7 @@ export async function prepareOrdinaryEntryCreateCommit({
   baseCommit,
   directoryPageStore,
   inodeTablePageStore,
-  knownInodeNumbers,
+  maximumKnownInodeNumber,
   mutationId,
   operationTimestamp,
   parent,
@@ -59,7 +59,7 @@ export async function prepareOrdinaryEntryCreateCommit({
   baseCommit: FileSystemCommitPayload;
   directoryPageStore: DirectoryPageTreePageStore;
   inodeTablePageStore: RootInodeTablePageStore;
-  knownInodeNumbers: readonly InodeNumber[];
+  maximumKnownInodeNumber: InodeNumber | undefined;
   mutationId: MutationId;
   operationTimestamp: TimestampMilliseconds;
   parent: DirectoryInodeEntry;
@@ -67,7 +67,7 @@ export async function prepareOrdinaryEntryCreateCommit({
   target: OrdinaryEntryCreateTarget;
 }>): Promise<PreparedOrdinaryEntryCreateCommit> {
   const plan = prepareOrdinaryEntryCreatePlan({
-    knownInodeNumbers,
+    maximumKnownInodeNumber,
     nextInodeNumber: baseCommit.nextInodeNumber,
     operationTimestamp,
     request,

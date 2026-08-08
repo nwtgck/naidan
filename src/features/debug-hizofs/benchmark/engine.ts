@@ -45,7 +45,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 44 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 45 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -377,7 +377,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 31,
+    schemaVersion: 32,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -2228,6 +2228,12 @@ function subtractHizoFSRuntimeSegmentWriterDiagnostics({
   return {
     appendOperations: Math.max(after.appendOperations - before.appendOperations, 0),
     appendReadBackVerifications: Math.max(after.appendReadBackVerifications - before.appendReadBackVerifications, 0),
+    appendedFrameBytes: Math.max(after.appendedFrameBytes - before.appendedFrameBytes, 0),
+    appendedRecords: Math.max(after.appendedRecords - before.appendedRecords, 0),
+    multiRecordAppendOperations: Math.max(
+      after.multiRecordAppendOperations - before.multiRecordAppendOperations,
+      0,
+    ),
     created: Math.max(after.created - before.created, 0),
     descriptorValidations: Math.max(after.descriptorValidations - before.descriptorValidations, 0),
     rollovers: Math.max(after.rollovers - before.rollovers, 0),
@@ -2837,6 +2843,12 @@ function aggregateHizoFSRuntimeSegmentWriterDiagnostics({
   return {
     appendOperations: diagnostics.reduce((sum, value) => sum + value.appendOperations, 0),
     appendReadBackVerifications: diagnostics.reduce((sum, value) => sum + value.appendReadBackVerifications, 0),
+    appendedFrameBytes: diagnostics.reduce((sum, value) => sum + value.appendedFrameBytes, 0),
+    appendedRecords: diagnostics.reduce((sum, value) => sum + value.appendedRecords, 0),
+    multiRecordAppendOperations: diagnostics.reduce(
+      (sum, value) => sum + value.multiRecordAppendOperations,
+      0,
+    ),
     created: diagnostics.reduce((sum, value) => sum + value.created, 0),
     descriptorValidations: diagnostics.reduce((sum, value) => sum + value.descriptorValidations, 0),
     rollovers: diagnostics.reduce((sum, value) => sum + value.rollovers, 0),
