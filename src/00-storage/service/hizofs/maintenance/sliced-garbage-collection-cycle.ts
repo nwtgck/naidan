@@ -119,16 +119,16 @@ function sweepYieldReason({ reason }: { reason: SweepYieldReason }): Maintenance
 }
 
 export class SlicedGarbageCollectionCycle {
-  #capturedSnapshot: MaintenanceRootSnapshot;
-  #compactionPlans: readonly CandidateSegmentPlanEntry[] = Object.freeze([]);
-  #diagnostics: MaintenanceDiagnostics;
-  #markCursor: GarbageCollectionMarkCursor;
-  #phase: "marking" | "sweeping" | "terminal" = "marking";
-  #policy: HizoFSMaintenancePolicy;
-  #retainedPlans: readonly CandidateSegmentPlanEntry[] = Object.freeze([]);
-  #sweep: SlicedSweepExecutor | undefined;
-  #terminal: SlicedGarbageCollectionCycleResult | undefined;
-  #validateAndPrepareSweep: ({ capturedSnapshot, plan }: {
+  private capturedSnapshot: MaintenanceRootSnapshot;
+  private compactionPlans: readonly CandidateSegmentPlanEntry[] = Object.freeze([]);
+  private diagnosticsValue: MaintenanceDiagnostics;
+  private markCursor: GarbageCollectionMarkCursor;
+  private phase: "marking" | "sweeping" | "terminal" = "marking";
+  private policy: HizoFSMaintenancePolicy;
+  private retainedPlans: readonly CandidateSegmentPlanEntry[] = Object.freeze([]);
+  private sweep: SlicedSweepExecutor | undefined;
+  private terminal: SlicedGarbageCollectionCycleResult | undefined;
+  private validateAndPrepareSweep: ({ capturedSnapshot, plan }: {
     capturedSnapshot: MaintenanceRootSnapshot;
     plan: readonly CandidateSegmentPlanEntry[];
   }) => Promise<ValidatedGarbageCollectionSweepAuthority>;
@@ -152,52 +152,52 @@ export class SlicedGarbageCollectionCycle {
       candidates: capturedSnapshot.candidateSegments,
       policy,
     });
-    this.#capturedSnapshot = capturedSnapshot;
-    this.#diagnostics = new MaintenanceDiagnostics({ maximumEvents: policy.maxDiagnosticEvents });
-    this.#markCursor = new GarbageCollectionMarkCursor({
+    this.capturedSnapshot = capturedSnapshot;
+    this.diagnosticsValue = new MaintenanceDiagnostics({ maximumEvents: policy.maxDiagnosticEvents });
+    this.markCursor = new GarbageCollectionMarkCursor({
       candidateBatch,
       policy,
       reader,
       roots: capturedSnapshot.roots,
     });
-    this.#policy = policy;
-    this.#validateAndPrepareSweep = validateAndPrepareSweep;
+    this.policy = policy;
+    this.validateAndPrepareSweep = validateAndPrepareSweep;
   }
 
   diagnostics(): ReturnType<MaintenanceDiagnostics["snapshot"]> {
-    return this.#diagnostics.snapshot();
+    return this.diagnosticsValue.snapshot();
   }
 
-  #recordYield({ reason }: { reason: MaintenanceYieldReason }): void {
-    this.#diagnostics.record({ event: { reason, type: "yielded" } });
+  private recordYield({ reason }: { reason: MaintenanceYieldReason }): void {
+    this.diagnosticsValue.record({ event: { reason, type: "yielded" } });
   }
 
-  #terminalSweepResult({ phase, removedSegmentIds, retainedSegmentIds }: {
+  private terminalSweepResult({ phase, removedSegmentIds, retainedSegmentIds }: {
     phase: "aborted_after_partial_sweep" | "completed";
     removedSegmentIds: readonly SegmentId[];
     retainedSegmentIds: readonly SegmentId[];
   }): SlicedGarbageCollectionCycleResult {
     const result = Object.freeze({
-      compactionSegmentIds: sortedPlanSegmentIds({ entries: this.#compactionPlans }),
+      compactionSegmentIds: sortedPlanSegmentIds({ entries: this.compactionPlans }),
       phase,
       removedSegmentIds: sortedDetachedSegmentIds({ values: removedSegmentIds }),
       retainedSegmentIds: sortedDetachedSegmentIds({ values: [
-        ...this.#retainedPlans.map(entry => entry.segmentId),
+        ...this.retainedPlans.map(entry => entry.segmentId),
         ...retainedSegmentIds,
       ] }),
     });
-    this.#diagnostics.record({ event: { removedSegments: result.removedSegmentIds.length, type: "sweep_progress" } });
+    this.diagnosticsValue.record({ event: { removedSegments: result.removedSegmentIds.length, type: "sweep_progress" } });
     switch (phase) {
     case "aborted_after_partial_sweep":
       break;
     case "completed":
-      this.#diagnostics.record({ event: { phase: "completed", type: "phase_started" } });
+      this.diagnosticsValue.record({ event: { phase: "completed", type: "phase_started" } });
       break;
     default:
       phase satisfies never;
     }
-    this.#phase = "terminal";
-    this.#terminal = result;
+    this.phase = "terminal";
+    this.terminal = result;
     return result;
   }
 
@@ -208,44 +208,44 @@ export class SlicedGarbageCollectionCycle {
     removeSegment: ({ segmentId }: { segmentId: SegmentId }) => Promise<void>;
     signal: AbortSignal | undefined;
   }): Promise<SlicedGarbageCollectionCycleResult> {
-    switch (this.#phase) {
+    switch (this.phase) {
     case "terminal": {
-      if (this.#terminal === undefined) {
+      if (this.terminal === undefined) {
         throw new SlicedGarbageCollectionCycleError({
           code: "invalid_validated_plan",
           message: "terminal garbage collection phase is missing its immutable result",
         });
       }
-      return this.#terminal;
+      return this.terminal;
     }
     case "marking": {
-      if (this.#diagnostics.snapshot().length === 0) {
-        this.#diagnostics.record({ event: { phase: "marking", type: "phase_started" } });
+      if (this.diagnosticsValue.snapshot().length === 0) {
+        this.diagnosticsValue.record({ event: { phase: "marking", type: "phase_started" } });
       }
-      const mark = await this.#markCursor.runSlice({ hasForegroundWaiter, now, signal });
+      const mark = await this.markCursor.runSlice({ hasForegroundWaiter, now, signal });
       switch (mark.phase) {
       case "aborted_without_deletion": {
         const terminal = Object.freeze({ phase: mark.phase, reason: mark.reason });
-        this.#phase = "terminal";
-        this.#terminal = terminal;
+        this.phase = "terminal";
+        this.terminal = terminal;
         return terminal;
       }
       case "marking":
-        this.#recordYield({ reason: markYieldReason({ reason: mark.reason }) });
+        this.recordYield({ reason: markYieldReason({ reason: mark.reason }) });
         return mark;
       case "batch_complete": {
-        this.#diagnostics.record({ event: { phase: "planning_sweep", type: "phase_started" } });
-        this.#compactionPlans = Object.freeze(mark.plan.filter(entry => entry.disposition === "compact"));
-        this.#retainedPlans = Object.freeze(mark.plan.filter(entry => entry.disposition === "retain"));
-        this.#diagnostics.record({ event: { phase: "validating", type: "phase_started" } });
-        const validation = await this.#validateAndPrepareSweep({
-          capturedSnapshot: this.#capturedSnapshot,
+        this.diagnosticsValue.record({ event: { phase: "planning_sweep", type: "phase_started" } });
+        this.compactionPlans = Object.freeze(mark.plan.filter(entry => entry.disposition === "compact"));
+        this.retainedPlans = Object.freeze(mark.plan.filter(entry => entry.disposition === "retain"));
+        this.diagnosticsValue.record({ event: { phase: "validating", type: "phase_started" } });
+        const validation = await this.validateAndPrepareSweep({
+          capturedSnapshot: this.capturedSnapshot,
           plan: mark.plan,
         });
         if (!validation.valid) {
           const terminal = Object.freeze({ phase: "aborted_without_deletion" as const, reason: validation.reason });
-          this.#phase = "terminal";
-          this.#terminal = terminal;
+          this.phase = "terminal";
+          this.terminal = terminal;
           return terminal;
         }
         const removals = mark.plan
@@ -254,9 +254,9 @@ export class SlicedGarbageCollectionCycle {
             acquireDeletionLease: async () => await validation.beginDeletion({ plan }),
             plan,
           }));
-        this.#sweep = new SlicedSweepExecutor({ policy: this.#policy, preparedRemovals: removals });
-        this.#phase = "sweeping";
-        this.#diagnostics.record({ event: { phase: "sweeping", type: "phase_started" } });
+        this.sweep = new SlicedSweepExecutor({ policy: this.policy, preparedRemovals: removals });
+        this.phase = "sweeping";
+        this.diagnosticsValue.record({ event: { phase: "sweeping", type: "phase_started" } });
         break;
       }
       default:
@@ -267,10 +267,10 @@ export class SlicedGarbageCollectionCycle {
     case "sweeping":
       break;
     default:
-      return this.#phase satisfies never;
+      return this.phase satisfies never;
     }
 
-    const sweepExecutor = this.#sweep;
+    const sweepExecutor = this.sweep;
     if (sweepExecutor === undefined) {
       throw new SlicedGarbageCollectionCycleError({
         code: "invalid_validated_plan",
@@ -286,11 +286,11 @@ export class SlicedGarbageCollectionCycle {
     });
     switch (sweep.phase) {
     case "sweeping":
-      this.#recordYield({ reason: sweepYieldReason({ reason: sweep.reason }) });
+      this.recordYield({ reason: sweepYieldReason({ reason: sweep.reason }) });
       return sweep;
     case "aborted_after_partial_sweep":
     case "completed":
-      return this.#terminalSweepResult({
+      return this.terminalSweepResult({
         phase: sweep.phase,
         removedSegmentIds: sweep.removedSegmentIds,
         retainedSegmentIds: sweep.retainedSegmentIds,

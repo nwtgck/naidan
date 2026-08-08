@@ -333,14 +333,14 @@ function entryName({ path }: { path: readonly string[] }): string {
  * publishes a File System Commit or Superblock.
  */
 export class StreamingNamespaceImport {
-  readonly #limits: StreamingNamespaceImportLimits;
-  readonly #port: StreamingNamespaceImportPort;
-  readonly #rootDirectoryInodeNumber: InodeNumber;
-  #activeFile: ActiveFile | undefined;
-  #directories: DirectoryFrame[];
-  #nextInodeNumber: InodeNumber;
-  #rootInodeTableRootHomeRef: HomeRecordReference;
-  #state: StreamingNamespaceImportState = "active";
+  private readonly limits: StreamingNamespaceImportLimits;
+  private readonly port: StreamingNamespaceImportPort;
+  private readonly rootDirectoryInodeNumber: InodeNumber;
+  private activeFile: ActiveFile | undefined;
+  private directories: DirectoryFrame[];
+  private nextInodeNumber: InodeNumber;
+  private rootInodeTableRootHomeRef: HomeRecordReference;
+  private stateValue: StreamingNamespaceImportState = "active";
 
   constructor({ limits, nextInodeNumber, port, rootDirectory, rootInodeTableRootHomeRef }: {
     limits: StreamingNamespaceImportLimits;
@@ -366,12 +366,12 @@ export class StreamingNamespaceImport {
         message: "streaming namespace allocator must begin after the root directory Inode Number",
       });
     }
-    this.#limits = limits;
-    this.#nextInodeNumber = nextInodeNumber;
-    this.#port = port;
-    this.#rootDirectoryInodeNumber = rootDirectory.inodeNumber;
-    this.#rootInodeTableRootHomeRef = rootInodeTableRootHomeRef;
-    this.#directories = [{
+    this.limits = limits;
+    this.nextInodeNumber = nextInodeNumber;
+    this.port = port;
+    this.rootDirectoryInodeNumber = rootDirectory.inodeNumber;
+    this.rootInodeTableRootHomeRef = rootInodeTableRootHomeRef;
+    this.directories = [{
       directory: new StreamingDirectoryImport({
         inodeNumber: rootDirectory.inodeNumber,
         inodeRevision: createInodeRevision({ value: 1n }),
@@ -401,7 +401,7 @@ export class StreamingNamespaceImport {
       },
       rootInodeTableRootHomeRef: checkpoint.rootInodeTableRootHomeRef,
     });
-    value.#directories = checkpoint.directories.map(frame => ({
+    value.directories = checkpoint.directories.map(frame => ({
       directory: StreamingDirectoryImport.restore({
         checkpoint: frame.directory,
         limits: limits.directory,
@@ -409,7 +409,7 @@ export class StreamingNamespaceImport {
       }),
       path: clonePath({ path: frame.path }),
     }));
-    value.#activeFile = checkpoint.activeFile === undefined
+    value.activeFile = checkpoint.activeFile === undefined
       ? undefined
       : {
         file: StreamingFileImport.restore({
@@ -420,21 +420,21 @@ export class StreamingNamespaceImport {
         inodeNumber: createInodeNumber({ value: checkpoint.activeFile.inodeNumber }),
         path: clonePath({ path: checkpoint.activeFile.path }),
       };
-    value.#state = "active";
-    value.#validateRestoredStack();
+    value.stateValue = "active";
+    value.validateRestoredStack();
     return value;
   }
 
-  #validateRestoredStack(): void {
-    if (this.#directories.length === 0 || this.#directories[0]?.path.length !== 0) {
+  private validateRestoredStack(): void {
+    if (this.directories.length === 0 || this.directories[0]?.path.length !== 0) {
       throw new StreamingNamespaceImportError({
         code: "invalid_path",
         message: "streaming namespace checkpoint lost its root directory frame",
       });
     }
-    for (let index = 1; index < this.#directories.length; index += 1) {
-      const parent = this.#directories[index - 1]?.path;
-      const child = this.#directories[index]?.path;
+    for (let index = 1; index < this.directories.length; index += 1) {
+      const parent = this.directories[index - 1]?.path;
+      const child = this.directories[index]?.path;
       if (parent === undefined || child === undefined
         || child.length !== parent.length + 1
         || !parent.every((component, componentIndex) => component === child[componentIndex])) {
@@ -444,8 +444,8 @@ export class StreamingNamespaceImport {
         });
       }
     }
-    const activeFileParent = this.#activeFile?.path.slice(0, -1);
-    const currentDirectory = this.#directories.at(-1)?.path;
+    const activeFileParent = this.activeFile?.path.slice(0, -1);
+    const currentDirectory = this.directories.at(-1)?.path;
     if (activeFileParent !== undefined
       && (currentDirectory === undefined || !pathsEqual({ left: activeFileParent, right: currentDirectory }))) {
       throw new StreamingNamespaceImportError({
@@ -455,8 +455,8 @@ export class StreamingNamespaceImport {
     }
   }
 
-  #assertActive(): void {
-    switch (this.#state) {
+  private assertActive(): void {
+    switch (this.stateValue) {
     case "active": return;
     case "failed": throw new StreamingNamespaceImportError({
       code: "import_failed",
@@ -466,43 +466,43 @@ export class StreamingNamespaceImport {
       code: "already_finalized",
       message: "streaming namespace import was already finalized",
     });
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
   }
 
-  #allocateInodeNumber(): InodeNumber {
-    if (this.#nextInodeNumber === UINT64_MAXIMUM) {
+  private allocateInodeNumber(): InodeNumber {
+    if (this.nextInodeNumber === UINT64_MAXIMUM) {
       throw new StreamingNamespaceImportError({
         code: "allocator_exhausted",
         message: "streaming namespace Inode Number allocator is exhausted",
       });
     }
-    const value = this.#nextInodeNumber;
-    this.#nextInodeNumber = createInodeNumber({ value: value + 1n });
+    const value = this.nextInodeNumber;
+    this.nextInodeNumber = createInodeNumber({ value: value + 1n });
     return value;
   }
 
-  async #storeInode({ entry }: { entry: InodeLeafEntry }): Promise<void> {
-    this.#rootInodeTableRootHomeRef = await applyRootInodeTableMutations({
+  private async storeInode({ entry }: { entry: InodeLeafEntry }): Promise<void> {
+    this.rootInodeTableRootHomeRef = await applyRootInodeTableMutations({
       changes: [{ entry, type: "set" }],
-      pageStore: this.#port.rootInodeTablePageStore,
-      rootReference: this.#rootInodeTableRootHomeRef,
+      pageStore: this.port.rootInodeTablePageStore,
+      rootReference: this.rootInodeTableRootHomeRef,
     });
   }
 
-  async #closeCurrentDirectory(): Promise<void> {
-    const frame = this.#directories.pop();
+  private async closeCurrentDirectory(): Promise<void> {
+    const frame = this.directories.pop();
     if (frame === undefined) {
       throw new StreamingNamespaceImportError({
         code: "invalid_path",
         message: "streaming namespace directory stack is empty",
       });
     }
-    await this.#storeInode({ entry: await frame.directory.finalize() });
+    await this.storeInode({ entry: await frame.directory.finalize() });
   }
 
-  async #prepareParent({ path }: { path: readonly string[] }): Promise<DirectoryFrame> {
-    if (this.#activeFile !== undefined) {
+  private async prepareParent({ path }: { path: readonly string[] }): Promise<DirectoryFrame> {
+    if (this.activeFile !== undefined) {
       throw new StreamingNamespaceImportError({
         code: "active_file_conflict",
         message: "streaming namespace cannot leave an unfinished file",
@@ -514,10 +514,10 @@ export class StreamingNamespaceImport {
       path,
     });
     const parentPath = path.slice(0, -1);
-    while ((this.#directories.at(-1)?.path.length ?? -1) > parentPath.length) {
-      await this.#closeCurrentDirectory();
+    while ((this.directories.at(-1)?.path.length ?? -1) > parentPath.length) {
+      await this.closeCurrentDirectory();
     }
-    const parent = this.#directories.at(-1);
+    const parent = this.directories.at(-1);
     if (parent === undefined || !pathsEqual({ left: parent.path, right: parentPath })) {
       throw new StreamingNamespaceImportError({
         code: "non_depth_first_path",
@@ -527,12 +527,12 @@ export class StreamingNamespaceImport {
     return parent;
   }
 
-  async #addParentEntry({ inodeKind, inodeNumber, path }: {
+  private async addParentEntry({ inodeKind, inodeNumber, path }: {
     inodeKind: "directory" | "file" | "symlink";
     inodeNumber: InodeNumber;
     path: readonly string[];
   }): Promise<void> {
-    const parent = await this.#prepareParent({ path });
+    const parent = await this.prepareParent({ path });
     await parent.directory.addEntry({ entry: {
       inodeKind,
       inodeNumber,
@@ -545,22 +545,22 @@ export class StreamingNamespaceImport {
     path: readonly string[];
     timestamps: InodeTimestamps;
   }): Promise<void> {
-    this.#assertActive();
+    this.assertActive();
     try {
-      const inodeNumber = this.#allocateInodeNumber();
-      await this.#addParentEntry({ inodeKind: "directory", inodeNumber, path });
-      this.#directories.push({
+      const inodeNumber = this.allocateInodeNumber();
+      await this.addParentEntry({ inodeKind: "directory", inodeNumber, path });
+      this.directories.push({
         directory: new StreamingDirectoryImport({
           inodeNumber,
           inodeRevision: createInodeRevision({ value: 1n }),
-          limits: this.#limits.directory,
-          pageStore: this.#port.directoryPageStore,
+          limits: this.limits.directory,
+          pageStore: this.port.directoryPageStore,
           timestamps,
         }),
         path: clonePath({ path }),
       });
     } catch (cause: unknown) {
-      this.#state = "failed";
+      this.stateValue = "failed";
       throw cause;
     }
   }
@@ -570,28 +570,28 @@ export class StreamingNamespaceImport {
     offset: bigint;
     path: readonly string[];
   }): Promise<void> {
-    this.#assertActive();
+    this.assertActive();
     try {
-      if (this.#activeFile === undefined) {
-        const inodeNumber = this.#allocateInodeNumber();
-        await this.#addParentEntry({ inodeKind: "file", inodeNumber, path });
-        this.#activeFile = {
+      if (this.activeFile === undefined) {
+        const inodeNumber = this.allocateInodeNumber();
+        await this.addParentEntry({ inodeKind: "file", inodeNumber, path });
+        this.activeFile = {
           file: new StreamingFileImport({
-            limits: this.#limits.file,
-            port: this.#port.fileContentPort,
+            limits: this.limits.file,
+            port: this.port.fileContentPort,
           }),
           inodeNumber,
           path: clonePath({ path }),
         };
-      } else if (!pathsEqual({ left: this.#activeFile.path, right: path })) {
+      } else if (!pathsEqual({ left: this.activeFile.path, right: path })) {
         throw new StreamingNamespaceImportError({
           code: "active_file_conflict",
           message: "streaming namespace file chunks changed path before finalization",
         });
       }
-      await this.#activeFile.file.writeChunk({ bytes, offset });
+      await this.activeFile.file.writeChunk({ bytes, offset });
     } catch (cause: unknown) {
-      this.#state = "failed";
+      this.stateValue = "failed";
       throw cause;
     }
   }
@@ -601,29 +601,29 @@ export class StreamingNamespaceImport {
     size: bigint;
     timestamps: InodeTimestamps;
   }): Promise<void> {
-    this.#assertActive();
+    this.assertActive();
     try {
-      if (this.#activeFile === undefined) {
-        const inodeNumber = this.#allocateInodeNumber();
-        await this.#addParentEntry({ inodeKind: "file", inodeNumber, path });
-        this.#activeFile = {
+      if (this.activeFile === undefined) {
+        const inodeNumber = this.allocateInodeNumber();
+        await this.addParentEntry({ inodeKind: "file", inodeNumber, path });
+        this.activeFile = {
           file: new StreamingFileImport({
-            limits: this.#limits.file,
-            port: this.#port.fileContentPort,
+            limits: this.limits.file,
+            port: this.port.fileContentPort,
           }),
           inodeNumber,
           path: clonePath({ path }),
         };
       }
-      if (!pathsEqual({ left: this.#activeFile.path, right: path })) {
+      if (!pathsEqual({ left: this.activeFile.path, right: path })) {
         throw new StreamingNamespaceImportError({
           code: "active_file_conflict",
           message: "streaming namespace finalized a different file from the active chunk stream",
         });
       }
-      const activeFile = this.#activeFile;
+      const activeFile = this.activeFile;
       const content = await activeFile.file.finalize({ size });
-      await this.#storeInode({ entry: {
+      await this.storeInode({ entry: {
         content,
         fileSize: createFileOffset({ value: size }),
         inodeKind: "file",
@@ -631,9 +631,9 @@ export class StreamingNamespaceImport {
         inodeRevision: createInodeRevision({ value: 1n }),
         timestamps: { ...timestamps },
       } });
-      this.#activeFile = undefined;
+      this.activeFile = undefined;
     } catch (cause: unknown) {
-      this.#state = "failed";
+      this.stateValue = "failed";
       throw cause;
     }
   }
@@ -643,11 +643,11 @@ export class StreamingNamespaceImport {
     target: string;
     timestamps: InodeTimestamps;
   }): Promise<void> {
-    this.#assertActive();
+    this.assertActive();
     try {
-      const inodeNumber = this.#allocateInodeNumber();
-      await this.#addParentEntry({ inodeKind: "symlink", inodeNumber, path });
-      await this.#storeInode({ entry: {
+      const inodeNumber = this.allocateInodeNumber();
+      await this.addParentEntry({ inodeKind: "symlink", inodeNumber, path });
+      await this.storeInode({ entry: {
         inodeKind: "symlink",
         inodeNumber,
         inodeRevision: createInodeRevision({ value: 1n }),
@@ -655,25 +655,25 @@ export class StreamingNamespaceImport {
         timestamps: { ...timestamps },
       } });
     } catch (cause: unknown) {
-      this.#state = "failed";
+      this.stateValue = "failed";
       throw cause;
     }
   }
 
   async checkpoint(): Promise<StreamingNamespaceImportCheckpoint> {
-    this.#assertActive();
+    this.assertActive();
     try {
       return {
-        activeFile: this.#activeFile === undefined
+        activeFile: this.activeFile === undefined
           ? undefined
           : {
-            file: this.#activeFile.file.checkpoint(),
-            inodeNumber: this.#activeFile.inodeNumber,
-            path: clonePath({ path: this.#activeFile.path }),
+            file: this.activeFile.file.checkpoint(),
+            inodeNumber: this.activeFile.inodeNumber,
+            path: clonePath({ path: this.activeFile.path }),
           },
         directories: await (async () => {
           const checkpoints: StreamingNamespaceDirectoryCheckpoint[] = [];
-          for (const frame of this.#directories) {
+          for (const frame of this.directories) {
             checkpoints.push({
               directory: await frame.directory.checkpoint(),
               path: clonePath({ path: frame.path }),
@@ -681,41 +681,41 @@ export class StreamingNamespaceImport {
           }
           return checkpoints;
         })(),
-        nextInodeNumber: this.#nextInodeNumber,
-        rootDirectoryInodeNumber: this.#rootDirectoryInodeNumber,
-        rootInodeTableRootHomeRef: this.#rootInodeTableRootHomeRef,
+        nextInodeNumber: this.nextInodeNumber,
+        rootDirectoryInodeNumber: this.rootDirectoryInodeNumber,
+        rootInodeTableRootHomeRef: this.rootInodeTableRootHomeRef,
       };
     } catch (cause: unknown) {
-      this.#state = "failed";
+      this.stateValue = "failed";
       throw cause;
     }
   }
 
   async finalize(): Promise<SealedStreamingNamespaceImport> {
-    this.#assertActive();
-    if (this.#activeFile !== undefined) {
-      this.#state = "failed";
+    this.assertActive();
+    if (this.activeFile !== undefined) {
+      this.stateValue = "failed";
       throw new StreamingNamespaceImportError({
         code: "active_file_conflict",
         message: "streaming namespace cannot finalize with an unfinished file",
       });
     }
     try {
-      while (this.#directories.length > 0) await this.#closeCurrentDirectory();
-      this.#state = "finalized";
+      while (this.directories.length > 0) await this.closeCurrentDirectory();
+      this.stateValue = "finalized";
       return {
-        nextInodeNumber: this.#nextInodeNumber,
-        rootDirectoryInodeNumber: this.#rootDirectoryInodeNumber,
-        rootInodeTableRootHomeRef: this.#rootInodeTableRootHomeRef,
+        nextInodeNumber: this.nextInodeNumber,
+        rootDirectoryInodeNumber: this.rootDirectoryInodeNumber,
+        rootInodeTableRootHomeRef: this.rootInodeTableRootHomeRef,
       };
     } catch (cause: unknown) {
-      this.#state = "failed";
+      this.stateValue = "failed";
       throw cause;
     }
   }
 
   state(): StreamingNamespaceImportState {
-    return this.#state;
+    return this.stateValue;
   }
 }
 

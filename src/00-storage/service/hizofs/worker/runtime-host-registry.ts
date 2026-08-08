@@ -56,7 +56,7 @@ function runtimePolicyIdentity({ policy }: { policy: HizoFSRuntimePolicy }): str
  * derivation.
  */
 export class HizoFSRuntimeHostRegistry<LockManager extends object, Host extends HizoFSRuntimeHostRegistryHost> {
-  readonly #entriesByLockManager = new WeakMap<LockManager, Map<string, RuntimeHostEntry<Host>>>();
+  private readonly entriesByLockManager = new WeakMap<LockManager, Map<string, RuntimeHostEntry<Host>>>();
 
   getOrCreate({ createHost, lockManager, policy, scope }: {
     createHost: ({ lockManager, policy, scope }: {
@@ -68,10 +68,10 @@ export class HizoFSRuntimeHostRegistry<LockManager extends object, Host extends 
     policy: HizoFSRuntimePolicy;
     scope: ContainerCoordinationScope;
   }): Host {
-    let entries = this.#entriesByLockManager.get(lockManager);
+    let entries = this.entriesByLockManager.get(lockManager);
     if (entries === undefined) {
       entries = new Map();
-      this.#entriesByLockManager.set(lockManager, entries);
+      this.entriesByLockManager.set(lockManager, entries);
     }
     const key = scope.token;
     const policyIdentity = runtimePolicyIdentity({ policy });
@@ -96,12 +96,12 @@ export class HizoFSRuntimeHostRegistry<LockManager extends object, Host extends 
     return host;
   }
 
-  async #disposeScopeIfIdleAndSafe({ flushBeforeDispose, lockManager, scope }: {
+  private async disposeScopeIfIdleAndSafeInternal({ flushBeforeDispose, lockManager, scope }: {
     flushBeforeDispose: boolean;
     lockManager: LockManager;
     scope: ContainerCoordinationScope;
   }): Promise<HizoFSRuntimeHostRegistryDisposalResult> {
-    const entries = this.#entriesByLockManager.get(lockManager);
+    const entries = this.entriesByLockManager.get(lockManager);
     if (entries === undefined) return Object.freeze({ status: "absent" });
     const key = scope.token;
     const entry = entries.get(key);
@@ -119,7 +119,7 @@ export class HizoFSRuntimeHostRegistry<LockManager extends object, Host extends 
     switch (result.status) {
     case "disposed":
       if (entries.get(key) === entry) entries.delete(key);
-      if (entries.size === 0) this.#entriesByLockManager.delete(lockManager);
+      if (entries.size === 0) this.entriesByLockManager.delete(lockManager);
       return Object.freeze({ status: "evicted" });
     case "retained": return result;
     default: return result satisfies never;
@@ -130,14 +130,14 @@ export class HizoFSRuntimeHostRegistry<LockManager extends object, Host extends 
     lockManager: LockManager;
     scope: ContainerCoordinationScope;
   }): Promise<HizoFSRuntimeHostRegistryDisposalResult> {
-    return await this.#disposeScopeIfIdleAndSafe({ flushBeforeDispose: false, lockManager, scope });
+    return await this.disposeScopeIfIdleAndSafeInternal({ flushBeforeDispose: false, lockManager, scope });
   }
 
   async flushAndDisposeScopeIfIdleAndSafe({ lockManager, scope }: {
     lockManager: LockManager;
     scope: ContainerCoordinationScope;
   }): Promise<HizoFSRuntimeHostRegistryDisposalResult> {
-    return await this.#disposeScopeIfIdleAndSafe({ flushBeforeDispose: true, lockManager, scope });
+    return await this.disposeScopeIfIdleAndSafeInternal({ flushBeforeDispose: true, lockManager, scope });
   }
 }
 

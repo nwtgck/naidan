@@ -32,9 +32,9 @@ type ScopeState = {
 };
 
 export class ReaderPinRegistry {
-  #maintenanceRoots: MaintenanceRootRegistry;
-  #maxPinsPerContainer: number;
-  #scopes = new WeakMap<ContainerCoordinationKey, ScopeState>();
+  private maintenanceRoots: MaintenanceRootRegistry;
+  private maxPinsPerContainer: number;
+  private scopes = new WeakMap<ContainerCoordinationKey, ScopeState>();
 
   constructor({ maintenanceRoots, maxPinsPerContainer }: {
     maintenanceRoots: MaintenanceRootRegistry;
@@ -46,22 +46,22 @@ export class ReaderPinRegistry {
         message: "reader pin registry requires a positive safe per-container pin limit",
       });
     }
-    this.#maintenanceRoots = maintenanceRoots;
-    this.#maxPinsPerContainer = maxPinsPerContainer;
+    this.maintenanceRoots = maintenanceRoots;
+    this.maxPinsPerContainer = maxPinsPerContainer;
   }
 
-  #scope({ coordinationKey }: { coordinationKey: ContainerCoordinationKey }): ScopeState {
-    const existing = this.#scopes.get(coordinationKey);
+  private scope({ coordinationKey }: { coordinationKey: ContainerCoordinationKey }): ScopeState {
+    const existing = this.scopes.get(coordinationKey);
     if (existing !== undefined) return existing;
     const created: ScopeState = { pinCount: 0 };
-    this.#scopes.set(coordinationKey, created);
+    this.scopes.set(coordinationKey, created);
     return created;
   }
 
   activityState({ coordinationKey }: {
     coordinationKey: ContainerCoordinationKey;
   }): ReaderPinRegistryActivityState {
-    const scope = this.#scopes.get(coordinationKey);
+    const scope = this.scopes.get(coordinationKey);
     return scope === undefined || scope.pinCount === 0 ? "idle" : "active";
   }
 
@@ -69,14 +69,14 @@ export class ReaderPinRegistry {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): ReaderPin {
-    const scope = this.#scope({ coordinationKey });
-    if (scope.pinCount >= this.#maxPinsPerContainer) {
+    const scope = this.scope({ coordinationKey });
+    if (scope.pinCount >= this.maxPinsPerContainer) {
       throw new ReaderPinRegistryError({
         code: "pin_limit_exceeded",
         message: "reader pin registry reached its explicit per-container memory bound",
       });
     }
-    const root: RuntimeMaintenanceRootRegistration = this.#maintenanceRoots.acquireReaderPinnedRoot({
+    const root: RuntimeMaintenanceRootRegistration = this.maintenanceRoots.acquireReaderPinnedRoot({
       commitReference,
       coordinationKey,
     });

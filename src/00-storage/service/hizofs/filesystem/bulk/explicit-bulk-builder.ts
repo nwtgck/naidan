@@ -23,27 +23,27 @@ type CreateSymlinkRequest = Parameters<ExplicitBulkCandidate["createSymlink"]>[0
  * revocation between private preparation and the final authority gate.
  */
 export class ExplicitBulkBuilder {
-  readonly #candidate: ExplicitBulkCandidate;
-  readonly #lifecycle: ExplicitBulkLifecycle;
+  private readonly candidate: ExplicitBulkCandidate;
+  private readonly lifecycle: ExplicitBulkLifecycle;
 
   constructor({ candidate, ownerView, target }: {
     candidate: ExplicitBulkCandidateOptions;
     ownerView: ExplicitBulkOwnerView;
     target: Readonly<{ empty: boolean; fresh: boolean }>;
   }) {
-    this.#candidate = new ExplicitBulkCandidate(candidate);
-    this.#lifecycle = new ExplicitBulkLifecycle({ ownerView, target });
+    this.candidate = new ExplicitBulkCandidate(candidate);
+    this.lifecycle = new ExplicitBulkLifecycle({ ownerView, target });
   }
 
   state(): ExplicitBulkLifecycleState {
-    return this.#lifecycle.state();
+    return this.lifecycle.state();
   }
 
   createDirectory({ name, parentDirectoryInodeNumber, timestamp }: CreateDirectoryRequest): Promise<ReturnType<ExplicitBulkCandidate["createDirectory"]>> {
-    return this.#lifecycle.runMutation({
+    return this.lifecycle.runMutation({
       operation: async ({ assertActive }) => {
         assertActive();
-        const result = this.#candidate.createDirectory({ name, parentDirectoryInodeNumber, timestamp });
+        const result = this.candidate.createDirectory({ name, parentDirectoryInodeNumber, timestamp });
         assertActive();
         return result;
       },
@@ -51,10 +51,10 @@ export class ExplicitBulkBuilder {
   }
 
   createDirectoryWithTimestamps({ name, parentDirectoryInodeNumber, timestamps }: CreateDirectoryWithTimestampsRequest): Promise<ReturnType<ExplicitBulkCandidate["createDirectoryWithTimestamps"]>> {
-    return this.#lifecycle.runMutation({
+    return this.lifecycle.runMutation({
       operation: async ({ assertActive }) => {
         assertActive();
-        const result = this.#candidate.createDirectoryWithTimestamps({ name, parentDirectoryInodeNumber, timestamps });
+        const result = this.candidate.createDirectoryWithTimestamps({ name, parentDirectoryInodeNumber, timestamps });
         assertActive();
         return result;
       },
@@ -62,10 +62,10 @@ export class ExplicitBulkBuilder {
   }
 
   createEmptyFile({ name, parentDirectoryInodeNumber, timestamp }: CreateEmptyFileRequest): Promise<ReturnType<ExplicitBulkCandidate["createEmptyFile"]>> {
-    return this.#lifecycle.runMutation({
+    return this.lifecycle.runMutation({
       operation: async ({ assertActive }) => {
         assertActive();
-        const result = this.#candidate.createEmptyFile({ name, parentDirectoryInodeNumber, timestamp });
+        const result = this.candidate.createEmptyFile({ name, parentDirectoryInodeNumber, timestamp });
         assertActive();
         return result;
       },
@@ -73,10 +73,10 @@ export class ExplicitBulkBuilder {
   }
 
   createInlineFile({ bytes, name, parentDirectoryInodeNumber, timestamp }: CreateInlineFileRequest): Promise<ReturnType<ExplicitBulkCandidate["createInlineFile"]>> {
-    return this.#lifecycle.runMutation({
+    return this.lifecycle.runMutation({
       operation: async ({ assertActive }) => {
         assertActive();
-        const result = this.#candidate.createInlineFile({ bytes, name, parentDirectoryInodeNumber, timestamp });
+        const result = this.candidate.createInlineFile({ bytes, name, parentDirectoryInodeNumber, timestamp });
         assertActive();
         return result;
       },
@@ -84,10 +84,10 @@ export class ExplicitBulkBuilder {
   }
 
   createFile({ content, fileSize, name, parentDirectoryInodeNumber, timestamps }: CreateFileRequest): Promise<ReturnType<ExplicitBulkCandidate["createFile"]>> {
-    return this.#lifecycle.runMutation({
+    return this.lifecycle.runMutation({
       operation: async ({ assertActive }) => {
         assertActive();
-        const result = this.#candidate.createFile({ content, fileSize, name, parentDirectoryInodeNumber, timestamps });
+        const result = this.candidate.createFile({ content, fileSize, name, parentDirectoryInodeNumber, timestamps });
         assertActive();
         return result;
       },
@@ -95,10 +95,10 @@ export class ExplicitBulkBuilder {
   }
 
   createSymlink({ name, parentDirectoryInodeNumber, target, timestamps }: CreateSymlinkRequest): Promise<ReturnType<ExplicitBulkCandidate["createSymlink"]>> {
-    return this.#lifecycle.runMutation({
+    return this.lifecycle.runMutation({
       operation: async ({ assertActive }) => {
         assertActive();
-        const result = this.#candidate.createSymlink({ name, parentDirectoryInodeNumber, target, timestamps });
+        const result = this.candidate.createSymlink({ name, parentDirectoryInodeNumber, target, timestamps });
         assertActive();
         return result;
       },
@@ -112,9 +112,9 @@ export class ExplicitBulkBuilder {
       prepared: TPrepared;
     }) => Promise<TResult>;
   }): Promise<TResult> {
-    return this.#lifecycle.commit({
+    return this.lifecycle.commit({
       publication: async ({ assertPublicationAllowed }) => {
-        const candidate = this.#candidate.seal();
+        const candidate = this.candidate.seal();
         const prepared = await prepare({ candidate });
 
         // This is the sole transition from private preparation to authority
@@ -128,11 +128,11 @@ export class ExplicitBulkBuilder {
   }
 
   ownerClose(): void {
-    this.#lifecycle.ownerClose();
+    this.lifecycle.ownerClose();
   }
 
   abort(): void {
-    this.#lifecycle.abort();
+    this.lifecycle.abort();
   }
 }
 

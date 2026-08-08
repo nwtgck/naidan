@@ -70,27 +70,27 @@ function initialLogicalState(): SuperblockLogicalState {
 }
 
 class ObservedUpdateBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
-  readonly #openedPaths: CanonicalContainerPath[] = [];
-  #pathToFail: CanonicalContainerPath | undefined;
+  private readonly openedPathsValue: CanonicalContainerPath[] = [];
+  private pathToFail: CanonicalContainerPath | undefined;
 
   public failNextOpenForUpdate({ path }: { path: CanonicalContainerPath }): void {
-    this.#pathToFail = path;
+    this.pathToFail = path;
   }
 
   public openedPaths(): readonly CanonicalContainerPath[] {
-    return [...this.#openedPaths];
+    return [...this.openedPathsValue];
   }
 
   public resetOpenedPaths(): void {
-    this.#openedPaths.length = 0;
+    this.openedPathsValue.length = 0;
   }
 
   public override async openFileForUpdate(
     input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["openFileForUpdate"]>[0],
   ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["openFileForUpdate"]> {
-    this.#openedPaths.push(input.path);
-    if (this.#pathToFail === input.path) {
-      this.#pathToFail = undefined;
+    this.openedPathsValue.push(input.path);
+    if (this.pathToFail === input.path) {
+      this.pathToFail = undefined;
       throw new Error("injected selected-path open failure");
     }
     return await super.openFileForUpdate(input);

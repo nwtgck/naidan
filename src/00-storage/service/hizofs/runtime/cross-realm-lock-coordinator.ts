@@ -199,9 +199,9 @@ async function runWithCrossRealmLeaseCleanup<T>({ failureMessage, leases, operat
 }
 
 export class CrossRealmLockCoordinator {
-  #lockPort: CrossRealmLockPort;
-  #maxHeldLockNames: number;
-  #scopeToken: ContainerCoordinationScopeToken;
+  private lockPort: CrossRealmLockPort;
+  private maxHeldLockNames: number;
+  private scopeToken: ContainerCoordinationScopeToken;
 
   constructor({ lockPort, maxHeldLockNames, scopeToken }: {
     lockPort: CrossRealmLockPort;
@@ -214,17 +214,17 @@ export class CrossRealmLockCoordinator {
         message: "cross-realm coordinator requires a positive safe held-lock enumeration limit",
       });
     }
-    this.#lockPort = lockPort;
-    this.#maxHeldLockNames = maxHeldLockNames;
-    this.#scopeToken = scopeToken;
+    this.lockPort = lockPort;
+    this.maxHeldLockNames = maxHeldLockNames;
+    this.scopeToken = scopeToken;
   }
 
   async runAuthorityRead<T>({ operation }: {
     operation: () => Promise<T>;
   }): Promise<T> {
-    const authority = await this.#lockPort.acquire({
+    const authority = await this.lockPort.acquire({
       mode: "shared",
-      name: authorityLockName({ scopeToken: this.#scopeToken }),
+      name: authorityLockName({ scopeToken: this.scopeToken }),
     });
     return await runWithCrossRealmLeaseCleanup({
       failureMessage: "authority read and lease cleanup both failed",
@@ -236,15 +236,15 @@ export class CrossRealmLockCoordinator {
   async acquireReaderPin({ commitReference }: {
     commitReference: HomeRecordReference;
   }): Promise<CrossRealmReaderPin> {
-    const registration = await this.#lockPort.acquire({
+    const registration = await this.lockPort.acquire({
       mode: "shared",
-      name: readerRegistrationLockName({ scopeToken: this.#scopeToken }),
+      name: readerRegistrationLockName({ scopeToken: this.scopeToken }),
     });
     let pin: CrossRealmLockLease;
     try {
-      pin = await this.#lockPort.acquire({
+      pin = await this.lockPort.acquire({
         mode: "shared",
-        name: readerPinLockName({ commitReference, scopeToken: this.#scopeToken }),
+        name: readerPinLockName({ commitReference, scopeToken: this.scopeToken }),
       });
     } catch (acquisitionFailure: unknown) {
       try {
@@ -285,9 +285,9 @@ export class CrossRealmLockCoordinator {
   }
 
   async acquireRuntimeOwner(): Promise<CrossRealmRuntimeOwnerLease> {
-    const owner = await this.#lockPort.acquire({
+    const owner = await this.lockPort.acquire({
       mode: "exclusive",
-      name: runtimeOwnerLockName({ scopeToken: this.#scopeToken }),
+      name: runtimeOwnerLockName({ scopeToken: this.scopeToken }),
     });
     let active = true;
     return {
@@ -301,16 +301,16 @@ export class CrossRealmLockCoordinator {
   }
 
   async tryAcquireRuntimeOwner(): Promise<CrossRealmRuntimeOwnerLease | undefined> {
-    const tryAcquire = this.#lockPort.tryAcquire;
+    const tryAcquire = this.lockPort.tryAcquire;
     if (tryAcquire === undefined) {
       throw new CrossRealmCoordinatorError({
         code: "try_acquire_unsupported",
         message: "cross-realm lock port does not support non-blocking runtime-owner acquisition",
       });
     }
-    const owner = await tryAcquire.call(this.#lockPort, {
+    const owner = await tryAcquire.call(this.lockPort, {
       mode: "exclusive",
-      name: runtimeOwnerLockName({ scopeToken: this.#scopeToken }),
+      name: runtimeOwnerLockName({ scopeToken: this.scopeToken }),
     });
     if (owner === undefined) return undefined;
     let active = true;
@@ -325,9 +325,9 @@ export class CrossRealmLockCoordinator {
   }
 
   async acquireWriter(): Promise<CrossRealmWriterLease> {
-    const authority = await this.#lockPort.acquire({
+    const authority = await this.lockPort.acquire({
       mode: "exclusive",
-      name: authorityLockName({ scopeToken: this.#scopeToken }),
+      name: authorityLockName({ scopeToken: this.scopeToken }),
     });
     let active = true;
     let publicationActive = false;
@@ -361,9 +361,9 @@ export class CrossRealmLockCoordinator {
         }
         publicationActive = true;
         try {
-          const publication = await this.#lockPort.acquire({
+          const publication = await this.lockPort.acquire({
             mode: "exclusive",
-            name: publicationLockName({ scopeToken: this.#scopeToken }),
+            name: publicationLockName({ scopeToken: this.scopeToken }),
           });
           return await runWithCrossRealmLeaseCleanup({
             failureMessage: "publication operation and lease cleanup both failed",
@@ -378,18 +378,18 @@ export class CrossRealmLockCoordinator {
   }
 
   async beginMaintenance(): Promise<CrossRealmMaintenanceLease> {
-    const authority = await this.#lockPort.acquire({
+    const authority = await this.lockPort.acquire({
       mode: "exclusive",
-      name: authorityLockName({ scopeToken: this.#scopeToken }),
+      name: authorityLockName({ scopeToken: this.scopeToken }),
     });
     let registration: CrossRealmLockLease | undefined;
     try {
-      registration = await this.#lockPort.acquire({
+      registration = await this.lockPort.acquire({
         mode: "exclusive",
-        name: readerRegistrationLockName({ scopeToken: this.#scopeToken }),
+        name: readerRegistrationLockName({ scopeToken: this.scopeToken }),
       });
-      const heldNames = await this.#lockPort.queryHeldLockNames();
-      if (heldNames.length > this.#maxHeldLockNames) {
+      const heldNames = await this.lockPort.queryHeldLockNames();
+      if (heldNames.length > this.maxHeldLockNames) {
         throw new CrossRealmCoordinatorError({
           code: "held_lock_limit_exceeded",
           message: "held lock enumeration exceeds the explicit runtime memory bound",
@@ -397,7 +397,7 @@ export class CrossRealmLockCoordinator {
       }
       const uniqueReferences = new Map<string, HomeRecordReference>();
       for (const name of heldNames) {
-        const reference = decodeHeldReaderPin({ name, scopeToken: this.#scopeToken });
+        const reference = decodeHeldReaderPin({ name, scopeToken: this.scopeToken });
         if (reference === undefined) continue;
         uniqueReferences.set(referenceIdentity({ reference }), reference);
       }

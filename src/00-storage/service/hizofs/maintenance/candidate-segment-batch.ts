@@ -85,7 +85,7 @@ function detachedSegmentId({ segmentId }: { segmentId: SegmentId }): SegmentId {
 }
 
 export class CandidateSegmentBatch {
-  #states: Map<string, CandidateState>;
+  private states: Map<string, CandidateState>;
 
   constructor({ candidates, policy }: {
     candidates: readonly CapturedCandidateSegment[];
@@ -134,14 +134,14 @@ export class CandidateSegmentBatch {
         liveOrdinals,
       });
     }
-    this.#states = new Map([...states.entries()].sort(([left], [right]) => left.localeCompare(right)));
+    this.states = new Map([...states.entries()].sort(([left], [right]) => left.localeCompare(right)));
   }
 
   markLive({ physicalReference }: {
     physicalReference: PhysicalRecordReference;
   }): "marked" | "outside_batch" | "previously_marked" {
     const identity = segmentIdToLowercaseHex({ id: physicalReference.segmentId });
-    const state = this.#states.get(identity);
+    const state = this.states.get(identity);
     if (state === undefined) return "outside_batch";
     const ordinal = resolveCandidateFrameOrdinal({
       authority: state.descriptor.frameOrdinalAuthority,
@@ -175,7 +175,7 @@ export class CandidateSegmentBatch {
   }
 
   plan(): readonly CandidateSegmentPlanEntry[] {
-    return Object.freeze([...this.#states.values()].map(state => {
+    return Object.freeze([...this.states.values()].map(state => {
       const liveFrameCount = state.liveOrdinals.liveCount;
       const disposition: CandidateSegmentDisposition = liveFrameCount === 0
         ? "remove"

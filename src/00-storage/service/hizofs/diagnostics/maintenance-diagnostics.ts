@@ -58,28 +58,28 @@ function detachedEvent({ event, sequence }: {
 }
 
 class StrictMaintenanceDiagnostics {
-  #events: MaintenanceDiagnosticEvent[] = [];
-  #maximumEvents: number;
-  #nextSequence = 1;
+  private events: MaintenanceDiagnosticEvent[] = [];
+  private maximumEvents: number;
+  private nextSequence = 1;
 
   constructor({ maximumEvents }: { maximumEvents: number }) {
     if (!Number.isSafeInteger(maximumEvents) || maximumEvents < 1) {
       throw new RangeError("maintenance diagnostics require a positive safe event bound");
     }
-    this.#maximumEvents = maximumEvents;
+    this.maximumEvents = maximumEvents;
   }
 
   record({ event }: { event: MaintenanceDiagnosticEventInput }): void {
-    if (!Number.isSafeInteger(this.#nextSequence)) {
+    if (!Number.isSafeInteger(this.nextSequence)) {
       throw new RangeError("maintenance diagnostic sequence space is exhausted");
     }
-    this.#events.push(detachedEvent({ event, sequence: this.#nextSequence }));
-    this.#nextSequence += 1;
-    if (this.#events.length > this.#maximumEvents) this.#events.shift();
+    this.events.push(detachedEvent({ event, sequence: this.nextSequence }));
+    this.nextSequence += 1;
+    if (this.events.length > this.maximumEvents) this.events.shift();
   }
 
   snapshot(): readonly MaintenanceDiagnosticEvent[] {
-    return Object.freeze(this.#events.map(event => Object.freeze({ ...event })));
+    return Object.freeze(this.events.map(event => Object.freeze({ ...event })));
   }
 }
 
@@ -93,36 +93,36 @@ export class MaintenanceDiagnosticsUnavailableError extends Error {
 
 /** Central fail-open facade for optional maintenance observations. */
 export class MaintenanceDiagnostics {
-  readonly #strict: StrictMaintenanceDiagnostics;
-  #availability: "available" | "unavailable" = "available";
+  private readonly strict: StrictMaintenanceDiagnostics;
+  private availability: "available" | "unavailable" = "available";
 
   constructor({ maximumEvents }: { maximumEvents: number }) {
-    this.#strict = new StrictMaintenanceDiagnostics({ maximumEvents });
+    this.strict = new StrictMaintenanceDiagnostics({ maximumEvents });
   }
 
   record({ event }: Parameters<StrictMaintenanceDiagnostics["record"]>[0]): void {
-    switch (this.#availability) {
+    switch (this.availability) {
     case "available": break;
     case "unavailable": return;
-    default: this.#availability satisfies never;
+    default: this.availability satisfies never;
     }
     try {
-      this.#strict.record({ event });
+      this.strict.record({ event });
     } catch {
-      this.#availability = "unavailable";
+      this.availability = "unavailable";
     }
   }
 
   snapshot(): readonly MaintenanceDiagnosticEvent[] {
-    switch (this.#availability) {
+    switch (this.availability) {
     case "available": break;
     case "unavailable": throw new MaintenanceDiagnosticsUnavailableError();
-    default: this.#availability satisfies never;
+    default: this.availability satisfies never;
     }
     try {
-      return this.#strict.snapshot();
+      return this.strict.snapshot();
     } catch {
-      this.#availability = "unavailable";
+      this.availability = "unavailable";
       throw new MaintenanceDiagnosticsUnavailableError();
     }
   }

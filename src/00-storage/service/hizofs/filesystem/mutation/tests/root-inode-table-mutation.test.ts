@@ -56,7 +56,7 @@ type Page = ImmutableBTreePage<InodeNumber, InodeLeafEntry, HomeRecordReference>
 class MemoryInodePageStore implements RootInodeTablePageStore {
   readonly pages = new Map<HomeRecordReference, Page>();
   readonly writes: Readonly<{ isRoot: boolean; page: Page; reference: HomeRecordReference }>[] = [];
-  #nextOffset = 512n;
+  private nextOffset = 512n;
 
   async readPage({ isRoot: _isRoot, reference: pageReference }: {
     isRoot: boolean;
@@ -68,8 +68,8 @@ class MemoryInodePageStore implements RootInodeTablePageStore {
   }
 
   async writePage({ isRoot, page }: { isRoot: boolean; page: Page }): Promise<HomeRecordReference> {
-    const pageReference = reference({ offset: this.#nextOffset });
-    this.#nextOffset += 128n;
+    const pageReference = reference({ offset: this.nextOffset });
+    this.nextOffset += 128n;
     this.pages.set(pageReference, page);
     this.writes.push({ isRoot, page, reference: pageReference });
     return pageReference;

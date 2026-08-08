@@ -66,6 +66,7 @@ const configurationImportText = ref('');
 const configurationImportError = ref<string>();
 const running = ref(false);
 const cancelling = ref(false);
+const BENCHMARK_CANCEL_FORCE_TERMINATION_DELAY_MS = 1_000;
 const cancelRequested = ref(false);
 const cleaningData = ref(false);
 const progress = ref<HizoFSBenchmarkProgress>();
@@ -317,7 +318,7 @@ async function runBenchmark(): Promise<void> {
     }
     updateStudyReport();
   } catch (error) {
-    errorMessage.value = toErrorMessage({ error });
+    if (!cancelRequested.value) errorMessage.value = toErrorMessage({ error });
   } finally {
     const client = benchmarkClient;
     benchmarkClient = undefined;
@@ -362,10 +363,21 @@ async function cancelBenchmark(): Promise<void> {
   cancelRequested.value = true;
   const client = benchmarkClient;
   if (client === undefined) return;
+  // WHY: cooperative cancellation is preferable because it preserves the
+  // partial diagnostic report and normal cleanup. A benchmark is also a
+  // development diagnostic, so Cancel must remain an escape hatch when a bug
+  // leaves the Worker awaiting a Promise that will never settle. Terminating
+  // only the benchmark Worker after a short grace period prevents the debug UI
+  // from remaining permanently stuck in Cancelling state.
+  globalThis.setTimeout(() => {
+    if (benchmarkClient === client && running.value && cancelRequested.value) {
+      client.terminate();
+    }
+  }, BENCHMARK_CANCEL_FORCE_TERMINATION_DELAY_MS);
   try {
     await client.cancelCurrentOperation();
   } catch (error) {
-    errorMessage.value = toErrorMessage({ error });
+    if (!cancelRequested.value) errorMessage.value = toErrorMessage({ error });
   }
 }
 

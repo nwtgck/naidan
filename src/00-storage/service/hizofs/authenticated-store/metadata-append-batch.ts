@@ -59,67 +59,67 @@ function sameAppendResult({ actual, expected }: {
  * reusable reference behind.
  */
 export class AuthenticatedMetadataAppendBatch {
-  readonly #mutationCache: AuthenticatedMetadataRecordCache;
-  readonly #sharedCache: AuthenticatedMetadataRecordCache | undefined;
-  readonly #target: AuthenticatedSegmentAppendTarget;
-  readonly #writer: AuthenticatedSegmentWriter;
-  #closed = false;
-  #plannedResults: AppendedRecord[] = [];
-  #records: EncodedHizoFSRecord[] = [];
+  private readonly mutationCache: AuthenticatedMetadataRecordCache;
+  private readonly sharedCache: AuthenticatedMetadataRecordCache | undefined;
+  private readonly target: AuthenticatedSegmentAppendTarget;
+  private readonly writer: AuthenticatedSegmentWriter;
+  private closed = false;
+  private plannedResults: AppendedRecord[] = [];
+  private records: EncodedHizoFSRecord[] = [];
 
   constructor({ mutationCache, sharedCache, writer }: {
     mutationCache: AuthenticatedMetadataRecordCache;
     sharedCache?: AuthenticatedMetadataRecordCache;
     writer: AuthenticatedSegmentWriter;
   }) {
-    this.#mutationCache = mutationCache;
-    this.#sharedCache = sharedCache;
-    this.#writer = writer;
-    this.#target = Object.freeze({
-      append: async ({ records }) => await this.#stage({ records }),
-      encodeRecordPayload: ({ encode }) => this.#writer.encodeRecordPayload({ encode }),
+    this.mutationCache = mutationCache;
+    this.sharedCache = sharedCache;
+    this.writer = writer;
+    this.target = Object.freeze({
+      append: async ({ records }) => await this.stage({ records }),
+      encodeRecordPayload: ({ encode }) => this.writer.encodeRecordPayload({ encode }),
       segmentClass: writer.segmentClass,
     });
   }
 
   appendTarget(): AuthenticatedSegmentAppendTarget {
-    return this.#target;
+    return this.target;
   }
 
   hasRecords(): boolean {
-    return this.#records.length !== 0;
+    return this.records.length !== 0;
   }
 
   isBoundTo({ writer }: { writer: AuthenticatedSegmentWriter }): boolean {
-    return this.#writer === writer;
+    return this.writer === writer;
   }
 
   pendingFrameBytes(): number {
-    return this.#plannedResults.reduce((total, result) => total + result.physicalReference.frameLength, 0);
+    return this.plannedResults.reduce((total, result) => total + result.physicalReference.frameLength, 0);
   }
 
-  #requireOpen(): void {
-    if (this.#closed) throw new Error("metadata append batch is closed");
+  private requireOpen(): void {
+    if (this.closed) throw new Error("metadata append batch is closed");
   }
 
-  async #stage({ records }: {
+  private async stage({ records }: {
     records: readonly EncodedHizoFSRecord[];
   }): Promise<readonly AppendedRecord[]> {
-    this.#requireOpen();
+    this.requireOpen();
     if (records.length === 0) throw new RangeError("metadata append batch must not stage an empty record set");
     const snapshots = records.map(record => encodedHizoFSRecord({
       plaintext: record.plaintext,
       recordKind: record.recordKind,
     }));
     try {
-      if (this.#records.length !== 0 && this.#records.length + snapshots.length > MAXIMUM_PENDING_RECORDS) {
+      if (this.records.length !== 0 && this.records.length + snapshots.length > MAXIMUM_PENDING_RECORDS) {
         throw new AuthenticatedMetadataAppendBatchFlushRequiredError();
       }
       let planned: readonly AppendedRecord[];
       try {
-        planned = this.#writer.previewAppend({ records: [...this.#records, ...snapshots] });
+        planned = this.writer.previewAppend({ records: [...this.records, ...snapshots] });
       } catch (cause: unknown) {
-        if (cause instanceof AuthenticatedSegmentCapacityError && this.#records.length !== 0) {
+        if (cause instanceof AuthenticatedSegmentCapacityError && this.records.length !== 0) {
           throw new AuthenticatedMetadataAppendBatchFlushRequiredError({ cause });
         }
         throw cause;
@@ -129,17 +129,17 @@ export class AuthenticatedMetadataAppendBatch {
         0,
       );
       if (
-        this.#records.length !== 0
+        this.records.length !== 0
         && nextFrameBytes > MAXIMUM_PENDING_FRAME_BYTES
       ) {
         throw new AuthenticatedMetadataAppendBatchFlushRequiredError();
       }
-      const newlyPlanned = planned.slice(this.#records.length);
+      const newlyPlanned = planned.slice(this.records.length);
       if (newlyPlanned.length !== snapshots.length) {
         throw new Error("metadata append preview result count is inconsistent");
       }
-      this.#records.push(...snapshots);
-      this.#plannedResults = [...planned];
+      this.records.push(...snapshots);
+      this.plannedResults = [...planned];
       for (let index = 0; index < snapshots.length; index += 1) {
         const snapshot = snapshots[index];
         const result = newlyPlanned[index];
@@ -148,7 +148,7 @@ export class AuthenticatedMetadataAppendBatch {
         }
         switch (result.type) {
         case "home":
-          this.#mutationCache.admitAuthenticatedWrite({
+          this.mutationCache.admitAuthenticatedWrite({
             plaintext: snapshot.plaintext,
             recordKind: snapshot.recordKind,
             reference: result.homeReference,
@@ -167,23 +167,23 @@ export class AuthenticatedMetadataAppendBatch {
   }
 
   async flush(): Promise<void> {
-    this.#requireOpen();
-    if (this.#records.length === 0) {
-      this.#closed = true;
+    this.requireOpen();
+    if (this.records.length === 0) {
+      this.closed = true;
       return;
     }
-    const records = this.#records;
-    const expected = this.#plannedResults;
-    this.#records = [];
-    this.#plannedResults = [];
-    this.#closed = true;
+    const records = this.records;
+    const expected = this.plannedResults;
+    this.records = [];
+    this.plannedResults = [];
+    this.closed = true;
     try {
       let actual: readonly AppendedRecord[];
       try {
-        actual = await this.#writer.append({ records });
+        actual = await this.writer.append({ records });
       } catch (cause: unknown) {
         if (cause instanceof AuthenticatedSegmentCapacityError) {
-          this.#writer.abandon();
+          this.writer.abandon();
           throw new Error("metadata append preview and physical append capacity disagreed", { cause });
         }
         throw cause;
@@ -195,32 +195,32 @@ export class AuthenticatedMetadataAppendBatch {
           return expectedResult === undefined || !sameAppendResult({ actual: result, expected: expectedResult });
         })
       ) {
-        this.#writer.abandon();
+        this.writer.abandon();
         throw new Error("metadata append preview and physical append references disagreed");
       }
       for (let index = 0; index < records.length; index += 1) {
         const record = records[index];
         const result = actual[index];
         if (record === undefined || result === undefined) {
-          this.#writer.abandon();
+          this.writer.abandon();
           throw new Error("metadata append flush index invariant failed");
         }
         switch (result.type) {
         case "home":
-          this.#sharedCache?.admitAuthenticatedWrite({
+          this.sharedCache?.admitAuthenticatedWrite({
             plaintext: record.plaintext,
             recordKind: record.recordKind,
             reference: result.homeReference,
           });
           break;
         case "physical_only":
-          this.#writer.abandon();
+          this.writer.abandon();
           throw new TypeError("mutation metadata append batch persisted a physical-only Record");
         default: result satisfies never;
         }
       }
     } catch (cause: unknown) {
-      this.#writer.abandon();
+      this.writer.abandon();
       throw cause;
     } finally {
       for (const record of records) record.plaintext.fill(0);
@@ -228,11 +228,11 @@ export class AuthenticatedMetadataAppendBatch {
   }
 
   discard(): void {
-    if (this.#closed) return;
-    this.#closed = true;
-    for (const record of this.#records) record.plaintext.fill(0);
-    this.#records = [];
-    this.#plannedResults = [];
+    if (this.closed) return;
+    this.closed = true;
+    for (const record of this.records) record.plaintext.fill(0);
+    this.records = [];
+    this.plannedResults = [];
   }
 }
 

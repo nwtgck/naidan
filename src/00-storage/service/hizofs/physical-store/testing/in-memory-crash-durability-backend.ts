@@ -74,30 +74,30 @@ function compareEntryNames({ left, right }: { left: string; right: string }): nu
 }
 
 class InMemoryPhysicalDirectoryCursor implements HizoFSPhysicalDirectoryCursor {
-  #closed = false;
-  #done = false;
-  readonly #iterator: Iterator<[string, PhysicalNode]>;
+  private closed = false;
+  private done = false;
+  private readonly iterator: Iterator<[string, PhysicalNode]>;
 
   public constructor({ entries }: { entries: Map<string, PhysicalNode> }) {
-    this.#iterator = entries.entries();
+    this.iterator = entries.entries();
   }
 
   public async close(): Promise<void> {
-    this.#closed = true;
+    this.closed = true;
   }
 
   public async read({ maximumEntries }: { maximumEntries: number }): Promise<PhysicalDirectoryCursorPage> {
-    if (this.#closed) throw new TypeError('physical directory cursor is closed');
+    if (this.closed) throw new TypeError('physical directory cursor is closed');
     if (!Number.isSafeInteger(maximumEntries) || maximumEntries < 1) {
       throw new RangeError('physical directory cursor page size must be a positive safe integer');
     }
-    if (this.#done) return Object.freeze({ done: true, entries: Object.freeze([]) });
+    if (this.done) return Object.freeze({ done: true, entries: Object.freeze([]) });
 
     const entries: PhysicalEntry[] = [];
     while (entries.length < maximumEntries) {
-      const next = this.#iterator.next();
+      const next = this.iterator.next();
       if (next.done === true) {
-        this.#done = true;
+        this.done = true;
         break;
       }
       const [name, entry] = next.value;
@@ -112,7 +112,7 @@ class InMemoryPhysicalDirectoryCursor implements HizoFSPhysicalDirectoryCursor {
         return entry satisfies never;
       }
     }
-    return Object.freeze({ done: this.#done, entries: Object.freeze(entries) });
+    return Object.freeze({ done: this.done, entries: Object.freeze(entries) });
   }
 }
 
@@ -120,12 +120,12 @@ export class InMemoryCrashDurabilityBackend<AuthenticatedPhysicalBytes extends U
 implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirectoryCursorBackend {
   public readonly capabilities = CAPABILITIES;
 
-  readonly #faultInjector: DeterministicPhysicalStoreFaultInjector | undefined;
-  readonly #handles = new WeakMap<HizoFSWritableFile, HandleState>();
-  readonly #openHandles = new Set<HandleState>();
-  readonly #maximumFileByteLength: bigint;
-  #generation = 0;
-  #root = createDirectoryNode();
+  private readonly faultInjector: DeterministicPhysicalStoreFaultInjector | undefined;
+  private readonly handles = new WeakMap<HizoFSWritableFile, HandleState>();
+  private readonly openHandles = new Set<HandleState>();
+  private readonly maximumFileByteLength: bigint;
+  private generation = 0;
+  private root = createDirectoryNode();
 
   public constructor({ faultInjector, maximumFileByteLength = DEFAULT_MAXIMUM_FILE_BYTE_LENGTH }: {
     faultInjector?: DeterministicPhysicalStoreFaultInjector;
@@ -134,13 +134,13 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     if (maximumFileByteLength < 0n || maximumFileByteLength > BigInt(Number.MAX_SAFE_INTEGER)) {
       throw new RangeError('in-memory maximum file byte length must be a non-negative safe integer');
     }
-    this.#faultInjector = faultInjector;
-    this.#maximumFileByteLength = maximumFileByteLength;
+    this.faultInjector = faultInjector;
+    this.maximumFileByteLength = maximumFileByteLength;
   }
 
   public async createDirectoryExclusive({ path }: { path: CanonicalContainerDirectory }): Promise<Readonly<{ parentEntrySyncRequired: boolean }>> {
     if (path === CANONICAL_CONTAINER_ROOT) return { parentEntrySyncRequired: false };
-    const { entryName, parent } = this.#resolveDirectoryParent({ path });
+    const { entryName, parent } = this.resolveDirectoryParent({ path });
     const existing = parent.entries.get(entryName);
     if (existing !== undefined) {
       switch (existing.kind) {
@@ -153,45 +153,45 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
       }
       }
     }
-    this.#checkpoint({ operation: 'createDirectoryExclusive', timing: 'before' });
+    this.checkpoint({ operation: 'createDirectoryExclusive', timing: 'before' });
     parent.entries.set(entryName, createDirectoryNode());
-    this.#checkpoint({ operation: 'createDirectoryExclusive', timing: 'after' });
+    this.checkpoint({ operation: 'createDirectoryExclusive', timing: 'after' });
     return { parentEntrySyncRequired: true };
   }
 
   public async createFileExclusive({ path }: { path: CanonicalContainerPath }): Promise<HizoFSWritableFile> {
-    const { entryName, parent } = this.#resolveFileParent({ path });
+    const { entryName, parent } = this.resolveFileParent({ path });
     if (parent.entries.has(entryName)) {
       throw physicalStoreError({ code: 'already_exists', message: `physical entry already exists: ${path}`, path });
     }
-    this.#checkpoint({ operation: 'createFileExclusive', timing: 'before' });
+    this.checkpoint({ operation: 'createFileExclusive', timing: 'before' });
     const node = createFileNode();
     parent.entries.set(entryName, node);
-    const handle = this.#createHandle({ file: node, path });
+    const handle = this.createHandle({ file: node, path });
     try {
-      this.#checkpoint({ operation: 'createFileExclusive', timing: 'after' });
+      this.checkpoint({ operation: 'createFileExclusive', timing: 'after' });
       return handle;
     } catch (error) {
-      this.#closeHandleInternal({ file: handle });
+      this.closeHandleInternal({ file: handle });
       throw error;
     }
   }
 
   public async openFileForUpdate({ path }: { path: CanonicalContainerPath }): Promise<HizoFSWritableFile> {
-    const node = this.#requireFile({ path });
-    this.#checkpoint({ operation: 'openFileForUpdate', timing: 'before' });
-    const handle = this.#createHandle({ file: node, path });
+    const node = this.requireFile({ path });
+    this.checkpoint({ operation: 'openFileForUpdate', timing: 'before' });
+    const handle = this.createHandle({ file: node, path });
     try {
-      this.#checkpoint({ operation: 'openFileForUpdate', timing: 'after' });
+      this.checkpoint({ operation: 'openFileForUpdate', timing: 'after' });
       return handle;
     } catch (error) {
-      this.#closeHandleInternal({ file: handle });
+      this.closeHandleInternal({ file: handle });
       throw error;
     }
   }
 
   public async getFileSize({ path }: { path: CanonicalContainerPath }): Promise<bigint | undefined> {
-    const node = this.#lookupNode({ path });
+    const node = this.lookupNode({ path });
     if (node === undefined) return undefined;
     const fileNode = (() => {
       switch (node.kind) {
@@ -204,9 +204,9 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
       }
       }
     })();
-    this.#checkpoint({ operation: 'getFileSize', timing: 'before' });
+    this.checkpoint({ operation: 'getFileSize', timing: 'before' });
     const byteLength = BigInt(fileNode.bytes.byteLength);
-    this.#checkpoint({ operation: 'getFileSize', timing: 'after' });
+    this.checkpoint({ operation: 'getFileSize', timing: 'after' });
     return byteLength;
   }
 
@@ -216,8 +216,8 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     path: CanonicalContainerPath;
   }): Promise<Uint8Array> {
     if (!Number.isSafeInteger(length) || length < 0) throw new RangeError('exact read length must be a non-negative safe integer');
-    const node = this.#requireFile({ path });
-    const start = this.#checkedBytePosition({ label: 'exact read offset', value: offset });
+    const node = this.requireFile({ path });
+    const start = this.checkedBytePosition({ label: 'exact read offset', value: offset });
     const end = start + length;
     if (!Number.isSafeInteger(end) || end > node.bytes.byteLength) {
       throw physicalStoreError({
@@ -226,9 +226,9 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
         path,
       });
     }
-    this.#checkpoint({ operation: 'readExact', timing: 'before' });
+    this.checkpoint({ operation: 'readExact', timing: 'before' });
     const result = node.bytes.slice(start, end);
-    this.#checkpoint({ operation: 'readExact', timing: 'after' });
+    this.checkpoint({ operation: 'readExact', timing: 'after' });
     return result;
   }
 
@@ -258,7 +258,7 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     if (!Number.isSafeInteger(maximumByteLength) || maximumByteLength < 0) {
       throw new RangeError('bounded read maximum must be a non-negative safe integer');
     }
-    const node = this.#lookupNode({ path });
+    const node = this.lookupNode({ path });
     if (node === undefined) return undefined;
     const fileNode = (() => {
       switch (node.kind) {
@@ -278,9 +278,9 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
         path,
       });
     }
-    this.#checkpoint({ operation: 'readFileBounded', timing: 'before' });
+    this.checkpoint({ operation: 'readFileBounded', timing: 'before' });
     const result = Uint8Array.from(fileNode.bytes);
-    this.#checkpoint({ operation: 'readFileBounded', timing: 'after' });
+    this.checkpoint({ operation: 'readFileBounded', timing: 'after' });
     return result;
   }
 
@@ -290,11 +290,11 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     offset: bigint;
   }): Promise<void> {
     if (!(bytes instanceof Uint8Array)) throw new TypeError('physical write bytes must be a Uint8Array');
-    const state = this.#requireOpenHandle({ file });
-    const start = this.#checkedBytePosition({ label: 'write offset', value: offset });
+    const state = this.requireOpenHandle({ file });
+    const start = this.checkedBytePosition({ label: 'write offset', value: offset });
     const end = BigInt(start) + BigInt(bytes.byteLength);
-    const endIndex = this.#checkedFileLength({ label: 'write end', value: end });
-    this.#checkpoint({ operation: 'writeAt', timing: 'before' });
+    const endIndex = this.checkedFileLength({ label: 'write end', value: end });
+    this.checkpoint({ operation: 'writeAt', timing: 'before' });
 
     if (bytes.byteLength !== 0) {
       if (endIndex > state.file.bytes.byteLength) {
@@ -304,49 +304,49 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
       }
       state.file.bytes.set(bytes, start);
     }
-    this.#checkpoint({ operation: 'writeAt', timing: 'after' });
+    this.checkpoint({ operation: 'writeAt', timing: 'after' });
   }
 
   public async truncate({ file, length }: { file: HizoFSWritableFile; length: bigint }): Promise<void> {
-    const state = this.#requireOpenHandle({ file });
-    const nextLength = this.#checkedFileLength({ label: 'truncate length', value: length });
-    this.#checkpoint({ operation: 'truncate', timing: 'before' });
+    const state = this.requireOpenHandle({ file });
+    const nextLength = this.checkedFileLength({ label: 'truncate length', value: length });
+    this.checkpoint({ operation: 'truncate', timing: 'before' });
     if (nextLength !== state.file.bytes.byteLength) {
       const resized = new Uint8Array(nextLength);
       resized.set(state.file.bytes.subarray(0, nextLength));
       state.file.bytes = resized;
     }
-    this.#checkpoint({ operation: 'truncate', timing: 'after' });
+    this.checkpoint({ operation: 'truncate', timing: 'after' });
   }
 
   public async syncFileData({ file }: { file: HizoFSWritableFile }): Promise<void> {
-    const state = this.#requireOpenHandle({ file });
-    this.#checkpoint({ operation: 'syncFileData', timing: 'before' });
+    const state = this.requireOpenHandle({ file });
+    this.checkpoint({ operation: 'syncFileData', timing: 'before' });
     state.file.durableBytes = Uint8Array.from(state.file.bytes);
-    this.#checkpoint({ operation: 'syncFileData', timing: 'after' });
+    this.checkpoint({ operation: 'syncFileData', timing: 'after' });
   }
 
   public async closeFile({ file }: { file: HizoFSWritableFile }): Promise<void> {
-    const state = this.#handles.get(file);
+    const state = this.handles.get(file);
     if (state === undefined) {
       throw physicalStoreError({ code: 'foreign_handle', message: 'writable file handle belongs to another backend' });
     }
-    this.#checkpoint({ operation: 'closeFile', timing: 'before' });
-    this.#closeHandleState({ state });
-    this.#checkpoint({ operation: 'closeFile', timing: 'after' });
+    this.checkpoint({ operation: 'closeFile', timing: 'before' });
+    this.closeHandleState({ state });
+    this.checkpoint({ operation: 'closeFile', timing: 'after' });
   }
 
   public async syncDirectoryEntries({ parent }: {
     parent: CanonicalContainerDirectory;
   }): Promise<void> {
-    const directory = this.#requireDirectory({ path: parent });
-    this.#checkpoint({ operation: 'syncDirectoryEntries', timing: 'before' });
+    const directory = this.requireDirectory({ path: parent });
+    this.checkpoint({ operation: 'syncDirectoryEntries', timing: 'before' });
     directory.durableEntries = new Map(directory.entries);
-    this.#checkpoint({ operation: 'syncDirectoryEntries', timing: 'after' });
+    this.checkpoint({ operation: 'syncDirectoryEntries', timing: 'after' });
   }
 
   public async removeFile({ path }: { path: CanonicalContainerPath }): Promise<void> {
-    const { entryName, parent } = this.#resolveFileParent({ path });
+    const { entryName, parent } = this.resolveFileParent({ path });
     const node = parent.entries.get(entryName);
     if (node === undefined) {
       throw physicalStoreError({ code: 'not_found', message: `physical file does not exist: ${path}`, path });
@@ -365,24 +365,24 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     if (fileNode.openHandleCount !== 0) {
       throw physicalStoreError({ code: 'file_open', message: `physical file still has open handles: ${path}`, path });
     }
-    this.#checkpoint({ operation: 'removeFile', timing: 'before' });
+    this.checkpoint({ operation: 'removeFile', timing: 'before' });
     parent.entries.delete(entryName);
-    this.#checkpoint({ operation: 'removeFile', timing: 'after' });
+    this.checkpoint({ operation: 'removeFile', timing: 'after' });
   }
 
 
   public async openDirectoryCursor({ directory }: {
     directory: CanonicalContainerDirectory;
   }): Promise<HizoFSPhysicalDirectoryCursor> {
-    const node = this.#requireDirectory({ path: directory });
+    const node = this.requireDirectory({ path: directory });
     return new InMemoryPhysicalDirectoryCursor({ entries: node.entries });
   }
 
   public async list({ directory }: {
     directory: CanonicalContainerDirectory;
   }): Promise<readonly PhysicalEntry[]> {
-    const node = this.#requireDirectory({ path: directory });
-    this.#checkpoint({ operation: 'list', timing: 'before' });
+    const node = this.requireDirectory({ path: directory });
+    this.checkpoint({ operation: 'list', timing: 'before' });
     const entries = [...node.entries].map(([name, entry]): PhysicalEntry => {
       switch (entry.kind) {
       case 'directory': return { kind: 'directory', name };
@@ -394,30 +394,30 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
       }
     });
     entries.sort((left, right) => compareEntryNames({ left: left.name, right: right.name }));
-    this.#checkpoint({ operation: 'list', timing: 'after' });
+    this.checkpoint({ operation: 'list', timing: 'after' });
     return entries;
   }
 
   public async crashAndRecover(): Promise<void> {
-    this.#checkpoint({ operation: 'crashAndRecover', timing: 'before' });
-    for (const state of this.#openHandles) this.#closeHandleState({ state });
-    this.#generation += 1;
-    this.#root = this.#cloneDurableDirectory({ source: this.#root });
-    this.#checkpoint({ operation: 'crashAndRecover', timing: 'after' });
+    this.checkpoint({ operation: 'crashAndRecover', timing: 'before' });
+    for (const state of this.openHandles) this.closeHandleState({ state });
+    this.generation += 1;
+    this.root = this.cloneDurableDirectory({ source: this.root });
+    this.checkpoint({ operation: 'crashAndRecover', timing: 'after' });
   }
 
   public openHandleCount(): number {
-    return this.#openHandles.size;
+    return this.openHandles.size;
   }
 
-  #checkpoint({ operation, timing }: {
+  private checkpoint({ operation, timing }: {
     operation: PhysicalStoreOperation;
     timing: PhysicalStoreFaultTiming;
   }): void {
-    this.#faultInjector?.checkpoint({ operation, timing });
+    this.faultInjector?.checkpoint({ operation, timing });
   }
 
-  #resolveDirectoryParent({ path }: { path: CanonicalContainerDirectory }): {
+  private resolveDirectoryParent({ path }: { path: CanonicalContainerDirectory }): {
     entryName: string;
     parent: DirectoryNode;
   } {
@@ -425,21 +425,21 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     const entryName = components.at(-1);
     if (entryName === undefined) throw new TypeError('container root does not have a parent entry');
     const parentPath = components.slice(0, -1).join('/') as CanonicalContainerDirectory;
-    return { entryName, parent: this.#requireDirectory({ path: parentPath }) };
+    return { entryName, parent: this.requireDirectory({ path: parentPath }) };
   }
 
-  #resolveFileParent({ path }: { path: CanonicalContainerPath }): {
+  private resolveFileParent({ path }: { path: CanonicalContainerPath }): {
     entryName: string;
     parent: DirectoryNode;
   } {
     return {
       entryName: containerEntryName({ path }),
-      parent: this.#requireDirectory({ path: parentContainerDirectory({ path }) }),
+      parent: this.requireDirectory({ path: parentContainerDirectory({ path }) }),
     };
   }
 
-  #lookupNode({ path }: { path: CanonicalContainerDirectory | CanonicalContainerPath }): PhysicalNode | undefined {
-    let current: PhysicalNode = this.#root;
+  private lookupNode({ path }: { path: CanonicalContainerDirectory | CanonicalContainerPath }): PhysicalNode | undefined {
+    let current: PhysicalNode = this.root;
     for (const component of containerPathSegments({ path })) {
       const directory: DirectoryNode = ((): DirectoryNode => {
         switch (current.kind) {
@@ -459,8 +459,8 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     return current;
   }
 
-  #requireDirectory({ path }: { path: CanonicalContainerDirectory }): DirectoryNode {
-    const node = this.#lookupNode({ path });
+  private requireDirectory({ path }: { path: CanonicalContainerDirectory }): DirectoryNode {
+    const node = this.lookupNode({ path });
     if (node === undefined) {
       throw physicalStoreError({ code: 'not_found', message: `physical directory does not exist: ${path}`, path });
     }
@@ -475,8 +475,8 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     }
   }
 
-  #requireFile({ path }: { path: CanonicalContainerPath }): FileNode {
-    const node = this.#lookupNode({ path });
+  private requireFile({ path }: { path: CanonicalContainerPath }): FileNode {
+    const node = this.lookupNode({ path });
     if (node === undefined) {
       throw physicalStoreError({ code: 'not_found', message: `physical file does not exist: ${path}`, path });
     }
@@ -491,58 +491,58 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     }
   }
 
-  #createHandle({ file, path }: { file: FileNode; path: CanonicalContainerPath }): HizoFSWritableFile {
+  private createHandle({ file, path }: { file: FileNode; path: CanonicalContainerPath }): HizoFSWritableFile {
     const handle = Object.freeze({ path }) as HizoFSWritableFile;
-    const state: HandleState = { closed: false, file, generation: this.#generation, path };
+    const state: HandleState = { closed: false, file, generation: this.generation, path };
     file.openHandleCount += 1;
-    this.#handles.set(handle, state);
-    this.#openHandles.add(state);
+    this.handles.set(handle, state);
+    this.openHandles.add(state);
     return handle;
   }
 
-  #requireOpenHandle({ file }: { file: HizoFSWritableFile }): HandleState {
-    const state = this.#handles.get(file);
+  private requireOpenHandle({ file }: { file: HizoFSWritableFile }): HandleState {
+    const state = this.handles.get(file);
     if (state === undefined) {
       throw physicalStoreError({ code: 'foreign_handle', message: 'writable file handle belongs to another backend' });
     }
-    if (state.closed || state.generation !== this.#generation) {
+    if (state.closed || state.generation !== this.generation) {
       throw physicalStoreError({ code: 'closed_handle', message: `writable file handle is closed: ${state.path}`, path: state.path });
     }
     return state;
   }
 
-  #closeHandleInternal({ file }: { file: HizoFSWritableFile }): void {
-    const state = this.#handles.get(file);
-    if (state !== undefined) this.#closeHandleState({ state });
+  private closeHandleInternal({ file }: { file: HizoFSWritableFile }): void {
+    const state = this.handles.get(file);
+    if (state !== undefined) this.closeHandleState({ state });
   }
 
-  #closeHandleState({ state }: { state: HandleState }): void {
+  private closeHandleState({ state }: { state: HandleState }): void {
     if (state.closed) return;
     state.closed = true;
     state.file.openHandleCount -= 1;
-    this.#openHandles.delete(state);
+    this.openHandles.delete(state);
   }
 
-  #checkedBytePosition({ label, value }: { label: string; value: bigint }): number {
-    if (value < 0n || value > this.#maximumFileByteLength) {
+  private checkedBytePosition({ label, value }: { label: string; value: bigint }): number {
+    if (value < 0n || value > this.maximumFileByteLength) {
       throw physicalStoreError({ code: 'out_of_range', message: `${label} exceeds the in-memory backend range` });
     }
     return Number(value);
   }
 
-  #checkedFileLength({ label, value }: { label: string; value: bigint }): number {
-    if (value < 0n || value > this.#maximumFileByteLength) {
+  private checkedFileLength({ label, value }: { label: string; value: bigint }): number {
+    if (value < 0n || value > this.maximumFileByteLength) {
       throw physicalStoreError({ code: 'out_of_range', message: `${label} exceeds the in-memory backend file limit` });
     }
     return Number(value);
   }
 
-  #cloneDurableDirectory({ source }: { source: DirectoryNode }): DirectoryNode {
+  private cloneDurableDirectory({ source }: { source: DirectoryNode }): DirectoryNode {
     const clone = createDirectoryNode();
     for (const [name, durableChild] of source.durableEntries) {
       const child = (() => {
         switch (durableChild.kind) {
-        case 'directory': return this.#cloneDurableDirectory({ source: durableChild });
+        case 'directory': return this.cloneDurableDirectory({ source: durableChild });
         case 'file': return {
           bytes: Uint8Array.from(durableChild.durableBytes),
           durableBytes: Uint8Array.from(durableChild.durableBytes),

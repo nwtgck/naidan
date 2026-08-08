@@ -59,20 +59,20 @@ export class WebLocksCrossRealmLockPortError extends Error {
  * therefore prove resource release instead of merely scheduling it.
  */
 export class WebLocksCrossRealmLockPort implements CrossRealmLockPort {
-  #manager: WebLockManagerPort;
+  private manager: WebLockManagerPort;
 
   constructor({ manager }: { manager: WebLockManagerPort }) {
-    this.#manager = manager;
+    this.manager = manager;
   }
 
-  async #requestLease({ ifAvailable, mode, name }: {
+  private async requestLease({ ifAvailable, mode, name }: {
     ifAvailable: boolean;
     mode: CrossRealmLockMode;
     name: string;
   }): Promise<CrossRealmLockLease | undefined> {
     const granted = Promise.withResolvers<boolean>();
     const releaseRequested = Promise.withResolvers<void>();
-    const request = this.#manager.request({
+    const request = this.manager.request({
       callback: async ({ granted: lockGranted }) => {
         granted.resolve(lockGranted);
         if (!lockGranted) return;
@@ -105,7 +105,7 @@ export class WebLocksCrossRealmLockPort implements CrossRealmLockPort {
     mode: CrossRealmLockMode;
     name: string;
   }): Promise<CrossRealmLockLease> {
-    const lease = await this.#requestLease({ ifAvailable: false, mode, name });
+    const lease = await this.requestLease({ ifAvailable: false, mode, name });
     if (lease !== undefined) return lease;
     throw new WebLocksCrossRealmLockPortError({
       code: "unexpected_lock_unavailable",
@@ -117,11 +117,11 @@ export class WebLocksCrossRealmLockPort implements CrossRealmLockPort {
     mode: CrossRealmLockMode;
     name: string;
   }): Promise<CrossRealmLockLease | undefined> {
-    return await this.#requestLease({ ifAvailable: true, mode, name });
+    return await this.requestLease({ ifAvailable: true, mode, name });
   }
 
   async queryHeldLockNames(): Promise<readonly string[]> {
-    const snapshot = await this.#manager.query();
+    const snapshot = await this.manager.query();
     const names = new Set<string>();
     for (const entry of snapshot.held) {
       if (typeof entry.name !== "string" || entry.name.length === 0) {

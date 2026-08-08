@@ -51,19 +51,19 @@ async function authority({
 }
 
 class FailNthOpenForUpdateBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
-  readonly #failureOrdinal: number;
-  #openForUpdateCalls = 0;
+  private readonly failureOrdinal: number;
+  private openForUpdateCalls = 0;
 
   public constructor({ failureOrdinal }: { failureOrdinal: number }) {
     super({});
-    this.#failureOrdinal = failureOrdinal;
+    this.failureOrdinal = failureOrdinal;
   }
 
   public override async openFileForUpdate(
     input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["openFileForUpdate"]>[0],
   ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["openFileForUpdate"]> {
-    this.#openForUpdateCalls += 1;
-    if (this.#openForUpdateCalls === this.#failureOrdinal) throw new Error("injected second-copy open failure");
+    this.openForUpdateCalls += 1;
+    if (this.openForUpdateCalls === this.failureOrdinal) throw new Error("injected second-copy open failure");
     return await super.openFileForUpdate(input);
   }
 }

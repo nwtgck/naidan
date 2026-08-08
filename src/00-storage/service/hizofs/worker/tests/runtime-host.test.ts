@@ -69,7 +69,7 @@ function minimalApplicationResources({ releaseResources = async () => undefined 
 }
 
 class ObservedReaderPinPort implements CrossRealmLockPort {
-  #inner = new InMemoryCrossRealmLockPort();
+  private inner = new InMemoryCrossRealmLockPort();
   readerPinAcquired = false;
 
   constructor(private readonly failReaderPin = false) {}
@@ -78,13 +78,13 @@ class ObservedReaderPinPort implements CrossRealmLockPort {
     if (name.includes("/reader-pin/") && this.failReaderPin) {
       throw new Error("reader pin acquisition failed");
     }
-    const lease = await this.#inner.acquire({ mode, name });
+    const lease = await this.inner.acquire({ mode, name });
     if (name.includes("/reader-pin/")) this.readerPinAcquired = true;
     return lease;
   }
 
   async queryHeldLockNames(): Promise<readonly string[]> {
-    return await this.#inner.queryHeldLockNames();
+    return await this.inner.queryHeldLockNames();
   }
 }
 
@@ -305,12 +305,14 @@ describe("HizoFS worker runtime host", () => {
     await recoveredSession.close();
   });
 
-  it("delegates management clean-head barrier acquisition to the container runtime", () => {
+  it("delegates management clean-head barrier acquisition to the container runtime", async () => {
     const value = host();
+    const barrier = value.openManagementCleanHeadBarrier({});
 
-    expect(() => value.openManagementCleanHeadBarrier({})).toThrowError(
+    await expect(barrier.flushAndCaptureCleanGeneration()).rejects.toThrowError(
       "working generation coordinator is not initialized for this runtime",
     );
+    barrier.release();
   });
 
   it("delegates graceful flush-and-dispose to the container runtime", async () => {

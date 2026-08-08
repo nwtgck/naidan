@@ -33,7 +33,7 @@ function reference({ offset }: { offset: bigint }): HomeRecordReference {
 
 class MemoryPageStore implements RootInodeTablePageStore {
   readonly pages = new Map<HomeRecordReference, Page>();
-  #nextOffset = 512n;
+  private nextOffset = 512n;
 
   async readPage({ reference: pageReference }: { isRoot: boolean; reference: HomeRecordReference }): Promise<Page> {
     const page = this.pages.get(pageReference);
@@ -42,8 +42,8 @@ class MemoryPageStore implements RootInodeTablePageStore {
   }
 
   async writePage({ page }: { isRoot: boolean; page: Page }): Promise<HomeRecordReference> {
-    const pageReference = reference({ offset: this.#nextOffset });
-    this.#nextOffset += 128n;
+    const pageReference = reference({ offset: this.nextOffset });
+    this.nextOffset += 128n;
     this.pages.set(pageReference, page);
     return pageReference;
   }

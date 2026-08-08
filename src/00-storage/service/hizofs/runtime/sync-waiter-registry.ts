@@ -77,10 +77,10 @@ function targetSatisfiedByDurableGeneration({
  * after process loss.
  */
 export class SyncWaiterRegistry {
-  readonly #authorityEpoch: WorkingGenerationAuthorityEpoch;
-  #durable: WorkingGenerationIdentity;
-  readonly #maximumWaiters: number;
-  readonly #waiters = new Set<SyncWaiter>();
+  private readonly authorityEpoch: WorkingGenerationAuthorityEpoch;
+  private durable: WorkingGenerationIdentity;
+  private readonly maximumWaiters: number;
+  private readonly waiters = new Set<SyncWaiter>();
 
   constructor({ initialDurableGeneration, maximumWaiters }: {
     initialDurableGeneration: WorkingGenerationIdentity;
@@ -89,83 +89,83 @@ export class SyncWaiterRegistry {
     if (!Number.isSafeInteger(maximumWaiters) || maximumWaiters < 1) {
       throw new RangeError("maximum sync waiters must be a positive safe integer");
     }
-    this.#authorityEpoch = initialDurableGeneration.authorityEpoch;
-    this.#durable = initialDurableGeneration;
-    this.#maximumWaiters = maximumWaiters;
+    this.authorityEpoch = initialDurableGeneration.authorityEpoch;
+    this.durable = initialDurableGeneration;
+    this.maximumWaiters = maximumWaiters;
   }
 
   activityState(): SyncWaiterRegistryActivityState {
-    return this.#waiters.size === 0 ? "idle" : "active";
+    return this.waiters.size === 0 ? "idle" : "active";
   }
 
   durableGeneration(): WorkingGenerationIdentity {
-    return this.#durable;
+    return this.durable;
   }
 
   waiterCount(): number {
-    return this.#waiters.size;
+    return this.waiters.size;
   }
 
   waitFor({ target }: { target: WorkingGenerationIdentity }): Promise<void> {
     assertSameAuthorityEpoch({
-      authorityEpoch: this.#authorityEpoch,
+      authorityEpoch: this.authorityEpoch,
       identity: target,
       operation: "sync waiter target",
     });
-    if (targetSatisfiedByDurableGeneration({ durable: this.#durable, target })) {
+    if (targetSatisfiedByDurableGeneration({ durable: this.durable, target })) {
       return Promise.resolve();
     }
-    if (this.#waiters.size >= this.#maximumWaiters) {
+    if (this.waiters.size >= this.maximumWaiters) {
       throw new SyncWaiterRegistryError({
         code: "sync_waiter_limit_reached",
         message: "HizoFS runtime sync waiter limit reached",
       });
     }
     const { promise, reject, resolve } = Promise.withResolvers<void>();
-    this.#waiters.add(Object.freeze({ reject, resolve, target }));
+    this.waiters.add(Object.freeze({ reject, resolve, target }));
     return promise;
   }
 
   advanceDurableGeneration({ durable }: { durable: WorkingGenerationIdentity }): void {
     assertSameAuthorityEpoch({
-      authorityEpoch: this.#authorityEpoch,
+      authorityEpoch: this.authorityEpoch,
       identity: durable,
       operation: "durable",
     });
-    if (durable.generationNumber < this.#durable.generationNumber) {
+    if (durable.generationNumber < this.durable.generationNumber) {
       throw new SyncWaiterRegistryError({
         code: "working_generation_changed",
         message: "durable generation cannot move backward",
       });
     }
     if (
-      durable.generationNumber === this.#durable.generationNumber
-      && !sameWorkingGenerationIdentity({ left: durable, right: this.#durable })
+      durable.generationNumber === this.durable.generationNumber
+      && !sameWorkingGenerationIdentity({ left: durable, right: this.durable })
     ) {
       throw new SyncWaiterRegistryError({
         code: "working_generation_changed",
         message: "durable generation identity changed without advancing its generation number",
       });
     }
-    this.#durable = durable;
-    for (const waiter of this.#waiters) {
+    this.durable = durable;
+    for (const waiter of this.waiters) {
       let satisfied: boolean;
       try {
         satisfied = targetSatisfiedByDurableGeneration({ durable, target: waiter.target });
       } catch (cause: unknown) {
-        this.#waiters.delete(waiter);
+        this.waiters.delete(waiter);
         waiter.reject(cause);
         continue;
       }
       if (!satisfied) continue;
-      this.#waiters.delete(waiter);
+      this.waiters.delete(waiter);
       waiter.resolve();
     }
   }
 
   rejectAll({ cause }: { cause: unknown }): void {
-    for (const waiter of this.#waiters) waiter.reject(cause);
-    this.#waiters.clear();
+    for (const waiter of this.waiters) waiter.reject(cause);
+    this.waiters.clear();
   }
 }
 

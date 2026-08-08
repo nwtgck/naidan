@@ -47,11 +47,11 @@ type PageReadExpectation<TKey> = Readonly<{
 }>;
 
 export class ImmutableBTreeReader<TKey, TEntry, TReference> {
-  readonly #compareKeys: CompareImmutableBTreeKeys<TKey>;
-  readonly #getEntryKey: GetImmutableBTreeEntryKey<TKey, TEntry>;
-  readonly #operationDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
-  readonly #pageReader: ImmutableBTreePageReader<TKey, TEntry, TReference>;
-  readonly #referenceIdentity: ({ reference }: { reference: TReference }) => string;
+  private readonly compareKeys: CompareImmutableBTreeKeys<TKey>;
+  private readonly getEntryKey: GetImmutableBTreeEntryKey<TKey, TEntry>;
+  private readonly operationDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
+  private readonly pageReader: ImmutableBTreePageReader<TKey, TEntry, TReference>;
+  private readonly referenceIdentity: ({ reference }: { reference: TReference }) => string;
 
   constructor({ compareKeys, getEntryKey, operationDiagnostics, pageReader, referenceIdentity }: {
     compareKeys: CompareImmutableBTreeKeys<TKey>;
@@ -60,30 +60,30 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     pageReader: ImmutableBTreePageReader<TKey, TEntry, TReference>;
     referenceIdentity: ({ reference }: { reference: TReference }) => string;
   }) {
-    this.#compareKeys = compareKeys;
-    this.#getEntryKey = getEntryKey;
-    this.#operationDiagnostics = operationDiagnostics;
-    this.#pageReader = pageReader;
-    this.#referenceIdentity = referenceIdentity;
+    this.compareKeys = compareKeys;
+    this.getEntryKey = getEntryKey;
+    this.operationDiagnostics = operationDiagnostics;
+    this.pageReader = pageReader;
+    this.referenceIdentity = referenceIdentity;
   }
 
-  async #readPage({ expectation, reference, structural, visited }: {
+  private async readPage({ expectation, reference, structural, visited }: {
     expectation: PageReadExpectation<TKey>;
     reference: TReference;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
     visited: Set<string>;
   }): Promise<ImmutableBTreePage<TKey, TEntry, TReference>> {
-    const identity = this.#referenceIdentity({ reference });
+    const identity = this.referenceIdentity({ reference });
     if (visited.has(identity)) throw new TypeError("B-tree contains a cycle or duplicate page reference");
     visited.add(identity);
-    const page = await this.#pageReader({ isRoot: expectation.isRoot, reference });
+    const page = await this.pageReader({ isRoot: expectation.isRoot, reference });
     if (structural !== undefined) {
       structural.pageReads += 1;
       structural.maximumPageLevel = Math.max(structural.maximumPageLevel, page.level);
     }
     assertLocallyValidImmutableBTreePage({
-      compareKeys: this.#compareKeys,
-      getEntryKey: this.#getEntryKey,
+      compareKeys: this.compareKeys,
+      getEntryKey: this.getEntryKey,
       isRoot: expectation.isRoot,
       page,
     });
@@ -91,8 +91,8 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
       throw new TypeError("B-tree child level does not equal parent level minus one");
     }
     if (expectation.expectedUpperBound !== undefined) {
-      const maximum = immutableBTreePageMaximumKey({ getEntryKey: this.#getEntryKey, page });
-      if (maximum === undefined || this.#compareKeys({ left: maximum, right: expectation.expectedUpperBound }) !== 0) {
+      const maximum = immutableBTreePageMaximumKey({ getEntryKey: this.getEntryKey, page });
+      if (maximum === undefined || this.compareKeys({ left: maximum, right: expectation.expectedUpperBound }) !== 0) {
         throw new TypeError("B-tree child upper bound does not match its subtree maximum");
       }
     }
@@ -101,29 +101,29 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
 
   async get({ key, rootReference }: { key: TKey; rootReference: TReference }): Promise<TEntry | undefined> {
     return await measureImmutableBTreeOperation({
-      diagnostics: this.#operationDiagnostics,
+      diagnostics: this.operationDiagnostics,
       operation: "get",
       run: async ({ structural }) => {
         const visited = new Set<string>();
         let expectation: PageReadExpectation<TKey> = { isRoot: true };
         let reference = rootReference;
         while (true) {
-          const page = await this.#readPage({ expectation, reference, structural, visited });
+          const page = await this.readPage({ expectation, reference, structural, visited });
           switch (page.type) {
           case "leaf": {
             const index = findLeafEntryIndex({
-              compareKeys: this.#compareKeys,
+              compareKeys: this.compareKeys,
               entries: page.entries,
-              getEntryKey: this.#getEntryKey,
+              getEntryKey: this.getEntryKey,
               key,
             });
             const entry = page.entries[index];
-            return entry !== undefined && this.#compareKeys({ left: this.#getEntryKey({ entry }), right: key }) === 0
+            return entry !== undefined && this.compareKeys({ left: this.getEntryKey({ entry }), right: key }) === 0
               ? entry
               : undefined;
           }
           case "branch": {
-            const index = findBranchChildIndex({ children: page.children, compareKeys: this.#compareKeys, key });
+            const index = findBranchChildIndex({ children: page.children, compareKeys: this.compareKeys, key });
             const child = page.children[index];
             if (child === undefined) return undefined;
             reference = child.childPageReference;
@@ -141,7 +141,7 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     });
   }
 
-  async #descendToCandidateLeaf({ key, rootReference, structural, visited }: {
+  private async descendToCandidateLeaf({ key, rootReference, structural, visited }: {
     key: TKey;
     rootReference: TReference;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
@@ -156,20 +156,20 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     let expectation: PageReadExpectation<TKey> = { isRoot: true };
     let reference = rootReference;
     while (true) {
-      const pageReferenceIdentity = this.#referenceIdentity({ reference });
-      const page = await this.#readPage({ expectation, reference, structural, visited });
+      const pageReferenceIdentity = this.referenceIdentity({ reference });
+      const page = await this.readPage({ expectation, reference, structural, visited });
       switch (page.type) {
       case "leaf": {
         const insertionIndex = findLeafEntryIndex({
-          compareKeys: this.#compareKeys,
+          compareKeys: this.compareKeys,
           entries: page.entries,
-          getEntryKey: this.#getEntryKey,
+          getEntryKey: this.getEntryKey,
           key,
         });
         return { insertionIndex, leaf: page, leafReferenceIdentity: pageReferenceIdentity, stack };
       }
       case "branch": {
-        const lowerBound = findBranchChildIndex({ children: page.children, compareKeys: this.#compareKeys, key });
+        const lowerBound = findBranchChildIndex({ children: page.children, compareKeys: this.compareKeys, key });
         const selectedChildIndex = Math.min(lowerBound, page.children.length - 1);
         const child = page.children[selectedChildIndex];
         if (child === undefined) throw new Error("non-empty B-tree branch has no selectable child");
@@ -187,7 +187,7 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     }
   }
 
-  async #descendRightmost({ initialStack, reference, structural, upperBound, visited }: {
+  private async descendRightmost({ initialStack, reference, structural, upperBound, visited }: {
     initialStack: readonly BranchCursorFrame<TKey, TReference>[];
     reference: TReference;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
@@ -198,8 +198,8 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     let expectation: PageReadExpectation<TKey> = { expectedUpperBound: upperBound, isRoot: false };
     let currentReference = reference;
     while (true) {
-      const pageReferenceIdentity = this.#referenceIdentity({ reference: currentReference });
-      const page = await this.#readPage({ expectation, reference: currentReference, structural, visited });
+      const pageReferenceIdentity = this.referenceIdentity({ reference: currentReference });
+      const page = await this.readPage({ expectation, reference: currentReference, structural, visited });
       switch (page.type) {
       case "leaf": return { entryIndex: page.entries.length - 1, leaf: page, leafReferenceIdentity: pageReferenceIdentity, stack };
       case "branch": {
@@ -220,15 +220,15 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     }
   }
 
-  async #locateFloorCursor({ key, rootReference, structural }: {
+  private async locateFloorCursor({ key, rootReference, structural }: {
     key: TKey;
     rootReference: TReference;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<Readonly<{ cursor?: LeafCursor<TKey, TEntry, TReference>; firstCandidate?: LeafCursor<TKey, TEntry, TReference> }>> {
     const visited = new Set<string>();
-    const candidate = await this.#descendToCandidateLeaf({ key, rootReference, structural, visited });
+    const candidate = await this.descendToCandidateLeaf({ key, rootReference, structural, visited });
     const exact = candidate.leaf.entries[candidate.insertionIndex];
-    if (exact !== undefined && this.#compareKeys({ left: this.#getEntryKey({ entry: exact }), right: key }) === 0) {
+    if (exact !== undefined && this.compareKeys({ left: this.getEntryKey({ entry: exact }), right: key }) === 0) {
       return { cursor: { entryIndex: candidate.insertionIndex, leaf: candidate.leaf, leafReferenceIdentity: candidate.leafReferenceIdentity, stack: candidate.stack } };
     }
     if (candidate.insertionIndex > 0) {
@@ -247,7 +247,7 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
       if (previousChild === undefined) throw new Error("B-tree previous-child cursor invariant failed");
       const parentStack = [...mutableStack, { page: frame.page, pageReferenceIdentity: frame.pageReferenceIdentity, selectedChildIndex: previousIndex }];
       return {
-        cursor: await this.#descendRightmost({
+        cursor: await this.descendRightmost({
           initialStack: parentStack,
           reference: previousChild.childPageReference,
           structural,
@@ -262,16 +262,16 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
 
   async seekFloor({ key, rootReference }: { key: TKey; rootReference: TReference }): Promise<TEntry | undefined> {
     return await measureImmutableBTreeOperation({
-      diagnostics: this.#operationDiagnostics,
+      diagnostics: this.operationDiagnostics,
       operation: "seek_floor",
       run: async ({ structural }) => {
-        const located = await this.#locateFloorCursor({ key, rootReference, structural });
+        const located = await this.locateFloorCursor({ key, rootReference, structural });
         return located.cursor?.leaf.entries[located.cursor.entryIndex];
       },
     });
   }
 
-  async #nextLeaf({ cursor, structural, visited }: {
+  private async nextLeaf({ cursor, structural, visited }: {
     cursor: LeafCursor<TKey, TEntry, TReference>;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
     visited: Set<string>;
@@ -291,8 +291,8 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
         isRoot: false,
       };
       while (true) {
-        const pageReferenceIdentity = this.#referenceIdentity({ reference });
-        const page = await this.#readPage({ expectation, reference, structural, visited });
+        const pageReferenceIdentity = this.referenceIdentity({ reference });
+        const page = await this.readPage({ expectation, reference, structural, visited });
         switch (page.type) {
         case "leaf": return { entryIndex: 0, leaf: page, leafReferenceIdentity: pageReferenceIdentity, stack };
         case "branch": {
@@ -319,18 +319,18 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     rootReference: TReference;
   }): AsyncIterable<TEntry> {
     yield* measureImmutableBTreeIteration({
-      diagnostics: this.#operationDiagnostics,
+      diagnostics: this.operationDiagnostics,
       operation: "entries_from_floor",
-      run: ({ structural }) => this.#entriesFromFloor({ key, rootReference, structural }),
+      run: ({ structural }) => this.entriesFromFloorInternal({ key, rootReference, structural }),
     });
   }
 
-  async *#entriesFromFloor({ key, rootReference, structural }: {
+  private async *entriesFromFloorInternal({ key, rootReference, structural }: {
     key: TKey;
     rootReference: TReference;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): AsyncIterable<TEntry> {
-    const located = await this.#locateFloorCursor({ key, rootReference, structural });
+    const located = await this.locateFloorCursor({ key, rootReference, structural });
     let cursor = located.cursor ?? located.firstCandidate;
     if (cursor === undefined) return;
     const visited = new Set<string>([
@@ -342,26 +342,26 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
       for (let index = cursor.entryIndex; index < cursor.leaf.entries.length; index += 1) {
         const entry = cursor.leaf.entries[index];
         if (entry === undefined) throw new Error("B-tree leaf iteration invariant failed");
-        const entryKey = this.#getEntryKey({ entry });
-        if (previousKey !== undefined && this.#compareKeys({ left: previousKey, right: entryKey }) >= 0) {
+        const entryKey = this.getEntryKey({ entry });
+        if (previousKey !== undefined && this.compareKeys({ left: previousKey, right: entryKey }) >= 0) {
           throw new TypeError("B-tree range traversal encountered overlapping sibling keys");
         }
         previousKey = entryKey;
         yield entry;
       }
-      cursor = await this.#nextLeaf({ cursor, structural, visited });
+      cursor = await this.nextLeaf({ cursor, structural, visited });
     }
   }
 
   async *entries({ rootReference }: { rootReference: TReference }): AsyncIterable<TEntry> {
     yield* measureImmutableBTreeIteration({
-      diagnostics: this.#operationDiagnostics,
+      diagnostics: this.operationDiagnostics,
       operation: "entries",
-      run: ({ structural }) => this.#entries({ rootReference, structural }),
+      run: ({ structural }) => this.entriesInternal({ rootReference, structural }),
     });
   }
 
-  async *#entries({ rootReference, structural }: {
+  private async *entriesInternal({ rootReference, structural }: {
     rootReference: TReference;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): AsyncIterable<TEntry> {
@@ -374,12 +374,12 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
       expectation: PageReadExpectation<TKey>;
       reference: TReference;
     }): AsyncIterable<TEntry> {
-      const page = await this.#readPage({ expectation, reference, structural, visited });
+      const page = await this.readPage({ expectation, reference, structural, visited });
       switch (page.type) {
       case "leaf":
         for (const entry of page.entries) {
-          const entryKey = this.#getEntryKey({ entry });
-          if (previousKey !== undefined && this.#compareKeys({ left: previousKey, right: entryKey }) >= 0) {
+          const entryKey = this.getEntryKey({ entry });
+          if (previousKey !== undefined && this.compareKeys({ left: previousKey, right: entryKey }) >= 0) {
             throw new TypeError("B-tree iteration encountered overlapping sibling keys");
           }
           previousKey = entryKey;
@@ -410,7 +410,7 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     pageCount: number;
   }>> {
     return await measureImmutableBTreeOperation({
-      diagnostics: this.#operationDiagnostics,
+      diagnostics: this.operationDiagnostics,
       operation: "validate_structure",
       run: async ({ structural }) => {
         const visited = new Set<string>();
@@ -424,7 +424,7 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
           minimumKey?: TKey;
           pageCount: number;
         }>> => {
-          const page = await this.#readPage({ expectation, reference, structural, visited });
+          const page = await this.readPage({ expectation, reference, structural, visited });
           switch (page.type) {
           case "leaf": {
             const first = page.entries[0];
@@ -432,8 +432,8 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
             return {
               depth: 1,
               entryCount: page.entries.length,
-              maximumKey: last === undefined ? undefined : this.#getEntryKey({ entry: last }),
-              minimumKey: first === undefined ? undefined : this.#getEntryKey({ entry: first }),
+              maximumKey: last === undefined ? undefined : this.getEntryKey({ entry: last }),
+              minimumKey: first === undefined ? undefined : this.getEntryKey({ entry: first }),
               pageCount: 1,
             };
           }
@@ -457,7 +457,7 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
               }
               if (depth === undefined) depth = result.depth;
               else if (depth !== result.depth) throw new TypeError("B-tree leaves do not share one depth");
-              if (previousMaximum !== undefined && this.#compareKeys({ left: previousMaximum, right: result.minimumKey }) >= 0) {
+              if (previousMaximum !== undefined && this.compareKeys({ left: previousMaximum, right: result.minimumKey }) >= 0) {
                 throw new TypeError("B-tree sibling key ranges overlap");
               }
               minimumKey ??= result.minimumKey;

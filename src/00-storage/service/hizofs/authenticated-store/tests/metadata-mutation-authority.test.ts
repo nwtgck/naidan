@@ -45,7 +45,7 @@ import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/phys
 
 
 class AuthenticatedStoreDiagnosticsProbe implements AuthenticatedStoreDiagnosticsPort {
-  readonly #mutationMetadataCache = {
+  private readonly mutationMetadataCache = {
     currentBytes: 0,
     currentEntries: 0,
     evictions: 0,
@@ -54,8 +54,8 @@ class AuthenticatedStoreDiagnosticsProbe implements AuthenticatedStoreDiagnostic
     maximumEntries: 0,
     misses: 0,
   };
-  readonly #mutation = { abandoned: 0, completed: 0, failed: 0, overlapping: 0 };
-  readonly #metadataWriter = {
+  private readonly mutation = { abandoned: 0, completed: 0, failed: 0, overlapping: 0 };
+  private readonly metadataWriter = {
     appendOperations: 0,
     appendReadBackVerifications: 0,
     created: 0,
@@ -86,19 +86,19 @@ class AuthenticatedStoreDiagnosticsProbe implements AuthenticatedStoreDiagnostic
   recordMetadataCacheEvent({ event, scope }: NonNullable<Parameters<NonNullable<AuthenticatedStoreDiagnosticsPort["recordMetadataCacheEvent"]>>[0]>): void {
     if (scope !== "mutation") return;
     switch (event) {
-    case "eviction": this.#mutationMetadataCache.evictions += 1; break;
-    case "hit": this.#mutationMetadataCache.hits += 1; break;
-    case "miss": this.#mutationMetadataCache.misses += 1; break;
+    case "eviction": this.mutationMetadataCache.evictions += 1; break;
+    case "hit": this.mutationMetadataCache.hits += 1; break;
+    case "miss": this.mutationMetadataCache.misses += 1; break;
     default: event satisfies never;
     }
   }
 
   setMetadataCacheUsage({ bytes, entries, scope }: NonNullable<Parameters<NonNullable<AuthenticatedStoreDiagnosticsPort["setMetadataCacheUsage"]>>[0]>): void {
     if (scope !== "mutation") return;
-    this.#mutationMetadataCache.currentBytes = bytes;
-    this.#mutationMetadataCache.currentEntries = entries;
-    this.#mutationMetadataCache.maximumBytes = Math.max(this.#mutationMetadataCache.maximumBytes, bytes);
-    this.#mutationMetadataCache.maximumEntries = Math.max(this.#mutationMetadataCache.maximumEntries, entries);
+    this.mutationMetadataCache.currentBytes = bytes;
+    this.mutationMetadataCache.currentEntries = entries;
+    this.mutationMetadataCache.maximumBytes = Math.max(this.mutationMetadataCache.maximumBytes, bytes);
+    this.mutationMetadataCache.maximumEntries = Math.max(this.mutationMetadataCache.maximumEntries, entries);
   }
 
   recordPublicationOperation({ durationMs }: Parameters<AuthenticatedStoreDiagnosticsPort["recordPublicationOperation"]>[0]): void {
@@ -110,10 +110,10 @@ class AuthenticatedStoreDiagnosticsProbe implements AuthenticatedStoreDiagnostic
   }): void {
     if (observation.event === "begin") return;
     switch (observation.outcome) {
-    case "abandoned": this.#mutation.abandoned += 1; break;
-    case "failed": this.#mutation.failed += 1; break;
+    case "abandoned": this.mutation.abandoned += 1; break;
+    case "failed": this.mutation.failed += 1; break;
     case "accepted":
-    case "published": this.#mutation.completed += 1; break;
+    case "published": this.mutation.completed += 1; break;
     default: observation.outcome satisfies never;
     }
   }
@@ -123,22 +123,22 @@ class AuthenticatedStoreDiagnosticsProbe implements AuthenticatedStoreDiagnostic
   }): void {
     if (segmentClass !== "metadata") return;
     switch (event) {
-    case "append_started": this.#metadataWriter.appendOperations += 1; break;
-    case "append_read_back_verified": this.#metadataWriter.appendReadBackVerifications += 1; break;
-    case "created": this.#metadataWriter.created += 1; break;
-    case "descriptor_validated": this.#metadataWriter.descriptorValidations += 1; break;
-    case "rollover": this.#metadataWriter.rollovers += 1; break;
-    case "trusted_tail_match": this.#metadataWriter.trustedTailMatches += 1; break;
-    case "trusted_tail_mismatch": this.#metadataWriter.trustedTailMismatches += 1; break;
+    case "append_started": this.metadataWriter.appendOperations += 1; break;
+    case "append_read_back_verified": this.metadataWriter.appendReadBackVerifications += 1; break;
+    case "created": this.metadataWriter.created += 1; break;
+    case "descriptor_validated": this.metadataWriter.descriptorValidations += 1; break;
+    case "rollover": this.metadataWriter.rollovers += 1; break;
+    case "trusted_tail_match": this.metadataWriter.trustedTailMatches += 1; break;
+    case "trusted_tail_mismatch": this.metadataWriter.trustedTailMismatches += 1; break;
     default: event satisfies never;
     }
   }
 
   snapshot() {
     return {
-      caches: { mutationMetadata: { ...this.#mutationMetadataCache } },
-      mutation: { ...this.#mutation },
-      segmentWriters: { metadata: { ...this.#metadataWriter } },
+      caches: { mutationMetadata: { ...this.mutationMetadataCache } },
+      mutation: { ...this.mutation },
+      segmentWriters: { metadata: { ...this.metadataWriter } },
     };
   }
 }

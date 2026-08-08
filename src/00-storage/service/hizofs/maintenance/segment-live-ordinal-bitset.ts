@@ -20,9 +20,9 @@ export class SegmentLiveOrdinalBitsetError extends Error {
  * liveness must never be accumulated in an unbounded Set.
  */
 export class SegmentLiveOrdinalBitset {
-  #bytes: Uint8Array;
-  #frameCount: number;
-  #liveCount = 0;
+  private bytes: Uint8Array;
+  private frameCount: number;
+  private liveCountValue = 0;
 
   constructor({ frameCount }: { frameCount: number }) {
     if (
@@ -35,20 +35,20 @@ export class SegmentLiveOrdinalBitset {
         message: "frame count must be within the authoritative per-segment bound",
       });
     }
-    this.#frameCount = frameCount;
-    this.#bytes = new Uint8Array(Math.ceil(frameCount / 8));
+    this.frameCount = frameCount;
+    this.bytes = new Uint8Array(Math.ceil(frameCount / 8));
   }
 
   get byteLength(): number {
-    return this.#bytes.byteLength;
+    return this.bytes.byteLength;
   }
 
   get liveCount(): number {
-    return this.#liveCount;
+    return this.liveCountValue;
   }
 
-  #checkedOrdinal({ ordinal }: { ordinal: number }): number {
-    if (!Number.isSafeInteger(ordinal) || ordinal < 0 || ordinal >= this.#frameCount) {
+  private checkedOrdinal({ ordinal }: { ordinal: number }): number {
+    if (!Number.isSafeInteger(ordinal) || ordinal < 0 || ordinal >= this.frameCount) {
       throw new SegmentLiveOrdinalBitsetError({
         code: "invalid_ordinal",
         message: "frame ordinal is outside the captured segment frame table",
@@ -57,8 +57,8 @@ export class SegmentLiveOrdinalBitset {
     return ordinal;
   }
 
-  #byteAt({ byteIndex }: { byteIndex: number }): number {
-    const byte = this.#bytes[byteIndex];
+  private byteAt({ byteIndex }: { byteIndex: number }): number {
+    const byte = this.bytes[byteIndex];
     if (byte === undefined) {
       throw new SegmentLiveOrdinalBitsetError({
         code: "invalid_ordinal",
@@ -69,23 +69,23 @@ export class SegmentLiveOrdinalBitset {
   }
 
   isLive({ ordinal }: { ordinal: number }): boolean {
-    const checked = this.#checkedOrdinal({ ordinal });
-    return (this.#byteAt({ byteIndex: checked >>> 3 }) & (1 << (checked & 7))) !== 0;
+    const checked = this.checkedOrdinal({ ordinal });
+    return (this.byteAt({ byteIndex: checked >>> 3 }) & (1 << (checked & 7))) !== 0;
   }
 
   markLive({ ordinal }: { ordinal: number }): boolean {
-    const checked = this.#checkedOrdinal({ ordinal });
+    const checked = this.checkedOrdinal({ ordinal });
     const byteIndex = checked >>> 3;
     const mask = 1 << (checked & 7);
-    const byte = this.#byteAt({ byteIndex });
+    const byte = this.byteAt({ byteIndex });
     if ((byte & mask) !== 0) return false;
-    this.#bytes[byteIndex] = byte | mask;
-    this.#liveCount += 1;
+    this.bytes[byteIndex] = byte | mask;
+    this.liveCountValue += 1;
     return true;
   }
 
   snapshotBytes(): Uint8Array {
-    return this.#bytes.slice();
+    return this.bytes.slice();
   }
 }
 

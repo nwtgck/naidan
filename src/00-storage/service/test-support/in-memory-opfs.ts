@@ -322,7 +322,7 @@ export class InMemoryOpfsFileHandle {
 export class InMemoryOpfsDirectoryHandle {
   public readonly kind = "directory" as const;
   public entriesReadCount = 0;
-  readonly #entries = new Map<string, InMemoryOpfsEntry>();
+  private readonly entriesValue = new Map<string, InMemoryOpfsEntry>();
 
   public constructor({ capabilityProfile, faultHooks, name }: {
     capabilityProfile: InMemoryOpfsCapabilityProfile;
@@ -340,7 +340,7 @@ export class InMemoryOpfsDirectoryHandle {
 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- File System Access API interface requires positional arguments.
   public async getDirectoryHandle(name: string, options?: FileSystemGetDirectoryOptions): Promise<InMemoryOpfsDirectoryHandle> {
-    const existing = this.#entries.get(name);
+    const existing = this.entriesValue.get(name);
     if (existing !== undefined) {
       switch (existing.kind) {
       case "directory": return existing;
@@ -354,13 +354,13 @@ export class InMemoryOpfsDirectoryHandle {
       faultHooks: this.faultHooks,
       name,
     });
-    this.#entries.set(name, created);
+    this.entriesValue.set(name, created);
     return created;
   }
 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- File System Access API interface requires positional arguments.
   public async getFileHandle(name: string, options?: FileSystemGetFileOptions): Promise<InMemoryOpfsFileHandle> {
-    const existing = this.#entries.get(name);
+    const existing = this.entriesValue.get(name);
     if (existing !== undefined) {
       switch (existing.kind) {
       case "file": return existing;
@@ -375,7 +375,7 @@ export class InMemoryOpfsDirectoryHandle {
       name,
       parentDirectoryName: this.name,
     });
-    this.#entries.set(name, created);
+    this.entriesValue.set(name, created);
     return created;
   }
 
@@ -385,19 +385,19 @@ export class InMemoryOpfsDirectoryHandle {
 
   public async *entries(): AsyncIterableIterator<[string, InMemoryOpfsEntry]> {
     this.entriesReadCount += 1;
-    for (const entry of this.#entries.entries()) {
+    for (const entry of this.entriesValue.entries()) {
       yield entry;
     }
   }
 
   public async *keys(): AsyncIterableIterator<string> {
-    for (const key of this.#entries.keys()) {
+    for (const key of this.entriesValue.keys()) {
       yield key;
     }
   }
 
   public async *values(): AsyncIterableIterator<InMemoryOpfsEntry> {
-    for (const value of this.#entries.values()) {
+    for (const value of this.entriesValue.values()) {
       yield value;
     }
   }
@@ -414,18 +414,18 @@ export class InMemoryOpfsDirectoryHandle {
       name,
       recursive: options?.recursive ?? false,
     });
-    const entry = this.#entries.get(name);
+    const entry = this.entriesValue.get(name);
     if (entry === undefined) throw new DOMException("missing", "NotFoundError");
     switch (entry.kind) {
     case "directory":
-      if (options?.recursive !== true && entry.#entries.size > 0) {
+      if (options?.recursive !== true && entry.entriesValue.size > 0) {
         throw new DOMException("directory is not empty", "InvalidModificationError");
       }
       break;
     case "file": break;
     default: return entry satisfies never;
     }
-    this.#entries.delete(name);
+    this.entriesValue.delete(name);
     await this.faultHooks?.afterRemoveEntry?.({
       directoryName: this.name,
       name,
@@ -436,7 +436,7 @@ export class InMemoryOpfsDirectoryHandle {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- File System Access API interface requires positional arguments.
   public async resolve(possibleDescendant: FileSystemHandle): Promise<string[] | null> {
     if (possibleDescendant === this) return [];
-    for (const [name, entry] of this.#entries) {
+    for (const [name, entry] of this.entriesValue) {
       if (entry === possibleDescendant) return [name];
       switch (entry.kind) {
       case "directory": {

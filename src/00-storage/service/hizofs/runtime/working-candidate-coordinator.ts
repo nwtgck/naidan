@@ -142,15 +142,15 @@ export type WorkingCandidatePublication<Candidate extends object> = Readonly<{
  * not coupled to a later sync or background flush.
  */
 export class WorkingCandidateCoordinator {
-  readonly #acquireWriterDependencyRoot: ({ commitReference }: {
+  private readonly acquireWriterDependencyRoot: ({ commitReference }: {
     commitReference: HomeRecordReference;
   }) => RuntimeMaintenanceRootRegistration;
-  readonly #acquireWriterWorkingPageRoot: ({ pageReference }: {
+  private readonly acquireWriterWorkingPageRoot: ({ pageReference }: {
     pageReference: HomeRecordReference;
   }) => RuntimeMaintenancePageRootRegistration;
-  #poison: unknown | undefined;
-  #reservation: WorkingCandidateReservation | undefined;
-  #slot: WorkingCandidateSlot | undefined;
+  private poison: unknown | undefined;
+  private reservation: WorkingCandidateReservation | undefined;
+  private slot: WorkingCandidateSlot | undefined;
 
   constructor({ acquireWriterDependencyRoot, acquireWriterWorkingPageRoot }: {
     acquireWriterDependencyRoot: ({ commitReference }: {
@@ -160,18 +160,18 @@ export class WorkingCandidateCoordinator {
       pageReference: HomeRecordReference;
     }) => RuntimeMaintenancePageRootRegistration;
   }) {
-    this.#acquireWriterDependencyRoot = acquireWriterDependencyRoot;
-    this.#acquireWriterWorkingPageRoot = acquireWriterWorkingPageRoot;
+    this.acquireWriterDependencyRoot = acquireWriterDependencyRoot;
+    this.acquireWriterWorkingPageRoot = acquireWriterWorkingPageRoot;
   }
 
   publicationState(): WorkingCandidateCoordinatorPublicationState {
-    const slot = this.#slot;
+    const slot = this.slot;
     if (slot !== undefined) return slot.state;
-    return this.#poison === undefined ? "empty" : "poisoned";
+    return this.poison === undefined ? "empty" : "poisoned";
   }
 
   retainedInstalledCandidateCommitReference(): HomeRecordReference | undefined {
-    const slot = this.#slot;
+    const slot = this.slot;
     if (slot?.state !== "installed" || slot.owner !== undefined) return undefined;
     switch (slot.rootAuthority.type) {
     case "materialized_commit": return slot.rootAuthority.commitRootRegistration.commitReference;
@@ -181,7 +181,7 @@ export class WorkingCandidateCoordinator {
   }
 
   retainedInstalledWorkingPageReferences(): readonly HomeRecordReference[] | undefined {
-    const slot = this.#slot;
+    const slot = this.slot;
     if (slot?.state !== "installed" || slot.owner !== undefined) return undefined;
     switch (slot.rootAuthority.type) {
     case "materialized_commit": return undefined;
@@ -201,17 +201,17 @@ export class WorkingCandidateCoordinator {
   resolveOutcomeUnknownAgainstDurableAuthority({ observedDurableIdentity }: {
     observedDurableIdentity: DurableGenerationIdentity;
   }): WorkingCandidateOutcomeUnknownResolution {
-    const slot = this.#slot;
-    if (slot === undefined || slot.state !== "outcome_unknown" || this.#poison === undefined) {
+    const slot = this.slot;
+    if (slot === undefined || slot.state !== "outcome_unknown" || this.poison === undefined) {
       throw new WorkingCandidateCoordinatorError({
-        cause: this.#poison,
+        cause: this.poison,
         code: "outcome_resolution_invalid",
         message: "runtime working candidate has no outcome-unknown authority to resolve",
       });
     }
     const resolution = sameDurableGenerationIdentity({
       left: observedDurableIdentity,
-      right: this.#requireMaterializedCandidateIdentity({
+      right: this.requireMaterializedCandidateIdentity({
         operationLabel: "outcome-unknown resolution",
         slot,
       }),
@@ -225,7 +225,7 @@ export class WorkingCandidateCoordinator {
         : undefined;
     if (resolution === undefined) {
       throw new WorkingCandidateCoordinatorError({
-        cause: this.#poison,
+        cause: this.poison,
         code: "outcome_resolution_conflict",
         message: "observed durable authority matches neither the retained candidate nor its durable base",
       });
@@ -236,25 +236,25 @@ export class WorkingCandidateCoordinator {
     } catch (cause: unknown) {
       failures.push(cause);
     }
-    this.#releaseRootAuthority({ authority: slot.rootAuthority, failures });
+    this.releaseRootAuthority({ authority: slot.rootAuthority, failures });
     if (failures.length > 0) {
       const cause = failures.length === 1
         ? failures[0]
         : new AggregateError(failures, "resolved working-candidate cleanup failed");
-      this.#poison = cause;
+      this.poison = cause;
       throw new WorkingCandidateCoordinatorError({
         cause,
         code: "coordinator_poisoned",
         message: "runtime working candidate was resolved but its retained authority could not be released",
       });
     }
-    this.#slot = undefined;
-    this.#reservation = undefined;
-    this.#poison = undefined;
+    this.slot = undefined;
+    this.reservation = undefined;
+    this.poison = undefined;
     return resolution;
   }
 
-  #assertCandidateIdentity({ candidateDurableIdentity, durableBaseIdentity, operationLabel, workingIdentity }: {
+  private assertCandidateIdentity({ candidateDurableIdentity, durableBaseIdentity, operationLabel, workingIdentity }: {
     candidateDurableIdentity: DurableGenerationIdentity;
     durableBaseIdentity: DurableGenerationIdentity;
     operationLabel: string;
@@ -272,7 +272,7 @@ export class WorkingCandidateCoordinator {
     }
   }
 
-  #releaseRootAuthority({ authority, failures }: {
+  private releaseRootAuthority({ authority, failures }: {
     authority: WorkingCandidateRootAuthority;
     failures: unknown[];
   }): void {
@@ -292,7 +292,7 @@ export class WorkingCandidateCoordinator {
     }
   }
 
-  #requireMaterializedCandidateIdentity({ operationLabel, slot }: {
+  private requireMaterializedCandidateIdentity({ operationLabel, slot }: {
     operationLabel: string;
     slot: WorkingCandidateSlot;
   }): DurableGenerationIdentity {
@@ -307,29 +307,29 @@ export class WorkingCandidateCoordinator {
     }
   }
 
-  #assertCoordinatorHealthy({ operationLabel }: { operationLabel: string }): void {
-    if (this.#poison !== undefined) {
+  private assertCoordinatorHealthy({ operationLabel }: { operationLabel: string }): void {
+    if (this.poison !== undefined) {
       throw new WorkingCandidateCoordinatorError({
-        cause: this.#poison,
+        cause: this.poison,
         code: "coordinator_poisoned",
         message: `${operationLabel} cannot use a poisoned working-candidate coordinator`,
       });
     }
   }
 
-  #assertAdmissionAvailable({ durableBaseIdentity, operationLabel }: {
+  private assertAdmissionAvailable({ durableBaseIdentity, operationLabel }: {
     durableBaseIdentity: DurableGenerationIdentity;
     operationLabel: string;
   }): void {
-    this.#assertCoordinatorHealthy({ operationLabel });
-    if (this.#reservation !== undefined) {
+    this.assertCoordinatorHealthy({ operationLabel });
+    if (this.reservation !== undefined) {
       throw new WorkingCandidateCoordinatorError({
         cause: undefined,
         code: "candidate_active",
         message: `${operationLabel} cannot replace an active candidate admission`,
       });
     }
-    const current = this.#slot;
+    const current = this.slot;
     if (current === undefined) return;
     if (current.state !== "installed" || current.owner !== undefined) {
       throw new WorkingCandidateCoordinatorError({
@@ -351,9 +351,9 @@ export class WorkingCandidateCoordinator {
     durableBaseIdentity: DurableGenerationIdentity;
     operationLabel: string;
   }): WorkingCandidateAdmission<Candidate> {
-    this.#assertAdmissionAvailable({ durableBaseIdentity, operationLabel });
+    this.assertAdmissionAvailable({ durableBaseIdentity, operationLabel });
     const owner = Symbol("working-candidate-admission");
-    this.#reservation = Object.freeze({ durableBaseIdentity, operationLabel, owner });
+    this.reservation = Object.freeze({ durableBaseIdentity, operationLabel, owner });
     let active = true;
     let replacedSlot: WorkingCandidateSlot | undefined;
 
@@ -368,7 +368,7 @@ export class WorkingCandidateCoordinator {
     };
     const requireReservation = (): WorkingCandidateReservation => {
       assertActive();
-      const reservation = this.#reservation;
+      const reservation = this.reservation;
       if (reservation === undefined || reservation.owner !== owner) {
         throw new WorkingCandidateCoordinatorError({
           cause: undefined,
@@ -380,7 +380,7 @@ export class WorkingCandidateCoordinator {
     };
     const requireSlot = (): WorkingCandidateSlot => {
       requireReservation();
-      const slot = this.#slot;
+      const slot = this.slot;
       if (slot === undefined) {
         throw new WorkingCandidateCoordinatorError({
           cause: undefined,
@@ -402,8 +402,8 @@ export class WorkingCandidateCoordinator {
       restorePrevious: boolean;
     }): void => {
       const slot = requireSlot();
-      this.#slot = restorePrevious ? replacedSlot : undefined;
-      this.#reservation = undefined;
+      this.slot = restorePrevious ? replacedSlot : undefined;
+      this.reservation = undefined;
       active = false;
       const previous = replacedSlot;
       replacedSlot = undefined;
@@ -413,14 +413,14 @@ export class WorkingCandidateCoordinator {
       } catch (cause: unknown) {
         failures.push(cause);
       }
-      this.#releaseRootAuthority({ authority: slot.rootAuthority, failures });
+      this.releaseRootAuthority({ authority: slot.rootAuthority, failures });
       if (!restorePrevious && previous !== undefined) {
         try {
           previous.releaseCandidate({ disposition: "discarded" });
         } catch (cause: unknown) {
           failures.push(cause);
         }
-        this.#releaseRootAuthority({ authority: previous.rootAuthority, failures });
+        this.releaseRootAuthority({ authority: previous.rootAuthority, failures });
       }
       if (failures.length === 1) throw failures[0];
       if (failures.length > 1) {
@@ -431,7 +431,7 @@ export class WorkingCandidateCoordinator {
     return Object.freeze({
       closeWithoutCandidate: () => {
         const reservation = requireReservation();
-        const slot = this.#slot;
+        const slot = this.slot;
         if (slot?.owner === owner) {
           throw new WorkingCandidateCoordinatorError({
             cause: undefined,
@@ -439,19 +439,19 @@ export class WorkingCandidateCoordinator {
             message: `${operationLabel} cannot close its admission while its candidate is installed`,
           });
         }
-        if (this.#reservation !== reservation) {
+        if (this.reservation !== reservation) {
           throw new WorkingCandidateCoordinatorError({
             cause: undefined,
             code: "candidate_owner_mismatch",
             message: `${operationLabel} admission ownership changed unexpectedly`,
           });
         }
-        this.#reservation = undefined;
+        this.reservation = undefined;
         active = false;
       },
       install: ({ candidate, candidateDurableIdentity, releaseCandidate, workingIdentity }) => {
         const reservation = requireReservation();
-        const current = this.#slot;
+        const current = this.slot;
         if (current?.owner === owner) {
           throw new WorkingCandidateCoordinatorError({
             cause: undefined,
@@ -459,13 +459,13 @@ export class WorkingCandidateCoordinator {
             message: `${operationLabel} cannot replace its own installed runtime candidate`,
           });
         }
-        this.#assertCandidateIdentity({
+        this.assertCandidateIdentity({
           candidateDurableIdentity,
           durableBaseIdentity: reservation.durableBaseIdentity,
           operationLabel,
           workingIdentity,
         });
-        const rootRegistration = this.#acquireWriterDependencyRoot({
+        const rootRegistration = this.acquireWriterDependencyRoot({
           commitReference: candidateDurableIdentity.commitReference,
         });
         if (current !== undefined && (
@@ -484,7 +484,7 @@ export class WorkingCandidateCoordinator {
           });
         }
         replacedSlot = current;
-        this.#slot = {
+        this.slot = {
           candidate,
           durableBaseIdentity: reservation.durableBaseIdentity,
           owner,
@@ -501,7 +501,7 @@ export class WorkingCandidateCoordinator {
       },
       installStaged: ({ candidate, releaseCandidate, workingIdentity, workingPageReferences }) => {
         const reservation = requireReservation();
-        const current = this.#slot;
+        const current = this.slot;
         if (current?.owner === owner) {
           throw new WorkingCandidateCoordinatorError({
             cause: undefined,
@@ -515,7 +515,7 @@ export class WorkingCandidateCoordinator {
         const rootRegistrations: RuntimeMaintenancePageRootRegistration[] = [];
         try {
           for (const pageReference of workingPageReferences) {
-            rootRegistrations.push(this.#acquireWriterWorkingPageRoot({ pageReference }));
+            rootRegistrations.push(this.acquireWriterWorkingPageRoot({ pageReference }));
           }
         } catch (cause: unknown) {
           const failures: unknown[] = [cause];
@@ -555,7 +555,7 @@ export class WorkingCandidateCoordinator {
           });
         }
         replacedSlot = current;
-        this.#slot = {
+        this.slot = {
           candidate,
           durableBaseIdentity: reservation.durableBaseIdentity,
           owner,
@@ -595,7 +595,7 @@ export class WorkingCandidateCoordinator {
         const previous = replacedSlot;
         replacedSlot = undefined;
         slot.owner = undefined;
-        this.#reservation = undefined;
+        this.reservation = undefined;
         active = false;
         if (previous !== undefined) {
           const failures: unknown[] = [];
@@ -604,13 +604,13 @@ export class WorkingCandidateCoordinator {
           } catch (cause: unknown) {
             failures.push(cause);
           }
-          this.#releaseRootAuthority({ authority: previous.rootAuthority, failures });
+          this.releaseRootAuthority({ authority: previous.rootAuthority, failures });
           if (failures.length > 0) {
             const cause = failures.length === 1
               ? failures[0]
               : new AggregateError(failures, `${operationLabel} replaced candidate cleanup failed`);
             slot.state = "outcome_unknown";
-            this.#poison = cause;
+            this.poison = cause;
             throw new WorkingCandidateCoordinatorError({
               cause,
               code: "coordinator_poisoned",
@@ -621,7 +621,7 @@ export class WorkingCandidateCoordinator {
       },
       retainOutcomeUnknown: ({ cause }) => {
         const slot = requireSlot();
-        this.#requireMaterializedCandidateIdentity({ operationLabel, slot });
+        this.requireMaterializedCandidateIdentity({ operationLabel, slot });
         slot.state = "outcome_unknown";
         const previous = replacedSlot;
         replacedSlot = undefined;
@@ -632,7 +632,7 @@ export class WorkingCandidateCoordinator {
           } catch (cleanupCause: unknown) {
             failures.push(cleanupCause);
           }
-          this.#releaseRootAuthority({ authority: previous.rootAuthority, failures });
+          this.releaseRootAuthority({ authority: previous.rootAuthority, failures });
           if (failures.length > 0) {
             cause = new AggregateError(
               [cause, ...failures],
@@ -641,8 +641,8 @@ export class WorkingCandidateCoordinator {
           }
         }
         slot.owner = undefined;
-        this.#poison = cause;
-        this.#reservation = undefined;
+        this.poison = cause;
+        this.reservation = undefined;
         active = false;
       },
       selectCandidateForPublication: () => {
@@ -651,7 +651,7 @@ export class WorkingCandidateCoordinator {
         case "installed": slot.state = "publishing"; break;
         case "publishing": break;
         case "outcome_unknown": throw new WorkingCandidateCoordinatorError({
-          cause: this.#poison,
+          cause: this.poison,
           code: "coordinator_poisoned",
           message: `${operationLabel} cannot publish an unresolved runtime working candidate`,
         });
@@ -663,15 +663,15 @@ export class WorkingCandidateCoordinator {
   }
 
   openCurrentPublication<Candidate extends object>(): WorkingCandidatePublication<Candidate> {
-    this.#assertCoordinatorHealthy({ operationLabel: "runtime candidate publication" });
-    if (this.#reservation !== undefined) {
+    this.assertCoordinatorHealthy({ operationLabel: "runtime candidate publication" });
+    if (this.reservation !== undefined) {
       throw new WorkingCandidateCoordinatorError({
         cause: undefined,
         code: "candidate_active",
         message: "runtime candidate publication cannot start while mutation admission is active",
       });
     }
-    const slot = this.#slot;
+    const slot = this.slot;
     if (slot === undefined) {
       throw new WorkingCandidateCoordinatorError({
         cause: undefined,
@@ -689,7 +689,7 @@ export class WorkingCandidateCoordinator {
     slot.state = "publishing";
     let active = true;
     const requireActive = (): WorkingCandidateSlot => {
-      if (!active || this.#slot !== slot || slot.state !== "publishing") {
+      if (!active || this.slot !== slot || slot.state !== "publishing") {
         throw new WorkingCandidateCoordinatorError({
           cause: undefined,
           code: "publication_closed",
@@ -701,7 +701,7 @@ export class WorkingCandidateCoordinator {
     return Object.freeze({
       bindMaterializedCandidate: ({ candidateDurableIdentity }) => {
         const current = requireActive();
-        this.#assertCandidateIdentity({
+        this.assertCandidateIdentity({
           candidateDurableIdentity,
           durableBaseIdentity: current.durableBaseIdentity,
           operationLabel: "runtime candidate publication",
@@ -722,7 +722,7 @@ export class WorkingCandidateCoordinator {
           return;
         }
         case "staged_working_pages": {
-          const commitRootRegistration = this.#acquireWriterDependencyRoot({
+          const commitRootRegistration = this.acquireWriterDependencyRoot({
             commitReference: candidateDurableIdentity.commitReference,
           });
           current.rootAuthority = Object.freeze({
@@ -739,26 +739,26 @@ export class WorkingCandidateCoordinator {
       candidate: slot.candidate as Candidate,
       completePublished: () => {
         const current = requireActive();
-        this.#requireMaterializedCandidateIdentity({
+        this.requireMaterializedCandidateIdentity({
           operationLabel: "runtime candidate publication completion",
           slot: current,
         });
         active = false;
-        this.#slot = undefined;
+        this.slot = undefined;
         const failures: unknown[] = [];
         try {
           current.releaseCandidate({ disposition: "confirmed_published" });
         } catch (cause: unknown) {
           failures.push(cause);
         }
-        this.#releaseRootAuthority({ authority: current.rootAuthority, failures });
+        this.releaseRootAuthority({ authority: current.rootAuthority, failures });
         if (failures.length === 1) throw failures[0];
         if (failures.length > 1) {
           throw new AggregateError(failures, "published working-candidate cleanup failed");
         }
       },
       durableBaseIdentity: slot.durableBaseIdentity,
-      requireCandidateDurableIdentity: () => this.#requireMaterializedCandidateIdentity({
+      requireCandidateDurableIdentity: () => this.requireMaterializedCandidateIdentity({
         operationLabel: "runtime candidate publication",
         slot: requireActive(),
       }),
@@ -769,13 +769,13 @@ export class WorkingCandidateCoordinator {
       },
       retainOutcomeUnknown: ({ cause }) => {
         const current = requireActive();
-        this.#requireMaterializedCandidateIdentity({
+        this.requireMaterializedCandidateIdentity({
           operationLabel: "runtime candidate publication outcome retention",
           slot: current,
         });
         active = false;
         current.state = "outcome_unknown";
-        this.#poison = cause;
+        this.poison = cause;
       },
       workingIdentity: slot.workingIdentity,
     });

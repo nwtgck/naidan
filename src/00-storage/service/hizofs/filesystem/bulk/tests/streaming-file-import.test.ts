@@ -42,23 +42,23 @@ class MemoryImportPort {
     writePage: async ({ page }) => {
       const value = reference({
         kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
-        offset: this.#nextPageOffset,
+        offset: this.nextPageOffset,
       });
-      this.#nextPageOffset += 128n;
+      this.nextPageOffset += 128n;
       this.pages.set(identity({ value }), page);
       return value;
     },
   } });
-  #nextDataOffset = 1_048_576n;
-  #nextPageOffset = 1_024n;
+  private nextDataOffset = 1_048_576n;
+  private nextPageOffset = 1_024n;
 
   async writeFileData({ bytes }: { bytes: Uint8Array }): Promise<HomeRecordReference> {
     this.fileData.push(new Uint8Array(bytes));
     const value = reference({
       kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data,
-      offset: this.#nextDataOffset,
+      offset: this.nextDataOffset,
     });
-    this.#nextDataOffset += 128n;
+    this.nextDataOffset += 128n;
     return value;
   }
 }

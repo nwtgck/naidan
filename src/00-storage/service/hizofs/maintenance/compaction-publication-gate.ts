@@ -66,9 +66,9 @@ function validateRelocationRoot({ reference }: { reference: PhysicalRecordRefere
 }
 
 export class CompactionPublicationGate {
-  #phase: CompactionPublicationPhase = "copying";
-  #relocationRoot: PhysicalRecordReference | null | undefined;
-  #sourceSegmentIds: readonly SegmentId[];
+  private phaseValue: CompactionPublicationPhase = "copying";
+  private relocationRoot: PhysicalRecordReference | null | undefined;
+  private sourceSegmentIds: readonly SegmentId[];
 
   constructor({ sourceSegmentIds }: { sourceSegmentIds: readonly SegmentId[] }) {
     if (sourceSegmentIds.length === 0) {
@@ -89,29 +89,29 @@ export class CompactionPublicationGate {
       }
       unique.set(identity, detached);
     }
-    this.#sourceSegmentIds = Object.freeze([...unique.entries()]
+    this.sourceSegmentIds = Object.freeze([...unique.entries()]
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([, segmentId]) => cloneSegmentId({ segmentId })));
   }
 
   get phase(): CompactionPublicationPhase {
-    return this.#phase;
+    return this.phaseValue;
   }
 
-  #require({ expected, operation }: {
+  private require({ expected, operation }: {
     expected: CompactionPublicationPhase;
     operation: string;
   }): void {
-    if (this.#phase !== expected) {
+    if (this.phaseValue !== expected) {
       throw new CompactionPublicationGateError({
         code: "invalid_phase",
-        message: `${operation} requires ${expected}, not ${this.#phase}`,
+        message: `${operation} requires ${expected}, not ${this.phaseValue}`,
       });
     }
   }
 
   abort(): void {
-    switch (this.#phase) {
+    switch (this.phaseValue) {
     case "aborted":
       return;
     case "converged":
@@ -124,55 +124,55 @@ export class CompactionPublicationGate {
     case "publishing":
     case "relocation_index_durable":
     case "roots_revalidated":
-      this.#phase = "aborted";
+      this.phaseValue = "aborted";
       return;
     default:
-      this.#phase satisfies never;
+      this.phaseValue satisfies never;
     }
   }
 
   markDestinationFramesDurable(): void {
-    this.#require({ expected: "copying", operation: "destination durability" });
-    this.#phase = "destination_durable";
+    this.require({ expected: "copying", operation: "destination durability" });
+    this.phaseValue = "destination_durable";
   }
 
   markRelocationIndexDurable({ rootPhysicalReference }: {
     rootPhysicalReference: PhysicalRecordReference | null;
   }): void {
-    this.#require({ expected: "destination_durable", operation: "Relocation Index durability" });
+    this.require({ expected: "destination_durable", operation: "Relocation Index durability" });
     validateRelocationRoot({ reference: rootPhysicalReference });
-    this.#relocationRoot = rootPhysicalReference === null
+    this.relocationRoot = rootPhysicalReference === null
       ? null
       : createPhysicalRecordReference({ fields: rootPhysicalReference });
-    this.#phase = "relocation_index_durable";
+    this.phaseValue = "relocation_index_durable";
   }
 
   markRootsRevalidated(): void {
-    this.#require({ expected: "relocation_index_durable", operation: "root revalidation" });
-    this.#phase = "roots_revalidated";
+    this.require({ expected: "relocation_index_durable", operation: "root revalidation" });
+    this.phaseValue = "roots_revalidated";
   }
 
   markPublicationStarted(): void {
-    this.#require({ expected: "roots_revalidated", operation: "authority publication" });
-    this.#phase = "publishing";
+    this.require({ expected: "roots_revalidated", operation: "authority publication" });
+    this.phaseValue = "publishing";
   }
 
   markCopiesConverged({ publishedRelocationRootPhysicalReference }: {
     publishedRelocationRootPhysicalReference: PhysicalRecordReference | null;
   }): void {
-    this.#require({ expected: "publishing", operation: "Superblock convergence" });
+    this.require({ expected: "publishing", operation: "Superblock convergence" });
     validateRelocationRoot({ reference: publishedRelocationRootPhysicalReference });
-    if (this.#relocationRoot === undefined || !sameOptionalPhysicalReference({
-      left: this.#relocationRoot,
+    if (this.relocationRoot === undefined || !sameOptionalPhysicalReference({
+      left: this.relocationRoot,
       right: publishedRelocationRootPhysicalReference,
     })) {
-      this.#phase = "aborted";
+      this.phaseValue = "aborted";
       throw new CompactionPublicationGateError({
         code: "published_root_mismatch",
         message: "converged Superblock authority does not identify the durable rebuilt Relocation Index",
       });
     }
-    this.#phase = "converged";
+    this.phaseValue = "converged";
   }
 
   async prepareSourceDeletionLeases({ beginDeletion }: {
@@ -196,9 +196,9 @@ export class CompactionPublicationGate {
   }
 
   sourceSegmentsEligibleForLaterGc(): readonly SegmentId[] {
-    switch (this.#phase) {
+    switch (this.phaseValue) {
     case "converged":
-      return Object.freeze(this.#sourceSegmentIds.map(segmentId => cloneSegmentId({ segmentId })));
+      return Object.freeze(this.sourceSegmentIds.map(segmentId => cloneSegmentId({ segmentId })));
     case "aborted":
     case "copying":
     case "destination_durable":
@@ -210,7 +210,7 @@ export class CompactionPublicationGate {
         message: "source segments remain protected until both Superblock copies converge",
       });
     default:
-      return this.#phase satisfies never;
+      return this.phaseValue satisfies never;
     }
   }
 }

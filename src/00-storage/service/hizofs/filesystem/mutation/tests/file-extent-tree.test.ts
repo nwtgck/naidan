@@ -32,7 +32,7 @@ function identity({ value }: { value: HomeRecordReference }): string {
 
 class MemoryPagePort {
   readonly pages = new Map<string, FileExtentPage>();
-  #nextOffset = 1_024n;
+  private nextOffset = 1_024n;
 
   async readPage({ reference: value }: {
     isRoot: boolean;
@@ -49,9 +49,9 @@ class MemoryPagePort {
   }): Promise<HomeRecordReference> {
     const value = reference({
       kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
-      offset: this.#nextOffset,
+      offset: this.nextOffset,
     });
-    this.#nextOffset += 128n;
+    this.nextOffset += 128n;
     this.pages.set(identity({ value }), page);
     return value;
   }

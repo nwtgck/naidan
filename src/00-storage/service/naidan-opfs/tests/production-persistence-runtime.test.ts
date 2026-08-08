@@ -249,9 +249,9 @@ class MutablePhysical implements PersistenceControlPhysicalPort {
 }
 
 class FaultInjectingMutablePhysical extends MutablePhysical {
-  readonly #failure: Error;
-  readonly #fault: 'after_first_publish' | 'before_first_publish';
-  #publishCalls = 0;
+  private readonly failure: Error;
+  private readonly fault: 'after_first_publish' | 'before_first_publish';
+  private publishCalls = 0;
 
   public constructor({ controls, failure, fault }: {
     controls: readonly [NaidanPersistenceControlV1 | undefined, NaidanPersistenceControlV1 | undefined];
@@ -259,18 +259,18 @@ class FaultInjectingMutablePhysical extends MutablePhysical {
     fault: 'after_first_publish' | 'before_first_publish';
   }) {
     super({ controls });
-    this.#failure = failure;
-    this.#fault = fault;
+    this.failure = failure;
+    this.fault = fault;
   }
 
   public override async publishWholeFileDurably({ bytes, copy }: {
     bytes: Uint8Array;
     copy: PersistenceControlCopy;
   }): Promise<void> {
-    this.#publishCalls += 1;
-    if (this.#publishCalls === 1 && this.#fault === 'before_first_publish') throw this.#failure;
+    this.publishCalls += 1;
+    if (this.publishCalls === 1 && this.fault === 'before_first_publish') throw this.failure;
     await super.publishWholeFileDurably({ bytes, copy });
-    if (this.#publishCalls === 1 && this.#fault === 'after_first_publish') throw this.#failure;
+    if (this.publishCalls === 1 && this.fault === 'after_first_publish') throw this.failure;
   }
 }
 

@@ -42,8 +42,8 @@ function checkedDelta({ counter, value }: { counter: CounterName; value: number 
 }
 
 export class MaintenanceCycleBudget {
-  #limits: Readonly<Record<CounterName, number>>;
-  #values: Record<CounterName, number> = {
+  private limits: Readonly<Record<CounterName, number>>;
+  private values: Record<CounterName, number> = {
     bytesRead: 0,
     decodedRecords: 0,
     followedEdges: 0,
@@ -51,7 +51,7 @@ export class MaintenanceCycleBudget {
   };
 
   constructor({ policy }: { policy: HizoFSMaintenancePolicy }) {
-    this.#limits = Object.freeze({
+    this.limits = Object.freeze({
       bytesRead: policy.maxBytesReadPerCycle,
       decodedRecords: policy.maxDecodedRecordsPerCycle,
       followedEdges: policy.maxFollowedEdgesPerCycle,
@@ -59,9 +59,9 @@ export class MaintenanceCycleBudget {
     });
   }
 
-  #consume({ counter, delta }: { counter: CounterName; delta: number }): void {
+  private consume({ counter, delta }: { counter: CounterName; delta: number }): void {
     const checked = checkedDelta({ counter, value: delta });
-    const current = this.#values[counter];
+    const current = this.values[counter];
     const next = current + checked;
     if (!Number.isSafeInteger(next)) {
       throw new MaintenanceCycleBudgetError({
@@ -70,32 +70,32 @@ export class MaintenanceCycleBudget {
         message: `${counter} counter overflowed before maintenance could fail closed`,
       });
     }
-    if (next > this.#limits[counter]) {
+    if (next > this.limits[counter]) {
       throw new MaintenanceCycleBudgetError({
         code: "budget_exceeded",
         counter,
         message: `${counter} exceeded the explicit cycle hard budget`,
       });
     }
-    this.#values[counter] = next;
+    this.values[counter] = next;
   }
 
   consumeDecodedRecord({ bytesRead }: { bytesRead: number }): void {
     checkedDelta({ counter: "bytesRead", value: bytesRead });
-    this.#consume({ counter: "decodedRecords", delta: 1 });
-    this.#consume({ counter: "bytesRead", delta: bytesRead });
+    this.consume({ counter: "decodedRecords", delta: 1 });
+    this.consume({ counter: "bytesRead", delta: bytesRead });
   }
 
   consumeFollowedEdge(): void {
-    this.#consume({ counter: "followedEdges", delta: 1 });
+    this.consume({ counter: "followedEdges", delta: 1 });
   }
 
   consumeRevisitEncounter(): void {
-    this.#consume({ counter: "revisitEncounters", delta: 1 });
+    this.consume({ counter: "revisitEncounters", delta: 1 });
   }
 
   snapshot(): MaintenanceCycleBudgetSnapshot {
-    return Object.freeze({ ...this.#values });
+    return Object.freeze({ ...this.values });
   }
 }
 

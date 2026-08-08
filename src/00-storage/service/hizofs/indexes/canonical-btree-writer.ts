@@ -42,14 +42,14 @@ type MutationResult<TKey, TReference> = Readonly<{
 const DEFAULT_MAXIMUM_PAGE_BYTE_LENGTH = HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes;
 
 export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
-  readonly #compareKeys: CompareImmutableBTreeKeys<TKey>;
-  readonly #encodedBranchChildByteLength: ({ child }: { child: ImmutableBTreeBranchChild<TKey, TReference> }) => number;
-  readonly #encodedLeafEntryByteLength: ({ entry }: { entry: TEntry }) => number;
-  readonly #entriesEqual: ({ left, right }: { left: TEntry; right: TEntry }) => boolean;
-  readonly #getEntryKey: GetImmutableBTreeEntryKey<TKey, TEntry>;
-  readonly #maximumPageByteLength: number;
-  readonly #maximumLeafEntryCount: number;
-  readonly #pageStore: ImmutableBTreePageStore<TKey, TEntry, TReference>;
+  private readonly compareKeys: CompareImmutableBTreeKeys<TKey>;
+  private readonly encodedBranchChildByteLength: ({ child }: { child: ImmutableBTreeBranchChild<TKey, TReference> }) => number;
+  private readonly encodedLeafEntryByteLength: ({ entry }: { entry: TEntry }) => number;
+  private readonly entriesEqual: ({ left, right }: { left: TEntry; right: TEntry }) => boolean;
+  private readonly getEntryKey: GetImmutableBTreeEntryKey<TKey, TEntry>;
+  private readonly maximumPageByteLength: number;
+  private readonly maximumLeafEntryCount: number;
+  private readonly pageStore: ImmutableBTreePageStore<TKey, TEntry, TReference>;
 
   constructor({
     compareKeys,
@@ -76,35 +76,35 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     if (!Number.isSafeInteger(maximumLeafEntryCount) || maximumLeafEntryCount < 1) {
       throw new RangeError("B-tree maximum leaf entry count must be a positive safe integer");
     }
-    this.#compareKeys = compareKeys;
-    this.#encodedBranchChildByteLength = encodedBranchChildByteLength;
-    this.#encodedLeafEntryByteLength = encodedLeafEntryByteLength;
-    this.#entriesEqual = entriesEqual;
-    this.#getEntryKey = getEntryKey;
-    this.#maximumPageByteLength = maximumPageByteLength;
-    this.#maximumLeafEntryCount = maximumLeafEntryCount;
-    this.#pageStore = pageStore;
+    this.compareKeys = compareKeys;
+    this.encodedBranchChildByteLength = encodedBranchChildByteLength;
+    this.encodedLeafEntryByteLength = encodedLeafEntryByteLength;
+    this.entriesEqual = entriesEqual;
+    this.getEntryKey = getEntryKey;
+    this.maximumPageByteLength = maximumPageByteLength;
+    this.maximumLeafEntryCount = maximumLeafEntryCount;
+    this.pageStore = pageStore;
   }
 
-  #mutationKey({ mutation }: { mutation: ImmutableBTreeMutation<TKey, TEntry> }): TKey {
+  private mutationKey({ mutation }: { mutation: ImmutableBTreeMutation<TKey, TEntry> }): TKey {
     switch (mutation.type) {
     case "delete": return mutation.key;
-    case "set": return this.#getEntryKey({ entry: mutation.entry });
+    case "set": return this.getEntryKey({ entry: mutation.entry });
     default: return mutation satisfies never;
     }
   }
 
-  #sortedUniqueMutations({ changes }: {
+  private sortedUniqueMutations({ changes }: {
     changes: readonly ImmutableBTreeMutation<TKey, TEntry>[];
   }): readonly ImmutableBTreeMutation<TKey, TEntry>[] {
-    const sorted = [...changes].sort((left, right) => this.#compareKeys({
-      left: this.#mutationKey({ mutation: left }),
-      right: this.#mutationKey({ mutation: right }),
+    const sorted = [...changes].sort((left, right) => this.compareKeys({
+      left: this.mutationKey({ mutation: left }),
+      right: this.mutationKey({ mutation: right }),
     }));
     let previous: TKey | undefined;
     for (const mutation of sorted) {
-      const key = this.#mutationKey({ mutation });
-      if (previous !== undefined && this.#compareKeys({ left: previous, right: key }) === 0) {
+      const key = this.mutationKey({ mutation });
+      if (previous !== undefined && this.compareKeys({ left: previous, right: key }) === 0) {
         throw new TypeError("one B-tree mutation batch may change each key only once");
       }
       previous = key;
@@ -112,14 +112,14 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return sorted;
   }
 
-  #validatedItemByteLength({ byteLength }: { byteLength: number }): number {
+  private validatedItemByteLength({ byteLength }: { byteLength: number }): number {
     if (!Number.isSafeInteger(byteLength) || byteLength < 1) {
       throw new RangeError("encoded B-tree item byte length must be a positive safe integer");
     }
     return byteLength;
   }
 
-  #splitItems<TItem>({ itemByteLength, items, maximumItemCount }: {
+  private splitItems<TItem>({ itemByteLength, items, maximumItemCount }: {
     itemByteLength: ({ item }: { item: TItem }) => number;
     items: readonly TItem[];
     maximumItemCount: number;
@@ -131,7 +131,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
       if (item === undefined) throw new Error("B-tree item-size index invariant failed");
       const previous = prefixByteLengths[index];
       if (previous === undefined) throw new Error("B-tree item-size prefix invariant failed");
-      prefixByteLengths[index + 1] = previous + this.#validatedItemByteLength({ byteLength: itemByteLength({ item }) });
+      prefixByteLengths[index + 1] = previous + this.validatedItemByteLength({ byteLength: itemByteLength({ item }) });
     }
     const rangeByteLength = ({ end, start }: { end: number; start: number }): number => {
       const endLength = prefixByteLengths[end];
@@ -141,7 +141,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     };
     const rangeFits = ({ end, start }: { end: number; start: number }): boolean => (
       end - start <= maximumItemCount
-      && rangeByteLength({ end, start }) <= this.#maximumPageByteLength
+      && rangeByteLength({ end, start }) <= this.maximumPageByteLength
     );
     const splitRange = ({ end, start }: { end: number; start: number }): readonly (readonly TItem[])[] => {
       if (rangeFits({ end, start })) return [items.slice(start, end)];
@@ -176,15 +176,15 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return splitRange({ end: items.length, start: 0 });
   }
 
-  async #writeLeafGroups({ entries, isRootWhenSingleGroup, structural }: {
+  private async writeLeafGroups({ entries, isRootWhenSingleGroup, structural }: {
     entries: readonly TEntry[];
     isRootWhenSingleGroup: boolean;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<readonly ReferenceSummary<TKey, TReference>[]> {
-    const groups = this.#splitItems({
-      itemByteLength: ({ item }) => this.#encodedLeafEntryByteLength({ entry: item }),
+    const groups = this.splitItems({
+      itemByteLength: ({ item }) => this.encodedLeafEntryByteLength({ entry: item }),
       items: entries,
-      maximumItemCount: this.#maximumLeafEntryCount,
+      maximumItemCount: this.maximumLeafEntryCount,
     });
     if (structural !== undefined && groups.length > 1) {
       structural.splitOperations += 1;
@@ -194,7 +194,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     for (const group of groups) {
       const page = { entries: group, level: 0, type: "leaf" } as const;
       if (structural !== undefined) structural.pageWrites += 1;
-      const reference = await this.#pageStore.writePage({
+      const reference = await this.pageStore.writePage({
         isRoot: isRootWhenSingleGroup && groups.length === 1,
         page,
       });
@@ -203,20 +203,20 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
       references.push({
         level: 0,
         reference,
-        upperBound: this.#getEntryKey({ entry: upperBoundEntry }),
+        upperBound: this.getEntryKey({ entry: upperBoundEntry }),
       });
     }
     return references;
   }
 
-  async #writeBranchGroups({ children, isRootWhenSingleGroup, level, structural }: {
+  private async writeBranchGroups({ children, isRootWhenSingleGroup, level, structural }: {
     children: readonly ImmutableBTreeBranchChild<TKey, TReference>[];
     isRootWhenSingleGroup: boolean;
     level: number;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<readonly ReferenceSummary<TKey, TReference>[]> {
-    const groups = this.#splitItems({
-      itemByteLength: ({ item }) => this.#encodedBranchChildByteLength({ child: item }),
+    const groups = this.splitItems({
+      itemByteLength: ({ item }) => this.encodedBranchChildByteLength({ child: item }),
       items: children,
       maximumItemCount: Number.MAX_SAFE_INTEGER,
     });
@@ -231,7 +231,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     for (const group of groups) {
       const page = { children: group, level, type: "branch" } as const;
       if (structural !== undefined) structural.pageWrites += 1;
-      const reference = await this.#pageStore.writePage({
+      const reference = await this.pageStore.writePage({
         isRoot: isRootWhenSingleGroup && groups.length === 1,
         page,
       });
@@ -243,7 +243,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
   }
 
 
-  #appendMissingKeyMutation({ mutation, target }: {
+  private appendMissingKeyMutation({ mutation, target }: {
     mutation: ImmutableBTreeMutation<TKey, TEntry>;
     target: TEntry[];
   }): boolean {
@@ -257,7 +257,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     }
   }
 
-  #applyExistingKeyMutation({ existing, mutation, target }: {
+  private applyExistingKeyMutation({ existing, mutation, target }: {
     existing: TEntry;
     mutation: ImmutableBTreeMutation<TKey, TEntry>;
     target: TEntry[];
@@ -266,7 +266,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     case "delete": return true;
     case "set":
       target.push(mutation.entry);
-      return !this.#entriesEqual({ left: existing, right: mutation.entry });
+      return !this.entriesEqual({ left: existing, right: mutation.entry });
     default: {
       const exhaustive: never = mutation;
       throw new Error(`Unhandled B-tree mutation: ${((exhaustive satisfies never) as { readonly type: string }).type}`);
@@ -274,7 +274,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     }
   }
 
-  #mergeLeafChanges({ changes, entries }: {
+  private mergeLeafChanges({ changes, entries }: {
     changes: readonly ImmutableBTreeMutation<TKey, TEntry>[];
     entries: readonly TEntry[];
   }): Readonly<{ changed: boolean; entries: readonly TEntry[] }> {
@@ -287,7 +287,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
       const change = changes[changeIndex];
       if (entry === undefined) {
         if (change === undefined) break;
-        const mutationChanged = this.#appendMissingKeyMutation({ mutation: change, target: next });
+        const mutationChanged = this.appendMissingKeyMutation({ mutation: change, target: next });
         changed ||= mutationChanged;
         changeIndex += 1;
         continue;
@@ -296,18 +296,18 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
         next.push(...entries.slice(entryIndex));
         break;
       }
-      const entryKey = this.#getEntryKey({ entry });
-      const changeKey = this.#mutationKey({ mutation: change });
-      const comparison = this.#compareKeys({ left: entryKey, right: changeKey });
+      const entryKey = this.getEntryKey({ entry });
+      const changeKey = this.mutationKey({ mutation: change });
+      const comparison = this.compareKeys({ left: entryKey, right: changeKey });
       if (comparison < 0) {
         next.push(entry);
         entryIndex += 1;
       } else if (comparison > 0) {
-        const mutationChanged = this.#appendMissingKeyMutation({ mutation: change, target: next });
+        const mutationChanged = this.appendMissingKeyMutation({ mutation: change, target: next });
         changed ||= mutationChanged;
         changeIndex += 1;
       } else {
-        const mutationChanged = this.#applyExistingKeyMutation({ existing: entry, mutation: change, target: next });
+        const mutationChanged = this.applyExistingKeyMutation({ existing: entry, mutation: change, target: next });
         changed ||= mutationChanged;
         entryIndex += 1;
         changeIndex += 1;
@@ -316,26 +316,26 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return { changed, entries: next };
   }
 
-  async #mutatePage({ changes, isRoot, reference, structural }: {
+  private async mutatePage({ changes, isRoot, reference, structural }: {
     changes: readonly ImmutableBTreeMutation<TKey, TEntry>[];
     isRoot: boolean;
     reference: TReference;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<MutationResult<TKey, TReference>> {
-    const page = await this.#pageStore.readPage({ isRoot, reference });
+    const page = await this.pageStore.readPage({ isRoot, reference });
     if (structural !== undefined) {
       structural.pageReads += 1;
       structural.maximumPageLevel = Math.max(structural.maximumPageLevel, page.level);
     }
     assertLocallyValidImmutableBTreePage({
-      compareKeys: this.#compareKeys,
-      getEntryKey: this.#getEntryKey,
+      compareKeys: this.compareKeys,
+      getEntryKey: this.getEntryKey,
       isRoot,
       page,
     });
     switch (page.type) {
     case "leaf": {
-      const merged = this.#mergeLeafChanges({ changes, entries: page.entries });
+      const merged = this.mergeLeafChanges({ changes, entries: page.entries });
       if (!merged.changed) {
         if (structural !== undefined) structural.unchangedPageReuses += 1;
         return {
@@ -343,7 +343,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
           references: [{
             level: 0,
             reference,
-            upperBound: immutableBTreePageMaximumKey({ getEntryKey: this.#getEntryKey, page }),
+            upperBound: immutableBTreePageMaximumKey({ getEntryKey: this.getEntryKey, page }),
           }],
         };
       }
@@ -353,13 +353,13 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
           changed: true,
           references: [{
             level: 0,
-            reference: await this.#writeEmptyRootPage({ structural }),
+            reference: await this.writeEmptyRootPage({ structural }),
           }],
         };
       }
       return {
         changed: true,
-        references: await this.#writeLeafGroups({
+        references: await this.writeLeafGroups({
           entries: merged.entries,
           isRootWhenSingleGroup: isRoot,
           structural,
@@ -369,8 +369,8 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     case "branch": {
       const changesByChild = new Map<number, ImmutableBTreeMutation<TKey, TEntry>[]>();
       for (const change of changes) {
-        const key = this.#mutationKey({ mutation: change });
-        const found = findBranchChildIndex({ children: page.children, compareKeys: this.#compareKeys, key });
+        const key = this.mutationKey({ mutation: change });
+        const found = findBranchChildIndex({ children: page.children, compareKeys: this.compareKeys, key });
         if (found >= page.children.length) {
           switch (change.type) {
           case "delete": continue;
@@ -401,7 +401,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
           nextChildren.push(child);
           continue;
         }
-        const result = await this.#mutatePage({
+        const result = await this.mutatePage({
           changes: childChanges,
           isRoot: false,
           reference: child.childPageReference,
@@ -439,7 +439,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
       }
       return {
         changed: true,
-        references: await this.#writeBranchGroups({
+        references: await this.writeBranchGroups({
           children: nextChildren,
           isRootWhenSingleGroup: isRoot,
           level: page.level,
@@ -451,21 +451,21 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     }
   }
 
-  async #writeEmptyRootPage({ structural }: {
+  private async writeEmptyRootPage({ structural }: {
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<TReference> {
     if (structural !== undefined) structural.pageWrites += 1;
-    return await this.#pageStore.writePage({
+    return await this.pageStore.writePage({
       isRoot: true,
       page: { entries: [], level: 0, type: "leaf" },
     });
   }
 
-  async #buildRoot({ references, structural }: {
+  private async buildRoot({ references, structural }: {
     references: readonly ReferenceSummary<TKey, TReference>[];
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<TReference> {
-    if (references.length === 0) return await this.#writeEmptyRootPage({ structural });
+    if (references.length === 0) return await this.writeEmptyRootPage({ structural });
     let current = references;
     while (current.length > 1) {
       const childLevel = current[0]?.level;
@@ -475,7 +475,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
         if (item.upperBound === undefined) throw new TypeError("B-tree root construction received an empty child");
         return { childPageReference: item.reference, upperBound: item.upperBound };
       });
-      current = await this.#writeBranchGroups({
+      current = await this.writeBranchGroups({
         children,
         isRootWhenSingleGroup: true,
         level: childLevel + 1,
@@ -489,9 +489,9 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
 
   async createEmpty(): Promise<TReference> {
     return await measureImmutableBTreeOperation({
-      diagnostics: this.#pageStore.operationDiagnostics?.port,
+      diagnostics: this.pageStore.operationDiagnostics?.port,
       operation: "build",
-      run: async ({ structural }) => await this.#writeEmptyRootPage({ structural }),
+      run: async ({ structural }) => await this.writeEmptyRootPage({ structural }),
     });
   }
 
@@ -501,19 +501,19 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
   }): Promise<TReference> {
     if (changes.length === 0) return rootReference;
     return await measureImmutableBTreeOperation({
-      diagnostics: this.#pageStore.operationDiagnostics?.port,
-      operation: this.#pageStore.operationDiagnostics?.operation ?? "update",
+      diagnostics: this.pageStore.operationDiagnostics?.port,
+      operation: this.pageStore.operationDiagnostics?.operation ?? "update",
       run: async ({ structural }) => {
-        const sorted = this.#sortedUniqueMutations({ changes });
+        const sorted = this.sortedUniqueMutations({ changes });
         if (structural !== undefined) structural.inputMutations = sorted.length;
-        const result = await this.#mutatePage({
+        const result = await this.mutatePage({
           changes: sorted,
           isRoot: true,
           reference: rootReference,
           structural,
         });
         if (!result.changed) return rootReference;
-        return await this.#buildRoot({ references: result.references, structural });
+        return await this.buildRoot({ references: result.references, structural });
       },
     });
   }

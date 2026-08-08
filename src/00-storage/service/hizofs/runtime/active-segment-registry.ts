@@ -45,8 +45,8 @@ function emptyReferences(): Record<ActiveSegmentReferenceKind, number> {
 }
 
 export class ActiveSegmentRegistry {
-  #containers = new WeakMap<ContainerCoordinationKey, ContainerState>();
-  #maxReferencesPerContainer: number;
+  private containers = new WeakMap<ContainerCoordinationKey, ContainerState>();
+  private maxReferencesPerContainer: number;
 
   constructor({ maxReferencesPerContainer }: { maxReferencesPerContainer: number }) {
     if (!Number.isSafeInteger(maxReferencesPerContainer) || maxReferencesPerContainer < 1) {
@@ -55,18 +55,18 @@ export class ActiveSegmentRegistry {
         message: "active segment registry requires a positive safe per-container reference limit",
       });
     }
-    this.#maxReferencesPerContainer = maxReferencesPerContainer;
+    this.maxReferencesPerContainer = maxReferencesPerContainer;
   }
 
-  #container({ coordinationKey }: { coordinationKey: ContainerCoordinationKey }): ContainerState {
-    const existing = this.#containers.get(coordinationKey);
+  private container({ coordinationKey }: { coordinationKey: ContainerCoordinationKey }): ContainerState {
+    const existing = this.containers.get(coordinationKey);
     if (existing !== undefined) return existing;
     const created: ContainerState = { referenceCount: 0, segments: new Map() };
-    this.#containers.set(coordinationKey, created);
+    this.containers.set(coordinationKey, created);
     return created;
   }
 
-  #segment({ container, segmentId }: {
+  private segment({ container, segmentId }: {
     container: ContainerState;
     segmentId: SegmentId;
   }): { identity: string; state: SegmentState } {
@@ -88,15 +88,15 @@ export class ActiveSegmentRegistry {
     kind: ActiveSegmentReferenceKind;
     segmentId: SegmentId;
   }): ActiveSegmentReference {
-    const container = this.#container({ coordinationKey });
-    const { identity, state } = this.#segment({ container, segmentId });
+    const container = this.container({ coordinationKey });
+    const { identity, state } = this.segment({ container, segmentId });
     if (state.deletionActive) {
       throw new ActiveSegmentRegistryError({
         code: "deletion_active",
         message: "new segment references are blocked while deletion owns the segment gate",
       });
     }
-    if (container.referenceCount >= this.#maxReferencesPerContainer) {
+    if (container.referenceCount >= this.maxReferencesPerContainer) {
       throw new ActiveSegmentRegistryError({
         code: "reference_limit_exceeded",
         message: "active segment references reached the explicit per-container memory bound",
@@ -126,7 +126,7 @@ export class ActiveSegmentRegistry {
   activityState({ coordinationKey }: {
     coordinationKey: ContainerCoordinationKey;
   }): ActiveSegmentRegistryActivityState {
-    const container = this.#containers.get(coordinationKey);
+    const container = this.containers.get(coordinationKey);
     if (container === undefined) return "idle";
     if (container.referenceCount > 0) return "active";
     for (const state of container.segments.values()) {
@@ -139,8 +139,8 @@ export class ActiveSegmentRegistry {
     coordinationKey: ContainerCoordinationKey;
     segmentId: SegmentId;
   }): Promise<ActiveSegmentDeletionLease> {
-    const container = this.#container({ coordinationKey });
-    const { identity, state } = this.#segment({ container, segmentId });
+    const container = this.container({ coordinationKey });
+    const { identity, state } = this.segment({ container, segmentId });
     if (state.deletionActive) {
       throw new ActiveSegmentRegistryError({
         code: "deletion_active",

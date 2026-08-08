@@ -108,32 +108,32 @@ function parentDirectoryOfDirectory({
 }
 
 class OpfsPhysicalDirectoryCursor implements HizoFSPhysicalDirectoryCursor {
-  #closed = false;
-  #done = false;
-  readonly #iterator: AsyncIterableIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]>;
+  private closed = false;
+  private done = false;
+  private readonly iterator: AsyncIterableIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]>;
 
   public constructor({ iterator }: { iterator: AsyncIterableIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]> }) {
-    this.#iterator = iterator;
+    this.iterator = iterator;
   }
 
   public async close(): Promise<void> {
-    if (this.#closed) return;
-    this.#closed = true;
-    await this.#iterator.return?.();
+    if (this.closed) return;
+    this.closed = true;
+    await this.iterator.return?.();
   }
 
   public async read({ maximumEntries }: { maximumEntries: number }): Promise<PhysicalDirectoryCursorPage> {
-    if (this.#closed) throw new TypeError('physical directory cursor is closed');
+    if (this.closed) throw new TypeError('physical directory cursor is closed');
     if (!Number.isSafeInteger(maximumEntries) || maximumEntries < 1) {
       throw new RangeError('physical directory cursor page size must be a positive safe integer');
     }
-    if (this.#done) return Object.freeze({ done: true, entries: Object.freeze([]) });
+    if (this.done) return Object.freeze({ done: true, entries: Object.freeze([]) });
 
     const entries: PhysicalEntry[] = [];
     while (entries.length < maximumEntries) {
-      const next = await this.#iterator.next();
+      const next = await this.iterator.next();
       if (next.done === true) {
-        this.#done = true;
+        this.done = true;
         break;
       }
       const [name, entry] = next.value;
@@ -150,7 +150,7 @@ class OpfsPhysicalDirectoryCursor implements HizoFSPhysicalDirectoryCursor {
       }
       }
     }
-    return Object.freeze({ done: this.#done, entries: Object.freeze(entries) });
+    return Object.freeze({ done: this.done, entries: Object.freeze(entries) });
   }
 }
 
@@ -160,11 +160,11 @@ export class OpfsWritableBackend<AuthenticatedPhysicalBytes extends Uint8Array>
 implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSDirectoryCursorBackend {
   public readonly capabilities = CAPABILITIES;
 
-  readonly #fileHandleCache = new Map<CanonicalContainerPath, OpfsResolvedFile>();
-  readonly #fileHandleCachePolicy: OpfsWritableBackendFileHandleCachePolicy | undefined;
-  readonly #handles = new WeakMap<HizoFSWritableFile, OpfsWritableFileState>();
-  readonly #openPathCounts = new Map<CanonicalContainerPath, number>();
-  readonly #root: FileSystemDirectoryHandle;
+  private readonly fileHandleCache = new Map<CanonicalContainerPath, OpfsResolvedFile>();
+  private readonly fileHandleCachePolicy: OpfsWritableBackendFileHandleCachePolicy | undefined;
+  private readonly handles = new WeakMap<HizoFSWritableFile, OpfsWritableFileState>();
+  private readonly openPathCounts = new Map<CanonicalContainerPath, number>();
+  private readonly root: FileSystemDirectoryHandle;
 
   public constructor({ fileHandleCachePolicy, root }: {
     fileHandleCachePolicy?: OpfsWritableBackendFileHandleCachePolicy;
@@ -174,9 +174,9 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
       && (!Number.isSafeInteger(fileHandleCachePolicy.maximumEntries) || fileHandleCachePolicy.maximumEntries < 0)) {
       throw new RangeError('OPFS file-handle cache maximum entries must be a non-negative safe integer');
     }
-    this.#fileHandleCachePolicy = fileHandleCachePolicy;
-    this.#root = root;
-    this.#reportFileHandleCacheUsage();
+    this.fileHandleCachePolicy = fileHandleCachePolicy;
+    this.root = root;
+    this.reportFileHandleCacheUsage();
   }
 
   public async createDirectoryExclusive({
@@ -185,7 +185,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     path: CanonicalContainerDirectory;
   }): Promise<Readonly<{ parentEntrySyncRequired: boolean }>> {
     if (path === CANONICAL_CONTAINER_ROOT) return { parentEntrySyncRequired: false };
-    const parent = await this.#resolveDirectory({ path: parentDirectoryOfDirectory({ path }) });
+    const parent = await this.resolveDirectory({ path: parentDirectoryOfDirectory({ path }) });
     const name = containerEntryName({ path });
     try {
       await parent.getDirectoryHandle(name);
@@ -220,7 +220,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
   }: {
     path: CanonicalContainerDirectory;
   }): Promise<Readonly<{ parentEntriesRequiringSync: readonly CanonicalContainerDirectory[] }>> {
-    let directory = this.#root;
+    let directory = this.root;
     let parentPath = CANONICAL_CONTAINER_ROOT;
     const parentEntriesRequiringSync: CanonicalContainerDirectory[] = [];
 
@@ -264,14 +264,14 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
   }: {
     path: CanonicalContainerPath;
   }): Promise<HizoFSWritableFile> {
-    const parent = await this.#resolveDirectory({ path: parentContainerDirectory({ path }) });
+    const parent = await this.resolveDirectory({ path: parentContainerDirectory({ path }) });
     const name = containerEntryName({ path });
-    await this.#assertEntryAbsent({ name, parent, path });
+    await this.assertEntryAbsent({ name, parent, path });
 
     try {
       const fileHandle = await parent.getFileHandle(name, { create: true }) as OpfsWritableFileHandle;
-      this.#retainResolvedFile({ path, resolved: { fileHandle, name, parent } });
-      return await this.#openNativeHandle({ fileHandle, path });
+      this.retainResolvedFile({ path, resolved: { fileHandle, name, parent } });
+      return await this.openNativeHandle({ fileHandle, path });
     } catch (error) {
       // OPFS has no atomic exclusive-create primitive. After the absence check, an
       // acquisition failure does not prove ownership of the entry, so never delete it here.
@@ -292,8 +292,8 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     path: CanonicalContainerPath;
   }): Promise<HizoFSWritableFile> {
     try {
-      const { fileHandle } = await this.#resolveFile({ path });
-      return await this.#openNativeHandle({ fileHandle, path });
+      const { fileHandle } = await this.resolveFile({ path });
+      return await this.openNativeHandle({ fileHandle, path });
     } catch (error) {
       if (isDomExceptionNamed({ error, name: 'NotFoundError' })) {
         throw physicalStoreError({
@@ -319,7 +319,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     path: CanonicalContainerPath;
   }): Promise<bigint | undefined> {
     try {
-      const { fileHandle } = await this.#resolveFile({ path });
+      const { fileHandle } = await this.resolveFile({ path });
       return BigInt((await fileHandle.getFile()).size);
     } catch (error) {
       if (isDomExceptionNamed({ error, name: 'NotFoundError' })
@@ -344,7 +344,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     offset: bigint;
     path: CanonicalContainerPath;
   }): Promise<Uint8Array> {
-    return (await this.#readSnapshotRange({ length, offset, path })).bytes;
+    return (await this.readSnapshotRange({ length, offset, path })).bytes;
   }
 
   public async readExactWithFileSize({
@@ -356,7 +356,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     offset: bigint;
     path: CanonicalContainerPath;
   }): Promise<Readonly<{ bytes: Uint8Array; fileSize: bigint }>> {
-    return await this.#readSnapshotRange({ length, offset, path });
+    return await this.readSnapshotRange({ length, offset, path });
   }
 
   public async readExactPairWithFileSize({
@@ -368,10 +368,10 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     path: CanonicalContainerPath;
     second: PhysicalExactReadRange;
   }): Promise<PhysicalExactReadPairWithFileSize> {
-    const firstRange = this.#checkedSnapshotRange({ ...first, label: 'first exact read' });
-    const secondRange = this.#checkedSnapshotRange({ ...second, label: 'second exact read' });
+    const firstRange = this.checkedSnapshotRange({ ...first, label: 'first exact read' });
+    const secondRange = this.checkedSnapshotRange({ ...second, label: 'second exact read' });
     try {
-      const { fileHandle } = await this.#resolveFile({ path });
+      const { fileHandle } = await this.resolveFile({ path });
       const snapshot = await fileHandle.getFile();
       if (firstRange.end > snapshot.size) {
         throw physicalStoreError({
@@ -408,7 +408,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     }
   }
 
-  #checkedSnapshotRange({
+  private checkedSnapshotRange({
     label,
     length,
     offset,
@@ -416,13 +416,13 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     if (!Number.isSafeInteger(length) || length < 0) {
       throw new RangeError(`${label} length must be a non-negative safe integer`);
     }
-    const start = this.#checkedSafeInteger({ label: `${label} offset`, value: offset });
+    const start = this.checkedSafeInteger({ label: `${label} offset`, value: offset });
     const end = start + length;
     if (!Number.isSafeInteger(end)) throw new RangeError(`${label} end exceeds safe integer range`);
     return { end, start };
   }
 
-  async #readSnapshotRange({
+  private async readSnapshotRange({
     length,
     offset,
     path,
@@ -431,14 +431,14 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     offset: bigint;
     path: CanonicalContainerPath;
   }): Promise<Readonly<{ bytes: Uint8Array; fileSize: bigint }>> {
-    const { end, start } = this.#checkedSnapshotRange({
+    const { end, start } = this.checkedSnapshotRange({
       label: 'exact read',
       length,
       offset,
     });
 
     try {
-      const { fileHandle } = await this.#resolveFile({ path });
+      const { fileHandle } = await this.resolveFile({ path });
       const snapshot = await fileHandle.getFile();
       if (end > snapshot.size) {
         throw physicalStoreError({
@@ -482,7 +482,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     }
 
     try {
-      const { fileHandle } = await this.#resolveFile({ path });
+      const { fileHandle } = await this.resolveFile({ path });
       const snapshot = await fileHandle.getFile();
       if (snapshot.size > maximumByteLength) {
         throw physicalStoreError({
@@ -516,8 +516,8 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     offset: bigint;
   }): Promise<void> {
     if (!(bytes instanceof Uint8Array)) throw new TypeError('physical write bytes must be a Uint8Array');
-    const state = this.#requireOpenHandle({ file });
-    let position = this.#checkedSafeInteger({ label: 'write offset', value: offset });
+    const state = this.requireOpenHandle({ file });
+    let position = this.checkedSafeInteger({ label: 'write offset', value: offset });
     const writeEnd = position + bytes.byteLength;
     if (!Number.isSafeInteger(writeEnd)) {
       throw physicalStoreError({
@@ -545,7 +545,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
       return;
     }
     case 'writable_stream':
-      await this.#runWritableStreamOperation({
+      await this.runWritableStreamOperation({
         access: state.access,
         operation: async ({ stream }) => await stream.write({
           data: bytes.slice(),
@@ -566,14 +566,14 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     file: HizoFSWritableFile;
     length: bigint;
   }): Promise<void> {
-    const state = this.#requireOpenHandle({ file });
-    const checkedLength = this.#checkedSafeInteger({ label: 'truncate length', value: length });
+    const state = this.requireOpenHandle({ file });
+    const checkedLength = this.checkedSafeInteger({ label: 'truncate length', value: length });
     switch (state.access.type) {
     case 'sync_access':
       state.access.handle.truncate(checkedLength);
       return;
     case 'writable_stream':
-      await this.#runWritableStreamOperation({
+      await this.runWritableStreamOperation({
         access: state.access,
         operation: async ({ stream }) => await stream.truncate(checkedLength),
         state,
@@ -588,7 +588,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
   }: {
     file: HizoFSWritableFile;
   }): Promise<void> {
-    const state = this.#requireOpenHandle({ file });
+    const state = this.requireOpenHandle({ file });
     switch (state.access.type) {
     case 'sync_access':
       state.access.handle.flush();
@@ -609,7 +609,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
   }: {
     file: HizoFSWritableFile;
   }): Promise<void> {
-    const state = this.#handles.get(file);
+    const state = this.handles.get(file);
     if (state === undefined) {
       throw physicalStoreError({
         code: 'foreign_handle',
@@ -622,12 +622,12 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
       return;
     }
 
-    const closing = this.#closeNativeHandle({ state });
+    const closing = this.closeNativeHandle({ state });
     state.closing = closing;
     try {
       await closing;
       state.closed = true;
-      this.#decrementOpenPath({ path: state.path });
+      this.decrementOpenPath({ path: state.path });
     } finally {
       state.closing = undefined;
     }
@@ -643,7 +643,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     // every sibling in the shard. This preserves the development live-
     // namespace confirmation without claiming crash durability.
     try {
-      const { fileHandle } = await this.#resolveFile({ path });
+      const { fileHandle } = await this.resolveFile({ path });
       await fileHandle.getFile();
     } catch (error) {
       if (isDomExceptionNamed({ error, name: 'NotFoundError' })
@@ -683,7 +683,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
   }: {
     path: CanonicalContainerPath;
   }): Promise<void> {
-    if ((this.#openPathCounts.get(path) ?? 0) !== 0) {
+    if ((this.openPathCounts.get(path) ?? 0) !== 0) {
       throw physicalStoreError({
         code: 'file_open',
         message: `physical file still has open handles: ${path}`,
@@ -692,15 +692,15 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     }
 
     try {
-      const { name, parent } = await this.#resolveFile({ path });
+      const { name, parent } = await this.resolveFile({ path });
       await parent.removeEntry(name);
-      this.#evictResolvedFile({ path });
+      this.evictResolvedFile({ path });
     } catch (error) {
       if (isDomExceptionNamed({ error, name: 'NotFoundError' })) {
         // A retained capability must not survive evidence that its directory
         // entry disappeared. Segment paths are never reused, so eviction is
         // always safer than retrying through a stale orphaned handle.
-        this.#evictResolvedFile({ path });
+        this.evictResolvedFile({ path });
         throw physicalStoreError({
           code: 'not_found',
           message: `physical file does not exist: ${path}`,
@@ -722,7 +722,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
   public async openDirectoryCursor({ directory }: {
     directory: CanonicalContainerDirectory;
   }): Promise<HizoFSPhysicalDirectoryCursor> {
-    const handle = await this.#resolveDirectory({ path: directory });
+    const handle = await this.resolveDirectory({ path: directory });
     return new OpfsPhysicalDirectoryCursor({ iterator: handle.entries() });
   }
 
@@ -731,7 +731,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
   }: {
     directory: CanonicalContainerDirectory;
   }): Promise<readonly PhysicalEntry[]> {
-    const handle = await this.#resolveDirectory({ path: directory });
+    const handle = await this.resolveDirectory({ path: directory });
     const entries: PhysicalEntry[] = [];
     for await (const [name, entry] of handle.entries()) {
       switch (entry.kind) {
@@ -755,7 +755,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     return entries;
   }
 
-  async #assertEntryAbsent({
+  private async assertEntryAbsent({
     name,
     parent,
     path,
@@ -784,7 +784,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     }
   }
 
-  #checkedSafeInteger({
+  private checkedSafeInteger({
     label,
     value,
   }: {
@@ -800,17 +800,17 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     return Number(value);
   }
 
-  #decrementOpenPath({
+  private decrementOpenPath({
     path,
   }: {
     path: CanonicalContainerPath;
   }): void {
-    const count = this.#openPathCounts.get(path);
-    if (count === undefined || count <= 1) this.#openPathCounts.delete(path);
-    else this.#openPathCounts.set(path, count - 1);
+    const count = this.openPathCounts.get(path);
+    if (count === undefined || count <= 1) this.openPathCounts.delete(path);
+    else this.openPathCounts.set(path, count - 1);
   }
 
-  async #openNativeHandle({
+  private async openNativeHandle({
     fileHandle,
     path,
   }: {
@@ -853,12 +853,12 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     }
 
     const file = Object.freeze({ path }) as HizoFSWritableFile;
-    this.#handles.set(file, { access, closed: false, closing: undefined, path });
-    this.#openPathCounts.set(path, (this.#openPathCounts.get(path) ?? 0) + 1);
+    this.handles.set(file, { access, closed: false, closing: undefined, path });
+    this.openPathCounts.set(path, (this.openPathCounts.get(path) ?? 0) + 1);
     return file;
   }
 
-  async #closeNativeHandle({
+  private async closeNativeHandle({
     state,
   }: {
     state: OpfsWritableFileState;
@@ -874,7 +874,7 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     }
   }
 
-  async #runWritableStreamOperation({
+  private async runWritableStreamOperation({
     access,
     operation,
     state,
@@ -943,12 +943,12 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     }
   }
 
-  #requireOpenHandle({
+  private requireOpenHandle({
     file,
   }: {
     file: HizoFSWritableFile;
   }): OpfsWritableFileState {
-    const state = this.#handles.get(file);
+    const state = this.handles.get(file);
     if (state === undefined) {
       throw physicalStoreError({
         code: 'foreign_handle',
@@ -965,12 +965,12 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     return state;
   }
 
-  async #resolveDirectory({
+  private async resolveDirectory({
     path,
   }: {
     path: CanonicalContainerDirectory;
   }): Promise<FileSystemDirectoryHandle> {
-    let directory = this.#root;
+    let directory = this.root;
     try {
       for (const segment of containerPathSegments({ path })) {
         directory = await directory.getDirectoryHandle(segment);
@@ -995,56 +995,56 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
     }
   }
 
-  #reportFileHandleCacheUsage(): void {
-    this.#fileHandleCachePolicy?.diagnostics?.setUsage({ entries: this.#fileHandleCache.size });
+  private reportFileHandleCacheUsage(): void {
+    this.fileHandleCachePolicy?.diagnostics?.setUsage({ entries: this.fileHandleCache.size });
   }
 
-  #evictResolvedFile({ path }: { path: CanonicalContainerPath }): void {
-    if (!this.#fileHandleCache.delete(path)) return;
-    this.#reportFileHandleCacheUsage();
+  private evictResolvedFile({ path }: { path: CanonicalContainerPath }): void {
+    if (!this.fileHandleCache.delete(path)) return;
+    this.reportFileHandleCacheUsage();
   }
 
-  #retainResolvedFile({ path, resolved }: {
+  private retainResolvedFile({ path, resolved }: {
     path: CanonicalContainerPath;
     resolved: OpfsResolvedFile;
   }): void {
-    const policy = this.#fileHandleCachePolicy;
+    const policy = this.fileHandleCachePolicy;
     if (policy === undefined || policy.maximumEntries === 0 || !policy.shouldCache({ path })) return;
-    this.#fileHandleCache.delete(path);
-    while (this.#fileHandleCache.size >= policy.maximumEntries) {
-      const oldest = this.#fileHandleCache.keys().next().value as CanonicalContainerPath | undefined;
+    this.fileHandleCache.delete(path);
+    while (this.fileHandleCache.size >= policy.maximumEntries) {
+      const oldest = this.fileHandleCache.keys().next().value as CanonicalContainerPath | undefined;
       if (oldest === undefined) break;
-      this.#fileHandleCache.delete(oldest);
+      this.fileHandleCache.delete(oldest);
       policy.diagnostics?.recordEvent({ event: "eviction" });
     }
-    this.#fileHandleCache.set(path, resolved);
-    this.#reportFileHandleCacheUsage();
+    this.fileHandleCache.set(path, resolved);
+    this.reportFileHandleCacheUsage();
   }
 
-  async #resolveFile({
+  private async resolveFile({
     path,
   }: {
     path: CanonicalContainerPath;
   }): Promise<OpfsResolvedFile> {
-    const policy = this.#fileHandleCachePolicy;
+    const policy = this.fileHandleCachePolicy;
     const cacheEligible = policy !== undefined
       && policy.maximumEntries !== 0
       && policy.shouldCache({ path });
     if (cacheEligible) {
-      const cached = this.#fileHandleCache.get(path);
+      const cached = this.fileHandleCache.get(path);
       if (cached !== undefined) {
-        this.#fileHandleCache.delete(path);
-        this.#fileHandleCache.set(path, cached);
+        this.fileHandleCache.delete(path);
+        this.fileHandleCache.set(path, cached);
         policy.diagnostics?.recordEvent({ event: "hit" });
         return cached;
       }
       policy.diagnostics?.recordEvent({ event: "miss" });
     }
-    const parent = await this.#resolveDirectory({ path: parentContainerDirectory({ path }) });
+    const parent = await this.resolveDirectory({ path: parentContainerDirectory({ path }) });
     const name = containerEntryName({ path });
     const fileHandle = await parent.getFileHandle(name) as OpfsWritableFileHandle;
     const resolved = { fileHandle, name, parent };
-    if (cacheEligible) this.#retainResolvedFile({ path, resolved });
+    if (cacheEligible) this.retainResolvedFile({ path, resolved });
     return resolved;
   }
 }

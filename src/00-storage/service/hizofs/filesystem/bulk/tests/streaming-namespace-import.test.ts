@@ -35,50 +35,50 @@ function identity({ reference }: { reference: HomeRecordReference }): string {
 
 class MemoryImportPort {
   readonly fileData: Uint8Array[] = [];
-  readonly #directoryPages = new Map<string, ImmutableBTreePage<string, DirectoryLeafEntry, HomeRecordReference>>();
-  readonly #extentPages = new Map<string, FileExtentPage>();
-  readonly #inodePages = new Map<string, ImmutableBTreePage<InodeNumber, InodeLeafEntry, HomeRecordReference>>();
+  private readonly directoryPages = new Map<string, ImmutableBTreePage<string, DirectoryLeafEntry, HomeRecordReference>>();
+  private readonly extentPages = new Map<string, FileExtentPage>();
+  private readonly inodePages = new Map<string, ImmutableBTreePage<InodeNumber, InodeLeafEntry, HomeRecordReference>>();
   readonly directoryPageStore: DirectoryPageTreePageStore = {
     readPage: async ({ reference }) => {
-      const page = this.#directoryPages.get(identity({ reference }));
+      const page = this.directoryPages.get(identity({ reference }));
       if (page === undefined) throw new Error("missing Directory Page");
       return page;
     },
     writePage: async ({ page }) => {
-      const reference = this.#reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page });
-      this.#directoryPages.set(identity({ reference }), page);
+      const reference = this.reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page });
+      this.directoryPages.set(identity({ reference }), page);
       return reference;
     },
   };
   readonly extentPageStore = createFileExtentTreePageStore({ pagePort: {
     readPage: async ({ reference }) => {
-      const page = this.#extentPages.get(identity({ reference }));
+      const page = this.extentPages.get(identity({ reference }));
       if (page === undefined) throw new Error("missing File Extent Page");
       return page;
     },
     writePage: async ({ page }) => {
-      const reference = this.#reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page });
-      this.#extentPages.set(identity({ reference }), page);
+      const reference = this.reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page });
+      this.extentPages.set(identity({ reference }), page);
       return reference;
     },
   } });
   readonly rootInodeTablePageStore: RootInodeTablePageStore = {
     readPage: async ({ reference }) => {
-      const page = this.#inodePages.get(identity({ reference }));
+      const page = this.inodePages.get(identity({ reference }));
       if (page === undefined) throw new Error("missing Inode Table Page");
       return page;
     },
     writePage: async ({ page }) => {
-      const reference = this.#reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page });
-      this.#inodePages.set(identity({ reference }), page);
+      const reference = this.reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page });
+      this.inodePages.set(identity({ reference }), page);
       return reference;
     },
   };
-  #nextOffset = 1_024n;
+  private nextOffset = 1_024n;
 
-  #reference({ kind }: { kind: number }): HomeRecordReference {
-    const offset = this.#nextOffset;
-    this.#nextOffset += 128n;
+  private reference({ kind }: { kind: number }): HomeRecordReference {
+    const offset = this.nextOffset;
+    this.nextOffset += 128n;
     return createHomeRecordReference({ fields: {
       byteOffset: createUInt64({ value: offset }),
       frameLength: 96,
@@ -101,7 +101,7 @@ class MemoryImportPort {
         extentPageStore: this.extentPageStore,
         writeFileData: async ({ bytes }) => {
           this.fileData.push(new Uint8Array(bytes));
-          return this.#reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data });
+          return this.reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data });
         },
       },
       rootInodeTablePageStore: this.rootInodeTablePageStore,

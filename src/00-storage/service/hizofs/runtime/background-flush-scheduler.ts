@@ -32,25 +32,26 @@ const DEFAULT_BACKGROUND_FLUSH_TIMER_PORT: HizoFSBackgroundFlushTimerPort = Obje
 /**
  * Owns one bounded background-flush timer for a runtime dirty epoch. The first
  * dirty mutation fixes the age deadline; later mutations cannot postpone it.
- * A resource-pressure trigger may only move the same timer earlier. Automatic
+ * Resource pressure starts publication immediately so the hard admission
+ * boundary cannot be overtaken by a Promise-heavy foreground loop. Automatic
  * failure is fail-stopped until an explicit flush succeeds, preventing retry
  * storms from hiding a durable-publication failure.
  */
 export class HizoFSBackgroundFlushScheduler {
-  #automaticRetryBlocked = false;
-  #backgroundFlushInFlight = false;
-  #deferredTrigger: HizoFSBackgroundFlushTrigger | undefined;
-  #deferredUntilForegroundIdle = false;
-  #dirty = false;
-  readonly #maximumDirtyAgeMilliseconds: number;
-  readonly #requestFlush: ({ trigger }: {
+  private automaticRetryBlocked = false;
+  private backgroundFlushInFlight = false;
+  private deferredTrigger: HizoFSBackgroundFlushTrigger | undefined;
+  private deferredUntilForegroundIdle = false;
+  private dirty = false;
+  private readonly maximumDirtyAgeMilliseconds: number;
+  private readonly requestFlush: ({ trigger }: {
     trigger: HizoFSBackgroundFlushTrigger;
   }) => Promise<void>;
-  #scheduled: Readonly<{
+  private scheduled: Readonly<{
     timer: HizoFSBackgroundFlushTimer;
     trigger: HizoFSBackgroundFlushTrigger;
   }> | undefined;
-  readonly #timerPort: HizoFSBackgroundFlushTimerPort;
+  private readonly timerPort: HizoFSBackgroundFlushTimerPort;
 
   constructor({ maximumDirtyAgeMilliseconds, requestFlush, timerPort = DEFAULT_BACKGROUND_FLUSH_TIMER_PORT }: {
     maximumDirtyAgeMilliseconds: number;
@@ -60,134 +61,137 @@ export class HizoFSBackgroundFlushScheduler {
     if (!Number.isSafeInteger(maximumDirtyAgeMilliseconds) || maximumDirtyAgeMilliseconds < 1) {
       throw new TypeError("maximum dirty age must be a positive safe integer");
     }
-    this.#maximumDirtyAgeMilliseconds = maximumDirtyAgeMilliseconds;
-    this.#requestFlush = requestFlush;
-    this.#timerPort = timerPort;
+    this.maximumDirtyAgeMilliseconds = maximumDirtyAgeMilliseconds;
+    this.requestFlush = requestFlush;
+    this.timerPort = timerPort;
   }
 
-  #cancelScheduled(): void {
-    const scheduled = this.#scheduled;
+  private cancelScheduled(): void {
+    const scheduled = this.scheduled;
     if (scheduled === undefined) return;
-    this.#scheduled = undefined;
+    this.scheduled = undefined;
     scheduled.timer.cancel();
   }
 
-  #schedule({ delayMilliseconds, trigger }: {
+  private startFlush({ trigger }: { trigger: HizoFSBackgroundFlushTrigger }): void {
+    if (!this.dirty || this.automaticRetryBlocked || this.backgroundFlushInFlight) return;
+    this.backgroundFlushInFlight = true;
+    void this.requestFlush({ trigger }).catch(() => undefined).finally(() => {
+      this.backgroundFlushInFlight = false;
+      this.scheduleDeferredIfReady();
+    });
+  }
+
+  private schedule({ delayMilliseconds, trigger }: {
     delayMilliseconds: number;
     trigger: HizoFSBackgroundFlushTrigger;
   }): void {
     const scheduled = Object.freeze({
-      timer: this.#timerPort.schedule({
+      timer: this.timerPort.schedule({
         callback: () => {
-          if (this.#scheduled !== scheduled) return;
-          this.#scheduled = undefined;
-          if (!this.#dirty || this.#automaticRetryBlocked || this.#backgroundFlushInFlight) return;
-          this.#backgroundFlushInFlight = true;
-          void this.#requestFlush({ trigger }).catch(() => undefined).finally(() => {
-            this.#backgroundFlushInFlight = false;
-            this.#scheduleDeferredIfReady();
-          });
+          if (this.scheduled !== scheduled) return;
+          this.scheduled = undefined;
+          this.startFlush({ trigger });
         },
         delayMilliseconds,
       }),
       trigger,
     });
-    this.#scheduled = scheduled;
+    this.scheduled = scheduled;
   }
 
-  #deferTrigger({ trigger }: { trigger: HizoFSBackgroundFlushTrigger }): void {
-    const current = this.#deferredTrigger;
+  private deferTrigger({ trigger }: { trigger: HizoFSBackgroundFlushTrigger }): void {
+    const current = this.deferredTrigger;
     if (current === undefined) {
-      this.#deferredTrigger = trigger;
+      this.deferredTrigger = trigger;
       return;
     }
     switch (current) {
     case "resource_pressure": return;
     case "dirty_age":
-      this.#deferredTrigger = trigger;
+      this.deferredTrigger = trigger;
       return;
     default: return current satisfies never;
     }
   }
 
-  #scheduleDeferredIfReady(): void {
-    const trigger = this.#deferredTrigger;
+  private scheduleDeferredIfReady(): void {
+    const trigger = this.deferredTrigger;
     if (
       trigger === undefined
-      || !this.#dirty
-      || this.#automaticRetryBlocked
-      || this.#backgroundFlushInFlight
-      || this.#deferredUntilForegroundIdle
-      || this.#scheduled !== undefined
+      || !this.dirty
+      || this.automaticRetryBlocked
+      || this.backgroundFlushInFlight
+      || this.deferredUntilForegroundIdle
+      || this.scheduled !== undefined
     ) return;
-    this.#deferredTrigger = undefined;
-    this.#schedule({ delayMilliseconds: 0, trigger });
+    this.deferredTrigger = undefined;
+    this.schedule({ delayMilliseconds: 0, trigger });
   }
 
   deferAfterForegroundBusy({ trigger }: { trigger: HizoFSBackgroundFlushTrigger }): void {
-    if (!this.#dirty || this.#automaticRetryBlocked) return;
-    this.#deferredUntilForegroundIdle = true;
-    this.#deferTrigger({ trigger });
+    if (!this.dirty || this.automaticRetryBlocked) return;
+    this.deferredUntilForegroundIdle = true;
+    this.deferTrigger({ trigger });
   }
 
   notifyForegroundIdle(): void {
-    this.#deferredUntilForegroundIdle = false;
-    this.#scheduleDeferredIfReady();
+    this.deferredUntilForegroundIdle = false;
+    this.scheduleDeferredIfReady();
   }
 
   markDirty({ resourcePressure }: { resourcePressure: boolean }): void {
-    this.#dirty = true;
-    if (this.#automaticRetryBlocked || this.#backgroundFlushInFlight) return;
-    const scheduled = this.#scheduled;
+    this.dirty = true;
+    if (this.automaticRetryBlocked || this.backgroundFlushInFlight) return;
+    const scheduled = this.scheduled;
     if (resourcePressure) {
-      if (scheduled !== undefined) {
-        switch (scheduled.trigger) {
-        case "resource_pressure": return;
-        case "dirty_age": break;
-        default: return scheduled.trigger satisfies never;
-        }
-      }
-      this.#cancelScheduled();
-      this.#schedule({ delayMilliseconds: 0, trigger: "resource_pressure" });
+      this.cancelScheduled();
+      // WHY: a hard dirty-resource threshold is an admission boundary, not a
+      // best-effort timer hint. Starting publication now queues its writer
+      // ownership before the caller can begin the next mutation. Deferring via
+      // setTimeout(0) lets a Promise-heavy foreground loop enter the next
+      // admission first and incorrectly surface the hard bound as an
+      // application error instead of closing the dirty epoch.
+      this.startFlush({ trigger: "resource_pressure" });
       return;
     }
     if (scheduled !== undefined) return;
-    this.#schedule({
-      delayMilliseconds: this.#maximumDirtyAgeMilliseconds,
+    this.schedule({
+      delayMilliseconds: this.maximumDirtyAgeMilliseconds,
       trigger: "dirty_age",
     });
   }
 
   markDurable(): void {
-    this.#cancelScheduled();
-    this.#deferredTrigger = undefined;
-    this.#deferredUntilForegroundIdle = false;
-    this.#automaticRetryBlocked = false;
-    this.#dirty = false;
+    this.cancelScheduled();
+    this.deferredTrigger = undefined;
+    this.deferredUntilForegroundIdle = false;
+    this.automaticRetryBlocked = false;
+    this.dirty = false;
   }
 
   markStalled(): void {
-    this.#cancelScheduled();
-    this.#deferredTrigger = undefined;
-    this.#deferredUntilForegroundIdle = false;
-    this.#automaticRetryBlocked = true;
-    this.#dirty = true;
+    this.cancelScheduled();
+    this.deferredTrigger = undefined;
+    this.deferredUntilForegroundIdle = false;
+    this.automaticRetryBlocked = true;
+    this.dirty = true;
   }
 
   prepareExplicitFlush(): void {
-    this.#cancelScheduled();
-    this.#deferredTrigger = undefined;
-    this.#deferredUntilForegroundIdle = false;
+    this.cancelScheduled();
+    this.deferredTrigger = undefined;
+    this.deferredUntilForegroundIdle = false;
   }
 
   snapshot(): HizoFSBackgroundFlushSchedulerSnapshot {
     return Object.freeze({
-      automaticRetryBlocked: this.#automaticRetryBlocked,
-      backgroundFlushDeferred: this.#deferredTrigger !== undefined,
-      backgroundFlushInFlight: this.#backgroundFlushInFlight,
-      backgroundFlushScheduled: this.#scheduled !== undefined,
-      dirty: this.#dirty,
-      scheduledTrigger: this.#scheduled?.trigger ?? null,
+      automaticRetryBlocked: this.automaticRetryBlocked,
+      backgroundFlushDeferred: this.deferredTrigger !== undefined,
+      backgroundFlushInFlight: this.backgroundFlushInFlight,
+      backgroundFlushScheduled: this.scheduled !== undefined,
+      dirty: this.dirty,
+      scheduledTrigger: this.scheduled?.trigger ?? null,
     });
   }
 }

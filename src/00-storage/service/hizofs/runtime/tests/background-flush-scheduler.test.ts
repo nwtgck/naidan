@@ -52,26 +52,35 @@ describe("HizoFS background flush scheduler", () => {
     expect(value.snapshot().backgroundFlushScheduled).toBe(false);
   });
 
-  it("moves the one timer earlier when resource pressure reaches its hard threshold", async () => {
+  it("starts resource-pressure publication before a caller can enter the next mutation", async () => {
     const { port, scheduled } = timers();
     const triggers: string[] = [];
+    let releaseFlush!: () => void;
+    const flushReleased = new Promise<void>(resolve => {
+      releaseFlush = resolve;
+    });
     const value = new HizoFSBackgroundFlushScheduler({
       maximumDirtyAgeMilliseconds: 2_000,
       requestFlush: async ({ trigger }) => {
         triggers.push(trigger);
+        await flushReleased;
       },
       timerPort: port,
     });
 
     value.markDirty({ resourcePressure: false });
     value.markDirty({ resourcePressure: true });
-    expect(scheduled).toHaveLength(2);
+    expect(scheduled).toHaveLength(1);
     expect(scheduled[0]!.cancelled).toBe(true);
-    expect(scheduled[1]).toMatchObject({ cancelled: false, delayMilliseconds: 0 });
-    expect(value.snapshot().scheduledTrigger).toBe("resource_pressure");
+    expect(triggers).toEqual(["resource_pressure"]);
+    expect(value.snapshot()).toMatchObject({
+      backgroundFlushInFlight: true,
+      backgroundFlushScheduled: false,
+      scheduledTrigger: null,
+    });
 
     scheduled[0]!.callback();
-    scheduled[1]!.callback();
+    releaseFlush();
     await flushMicrotasks();
     expect(triggers).toEqual(["resource_pressure"]);
   });

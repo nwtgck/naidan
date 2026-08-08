@@ -247,22 +247,22 @@ function requireWriterStillActive({ message, state }: {
 }
 
 export class AuthenticatedSegmentWriter {
-  readonly #backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
-  readonly #fileSystemId: FileSystemId;
-  readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
-  readonly #path: CanonicalContainerPath;
-  readonly #randomSource: RandomByteSource | undefined;
-  readonly #rootKey: FileSystemRootKey;
-  readonly #segmentClass: SegmentClass;
-  readonly #segmentId: SegmentId;
-  readonly #sealCapability: ActiveSegmentWriterCapability;
-  readonly #usedNonceKeys = new Set<string>();
-  #explicitAbandonRequested = false;
-  #frameCount = 0;
-  #nextOffset = BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
-  #operationInProgress = false;
-  #persistedFrameBytes = 0;
-  #state: SegmentWriterState = "active";
+  private readonly backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  private readonly fileSystemId: FileSystemId;
+  private readonly diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
+  private readonly path: CanonicalContainerPath;
+  private readonly randomSource: RandomByteSource | undefined;
+  private readonly rootKey: FileSystemRootKey;
+  private readonly segmentClassValue: SegmentClass;
+  private readonly segmentId: SegmentId;
+  private readonly sealCapability: ActiveSegmentWriterCapability;
+  private readonly usedNonceKeys = new Set<string>();
+  private explicitAbandonRequested = false;
+  private frameCount = 0;
+  private nextOffset = BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
+  private operationInProgress = false;
+  private persistedFrameBytesValue = 0;
+  private stateValue: SegmentWriterState = "active";
 
   private constructor({ backend, diagnostics, fileSystemId, path, randomSource, rootKey, segmentClass, segmentId }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
@@ -274,15 +274,15 @@ export class AuthenticatedSegmentWriter {
     segmentClass: SegmentClass;
     segmentId: SegmentId;
   }) {
-    this.#backend = backend;
-    this.#diagnostics = diagnostics;
-    this.#fileSystemId = fileSystemId;
-    this.#path = path;
-    this.#randomSource = randomSource;
-    this.#rootKey = rootKey;
-    this.#segmentClass = segmentClass;
-    this.#segmentId = segmentId;
-    this.#sealCapability = {
+    this.backend = backend;
+    this.diagnostics = diagnostics;
+    this.fileSystemId = fileSystemId;
+    this.path = path;
+    this.randomSource = randomSource;
+    this.rootKey = rootKey;
+    this.segmentClassValue = segmentClass;
+    this.segmentId = segmentId;
+    this.sealCapability = {
       backend,
       diagnostics,
       fileSystemId,
@@ -294,11 +294,11 @@ export class AuthenticatedSegmentWriter {
   }
 
   public hasRecords(): boolean {
-    return this.#frameCount !== 0;
+    return this.frameCount !== 0;
   }
 
   public persistedFrameBytes(): number {
-    return this.#persistedFrameBytes;
+    return this.persistedFrameBytesValue;
   }
 
   public static async create({ backend, diagnostics, fileSystemId, randomSource, rootKey, segmentClass }: {
@@ -329,13 +329,13 @@ export class AuthenticatedSegmentWriter {
   }
 
   public get physicalSegmentId(): SegmentId {
-    return this.#segmentId;
+    return this.segmentId;
   }
   public get segmentClass(): SegmentClass {
-    return this.#segmentClass;
+    return this.segmentClassValue;
   }
   public get state(): SegmentWriterState {
-    return this.#state;
+    return this.stateValue;
   }
 
   /**
@@ -345,7 +345,7 @@ export class AuthenticatedSegmentWriter {
    */
   public encodeRecordPayload({ encode }: { encode: () => Uint8Array }): Uint8Array {
     return measureAuthenticatedCodecOperation({
-      diagnostics: this.#diagnostics,
+      diagnostics: this.diagnostics,
       format: "record",
       operation: "encode",
       run: encode,
@@ -360,20 +360,20 @@ export class AuthenticatedSegmentWriter {
    * caller must hold the writer lease until the matching append completes.
    */
   public previewAppend({ records }: { records: readonly EncodedHizoFSRecord[] }): readonly AppendedRecord[] {
-    requireActiveWriter({ operation: "append", state: this.#state });
-    if (this.#operationInProgress) throw new Error("segment writer operation already in progress");
+    requireActiveWriter({ operation: "append", state: this.stateValue });
+    if (this.operationInProgress) throw new Error("segment writer operation already in progress");
     if (records.length === 0) throw new RangeError("record append batch must not be empty");
-    if (this.#frameCount + records.length > frameMaximumCount({ segmentClass: this.#segmentClass })) {
+    if (this.frameCount + records.length > frameMaximumCount({ segmentClass: this.segmentClassValue })) {
       throw new AuthenticatedSegmentCapacityError({
         capacity: "frame_count",
         message: "record append batch exceeds the segment frame-count bound",
       });
     }
 
-    let nextOffset = this.#nextOffset;
+    let nextOffset = this.nextOffset;
     const results: AppendedRecord[] = [];
     for (const record of records) {
-      if (segmentClassForRecordKind({ recordKind: record.recordKind }) !== this.#segmentClass) {
+      if (segmentClassForRecordKind({ recordKind: record.recordKind }) !== this.segmentClassValue) {
         throw new TypeError("record kind does not belong to the active segment class");
       }
       if (record.plaintext.byteLength > plaintextMaximum({ recordKind: record.recordKind })) {
@@ -383,14 +383,14 @@ export class AuthenticatedSegmentWriter {
       const header = createRecordFrameHeader({
         flags: physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0,
         homeOffset: createUInt64({ value: nextOffset }),
-        homeSegmentId: this.#segmentId,
+        homeSegmentId: this.segmentId,
         nonce: new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.crypto.nonceBytes),
         plaintextLength: record.plaintext.byteLength,
         recordKind: record.recordKind,
       });
       const end = nextOffset + BigInt(header.frameLength);
       const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
-      if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.#segmentClass }))) {
+      if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.segmentClassValue }))) {
         throw new AuthenticatedSegmentCapacityError({
           capacity: "record_area",
           message: "record append batch exceeds the segment record-area bound",
@@ -400,7 +400,7 @@ export class AuthenticatedSegmentWriter {
         byteOffset: header.homeOffset,
         frameLength: header.frameLength,
         recordKind: header.recordKind,
-        segmentId: this.#segmentId,
+        segmentId: this.segmentId,
       } });
       results.push(physicalOnly
         ? { physicalReference, type: "physical_only" }
@@ -409,7 +409,7 @@ export class AuthenticatedSegmentWriter {
             byteOffset: header.homeOffset,
             frameLength: header.frameLength,
             recordKind: header.recordKind,
-            segmentId: this.#segmentId,
+            segmentId: this.segmentId,
           } }),
           physicalReference,
           type: "home",
@@ -420,30 +420,30 @@ export class AuthenticatedSegmentWriter {
   }
 
   public abandon(): void {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "sealed":
       return;
     case "abandoned":
     case "active":
-      this.#explicitAbandonRequested = true;
-      this.#state = "abandoned";
+      this.explicitAbandonRequested = true;
+      this.stateValue = "abandoned";
       return;
     default:
-      return this.#state satisfies never;
+      return this.stateValue satisfies never;
     }
   }
 
   public async append({ records }: { records: readonly EncodedHizoFSRecord[] }): Promise<readonly AppendedRecord[]> {
-    requireActiveWriter({ operation: "append", state: this.#state });
-    if (this.#operationInProgress) throw new Error("segment writer operation already in progress");
-    this.#operationInProgress = true;
-    this.#diagnostics?.recordSegmentWriterEvent?.({ observation: {
+    requireActiveWriter({ operation: "append", state: this.stateValue });
+    if (this.operationInProgress) throw new Error("segment writer operation already in progress");
+    this.operationInProgress = true;
+    this.diagnostics?.recordSegmentWriterEvent?.({ observation: {
       event: "append_started",
-      segmentClass: this.#segmentClass,
+      segmentClass: this.segmentClassValue,
     } });
     try {
       if (records.length === 0) throw new RangeError("record append batch must not be empty");
-      if (this.#frameCount + records.length > frameMaximumCount({ segmentClass: this.#segmentClass })) {
+      if (this.frameCount + records.length > frameMaximumCount({ segmentClass: this.segmentClassValue })) {
         throw new AuthenticatedSegmentCapacityError({
           capacity: "frame_count",
           message: "record append batch exceeds the segment frame-count bound",
@@ -452,7 +452,7 @@ export class AuthenticatedSegmentWriter {
       const recordSnapshots = records.map(record => {
         // Validate caller-controlled size and kind before copying. Rejected input
         // must not force an allocation proportional to bytes that V1 cannot store.
-        if (segmentClassForRecordKind({ recordKind: record.recordKind }) !== this.#segmentClass) {
+        if (segmentClassForRecordKind({ recordKind: record.recordKind }) !== this.segmentClassValue) {
           throw new TypeError("record kind does not belong to the active segment class");
         }
         if (record.plaintext.byteLength > plaintextMaximum({ recordKind: record.recordKind })) {
@@ -466,26 +466,26 @@ export class AuthenticatedSegmentWriter {
 
       const batchNonceKeys = new Set<string>();
       const frames: Array<{ bytes: Uint8Array; header: RecordFrameHeaderV1; result: AppendedRecord }> = [];
-      let nextOffset = this.#nextOffset;
+      let nextOffset = this.nextOffset;
       for (const record of recordSnapshots) {
         const nonce = freshRecordNonce({
           batchNonceKeys,
-          randomSource: this.#randomSource,
-          usedNonceKeys: this.#usedNonceKeys,
+          randomSource: this.randomSource,
+          usedNonceKeys: this.usedNonceKeys,
         });
         batchNonceKeys.add(nonceKey({ nonce }));
         const physicalOnly = record.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page;
         const header = createRecordFrameHeader({
           flags: physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0,
           homeOffset: createUInt64({ value: nextOffset }),
-          homeSegmentId: this.#segmentId,
+          homeSegmentId: this.segmentId,
           nonce,
           plaintextLength: record.plaintext.byteLength,
           recordKind: record.recordKind,
         });
         const end = nextOffset + BigInt(header.frameLength);
         const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
-        if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.#segmentClass }))) {
+        if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.segmentClassValue }))) {
           throw new AuthenticatedSegmentCapacityError({
             capacity: "record_area",
             message: "record append batch exceeds the segment record-area bound",
@@ -493,15 +493,15 @@ export class AuthenticatedSegmentWriter {
         }
         const headerBytes = encodeRecordFrameHeader({ header });
         const ciphertext = await measureAuthenticatedCryptoOperation({
-          diagnostics: this.#diagnostics,
+          diagnostics: this.diagnostics,
           operation: "encrypt",
           run: async () => await encryptRecord({
             completeFrameHeader: headerBytes,
-            fileSystemId: this.#fileSystemId,
-            homeSegmentId: this.#segmentId,
+            fileSystemId: this.fileSystemId,
+            homeSegmentId: this.segmentId,
             nonce,
             plaintext: plaintextRecordBytes({ bytes: record.plaintext }),
-            rootKey: this.#rootKey,
+            rootKey: this.rootKey,
           }),
         });
         const bytes = new Uint8Array(header.frameLength);
@@ -511,7 +511,7 @@ export class AuthenticatedSegmentWriter {
           byteOffset: header.homeOffset,
           frameLength: header.frameLength,
           recordKind: header.recordKind,
-          segmentId: this.#segmentId,
+          segmentId: this.segmentId,
         } });
         const result: AppendedRecord = physicalOnly
           ? { physicalReference, type: "physical_only" }
@@ -520,7 +520,7 @@ export class AuthenticatedSegmentWriter {
               byteOffset: header.homeOffset,
               frameLength: header.frameLength,
               recordKind: header.recordKind,
-              segmentId: this.#segmentId,
+              segmentId: this.segmentId,
             } }),
             physicalReference,
             type: "home",
@@ -533,108 +533,108 @@ export class AuthenticatedSegmentWriter {
       const batch = concatenate({ chunks: frames.map(frame => frame.bytes), totalLength: batchLength });
       requireWriterStillActive({
         message: "segment writer was abandoned during append preparation",
-        state: this.#state,
+        state: this.stateValue,
       });
       const observedSize = await getFileSizeWithAuthenticatedReason({
-        backend: this.#backend,
-        diagnostics: this.#diagnostics,
-        path: this.#path,
+        backend: this.backend,
+        diagnostics: this.diagnostics,
+        path: this.path,
         reason: "trusted_tail",
       });
       requireWriterStillActive({
         message: "segment writer was abandoned while checking its trusted append tail",
-        state: this.#state,
+        state: this.stateValue,
       });
-      if (observedSize !== this.#nextOffset) {
-        this.#diagnostics?.recordSegmentWriterEvent?.({ observation: {
+      if (observedSize !== this.nextOffset) {
+        this.diagnostics?.recordSegmentWriterEvent?.({ observation: {
           event: "trusted_tail_mismatch",
-          segmentClass: this.#segmentClass,
+          segmentClass: this.segmentClassValue,
         } });
-        this.#state = "abandoned";
+        this.stateValue = "abandoned";
         throw authenticatedStoreError({ code: "control_plane_corrupt", message: "active Segment trusted append tail changed" });
       }
-      this.#diagnostics?.recordSegmentWriterEvent?.({ observation: {
+      this.diagnostics?.recordSegmentWriterEvent?.({ observation: {
         event: "trusted_tail_match",
-        segmentClass: this.#segmentClass,
+        segmentClass: this.segmentClassValue,
       } });
-      const file = await this.#backend.openFileForUpdate({ path: this.#path });
+      const file = await this.backend.openFileForUpdate({ path: this.path });
       await runAndCloseAuthenticatedFile({
-        backend: this.#backend,
+        backend: this.backend,
         file,
         operation: async () => {
           requireWriterStillActive({
             message: "segment writer was abandoned before physical append",
-            state: this.#state,
+            state: this.stateValue,
           });
-          this.#state = "abandoned";
-          await this.#backend.writeAt({
+          this.stateValue = "abandoned";
+          await this.backend.writeAt({
             bytes: authenticatedHizoFSPhysicalBytes({ bytes: batch }),
             file,
-            offset: this.#nextOffset,
+            offset: this.nextOffset,
           });
-          await this.#backend.syncFileData({ file });
+          await this.backend.syncFileData({ file });
         },
         operationLabel: "record append",
       });
       const readBack = await readExactWithAuthenticatedReason({
-        backend: this.#backend,
-        diagnostics: this.#diagnostics,
+        backend: this.backend,
+        diagnostics: this.diagnostics,
         length: batch.byteLength,
-        offset: this.#nextOffset,
-        path: this.#path,
+        offset: this.nextOffset,
+        path: this.path,
         reason: "append_read_back",
       });
       if (!bytesEqual({ left: readBack, right: batch })) {
         throw authenticatedStoreError({ code: "control_plane_corrupt", message: "durable record append read-back differs" });
       }
-      this.#diagnostics?.recordSegmentWriterEvent?.({ observation: {
+      this.diagnostics?.recordSegmentWriterEvent?.({ observation: {
         event: "append_read_back_verified",
         frameBytes: batch.byteLength,
         recordCount: frames.length,
-        segmentClass: this.#segmentClass,
+        segmentClass: this.segmentClassValue,
       } });
-      this.#nextOffset = nextOffset;
-      this.#frameCount += frames.length;
-      this.#persistedFrameBytes += batch.byteLength;
-      if (!Number.isSafeInteger(this.#persistedFrameBytes)) {
+      this.nextOffset = nextOffset;
+      this.frameCount += frames.length;
+      this.persistedFrameBytesValue += batch.byteLength;
+      if (!Number.isSafeInteger(this.persistedFrameBytesValue)) {
         throw new Error("persisted Record Frame byte count exceeds the safe integer bound");
       }
-      for (const key of batchNonceKeys) this.#usedNonceKeys.add(key);
+      for (const key of batchNonceKeys) this.usedNonceKeys.add(key);
       for (const frame of frames) {
-        this.#diagnostics?.recordPersistedRecord({
+        this.diagnostics?.recordPersistedRecord({
           operation: "write",
           physicalBytes: frame.bytes.byteLength,
           plaintextBytes: frame.header.plaintextLength,
           recordKind: frame.header.recordKind,
         });
       }
-      if (this.#explicitAbandonRequested) {
+      if (this.explicitAbandonRequested) {
         throw new Error("segment writer was explicitly abandoned during append");
       }
-      this.#state = "active";
+      this.stateValue = "active";
       return frames.map(frame => frame.result);
     } finally {
-      this.#operationInProgress = false;
+      this.operationInProgress = false;
     }
   }
 
   public async seal(): Promise<AuthenticatedSegmentIndex> {
-    requireActiveWriter({ operation: "seal", state: this.#state });
-    if (this.#operationInProgress) throw new Error("segment writer operation already in progress");
-    this.#operationInProgress = true;
+    requireActiveWriter({ operation: "seal", state: this.stateValue });
+    if (this.operationInProgress) throw new Error("segment writer operation already in progress");
+    this.operationInProgress = true;
     try {
-      if (this.#frameCount === 0) throw new RangeError("an empty active Segment must not be sealed");
-      this.#state = "abandoned";
+      if (this.frameCount === 0) throw new RangeError("an empty active Segment must not be sealed");
+      this.stateValue = "abandoned";
       const sealed = await sealAuthenticatedSegment({
-        writerCapability: this.#sealCapability,
+        writerCapability: this.sealCapability,
       });
-      this.#state = "sealed";
-      if (this.#explicitAbandonRequested) {
+      this.stateValue = "sealed";
+      if (this.explicitAbandonRequested) {
         throw new Error("segment writer was explicitly abandoned during seal");
       }
       return sealed;
     } finally {
-      this.#operationInProgress = false;
+      this.operationInProgress = false;
     }
   }
 }

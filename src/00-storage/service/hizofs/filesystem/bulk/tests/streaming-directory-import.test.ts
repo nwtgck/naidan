@@ -34,7 +34,7 @@ function identity({ value }: { value: HomeRecordReference }): string {
 
 class MemoryDirectoryPagePort {
   readonly pages = new Map<string, DirectoryPage>();
-  #nextOffset = 1_024n;
+  private nextOffset = 1_024n;
 
   async readPage({ reference: value }: {
     isRoot: boolean;
@@ -49,8 +49,8 @@ class MemoryDirectoryPagePort {
     isRoot: boolean;
     page: DirectoryPage;
   }): Promise<HomeRecordReference> {
-    const value = reference({ offset: this.#nextOffset });
-    this.#nextOffset += 128n;
+    const value = reference({ offset: this.nextOffset });
+    this.nextOffset += 128n;
     this.pages.set(identity({ value }), page);
     return value;
   }

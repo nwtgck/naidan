@@ -30,6 +30,7 @@ describe("HizoFS benchmark client boundary", () => {
     const client = TEST_ONLY.createBenchmarkClient({
       remote: worker as never,
       release: vi.fn(async () => undefined),
+      terminate: vi.fn(),
     });
 
     await expect(client.runBenchmark({
@@ -42,6 +43,7 @@ describe("HizoFS benchmark client boundary", () => {
   it("validates progress and delegates cancellation, cleanup, and disposal", async () => {
     const progressEvents: HizoFSBenchmarkProgress[] = [];
     const release = vi.fn(async () => undefined);
+    const terminate = vi.fn();
     const worker = remote({
       onRun: async progress => {
         progress({
@@ -62,6 +64,7 @@ describe("HizoFS benchmark client boundary", () => {
     const client = TEST_ONLY.createBenchmarkClient({
       remote: worker as never,
       release,
+      terminate,
     });
 
     await expect(client.runBenchmark({
@@ -78,8 +81,40 @@ describe("HizoFS benchmark client boundary", () => {
     await client.cancelCurrentOperation();
     await client.cleanBenchmarkData();
     await client.dispose();
+    client.terminate();
     expect(worker.cancelCurrentOperation).toHaveBeenCalledOnce();
     expect(worker.cleanBenchmarkData).toHaveBeenCalledOnce();
     expect(release).toHaveBeenCalledOnce();
+    expect(terminate).toHaveBeenCalledOnce();
+  });
+
+  it("rejects pending RPCs locally when the benchmark Worker is force-terminated", async () => {
+    const pendingRun = Promise.withResolvers<HizoFSBenchmarkReport>();
+    const pendingCancel = Promise.withResolvers<void>();
+    const release = vi.fn(async () => undefined);
+    const terminate = vi.fn();
+    const worker: IHizoFSBenchmarkWorker = {
+      cancelCurrentOperation: vi.fn(() => pendingCancel.promise),
+      cleanBenchmarkData: vi.fn(async () => undefined),
+      runBenchmark: vi.fn(() => pendingRun.promise),
+    };
+    const client = TEST_ONLY.createBenchmarkClient({
+      remote: worker as never,
+      release,
+      terminate,
+    });
+
+    const run = client.runBenchmark({
+      configuration: createHizoFSBenchmarkPresetConfiguration({ preset: "quick" }),
+      onProgress: () => undefined,
+    });
+    const cancel = client.cancelCurrentOperation();
+    client.terminate();
+
+    await expect(run).rejects.toMatchObject({ name: "AbortError" });
+    await expect(cancel).rejects.toMatchObject({ name: "AbortError" });
+    expect(terminate).toHaveBeenCalledOnce();
+    await client.dispose();
+    expect(release).not.toHaveBeenCalled();
   });
 });

@@ -86,16 +86,16 @@ const AUTHENTICATED_PREPARED_MUTATION_PUBLICATION_AUTHORITY = Symbol(
  * authority write.
  */
 export class AuthenticatedPreparedMutationPublicationAuthority {
-  readonly #backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
-  readonly #candidate: PreparedMutationCommitCandidate;
-  readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
-  readonly #fileSystemId: FileSystemId;
-  readonly #metadataRecordCache: AuthenticatedMetadataRecordCache;
-  #mutationDiagnosticsOpen = true;
-  readonly #randomSource: RandomByteSource | undefined;
-  readonly #rootKey: FileSystemRootKey;
-  #state: AuthenticatedPreparedMutationPublicationAuthorityState = "ready";
-  readonly #supportedFeatureBits: FeatureBits;
+  private readonly backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  private readonly candidate: PreparedMutationCommitCandidate;
+  private readonly diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
+  private readonly fileSystemId: FileSystemId;
+  private readonly metadataRecordCache: AuthenticatedMetadataRecordCache;
+  private mutationDiagnosticsOpen = true;
+  private readonly randomSource: RandomByteSource | undefined;
+  private readonly rootKey: FileSystemRootKey;
+  private stateValue: AuthenticatedPreparedMutationPublicationAuthorityState = "ready";
+  private readonly supportedFeatureBits: FeatureBits;
 
   constructor({
     authority,
@@ -123,40 +123,40 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
     if (authority !== AUTHENTICATED_PREPARED_MUTATION_PUBLICATION_AUTHORITY) {
       throw new TypeError("detached publication authority requires authenticated construction");
     }
-    this.#backend = backend;
-    this.#candidate = candidate;
-    this.#diagnostics = diagnostics;
-    this.#fileSystemId = fileSystemId;
-    this.#metadataRecordCache = metadataRecordCache;
-    this.#mutationDiagnosticsOpen = shouldRecordMutationScopeDiagnostics({ mode: mutationScopeDiagnostics });
-    this.#randomSource = randomSource;
-    this.#rootKey = rootKey;
-    this.#supportedFeatureBits = supportedFeatureBits;
+    this.backend = backend;
+    this.candidate = candidate;
+    this.diagnostics = diagnostics;
+    this.fileSystemId = fileSystemId;
+    this.metadataRecordCache = metadataRecordCache;
+    this.mutationDiagnosticsOpen = shouldRecordMutationScopeDiagnostics({ mode: mutationScopeDiagnostics });
+    this.randomSource = randomSource;
+    this.rootKey = rootKey;
+    this.supportedFeatureBits = supportedFeatureBits;
   }
 
   state(): AuthenticatedPreparedMutationPublicationAuthorityState {
-    return this.#state;
+    return this.stateValue;
   }
 
-  #closeDiagnostics({ outcome }: {
+  private closeDiagnostics({ outcome }: {
     outcome: "abandoned" | "accepted" | "failed" | "published";
   }): void {
-    if (!this.#mutationDiagnosticsOpen) return;
-    this.#mutationDiagnosticsOpen = false;
-    this.#metadataRecordCache.dispose();
-    this.#diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome } });
+    if (!this.mutationDiagnosticsOpen) return;
+    this.mutationDiagnosticsOpen = false;
+    this.metadataRecordCache.dispose();
+    this.diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome } });
   }
 
   completeWorkingAcceptance(): void {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "ready":
-      this.#closeDiagnostics({ outcome: "accepted" });
+      this.closeDiagnostics({ outcome: "accepted" });
       return;
     case "closed":
     case "publishing":
     case "resolution_pending":
-      throw new Error(`cannot complete working acceptance while detached publication is ${this.#state}`);
-    default: return this.#state satisfies never;
+      throw new Error(`cannot complete working acceptance while detached publication is ${this.stateValue}`);
+    default: return this.stateValue satisfies never;
     }
   }
 
@@ -173,54 +173,54 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
     firstPublicationSequence: PublicationSequence;
     secondPublicationSequence: PublicationSequence;
   }): Promise<PublishedPreparedMutationCommit> {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "ready": break;
     case "closed": throw new Error("cannot publish candidate: detached publication authority is closed");
     case "publishing": throw new Error("cannot publish candidate: detached publication authority is publishing");
     case "resolution_pending": throw new Error(
       "cannot publish candidate: detached publication authority requires outcome resolution",
     );
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
-    if (candidate !== this.#candidate) {
+    if (candidate !== this.candidate) {
       throw new TypeError("prepared mutation candidate does not belong to this detached publication authority");
     }
-    this.#state = "publishing";
+    this.stateValue = "publishing";
     let firstAuthorityWriteMayHaveStarted = false;
     try {
       const published = await measureAuthenticatedPublicationOperation({
-        diagnostics: this.#diagnostics,
+        diagnostics: this.diagnostics,
         run: async () => await publishPreparedMutationCommitCandidate({
-          backend: this.#backend,
+          backend: this.backend,
           base,
           beforeFirstAuthorityWrite: () => {
             beforeFirstAuthorityWrite();
             firstAuthorityWriteMayHaveStarted = true;
           },
           candidate,
-          diagnostics: this.#diagnostics,
-          fileSystemId: this.#fileSystemId,
+          diagnostics: this.diagnostics,
+          fileSystemId: this.fileSystemId,
           firstPublicationSequence,
-          randomSource: this.#randomSource,
-          rootKey: this.#rootKey,
+          randomSource: this.randomSource,
+          rootKey: this.rootKey,
           secondPublicationSequence,
-          supportedFeatureBits: this.#supportedFeatureBits,
+          supportedFeatureBits: this.supportedFeatureBits,
         }),
       });
-      this.#state = "closed";
-      this.#closeDiagnostics({ outcome: "published" });
+      this.stateValue = "closed";
+      this.closeDiagnostics({ outcome: "published" });
       return published;
     } catch (cause: unknown) {
       if (!firstAuthorityWriteMayHaveStarted) {
-        this.#state = "ready";
+        this.stateValue = "ready";
       } else if (!(cause instanceof PreparedMutationCommitPublicationError)) {
-        this.#state = "resolution_pending";
+        this.stateValue = "resolution_pending";
       } else {
         switch (cause.outcome) {
-        case "not_published": this.#state = "ready"; break;
+        case "not_published": this.stateValue = "ready"; break;
         case "committed_redundancy_degraded":
         case "outcome_resolution_required":
-        case undefined: this.#state = "resolution_pending"; break;
+        case undefined: this.stateValue = "resolution_pending"; break;
         default: cause.outcome satisfies never;
         }
       }
@@ -232,7 +232,7 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
     base: OpenedSuperblockCopies;
     intendedLogicalState: SuperblockLogicalState;
   }): Promise<MutationSuperblockPublicationResolution> {
-    const stateBeforeResolution = this.#state;
+    const stateBeforeResolution = this.stateValue;
     switch (stateBeforeResolution) {
     case "closed":
     case "resolution_pending": break;
@@ -241,13 +241,13 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
     default: return stateBeforeResolution satisfies never;
     }
     const resolution = await resolveMutationSuperblockPublication({
-      backend: this.#backend,
+      backend: this.backend,
       base,
-      diagnostics: this.#diagnostics,
-      fileSystemId: this.#fileSystemId,
+      diagnostics: this.diagnostics,
+      fileSystemId: this.fileSystemId,
       intendedLogicalState,
-      rootKey: this.#rootKey,
-      supportedFeatureBits: this.#supportedFeatureBits,
+      rootKey: this.rootKey,
+      supportedFeatureBits: this.supportedFeatureBits,
     });
     switch (stateBeforeResolution) {
     case "closed": return resolution;
@@ -256,15 +256,15 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
     }
     switch (resolution.type) {
     case "not_published":
-      this.#state = "ready";
+      this.stateValue = "ready";
       return resolution;
     case "publication_conflict":
-      this.#state = "closed";
-      this.#closeDiagnostics({ outcome: "failed" });
+      this.stateValue = "closed";
+      this.closeDiagnostics({ outcome: "failed" });
       return resolution;
     case "published":
-      this.#state = "closed";
-      this.#closeDiagnostics({ outcome: "published" });
+      this.stateValue = "closed";
+      this.closeDiagnostics({ outcome: "published" });
       return resolution;
     default: return resolution satisfies never;
     }
@@ -273,13 +273,13 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
   completeExternallyResolvedPublication({ outcome }: {
     outcome: "not_published" | "published";
   }): void {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "closed": return;
     case "resolution_pending":
-      this.#state = "closed";
+      this.stateValue = "closed";
       switch (outcome) {
-      case "not_published": this.#closeDiagnostics({ outcome: "abandoned" }); return;
-      case "published": this.#closeDiagnostics({ outcome: "published" }); return;
+      case "not_published": this.closeDiagnostics({ outcome: "abandoned" }); return;
+      case "published": this.closeDiagnostics({ outcome: "published" }); return;
       default: return outcome satisfies never;
       }
     case "publishing": throw new Error(
@@ -288,20 +288,20 @@ export class AuthenticatedPreparedMutationPublicationAuthority {
     case "ready": throw new Error(
       "cannot complete external publication resolution before an outcome requires resolution",
     );
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
   }
 
   abandon(): void {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "ready":
-      this.#state = "closed";
-      this.#closeDiagnostics({ outcome: "abandoned" });
+      this.stateValue = "closed";
+      this.closeDiagnostics({ outcome: "abandoned" });
       return;
     case "closed": return;
     case "publishing": throw new Error("cannot abandon detached publication authority during publication");
     case "resolution_pending": throw new Error("cannot abandon detached publication authority with an unresolved publication outcome");
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
   }
 }
@@ -327,27 +327,27 @@ function shouldRecordMutationScopeDiagnostics({ mode }: {
 }
 
 export class AuthenticatedMetadataMutationAuthority {
-  readonly #backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
-  readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
-  readonly #fileSystemId: FileSystemId;
-  readonly #metadataRecordCache: AuthenticatedMetadataRecordCache;
-  readonly #mutationScopeDiagnostics: MutationScopeDiagnosticsMode;
-  readonly #randomSource: RandomByteSource | undefined;
-  readonly #relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
-  readonly #rootKey: FileSystemRootKey;
-  readonly #sharedMetadataRecordCache: AuthenticatedMetadataRecordCache | undefined;
-  readonly #supportedFeatureBits: FeatureBits;
-  #mutationDiagnosticsOpen = true;
-  #pendingAppendBatch: AuthenticatedMetadataAppendBatch | undefined;
-  #releasedWriterUsage: AuthenticatedSegmentWriterLeaseUsage | undefined;
-  #operationInProgress = false;
-  #detachedPublicationAuthority: AuthenticatedPreparedMutationPublicationAuthority | undefined;
-  #preparedCandidate: PreparedMutationCommitCandidate | undefined;
-  #state: AuthenticatedMetadataMutationAuthorityState = "active";
-  #workingAcceptancePrepared = false;
-  readonly #writerLease: AuthenticatedSegmentWriterLease;
-  #writerLeaseReleased = false;
-  readonly #writerReleaseDisposition: ActiveSegmentWriterReleaseDisposition;
+  private readonly backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  private readonly diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
+  private readonly fileSystemId: FileSystemId;
+  private readonly metadataRecordCache: AuthenticatedMetadataRecordCache;
+  private readonly mutationScopeDiagnostics: MutationScopeDiagnosticsMode;
+  private readonly randomSource: RandomByteSource | undefined;
+  private readonly relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
+  private readonly rootKey: FileSystemRootKey;
+  private readonly sharedMetadataRecordCache: AuthenticatedMetadataRecordCache | undefined;
+  private readonly supportedFeatureBits: FeatureBits;
+  private mutationDiagnosticsOpen = true;
+  private pendingAppendBatch: AuthenticatedMetadataAppendBatch | undefined;
+  private releasedWriterUsage: AuthenticatedSegmentWriterLeaseUsage | undefined;
+  private operationInProgress = false;
+  private detachedPublicationAuthority: AuthenticatedPreparedMutationPublicationAuthority | undefined;
+  private preparedCandidate: PreparedMutationCommitCandidate | undefined;
+  private stateValue: AuthenticatedMetadataMutationAuthorityState = "active";
+  private workingAcceptancePrepared = false;
+  private readonly writerLease: AuthenticatedSegmentWriterLease;
+  private writerLeaseReleased = false;
+  private readonly writerReleaseDisposition: ActiveSegmentWriterReleaseDisposition;
 
   private constructor({
     backend,
@@ -376,19 +376,19 @@ export class AuthenticatedMetadataMutationAuthority {
     writerLease: AuthenticatedSegmentWriterLease;
     writerReleaseDisposition: ActiveSegmentWriterReleaseDisposition;
   }) {
-    this.#backend = backend;
-    this.#diagnostics = diagnostics;
-    this.#fileSystemId = fileSystemId;
-    this.#metadataRecordCache = metadataRecordCache;
-    this.#mutationScopeDiagnostics = mutationScopeDiagnostics;
-    this.#mutationDiagnosticsOpen = shouldRecordMutationScopeDiagnostics({ mode: mutationScopeDiagnostics });
-    this.#randomSource = randomSource;
-    this.#relocationIndexRootPhysicalRef = relocationIndexRootPhysicalRef;
-    this.#rootKey = rootKey;
-    this.#sharedMetadataRecordCache = sharedMetadataRecordCache;
-    this.#supportedFeatureBits = supportedFeatureBits;
-    this.#writerLease = writerLease;
-    this.#writerReleaseDisposition = writerReleaseDisposition;
+    this.backend = backend;
+    this.diagnostics = diagnostics;
+    this.fileSystemId = fileSystemId;
+    this.metadataRecordCache = metadataRecordCache;
+    this.mutationScopeDiagnostics = mutationScopeDiagnostics;
+    this.mutationDiagnosticsOpen = shouldRecordMutationScopeDiagnostics({ mode: mutationScopeDiagnostics });
+    this.randomSource = randomSource;
+    this.relocationIndexRootPhysicalRef = relocationIndexRootPhysicalRef;
+    this.rootKey = rootKey;
+    this.sharedMetadataRecordCache = sharedMetadataRecordCache;
+    this.supportedFeatureBits = supportedFeatureBits;
+    this.writerLease = writerLease;
+    this.writerReleaseDisposition = writerReleaseDisposition;
   }
 
   static async create({
@@ -456,14 +456,14 @@ export class AuthenticatedMetadataMutationAuthority {
   }
 
   state(): AuthenticatedMetadataMutationAuthorityState {
-    return this.#state;
+    return this.stateValue;
   }
 
   resourceUsage(): AuthenticatedMutationResourceUsage {
     const persistedMetadataFrameBytes = (
-      this.#releasedWriterUsage ?? this.#writerLease.usage()
+      this.releasedWriterUsage ?? this.writerLease.usage()
     ).appendedEncryptedFrameBytes;
-    const provisionalMetadataFrameBytes = this.#pendingAppendBatch?.pendingFrameBytes() ?? 0;
+    const provisionalMetadataFrameBytes = this.pendingAppendBatch?.pendingFrameBytes() ?? 0;
     const appendedMetadataFrameBytes = persistedMetadataFrameBytes + provisionalMetadataFrameBytes;
     if (!Number.isSafeInteger(appendedMetadataFrameBytes)) {
       throw new Error("metadata mutation resource usage exceeds the safe integer bound");
@@ -477,55 +477,55 @@ export class AuthenticatedMetadataMutationAuthority {
     });
   }
 
-  #requireActive({ operation }: { operation: string }): void {
-    switch (this.#state) {
+  private requireActive({ operation }: { operation: string }): void {
+    switch (this.stateValue) {
     case "active": break;
     case "candidate_prepared": throw new Error(`cannot ${operation}: mutation candidate is already prepared`);
     case "closed": throw new Error(`cannot ${operation}: mutation authority is closed`);
     case "publishing": throw new Error(`cannot ${operation}: mutation authority is publishing`);
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
-    if (this.#operationInProgress) throw new Error("mutation authority operation already in progress");
-    if (this.#workingAcceptancePrepared) {
+    if (this.operationInProgress) throw new Error("mutation authority operation already in progress");
+    if (this.workingAcceptancePrepared) {
       throw new Error(`cannot ${operation}: mutation authority writer lease is released for working acceptance`);
     }
   }
 
-  #closeMutationDiagnostics({ outcome }: {
+  private closeMutationDiagnostics({ outcome }: {
     outcome: "abandoned" | "accepted" | "failed" | "published";
   }): void {
-    if (!this.#mutationDiagnosticsOpen) return;
-    this.#mutationDiagnosticsOpen = false;
-    this.#metadataRecordCache.dispose();
-    this.#diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome } });
+    if (!this.mutationDiagnosticsOpen) return;
+    this.mutationDiagnosticsOpen = false;
+    this.metadataRecordCache.dispose();
+    this.diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome } });
   }
 
-  #discardPendingAppendBatch(): void {
-    this.#pendingAppendBatch?.discard();
-    this.#pendingAppendBatch = undefined;
+  private discardPendingAppendBatch(): void {
+    this.pendingAppendBatch?.discard();
+    this.pendingAppendBatch = undefined;
   }
 
-  #releaseWriterLease(): void {
-    if (this.#writerLeaseReleased) return;
-    if (this.#pendingAppendBatch?.hasRecords() === true) {
+  private releaseWriterLease(): void {
+    if (this.writerLeaseReleased) return;
+    if (this.pendingAppendBatch?.hasRecords() === true) {
       throw new Error("cannot release metadata writer lease while a provisional append batch is pending");
     }
-    this.#pendingAppendBatch?.discard();
-    this.#pendingAppendBatch = undefined;
-    this.#releasedWriterUsage = this.#writerLease.usage();
-    this.#writerLeaseReleased = true;
-    this.#writerLease.release({ disposition: this.#writerReleaseDisposition });
+    this.pendingAppendBatch?.discard();
+    this.pendingAppendBatch = undefined;
+    this.releasedWriterUsage = this.writerLease.usage();
+    this.writerLeaseReleased = true;
+    this.writerLease.release({ disposition: this.writerReleaseDisposition });
   }
 
-  async #flushPendingAppendBatch(): Promise<void> {
-    const batch = this.#pendingAppendBatch;
+  private async flushPendingAppendBatch(): Promise<void> {
+    const batch = this.pendingAppendBatch;
     if (batch === undefined) return;
-    this.#pendingAppendBatch = undefined;
+    this.pendingAppendBatch = undefined;
     if (!batch.hasRecords()) {
       batch.discard();
       return;
     }
-    await this.#writerLease.append({
+    await this.writerLease.append({
       append: async ({ writer }) => {
         if (!batch.isBoundTo({ writer })) {
           batch.discard();
@@ -536,26 +536,26 @@ export class AuthenticatedMetadataMutationAuthority {
     });
   }
 
-  async #appendMetadataPageWithBatch<Result>({ append }: {
+  private async appendMetadataPageWithBatch<Result>({ append }: {
     append: ({ writer }: { writer: AuthenticatedSegmentAppendTarget }) => Promise<Result>;
   }): Promise<Result> {
     while (true) {
-      const outcome = await this.#writerLease.append({
+      const outcome = await this.writerLease.append({
         append: async ({ writer }) => {
-          const existing = this.#pendingAppendBatch;
+          const existing = this.pendingAppendBatch;
           if (existing !== undefined && !existing.isBoundTo({ writer })) {
             if (existing.hasRecords()) {
               throw new Error("metadata append batch writer changed while records were pending");
             }
             existing.discard();
-            this.#pendingAppendBatch = undefined;
+            this.pendingAppendBatch = undefined;
           }
-          const batch = this.#pendingAppendBatch ?? new AuthenticatedMetadataAppendBatch({
-            mutationCache: this.#metadataRecordCache,
-            sharedCache: this.#sharedMetadataRecordCache,
+          const batch = this.pendingAppendBatch ?? new AuthenticatedMetadataAppendBatch({
+            mutationCache: this.metadataRecordCache,
+            sharedCache: this.sharedMetadataRecordCache,
             writer,
           });
-          this.#pendingAppendBatch = batch;
+          this.pendingAppendBatch = batch;
           try {
             return Object.freeze({
               type: "result" as const,
@@ -572,27 +572,27 @@ export class AuthenticatedMetadataMutationAuthority {
       switch (outcome.type) {
       case "result": return outcome.value;
       case "flush_required":
-        await this.#flushPendingAppendBatch();
+        await this.flushPendingAppendBatch();
         break;
       default: return outcome satisfies never;
       }
     }
   }
 
-  async #appendMetadataRecordWithRollover<Result>({ append }: {
+  private async appendMetadataRecordWithRollover<Result>({ append }: {
     append: ({ writer }: { writer: AuthenticatedSegmentWriter }) => Promise<Result>;
   }): Promise<Result> {
-    await this.#flushPendingAppendBatch();
-    return await this.#writerLease.append({ append });
+    await this.flushPendingAppendBatch();
+    return await this.writerLease.append({ append });
   }
 
   async flushPendingMetadataRecords(): Promise<void> {
-    this.#requireActive({ operation: "flush provisional metadata Records" });
-    this.#operationInProgress = true;
+    this.requireActive({ operation: "flush provisional metadata Records" });
+    this.operationInProgress = true;
     try {
-      await this.#flushPendingAppendBatch();
+      await this.flushPendingAppendBatch();
     } finally {
-      this.#operationInProgress = false;
+      this.operationInProgress = false;
     }
   }
 
@@ -600,22 +600,22 @@ export class AuthenticatedMetadataMutationAuthority {
     isRoot: boolean;
     reference: HomeRecordReference;
   }): Promise<FileExtentPage> {
-    this.#requireActive({ operation: "read a File Extent page" });
-    this.#operationInProgress = true;
+    this.requireActive({ operation: "read a File Extent page" });
+    this.operationInProgress = true;
     try {
       return await readAuthenticatedFileExtentPage({
-        backend: this.#backend,
-        diagnostics: this.#diagnostics,
-        fileSystemId: this.#fileSystemId,
+        backend: this.backend,
+        diagnostics: this.diagnostics,
+        fileSystemId: this.fileSystemId,
         homeReference: reference,
         isRoot,
-        metadataRecordCache: this.#metadataRecordCache,
-        sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
-        relocationIndexRootPhysicalRef: this.#relocationIndexRootPhysicalRef,
-        rootKey: this.#rootKey,
+        metadataRecordCache: this.metadataRecordCache,
+        sharedMetadataRecordCache: this.sharedMetadataRecordCache,
+        relocationIndexRootPhysicalRef: this.relocationIndexRootPhysicalRef,
+        rootKey: this.rootKey,
       });
     } finally {
-      this.#operationInProgress = false;
+      this.operationInProgress = false;
     }
   }
 
@@ -623,10 +623,10 @@ export class AuthenticatedMetadataMutationAuthority {
     isRoot: boolean;
     page: FileExtentPage;
   }): Promise<HomeRecordReference> {
-    this.#requireActive({ operation: "write a File Extent page" });
-    this.#operationInProgress = true;
+    this.requireActive({ operation: "write a File Extent page" });
+    this.operationInProgress = true;
     try {
-      return await this.#appendMetadataPageWithBatch({
+      return await this.appendMetadataPageWithBatch({
         append: async ({ writer }) => await appendAuthenticatedFileExtentPage({
           isRoot,
           page,
@@ -635,7 +635,7 @@ export class AuthenticatedMetadataMutationAuthority {
         }),
       });
     } finally {
-      this.#operationInProgress = false;
+      this.operationInProgress = false;
     }
   }
 
@@ -643,22 +643,22 @@ export class AuthenticatedMetadataMutationAuthority {
     isRoot: boolean;
     reference: HomeRecordReference;
   }): Promise<AuthenticatedInodeTablePage> {
-    this.#requireActive({ operation: "read an Inode Table page" });
-    this.#operationInProgress = true;
+    this.requireActive({ operation: "read an Inode Table page" });
+    this.operationInProgress = true;
     try {
       return await readAuthenticatedInodeTablePage({
-        backend: this.#backend,
-        diagnostics: this.#diagnostics,
-        fileSystemId: this.#fileSystemId,
+        backend: this.backend,
+        diagnostics: this.diagnostics,
+        fileSystemId: this.fileSystemId,
         homeReference: reference,
         isRoot,
-        metadataRecordCache: this.#metadataRecordCache,
-        sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
-        relocationIndexRootPhysicalRef: this.#relocationIndexRootPhysicalRef,
-        rootKey: this.#rootKey,
+        metadataRecordCache: this.metadataRecordCache,
+        sharedMetadataRecordCache: this.sharedMetadataRecordCache,
+        relocationIndexRootPhysicalRef: this.relocationIndexRootPhysicalRef,
+        rootKey: this.rootKey,
       });
     } finally {
-      this.#operationInProgress = false;
+      this.operationInProgress = false;
     }
   }
 
@@ -666,10 +666,10 @@ export class AuthenticatedMetadataMutationAuthority {
     isRoot: boolean;
     page: AuthenticatedInodeTablePage;
   }): Promise<HomeRecordReference> {
-    this.#requireActive({ operation: "write an Inode Table page" });
-    this.#operationInProgress = true;
+    this.requireActive({ operation: "write an Inode Table page" });
+    this.operationInProgress = true;
     try {
-      return await this.#appendMetadataPageWithBatch({
+      return await this.appendMetadataPageWithBatch({
         append: async ({ writer }) => await appendAuthenticatedInodeTablePage({
           isRoot,
           page,
@@ -678,7 +678,7 @@ export class AuthenticatedMetadataMutationAuthority {
         }),
       });
     } finally {
-      this.#operationInProgress = false;
+      this.operationInProgress = false;
     }
   }
 
@@ -686,22 +686,22 @@ export class AuthenticatedMetadataMutationAuthority {
     isRoot: boolean;
     reference: HomeRecordReference;
   }): Promise<DirectoryPage> {
-    this.#requireActive({ operation: "read a Directory page" });
-    this.#operationInProgress = true;
+    this.requireActive({ operation: "read a Directory page" });
+    this.operationInProgress = true;
     try {
       return await readAuthenticatedDirectoryPage({
-        backend: this.#backend,
-        diagnostics: this.#diagnostics,
-        fileSystemId: this.#fileSystemId,
+        backend: this.backend,
+        diagnostics: this.diagnostics,
+        fileSystemId: this.fileSystemId,
         homeReference: reference,
         isRoot,
-        metadataRecordCache: this.#metadataRecordCache,
-        sharedMetadataRecordCache: this.#sharedMetadataRecordCache,
-        relocationIndexRootPhysicalRef: this.#relocationIndexRootPhysicalRef,
-        rootKey: this.#rootKey,
+        metadataRecordCache: this.metadataRecordCache,
+        sharedMetadataRecordCache: this.sharedMetadataRecordCache,
+        relocationIndexRootPhysicalRef: this.relocationIndexRootPhysicalRef,
+        rootKey: this.rootKey,
       });
     } finally {
-      this.#operationInProgress = false;
+      this.operationInProgress = false;
     }
   }
 
@@ -709,10 +709,10 @@ export class AuthenticatedMetadataMutationAuthority {
     isRoot: boolean;
     page: DirectoryPage;
   }): Promise<HomeRecordReference> {
-    this.#requireActive({ operation: "write a Directory page" });
-    this.#operationInProgress = true;
+    this.requireActive({ operation: "write a Directory page" });
+    this.operationInProgress = true;
     try {
-      return await this.#appendMetadataPageWithBatch({
+      return await this.appendMetadataPageWithBatch({
         append: async ({ writer }) => await appendAuthenticatedDirectoryPage({
           isRoot,
           page,
@@ -721,65 +721,65 @@ export class AuthenticatedMetadataMutationAuthority {
         }),
       });
     } finally {
-      this.#operationInProgress = false;
+      this.operationInProgress = false;
     }
   }
 
   async appendCandidate({ commitPayload }: {
     commitPayload: FileSystemCommitPayload;
   }): Promise<PreparedMutationCommitCandidate> {
-    this.#requireActive({ operation: "append the prepared Commit candidate" });
-    this.#operationInProgress = true;
+    this.requireActive({ operation: "append the prepared Commit candidate" });
+    this.operationInProgress = true;
     try {
-      const candidate = await this.#appendMetadataRecordWithRollover({
+      const candidate = await this.appendMetadataRecordWithRollover({
         append: async ({ writer }) => await appendPreparedMutationCommitCandidate({
           commitPayload,
           writer,
         }),
       });
-      this.#preparedCandidate = candidate;
-      this.#releaseWriterLease();
-      this.#state = "candidate_prepared";
+      this.preparedCandidate = candidate;
+      this.releaseWriterLease();
+      this.stateValue = "candidate_prepared";
       return candidate;
     } catch (cause: unknown) {
-      this.#releaseWriterLease();
-      this.#state = "closed";
-      this.#closeMutationDiagnostics({ outcome: "failed" });
+      this.releaseWriterLease();
+      this.stateValue = "closed";
+      this.closeMutationDiagnostics({ outcome: "failed" });
       throw cause;
     } finally {
-      this.#operationInProgress = false;
+      this.operationInProgress = false;
     }
   }
 
   detachPreparedCandidatePublication({ candidate }: {
     candidate: PreparedMutationCommitCandidate;
   }): AuthenticatedPreparedMutationPublicationAuthority {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "candidate_prepared": break;
     case "active": throw new Error("cannot detach publication authority before a candidate is prepared");
     case "closed": throw new Error("cannot detach publication authority: mutation authority is closed");
     case "publishing": throw new Error("cannot detach publication authority during publication");
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
-    if (candidate !== this.#preparedCandidate) {
+    if (candidate !== this.preparedCandidate) {
       throw new TypeError("prepared mutation candidate does not belong to this authority");
     }
     const detached = new AuthenticatedPreparedMutationPublicationAuthority({
       authority: AUTHENTICATED_PREPARED_MUTATION_PUBLICATION_AUTHORITY,
-      backend: this.#backend,
+      backend: this.backend,
       candidate,
-      diagnostics: this.#diagnostics,
-      fileSystemId: this.#fileSystemId,
-      metadataRecordCache: this.#metadataRecordCache,
-      mutationScopeDiagnostics: this.#mutationScopeDiagnostics,
-      randomSource: this.#randomSource,
-      rootKey: this.#rootKey,
-      supportedFeatureBits: this.#supportedFeatureBits,
+      diagnostics: this.diagnostics,
+      fileSystemId: this.fileSystemId,
+      metadataRecordCache: this.metadataRecordCache,
+      mutationScopeDiagnostics: this.mutationScopeDiagnostics,
+      randomSource: this.randomSource,
+      rootKey: this.rootKey,
+      supportedFeatureBits: this.supportedFeatureBits,
     });
-    this.#detachedPublicationAuthority = detached;
-    this.#preparedCandidate = undefined;
-    this.#mutationDiagnosticsOpen = false;
-    this.#state = "closed";
+    this.detachedPublicationAuthority = detached;
+    this.preparedCandidate = undefined;
+    this.mutationDiagnosticsOpen = false;
+    this.stateValue = "closed";
     return detached;
   }
 
@@ -796,40 +796,40 @@ export class AuthenticatedMetadataMutationAuthority {
     firstPublicationSequence: PublicationSequence;
     secondPublicationSequence: PublicationSequence;
   }): Promise<PublishedPreparedMutationCommit> {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "candidate_prepared": break;
     case "active": throw new Error("cannot publish candidate before it is prepared");
     case "closed": throw new Error("cannot publish candidate: mutation authority is closed");
     case "publishing": throw new Error("cannot publish candidate: mutation authority is publishing");
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
-    if (candidate !== this.#preparedCandidate) {
+    if (candidate !== this.preparedCandidate) {
       throw new TypeError("prepared mutation candidate does not belong to this authority");
     }
-    this.#state = "publishing";
+    this.stateValue = "publishing";
     let outcome: "failed" | "published" = "failed";
     try {
       const published = await measureAuthenticatedPublicationOperation({
-        diagnostics: this.#diagnostics,
+        diagnostics: this.diagnostics,
         run: async () => await publishPreparedMutationCommitCandidate({
-          backend: this.#backend,
+          backend: this.backend,
           base,
           beforeFirstAuthorityWrite,
           candidate,
-          diagnostics: this.#diagnostics,
-          fileSystemId: this.#fileSystemId,
+          diagnostics: this.diagnostics,
+          fileSystemId: this.fileSystemId,
           firstPublicationSequence,
-          randomSource: this.#randomSource,
-          rootKey: this.#rootKey,
+          randomSource: this.randomSource,
+          rootKey: this.rootKey,
           secondPublicationSequence,
-          supportedFeatureBits: this.#supportedFeatureBits,
+          supportedFeatureBits: this.supportedFeatureBits,
         }),
       });
       outcome = "published";
       return published;
     } finally {
-      this.#state = "closed";
-      this.#closeMutationDiagnostics({ outcome });
+      this.stateValue = "closed";
+      this.closeMutationDiagnostics({ outcome });
     }
   }
 
@@ -846,59 +846,59 @@ export class AuthenticatedMetadataMutationAuthority {
     firstPublicationSequence: PublicationSequence;
     secondPublicationSequence: PublicationSequence;
   }): Promise<PublishedPreparedMutationCommit> {
-    this.#requireActive({ operation: "publish the prepared Commit" });
-    this.#state = "publishing";
+    this.requireActive({ operation: "publish the prepared Commit" });
+    this.stateValue = "publishing";
     let outcome: "failed" | "published" = "failed";
     try {
       const published = await measureAuthenticatedPublicationOperation({
-        diagnostics: this.#diagnostics,
+        diagnostics: this.diagnostics,
         run: async () => {
           try {
-            const candidate = await this.#appendMetadataRecordWithRollover({
+            const candidate = await this.appendMetadataRecordWithRollover({
               append: async ({ writer }) => await appendPreparedMutationCommitCandidate({
                 commitPayload,
                 writer,
               }),
             });
             return await publishPreparedMutationCommitCandidate({
-              backend: this.#backend,
+              backend: this.backend,
               base,
               beforeFirstAuthorityWrite,
               candidate,
-              diagnostics: this.#diagnostics,
-              fileSystemId: this.#fileSystemId,
+              diagnostics: this.diagnostics,
+              fileSystemId: this.fileSystemId,
               firstPublicationSequence,
-              randomSource: this.#randomSource,
-              rootKey: this.#rootKey,
+              randomSource: this.randomSource,
+              rootKey: this.rootKey,
               secondPublicationSequence,
-              supportedFeatureBits: this.#supportedFeatureBits,
+              supportedFeatureBits: this.supportedFeatureBits,
             });
           } finally {
-            this.#releaseWriterLease();
+            this.releaseWriterLease();
           }
         },
       });
       outcome = "published";
       return published;
     } finally {
-      this.#state = "closed";
-      this.#closeMutationDiagnostics({ outcome });
+      this.stateValue = "closed";
+      this.closeMutationDiagnostics({ outcome });
     }
   }
 
   prepareWorkingAcceptanceWithoutCandidate(): void {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "active": break;
     case "candidate_prepared": throw new Error(
       "cannot prepare working acceptance: mutation candidate is already prepared",
     );
     case "closed": throw new Error("cannot prepare working acceptance: mutation authority is closed");
     case "publishing": throw new Error("cannot prepare working acceptance during publication");
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
-    if (this.#operationInProgress) throw new Error("mutation authority operation already in progress");
-    if (this.#workingAcceptancePrepared) return;
-    if (this.#pendingAppendBatch?.hasRecords() === true) {
+    if (this.operationInProgress) throw new Error("mutation authority operation already in progress");
+    if (this.workingAcceptancePrepared) return;
+    if (this.pendingAppendBatch?.hasRecords() === true) {
       throw new Error("cannot prepare working acceptance before provisional metadata Records are flushed");
     }
 
@@ -906,64 +906,64 @@ export class AuthenticatedMetadataMutationAuthority {
     // runtime acceptance closes the mutation admission. Release the shared
     // Segment writer lease first, while that admission still fences flush and
     // maintenance, so Commit materialization cannot race the foreground lease.
-    this.#releaseWriterLease();
-    this.#workingAcceptancePrepared = true;
+    this.releaseWriterLease();
+    this.workingAcceptancePrepared = true;
   }
 
   completeWorkingAcceptanceWithoutCandidate(): void {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "active": break;
     case "candidate_prepared": throw new Error(
       "cannot complete working acceptance: mutation candidate is already prepared",
     );
     case "closed": throw new Error("cannot complete working acceptance: mutation authority is closed");
     case "publishing": throw new Error("cannot complete working acceptance during publication");
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
-    if (this.#operationInProgress) throw new Error("mutation authority operation already in progress");
+    if (this.operationInProgress) throw new Error("mutation authority operation already in progress");
     this.prepareWorkingAcceptanceWithoutCandidate();
-    this.#state = "closed";
-    this.#closeMutationDiagnostics({ outcome: "accepted" });
+    this.stateValue = "closed";
+    this.closeMutationDiagnostics({ outcome: "accepted" });
   }
 
   async resolvePublication({ base, intendedLogicalState }: {
     base: OpenedSuperblockCopies;
     intendedLogicalState: SuperblockLogicalState;
   }): Promise<MutationSuperblockPublicationResolution> {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "closed":
-      if (this.#detachedPublicationAuthority !== undefined) {
-        return await this.#detachedPublicationAuthority.resolvePublication({ base, intendedLogicalState });
+      if (this.detachedPublicationAuthority !== undefined) {
+        return await this.detachedPublicationAuthority.resolvePublication({ base, intendedLogicalState });
       }
       break;
     case "active":
     case "candidate_prepared":
     case "publishing":
       throw new Error("cannot resolve publication before the mutation authority is closed");
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
     return await resolveMutationSuperblockPublication({
-      backend: this.#backend,
+      backend: this.backend,
       base,
-      diagnostics: this.#diagnostics,
-      fileSystemId: this.#fileSystemId,
+      diagnostics: this.diagnostics,
+      fileSystemId: this.fileSystemId,
       intendedLogicalState,
-      rootKey: this.#rootKey,
-      supportedFeatureBits: this.#supportedFeatureBits,
+      rootKey: this.rootKey,
+      supportedFeatureBits: this.supportedFeatureBits,
     });
   }
 
   abandon(): void {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "active":
     case "candidate_prepared":
-      this.#discardPendingAppendBatch();
-      this.#releaseWriterLease();
-      this.#state = "closed";
-      this.#closeMutationDiagnostics({ outcome: "abandoned" });
+      this.discardPendingAppendBatch();
+      this.releaseWriterLease();
+      this.stateValue = "closed";
+      this.closeMutationDiagnostics({ outcome: "abandoned" });
       return;
     case "closed": {
-      const detached = this.#detachedPublicationAuthority;
+      const detached = this.detachedPublicationAuthority;
       if (detached === undefined) return;
       const detachedState = detached.state();
       switch (detachedState) {
@@ -980,7 +980,7 @@ export class AuthenticatedMetadataMutationAuthority {
       }
     }
     case "publishing": throw new Error("cannot abandon mutation authority during publication");
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
   }
 }

@@ -103,11 +103,11 @@ function validateEntry({ entry, policy }: {
 }
 
 export class CompactionCopyCursor {
-  #aborted = false;
-  #entries: readonly CompactionCopyEntry[];
-  #mappings: CompactionCopiedMapping[] = [];
-  #nextIndex = 0;
-  #policy: HizoFSMaintenancePolicy;
+  private aborted = false;
+  private entries: readonly CompactionCopyEntry[];
+  private mappings: CompactionCopiedMapping[] = [];
+  private nextIndex = 0;
+  private policy: HizoFSMaintenancePolicy;
 
   constructor({ entries, policy }: {
     entries: readonly CompactionCopyEntry[];
@@ -131,13 +131,13 @@ export class CompactionCopyCursor {
         });
       }
     }
-    this.#entries = Object.freeze(detached);
-    this.#policy = policy;
+    this.entries = Object.freeze(detached);
+    this.policy = policy;
   }
 
-  #completed(): CompactionCopyResult {
+  private completed(): CompactionCopyResult {
     return Object.freeze({
-      mappings: Object.freeze(this.#mappings.map(mapping => Object.freeze({
+      mappings: Object.freeze(this.mappings.map(mapping => Object.freeze({
         destinationPhysicalReference: clonePhysicalReference({ reference: mapping.destinationPhysicalReference }),
         homeReference: cloneHomeReference({ reference: mapping.homeReference }),
       }))),
@@ -157,27 +157,27 @@ export class CompactionCopyCursor {
     }) => Promise<Uint8Array>;
     signal: AbortSignal | undefined;
   }): Promise<CompactionCopyResult> {
-    if (this.#aborted) return Object.freeze({ phase: "aborted", reason: "copy_failed" });
-    if (this.#nextIndex >= this.#entries.length) return this.#completed();
+    if (this.aborted) return Object.freeze({ phase: "aborted", reason: "copy_failed" });
+    if (this.nextIndex >= this.entries.length) return this.completed();
     const startedAt = now();
     if (!Number.isFinite(startedAt)) throw new TypeError("compaction clock must return a finite value");
     let copiedBytes = 0;
 
-    while (this.#nextIndex < this.#entries.length) {
+    while (this.nextIndex < this.entries.length) {
       if (signal?.aborted === true) {
-        this.#aborted = true;
+        this.aborted = true;
         return Object.freeze({ phase: "aborted", reason: "abort_requested" });
       }
       if (hasForegroundWaiter()) return Object.freeze({ phase: "copying", reason: "foreground_waiter" });
-      const entry = this.#entries[this.#nextIndex];
+      const entry = this.entries[this.nextIndex];
       if (entry === undefined) throw new Error("compaction cursor index invariant failed");
-      if (copiedBytes > 0 && copiedBytes + entry.homeReference.frameLength > this.#policy.maxCompactionBytesPerSlice) {
+      if (copiedBytes > 0 && copiedBytes + entry.homeReference.frameLength > this.policy.maxCompactionBytesPerSlice) {
         return Object.freeze({ phase: "copying", reason: "slice_byte_limit" });
       }
       if (copiedBytes > 0) {
         const elapsed = now() - startedAt;
         if (!Number.isFinite(elapsed) || elapsed < 0) throw new TypeError("compaction clock must be monotonic and finite");
-        if (elapsed >= this.#policy.softSliceMilliseconds) {
+        if (elapsed >= this.policy.softSliceMilliseconds) {
           return Object.freeze({ phase: "copying", reason: "soft_time_limit" });
         }
       }
@@ -214,18 +214,18 @@ export class CompactionCopyCursor {
         if (samePhysicalReference({ left: destinationPhysicalReference, right: entry.sourcePhysicalReference })) {
           throw new TypeError("compaction destination must differ from the source physical location");
         }
-        this.#mappings.push(Object.freeze({
+        this.mappings.push(Object.freeze({
           destinationPhysicalReference: clonePhysicalReference({ reference: destinationPhysicalReference }),
           homeReference: cloneHomeReference({ reference: entry.homeReference }),
         }));
-        this.#nextIndex += 1;
+        this.nextIndex += 1;
         copiedBytes += entry.homeReference.frameLength;
       } catch {
-        this.#aborted = true;
+        this.aborted = true;
         return Object.freeze({ phase: "aborted", reason: "copy_failed" });
       }
     }
-    return this.#completed();
+    return this.completed();
   }
 }
 

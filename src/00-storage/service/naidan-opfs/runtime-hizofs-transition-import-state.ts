@@ -65,54 +65,54 @@ function candidateForProgress({ committed, progress, stagedCandidate }: {
  * Losing this object deliberately loses every private import checkpoint.
  */
 export class RuntimeHizoFSTransitionImportState {
-  readonly #binding: RuntimeTransitionBinding;
-  #committed: CommittedTransitionImportSlice | undefined;
-  #stagedCandidate: HizoFSTransitionImportCandidate | undefined;
+  private readonly binding: RuntimeTransitionBinding;
+  private committed: CommittedTransitionImportSlice | undefined;
+  private stagedCandidate: HizoFSTransitionImportCandidate | undefined;
 
   public constructor({ binding }: {
     binding: RuntimeTransitionBinding;
   }) {
-    this.#binding = structuredClone(binding);
+    this.binding = structuredClone(binding);
   }
 
   readonly progressPort: TransitionProgressPort = {
     clear: async ({ operationId }) => {
-      this.#requireOperation({ operationId });
-      this.#committed = undefined;
-      this.#stagedCandidate = undefined;
+      this.requireOperation({ operationId });
+      this.committed = undefined;
+      this.stagedCandidate = undefined;
     },
     load: async ({ operationId }) => {
-      this.#requireOperation({ operationId });
-      return structuredClone(this.#committed?.progress);
+      this.requireOperation({ operationId });
+      return structuredClone(this.committed?.progress);
     },
     save: async ({ progress }) => {
-      if (!sameProgressBinding({ binding: this.#binding, progress })) {
+      if (!sameProgressBinding({ binding: this.binding, progress })) {
         throw new TypeError('cannot save runtime progress for another transition binding');
       }
       const candidate = candidateForProgress({
-        committed: this.#committed,
+        committed: this.committed,
         progress,
-        stagedCandidate: this.#stagedCandidate,
+        stagedCandidate: this.stagedCandidate,
       });
-      this.#committed = {
+      this.committed = {
         candidate,
         progress: structuredClone(progress),
       };
-      this.#stagedCandidate = undefined;
+      this.stagedCandidate = undefined;
     },
   };
 
   readonly importStatePort: HizoFSTransitionImportStatePort = {
     loadCandidate: async ({ operationIdentity }) => {
-      this.#requireOperation({ operationId: operationIdentity });
-      return structuredClone(this.#committed?.candidate);
+      this.requireOperation({ operationId: operationIdentity });
+      return structuredClone(this.committed?.candidate);
     },
     stageCandidate: async ({ candidate, operationIdentity }) => {
-      this.#requireOperation({ operationId: operationIdentity });
-      if (this.#stagedCandidate !== undefined) {
+      this.requireOperation({ operationId: operationIdentity });
+      if (this.stagedCandidate !== undefined) {
         throw new TypeError('runtime import state already has an uncommitted target slice');
       }
-      const current = this.#committed?.candidate;
+      const current = this.committed?.candidate;
       switch (current?.type) {
       case undefined:
       case 'active': break;
@@ -126,14 +126,14 @@ export class RuntimeHizoFSTransitionImportState {
         break;
       default: current satisfies never;
       }
-      this.#stagedCandidate = structuredClone(candidate);
+      this.stagedCandidate = structuredClone(candidate);
     },
   };
 
-  #requireOperation({ operationId }: {
+  private requireOperation({ operationId }: {
     operationId: TransitionOperationId | string;
   }): void {
-    if (operationId !== this.#binding.operationId) {
+    if (operationId !== this.binding.operationId) {
       throw new TypeError('runtime HizoFS import state belongs to another operation');
     }
   }

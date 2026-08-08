@@ -334,10 +334,10 @@ async function waitForReleaseCompletion({ completions }: {
 }
 
 class OwnedReaderPin implements ContainerRuntimeReaderPin, ReaderPin {
-  #active = true;
-  #crossRealmPin: CrossRealmReaderPin;
-  #localPin: ReaderPin;
-  #registration: SessionChildRegistration | undefined;
+  private active = true;
+  private crossRealmPin: CrossRealmReaderPin;
+  private localPin: ReaderPin;
+  private registration: SessionChildRegistration | undefined;
 
   constructor({ crossRealmPin, localPin, session, ownedBySession }: {
     crossRealmPin: CrossRealmReaderPin;
@@ -345,10 +345,10 @@ class OwnedReaderPin implements ContainerRuntimeReaderPin, ReaderPin {
     ownedBySession: boolean;
     session: SessionLifecycle;
   }) {
-    this.#crossRealmPin = crossRealmPin;
-    this.#localPin = localPin;
+    this.crossRealmPin = crossRealmPin;
+    this.localPin = localPin;
     if (ownedBySession) {
-      this.#registration = session.registerChild({ child: {
+      this.registration = session.registerChild({ child: {
         close: async () => {
           const failures: unknown[] = [];
           try {
@@ -370,87 +370,87 @@ class OwnedReaderPin implements ContainerRuntimeReaderPin, ReaderPin {
   }
 
   get commitReference(): HomeRecordReference {
-    return this.#localPin.commitReference;
+    return this.localPin.commitReference;
   }
 
   get released(): Promise<void> {
-    return Promise.all([this.#localPin.released, this.#crossRealmPin.released]).then(() => undefined);
+    return Promise.all([this.localPin.released, this.crossRealmPin.released]).then(() => undefined);
   }
 
   release(): void {
-    if (!this.#active) return;
-    this.#active = false;
-    const registration = this.#registration;
+    if (!this.active) return;
+    this.active = false;
+    const registration = this.registration;
     void this.released.then(
       () => registration?.releaseOwnership(),
       () => registration?.releaseOwnership(),
     );
-    this.#registration = undefined;
+    this.registration = undefined;
     releaseAllNow({ releases: [
-      () => this.#localPin.release(),
-      () => this.#crossRealmPin.release(),
+      () => this.localPin.release(),
+      () => this.crossRealmPin.release(),
     ] });
   }
 }
 
 class OwnedSegmentReference {
-  #active = true;
-  #reference: ActiveSegmentReference;
-  #registration: SessionChildRegistration;
+  private active = true;
+  private reference: ActiveSegmentReference;
+  private registration: SessionChildRegistration;
 
   constructor({ reference, session }: {
     reference: ActiveSegmentReference;
     session: SessionLifecycle;
   }) {
-    this.#reference = reference;
-    this.#registration = session.registerChild({ child: {
+    this.reference = reference;
+    this.registration = session.registerChild({ child: {
       close: async () => this.release(),
       revoke: () => undefined,
     } });
   }
 
   release(): void {
-    if (!this.#active) return;
-    this.#active = false;
-    this.#reference.release();
-    this.#registration.releaseOwnership();
+    if (!this.active) return;
+    this.active = false;
+    this.reference.release();
+    this.registration.releaseOwnership();
   }
 }
 
 export class ContainerRuntimeWriter {
-  #active = true;
-  #busy = false;
-  #closePromise: Promise<void> | undefined;
-  #crossRealmWriter: CrossRealmWriterLease;
-  #localWriter: RuntimeWriterLease;
-  #registration: SessionChildRegistration;
-  #revoked = false;
-  #session: SessionLifecycle;
+  private active = true;
+  private busy = false;
+  private closePromise: Promise<void> | undefined;
+  private crossRealmWriter: CrossRealmWriterLease;
+  private localWriter: RuntimeWriterLease;
+  private registration: SessionChildRegistration;
+  private revoked = false;
+  private session: SessionLifecycle;
 
   constructor({ crossRealmWriter, localWriter, session }: {
     crossRealmWriter: CrossRealmWriterLease;
     localWriter: RuntimeWriterLease;
     session: SessionLifecycle;
   }) {
-    this.#crossRealmWriter = crossRealmWriter;
-    this.#localWriter = localWriter;
-    this.#session = session;
-    this.#registration = session.registerChild({ child: {
-      close: async () => await this.#closeOwned(),
+    this.crossRealmWriter = crossRealmWriter;
+    this.localWriter = localWriter;
+    this.session = session;
+    this.registration = session.registerChild({ child: {
+      close: async () => await this.closeOwned(),
       revoke: () => {
-        this.#revoked = true;
+        this.revoked = true;
       },
     } });
   }
 
-  #assertUsable(): void {
-    if (!this.#active || this.#revoked) {
+  private assertUsable(): void {
+    if (!this.active || this.revoked) {
       throw new ContainerRuntimeWriterError({
         code: "capability_closed",
         message: "writer capability is closed or revoked by its owner session",
       });
     }
-    if (this.#busy) {
+    if (this.busy) {
       throw new ContainerRuntimeWriterError({
         code: "operation_in_progress",
         message: "writer mutation is already in progress",
@@ -461,70 +461,72 @@ export class ContainerRuntimeWriter {
   async runPublication<T>({ operation }: {
     operation: ({ authority }: { authority: SessionOperationAuthority }) => Promise<T>;
   }): Promise<T> {
-    this.#assertUsable();
-    this.#busy = true;
+    this.assertUsable();
+    this.busy = true;
     try {
-      return await this.#session.runOperation({ operation: async ({ authority }) => {
+      return await this.session.runOperation({ operation: async ({ authority }) => {
         authority.assertPublicationAllowed();
-        return await this.#localWriter.runPublication({ operation: async () => {
-          return await this.#crossRealmWriter.runPublication({ operation: async () => {
+        return await this.localWriter.runPublication({ operation: async () => {
+          return await this.crossRealmWriter.runPublication({ operation: async () => {
             authority.assertPublicationAllowed();
             return await operation({ authority });
           } });
         } });
       } });
     } finally {
-      this.#busy = false;
+      this.busy = false;
     }
   }
 
-  async #closeOwned(): Promise<void> {
-    if (this.#closePromise !== undefined) return await this.#closePromise;
-    if (this.#busy) {
+  private async closeOwned(): Promise<void> {
+    if (this.closePromise !== undefined) return await this.closePromise;
+    if (this.busy) {
       throw new ContainerRuntimeWriterError({
         code: "operation_in_progress",
         message: "writer cannot release ownership while an operation is active",
       });
     }
-    this.#active = false;
-    this.#closePromise = (async () => {
+    this.active = false;
+    this.closePromise = (async () => {
       const failures: unknown[] = [];
       try {
         releaseAllNow({ releases: [
-          () => this.#localWriter.release(),
-          () => this.#crossRealmWriter.release(),
+          () => this.localWriter.release(),
+          () => this.crossRealmWriter.release(),
         ] });
       } catch (cause: unknown) {
         failures.push(cause);
       }
       try {
-        await this.#crossRealmWriter.released;
+        await this.crossRealmWriter.released;
       } catch (cause: unknown) {
         failures.push(cause);
       }
-      this.#registration.releaseOwnership();
+      this.registration.releaseOwnership();
       if (failures.length === 1) throw failures[0];
       if (failures.length > 1) throw new AggregateError(failures, "writer ownership release failed");
     })();
-    return await this.#closePromise;
+    return await this.closePromise;
   }
 
   async close(): Promise<void> {
-    await this.#closeOwned();
+    await this.closeOwned();
   }
 }
 
 export class ContainerRuntimeSession {
-  #activeSegments: ActiveSegmentRegistry;
-  #coordinationKey: ContainerCoordinationKey;
-  #crossRealm: CrossRealmLockCoordinator;
-  #lifecycle: SessionLifecycle;
-  #limits: HizoFSRuntimePolicy;
-  #readerPins: ReaderPinRegistry;
-  #runtimeCoordination: RuntimeCoordinationRegistry;
+  private activeSegments: ActiveSegmentRegistry;
+  private captureInFlightPublication: () => Promise<void> | undefined;
+  private coordinationKey: ContainerCoordinationKey;
+  private crossRealm: CrossRealmLockCoordinator;
+  private lifecycle: SessionLifecycle;
+  private limits: HizoFSRuntimePolicy;
+  private readerPins: ReaderPinRegistry;
+  private runtimeCoordination: RuntimeCoordinationRegistry;
 
   constructor({
     activeSegments,
+    captureInFlightPublication,
     coordinationKey,
     crossRealm,
     limits,
@@ -533,6 +535,7 @@ export class ContainerRuntimeSession {
     runtimeCoordination,
   }: {
     activeSegments: ActiveSegmentRegistry;
+    captureInFlightPublication: () => Promise<void> | undefined;
     coordinationKey: ContainerCoordinationKey;
     crossRealm: CrossRealmLockCoordinator;
     limits: HizoFSRuntimePolicy;
@@ -540,47 +543,48 @@ export class ContainerRuntimeSession {
     releaseResources: () => Promise<void>;
     runtimeCoordination: RuntimeCoordinationRegistry;
   }) {
-    this.#activeSegments = activeSegments;
-    this.#coordinationKey = coordinationKey;
-    this.#crossRealm = crossRealm;
-    this.#limits = limits;
-    this.#readerPins = readerPins;
-    this.#runtimeCoordination = runtimeCoordination;
-    this.#lifecycle = new SessionLifecycle({ releaseResources });
+    this.activeSegments = activeSegments;
+    this.captureInFlightPublication = captureInFlightPublication;
+    this.coordinationKey = coordinationKey;
+    this.crossRealm = crossRealm;
+    this.limits = limits;
+    this.readerPins = readerPins;
+    this.runtimeCoordination = runtimeCoordination;
+    this.lifecycle = new SessionLifecycle({ releaseResources });
   }
 
   state(): SessionLifecycleState {
-    return this.#lifecycle.state();
+    return this.lifecycle.state();
   }
 
   async close(): Promise<void> {
-    await this.#lifecycle.close();
+    await this.lifecycle.close();
   }
 
   async runReadOperation<T>({ operation }: {
     operation: () => Promise<T>;
   }): Promise<T> {
-    return await this.#lifecycle.runOperation({ operation: async () => await operation() });
+    return await this.lifecycle.runOperation({ operation: async () => await operation() });
   }
 
-  async #acquireReaderPin({ commitReference, ownedBySession }: {
+  private async acquireReaderPinInternal({ commitReference, ownedBySession }: {
     commitReference: HomeRecordReference;
     ownedBySession: boolean;
   }): Promise<OwnedReaderPin> {
-    return await this.#lifecycle.runOperation({ operation: async ({ authority }) => {
-      const crossRealmPin = await this.#crossRealm.acquireReaderPin({ commitReference });
+    return await this.lifecycle.runOperation({ operation: async ({ authority }) => {
+      const crossRealmPin = await this.crossRealm.acquireReaderPin({ commitReference });
       let localPin: ReaderPin | undefined;
       try {
-        localPin = this.#readerPins.acquire({
+        localPin = this.readerPins.acquire({
           commitReference,
-          coordinationKey: this.#coordinationKey,
+          coordinationKey: this.coordinationKey,
         });
         authority.assertCapabilityReturnAllowed();
         return new OwnedReaderPin({
           crossRealmPin,
           localPin,
           ownedBySession,
-          session: this.#lifecycle,
+          session: this.lifecycle,
         });
       } catch (cause: unknown) {
         const acquiredLocalPin = localPin;
@@ -601,14 +605,14 @@ export class ContainerRuntimeSession {
   async acquireReaderPin({ commitReference }: {
     commitReference: HomeRecordReference;
   }): Promise<ContainerRuntimeReaderPin> {
-    return await this.#acquireReaderPin({ commitReference, ownedBySession: true });
+    return await this.acquireReaderPinInternal({ commitReference, ownedBySession: true });
   }
 
   async createDirectoryIterator({ entries, generation }: {
     entries: readonly DirectoryLeafEntry[];
     generation: CapturedDirectoryGeneration;
   }): Promise<CapturedDirectoryIterator> {
-    const pin = await this.#acquireReaderPin({
+    const pin = await this.acquireReaderPinInternal({
       commitReference: generation.commitReference,
       ownedBySession: false,
     });
@@ -616,9 +620,9 @@ export class ContainerRuntimeSession {
       return new CapturedDirectoryIterator({
         entries,
         generation,
-        maxEntries: this.#limits.maxDirectoryIteratorEntries,
+        maxEntries: this.limits.maxDirectoryIteratorEntries,
         pin,
-        session: this.#lifecycle,
+        session: this.lifecycle,
       });
     } catch (cause: unknown) {
       try {
@@ -632,27 +636,64 @@ export class ContainerRuntimeSession {
   }
 
   async acquireWriter(): Promise<ContainerRuntimeWriter> {
-    return await this.#lifecycle.runOperation({ operation: async ({ authority }) => {
-      const crossRealmWriter = await this.#crossRealm.acquireWriter();
-      let localWriter: RuntimeWriterLease | undefined;
-      try {
-        localWriter = this.#runtimeCoordination.acquireWriter({
-          coordinationKey: this.#coordinationKey,
-        });
-        authority.assertCapabilityReturnAllowed();
-        return new ContainerRuntimeWriter({ crossRealmWriter, localWriter, session: this.#lifecycle });
-      } catch (cause: unknown) {
-        const acquiredLocalWriter = localWriter;
-        const releases = acquiredLocalWriter === undefined
-          ? [() => crossRealmWriter.release()]
-          : [() => acquiredLocalWriter.release(), () => crossRealmWriter.release()];
+    return await this.lifecycle.runOperation({ operation: async ({ authority }) => {
+      for (;;) {
+        const crossRealmWriter = await this.crossRealm.acquireWriter();
+        let localWriter: RuntimeWriterLease | undefined;
         try {
-          releaseAllNow({ releases });
-          await crossRealmWriter.released;
-        } catch (cleanupCause: unknown) {
-          throw new AggregateError([cause, cleanupCause], "writer acquisition and cleanup both failed");
+          localWriter = this.runtimeCoordination.acquireWriter({
+            coordinationKey: this.coordinationKey,
+          });
+        } catch (cause: unknown) {
+          try {
+            crossRealmWriter.release();
+            await crossRealmWriter.released;
+          } catch (cleanupCause: unknown) {
+            throw new AggregateError([cause, cleanupCause], "writer acquisition and cleanup both failed");
+          }
+          throw cause;
         }
-        throw cause;
+
+        const publication = this.captureInFlightPublication();
+        if (publication !== undefined) {
+          // WHY: a foreground writer can have entered the cross-realm FIFO
+          // before a prior mutation reaches resource pressure or a dirty-age
+          // timer requests publication. Yield here, before returning the writer
+          // capability to application code, so that queued publication can
+          // close the dirty epoch. Admission itself must not wait on the flush:
+          // a prepared writable may already own this writer and would deadlock
+          // if its commit waited for publication that is waiting for its lease.
+          try {
+            releaseAllNow({ releases: [
+              () => localWriter.release(),
+              () => crossRealmWriter.release(),
+            ] });
+            await crossRealmWriter.released;
+          } catch (cleanupCause: unknown) {
+            throw new AggregateError(
+              [cleanupCause],
+              "foreground writer yield before queued publication failed",
+            );
+          }
+          await publication;
+          continue;
+        }
+
+        try {
+          authority.assertCapabilityReturnAllowed();
+          return new ContainerRuntimeWriter({ crossRealmWriter, localWriter, session: this.lifecycle });
+        } catch (cause: unknown) {
+          try {
+            releaseAllNow({ releases: [
+              () => localWriter.release(),
+              () => crossRealmWriter.release(),
+            ] });
+            await crossRealmWriter.released;
+          } catch (cleanupCause: unknown) {
+            throw new AggregateError([cause, cleanupCause], "writer acquisition and cleanup both failed");
+          }
+          throw cause;
+        }
       }
     } });
   }
@@ -689,15 +730,15 @@ export class ContainerRuntimeSession {
     kind: ActiveSegmentReferenceKind;
     segmentId: SegmentId;
   }): Promise<Readonly<{ release: () => void }>> {
-    return await this.#lifecycle.runOperation({ operation: async ({ authority }) => {
-      const reference = this.#activeSegments.acquire({
-        coordinationKey: this.#coordinationKey,
+    return await this.lifecycle.runOperation({ operation: async ({ authority }) => {
+      const reference = this.activeSegments.acquire({
+        coordinationKey: this.coordinationKey,
         kind,
         segmentId,
       });
       try {
         authority.assertCapabilityReturnAllowed();
-        return new OwnedSegmentReference({ reference, session: this.#lifecycle });
+        return new OwnedSegmentReference({ reference, session: this.lifecycle });
       } catch (cause: unknown) {
         reference.release();
         throw cause;
@@ -707,24 +748,24 @@ export class ContainerRuntimeSession {
 }
 
 export class ContainerRuntime {
-  #backgroundFlushScheduler: HizoFSBackgroundFlushScheduler;
-  #disposal: Promise<ContainerRuntimeHostDisposalResult> | undefined;
-  #flushOperation: Promise<void> | undefined;
-  #hostLifecycleState: "active" | "disposed" | "disposing" = "active";
-  #sessionOpenCount = 0;
-  #activeSegments: ActiveSegmentRegistry;
-  #appliedPublicationMode: HizoFSPublicationModeApplied;
-  #lazyPublicationRollout: HizoFSLazyPublicationRolloutGateReceipt;
-  #authenticatedApplicationGeneration: AuthenticatedWorkingApplicationGenerationDescriptor | undefined;
-  #crossRealm: CrossRealmLockCoordinator;
-  #limits: HizoFSRuntimePolicy;
-  #maintenanceRoots: MaintenanceRootRegistry;
-  #readerPins: ReaderPinRegistry;
-  #runtimeCoordination = new RuntimeCoordinationRegistry();
-  #runtimeOwner: RuntimeOwnerCoordinator;
-  #scope: ContainerCoordinationScope;
-  #workingCandidates: WorkingCandidateCoordinator;
-  #workingGenerations: WorkingGenerationCoordinator | undefined;
+  private backgroundFlushScheduler: HizoFSBackgroundFlushScheduler;
+  private disposal: Promise<ContainerRuntimeHostDisposalResult> | undefined;
+  private flushOperation: Promise<void> | undefined;
+  private hostLifecycleState: "active" | "disposed" | "disposing" = "active";
+  private sessionOpenCount = 0;
+  private activeSegments: ActiveSegmentRegistry;
+  private appliedPublicationMode: HizoFSPublicationModeApplied;
+  private lazyPublicationRollout: HizoFSLazyPublicationRolloutGateReceipt;
+  private authenticatedApplicationGeneration: AuthenticatedWorkingApplicationGenerationDescriptor | undefined;
+  private crossRealm: CrossRealmLockCoordinator;
+  private limits: HizoFSRuntimePolicy;
+  private maintenanceRoots: MaintenanceRootRegistry;
+  private readerPins: ReaderPinRegistry;
+  private runtimeCoordination = new RuntimeCoordinationRegistry();
+  private runtimeOwner: RuntimeOwnerCoordinator;
+  private scope: ContainerCoordinationScope;
+  private workingCandidates: WorkingCandidateCoordinator;
+  private workingGenerations: WorkingGenerationCoordinator | undefined;
 
   constructor({ backgroundFlushTimerPort, crossRealmLockPort, lazyPublicationRollout, limits, scope }: {
     backgroundFlushTimerPort?: HizoFSBackgroundFlushTimerPort;
@@ -734,78 +775,78 @@ export class ContainerRuntime {
     scope: ContainerCoordinationScope;
   }) {
     const validatedPolicy = createRuntimePolicy(limits);
-    this.#lazyPublicationRollout = lazyPublicationRollout
+    this.lazyPublicationRollout = lazyPublicationRollout
       ?? CURRENT_HIZOFS_LAZY_PUBLICATION_ROLLOUT_GATE;
-    this.#appliedPublicationMode = resolvePublicationModeApplied({
-      lazyPublicationRollout: this.#lazyPublicationRollout,
+    this.appliedPublicationMode = resolvePublicationModeApplied({
+      lazyPublicationRollout: this.lazyPublicationRollout,
       publicationModeRequest: validatedPolicy.lazyDurability.publicationModeRequest,
       writableProfile: "development-unverified",
     });
-    this.#activeSegments = new ActiveSegmentRegistry({
+    this.activeSegments = new ActiveSegmentRegistry({
       maxReferencesPerContainer: validatedPolicy.maxSegmentReferences,
     });
-    this.#backgroundFlushScheduler = new HizoFSBackgroundFlushScheduler({
+    this.backgroundFlushScheduler = new HizoFSBackgroundFlushScheduler({
       maximumDirtyAgeMilliseconds: validatedPolicy.lazyDurability.maximumDirtyAgeMilliseconds,
-      requestFlush: async ({ trigger }) => await this.#requestBackgroundFlush({ trigger }),
+      requestFlush: async ({ trigger }) => await this.requestBackgroundFlush({ trigger }),
       ...(backgroundFlushTimerPort === undefined ? {} : { timerPort: backgroundFlushTimerPort }),
     });
-    this.#crossRealm = new CrossRealmLockCoordinator({
+    this.crossRealm = new CrossRealmLockCoordinator({
       lockPort: crossRealmLockPort,
       maxHeldLockNames: validatedPolicy.maxHeldLockNames,
       scopeToken: scope.token,
     });
-    this.#limits = validatedPolicy;
-    this.#maintenanceRoots = new MaintenanceRootRegistry({
+    this.limits = validatedPolicy;
+    this.maintenanceRoots = new MaintenanceRootRegistry({
       maxRegistrationsPerContainer: validatedPolicy.maxMaintenanceRootRegistrations,
     });
-    this.#readerPins = new ReaderPinRegistry({
-      maintenanceRoots: this.#maintenanceRoots,
+    this.readerPins = new ReaderPinRegistry({
+      maintenanceRoots: this.maintenanceRoots,
       maxPinsPerContainer: validatedPolicy.maxReaderPins,
     });
-    this.#scope = scope;
-    this.#workingCandidates = new WorkingCandidateCoordinator({
+    this.scope = scope;
+    this.workingCandidates = new WorkingCandidateCoordinator({
       acquireWriterDependencyRoot: ({ commitReference }) => (
-        this.#maintenanceRoots.acquireWriterDependencyRoot({
+        this.maintenanceRoots.acquireWriterDependencyRoot({
           commitReference,
-          coordinationKey: this.#scope.key,
+          coordinationKey: this.scope.key,
         })
       ),
       acquireWriterWorkingPageRoot: ({ pageReference }) => (
-        this.#maintenanceRoots.acquireWriterWorkingPageRoot({
-          coordinationKey: this.#scope.key,
+        this.maintenanceRoots.acquireWriterWorkingPageRoot({
+          coordinationKey: this.scope.key,
           pageReference,
         })
       ),
     });
-    this.#runtimeOwner = new RuntimeOwnerCoordinator({
-      acquireLease: async () => await this.#crossRealm.acquireRuntimeOwner(),
+    this.runtimeOwner = new RuntimeOwnerCoordinator({
+      acquireLease: async () => await this.crossRealm.acquireRuntimeOwner(),
       isReleaseSafe: () => (
-        this.#workingCandidates.publicationState() === "empty"
-        && this.#workingGenerationHasCleanDurableHead({ allowManagementBarrier: false })
+        this.workingCandidates.publicationState() === "empty"
+        && this.workingGenerationHasCleanDurableHead({ allowManagementBarrier: false })
       ),
-      tryAcquireLease: async () => await this.#crossRealm.tryAcquireRuntimeOwner(),
+      tryAcquireLease: async () => await this.crossRealm.tryAcquireRuntimeOwner(),
     });
   }
 
-  #workingGenerationSnapshot(): WorkingGenerationCoordinatorSnapshot | undefined {
-    return this.#workingGenerations?.snapshot();
+  private workingGenerationSnapshot(): WorkingGenerationCoordinatorSnapshot | undefined {
+    return this.workingGenerations?.snapshot();
   }
 
   lazyDurabilityDiagnostics(): ContainerRuntimeLazyDurabilityDiagnostics {
-    const generation = this.#workingGenerationSnapshot();
+    const generation = this.workingGenerationSnapshot();
     return Object.freeze({
       acceptedGeneration: generation?.workingGeneration.generationNumber.toString(10) ?? null,
-      backgroundFlush: this.#backgroundFlushScheduler.snapshot(),
-      candidatePublicationState: this.#workingCandidates.publicationState(),
+      backgroundFlush: this.backgroundFlushScheduler.snapshot(),
+      candidatePublicationState: this.workingCandidates.publicationState(),
       dirtyMetadataBytes: generation?.dirtyResources.dirtyMetadataBytes ?? 0,
       dirtyMutationCount: generation?.dirtyResources.acceptedMutationCount ?? 0,
       durableGeneration: generation?.durableGeneration.generationNumber.toString(10) ?? null,
       flushState: generation?.flushState ?? "idle",
       managementBarrierActive: generation?.managementBarrierActive ?? false,
-      lazyPublicationRollout: this.#lazyPublicationRollout,
+      lazyPublicationRollout: this.lazyPublicationRollout,
       mutationAdmissionActive: (generation?.dirtyResources.pendingAdmissionCount ?? 0) !== 0,
-      appliedPublicationMode: this.#appliedPublicationMode,
-      requestedPublicationMode: this.#limits.lazyDurability.publicationModeRequest,
+      appliedPublicationMode: this.appliedPublicationMode,
+      requestedPublicationMode: this.limits.lazyDurability.publicationModeRequest,
       stagedCommitMaterializationHeadroomBytes:
         generation?.dirtyResources.stagedCommitMaterializationHeadroomBytes ?? 0,
       syncWaiters: generation?.syncWaiterCount ?? 0,
@@ -813,10 +854,10 @@ export class ContainerRuntime {
     });
   }
 
-  #workingGenerationHasCleanDurableHead({ allowManagementBarrier }: {
+  private workingGenerationHasCleanDurableHead({ allowManagementBarrier }: {
     allowManagementBarrier: boolean;
   }): boolean {
-    const snapshot = this.#workingGenerationSnapshot();
+    const snapshot = this.workingGenerationSnapshot();
     if (snapshot === undefined) return true;
     return snapshot.flushState === "idle"
       && (allowManagementBarrier || !snapshot.managementBarrierActive)
@@ -832,16 +873,16 @@ export class ContainerRuntime {
       });
   }
 
-  #requireAuthenticatedApplicationGeneration(): AuthenticatedWorkingApplicationGenerationDescriptor {
-    const current = this.#authenticatedApplicationGeneration;
+  private requireAuthenticatedApplicationGeneration(): AuthenticatedWorkingApplicationGenerationDescriptor {
+    const current = this.authenticatedApplicationGeneration;
     if (current === undefined) {
       throw new TypeError("authenticated application generation is not attached to this runtime");
     }
     return current;
   }
 
-  #requireWorkingGenerations(): WorkingGenerationCoordinator {
-    const coordinator = this.#workingGenerations;
+  private requireWorkingGenerations(): WorkingGenerationCoordinator {
+    const coordinator = this.workingGenerations;
     if (coordinator === undefined) {
       throw new TypeError("working generation coordinator is not initialized for this runtime");
     }
@@ -856,13 +897,13 @@ export class ContainerRuntime {
     writableProfile?: HizoFSWritableDurabilityProfile;
   }): ContainerRuntimeAuthenticatedApplicationGeneration {
     const appliedPublicationMode = resolvePublicationModeApplied({
-      lazyPublicationRollout: this.#lazyPublicationRollout,
-      publicationModeRequest: this.#limits.lazyDurability.publicationModeRequest,
+      lazyPublicationRollout: this.lazyPublicationRollout,
+      publicationModeRequest: this.limits.lazyDurability.publicationModeRequest,
       writableProfile,
     });
-    const current = this.#authenticatedApplicationGeneration;
+    const current = this.authenticatedApplicationGeneration;
     if (current === undefined) {
-      this.#appliedPublicationMode = appliedPublicationMode;
+      this.appliedPublicationMode = appliedPublicationMode;
       const initial = createAuthenticatedApplicationGenerationDescriptor({
         commit: durableAuthority.commit,
         commitReference: durableAuthority.commitReference,
@@ -873,29 +914,29 @@ export class ContainerRuntime {
           mutationId: durableAuthority.commit.mutationId,
         }),
       });
-      this.#authenticatedApplicationGeneration = initial;
-      this.#workingGenerations = new WorkingGenerationCoordinator({
+      this.authenticatedApplicationGeneration = initial;
+      this.workingGenerations = new WorkingGenerationCoordinator({
         initialDurableGeneration: initial.workingIdentity,
-        policy: this.#limits.lazyDurability,
+        policy: this.limits.lazyDurability,
       });
     } else if (!sameDurableGenerationIdentity({
       left: current.durableAuthority.identity,
       right: durableAuthority.identity,
     })) {
       throw new TypeError("authenticated durable authority conflicts with the runtime generation authority");
-    } else if (this.#appliedPublicationMode !== appliedPublicationMode) {
+    } else if (this.appliedPublicationMode !== appliedPublicationMode) {
       throw new TypeError("applied publication mode conflicts with the runtime publication mode receipt");
     }
 
     return Object.freeze({
-      capture: () => this.#requireAuthenticatedApplicationGeneration(),
-      captureSyncTarget: () => this.#requireWorkingGenerations().captureSyncTarget(),
-      publicationModeApplied: () => this.#appliedPublicationMode,
+      capture: () => this.requireAuthenticatedApplicationGeneration(),
+      captureSyncTarget: () => this.requireWorkingGenerations().captureSyncTarget(),
+      publicationModeApplied: () => this.appliedPublicationMode,
       openAcceptedMutationAdmission: ({
         dirtyMetadataBytes,
         expectedBase,
         unpublishedPhysicalBytes,
-      }) => this.#openAcceptedMutationAdmission({
+      }) => this.openAcceptedMutationAdmission({
         dirtyMetadataBytes,
         expectedBase,
         unpublishedPhysicalBytes,
@@ -908,37 +949,37 @@ export class ContainerRuntime {
         dirtyMetadataBytes: number;
         expectedBase: AuthenticatedApplicationGenerationDescriptor;
         unpublishedPhysicalBytes: number;
-      }) => this.#openImmediateMutationAdmission<Candidate>({
+      }) => this.openImmediateMutationAdmission<Candidate>({
         dirtyMetadataBytes,
         expectedBase,
         unpublishedPhysicalBytes,
       }),
-      openManagementCleanHeadBarrier: ({ writerOwnership }) => this.#openManagementCleanHeadBarrier({ writerOwnership }),
+      openManagementCleanHeadBarrier: ({ writerOwnership }) => this.openManagementCleanHeadBarrierInternal({ writerOwnership }),
       requestExplicitFlush: () => {
-        this.#backgroundFlushScheduler.prepareExplicitFlush();
-        return this.#requestRuntimeFlush({ acquireWriterOwnership: true, managementBarrier: undefined });
+        this.backgroundFlushScheduler.prepareExplicitFlush();
+        return this.requestRuntimeFlush({ acquireWriterOwnership: true, managementBarrier: undefined });
       },
       refreshDurableAuthority: ({ durableAuthority: refreshed, expectedWorkingIdentity }) => (
-        this.#refreshAuthenticatedDurableAuthority({
+        this.refreshAuthenticatedDurableAuthority({
           durableAuthority: refreshed,
           expectedWorkingIdentity,
         })
       ),
       waitForInFlightPublication: async () => {
-        const operation = this.#flushOperation;
+        const operation = this.flushOperation;
         if (operation === undefined) return false;
         await operation;
         return true;
       },
-      waitForSyncTarget: async ({ target }) => await this.#requireWorkingGenerations().waitForSyncTarget({ target }),
+      waitForSyncTarget: async ({ target }) => await this.requireWorkingGenerations().waitForSyncTarget({ target }),
     });
   }
 
-  async #acquireInternalWriterOwnership(): Promise<ContainerRuntimeInternalWriterOwnership> {
-    const crossRealmWriter = await this.#crossRealm.acquireWriter();
+  private async acquireInternalWriterOwnership(): Promise<ContainerRuntimeInternalWriterOwnership> {
+    const crossRealmWriter = await this.crossRealm.acquireWriter();
     let localWriter: RuntimeWriterLease | undefined;
     try {
-      localWriter = this.#runtimeCoordination.acquireWriter({ coordinationKey: this.#scope.key });
+      localWriter = this.runtimeCoordination.acquireWriter({ coordinationKey: this.scope.key });
     } catch (cause: unknown) {
       try {
         crossRealmWriter.release();
@@ -981,23 +1022,23 @@ export class ContainerRuntime {
     });
   }
 
-  #openManagementCleanHeadBarrier({ writerOwnership = "acquire" }: {
+  private openManagementCleanHeadBarrierInternal({ writerOwnership = "acquire" }: {
     writerOwnership?: ContainerRuntimeManagementWriterOwnership;
   } = {}): ContainerRuntimeManagementCleanHeadBarrier {
-    this.#backgroundFlushScheduler.prepareExplicitFlush();
+    this.backgroundFlushScheduler.prepareExplicitFlush();
     let managementBarrier: WorkingGenerationManagementBarrier | undefined;
     let active = true;
     const requireActive = (): void => {
       if (!active) throw new TypeError("runtime management clean-head barrier is already released");
     };
     const ensureManagementBarrier = (): WorkingGenerationManagementBarrier => {
-      managementBarrier ??= this.#requireWorkingGenerations().openManagementBarrier();
+      managementBarrier ??= this.requireWorkingGenerations().openManagementBarrier();
       return managementBarrier;
     };
     const flushUnderOwnedWriter = async (): Promise<AuthenticatedApplicationGenerationDescriptor> => {
       const barrier = ensureManagementBarrier();
-      await this.#requestRuntimeFlush({ managementBarrier: barrier });
-      const current = this.#requireAuthenticatedApplicationGeneration();
+      await this.requestRuntimeFlush({ managementBarrier: barrier });
+      const current = this.requireAuthenticatedApplicationGeneration();
       if (!sameWorkingGenerationIdentity({
         left: current.workingIdentity,
         right: barrier.target,
@@ -1017,7 +1058,7 @@ export class ContainerRuntime {
           // Acquire the ordinary writer gate before mutation admission is
           // fenced, so an existing prepared writer can finish instead of being
           // trapped behind a barrier that needs its Segment lease.
-          const ownership = await this.#acquireInternalWriterOwnership();
+          const ownership = await this.acquireInternalWriterOwnership();
           let primary: unknown | undefined;
           let result: AuthenticatedApplicationGenerationDescriptor | undefined;
           try {
@@ -1048,18 +1089,18 @@ export class ContainerRuntime {
     });
   }
 
-  async #requestBackgroundFlush({ trigger }: {
+  private async requestBackgroundFlush({ trigger }: {
     trigger: HizoFSBackgroundFlushTrigger;
   }): Promise<void> {
     try {
-      await this.#requestRuntimeFlush({ acquireWriterOwnership: true, managementBarrier: undefined });
+      await this.requestRuntimeFlush({ acquireWriterOwnership: true, managementBarrier: undefined });
     } catch (cause: unknown) {
       if (cause instanceof WorkingGenerationCoordinatorError && cause.code === "working_authority_busy") {
-        this.#backgroundFlushScheduler.deferAfterForegroundBusy({ trigger });
-        if ((this.#workingGenerationSnapshot()?.dirtyResources.pendingAdmissionCount ?? 0) === 0) {
+        this.backgroundFlushScheduler.deferAfterForegroundBusy({ trigger });
+        if ((this.workingGenerationSnapshot()?.dirtyResources.pendingAdmissionCount ?? 0) === 0) {
           // The foreground admission may have closed before this async catch ran.
           // Rechecking after registering the deferral prevents a lost wake-up.
-          this.#backgroundFlushScheduler.notifyForegroundIdle();
+          this.backgroundFlushScheduler.notifyForegroundIdle();
         }
         return;
       }
@@ -1067,17 +1108,17 @@ export class ContainerRuntime {
     }
   }
 
-  #requestRuntimeFlush({ acquireWriterOwnership = false, managementBarrier }: {
+  private requestRuntimeFlush({ acquireWriterOwnership = false, managementBarrier }: {
     acquireWriterOwnership?: boolean;
     managementBarrier: WorkingGenerationManagementBarrier | undefined;
   }): Promise<void> {
-    const existing = this.#flushOperation;
+    const existing = this.flushOperation;
     if (existing !== undefined) return existing;
     const operation = (async () => {
       const runFlush = async (): Promise<void> => {
-        const coordinator = this.#requireWorkingGenerations();
+        const coordinator = this.requireWorkingGenerations();
         const snapshot = coordinator.snapshot();
-        const current = this.#requireAuthenticatedApplicationGeneration();
+        const current = this.requireAuthenticatedApplicationGeneration();
         if (!sameWorkingGenerationIdentity({
           left: current.workingIdentity,
           right: snapshot.workingGeneration,
@@ -1092,13 +1133,13 @@ export class ContainerRuntime {
           right: snapshot.workingGeneration,
         })) {
           flush.complete({ durableGeneration: flush.target });
-          this.#backgroundFlushScheduler.markDurable();
+          this.backgroundFlushScheduler.markDurable();
           return;
         }
 
         let publication;
         try {
-          publication = this.#workingCandidates.openCurrentPublication<ContainerRuntimeSelectedCandidatePublisher>();
+          publication = this.workingCandidates.openCurrentPublication<ContainerRuntimeSelectedCandidatePublisher>();
         } catch (cause: unknown) {
           flush.fail({ cause });
           throw cause;
@@ -1115,7 +1156,7 @@ export class ContainerRuntime {
           } catch (cleanupCause: unknown) {
             failures.push(cleanupCause);
           }
-          this.#backgroundFlushScheduler.markStalled();
+          this.backgroundFlushScheduler.markStalled();
           if (failures.length === 1) throw cause;
           throw new AggregateError(failures, "selected candidate publication and outcome retention both failed");
         };
@@ -1158,7 +1199,7 @@ export class ContainerRuntime {
               ),
             });
           }
-          this.#authenticatedApplicationGeneration = (() => {
+          this.authenticatedApplicationGeneration = (() => {
             switch (current.workingRootAuthority.type) {
             case "materialized_commit":
               return createAuthenticatedApplicationGenerationDescriptor({
@@ -1187,7 +1228,7 @@ export class ContainerRuntime {
           } catch (cleanupCause: unknown) {
             failures.push(cleanupCause);
           }
-          this.#backgroundFlushScheduler.markStalled();
+          this.backgroundFlushScheduler.markStalled();
           if (failures.length > 0) {
             throw new AggregateError(
               [outcome.cause, ...failures],
@@ -1212,10 +1253,10 @@ export class ContainerRuntime {
               cause: new TypeError("published selected candidate does not match its retained runtime authority"),
             });
           }
-          this.#authenticatedApplicationGeneration = outcome.durableSuccessor;
+          this.authenticatedApplicationGeneration = outcome.durableSuccessor;
           flush.complete({ durableGeneration: publication.workingIdentity });
           publication.completePublished();
-          this.#backgroundFlushScheduler.markDurable();
+          this.backgroundFlushScheduler.markDurable();
           return;
         }
         default: return outcome satisfies never;
@@ -1230,7 +1271,7 @@ export class ContainerRuntime {
       // owner as foreground mutations. Own the ordinary container writer gate
       // before entering flush so foreground and flush-time Segment leases can
       // never overlap, including across realms.
-      const ownership = await this.#acquireInternalWriterOwnership();
+      const ownership = await this.acquireInternalWriterOwnership();
       let primary: unknown | undefined;
       try {
         await ownership.runPublication({ operation: runFlush });
@@ -1248,18 +1289,24 @@ export class ContainerRuntime {
       if (primary !== undefined) throw primary;
     })();
     const tracked = operation.finally(() => {
-      if (this.#flushOperation === tracked) this.#flushOperation = undefined;
+      if (this.flushOperation === tracked) this.flushOperation = undefined;
     });
-    this.#flushOperation = tracked;
+    this.flushOperation = tracked;
     return tracked;
   }
 
-  #openAcceptedMutationAdmission({ dirtyMetadataBytes, expectedBase, unpublishedPhysicalBytes }: {
+  private openAcceptedMutationAdmission({ dirtyMetadataBytes, expectedBase, unpublishedPhysicalBytes }: {
     dirtyMetadataBytes: number;
     expectedBase: AuthenticatedWorkingApplicationGenerationDescriptor;
     unpublishedPhysicalBytes: number;
   }): ContainerRuntimeAcceptedMutationAdmission {
-    const current = this.#requireAuthenticatedApplicationGeneration();
+    // A queued flush may be waiting behind the caller's already-owned writer.
+    // Do not wait for or reject on flushOperation here: a prepared writable
+    // must be able to finish and release that writer, otherwise publication
+    // and the foreground operation can wait on each other forever. Once the
+    // queued flush actually owns the writer, WorkingGenerationCoordinator's
+    // flush authority closes mutation admission normally.
+    const current = this.requireAuthenticatedApplicationGeneration();
     if (
       !sameWorkingGenerationIdentity({ left: current.workingIdentity, right: expectedBase.workingIdentity })
       || !sameDurableGenerationIdentity({
@@ -1269,11 +1316,11 @@ export class ContainerRuntime {
     ) {
       throw new TypeError("mutation base does not match the runtime application generation");
     }
-    const coordinator = this.#requireWorkingGenerations();
+    const coordinator = this.requireWorkingGenerations();
     const generationAdmission = coordinator.openMutationAdmission({ dirtyMetadataBytes, unpublishedPhysicalBytes });
     let candidateAdmission: WorkingCandidateAdmission<ContainerRuntimeSelectedCandidatePublisher>;
     try {
-      candidateAdmission = this.#workingCandidates.openAdmission({
+      candidateAdmission = this.workingCandidates.openAdmission({
         durableBaseIdentity: current.durableAuthority.identity,
         operationLabel: "accepted runtime mutation",
       });
@@ -1317,12 +1364,12 @@ export class ContainerRuntime {
           });
           generationAdmission.accept({ workingGeneration: successor.workingIdentity });
           generationAccepted = true;
-          this.#backgroundFlushScheduler.notifyForegroundIdle();
-          this.#authenticatedApplicationGeneration = successor;
+          this.backgroundFlushScheduler.notifyForegroundIdle();
+          this.authenticatedApplicationGeneration = successor;
           candidateAdmission.retainInstalled();
           const dirtyResources = coordinator.snapshot().dirtyResources;
-          const policy = this.#limits.lazyDurability;
-          this.#backgroundFlushScheduler.markDirty({
+          const policy = this.limits.lazyDurability;
+          this.backgroundFlushScheduler.markDirty({
             resourcePressure: dirtyResources.acceptedMutationCount >= policy.maximumAcceptedMutationsPerDirtyEpoch
               || dirtyResources.dirtyMetadataBytes >= policy.maximumDirtyMetadataBytes
               || dirtyResources.unpublishedPhysicalBytes >= policy.maximumUnpublishedPhysicalBytes,
@@ -1338,7 +1385,7 @@ export class ContainerRuntime {
             } catch (cleanupCause: unknown) {
               failures.push(cleanupCause);
             }
-            this.#backgroundFlushScheduler.markStalled();
+            this.backgroundFlushScheduler.markStalled();
             if (failures.length === 1) throw cause;
             throw new AggregateError(
               failures,
@@ -1400,12 +1447,12 @@ export class ContainerRuntime {
           });
           generationAdmission.accept({ workingGeneration: successor.workingIdentity });
           generationAccepted = true;
-          this.#backgroundFlushScheduler.notifyForegroundIdle();
-          this.#authenticatedApplicationGeneration = successor;
+          this.backgroundFlushScheduler.notifyForegroundIdle();
+          this.authenticatedApplicationGeneration = successor;
           candidateAdmission.retainInstalled();
           const dirtyResources = coordinator.snapshot().dirtyResources;
-          const policy = this.#limits.lazyDurability;
-          this.#backgroundFlushScheduler.markDirty({
+          const policy = this.limits.lazyDurability;
+          this.backgroundFlushScheduler.markDirty({
             resourcePressure: dirtyResources.acceptedMutationCount >= policy.maximumAcceptedMutationsPerDirtyEpoch
               || dirtyResources.dirtyMetadataBytes >= policy.maximumDirtyMetadataBytes
               || dirtyResources.unpublishedPhysicalBytes >= policy.maximumUnpublishedPhysicalBytes,
@@ -1421,7 +1468,7 @@ export class ContainerRuntime {
             } catch (cleanupCause: unknown) {
               failures.push(cleanupCause);
             }
-            this.#backgroundFlushScheduler.markStalled();
+            this.backgroundFlushScheduler.markStalled();
             if (failures.length === 1) throw cause;
             throw new AggregateError(
               failures,
@@ -1467,7 +1514,7 @@ export class ContainerRuntime {
         }
         try {
           generationAdmission.rollback();
-          this.#backgroundFlushScheduler.notifyForegroundIdle();
+          this.backgroundFlushScheduler.notifyForegroundIdle();
         } catch (cause: unknown) {
           failures.push(cause);
         }
@@ -1479,7 +1526,7 @@ export class ContainerRuntime {
     });
   }
 
-  #openImmediateMutationAdmission<Candidate extends object>({
+  private openImmediateMutationAdmission<Candidate extends object>({
     dirtyMetadataBytes,
     expectedBase,
     unpublishedPhysicalBytes,
@@ -1488,7 +1535,7 @@ export class ContainerRuntime {
     expectedBase: AuthenticatedApplicationGenerationDescriptor;
     unpublishedPhysicalBytes: number;
   }): ContainerRuntimeImmediateMutationAdmission<Candidate> {
-    const current = this.#requireAuthenticatedApplicationGeneration();
+    const current = this.requireAuthenticatedApplicationGeneration();
     if (
       !sameWorkingGenerationIdentity({ left: current.workingIdentity, right: expectedBase.workingIdentity })
       || !sameDurableGenerationIdentity({
@@ -1498,11 +1545,11 @@ export class ContainerRuntime {
     ) {
       throw new TypeError("mutation base does not match the runtime application generation");
     }
-    const coordinator = this.#requireWorkingGenerations();
+    const coordinator = this.requireWorkingGenerations();
     const generationAdmission = coordinator.openMutationAdmission({ dirtyMetadataBytes, unpublishedPhysicalBytes });
     let candidateAdmission: WorkingCandidateAdmission<Candidate>;
     try {
-      candidateAdmission = this.#workingCandidates.openAdmission<Candidate>({
+      candidateAdmission = this.workingCandidates.openAdmission<Candidate>({
         durableBaseIdentity: current.durableAuthority.identity,
         operationLabel: "immediate runtime mutation",
       });
@@ -1547,11 +1594,11 @@ export class ContainerRuntime {
           throw new TypeError("durable successor does not match the selected runtime candidate");
         }
         generationAdmission.accept({ workingGeneration: successor.workingIdentity });
-        this.#backgroundFlushScheduler.notifyForegroundIdle();
+        this.backgroundFlushScheduler.notifyForegroundIdle();
         const flush = coordinator.openFlush();
         flush.complete({ durableGeneration: successor.workingIdentity });
-        this.#authenticatedApplicationGeneration = successor;
-        this.#backgroundFlushScheduler.markDurable();
+        this.authenticatedApplicationGeneration = successor;
+        this.backgroundFlushScheduler.markDurable();
         durableCommitted = true;
       },
       installSelectedCandidate: ({ candidate, successor }) => {
@@ -1611,7 +1658,7 @@ export class ContainerRuntime {
         active = false;
         try {
           generationAdmission.rollback();
-          this.#backgroundFlushScheduler.notifyForegroundIdle();
+          this.backgroundFlushScheduler.notifyForegroundIdle();
         } catch (cleanupCause: unknown) {
           throw new AggregateError(
             [cause, cleanupCause],
@@ -1630,7 +1677,7 @@ export class ContainerRuntime {
         if (!durableCommitted) {
           try {
             generationAdmission.rollback();
-            this.#backgroundFlushScheduler.notifyForegroundIdle();
+            this.backgroundFlushScheduler.notifyForegroundIdle();
           } catch (cause: unknown) {
             failures.push(cause);
           }
@@ -1651,15 +1698,15 @@ export class ContainerRuntime {
     });
   }
 
-  #refreshAuthenticatedDurableAuthority({ durableAuthority, expectedWorkingIdentity }: {
+  private refreshAuthenticatedDurableAuthority({ durableAuthority, expectedWorkingIdentity }: {
     durableAuthority: AuthenticatedDurableApplicationGenerationAuthority;
     expectedWorkingIdentity: WorkingGenerationIdentity;
   }): AuthenticatedApplicationGenerationDescriptor {
-    const current = this.#requireAuthenticatedApplicationGeneration();
+    const current = this.requireAuthenticatedApplicationGeneration();
     if (!sameWorkingGenerationIdentity({ left: current.workingIdentity, right: expectedWorkingIdentity })) {
       throw new TypeError("durable authority refresh base does not match the runtime working generation");
     }
-    if (!this.#workingGenerationHasCleanDurableHead({ allowManagementBarrier: true })) {
+    if (!this.workingGenerationHasCleanDurableHead({ allowManagementBarrier: true })) {
       throw new TypeError("cannot refresh durable authority while the runtime has dirty generation state");
     }
     if (!sameDurableGenerationIdentity({
@@ -1675,14 +1722,14 @@ export class ContainerRuntime {
       durableAuthority,
       workingIdentity: materialized.workingIdentity,
     });
-    this.#authenticatedApplicationGeneration = refreshed;
+    this.authenticatedApplicationGeneration = refreshed;
     return refreshed;
   }
 
-  #beginSessionOpen(): void {
-    switch (this.#hostLifecycleState) {
+  private beginSessionOpen(): void {
+    switch (this.hostLifecycleState) {
     case "active":
-      this.#sessionOpenCount += 1;
+      this.sessionOpenCount += 1;
       return;
     case "disposing":
       throw new ContainerRuntimeHostLifecycleError({
@@ -1694,23 +1741,23 @@ export class ContainerRuntime {
         code: "runtime_host_disposed",
         message: "HizoFS runtime host has been disposed",
       });
-    default: return this.#hostLifecycleState satisfies never;
+    default: return this.hostLifecycleState satisfies never;
     }
   }
 
-  #finishSessionOpen(): void {
-    if (this.#sessionOpenCount < 1) throw new Error("runtime host session-open accounting became inconsistent");
-    this.#sessionOpenCount -= 1;
+  private finishSessionOpen(): void {
+    if (this.sessionOpenCount < 1) throw new Error("runtime host session-open accounting became inconsistent");
+    this.sessionOpenCount -= 1;
   }
 
-  #hostDisposalBlocker({ allowFlushableDirtyState = false }: {
+  private hostDisposalBlocker({ allowFlushableDirtyState = false }: {
     allowFlushableDirtyState?: boolean;
   } = {}): ContainerRuntimeHostDisposalBlocker | undefined {
-    if (this.#flushOperation !== undefined) return "explicit_flush_in_flight";
-    if (this.#sessionOpenCount > 0) return "session_open_in_flight";
-    if (this.#runtimeOwner.attachmentCount() > 0) return "session_attached";
-    if (this.#workingGenerationSnapshot()?.managementBarrierActive === true) return "management_barrier_active";
-    const publicationState = this.#workingCandidates.publicationState();
+    if (this.flushOperation !== undefined) return "explicit_flush_in_flight";
+    if (this.sessionOpenCount > 0) return "session_open_in_flight";
+    if (this.runtimeOwner.attachmentCount() > 0) return "session_attached";
+    if (this.workingGenerationSnapshot()?.managementBarrierActive === true) return "management_barrier_active";
+    const publicationState = this.workingCandidates.publicationState();
     switch (publicationState) {
     case "empty": break;
     case "installed":
@@ -1721,8 +1768,8 @@ export class ContainerRuntime {
     case "publishing": return "working_candidate_not_empty";
     default: return publicationState satisfies never;
     }
-    if (!this.#workingGenerationHasCleanDurableHead({ allowManagementBarrier: false })) {
-      const generation = this.#workingGenerationSnapshot();
+    if (!this.workingGenerationHasCleanDurableHead({ allowManagementBarrier: false })) {
+      const generation = this.workingGenerationSnapshot();
       if (
         !allowFlushableDirtyState
         || publicationState !== "installed"
@@ -1731,46 +1778,46 @@ export class ContainerRuntime {
         return "working_generation_not_durable";
       }
     }
-    const runtimeCoordinationState = this.#runtimeCoordination.activityState({ coordinationKey: this.#scope.key });
+    const runtimeCoordinationState = this.runtimeCoordination.activityState({ coordinationKey: this.scope.key });
     switch (runtimeCoordinationState) {
     case "active": return "runtime_coordination_active";
     case "idle": break;
     default: return runtimeCoordinationState satisfies never;
     }
-    const activeSegmentState = this.#activeSegments.activityState({ coordinationKey: this.#scope.key });
+    const activeSegmentState = this.activeSegments.activityState({ coordinationKey: this.scope.key });
     switch (activeSegmentState) {
     case "active": return "active_segment_resource";
     case "idle": break;
     default: return activeSegmentState satisfies never;
     }
-    const readerPinState = this.#readerPins.activityState({ coordinationKey: this.#scope.key });
+    const readerPinState = this.readerPins.activityState({ coordinationKey: this.scope.key });
     switch (readerPinState) {
     case "active": return "maintenance_root_resource";
     case "idle": break;
     default: return readerPinState satisfies never;
     }
-    const maintenanceRootState = this.#maintenanceRoots.activityState({ coordinationKey: this.#scope.key });
+    const maintenanceRootState = this.maintenanceRoots.activityState({ coordinationKey: this.scope.key });
     switch (maintenanceRootState) {
     case "active": {
       const flushableCandidateRoot = allowFlushableDirtyState
-        ? this.#workingCandidates.retainedInstalledCandidateCommitReference()
+        ? this.workingCandidates.retainedInstalledCandidateCommitReference()
         : undefined;
       if (
         flushableCandidateRoot !== undefined
-        && this.#maintenanceRoots.isSoleWriterDependencyRoot({
+        && this.maintenanceRoots.isSoleWriterDependencyRoot({
           commitReference: flushableCandidateRoot,
-          coordinationKey: this.#scope.key,
+          coordinationKey: this.scope.key,
         })
       ) {
         break;
       }
       const flushableWorkingPageRoots = allowFlushableDirtyState
-        ? this.#workingCandidates.retainedInstalledWorkingPageReferences()
+        ? this.workingCandidates.retainedInstalledWorkingPageReferences()
         : undefined;
       if (
         flushableWorkingPageRoots !== undefined
-        && this.#maintenanceRoots.isExactSoleWriterWorkingPageRoots({
-          coordinationKey: this.#scope.key,
+        && this.maintenanceRoots.isExactSoleWriterWorkingPageRoots({
+          coordinationKey: this.scope.key,
           pageReferences: flushableWorkingPageRoots,
         })
       ) {
@@ -1781,7 +1828,7 @@ export class ContainerRuntime {
     case "idle": break;
     default: return maintenanceRootState satisfies never;
     }
-    const ownerState = this.#runtimeOwner.state();
+    const ownerState = this.runtimeOwner.state();
     switch (ownerState) {
     case "idle":
     case "owned": return undefined;
@@ -1792,20 +1839,20 @@ export class ContainerRuntime {
     }
   }
 
-  async #disposeIfIdleAndSafe({ flushBeforeDispose }: {
+  private async disposeIfIdleAndSafeInternal({ flushBeforeDispose }: {
     flushBeforeDispose: boolean;
   }): Promise<ContainerRuntimeHostDisposalResult> {
-    switch (this.#hostLifecycleState) {
+    switch (this.hostLifecycleState) {
     case "disposed": return Object.freeze({ status: "disposed" });
     case "active":
     case "disposing": break;
-    default: return this.#hostLifecycleState satisfies never;
+    default: return this.hostLifecycleState satisfies never;
     }
-    const existing = this.#disposal;
+    const existing = this.disposal;
     if (existing !== undefined) return await existing;
-    this.#hostLifecycleState = "disposing";
+    this.hostLifecycleState = "disposing";
     const disposal = (async (): Promise<ContainerRuntimeHostDisposalResult> => {
-      const initialBlocker = this.#hostDisposalBlocker({
+      const initialBlocker = this.hostDisposalBlocker({
         allowFlushableDirtyState: flushBeforeDispose,
       });
       if (initialBlocker !== undefined) {
@@ -1814,45 +1861,45 @@ export class ContainerRuntime {
       if (
         flushBeforeDispose
         && (
-          this.#workingCandidates.publicationState() === "installed"
-          || !this.#workingGenerationHasCleanDurableHead({ allowManagementBarrier: false })
+          this.workingCandidates.publicationState() === "installed"
+          || !this.workingGenerationHasCleanDurableHead({ allowManagementBarrier: false })
         )
       ) {
-        await this.#requestRuntimeFlush({ acquireWriterOwnership: true, managementBarrier: undefined });
+        await this.requestRuntimeFlush({ acquireWriterOwnership: true, managementBarrier: undefined });
       }
-      const postFlushBlocker = this.#hostDisposalBlocker();
+      const postFlushBlocker = this.hostDisposalBlocker();
       if (postFlushBlocker !== undefined) {
         return Object.freeze({ blocker: postFlushBlocker, status: "retained" });
       }
-      await this.#runtimeOwner.releaseIfIdleAndSafe();
-      const finalBlocker = this.#hostDisposalBlocker();
+      await this.runtimeOwner.releaseIfIdleAndSafe();
+      const finalBlocker = this.hostDisposalBlocker();
       if (finalBlocker !== undefined) {
         return Object.freeze({ blocker: finalBlocker, status: "retained" });
       }
       return Object.freeze({ status: "disposed" });
     })();
-    this.#disposal = disposal;
+    this.disposal = disposal;
     try {
       const result = await disposal;
       switch (result.status) {
-      case "disposed": this.#hostLifecycleState = "disposed"; break;
-      case "retained": this.#hostLifecycleState = "active"; break;
+      case "disposed": this.hostLifecycleState = "disposed"; break;
+      case "retained": this.hostLifecycleState = "active"; break;
       default: return result satisfies never;
       }
       return result;
     } catch (cause: unknown) {
-      this.#hostLifecycleState = "active";
+      this.hostLifecycleState = "active";
       throw cause;
     } finally {
-      this.#disposal = undefined;
+      this.disposal = undefined;
     }
   }
 
   openManagementCleanHeadBarrier({ writerOwnership }: {
     writerOwnership?: ContainerRuntimeManagementWriterOwnership;
   }): ContainerRuntimeManagementCleanHeadBarrier {
-    switch (this.#hostLifecycleState) {
-    case "active": return this.#openManagementCleanHeadBarrier({ writerOwnership });
+    switch (this.hostLifecycleState) {
+    case "active": return this.openManagementCleanHeadBarrierInternal({ writerOwnership });
     case "disposing":
       throw new ContainerRuntimeHostLifecycleError({
         code: "runtime_host_disposal_in_progress",
@@ -1863,16 +1910,16 @@ export class ContainerRuntime {
         code: "runtime_host_disposed",
         message: "HizoFS runtime host has been disposed",
       });
-    default: return this.#hostLifecycleState satisfies never;
+    default: return this.hostLifecycleState satisfies never;
     }
   }
 
   async disposeIfIdleAndSafe(): Promise<ContainerRuntimeHostDisposalResult> {
-    return await this.#disposeIfIdleAndSafe({ flushBeforeDispose: false });
+    return await this.disposeIfIdleAndSafeInternal({ flushBeforeDispose: false });
   }
 
   async flushAndDisposeIfIdleAndSafe(): Promise<ContainerRuntimeHostDisposalResult> {
-    return await this.#disposeIfIdleAndSafe({ flushBeforeDispose: true });
+    return await this.disposeIfIdleAndSafeInternal({ flushBeforeDispose: true });
   }
 
   async openSessionWithAuthorityHandshake<Captured, Verified>({
@@ -1889,18 +1936,18 @@ export class ContainerRuntime {
     recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
     verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
   }): Promise<ContainerRuntimeSession> {
-    this.#beginSessionOpen();
+    this.beginSessionOpen();
     try {
       return await openRuntimeSessionWithAuthorityHandshake({
-        acquireSessionOwner: async () => await this.#runtimeOwner.attach(),
+        acquireSessionOwner: async () => await this.runtimeOwner.attach(),
         captureAuthority,
-        coordinator: this.#crossRealm,
+        coordinator: this.crossRealm,
         createSession: ({ captured, sessionOwner, verified }) => {
           const resources = createSessionResources({ captured, verified });
           const { releaseResources, ...unhandledResources } = resources;
           unhandledResources satisfies Record<PropertyKey, never>;
-          return this.#createSession({
-            releaseResources: async () => await this.#releaseSessionResourcesAndRuntimeOwner({
+          return this.createSession({
+            releaseResources: async () => await this.releaseSessionResourcesAndRuntimeOwner({
               releaseResources,
               runtimeOwnerAttachment: sessionOwner,
             }),
@@ -1911,7 +1958,7 @@ export class ContainerRuntime {
         verifyCapturedAuthority,
       });
     } finally {
-      this.#finishSessionOpen();
+      this.finishSessionOpen();
     }
   }
 
@@ -1929,17 +1976,17 @@ export class ContainerRuntime {
     recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
     verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
   }): Promise<ContainerRuntimeSession | undefined> {
-    this.#beginSessionOpen();
+    this.beginSessionOpen();
     try {
       return await tryOpenRuntimeSessionWithAuthorityHandshake({
         captureAuthority,
-        coordinator: this.#crossRealm,
+        coordinator: this.crossRealm,
         createSession: ({ captured, sessionOwner, verified }) => {
           const resources = createSessionResources({ captured, verified });
           const { releaseResources, ...unhandledResources } = resources;
           unhandledResources satisfies Record<PropertyKey, never>;
-          return this.#createSession({
-            releaseResources: async () => await this.#releaseSessionResourcesAndRuntimeOwner({
+          return this.createSession({
+            releaseResources: async () => await this.releaseSessionResourcesAndRuntimeOwner({
               releaseResources,
               runtimeOwnerAttachment: sessionOwner,
             }),
@@ -1947,15 +1994,15 @@ export class ContainerRuntime {
         },
         recheckAuthority,
         releaseSessionOwner: async ({ sessionOwner }) => await sessionOwner.release(),
-        tryAcquireSessionOwner: async () => await this.#runtimeOwner.tryAttach(),
+        tryAcquireSessionOwner: async () => await this.runtimeOwner.tryAttach(),
         verifyCapturedAuthority,
       });
     } finally {
-      this.#finishSessionOpen();
+      this.finishSessionOpen();
     }
   }
 
-  async #releaseSessionResourcesAndRuntimeOwner({ releaseResources, runtimeOwnerAttachment }: {
+  private async releaseSessionResourcesAndRuntimeOwner({ releaseResources, runtimeOwnerAttachment }: {
     releaseResources: () => Promise<void>;
     runtimeOwnerAttachment: RuntimeOwnerAttachment;
   }): Promise<void> {
@@ -1976,17 +2023,18 @@ export class ContainerRuntime {
     }
   }
 
-  #createSession({ releaseResources }: {
+  private createSession({ releaseResources }: {
     releaseResources: () => Promise<void>;
   }): ContainerRuntimeSession {
     return new ContainerRuntimeSession({
-      activeSegments: this.#activeSegments,
-      coordinationKey: this.#scope.key,
-      crossRealm: this.#crossRealm,
-      limits: this.#limits,
-      readerPins: this.#readerPins,
+      activeSegments: this.activeSegments,
+      captureInFlightPublication: () => this.flushOperation,
+      coordinationKey: this.scope.key,
+      crossRealm: this.crossRealm,
+      limits: this.limits,
+      readerPins: this.readerPins,
       releaseResources,
-      runtimeCoordination: this.#runtimeCoordination,
+      runtimeCoordination: this.runtimeCoordination,
     });
   }
 
@@ -1994,20 +2042,20 @@ export class ContainerRuntime {
     durableBaseIdentity: DurableGenerationIdentity;
     operationLabel: string;
   }): WorkingCandidateAdmission<Candidate> {
-    return this.#workingCandidates.openAdmission<Candidate>({
+    return this.workingCandidates.openAdmission<Candidate>({
       durableBaseIdentity,
       operationLabel,
     });
   }
 
   workingCandidatePublicationState(): WorkingCandidateCoordinatorPublicationState {
-    return this.#workingCandidates.publicationState();
+    return this.workingCandidates.publicationState();
   }
 
   resolveWorkingCandidateOutcomeUnknownAgainstDurableAuthority({ observedDurableIdentity }: {
     observedDurableIdentity: DurableGenerationIdentity;
   }): WorkingCandidateOutcomeUnknownResolution {
-    return this.#workingCandidates.resolveOutcomeUnknownAgainstDurableAuthority({
+    return this.workingCandidates.resolveOutcomeUnknownAgainstDurableAuthority({
       observedDurableIdentity,
     });
   }
@@ -2015,8 +2063,8 @@ export class ContainerRuntime {
   resolveWorkingCandidateOutcomeUnknownAgainstAuthenticatedDurableAuthority({ observedDurableAuthority }: {
     observedDurableAuthority: AuthenticatedDurableApplicationGenerationAuthority;
   }): WorkingCandidateOutcomeUnknownResolution {
-    const current = this.#requireAuthenticatedApplicationGeneration();
-    const resolution = this.#workingCandidates.resolveOutcomeUnknownAgainstDurableAuthority({
+    const current = this.requireAuthenticatedApplicationGeneration();
+    const resolution = this.workingCandidates.resolveOutcomeUnknownAgainstDurableAuthority({
       observedDurableIdentity: observedDurableAuthority.identity,
     });
     switch (resolution) {
@@ -2042,14 +2090,14 @@ export class ContainerRuntime {
       if (!commitPayloadMatches || !physicalIdentityMatches) {
         throw new TypeError("confirmed published authority does not match the runtime working generation");
       }
-      this.#requireWorkingGenerations().confirmCurrentWorkingGenerationDurable();
-      this.#authenticatedApplicationGeneration = createAuthenticatedApplicationGenerationDescriptor({
+      this.requireWorkingGenerations().confirmCurrentWorkingGenerationDurable();
+      this.authenticatedApplicationGeneration = createAuthenticatedApplicationGenerationDescriptor({
         commit: current.commit,
         commitReference: observedDurableAuthority.commitReference,
         durableAuthority: observedDurableAuthority,
         workingIdentity: current.workingIdentity,
       });
-      this.#backgroundFlushScheduler.markDurable();
+      this.backgroundFlushScheduler.markDurable();
       return resolution;
     }
     case "confirmed_not_published": {
@@ -2058,17 +2106,17 @@ export class ContainerRuntime {
         generationNumber: createWorkingGenerationNumber({ value: 0n }),
         mutationId: observedDurableAuthority.commit.mutationId,
       });
-      this.#authenticatedApplicationGeneration = createAuthenticatedApplicationGenerationDescriptor({
+      this.authenticatedApplicationGeneration = createAuthenticatedApplicationGenerationDescriptor({
         commit: observedDurableAuthority.commit,
         commitReference: observedDurableAuthority.commitReference,
         durableAuthority: observedDurableAuthority,
         workingIdentity,
       });
-      this.#workingGenerations = new WorkingGenerationCoordinator({
+      this.workingGenerations = new WorkingGenerationCoordinator({
         initialDurableGeneration: workingIdentity,
-        policy: this.#limits.lazyDurability,
+        policy: this.limits.lazyDurability,
       });
-      this.#backgroundFlushScheduler.markDurable();
+      this.backgroundFlushScheduler.markDurable();
       return resolution;
     }
     default: return resolution satisfies never;
@@ -2081,7 +2129,7 @@ export class ContainerRuntime {
     const resolution = this.resolveWorkingCandidateOutcomeUnknownAgainstDurableAuthority({
       observedDurableIdentity,
     });
-    await this.#runtimeOwner.releaseIfIdleAndSafe();
+    await this.runtimeOwner.releaseIfIdleAndSafe();
     return resolution;
   }
 
@@ -2142,12 +2190,12 @@ export class ContainerRuntime {
   }
 
   async beginMaintenanceRootCapture(): Promise<ContainerRuntimeMaintenanceRootCapture> {
-    const crossRealmCapture = await this.#crossRealm.beginMaintenance();
+    const crossRealmCapture = await this.crossRealm.beginMaintenance();
     let localMaintenance: RuntimeMaintenanceLease | undefined;
     let localRoots: RuntimeMaintenanceRootCapture | undefined;
     try {
-      localMaintenance = this.#runtimeCoordination.beginMaintenance({ coordinationKey: this.#scope.key });
-      localRoots = this.#maintenanceRoots.captureRoots({ coordinationKey: this.#scope.key });
+      localMaintenance = this.runtimeCoordination.beginMaintenance({ coordinationKey: this.scope.key });
+      localRoots = this.maintenanceRoots.captureRoots({ coordinationKey: this.scope.key });
       const unique = new Map<string, HomeRecordReference>();
       for (const reference of [
         ...crossRealmCapture.pinnedCommitReferences,
@@ -2195,53 +2243,53 @@ export class ContainerRuntime {
   acquireInspectorPinnedRoot({ commitReference }: {
     commitReference: HomeRecordReference;
   }): RuntimeMaintenanceRootRegistration {
-    return this.#maintenanceRoots.acquireInspectorPinnedRoot({
+    return this.maintenanceRoots.acquireInspectorPinnedRoot({
       commitReference,
-      coordinationKey: this.#scope.key,
+      coordinationKey: this.scope.key,
     });
   }
 
   acquireSourceSegmentPinnedRoot({ commitReference }: {
     commitReference: HomeRecordReference;
   }): RuntimeMaintenanceRootRegistration {
-    return this.#maintenanceRoots.acquireSourceSegmentPinnedRoot({
+    return this.maintenanceRoots.acquireSourceSegmentPinnedRoot({
       commitReference,
-      coordinationKey: this.#scope.key,
+      coordinationKey: this.scope.key,
     });
   }
 
   acquireUnknownFeatureRoot({ commitReference }: {
     commitReference: HomeRecordReference;
   }): RuntimeMaintenanceRootRegistration {
-    return this.#maintenanceRoots.acquireUnknownFeatureRoot({
+    return this.maintenanceRoots.acquireUnknownFeatureRoot({
       commitReference,
-      coordinationKey: this.#scope.key,
+      coordinationKey: this.scope.key,
     });
   }
 
   acquireWriterDependencyRoot({ commitReference }: {
     commitReference: HomeRecordReference;
   }): RuntimeMaintenanceRootRegistration {
-    return this.#maintenanceRoots.acquireWriterDependencyRoot({
+    return this.maintenanceRoots.acquireWriterDependencyRoot({
       commitReference,
-      coordinationKey: this.#scope.key,
+      coordinationKey: this.scope.key,
     });
   }
 
   acquireWriterWorkingPageRoot({ pageReference }: {
     pageReference: HomeRecordReference;
   }): import("@/00-storage/service/hizofs/runtime/maintenance-root-registry").RuntimeMaintenancePageRootRegistration {
-    return this.#maintenanceRoots.acquireWriterWorkingPageRoot({
+    return this.maintenanceRoots.acquireWriterWorkingPageRoot({
       pageReference,
-      coordinationKey: this.#scope.key,
+      coordinationKey: this.scope.key,
     });
   }
 
   async beginSegmentDeletion({ segmentId }: {
     segmentId: SegmentId;
   }): Promise<ActiveSegmentDeletionLease> {
-    return await this.#activeSegments.beginDeletion({
-      coordinationKey: this.#scope.key,
+    return await this.activeSegments.beginDeletion({
+      coordinationKey: this.scope.key,
       segmentId,
     });
   }

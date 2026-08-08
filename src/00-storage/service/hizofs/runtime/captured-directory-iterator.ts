@@ -60,15 +60,15 @@ function cloneGeneration({ generation }: {
 }
 
 export class CapturedDirectoryIterator implements AsyncIterableIterator<DirectoryLeafEntry> {
-  #busy = false;
-  #finished = false;
-  #finishPromise: Promise<void> | undefined;
-  #entries: readonly DirectoryLeafEntry[];
-  #generation: CapturedDirectoryGeneration;
-  #index = 0;
-  #pin: ReaderPin;
-  #registration: SessionChildRegistration | undefined;
-  #revoked = false;
+  private busy = false;
+  private finished = false;
+  private finishPromise: Promise<void> | undefined;
+  private entries: readonly DirectoryLeafEntry[];
+  private generationValue: CapturedDirectoryGeneration;
+  private index = 0;
+  private pin: ReaderPin;
+  private registration: SessionChildRegistration | undefined;
+  private revoked = false;
 
   constructor({ entries, generation, maxEntries, pin, session }: {
     entries: readonly DirectoryLeafEntry[];
@@ -126,14 +126,14 @@ export class CapturedDirectoryIterator implements AsyncIterableIterator<Director
       pin.release();
       throw cause;
     }
-    this.#entries = stableEntries;
-    this.#generation = stableGeneration;
-    this.#pin = pin;
+    this.entries = stableEntries;
+    this.generationValue = stableGeneration;
+    this.pin = pin;
     try {
-      this.#registration = session.registerChild({ child: {
-        close: async () => await this.#finish(),
+      this.registration = session.registerChild({ child: {
+        close: async () => await this.finish(),
         revoke: () => {
-          this.#revoked = true;
+          this.revoked = true;
         },
       } });
     } catch (cause: unknown) {
@@ -147,17 +147,17 @@ export class CapturedDirectoryIterator implements AsyncIterableIterator<Director
   }
 
   generation(): CapturedDirectoryGeneration {
-    return cloneGeneration({ generation: this.#generation });
+    return cloneGeneration({ generation: this.generationValue });
   }
 
-  #assertUsable(): void {
-    if (this.#revoked) {
+  private assertUsable(): void {
+    if (this.revoked) {
       throw new CapturedDirectoryIteratorError({
         code: "capability_closed",
         message: "directory iterator is closed or revoked by its owner session",
       });
     }
-    if (this.#busy) {
+    if (this.busy) {
       throw new CapturedDirectoryIteratorError({
         code: "operation_in_progress",
         message: "directory iterator next operation is already in progress",
@@ -165,48 +165,48 @@ export class CapturedDirectoryIterator implements AsyncIterableIterator<Director
     }
   }
 
-  async #finish(): Promise<void> {
-    if (this.#finishPromise !== undefined) return await this.#finishPromise;
-    this.#finished = true;
-    this.#finishPromise = (async () => {
+  private async finish(): Promise<void> {
+    if (this.finishPromise !== undefined) return await this.finishPromise;
+    this.finished = true;
+    this.finishPromise = (async () => {
       const failures: unknown[] = [];
       try {
-        this.#pin.release();
+        this.pin.release();
       } catch (cause: unknown) {
         failures.push(cause);
       }
       try {
-        await this.#pin.released;
+        await this.pin.released;
       } catch (cause: unknown) {
         failures.push(cause);
       }
-      this.#registration?.releaseOwnership();
-      this.#registration = undefined;
+      this.registration?.releaseOwnership();
+      this.registration = undefined;
       if (failures.length === 1) throw failures[0];
       if (failures.length > 1) throw new AggregateError(failures, "directory iterator pin release failed");
     })();
-    return await this.#finishPromise;
+    return await this.finishPromise;
   }
 
   async next(): Promise<IteratorResult<DirectoryLeafEntry>> {
-    this.#assertUsable();
-    if (this.#finished) return { done: true, value: undefined };
-    this.#busy = true;
+    this.assertUsable();
+    if (this.finished) return { done: true, value: undefined };
+    this.busy = true;
     try {
-      const entry = this.#entries[this.#index];
+      const entry = this.entries[this.index];
       if (entry === undefined) {
-        await this.#finish();
+        await this.finish();
         return { done: true, value: undefined };
       }
-      this.#index += 1;
+      this.index += 1;
       return { done: false, value: cloneEntry({ entry }) };
     } finally {
-      this.#busy = false;
+      this.busy = false;
     }
   }
 
   async return(): Promise<IteratorResult<DirectoryLeafEntry>> {
-    await this.#finish();
+    await this.finish();
     return { done: true, value: undefined };
   }
 }

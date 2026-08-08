@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   cancelCurrentOperation: vi.fn(),
   cleanBenchmarkData: vi.fn(),
   dispose: vi.fn(),
+  terminate: vi.fn(),
   createClient: vi.fn(),
 }));
 
@@ -29,7 +30,7 @@ function createReport({
 } = {}): HizoFSBenchmarkReport {
   return {
     schemaVersion: 32,
-    benchmarkImplementationVersion: 45,
+    benchmarkImplementationVersion: 47,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-a',
@@ -142,6 +143,7 @@ describe('HizoFSBenchmarkPanel', () => {
       cancelCurrentOperation: mocks.cancelCurrentOperation,
       cleanBenchmarkData: mocks.cleanBenchmarkData,
       dispose: mocks.dispose,
+      terminate: mocks.terminate,
     });
     mocks.runBenchmark.mockImplementation(async ({ configuration, onProgress }) => {
       onProgress({
@@ -323,6 +325,37 @@ describe('HizoFSBenchmarkPanel', () => {
     expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(
       expect.stringContaining('"reportType": "hizofs_benchmark_study"'),
     );
+  });
+
+  it('force-terminates a benchmark Worker when cooperative cancellation cannot settle the run', async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = Promise.withResolvers<HizoFSBenchmarkReport>();
+      mocks.runBenchmark.mockReturnValueOnce(pending.promise);
+      mocks.terminate.mockImplementationOnce(() => {
+        pending.reject(new DOMException('benchmark Worker terminated', 'AbortError'));
+      });
+      const wrapper = mount(HizoFSBenchmarkPanel);
+
+      await wrapper.get('[data-testid="hizofs-benchmark-run"]').trigger('click');
+      await flushPromises();
+      await wrapper.get('[data-testid="hizofs-benchmark-cancel"]').trigger('click');
+      await flushPromises();
+
+      expect(mocks.cancelCurrentOperation).toHaveBeenCalledOnce();
+      expect(mocks.terminate).not.toHaveBeenCalled();
+      expect(wrapper.get('[data-testid="hizofs-benchmark-cancel"]').text()).toContain('Cancelling');
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await flushPromises();
+
+      expect(mocks.terminate).toHaveBeenCalledOnce();
+      expect(mocks.dispose).toHaveBeenCalledOnce();
+      expect(wrapper.find('[data-testid="hizofs-benchmark-cancel"]').exists()).toBe(false);
+      expect(wrapper.text()).not.toContain('benchmark Worker terminated');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('preserves completed study variants and stops after cancellation', async () => {

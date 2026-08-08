@@ -142,28 +142,28 @@ export interface AuthenticatedSegmentMaintenanceInventoryCursor {
 
 class AuthenticatedSegmentMaintenanceInventoryCursorImpl
 implements AuthenticatedSegmentMaintenanceInventoryCursor {
-  readonly #backend: AuthenticatedSegmentMaintenanceInventoryBackend;
-  readonly #descriptorReader: DescriptorReader;
-  readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
-  readonly #fileSystemId: FileSystemId;
-  readonly #rootKey: FileSystemRootKey;
+  private readonly backend: AuthenticatedSegmentMaintenanceInventoryBackend;
+  private readonly descriptorReader: DescriptorReader;
+  private readonly diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
+  private readonly fileSystemId: FileSystemId;
+  private readonly rootKey: FileSystemRootKey;
 
-  #classCursor: HizoFSPhysicalDirectoryCursor | undefined;
-  #classDirectory: CanonicalContainerDirectory | undefined;
-  #classDone = false;
-  #classPending: PhysicalEntry[] = [];
-  #closed = false;
-  #done = false;
-  #rootCursor: HizoFSPhysicalDirectoryCursor | undefined;
-  #rootDone = false;
-  #rootPending: PhysicalEntry[] = [];
-  #segmentClass: SegmentClass | undefined;
-  #seenClasses = new Set<SegmentClass>();
-  #seenShards = new Set<string>();
-  #shardCursor: HizoFSPhysicalDirectoryCursor | undefined;
-  #shardDirectory: CanonicalContainerDirectory | undefined;
-  #shardDone = false;
-  #shardPending: PhysicalEntry[] = [];
+  private classCursor: HizoFSPhysicalDirectoryCursor | undefined;
+  private classDirectory: CanonicalContainerDirectory | undefined;
+  private classDone = false;
+  private classPending: PhysicalEntry[] = [];
+  private closed = false;
+  private done = false;
+  private rootCursor: HizoFSPhysicalDirectoryCursor | undefined;
+  private rootDone = false;
+  private rootPending: PhysicalEntry[] = [];
+  private segmentClass: SegmentClass | undefined;
+  private seenClasses = new Set<SegmentClass>();
+  private seenShards = new Set<string>();
+  private shardCursor: HizoFSPhysicalDirectoryCursor | undefined;
+  private shardDirectory: CanonicalContainerDirectory | undefined;
+  private shardDone = false;
+  private shardPending: PhysicalEntry[] = [];
 
   constructor({ backend, descriptorReader, diagnostics, fileSystemId, rootKey }: {
     backend: AuthenticatedSegmentMaintenanceInventoryBackend;
@@ -172,19 +172,19 @@ implements AuthenticatedSegmentMaintenanceInventoryCursor {
     fileSystemId: FileSystemId;
     rootKey: FileSystemRootKey;
   }) {
-    this.#backend = backend;
-    this.#descriptorReader = descriptorReader;
-    this.#diagnostics = diagnostics;
-    this.#fileSystemId = fileSystemId;
-    this.#rootKey = rootKey;
+    this.backend = backend;
+    this.descriptorReader = descriptorReader;
+    this.diagnostics = diagnostics;
+    this.fileSystemId = fileSystemId;
+    this.rootKey = rootKey;
   }
 
-  async #collectCloseFailures(): Promise<unknown[]> {
+  private async collectCloseFailures(): Promise<unknown[]> {
     const failures: unknown[] = [];
-    const cursors = [this.#shardCursor, this.#classCursor, this.#rootCursor];
-    this.#shardCursor = undefined;
-    this.#classCursor = undefined;
-    this.#rootCursor = undefined;
+    const cursors = [this.shardCursor, this.classCursor, this.rootCursor];
+    this.shardCursor = undefined;
+    this.classCursor = undefined;
+    this.rootCursor = undefined;
     for (const cursor of cursors) {
       if (cursor === undefined) continue;
       try {
@@ -196,9 +196,9 @@ implements AuthenticatedSegmentMaintenanceInventoryCursor {
     return failures;
   }
 
-  async #abort({ cause }: { cause: unknown }): Promise<never> {
-    this.#closed = true;
-    const cleanupFailures = await this.#collectCloseFailures();
+  private async abort({ cause }: { cause: unknown }): Promise<never> {
+    this.closed = true;
+    const cleanupFailures = await this.collectCloseFailures();
     if (cleanupFailures.length > 0) {
       throw new AggregateError(
         [cause, ...cleanupFailures],
@@ -208,76 +208,76 @@ implements AuthenticatedSegmentMaintenanceInventoryCursor {
     throw cause;
   }
 
-  async #ensureRootCursor(): Promise<void> {
-    if (this.#rootCursor !== undefined || this.#rootDone) return;
-    this.#rootCursor = await this.#backend.openDirectoryCursor({ directory: SEGMENT_ROOT_DIRECTORY });
+  private async ensureRootCursor(): Promise<void> {
+    if (this.rootCursor !== undefined || this.rootDone) return;
+    this.rootCursor = await this.backend.openDirectoryCursor({ directory: SEGMENT_ROOT_DIRECTORY });
   }
 
-  async #loadRootEntries({ maximumEntries }: { maximumEntries: number }): Promise<void> {
-    await this.#ensureRootCursor();
-    if (this.#rootCursor === undefined || this.#rootPending.length > 0 || this.#rootDone) return;
-    const page = await this.#rootCursor.read({ maximumEntries });
+  private async loadRootEntries({ maximumEntries }: { maximumEntries: number }): Promise<void> {
+    await this.ensureRootCursor();
+    if (this.rootCursor === undefined || this.rootPending.length > 0 || this.rootDone) return;
+    const page = await this.rootCursor.read({ maximumEntries });
     if (!page.done && page.entries.length === 0) {
       throw new AuthenticatedSegmentMaintenanceInventoryError({
         code: "stalled_physical_cursor",
         message: "physical Segment root cursor returned no entries without reaching its terminal state",
       });
     }
-    this.#rootPending.push(...page.entries);
-    this.#rootDone = page.done;
+    this.rootPending.push(...page.entries);
+    this.rootDone = page.done;
   }
 
-  async #loadClassEntries({ maximumEntries }: { maximumEntries: number }): Promise<void> {
-    if (this.#classCursor === undefined || this.#classPending.length > 0 || this.#classDone) return;
-    const page = await this.#classCursor.read({ maximumEntries });
+  private async loadClassEntries({ maximumEntries }: { maximumEntries: number }): Promise<void> {
+    if (this.classCursor === undefined || this.classPending.length > 0 || this.classDone) return;
+    const page = await this.classCursor.read({ maximumEntries });
     if (!page.done && page.entries.length === 0) {
       throw new AuthenticatedSegmentMaintenanceInventoryError({
         code: "stalled_physical_cursor",
         message: "physical Segment class cursor returned no entries without reaching its terminal state",
       });
     }
-    this.#classPending.push(...page.entries);
-    this.#classDone = page.done;
+    this.classPending.push(...page.entries);
+    this.classDone = page.done;
   }
 
-  async #loadShardEntries({ maximumEntries }: { maximumEntries: number }): Promise<void> {
-    if (this.#shardCursor === undefined || this.#shardPending.length > 0 || this.#shardDone) return;
-    const page = await this.#shardCursor.read({ maximumEntries });
+  private async loadShardEntries({ maximumEntries }: { maximumEntries: number }): Promise<void> {
+    if (this.shardCursor === undefined || this.shardPending.length > 0 || this.shardDone) return;
+    const page = await this.shardCursor.read({ maximumEntries });
     if (!page.done && page.entries.length === 0) {
       throw new AuthenticatedSegmentMaintenanceInventoryError({
         code: "stalled_physical_cursor",
         message: "physical Segment shard cursor returned no entries without reaching its terminal state",
       });
     }
-    this.#shardPending.push(...page.entries);
-    this.#shardDone = page.done;
+    this.shardPending.push(...page.entries);
+    this.shardDone = page.done;
   }
 
-  async #closeShardCursor(): Promise<void> {
-    const cursor = this.#shardCursor;
-    this.#shardCursor = undefined;
-    this.#shardDirectory = undefined;
-    this.#shardDone = false;
-    this.#shardPending = [];
+  private async closeShardCursor(): Promise<void> {
+    const cursor = this.shardCursor;
+    this.shardCursor = undefined;
+    this.shardDirectory = undefined;
+    this.shardDone = false;
+    this.shardPending = [];
     if (cursor !== undefined) await cursor.close();
   }
 
-  async #closeClassCursor(): Promise<void> {
-    const cursor = this.#classCursor;
-    this.#classCursor = undefined;
-    this.#classDirectory = undefined;
-    this.#classDone = false;
-    this.#classPending = [];
-    this.#segmentClass = undefined;
-    this.#seenShards.clear();
+  private async closeClassCursor(): Promise<void> {
+    const cursor = this.classCursor;
+    this.classCursor = undefined;
+    this.classDirectory = undefined;
+    this.classDone = false;
+    this.classPending = [];
+    this.segmentClass = undefined;
+    this.seenShards.clear();
     if (cursor !== undefined) await cursor.close();
   }
 
-  async #finishRootCursor(): Promise<void> {
-    const cursor = this.#rootCursor;
-    this.#rootCursor = undefined;
-    this.#rootPending = [];
-    this.#done = true;
+  private async finishRootCursor(): Promise<void> {
+    const cursor = this.rootCursor;
+    this.rootCursor = undefined;
+    this.rootPending = [];
+    this.done = true;
     if (cursor !== undefined) await cursor.close();
   }
 
@@ -286,7 +286,7 @@ implements AuthenticatedSegmentMaintenanceInventoryCursor {
    * It never admits a deletion candidate; the caller must perform inventory
    * capture under the short root gate before relying on the completed snapshot.
    */
-  async #assertNoCrossClassDuplicate({ segmentClass, segmentId }: {
+  private async assertNoCrossClassDuplicate({ segmentClass, segmentId }: {
     segmentClass: SegmentClass;
     segmentId: SegmentId;
   }): Promise<void> {
@@ -296,7 +296,7 @@ implements AuthenticatedSegmentMaintenanceInventoryCursor {
         segmentClass: oppositeSegmentClass({ segmentClass }),
       }),
     });
-    if (await this.#backend.getFileSize({ path: counterpartPath }) !== undefined) {
+    if (await this.backend.getFileSize({ path: counterpartPath }) !== undefined) {
       throw new AuthenticatedSegmentMaintenanceInventoryError({
         code: "duplicate_segment_identity",
         message: "one Segment ID must not exist in both data and metadata classes",
@@ -304,24 +304,24 @@ implements AuthenticatedSegmentMaintenanceInventoryCursor {
     }
   }
 
-  async #processShardEntry({ entry }: { entry: PhysicalEntry }): Promise<{
+  private async processShardEntry({ entry }: { entry: PhysicalEntry }): Promise<{
     descriptor?: AuthenticatedSegmentMaintenanceInventoryDescriptor;
     exclusion?: AuthenticatedSegmentMaintenanceInventoryExclusion;
   }> {
-    const segmentClass = this.#segmentClass;
-    const directory = this.#shardDirectory;
+    const segmentClass = this.segmentClass;
+    const directory = this.shardDirectory;
     if (segmentClass === undefined || directory === undefined) {
       throw new Error("Segment maintenance inventory shard state is incomplete");
     }
     const segmentId = parseBoundSegmentMaintenanceSegmentId({ directory, entry, segmentClass });
-    await this.#assertNoCrossClassDuplicate({ segmentClass, segmentId });
-    const result = await this.#descriptorReader({
-      backend: this.#backend,
-      diagnostics: this.#diagnostics,
+    await this.assertNoCrossClassDuplicate({ segmentClass, segmentId });
+    const result = await this.descriptorReader({
+      backend: this.backend,
+      diagnostics: this.diagnostics,
       directory,
       entry,
-      fileSystemId: this.#fileSystemId,
-      rootKey: this.#rootKey,
+      fileSystemId: this.fileSystemId,
+      rootKey: this.rootKey,
       segmentClass,
     });
     switch (result.type) {
@@ -343,17 +343,17 @@ implements AuthenticatedSegmentMaintenanceInventoryCursor {
   }
 
   public async close(): Promise<void> {
-    if (this.#closed) return;
-    this.#closed = true;
-    const failures = await this.#collectCloseFailures();
+    if (this.closed) return;
+    this.closed = true;
+    const failures = await this.collectCloseFailures();
     if (failures.length === 1) throw failures[0];
     if (failures.length > 1) throw new AggregateError(failures, "Segment maintenance inventory cursors failed to close");
   }
 
   public async read({ maximumEntries }: { maximumEntries: number }): Promise<AuthenticatedSegmentMaintenanceInventoryPage> {
     assertPositivePageSize({ maximumEntries });
-    if (this.#closed) throw new TypeError("Segment maintenance inventory cursor is closed");
-    if (this.#done) {
+    if (this.closed) throw new TypeError("Segment maintenance inventory cursor is closed");
+    if (this.done) {
       return Object.freeze({ descriptors: Object.freeze([]), done: true, exclusions: Object.freeze([]), scannedEntries: 0 });
     }
 
@@ -361,53 +361,53 @@ implements AuthenticatedSegmentMaintenanceInventoryCursor {
     const exclusions: AuthenticatedSegmentMaintenanceInventoryExclusion[] = [];
     let scannedEntries = 0;
     try {
-      while (scannedEntries < maximumEntries && !this.#done) {
-        if (this.#shardCursor !== undefined) {
-          await this.#loadShardEntries({ maximumEntries: maximumEntries - scannedEntries });
-          const entry = this.#shardPending.shift();
+      while (scannedEntries < maximumEntries && !this.done) {
+        if (this.shardCursor !== undefined) {
+          await this.loadShardEntries({ maximumEntries: maximumEntries - scannedEntries });
+          const entry = this.shardPending.shift();
           if (entry !== undefined) {
             scannedEntries += 1;
-            const result = await this.#processShardEntry({ entry });
+            const result = await this.processShardEntry({ entry });
             if (result.descriptor !== undefined) descriptors.push(result.descriptor);
             if (result.exclusion !== undefined) exclusions.push(result.exclusion);
             continue;
           }
-          if (this.#shardDone) {
-            await this.#closeShardCursor();
+          if (this.shardDone) {
+            await this.closeShardCursor();
             continue;
           }
           throw new Error("Segment maintenance inventory shard cursor made no progress");
         }
 
-        if (this.#classCursor !== undefined) {
-          await this.#loadClassEntries({ maximumEntries: maximumEntries - scannedEntries });
-          const entry = this.#classPending.shift();
+        if (this.classCursor !== undefined) {
+          await this.loadClassEntries({ maximumEntries: maximumEntries - scannedEntries });
+          const entry = this.classPending.shift();
           if (entry !== undefined) {
             scannedEntries += 1;
             assertDirectoryEntry({ entry, level: "class" });
             const shard = parseSegmentShardDirectoryName({ value: entry.name });
-            if (this.#seenShards.has(shard)) {
+            if (this.seenShards.has(shard)) {
               throw new AuthenticatedSegmentMaintenanceInventoryError({
                 code: "invalid_inventory_entry",
                 message: "Segment class contains the same shard directory more than once",
               });
             }
-            this.#seenShards.add(shard);
-            const classDirectory = this.#classDirectory;
+            this.seenShards.add(shard);
+            const classDirectory = this.classDirectory;
             if (classDirectory === undefined) throw new Error("Segment maintenance inventory class state is incomplete");
-            this.#shardDirectory = childDirectory({ directory: classDirectory, name: shard });
-            this.#shardCursor = await this.#backend.openDirectoryCursor({ directory: this.#shardDirectory });
+            this.shardDirectory = childDirectory({ directory: classDirectory, name: shard });
+            this.shardCursor = await this.backend.openDirectoryCursor({ directory: this.shardDirectory });
             continue;
           }
-          if (this.#classDone) {
-            await this.#closeClassCursor();
+          if (this.classDone) {
+            await this.closeClassCursor();
             continue;
           }
           throw new Error("Segment maintenance inventory class cursor made no progress");
         }
 
-        await this.#loadRootEntries({ maximumEntries: maximumEntries - scannedEntries });
-        const entry = this.#rootPending.shift();
+        await this.loadRootEntries({ maximumEntries: maximumEntries - scannedEntries });
+        const entry = this.rootPending.shift();
         if (entry !== undefined) {
           scannedEntries += 1;
           assertDirectoryEntry({ entry, level: "root" });
@@ -421,31 +421,31 @@ implements AuthenticatedSegmentMaintenanceInventoryCursor {
               message: "physical Segment root contains an unknown class directory",
             });
           }
-          if (this.#seenClasses.has(segmentClass)) {
+          if (this.seenClasses.has(segmentClass)) {
             throw new AuthenticatedSegmentMaintenanceInventoryError({
               code: "invalid_inventory_entry",
               message: "physical Segment root contains the same class directory more than once",
             });
           }
-          this.#seenClasses.add(segmentClass);
-          this.#segmentClass = segmentClass;
-          this.#classDirectory = childDirectory({ directory: SEGMENT_ROOT_DIRECTORY, name: entry.name });
-          this.#classCursor = await this.#backend.openDirectoryCursor({ directory: this.#classDirectory });
+          this.seenClasses.add(segmentClass);
+          this.segmentClass = segmentClass;
+          this.classDirectory = childDirectory({ directory: SEGMENT_ROOT_DIRECTORY, name: entry.name });
+          this.classCursor = await this.backend.openDirectoryCursor({ directory: this.classDirectory });
           continue;
         }
-        if (this.#rootDone) {
-          await this.#finishRootCursor();
+        if (this.rootDone) {
+          await this.finishRootCursor();
           continue;
         }
         throw new Error("Segment maintenance inventory root cursor made no progress");
       }
     } catch (cause: unknown) {
-      return await this.#abort({ cause });
+      return await this.abort({ cause });
     }
 
     return Object.freeze({
       descriptors: Object.freeze(descriptors),
-      done: this.#done,
+      done: this.done,
       exclusions: Object.freeze(exclusions),
       scannedEntries,
     });

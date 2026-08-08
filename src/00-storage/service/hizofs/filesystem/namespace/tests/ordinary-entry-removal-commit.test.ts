@@ -41,7 +41,7 @@ function reference({ kind, offset }: { kind: number; offset: bigint }): HomeReco
 
 class MemoryDirectoryPagePort implements DirectoryPagePort {
   readonly pages = new Map<HomeRecordReference, DirectoryPage>();
-  #nextOffset = 1_024n;
+  private nextOffset = 1_024n;
 
   async readPage({ reference: pageReference }: {
     isRoot: boolean;
@@ -55,9 +55,9 @@ class MemoryDirectoryPagePort implements DirectoryPagePort {
   async writePage({ page }: { isRoot: boolean; page: DirectoryPage }): Promise<HomeRecordReference> {
     const pageReference = reference({
       kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page,
-      offset: this.#nextOffset,
+      offset: this.nextOffset,
     });
-    this.#nextOffset += 128n;
+    this.nextOffset += 128n;
     this.pages.set(pageReference, page);
     return pageReference;
   }
@@ -65,7 +65,7 @@ class MemoryDirectoryPagePort implements DirectoryPagePort {
 
 class MemoryInodePageStore implements RootInodeTablePageStore {
   readonly pages = new Map<HomeRecordReference, InodePage>();
-  #nextOffset = 2_048n;
+  private nextOffset = 2_048n;
 
   async readPage({ reference: pageReference }: {
     isRoot: boolean;
@@ -79,9 +79,9 @@ class MemoryInodePageStore implements RootInodeTablePageStore {
   async writePage({ page }: { isRoot: boolean; page: InodePage }): Promise<HomeRecordReference> {
     const pageReference = reference({
       kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
-      offset: this.#nextOffset,
+      offset: this.nextOffset,
     });
-    this.#nextOffset += 128n;
+    this.nextOffset += 128n;
     this.pages.set(pageReference, page);
     return pageReference;
   }

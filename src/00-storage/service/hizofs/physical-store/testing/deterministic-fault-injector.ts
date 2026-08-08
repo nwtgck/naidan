@@ -43,9 +43,9 @@ function faultKey({ occurrence, operation, timing }: PhysicalStoreFaultScheduleE
 }
 
 export class DeterministicPhysicalStoreFaultInjector {
-  readonly #counts = new Map<string, number>();
-  readonly #pending = new Map<string, PhysicalStoreFaultScheduleEntry>();
-  readonly #schedule: readonly PhysicalStoreFaultScheduleEntry[];
+  private readonly counts = new Map<string, number>();
+  private readonly pending = new Map<string, PhysicalStoreFaultScheduleEntry>();
+  private readonly schedule: readonly PhysicalStoreFaultScheduleEntry[];
 
   public constructor({ schedule }: { schedule: readonly PhysicalStoreFaultScheduleEntry[] }) {
     const copiedSchedule = schedule.map((entry) => ({ ...entry }));
@@ -54,10 +54,10 @@ export class DeterministicPhysicalStoreFaultInjector {
         throw new RangeError('physical-store fault occurrence must be a positive safe integer');
       }
       const key = faultKey(entry);
-      if (this.#pending.has(key)) throw new TypeError(`duplicate physical-store fault schedule entry: ${key}`);
-      this.#pending.set(key, entry);
+      if (this.pending.has(key)) throw new TypeError(`duplicate physical-store fault schedule entry: ${key}`);
+      this.pending.set(key, entry);
     }
-    this.#schedule = copiedSchedule;
+    this.schedule = copiedSchedule;
   }
 
   public checkpoint({ operation, timing }: {
@@ -65,17 +65,17 @@ export class DeterministicPhysicalStoreFaultInjector {
     timing: PhysicalStoreFaultTiming;
   }): void {
     const point = `${operation}:${timing}`;
-    const occurrence = (this.#counts.get(point) ?? 0) + 1;
-    this.#counts.set(point, occurrence);
+    const occurrence = (this.counts.get(point) ?? 0) + 1;
+    this.counts.set(point, occurrence);
     const key = faultKey({ occurrence, operation, timing });
-    const entry = this.#pending.get(key);
+    const entry = this.pending.get(key);
     if (entry === undefined) return;
-    this.#pending.delete(key);
+    this.pending.delete(key);
     throw new InjectedPhysicalStoreFault(entry);
   }
 
   public pendingFaults(): readonly PhysicalStoreFaultScheduleEntry[] {
-    return this.#schedule.filter((entry) => this.#pending.has(faultKey(entry)));
+    return this.schedule.filter((entry) => this.pending.has(faultKey(entry)));
   }
 
   public assertExhausted(): void {

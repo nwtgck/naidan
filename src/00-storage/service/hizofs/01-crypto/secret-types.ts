@@ -4,7 +4,7 @@ const ROOT_KEY_BYTES = HIZOFS_V1_PASSPHRASE_CREDENTIAL_METHOD.rootKeyBytes;
 const SECRET_BYTES = new WeakMap<FileSystemRootKey, Uint8Array>();
 
 export class FileSystemRootKey {
-  #destroyed = false;
+  private destroyed = false;
 
   private constructor({ bytes }: { bytes: Uint8Array }) {
     SECRET_BYTES.set(this, Uint8Array.from(bytes));
@@ -19,11 +19,11 @@ export class FileSystemRootKey {
     const bytes = SECRET_BYTES.get(this);
     if (bytes !== undefined) bytes.fill(0);
     SECRET_BYTES.delete(this);
-    this.#destroyed = true;
+    this.destroyed = true;
   }
 
   public isDestroyed(): boolean {
-    return this.#destroyed;
+    return this.destroyed;
   }
 }
 

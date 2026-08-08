@@ -24,31 +24,31 @@ function referenceIdentity({ reference }: { reference: HomeRecordReference }): s
  * permits an unvalidated root to become visible.
  */
 export class ReadOnlyNamespaceValidationCache {
-  readonly #entries = new Map<string, ValidationEntry>();
-  readonly #maximumEntries: number;
+  private readonly entries = new Map<string, ValidationEntry>();
+  private readonly maximumEntries: number;
 
   constructor({ maximumEntries }: { maximumEntries: number }) {
     if (!Number.isSafeInteger(maximumEntries) || maximumEntries < 1) {
       throw new RangeError("namespace validation cache maximum entries must be a positive safe integer");
     }
-    this.#maximumEntries = maximumEntries;
+    this.maximumEntries = maximumEntries;
   }
 
   clear(): void {
-    this.#entries.clear();
+    this.entries.clear();
   }
 
-  #key({ kind, reference }: {
+  private key({ kind, reference }: {
     kind: ReadOnlyNamespaceValidationKind;
     reference: HomeRecordReference;
   }): string {
     return `${kind}:${referenceIdentity({ reference })}`;
   }
 
-  #evictSettledEntry(): boolean {
-    const evictable = [...this.#entries].find(([, entry]) => entry.settled);
+  private evictSettledEntry(): boolean {
+    const evictable = [...this.entries].find(([, entry]) => entry.settled);
     if (evictable === undefined) return false;
-    this.#entries.delete(evictable[0]);
+    this.entries.delete(evictable[0]);
     return true;
   }
 
@@ -63,20 +63,20 @@ export class ReadOnlyNamespaceValidationCache {
     kind: ReadOnlyNamespaceValidationKind;
     successorReference: HomeRecordReference;
   }): void {
-    const base = this.#entries.get(this.#key({ kind, reference: baseReference }));
+    const base = this.entries.get(this.key({ kind, reference: baseReference }));
     if (base?.settled !== true) return;
-    const successorKey = this.#key({ kind, reference: successorReference });
-    const existing = this.#entries.get(successorKey);
+    const successorKey = this.key({ kind, reference: successorReference });
+    const existing = this.entries.get(successorKey);
     if (existing !== undefined) {
-      this.#entries.delete(successorKey);
-      this.#entries.set(successorKey, existing);
+      this.entries.delete(successorKey);
+      this.entries.set(successorKey, existing);
       return;
     }
-    while (this.#entries.size >= this.#maximumEntries && this.#evictSettledEntry()) {
+    while (this.entries.size >= this.maximumEntries && this.evictSettledEntry()) {
       // Evict completed proof entries only. Pending validation is never cancelled.
     }
-    if (this.#entries.size >= this.#maximumEntries) return;
-    this.#entries.set(successorKey, { promise: Promise.resolve(), settled: true });
+    if (this.entries.size >= this.maximumEntries) return;
+    this.entries.set(successorKey, { promise: Promise.resolve(), settled: true });
   }
 
   async validate({ kind, reference, validate }: {
@@ -84,16 +84,16 @@ export class ReadOnlyNamespaceValidationCache {
     reference: HomeRecordReference;
     validate: () => Promise<void>;
   }): Promise<void> {
-    const key = this.#key({ kind, reference });
-    const existing = this.#entries.get(key);
+    const key = this.key({ kind, reference });
+    const existing = this.entries.get(key);
     if (existing !== undefined) {
-      this.#entries.delete(key);
-      this.#entries.set(key, existing);
+      this.entries.delete(key);
+      this.entries.set(key, existing);
       return await existing.promise;
     }
 
-    while (this.#entries.size >= this.#maximumEntries) {
-      if (!this.#evictSettledEntry()) {
+    while (this.entries.size >= this.maximumEntries) {
+      if (!this.evictSettledEntry()) {
         await validate();
         return;
       }
@@ -103,12 +103,12 @@ export class ReadOnlyNamespaceValidationCache {
       promise: Promise.resolve().then(validate),
       settled: false,
     };
-    this.#entries.set(key, entry);
+    this.entries.set(key, entry);
     try {
       await entry.promise;
       entry.settled = true;
     } catch (cause: unknown) {
-      if (this.#entries.get(key) === entry) this.#entries.delete(key);
+      if (this.entries.get(key) === entry) this.entries.delete(key);
       throw cause;
     }
   }

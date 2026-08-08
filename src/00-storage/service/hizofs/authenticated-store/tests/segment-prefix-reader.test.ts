@@ -12,16 +12,16 @@ import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/phys
 import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 
 class ReadFailingBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
-  #failReads = false;
+  private failReads = false;
 
   public failSubsequentReads(): void {
-    this.#failReads = true;
+    this.failReads = true;
   }
 
   public override async readExact(
     input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["readExact"]>[0],
   ): Promise<Uint8Array> {
-    if (this.#failReads) throw new Error("backend read failure");
+    if (this.failReads) throw new Error("backend read failure");
     return await super.readExact(input);
   }
 }

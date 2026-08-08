@@ -77,15 +77,20 @@ const RUNTIME_SCOPE_TOKEN = parseContainerCoordinationScopeToken({ value: "AQEBA
 function runtime({
   backgroundFlushTimerPort,
   crossRealmLockPort = new InMemoryCrossRealmLockPort(),
+  maximumAcceptedMutationsPerDirtyEpoch = DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY.maximumAcceptedMutationsPerDirtyEpoch,
 }: {
   backgroundFlushTimerPort?: HizoFSBackgroundFlushTimerPort;
   crossRealmLockPort?: CrossRealmLockPort;
+  maximumAcceptedMutationsPerDirtyEpoch?: number;
 } = {}) {
   return new ContainerRuntime({
     ...(backgroundFlushTimerPort === undefined ? {} : { backgroundFlushTimerPort }),
     crossRealmLockPort,
     limits: {
-      lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+      lazyDurability: {
+        ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+        maximumAcceptedMutationsPerDirtyEpoch,
+      },
       maxDirectoryIteratorEntries: 32,
       maxHeldLockNames: 64,
       maxMaintenanceRootRegistrations: 64,
@@ -287,27 +292,27 @@ function publishedDescriptorFromWorking({ working }: {
 }
 
 class DelayedReaderPinReleasePort implements CrossRealmLockPort {
-  #completion = Promise.withResolvers<void>();
-  #inner = new InMemoryCrossRealmLockPort();
+  private completion = Promise.withResolvers<void>();
+  private inner = new InMemoryCrossRealmLockPort();
 
   async acquire({ mode, name }: {
     mode: CrossRealmLockMode;
     name: string;
   }) {
-    const lease = await this.#inner.acquire({ mode, name });
+    const lease = await this.inner.acquire({ mode, name });
     if (!name.includes("/reader-pin/")) return lease;
     return {
       release: () => lease.release(),
-      released: Promise.all([lease.released, this.#completion.promise]).then(() => undefined),
+      released: Promise.all([lease.released, this.completion.promise]).then(() => undefined),
     };
   }
 
   completeReaderPinRelease(): void {
-    this.#completion.resolve();
+    this.completion.resolve();
   }
 
   async queryHeldLockNames(): Promise<readonly string[]> {
-    return await this.#inner.queryHeldLockNames();
+    return await this.inner.queryHeldLockNames();
   }
 }
 
@@ -665,6 +670,79 @@ describe("container runtime", () => {
     expect(authority.capture().durableAuthority.identity).toEqual(
       publishedDescriptorFromWorking({ working }).durableAuthority.identity,
     );
+  });
+
+  it("queues resource-pressure publication before the next foreground writer", async () => {
+    const { port, scheduled } = controlledBackgroundFlushTimers();
+    const value = runtime({
+      backgroundFlushTimerPort: port,
+      maximumAcceptedMutationsPerDirtyEpoch: 1,
+    });
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const working = unpublishedSuccessorDescriptor({ base, mutationByte: 24, offset: 23_616n });
+    const publicationStarted = deferred<void>();
+    const finishPublication = deferred<void>();
+    const session = await openSession({ value });
+    const currentWriter = await session.acquireWriter();
+    const admission = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+
+    // Queue the next foreground writer *before* resource pressure is observed.
+    // The runtime must still yield that already-queued writer to publication
+    // after it acquires the lock; relying only on FIFO enqueue order would let
+    // this writer overtake the dirty-epoch boundary.
+    let nextWriterAcquired = false;
+    const nextWriterPromise = session.acquireWriter().then(writer => {
+      nextWriterAcquired = true;
+      return writer;
+    });
+    await Promise.resolve();
+
+    admission.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => {
+          publicationStarted.resolve();
+          await finishPublication.promise;
+          return { durableSuccessor: publishedDescriptorFromWorking({ working }), type: "published" as const };
+        },
+      }),
+      successor: working,
+    });
+
+    // Resource pressure is an admission boundary, so it must start publication
+    // immediately rather than depending on a zero-delay timer task.
+    expect(scheduled).toHaveLength(0);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: { backgroundFlushInFlight: true },
+      dirtyMutationCount: 1,
+    });
+
+    await currentWriter.close();
+    await publicationStarted.promise;
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(nextWriterAcquired).toBe(false);
+
+    finishPublication.resolve();
+    const nextWriter = await nextWriterPromise;
+    expect(nextWriterAcquired).toBe(true);
+    expect(value.lazyDurabilityDiagnostics().dirtyMutationCount).toBe(0);
+    const refreshed = authority.capture();
+    const nextAdmission = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: refreshed,
+      unpublishedPhysicalBytes: 1,
+    });
+    nextAdmission.rollback();
+    await nextWriter.close();
+    await session.close();
   });
 
   it("serializes background publication behind foreground runtime writer ownership", async () => {

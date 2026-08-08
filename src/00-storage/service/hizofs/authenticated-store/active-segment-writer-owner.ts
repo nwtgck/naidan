@@ -37,16 +37,16 @@ export type AuthenticatedSegmentWriterOwnerState = "closed" | "open";
  * writer abandoned and the next lease starts with a fresh Segment.
  */
 export class AuthenticatedSegmentWriterOwner {
-  readonly #backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
-  readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
-  readonly #fileSystemId: FileSystemId;
-  readonly #randomSource: RandomByteSource | undefined;
-  readonly #rootKey: FileSystemRootKey;
-  readonly #segmentClass: SegmentClass;
-  #activeLease: symbol | undefined;
-  #activeLeaseAppendedEncryptedFrameBytes = 0;
-  #state: AuthenticatedSegmentWriterOwnerState = "open";
-  #writer: AuthenticatedSegmentWriter | undefined;
+  private readonly backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  private readonly diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
+  private readonly fileSystemId: FileSystemId;
+  private readonly randomSource: RandomByteSource | undefined;
+  private readonly rootKey: FileSystemRootKey;
+  private readonly segmentClass: SegmentClass;
+  private activeLease: symbol | undefined;
+  private activeLeaseAppendedEncryptedFrameBytes = 0;
+  private stateValue: AuthenticatedSegmentWriterOwnerState = "open";
+  private writer: AuthenticatedSegmentWriter | undefined;
 
   constructor({ backend, diagnostics, fileSystemId, randomSource, rootKey, segmentClass }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
@@ -56,58 +56,58 @@ export class AuthenticatedSegmentWriterOwner {
     rootKey: FileSystemRootKey;
     segmentClass: SegmentClass;
   }) {
-    this.#backend = backend;
-    this.#diagnostics = diagnostics;
-    this.#fileSystemId = fileSystemId;
-    this.#randomSource = randomSource;
-    this.#rootKey = rootKey;
-    this.#segmentClass = segmentClass;
+    this.backend = backend;
+    this.diagnostics = diagnostics;
+    this.fileSystemId = fileSystemId;
+    this.randomSource = randomSource;
+    this.rootKey = rootKey;
+    this.segmentClass = segmentClass;
   }
 
   state(): AuthenticatedSegmentWriterOwnerState {
-    return this.#state;
+    return this.stateValue;
   }
 
-  #requireOpen({ operation }: { operation: string }): void {
-    switch (this.#state) {
+  private requireOpen({ operation }: { operation: string }): void {
+    switch (this.stateValue) {
     case "open": return;
     case "closed": throw new Error(`cannot ${operation}: active Segment writer owner is closed`);
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
   }
 
-  async #createWriter(): Promise<AuthenticatedSegmentWriter> {
+  private async createWriter(): Promise<AuthenticatedSegmentWriter> {
     return await createAuthenticatedSegmentWriter({
-      backend: this.#backend,
-      diagnostics: this.#diagnostics,
-      fileSystemId: this.#fileSystemId,
-      randomSource: this.#randomSource,
-      rootKey: this.#rootKey,
-      segmentClass: this.#segmentClass,
+      backend: this.backend,
+      diagnostics: this.diagnostics,
+      fileSystemId: this.fileSystemId,
+      randomSource: this.randomSource,
+      rootKey: this.rootKey,
+      segmentClass: this.segmentClass,
     });
   }
 
-  async #writerForAppend(): Promise<AuthenticatedSegmentWriter> {
-    const current = this.#writer;
+  private async writerForAppend(): Promise<AuthenticatedSegmentWriter> {
+    const current = this.writer;
     if (current !== undefined) {
       switch (current.state) {
       case "active": return current;
       case "abandoned":
-      case "sealed": this.#writer = undefined; break;
+      case "sealed": this.writer = undefined; break;
       default: current.state satisfies never;
       }
     }
-    const created = await this.#createWriter();
-    this.#writer = created;
+    const created = await this.createWriter();
+    this.writer = created;
     return created;
   }
 
-  async #append<Value>({ append, lease }: {
+  private async append<Value>({ append, lease }: {
     append: ({ writer }: { writer: AuthenticatedSegmentWriter }) => Promise<Value>;
     lease: symbol;
   }): Promise<Value> {
-    this.#requireOpen({ operation: "append through an active Segment writer lease" });
-    if (this.#activeLease !== lease) throw new Error("active Segment writer lease is no longer owned");
+    this.requireOpen({ operation: "append through an active Segment writer lease" });
+    if (this.activeLease !== lease) throw new Error("active Segment writer lease is no longer owned");
     const measuredAppend = async ({ writer }: { writer: AuthenticatedSegmentWriter }): Promise<Value> => {
       const before = writer.persistedFrameBytes();
       const recordUsage = (): void => {
@@ -115,8 +115,8 @@ export class AuthenticatedSegmentWriterOwner {
         if (!Number.isSafeInteger(delta) || delta < 0) {
           throw new Error("active Segment writer usage measurement is invalid");
         }
-        this.#activeLeaseAppendedEncryptedFrameBytes += delta;
-        if (!Number.isSafeInteger(this.#activeLeaseAppendedEncryptedFrameBytes)) {
+        this.activeLeaseAppendedEncryptedFrameBytes += delta;
+        if (!Number.isSafeInteger(this.activeLeaseAppendedEncryptedFrameBytes)) {
           throw new Error("active Segment writer lease usage exceeds the safe integer bound");
         }
       };
@@ -137,23 +137,23 @@ export class AuthenticatedSegmentWriterOwner {
       recordUsage();
       return result;
     };
-    const writer = await this.#writerForAppend();
+    const writer = await this.writerForAppend();
     try {
       return await measuredAppend({ writer });
     } catch (cause: unknown) {
       if (cause instanceof AuthenticatedSegmentCapacityError && writer.hasRecords()) {
         await writer.seal();
-        this.#writer = undefined;
-        this.#diagnostics?.recordSegmentWriterEvent?.({ observation: {
+        this.writer = undefined;
+        this.diagnostics?.recordSegmentWriterEvent?.({ observation: {
           event: "rollover",
-          segmentClass: this.#segmentClass,
+          segmentClass: this.segmentClass,
         } });
-        return await measuredAppend({ writer: await this.#writerForAppend() });
+        return await measuredAppend({ writer: await this.writerForAppend() });
       }
       switch (writer.state) {
       case "active": break;
       case "abandoned":
-      case "sealed": this.#writer = undefined; break;
+      case "sealed": this.writer = undefined; break;
       default: return writer.state satisfies never;
       }
       throw cause;
@@ -161,62 +161,62 @@ export class AuthenticatedSegmentWriterOwner {
   }
 
   acquire(): AuthenticatedSegmentWriterLease {
-    this.#requireOpen({ operation: "acquire an active Segment writer lease" });
-    if (this.#activeLease !== undefined) throw new Error("active Segment writer owner already has a lease");
+    this.requireOpen({ operation: "acquire an active Segment writer lease" });
+    if (this.activeLease !== undefined) throw new Error("active Segment writer owner already has a lease");
     const lease = Symbol("active-segment-writer-lease");
-    this.#activeLease = lease;
-    this.#activeLeaseAppendedEncryptedFrameBytes = 0;
+    this.activeLease = lease;
+    this.activeLeaseAppendedEncryptedFrameBytes = 0;
     let active = true;
     return {
       append: async <Value>({ append }: {
         append: ({ writer }: { writer: AuthenticatedSegmentWriter }) => Promise<Value>;
       }): Promise<Value> => {
         if (!active) throw new Error("released active Segment writer lease cannot append");
-        return await this.#append({ append, lease });
+        return await this.append({ append, lease });
       },
       release: ({ disposition }) => {
         if (!active) return;
         active = false;
-        if (this.#activeLease !== lease) throw new Error("active Segment writer lease ownership changed unexpectedly");
-        this.#activeLease = undefined;
-        const writer = this.#writer;
+        if (this.activeLease !== lease) throw new Error("active Segment writer lease ownership changed unexpectedly");
+        this.activeLease = undefined;
+        const writer = this.writer;
         if (writer !== undefined) {
           switch (writer.state) {
           case "active": break;
           case "abandoned":
-          case "sealed": this.#writer = undefined; break;
+          case "sealed": this.writer = undefined; break;
           default: return writer.state satisfies never;
           }
         }
         switch (disposition) {
         case "reuse": return;
         case "discard":
-          this.#writer?.abandon();
-          this.#writer = undefined;
+          this.writer?.abandon();
+          this.writer = undefined;
           return;
         default: return disposition satisfies never;
         }
       },
       usage: () => Object.freeze({
-        appendedEncryptedFrameBytes: this.#activeLease === lease
-          ? this.#activeLeaseAppendedEncryptedFrameBytes
+        appendedEncryptedFrameBytes: this.activeLease === lease
+          ? this.activeLeaseAppendedEncryptedFrameBytes
           : 0,
       }),
     };
   }
 
   async close(): Promise<void> {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "closed": return;
     case "open": break;
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
-    if (this.#activeLease !== undefined) {
+    if (this.activeLease !== undefined) {
       throw new Error("cannot close active Segment writer owner while a mutation lease is active");
     }
-    this.#state = "closed";
-    const writer = this.#writer;
-    this.#writer = undefined;
+    this.stateValue = "closed";
+    const writer = this.writer;
+    this.writer = undefined;
     if (writer === undefined) return;
     switch (writer.state) {
     case "abandoned":

@@ -42,7 +42,7 @@ class MemoryBulkCommitPort {
       return page;
     },
     writePage: async ({ page }) => {
-      const reference = this.#reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page });
+      const reference = this.reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page });
       this.directoryPages.set(identity({ reference }), page);
       return reference;
     },
@@ -54,16 +54,16 @@ class MemoryBulkCommitPort {
       return page;
     },
     writePage: async ({ page }) => {
-      const reference = this.#reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page });
+      const reference = this.reference({ kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page });
       this.inodePages.set(identity({ reference }), page);
       return reference;
     },
   };
-  #nextOffset = 1_024n;
+  private nextOffset = 1_024n;
 
-  #reference({ kind }: { kind: number }): HomeRecordReference {
-    const offset = this.#nextOffset;
-    this.#nextOffset += 128n;
+  private reference({ kind }: { kind: number }): HomeRecordReference {
+    const offset = this.nextOffset;
+    this.nextOffset += 128n;
     return createHomeRecordReference({ fields: {
       byteOffset: createUInt64({ value: offset }),
       frameLength: 96,

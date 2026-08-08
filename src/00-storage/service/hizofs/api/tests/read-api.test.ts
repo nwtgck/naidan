@@ -33,14 +33,14 @@ function namespace({
 }
 
 class RuntimeSession implements HizoFSReadApiRuntimeSession {
-  #closed = false;
+  private closed = false;
 
   async close(): Promise<void> {
-    this.#closed = true;
+    this.closed = true;
   }
 
   async runReadOperation<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
-    if (this.#closed) throw new Error("runtime session is closed");
+    if (this.closed) throw new Error("runtime session is closed");
     return await operation();
   }
 }

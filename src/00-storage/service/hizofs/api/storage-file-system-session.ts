@@ -146,8 +146,8 @@ function childPath({ name, path }: { name: string; path: readonly string[] }): r
 class HizoFSStorageFileHandle implements StorageFileHandle {
   readonly kind = "file" as const;
   readonly name: string;
-  readonly #owner: HizoFSStorageFileSystemSession;
-  readonly #path: readonly string[];
+  private readonly owner: HizoFSStorageFileSystemSession;
+  private readonly path: readonly string[];
 
   constructor({ name, owner, path }: {
     name: string;
@@ -155,20 +155,20 @@ class HizoFSStorageFileHandle implements StorageFileHandle {
     path: readonly string[];
   }) {
     this.name = name;
-    this.#owner = owner;
-    this.#path = [...path];
+    this.owner = owner;
+    this.path = [...path];
   }
 
   async stat(): Promise<StorageFileStat> {
-    return await this.#owner.statExpected({ expectedKind: "file", path: this.#path });
+    return await this.owner.statExpected({ expectedKind: "file", path: this.path });
   }
 
   async openReadable({ mimeType }: { mimeType: string }): Promise<StorageBinaryObjectReadHandle> {
-    const owner = this.#owner;
+    const owner = this.owner;
     let closed = false;
     let releaseResource: () => void = () => undefined;
     const resource = await owner.runOperation({ operation: async () => {
-      const readable = await owner.port.openReadable({ path: [...this.#path] });
+      const readable = await owner.port.openReadable({ path: [...this.path] });
       const close = async () => {
         if (closed) return;
         closed = true;
@@ -258,8 +258,8 @@ class HizoFSStorageFileHandle implements StorageFileHandle {
   }
 
   async createWritable({ keepExistingData }: { keepExistingData: boolean }): Promise<StorageWritableFile> {
-    const owner = this.#owner;
-    const releaseWriter = owner.reserveWriter({ path: this.#path });
+    const owner = this.owner;
+    const releaseWriter = owner.reserveWriter({ path: this.path });
     let state: "aborted" | "committed" | "open" = "open";
     let releaseResource: () => void = () => undefined;
     let resource: {
@@ -270,7 +270,7 @@ class HizoFSStorageFileHandle implements StorageFileHandle {
       resource = await owner.runOperation({ operation: async () => {
         const writable = await owner.port.openWritable({
           keepExistingData,
-          path: [...this.#path],
+          path: [...this.path],
         });
         const abort = async ({ reason }: { reason: unknown }) => {
           switch (state) {
@@ -349,8 +349,8 @@ class HizoFSStorageFileHandle implements StorageFileHandle {
 class HizoFSStorageSymlinkHandle implements StorageSymlinkHandle {
   readonly kind = "symlink" as const;
   readonly name: string;
-  readonly #owner: HizoFSStorageFileSystemSession;
-  readonly #path: readonly string[];
+  private readonly owner: HizoFSStorageFileSystemSession;
+  private readonly path: readonly string[];
 
   constructor({ name, owner, path }: {
     name: string;
@@ -358,17 +358,17 @@ class HizoFSStorageSymlinkHandle implements StorageSymlinkHandle {
     path: readonly string[];
   }) {
     this.name = name;
-    this.#owner = owner;
-    this.#path = [...path];
+    this.owner = owner;
+    this.path = [...path];
   }
 
   async stat(): Promise<StorageFileStat> {
-    return await this.#owner.statExpected({ expectedKind: "symlink", path: this.#path });
+    return await this.owner.statExpected({ expectedKind: "symlink", path: this.path });
   }
 
   async readTarget(): Promise<string> {
-    return await this.#owner.runOperation({ operation: async () => {
-      return await this.#owner.port.readlink({ path: [...this.#path] });
+    return await this.owner.runOperation({ operation: async () => {
+      return await this.owner.port.readlink({ path: [...this.path] });
     }});
   }
 }
@@ -376,8 +376,8 @@ class HizoFSStorageSymlinkHandle implements StorageSymlinkHandle {
 class HizoFSStorageDirectoryHandle implements StorageDirectoryHandle {
   readonly kind = "directory" as const;
   readonly name: string;
-  readonly #owner: HizoFSStorageFileSystemSession;
-  readonly #path: readonly string[];
+  private readonly owner: HizoFSStorageFileSystemSession;
+  private readonly path: readonly string[];
 
   constructor({ name, owner, path }: {
     name: string;
@@ -385,74 +385,74 @@ class HizoFSStorageDirectoryHandle implements StorageDirectoryHandle {
     path: readonly string[];
   }) {
     this.name = name;
-    this.#owner = owner;
-    this.#path = [...path];
+    this.owner = owner;
+    this.path = [...path];
   }
 
   async stat(): Promise<StorageFileStat> {
-    return await this.#owner.statExpected({ expectedKind: "directory", path: this.#path });
+    return await this.owner.statExpected({ expectedKind: "directory", path: this.path });
   }
 
   async getFileHandle({ create, name }: { create: boolean; name: string }): Promise<StorageFileHandle> {
-    const path = childPath({ name, path: this.#path });
-    await this.#owner.ensureEntry({
+    const path = childPath({ name, path: this.path });
+    await this.owner.ensureEntry({
       create,
       createEntry: async () => {
-        await this.#owner.port.createFile({ name, path: [...this.#path] });
+        await this.owner.port.createFile({ name, path: [...this.path] });
       },
       expectedKind: "file",
       path,
     });
-    return new HizoFSStorageFileHandle({ name, owner: this.#owner, path });
+    return new HizoFSStorageFileHandle({ name, owner: this.owner, path });
   }
 
   async getDirectoryHandle({ create, name }: { create: boolean; name: string }): Promise<StorageDirectoryHandle> {
-    const path = childPath({ name, path: this.#path });
-    await this.#owner.ensureEntry({
+    const path = childPath({ name, path: this.path });
+    await this.owner.ensureEntry({
       create,
       createEntry: async () => {
-        await this.#owner.port.createDirectory({ name, path: [...this.#path] });
+        await this.owner.port.createDirectory({ name, path: [...this.path] });
       },
       expectedKind: "directory",
       path,
     });
-    return new HizoFSStorageDirectoryHandle({ name, owner: this.#owner, path });
+    return new HizoFSStorageDirectoryHandle({ name, owner: this.owner, path });
   }
 
   async getEntryHandle({ name }: { name: string }): Promise<StorageEntryHandle> {
-    return await this.#owner.entryHandle({ name, path: childPath({ name, path: this.#path }) });
+    return await this.owner.entryHandle({ name, path: childPath({ name, path: this.path }) });
   }
 
   async *entries(): AsyncIterable<readonly [name: string, handle: StorageEntryHandle]> {
-    const entries = await this.#owner.runOperation({ operation: async () => {
-      return await this.#owner.port.listDirectory({ path: [...this.#path] });
+    const entries = await this.owner.runOperation({ operation: async () => {
+      return await this.owner.port.listDirectory({ path: [...this.path] });
     }});
     for (const entry of entries) {
-      this.#owner.assertOpen();
+      this.owner.assertOpen();
       const { kind, name, ...unhandled } = entry;
       unhandled satisfies Record<PropertyKey, never>;
-      yield [name, await this.#owner.entryHandle({
+      yield [name, await this.owner.entryHandle({
         expectedKind: kind,
         name,
-        path: childPath({ name, path: this.#path }),
+        path: childPath({ name, path: this.path }),
       })] as const;
     }
   }
 
   async removeEntry({ name, recursive }: { name: string; recursive: boolean }): Promise<void> {
-    await this.#owner.runOperation({ operation: async () => {
-      await this.#owner.port.removeEntry({ name, path: [...this.#path], recursive });
+    await this.owner.runOperation({ operation: async () => {
+      await this.owner.port.removeEntry({ name, path: [...this.path], recursive });
     }});
   }
 
   async createSymlink({ name, target }: { name: string; target: string }): Promise<StorageSymlinkHandle> {
-    await this.#owner.runOperation({ operation: async () => {
-      await this.#owner.port.createSymlink({ name, path: [...this.#path], target });
+    await this.owner.runOperation({ operation: async () => {
+      await this.owner.port.createSymlink({ name, path: [...this.path], target });
     }});
     return new HizoFSStorageSymlinkHandle({
       name,
-      owner: this.#owner,
-      path: childPath({ name, path: this.#path }),
+      owner: this.owner,
+      path: childPath({ name, path: this.path }),
     });
   }
 
@@ -462,13 +462,13 @@ class HizoFSStorageDirectoryHandle implements StorageDirectoryHandle {
     newName: string;
     replace: boolean;
   }): Promise<void> {
-    const target = this.#owner.requireOwnedDirectory({ directory: destination });
-    await this.#owner.runOperation({ operation: async () => {
-      await this.#owner.port.moveEntry({
+    const target = this.owner.requireOwnedDirectory({ directory: destination });
+    await this.owner.runOperation({ operation: async () => {
+      await this.owner.port.moveEntry({
         destinationPath: target.path,
         name,
         newName,
-        path: [...this.#path],
+        path: [...this.path],
         replace,
       });
     }});
@@ -480,19 +480,19 @@ class HizoFSStorageDirectoryHandle implements StorageDirectoryHandle {
     newName: string;
     replace: boolean;
   }): Promise<StorageFileHandle> {
-    const target = this.#owner.requireOwnedDirectory({ directory: destination });
-    await this.#owner.runOperation({ operation: async () => {
-      await this.#owner.port.cloneFile({
+    const target = this.owner.requireOwnedDirectory({ directory: destination });
+    await this.owner.runOperation({ operation: async () => {
+      await this.owner.port.cloneFile({
         destinationPath: target.path,
         name,
         newName,
-        path: [...this.#path],
+        path: [...this.path],
         replace,
       });
     }});
     return new HizoFSStorageFileHandle({
       name: newName,
-      owner: this.#owner,
+      owner: this.owner,
       path: childPath({ name: newName, path: target.path }),
     });
   }
@@ -500,11 +500,11 @@ class HizoFSStorageDirectoryHandle implements StorageDirectoryHandle {
   async createWorkerMountGrant({ accessMode }: {
     accessMode: StorageDirectoryWorkerMountAccessMode;
   }): Promise<StorageDirectoryWorkerMountGrant> {
-    return await this.#owner.issueWorkerMountGrant({ accessMode, path: this.#path });
+    return await this.owner.issueWorkerMountGrant({ accessMode, path: this.path });
   }
 
   ownerPath({ owner }: { owner: HizoFSStorageFileSystemSession }): readonly string[] | undefined {
-    return owner === this.#owner ? [...this.#path] : undefined;
+    return owner === this.owner ? [...this.path] : undefined;
   }
 }
 
@@ -517,13 +517,13 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
   } as const;
   readonly port: HizoFSApplicationSessionPort;
   readonly root: StorageDirectoryHandle;
-  readonly #activeWriterPaths = new Set<string>();
-  readonly #idleWaiters = new Set<() => void>();
-  readonly #resources = new Set<{ dispose(): Promise<void> }>();
-  readonly #workerMountGrantIssuer: HizoFSWorkerMountGrantIssuer | undefined;
-  #closePromise: Promise<void> | undefined;
-  #inFlightOperations = 0;
-  #state: "closed" | "closing" | "open" = "open";
+  private readonly activeWriterPaths = new Set<string>();
+  private readonly idleWaiters = new Set<() => void>();
+  private readonly resources = new Set<{ dispose(): Promise<void> }>();
+  private readonly workerMountGrantIssuer: HizoFSWorkerMountGrantIssuer | undefined;
+  private closePromise: Promise<void> | undefined;
+  private inFlightOperations = 0;
+  private state: "closed" | "closing" | "open" = "open";
 
   constructor({ port, rootName = "", rootPath = [], workerMountGrantIssuer }: {
     port: HizoFSApplicationSessionPort;
@@ -532,17 +532,17 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
     workerMountGrantIssuer?: HizoFSWorkerMountGrantIssuer;
   }) {
     this.port = port;
-    this.#workerMountGrantIssuer = workerMountGrantIssuer;
+    this.workerMountGrantIssuer = workerMountGrantIssuer;
     this.root = new HizoFSStorageDirectoryHandle({ name: rootName, owner: this, path: rootPath });
   }
 
   async close(): Promise<void> {
-    this.#closePromise ??= this.#close();
-    await this.#closePromise;
+    this.closePromise ??= this.closeInternal();
+    await this.closePromise;
   }
 
   async sync(): Promise<void> {
-    switch (this.#state) {
+    switch (this.state) {
     case "open": break;
     case "closed":
     case "closing": throw createStorageFileSystemSyncError({
@@ -551,7 +551,7 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
       message: "HizoFS application session is closed",
       retryable: false,
     });
-    default: return this.#state satisfies never;
+    default: return this.state satisfies never;
     }
     await this.runOperation({ operation: async () => await this.port.sync() });
   }
@@ -573,18 +573,18 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
   }
 
   assertOpen(): void {
-    switch (this.#state) {
+    switch (this.state) {
     case "open": return;
     case "closed":
     case "closing": throw new Error("HizoFS application session is closed");
-    default: return this.#state satisfies never;
+    default: return this.state satisfies never;
     }
   }
 
   registerAdmittedResource({ dispose }: { dispose: () => Promise<void> }): () => void {
     const resource = { dispose };
-    this.#resources.add(resource);
-    return () => this.#resources.delete(resource);
+    this.resources.add(resource);
+    return () => this.resources.delete(resource);
   }
 
   async issueWorkerMountGrant({ accessMode, path }: {
@@ -592,11 +592,11 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
     path: readonly string[];
   }): Promise<StorageDirectoryWorkerMountGrant> {
     this.assertOpen();
-    if (this.#workerMountGrantIssuer === undefined) {
+    if (this.workerMountGrantIssuer === undefined) {
       throw new Error("HizoFS session does not support Worker-local mount grants");
     }
     return await this.runOperation({
-      operation: async () => await this.#workerMountGrantIssuer?.({ accessMode, path: [...path] })
+      operation: async () => await this.workerMountGrantIssuer?.({ accessMode, path: [...path] })
         ?? Promise.reject(new Error("HizoFS Worker mount grant issuer disappeared")),
     });
   }
@@ -604,25 +604,25 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
   reserveWriter({ path }: { path: readonly string[] }): () => void {
     this.assertOpen();
     const key = JSON.stringify(path);
-    if (this.#activeWriterPaths.has(key)) {
+    if (this.activeWriterPaths.has(key)) {
       throw new Error(`HizoFS file already has an active writer: ${path.join("/") || "/"}`);
     }
-    this.#activeWriterPaths.add(key);
-    return () => this.#activeWriterPaths.delete(key);
+    this.activeWriterPaths.add(key);
+    return () => this.activeWriterPaths.delete(key);
   }
 
   async runOperation<Value>({ operation }: {
     operation: () => Promise<Value>;
   }): Promise<Value> {
     this.assertOpen();
-    this.#inFlightOperations += 1;
+    this.inFlightOperations += 1;
     try {
       return await operation();
     } finally {
-      this.#inFlightOperations -= 1;
-      if (this.#inFlightOperations === 0) {
-        for (const resolve of this.#idleWaiters) resolve();
-        this.#idleWaiters.clear();
+      this.inFlightOperations -= 1;
+      if (this.inFlightOperations === 0) {
+        for (const resolve of this.idleWaiters) resolve();
+        this.idleWaiters.clear();
       }
     }
   }
@@ -707,18 +707,18 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
     return { path };
   }
 
-  async #close(): Promise<void> {
-    switch (this.#state) {
+  private async closeInternal(): Promise<void> {
+    switch (this.state) {
     case "closed": return;
     case "closing": break;
-    case "open": this.#state = "closing"; break;
-    default: return this.#state satisfies never;
+    case "open": this.state = "closing"; break;
+    default: return this.state satisfies never;
     }
-    if (this.#inFlightOperations !== 0) {
-      await new Promise<void>(resolve => this.#idleWaiters.add(resolve));
+    if (this.inFlightOperations !== 0) {
+      await new Promise<void>(resolve => this.idleWaiters.add(resolve));
     }
     const failures: unknown[] = [];
-    for (const resource of [...this.#resources]) {
+    for (const resource of [...this.resources]) {
       try {
         await resource.dispose();
       } catch (cause: unknown) {
@@ -730,9 +730,9 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
     } catch (cause: unknown) {
       failures.push(cause);
     } finally {
-      this.#resources.clear();
-      this.#activeWriterPaths.clear();
-      this.#state = "closed";
+      this.resources.clear();
+      this.activeWriterPaths.clear();
+      this.state = "closed";
     }
     if (failures.length !== 0) {
       throw new AggregateError(failures, "Failed to close HizoFS application session");

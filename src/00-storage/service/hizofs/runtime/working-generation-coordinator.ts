@@ -80,59 +80,59 @@ export type WorkingGenerationCoordinatorSnapshot = Readonly<{
  * candidate becoming durable while a newer candidate remains dirty.
  */
 export class WorkingGenerationCoordinator {
-  readonly #dirtyResources: DirtyResourceBudget;
-  #durabilityStalled = false;
-  #durableGeneration: WorkingGenerationIdentity;
-  #flushActive = false;
-  #managementBarrierActive = false;
-  #mutationAdmissionActive = false;
-  readonly #syncWaiters: SyncWaiterRegistry;
-  #workingGeneration: WorkingGenerationIdentity;
+  private readonly dirtyResources: DirtyResourceBudget;
+  private durabilityStalled = false;
+  private durableGeneration: WorkingGenerationIdentity;
+  private flushActive = false;
+  private managementBarrierActive = false;
+  private mutationAdmissionActive = false;
+  private readonly syncWaiters: SyncWaiterRegistry;
+  private workingGeneration: WorkingGenerationIdentity;
 
   constructor({ initialDurableGeneration, policy }: {
     initialDurableGeneration: WorkingGenerationIdentity;
     policy: HizoFSLazyDurabilityPolicy;
   }) {
-    this.#dirtyResources = new DirtyResourceBudget({ policy });
-    this.#durableGeneration = initialDurableGeneration;
-    this.#syncWaiters = new SyncWaiterRegistry({
+    this.dirtyResources = new DirtyResourceBudget({ policy });
+    this.durableGeneration = initialDurableGeneration;
+    this.syncWaiters = new SyncWaiterRegistry({
       initialDurableGeneration,
       maximumWaiters: policy.maximumSyncWaiters,
     });
-    this.#workingGeneration = initialDurableGeneration;
+    this.workingGeneration = initialDurableGeneration;
   }
 
   captureSyncTarget(): WorkingGenerationIdentity {
-    return this.#workingGeneration;
+    return this.workingGeneration;
   }
 
   openMutationAdmission({ dirtyMetadataBytes, unpublishedPhysicalBytes }: {
     dirtyMetadataBytes: number;
     unpublishedPhysicalBytes: number;
   }): WorkingGenerationMutationAdmission {
-    if (this.#managementBarrierActive) {
+    if (this.managementBarrierActive) {
       throw new WorkingGenerationCoordinatorError({
         code: "management_barrier_active",
         message: "working generation mutation admission is blocked by a management clean-head barrier",
       });
     }
-    if (this.#durabilityStalled) {
+    if (this.durabilityStalled) {
       throw new WorkingGenerationCoordinatorError({
         code: "durability_stalled",
         message: "working generation durability is stalled until an explicit flush retry succeeds",
       });
     }
-    if (this.#flushActive || this.#mutationAdmissionActive) {
+    if (this.flushActive || this.mutationAdmissionActive) {
       throw new WorkingGenerationCoordinatorError({
         code: "working_authority_busy",
         message: "working generation authority is already owned by mutation admission or flush",
       });
     }
-    const resources = this.#dirtyResources.reserveAdmission({
+    const resources = this.dirtyResources.reserveAdmission({
       dirtyMetadataBytes,
       unpublishedPhysicalBytes,
     });
-    this.#mutationAdmissionActive = true;
+    this.mutationAdmissionActive = true;
     let active = true;
     const requireActive = (): DirtyResourceAdmission => {
       if (!active) {
@@ -146,15 +146,15 @@ export class WorkingGenerationCoordinator {
     const close = (): DirtyResourceAdmission => {
       const retainedResources = requireActive();
       active = false;
-      this.#mutationAdmissionActive = false;
+      this.mutationAdmissionActive = false;
       return retainedResources;
     };
     return Object.freeze({
       accept: ({ workingGeneration }) => {
         requireActive();
         if (
-          workingGeneration.authorityEpoch !== this.#workingGeneration.authorityEpoch
-          || workingGeneration.generationNumber !== this.#workingGeneration.generationNumber + 1n
+          workingGeneration.authorityEpoch !== this.workingGeneration.authorityEpoch
+          || workingGeneration.generationNumber !== this.workingGeneration.generationNumber + 1n
         ) {
           throw new WorkingGenerationCoordinatorError({
             code: "working_generation_changed",
@@ -162,7 +162,7 @@ export class WorkingGenerationCoordinator {
           });
         }
         close().commitAccepted();
-        this.#workingGeneration = workingGeneration;
+        this.workingGeneration = workingGeneration;
       },
       replaceResourceReservation: ({ dirtyMetadataBytes, unpublishedPhysicalBytes }) => {
         requireActive().replaceReservation({ dirtyMetadataBytes, unpublishedPhysicalBytes });
@@ -175,28 +175,28 @@ export class WorkingGenerationCoordinator {
   }
 
   waitForSyncTarget({ target }: { target: WorkingGenerationIdentity }): Promise<void> {
-    return this.#syncWaiters.waitFor({ target });
+    return this.syncWaiters.waitFor({ target });
   }
 
-  #advanceDurableToCurrentWorkingGeneration({ durableGeneration }: {
+  private advanceDurableToCurrentWorkingGeneration({ durableGeneration }: {
     durableGeneration: WorkingGenerationIdentity;
   }): void {
     if (!sameWorkingGenerationIdentity({
       left: durableGeneration,
-      right: this.#workingGeneration,
+      right: this.workingGeneration,
     })) {
       throw new WorkingGenerationCoordinatorError({
         code: "durable_generation_not_current",
         message: "initial lazy-publication protocol may publish only the exact current working generation",
       });
     }
-    this.#syncWaiters.advanceDurableGeneration({ durable: durableGeneration });
-    this.#durableGeneration = durableGeneration;
-    this.#dirtyResources.resetAfterDurablePublication();
+    this.syncWaiters.advanceDurableGeneration({ durable: durableGeneration });
+    this.durableGeneration = durableGeneration;
+    this.dirtyResources.resetAfterDurablePublication();
   }
 
-  #openFlush({ managementBarrierOwned }: { managementBarrierOwned: boolean }): WorkingGenerationFlush {
-    if (this.#managementBarrierActive !== managementBarrierOwned) {
+  private openFlushInternal({ managementBarrierOwned }: { managementBarrierOwned: boolean }): WorkingGenerationFlush {
+    if (this.managementBarrierActive !== managementBarrierOwned) {
       throw new WorkingGenerationCoordinatorError({
         code: "management_barrier_active",
         message: managementBarrierOwned
@@ -204,13 +204,13 @@ export class WorkingGenerationCoordinator {
           : "working generation flush is blocked by a management clean-head barrier",
       });
     }
-    if (this.#flushActive || this.#mutationAdmissionActive) {
+    if (this.flushActive || this.mutationAdmissionActive) {
       throw new WorkingGenerationCoordinatorError({
         code: "working_authority_busy",
         message: "working generation authority is already owned by mutation admission or flush",
       });
     }
-    this.#flushActive = true;
+    this.flushActive = true;
     let active = true;
     const requireActive = (): void => {
       if (!active) {
@@ -223,58 +223,58 @@ export class WorkingGenerationCoordinator {
     const close = (): void => {
       requireActive();
       active = false;
-      this.#flushActive = false;
+      this.flushActive = false;
     };
-    const target = this.#workingGeneration;
+    const target = this.workingGeneration;
     return Object.freeze({
       beginStagedCommitMaterializationAttempt: ({ frameBytes }) => {
         requireActive();
-        return this.#dirtyResources.beginStagedCommitMaterializationAttempt({ frameBytes });
+        return this.dirtyResources.beginStagedCommitMaterializationAttempt({ frameBytes });
       },
       complete: ({ durableGeneration }) => {
         requireActive();
-        this.#advanceDurableToCurrentWorkingGeneration({ durableGeneration });
+        this.advanceDurableToCurrentWorkingGeneration({ durableGeneration });
         close();
-        this.#durabilityStalled = false;
+        this.durabilityStalled = false;
       },
       fail: ({ cause }) => {
         close();
-        this.#durabilityStalled = true;
-        this.#syncWaiters.rejectAll({ cause });
+        this.durabilityStalled = true;
+        this.syncWaiters.rejectAll({ cause });
       },
       target,
     });
   }
 
   confirmCurrentWorkingGenerationDurable(): void {
-    if (!this.#durabilityStalled) {
+    if (!this.durabilityStalled) {
       throw new WorkingGenerationCoordinatorError({
         code: "durable_generation_not_current",
         message: "working generation is not awaiting external durable-authority resolution",
       });
     }
-    if (this.#flushActive || this.#managementBarrierActive || this.#mutationAdmissionActive) {
+    if (this.flushActive || this.managementBarrierActive || this.mutationAdmissionActive) {
       throw new WorkingGenerationCoordinatorError({
         code: "working_authority_busy",
         message: "working generation authority is busy during external durable-authority resolution",
       });
     }
-    this.#advanceDurableToCurrentWorkingGeneration({ durableGeneration: this.#workingGeneration });
-    this.#durabilityStalled = false;
+    this.advanceDurableToCurrentWorkingGeneration({ durableGeneration: this.workingGeneration });
+    this.durabilityStalled = false;
   }
 
   openFlush(): WorkingGenerationFlush {
-    return this.#openFlush({ managementBarrierOwned: false });
+    return this.openFlushInternal({ managementBarrierOwned: false });
   }
 
   openManagementBarrier(): WorkingGenerationManagementBarrier {
-    if (this.#managementBarrierActive || this.#flushActive || this.#mutationAdmissionActive) {
+    if (this.managementBarrierActive || this.flushActive || this.mutationAdmissionActive) {
       throw new WorkingGenerationCoordinatorError({
         code: "working_authority_busy",
         message: "working generation authority is already owned by mutation, flush, or management",
       });
     }
-    this.#managementBarrierActive = true;
+    this.managementBarrierActive = true;
     let active = true;
     const requireActive = (): void => {
       if (!active) {
@@ -284,19 +284,19 @@ export class WorkingGenerationCoordinator {
         });
       }
     };
-    const target = this.#workingGeneration;
+    const target = this.workingGeneration;
     return Object.freeze({
       close: () => {
         requireActive();
-        if (this.#flushActive) {
+        if (this.flushActive) {
           throw new WorkingGenerationCoordinatorError({
             code: "working_authority_busy",
             message: "management clean-head barrier cannot close during flush",
           });
         }
-        if (this.#durabilityStalled || !sameWorkingGenerationIdentity({
-          left: this.#durableGeneration,
-          right: this.#workingGeneration,
+        if (this.durabilityStalled || !sameWorkingGenerationIdentity({
+          left: this.durableGeneration,
+          right: this.workingGeneration,
         })) {
           throw new WorkingGenerationCoordinatorError({
             code: "management_head_not_clean",
@@ -304,11 +304,11 @@ export class WorkingGenerationCoordinator {
           });
         }
         active = false;
-        this.#managementBarrierActive = false;
+        this.managementBarrierActive = false;
       },
       openFlush: () => {
         requireActive();
-        return this.#openFlush({ managementBarrierOwned: true });
+        return this.openFlushInternal({ managementBarrierOwned: true });
       },
       target,
     });
@@ -316,12 +316,12 @@ export class WorkingGenerationCoordinator {
 
   snapshot(): WorkingGenerationCoordinatorSnapshot {
     return Object.freeze({
-      dirtyResources: this.#dirtyResources.snapshot(),
-      durableGeneration: this.#durableGeneration,
-      flushState: this.#flushActive ? "flushing" : this.#durabilityStalled ? "stalled" : "idle",
-      managementBarrierActive: this.#managementBarrierActive,
-      syncWaiterCount: this.#syncWaiters.waiterCount(),
-      workingGeneration: this.#workingGeneration,
+      dirtyResources: this.dirtyResources.snapshot(),
+      durableGeneration: this.durableGeneration,
+      flushState: this.flushActive ? "flushing" : this.durabilityStalled ? "stalled" : "idle",
+      managementBarrierActive: this.managementBarrierActive,
+      syncWaiterCount: this.syncWaiters.waiterCount(),
+      workingGeneration: this.workingGeneration,
     });
   }
 }

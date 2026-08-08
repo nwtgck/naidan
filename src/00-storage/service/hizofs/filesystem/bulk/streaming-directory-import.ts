@@ -73,18 +73,18 @@ function requireEntryMutationBatchLimit({ limits }: { limits: StreamingDirectory
  * File System Commit or Superblock.
  */
 export class StreamingDirectoryImport {
-  readonly #inodeNumber: InodeNumber;
-  readonly #inodeRevision: InodeRevision;
-  readonly #mutationBatchLimit: number;
-  readonly #pageStore: DirectoryPageTreePageStore;
-  readonly #timestamps: InodeTimestamps;
-  #inlineEncodedBytes = 0;
-  #inlineEntries: DirectoryLeafEntry[] = [];
-  #pendingTreeMutations: DirectoryPageTreeMutation[] = [];
-  #previousName: string | undefined;
-  #previousNameBytes: Uint8Array | undefined;
-  #state: StreamingDirectoryImportState = "active";
-  #treeRoot: HomeRecordReference | undefined;
+  private readonly inodeNumber: InodeNumber;
+  private readonly inodeRevision: InodeRevision;
+  private readonly mutationBatchLimit: number;
+  private readonly pageStore: DirectoryPageTreePageStore;
+  private readonly timestamps: InodeTimestamps;
+  private inlineEncodedBytes = 0;
+  private inlineEntries: DirectoryLeafEntry[] = [];
+  private pendingTreeMutations: DirectoryPageTreeMutation[] = [];
+  private previousName: string | undefined;
+  private previousNameBytes: Uint8Array | undefined;
+  private stateValue: StreamingDirectoryImportState = "active";
+  private treeRoot: HomeRecordReference | undefined;
 
   constructor({ inodeNumber, inodeRevision, limits, pageStore, timestamps }: {
     inodeNumber: InodeNumber;
@@ -93,11 +93,11 @@ export class StreamingDirectoryImport {
     pageStore: DirectoryPageTreePageStore;
     timestamps: InodeTimestamps;
   }) {
-    this.#inodeNumber = inodeNumber;
-    this.#inodeRevision = inodeRevision;
-    this.#mutationBatchLimit = requireEntryMutationBatchLimit({ limits });
-    this.#pageStore = pageStore;
-    this.#timestamps = { ...timestamps };
+    this.inodeNumber = inodeNumber;
+    this.inodeRevision = inodeRevision;
+    this.mutationBatchLimit = requireEntryMutationBatchLimit({ limits });
+    this.pageStore = pageStore;
+    this.timestamps = { ...timestamps };
   }
 
   static restore({ checkpoint, limits, pageStore }: {
@@ -114,25 +114,25 @@ export class StreamingDirectoryImport {
     });
     switch (checkpoint.content.type) {
     case "inline": {
-      value.#inlineEntries = checkpoint.content.entries.map(entry => cloneDirectoryEntry({ entry }));
-      value.#inlineEncodedBytes = value.#inlineEntries.reduce(
+      value.inlineEntries = checkpoint.content.entries.map(entry => cloneDirectoryEntry({ entry }));
+      value.inlineEncodedBytes = value.inlineEntries.reduce(
         (total, entry) => total + encodeDirectoryEntry({ entry }).byteLength,
         0,
       );
       break;
     }
-    case "tree": value.#treeRoot = checkpoint.content.directoryTreeRootHomeRef; break;
+    case "tree": value.treeRoot = checkpoint.content.directoryTreeRootHomeRef; break;
     default: checkpoint.content satisfies never;
     }
-    value.#previousNameBytes = checkpoint.previousName === undefined
+    value.previousNameBytes = checkpoint.previousName === undefined
       ? undefined
       : encodeFilenameComponent({ value: checkpoint.previousName });
-    value.#previousName = checkpoint.previousName;
+    value.previousName = checkpoint.previousName;
     return value;
   }
 
-  #assertActive(): void {
-    switch (this.#state) {
+  private assertActive(): void {
+    switch (this.stateValue) {
     case "active": return;
     case "failed": throw new StreamingDirectoryImportError({
       code: "import_failed",
@@ -142,115 +142,115 @@ export class StreamingDirectoryImport {
       code: "already_finalized",
       message: "streaming directory import was already finalized",
     });
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
   }
 
-  async #ensureTreeRoot(): Promise<HomeRecordReference> {
-    if (this.#treeRoot !== undefined) return this.#treeRoot;
-    this.#treeRoot = await this.#pageStore.writePage({
+  private async ensureTreeRoot(): Promise<HomeRecordReference> {
+    if (this.treeRoot !== undefined) return this.treeRoot;
+    this.treeRoot = await this.pageStore.writePage({
       isRoot: true,
       page: { entries: [], level: 0, type: "leaf" },
     });
-    return this.#treeRoot;
+    return this.treeRoot;
   }
 
-  async #flushTreeMutations(): Promise<void> {
-    if (this.#pendingTreeMutations.length === 0) return;
-    this.#treeRoot = await applyDirectoryPageTreeMutations({
-      changes: this.#pendingTreeMutations,
-      pageStore: this.#pageStore,
-      rootReference: await this.#ensureTreeRoot(),
+  private async flushTreeMutations(): Promise<void> {
+    if (this.pendingTreeMutations.length === 0) return;
+    this.treeRoot = await applyDirectoryPageTreeMutations({
+      changes: this.pendingTreeMutations,
+      pageStore: this.pageStore,
+      rootReference: await this.ensureTreeRoot(),
     });
-    this.#pendingTreeMutations = [];
+    this.pendingTreeMutations = [];
   }
 
-  async #appendTreeEntry({ entry }: { entry: DirectoryLeafEntry }): Promise<void> {
-    this.#pendingTreeMutations.push({ entry: cloneDirectoryEntry({ entry }), type: "set" });
-    if (this.#pendingTreeMutations.length >= this.#mutationBatchLimit) {
-      await this.#flushTreeMutations();
+  private async appendTreeEntry({ entry }: { entry: DirectoryLeafEntry }): Promise<void> {
+    this.pendingTreeMutations.push({ entry: cloneDirectoryEntry({ entry }), type: "set" });
+    if (this.pendingTreeMutations.length >= this.mutationBatchLimit) {
+      await this.flushTreeMutations();
     }
   }
 
   async addEntry({ entry }: { entry: DirectoryLeafEntry }): Promise<void> {
-    this.#assertActive();
+    this.assertActive();
     try {
       const nameBytes = encodeFilenameComponent({ value: entry.name });
-      if (this.#previousNameBytes !== undefined
-        && compareUnsignedBytes({ left: this.#previousNameBytes, right: nameBytes }) >= 0) {
+      if (this.previousNameBytes !== undefined
+        && compareUnsignedBytes({ left: this.previousNameBytes, right: nameBytes }) >= 0) {
         throw new StreamingDirectoryImportError({
           code: "non_canonical_entry_order",
           message: "streaming directory entries must be strictly ascending by canonical filename bytes",
         });
       }
-      this.#previousNameBytes = nameBytes;
-      this.#previousName = entry.name;
+      this.previousNameBytes = nameBytes;
+      this.previousName = entry.name;
       const ownedEntry = cloneDirectoryEntry({ entry });
       const encodedLength = encodeDirectoryEntry({ entry: ownedEntry }).byteLength;
 
-      if (this.#treeRoot === undefined
-        && this.#inlineEncodedBytes + encodedLength <= HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes) {
-        this.#inlineEntries.push(ownedEntry);
-        this.#inlineEncodedBytes += encodedLength;
+      if (this.treeRoot === undefined
+        && this.inlineEncodedBytes + encodedLength <= HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes) {
+        this.inlineEntries.push(ownedEntry);
+        this.inlineEncodedBytes += encodedLength;
         return;
       }
 
-      if (this.#treeRoot === undefined) {
-        await this.#ensureTreeRoot();
-        for (const inlineEntry of this.#inlineEntries) {
-          await this.#appendTreeEntry({ entry: inlineEntry });
+      if (this.treeRoot === undefined) {
+        await this.ensureTreeRoot();
+        for (const inlineEntry of this.inlineEntries) {
+          await this.appendTreeEntry({ entry: inlineEntry });
         }
-        this.#inlineEntries = [];
-        this.#inlineEncodedBytes = 0;
+        this.inlineEntries = [];
+        this.inlineEncodedBytes = 0;
       }
-      await this.#appendTreeEntry({ entry: ownedEntry });
+      await this.appendTreeEntry({ entry: ownedEntry });
     } catch (cause: unknown) {
-      this.#state = "failed";
+      this.stateValue = "failed";
       throw cause;
     }
   }
 
   async finalize(): Promise<DirectoryInodeEntry> {
-    this.#assertActive();
+    this.assertActive();
     try {
-      if (this.#treeRoot !== undefined) await this.#flushTreeMutations();
-      this.#state = "finalized";
+      if (this.treeRoot !== undefined) await this.flushTreeMutations();
+      this.stateValue = "finalized";
       return {
-        content: this.#treeRoot === undefined
-          ? { entries: this.#inlineEntries.map(entry => cloneDirectoryEntry({ entry })), type: "inline" }
-          : { directoryTreeRootHomeRef: this.#treeRoot, type: "tree" },
+        content: this.treeRoot === undefined
+          ? { entries: this.inlineEntries.map(entry => cloneDirectoryEntry({ entry })), type: "inline" }
+          : { directoryTreeRootHomeRef: this.treeRoot, type: "tree" },
         inodeKind: "directory",
-        inodeNumber: this.#inodeNumber,
-        inodeRevision: this.#inodeRevision,
-        timestamps: { ...this.#timestamps },
+        inodeNumber: this.inodeNumber,
+        inodeRevision: this.inodeRevision,
+        timestamps: { ...this.timestamps },
       };
     } catch (cause: unknown) {
-      this.#state = "failed";
+      this.stateValue = "failed";
       throw cause;
     }
   }
 
   async checkpoint(): Promise<StreamingDirectoryImportCheckpoint> {
-    this.#assertActive();
+    this.assertActive();
     try {
-      if (this.#treeRoot !== undefined) await this.#flushTreeMutations();
+      if (this.treeRoot !== undefined) await this.flushTreeMutations();
       return {
-        content: this.#treeRoot === undefined
-          ? { entries: this.#inlineEntries.map(entry => cloneDirectoryEntry({ entry })), type: "inline" }
-          : { directoryTreeRootHomeRef: this.#treeRoot, type: "tree" },
-        inodeNumber: this.#inodeNumber,
-        inodeRevision: this.#inodeRevision,
-        previousName: this.#previousName,
-        timestamps: { ...this.#timestamps },
+        content: this.treeRoot === undefined
+          ? { entries: this.inlineEntries.map(entry => cloneDirectoryEntry({ entry })), type: "inline" }
+          : { directoryTreeRootHomeRef: this.treeRoot, type: "tree" },
+        inodeNumber: this.inodeNumber,
+        inodeRevision: this.inodeRevision,
+        previousName: this.previousName,
+        timestamps: { ...this.timestamps },
       };
     } catch (cause: unknown) {
-      this.#state = "failed";
+      this.stateValue = "failed";
       throw cause;
     }
   }
 
   state(): StreamingDirectoryImportState {
-    return this.#state;
+    return this.stateValue;
   }
 }
 

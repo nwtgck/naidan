@@ -55,12 +55,12 @@ function isMetadataReference({ reference }: { reference: HomeRecordReference }):
  * Eviction and owner-scope disposal zero retained plaintext before dropping it.
  */
 export class AuthenticatedMetadataRecordCache {
-  readonly #diagnosticScope: AuthenticatedMetadataRecordCacheScope;
-  readonly #diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
-  readonly #entries = new Map<string, CacheEntry>();
-  readonly #policy: AuthenticatedMetadataRecordCachePolicy;
-  #currentBytes = 0;
-  #disposed = false;
+  private readonly diagnosticScope: AuthenticatedMetadataRecordCacheScope;
+  private readonly diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
+  private readonly entries = new Map<string, CacheEntry>();
+  private readonly policy: AuthenticatedMetadataRecordCachePolicy;
+  private currentBytes = 0;
+  private disposed = false;
 
   constructor({ diagnosticScope = "session", diagnostics, policy }: {
     diagnosticScope?: AuthenticatedMetadataRecordCacheScope;
@@ -69,22 +69,22 @@ export class AuthenticatedMetadataRecordCache {
   }) {
     validateBound({ name: "metadata cache maximum bytes", value: policy.maximumBytes });
     validateBound({ name: "metadata cache maximum entries", value: policy.maximumEntries });
-    this.#diagnosticScope = diagnosticScope;
-    this.#diagnostics = diagnostics;
-    this.#policy = Object.freeze({ ...policy });
-    this.#reportUsage();
+    this.diagnosticScope = diagnosticScope;
+    this.diagnostics = diagnostics;
+    this.policy = Object.freeze({ ...policy });
+    this.reportUsage();
   }
 
   clear(): void {
-    for (const entry of this.#entries.values()) entry.plaintext.fill(0);
-    this.#entries.clear();
-    this.#currentBytes = 0;
-    this.#reportUsage();
+    for (const entry of this.entries.values()) entry.plaintext.fill(0);
+    this.entries.clear();
+    this.currentBytes = 0;
+    this.reportUsage();
   }
 
   dispose(): void {
-    if (this.#disposed) return;
-    this.#disposed = true;
+    if (this.disposed) return;
+    this.disposed = true;
     this.clear();
   }
 
@@ -93,68 +93,68 @@ export class AuthenticatedMetadataRecordCache {
     reference: HomeRecordReference;
     recordKind: number;
   }): void {
-    if (this.#disposed) throw new TypeError("authenticated metadata cache is disposed");
+    if (this.disposed) throw new TypeError("authenticated metadata cache is disposed");
     if (reference.recordKind !== recordKind) {
       throw new TypeError("authenticated metadata cache write admission has the wrong Record Kind");
     }
     if (!isMetadataReference({ reference })) return;
 
     const identity = referenceIdentity({ reference });
-    const existing = this.#entries.get(identity);
+    const existing = this.entries.get(identity);
     if (existing !== undefined) {
       if (existing.recordKind !== recordKind || !bytesEqual({ left: existing.plaintext, right: plaintext })) {
         throw new TypeError("authenticated metadata cache write admission conflicts with retained immutable plaintext");
       }
-      this.#entries.delete(identity);
-      this.#entries.set(identity, existing);
+      this.entries.delete(identity);
+      this.entries.set(identity, existing);
       return;
     }
     if (
-      this.#policy.maximumBytes === 0
-      || this.#policy.maximumEntries === 0
-      || plaintext.byteLength > this.#policy.maximumBytes
+      this.policy.maximumBytes === 0
+      || this.policy.maximumEntries === 0
+      || plaintext.byteLength > this.policy.maximumBytes
     ) {
       return;
     }
 
     const retained = plaintext.slice();
     while (
-      this.#entries.size >= this.#policy.maximumEntries
-      || this.#currentBytes + retained.byteLength > this.#policy.maximumBytes
+      this.entries.size >= this.policy.maximumEntries
+      || this.currentBytes + retained.byteLength > this.policy.maximumBytes
     ) {
-      const oldest = this.#entries.entries().next().value as [string, CacheEntry] | undefined;
+      const oldest = this.entries.entries().next().value as [string, CacheEntry] | undefined;
       if (oldest === undefined) break;
       const [oldestIdentity, oldestEntry] = oldest;
-      this.#entries.delete(oldestIdentity);
-      this.#currentBytes -= oldestEntry.plaintext.byteLength;
+      this.entries.delete(oldestIdentity);
+      this.currentBytes -= oldestEntry.plaintext.byteLength;
       oldestEntry.plaintext.fill(0);
-      this.#diagnostics?.recordMetadataCacheEvent?.({
+      this.diagnostics?.recordMetadataCacheEvent?.({
         event: "eviction",
         recordKind: oldestEntry.recordKind,
-        scope: this.#diagnosticScope,
+        scope: this.diagnosticScope,
       });
     }
-    this.#entries.set(identity, { plaintext: retained, recordKind });
-    this.#currentBytes += retained.byteLength;
-    this.#reportUsage();
+    this.entries.set(identity, { plaintext: retained, recordKind });
+    this.currentBytes += retained.byteLength;
+    this.reportUsage();
   }
 
   async read({ load, reference }: {
     load: () => Promise<AuthenticatedMetadataRecord>;
     reference: HomeRecordReference;
   }): Promise<AuthenticatedMetadataRecord> {
-    if (this.#disposed) throw new TypeError("authenticated metadata cache is disposed");
+    if (this.disposed) throw new TypeError("authenticated metadata cache is disposed");
     if (!isMetadataReference({ reference })) return await load();
 
     const identity = referenceIdentity({ reference });
-    const cached = this.#entries.get(identity);
+    const cached = this.entries.get(identity);
     if (cached !== undefined) {
-      this.#entries.delete(identity);
-      this.#entries.set(identity, cached);
-      this.#diagnostics?.recordMetadataCacheEvent?.({
+      this.entries.delete(identity);
+      this.entries.set(identity, cached);
+      this.diagnostics?.recordMetadataCacheEvent?.({
         event: "hit",
         recordKind: cached.recordKind,
-        scope: this.#diagnosticScope,
+        scope: this.diagnosticScope,
       });
       return {
         plaintext: cached.plaintext.slice(),
@@ -162,13 +162,13 @@ export class AuthenticatedMetadataRecordCache {
       };
     }
 
-    this.#diagnostics?.recordMetadataCacheEvent?.({
+    this.diagnostics?.recordMetadataCacheEvent?.({
       event: "miss",
       recordKind: reference.recordKind,
-      scope: this.#diagnosticScope,
+      scope: this.diagnosticScope,
     });
     const loaded = await load();
-    if (this.#disposed) {
+    if (this.disposed) {
       loaded.plaintext.fill(0);
       throw new TypeError("authenticated metadata cache was disposed while loading a record");
     }
@@ -177,15 +177,15 @@ export class AuthenticatedMetadataRecordCache {
       throw new TypeError("authenticated metadata cache load returned the wrong Record Kind");
     }
 
-    const concurrentlyCached = this.#entries.get(identity);
+    const concurrentlyCached = this.entries.get(identity);
     if (concurrentlyCached !== undefined) {
       loaded.plaintext.fill(0);
-      this.#entries.delete(identity);
-      this.#entries.set(identity, concurrentlyCached);
-      this.#diagnostics?.recordMetadataCacheEvent?.({
+      this.entries.delete(identity);
+      this.entries.set(identity, concurrentlyCached);
+      this.diagnostics?.recordMetadataCacheEvent?.({
         event: "hit",
         recordKind: concurrentlyCached.recordKind,
-        scope: this.#diagnosticScope,
+        scope: this.diagnosticScope,
       });
       return {
         plaintext: concurrentlyCached.plaintext.slice(),
@@ -193,44 +193,44 @@ export class AuthenticatedMetadataRecordCache {
       };
     }
     if (
-      this.#policy.maximumBytes === 0
-      || this.#policy.maximumEntries === 0
-      || loaded.plaintext.byteLength > this.#policy.maximumBytes
+      this.policy.maximumBytes === 0
+      || this.policy.maximumEntries === 0
+      || loaded.plaintext.byteLength > this.policy.maximumBytes
     ) {
       return loaded;
     }
 
     const retained = loaded.plaintext.slice();
     while (
-      this.#entries.size >= this.#policy.maximumEntries
-      || this.#currentBytes + retained.byteLength > this.#policy.maximumBytes
+      this.entries.size >= this.policy.maximumEntries
+      || this.currentBytes + retained.byteLength > this.policy.maximumBytes
     ) {
-      const oldest = this.#entries.entries().next().value as [string, CacheEntry] | undefined;
+      const oldest = this.entries.entries().next().value as [string, CacheEntry] | undefined;
       if (oldest === undefined) break;
       const [oldestIdentity, oldestEntry] = oldest;
-      this.#entries.delete(oldestIdentity);
-      this.#currentBytes -= oldestEntry.plaintext.byteLength;
+      this.entries.delete(oldestIdentity);
+      this.currentBytes -= oldestEntry.plaintext.byteLength;
       oldestEntry.plaintext.fill(0);
-      this.#diagnostics?.recordMetadataCacheEvent?.({
+      this.diagnostics?.recordMetadataCacheEvent?.({
         event: "eviction",
         recordKind: oldestEntry.recordKind,
-        scope: this.#diagnosticScope,
+        scope: this.diagnosticScope,
       });
     }
-    this.#entries.set(identity, {
+    this.entries.set(identity, {
       plaintext: retained,
       recordKind: loaded.recordKind,
     });
-    this.#currentBytes += retained.byteLength;
-    this.#reportUsage();
+    this.currentBytes += retained.byteLength;
+    this.reportUsage();
     return loaded;
   }
 
-  #reportUsage(): void {
-    this.#diagnostics?.setMetadataCacheUsage?.({
-      bytes: this.#currentBytes,
-      entries: this.#entries.size,
-      scope: this.#diagnosticScope,
+  private reportUsage(): void {
+    this.diagnostics?.setMetadataCacheUsage?.({
+      bytes: this.currentBytes,
+      entries: this.entries.size,
+      scope: this.diagnosticScope,
     });
   }
 }

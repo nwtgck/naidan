@@ -39,8 +39,8 @@ class MemoryPhysicalPort implements PersistenceControlPhysicalPort {
   public readonly files = new Map<0 | 1, Uint8Array>();
   public readonly publications: Array<{ copy: 0 | 1; bytes: Uint8Array }> = [];
   public failPublicationNumber: number | undefined;
-  #publicationCount = 0;
-  #locked = false;
+  private publicationCount = 0;
+  private locked = false;
 
   public async readFileBounded({ copy, maximumByteLength }: { copy: 0 | 1; maximumByteLength: number }): Promise<Uint8Array | undefined> {
     const bytes = this.files.get(copy);
@@ -50,20 +50,20 @@ class MemoryPhysicalPort implements PersistenceControlPhysicalPort {
   }
 
   public async publishWholeFileDurably({ bytes, copy }: { bytes: Uint8Array; copy: 0 | 1 }): Promise<void> {
-    this.#publicationCount += 1;
-    if (this.#publicationCount === this.failPublicationNumber) throw new Error('injected durable publication failure');
+    this.publicationCount += 1;
+    if (this.publicationCount === this.failPublicationNumber) throw new Error('injected durable publication failure');
     const owned = Uint8Array.from(bytes);
     this.files.set(copy, owned);
     this.publications.push({ bytes: owned, copy });
   }
 
   public async runExclusive<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
-    if (this.#locked) throw new Error('exclusive publication overlap');
-    this.#locked = true;
+    if (this.locked) throw new Error('exclusive publication overlap');
+    this.locked = true;
     try {
       return await operation();
     } finally {
-      this.#locked = false;
+      this.locked = false;
     }
   }
 }

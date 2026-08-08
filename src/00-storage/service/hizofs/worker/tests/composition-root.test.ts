@@ -969,6 +969,433 @@ describe("HizoFS worker composition root", () => {
     }
   });
 
+  it("lets a prepared writable finish while a dirty-age publication waits for its writer", async () => {
+    vi.useFakeTimers();
+    try {
+      const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+      const randomSource = deterministicRandomSource();
+      const supportedFeatureBits = createFeatureBits({ value: 0n });
+      const passphrase = "correct horse battery staple";
+      const opened = await createEmptyEncryptedContainer({
+        backend,
+        passphrase,
+        randomSource,
+        supportedFeatureBits,
+      });
+      const host = runtimeHost({
+        lazyDurability: {
+          ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+          maximumDirtyAgeMilliseconds: 1,
+        },
+      });
+      const session = await openAuthenticatedReadWriteApplicationSession({
+        captureAuthority: async () => ({ revision: 1 }),
+        recheckAuthority: async () => undefined,
+        runtimeHost: host,
+        verifyCapturedAuthority: async () => ({
+          backend,
+          canonicalBackingLocation: "memory://queued-publication-prepared-writable.hizofs",
+          explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+          fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+          opened,
+          operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+          randomSource,
+          removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+          recheckDurableGenerationAuthority: async () => undefined,
+          rootSubvolumeId: createSubvolumeId({ value: 1n }),
+          supportedFeatureBits,
+          writableProfile: "release-qualified",
+        }),
+      });
+
+      const file = await session.root.getFileHandle({ create: true, name: "queued.bin" });
+      const writable = await file.createWritable({ keepExistingData: false });
+      await writable.write({ data: Uint8Array.of(1, 2, 3, 4), position: 0 });
+
+      await vi.advanceTimersByTimeAsync(1);
+      await writable.close();
+      vi.useRealTimers();
+      await session.sync();
+      await session.close();
+
+      const reopened = await openEmptyEncryptedContainer({
+        backend,
+        passphrase,
+        supportedFeatureBits,
+      });
+      try {
+        const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+        try {
+          await expect(resources.namespace.stat({ pathComponents: ["queued.bin"] }))
+            .resolves.toMatchObject({ fileSize: 4n, kind: "file" });
+        } finally {
+          await resources.releaseResources();
+        }
+      } finally {
+        if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 2_000);
+
+  it("lets a prepared writable abort while dirty-age publication waits for its writer", async () => {
+    vi.useFakeTimers();
+    try {
+      const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+      const randomSource = deterministicRandomSource();
+      const supportedFeatureBits = createFeatureBits({ value: 0n });
+      const passphrase = "correct horse battery staple";
+      const opened = await createEmptyEncryptedContainer({
+        backend,
+        passphrase,
+        randomSource,
+        supportedFeatureBits,
+      });
+      const host = runtimeHost({
+        lazyDurability: {
+          ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+          maximumDirtyAgeMilliseconds: 1,
+        },
+      });
+      const session = await openAuthenticatedReadWriteApplicationSession({
+        captureAuthority: async () => ({ revision: 1 }),
+        recheckAuthority: async () => undefined,
+        runtimeHost: host,
+        verifyCapturedAuthority: async () => ({
+          backend,
+          canonicalBackingLocation: "memory://queued-publication-aborted-writable.hizofs",
+          explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+          fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+          opened,
+          operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+          randomSource,
+          removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+          recheckDurableGenerationAuthority: async () => undefined,
+          rootSubvolumeId: createSubvolumeId({ value: 1n }),
+          supportedFeatureBits,
+          writableProfile: "release-qualified",
+        }),
+      });
+
+      const file = await session.root.getFileHandle({ create: true, name: "aborted.bin" });
+      const writable = await file.createWritable({ keepExistingData: false });
+      await writable.write({ data: Uint8Array.of(9, 8, 7, 6), position: 0 });
+
+      await vi.advanceTimersByTimeAsync(1);
+      await writable.abort({ reason: new Error("benchmark-style cancellation") });
+      vi.useRealTimers();
+      await session.sync();
+      await session.close();
+
+      const reopened = await openEmptyEncryptedContainer({
+        backend,
+        passphrase,
+        supportedFeatureBits,
+      });
+      try {
+        const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+        try {
+          await expect(resources.namespace.stat({ pathComponents: ["aborted.bin"] }))
+            .resolves.toMatchObject({ fileSize: 0n, kind: "file" });
+        } finally {
+          await resources.releaseResources();
+        }
+      } finally {
+        if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 2_000);
+
+  it("repeats small-file writes while dirty-age publication queues behind prepared writers", async () => {
+    vi.useFakeTimers();
+    try {
+      const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+      const randomSource = deterministicRandomSource();
+      const supportedFeatureBits = createFeatureBits({ value: 0n });
+      const passphrase = "correct horse battery staple";
+      const opened = await createEmptyEncryptedContainer({
+        backend,
+        passphrase,
+        randomSource,
+        supportedFeatureBits,
+      });
+      const host = runtimeHost({
+        lazyDurability: {
+          ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+          maximumDirtyAgeMilliseconds: 1,
+        },
+      });
+      let nextTimestamp = 1_700_000_000_000n;
+      const session = await openAuthenticatedReadWriteApplicationSession({
+        captureAuthority: async () => ({ revision: 1 }),
+        recheckAuthority: async () => undefined,
+        runtimeHost: host,
+        verifyCapturedAuthority: async () => ({
+          backend,
+          canonicalBackingLocation: "memory://repeated-queued-publication-small-file-writes.hizofs",
+          explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+          fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+          opened,
+          operationTimestamp: () => {
+            const timestamp = createTimestampMilliseconds({ value: nextTimestamp });
+            nextTimestamp += 1n;
+            return timestamp;
+          },
+          randomSource,
+          removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+          recheckDurableGenerationAuthority: async () => undefined,
+          rootSubvolumeId: createSubvolumeId({ value: 1n }),
+          supportedFeatureBits,
+          writableProfile: "release-qualified",
+        }),
+      });
+
+      const file = await session.root.getFileHandle({ create: true, name: "repeated.bin" });
+      for (let iteration = 0; iteration < 32; iteration += 1) {
+        const writable = await file.createWritable({ keepExistingData: false });
+        await writable.write({ data: Uint8Array.of(iteration & 0xff, 2, 3, 4), position: 0 });
+        // Reproduce the browser ordering: a prior accepted mutation's dirty-age
+        // timer fires while this prepared writable still owns the runtime writer.
+        await vi.advanceTimersByTimeAsync(1);
+        await writable.close();
+      }
+
+      vi.useRealTimers();
+      await session.sync();
+      await session.close();
+
+      const reopened = await openEmptyEncryptedContainer({
+        backend,
+        passphrase,
+        supportedFeatureBits,
+      });
+      try {
+        const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+        try {
+          await expect(resources.namespace.stat({ pathComponents: ["repeated.bin"] }))
+            .resolves.toMatchObject({ fileSize: 4n, kind: "file" });
+        } finally {
+          await resources.releaseResources();
+        }
+      } finally {
+        if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 15_000);
+
+  it("lets an explicit bulk commit finish while dirty-age publication waits for its writer", async () => {
+    vi.useFakeTimers();
+    try {
+      const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+      const randomSource = deterministicRandomSource();
+      const supportedFeatureBits = createFeatureBits({ value: 0n });
+      const passphrase = "correct horse battery staple";
+      const opened = await createEmptyEncryptedContainer({
+        backend,
+        passphrase,
+        randomSource,
+        supportedFeatureBits,
+      });
+      const session = await openAuthenticatedReadWriteApplicationSession({
+        captureAuthority: async () => ({ revision: 1 }),
+        recheckAuthority: async () => undefined,
+        runtimeHost: runtimeHost({
+          lazyDurability: {
+            ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+            maximumDirtyAgeMilliseconds: 1,
+          },
+        }),
+        verifyCapturedAuthority: async () => ({
+          backend,
+          canonicalBackingLocation: "memory://queued-publication-explicit-bulk.hizofs",
+          explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+          fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+          opened,
+          operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+          randomSource,
+          removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+          recheckDurableGenerationAuthority: async () => undefined,
+          rootSubvolumeId: createSubvolumeId({ value: 1n }),
+          supportedFeatureBits,
+          writableProfile: "release-qualified",
+        }),
+      });
+      if (!(session instanceof HizoFSStorageFileSystemSession)) {
+        throw new Error("expected concrete HizoFS application session");
+      }
+
+      await session.root.getDirectoryHandle({ create: true, name: "bulk" });
+      const openExplicitBulk = session.port.openExplicitBulk;
+      if (openExplicitBulk === undefined) throw new Error("production session omitted explicit bulk support");
+      const bulk = await openExplicitBulk({ path: ["bulk"] });
+      await bulk.createEmptyFile({ name: "queued.txt" });
+
+      // The target-directory create scheduled a dirty-age publication. Fire it
+      // while this prepared bulk mutation still owns the runtime writer.
+      await vi.advanceTimersByTimeAsync(1);
+      await bulk.commit();
+
+      vi.useRealTimers();
+      await session.sync();
+      await session.close();
+
+      const reopened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+      try {
+        const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+        try {
+          await expect(resources.namespace.stat({ pathComponents: ["bulk", "queued.txt"] }))
+            .resolves.toMatchObject({ kind: "file" });
+        } finally {
+          await resources.releaseResources();
+        }
+      } finally {
+        if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 3_000);
+
+  it("publishes at the accepted-mutation bound before admitting the next mutation", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const passphrase = "correct horse battery staple";
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase,
+      randomSource,
+      supportedFeatureBits,
+    });
+    const initialCommitSequence = opened.commit.commitSequence;
+    const host = runtimeHost({
+      lazyDurability: {
+        ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+        maximumAcceptedMutationsPerDirtyEpoch: 1,
+      },
+    });
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: host,
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://mutation-pressure-rollover.hizofs",
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        opened,
+        operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+        randomSource,
+        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+
+    await session.root.getDirectoryHandle({ create: true, name: "first" });
+    await session.root.getDirectoryHandle({ create: true, name: "second" });
+    await session.sync();
+    await session.close();
+
+    const reopened = await openEmptyEncryptedContainer({
+      backend,
+      passphrase,
+      supportedFeatureBits,
+    });
+    try {
+      expect(reopened.commit.commitSequence).toBe(initialCommitSequence + 2n);
+      const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+      try {
+        await expect(resources.namespace.stat({ pathComponents: ["first"] }))
+          .resolves.toMatchObject({ kind: "directory" });
+        await expect(resources.namespace.stat({ pathComponents: ["second"] }))
+          .resolves.toMatchObject({ kind: "directory" });
+      } finally {
+        await resources.releaseResources();
+      }
+    } finally {
+      if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+    }
+  });
+
+  it("yields an already-queued concurrent mutation to resource-pressure publication", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const passphrase = "correct horse battery staple";
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase,
+      randomSource,
+      supportedFeatureBits,
+    });
+    const initialCommitSequence = opened.commit.commitSequence;
+    const host = runtimeHost({
+      lazyDurability: {
+        ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+        maximumAcceptedMutationsPerDirtyEpoch: 1,
+      },
+    });
+    let nextTimestamp = 1_700_000_000_000n;
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: host,
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://concurrent-mutation-pressure-rollover.hizofs",
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        opened,
+        operationTimestamp: () => {
+          const timestamp = createTimestampMilliseconds({ value: nextTimestamp });
+          nextTimestamp += 1n;
+          return timestamp;
+        },
+        randomSource,
+        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+
+    await Promise.all([
+      session.root.getDirectoryHandle({ create: true, name: "first-concurrent" }),
+      session.root.getDirectoryHandle({ create: true, name: "second-concurrent" }),
+    ]);
+    await session.sync();
+    await session.close();
+
+    const reopened = await openEmptyEncryptedContainer({
+      backend,
+      passphrase,
+      supportedFeatureBits,
+    });
+    try {
+      expect(reopened.commit.commitSequence).toBe(initialCommitSequence + 2n);
+      const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+      try {
+        await expect(resources.namespace.stat({ pathComponents: ["first-concurrent"] }))
+          .resolves.toMatchObject({ kind: "directory" });
+        await expect(resources.namespace.stat({ pathComponents: ["second-concurrent"] }))
+          .resolves.toMatchObject({ kind: "directory" });
+      } finally {
+        await resources.releaseResources();
+      }
+    } finally {
+      if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+    }
+  });
+
   it("rejects exact mutation resource overflow before Superblock publication", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();

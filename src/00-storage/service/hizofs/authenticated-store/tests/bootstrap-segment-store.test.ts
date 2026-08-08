@@ -58,12 +58,12 @@ describe("HizoFS initial bootstrap segment", () => {
   it("checks Segment ID collisions across metadata and data classes", async () => {
     class ObservedBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
       public readonly sizeChecks: string[] = [];
-      #injectOneDataCollision = true;
+      private injectOneDataCollision = true;
 
       public override async getFileSize(input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["getFileSize"]>[0]) {
         this.sizeChecks.push(input.path);
-        if (this.#injectOneDataCollision && input.path.includes("/data/")) {
-          this.#injectOneDataCollision = false;
+        if (this.injectOneDataCollision && input.path.includes("/data/")) {
+          this.injectOneDataCollision = false;
           return 1n;
         }
         return await super.getFileSize(input);

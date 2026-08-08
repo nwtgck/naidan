@@ -253,12 +253,12 @@ async function closeWithPrimaryFailure({ close, primary }: {
 }
 
 class RuntimeBoundExplicitBulk implements HizoFSApplicationExplicitBulkBuilder {
-  #active = true;
-  #assertOperationAllowed: () => void;
-  #mutationSuccessCondition: HizoFSApplicationMutationSuccessCondition;
-  #onClosed: () => void;
-  #prepared: HizoFSApplicationPreparedExplicitBulk;
-  #writer: HizoFSApplicationRuntimeWriter;
+  private active = true;
+  private assertOperationAllowed: () => void;
+  private mutationSuccessCondition: HizoFSApplicationMutationSuccessCondition;
+  private onClosed: () => void;
+  private prepared: HizoFSApplicationPreparedExplicitBulk;
+  private writer: HizoFSApplicationRuntimeWriter;
 
   constructor({ assertOperationAllowed, mutationSuccessCondition, onClosed, prepared, writer }: {
     assertOperationAllowed: () => void;
@@ -267,51 +267,51 @@ class RuntimeBoundExplicitBulk implements HizoFSApplicationExplicitBulkBuilder {
     prepared: HizoFSApplicationPreparedExplicitBulk;
     writer: HizoFSApplicationRuntimeWriter;
   }) {
-    this.#assertOperationAllowed = assertOperationAllowed;
-    this.#mutationSuccessCondition = mutationSuccessCondition;
-    this.#onClosed = onClosed;
-    this.#prepared = prepared;
-    this.#writer = writer;
+    this.assertOperationAllowed = assertOperationAllowed;
+    this.mutationSuccessCondition = mutationSuccessCondition;
+    this.onClosed = onClosed;
+    this.prepared = prepared;
+    this.writer = writer;
   }
 
-  #assertOpen(): void {
-    if (!this.#active) throw new HizoFSApplicationSessionPortError({
+  private assertOpen(): void {
+    if (!this.active) throw new HizoFSApplicationSessionPortError({
       code: "session_closed",
       message: "HizoFS explicit bulk builder is closed",
     });
   }
 
-  async #finish({ operation }: { operation: () => Promise<void> }): Promise<void> {
-    this.#assertOpen();
-    this.#active = false;
+  private async finish({ operation }: { operation: () => Promise<void> }): Promise<void> {
+    this.assertOpen();
+    this.active = false;
     let primary: unknown | undefined;
     try {
       await operation();
     } catch (cause: unknown) {
       primary = cause;
     } finally {
-      this.#onClosed();
+      this.onClosed();
     }
     await closeWithPrimaryFailure({
-      close: async () => await this.#writer.close(),
+      close: async () => await this.writer.close(),
       primary,
     });
   }
 
   async abort({ reason }: { reason: unknown }): Promise<void> {
-    await this.#finish({ operation: async () => await this.#prepared.abort({ reason }) });
+    await this.finish({ operation: async () => await this.prepared.abort({ reason }) });
   }
 
   async commit(): Promise<void> {
-    this.#assertOperationAllowed();
-    await this.#finish({ operation: async () => {
-      await this.#writer.runPublication({ operation: async ({ authority }) => {
-        this.#assertOperationAllowed();
+    this.assertOperationAllowed();
+    await this.finish({ operation: async () => {
+      await this.writer.runPublication({ operation: async ({ authority }) => {
+        this.assertOperationAllowed();
         const mutationAuthority = applicationAuthority({ authority });
-        await this.#prepared.commit({ authority: mutationAuthority });
+        await this.prepared.commit({ authority: mutationAuthority });
         requireMutationResolution({
           authority: mutationAuthority,
-          condition: this.#mutationSuccessCondition,
+          condition: this.mutationSuccessCondition,
           operation: "explicit bulk commit",
         });
       } });
@@ -319,19 +319,19 @@ class RuntimeBoundExplicitBulk implements HizoFSApplicationExplicitBulkBuilder {
   }
 
   async createEmptyFile({ name }: { name: string }): Promise<void> {
-    this.#assertOpen();
-    this.#assertOperationAllowed();
-    await this.#prepared.createEmptyFile({ name });
+    this.assertOpen();
+    this.assertOperationAllowed();
+    await this.prepared.createEmptyFile({ name });
   }
 }
 
 class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
-  #active = true;
-  #assertOperationAllowed: () => void;
-  #mutationSuccessCondition: HizoFSApplicationMutationSuccessCondition;
-  #onClosed: () => void;
-  #prepared: HizoFSApplicationPreparedWritable;
-  #writer: HizoFSApplicationRuntimeWriter;
+  private active = true;
+  private assertOperationAllowed: () => void;
+  private mutationSuccessCondition: HizoFSApplicationMutationSuccessCondition;
+  private onClosed: () => void;
+  private prepared: HizoFSApplicationPreparedWritable;
+  private writer: HizoFSApplicationRuntimeWriter;
 
   constructor({ assertOperationAllowed, mutationSuccessCondition, onClosed, prepared, writer }: {
     assertOperationAllowed: () => void;
@@ -340,53 +340,53 @@ class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
     prepared: HizoFSApplicationPreparedWritable;
     writer: HizoFSApplicationRuntimeWriter;
   }) {
-    this.#assertOperationAllowed = assertOperationAllowed;
-    this.#mutationSuccessCondition = mutationSuccessCondition;
-    this.#onClosed = onClosed;
-    this.#prepared = prepared;
-    this.#writer = writer;
+    this.assertOperationAllowed = assertOperationAllowed;
+    this.mutationSuccessCondition = mutationSuccessCondition;
+    this.onClosed = onClosed;
+    this.prepared = prepared;
+    this.writer = writer;
   }
 
-  #assertOpen(): void {
-    if (!this.#active) throw new HizoFSApplicationSessionPortError({
+  private assertOpen(): void {
+    if (!this.active) throw new HizoFSApplicationSessionPortError({
       code: "session_closed",
       message: "HizoFS prepared writable is closed",
     });
   }
 
-  async #finish({ operation }: {
+  private async finish({ operation }: {
     operation: () => Promise<void>;
   }): Promise<void> {
-    this.#assertOpen();
-    this.#active = false;
+    this.assertOpen();
+    this.active = false;
     let primary: unknown | undefined;
     try {
       await operation();
     } catch (cause: unknown) {
       primary = cause;
     } finally {
-      this.#onClosed();
+      this.onClosed();
     }
     await closeWithPrimaryFailure({
-      close: async () => await this.#writer.close(),
+      close: async () => await this.writer.close(),
       primary,
     });
   }
 
   async abort({ reason }: { reason: unknown }): Promise<void> {
-    await this.#finish({ operation: async () => await this.#prepared.abort({ reason }) });
+    await this.finish({ operation: async () => await this.prepared.abort({ reason }) });
   }
 
   async commit(): Promise<void> {
-    this.#assertOperationAllowed();
-    await this.#finish({ operation: async () => {
-      await this.#writer.runPublication({ operation: async ({ authority }) => {
-        this.#assertOperationAllowed();
+    this.assertOperationAllowed();
+    await this.finish({ operation: async () => {
+      await this.writer.runPublication({ operation: async ({ authority }) => {
+        this.assertOperationAllowed();
         const mutationAuthority = applicationAuthority({ authority });
-        await this.#prepared.commit({ authority: mutationAuthority });
+        await this.prepared.commit({ authority: mutationAuthority });
         requireMutationResolution({
           authority: mutationAuthority,
-          condition: this.#mutationSuccessCondition,
+          condition: this.mutationSuccessCondition,
           operation: "file commit",
         });
       } });
@@ -394,30 +394,30 @@ class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
   }
 
   async truncate({ size }: { size: bigint }): Promise<void> {
-    this.#assertOpen();
-    this.#assertOperationAllowed();
-    await this.#prepared.truncate({ size });
+    this.assertOpen();
+    this.assertOperationAllowed();
+    await this.prepared.truncate({ size });
   }
 
   async write({ data, position }: { data: Uint8Array; position: bigint }): Promise<void> {
-    this.#assertOpen();
-    this.#assertOperationAllowed();
-    await this.#prepared.write({ data: data.slice(), position });
+    this.assertOpen();
+    this.assertOperationAllowed();
+    await this.prepared.write({ data: data.slice(), position });
   }
 }
 
 class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort {
   readonly createReadSnapshot?: () => Promise<HizoFSApplicationSessionPort>;
   readonly openExplicitBulk?: ({ path }: { path: readonly string[] }) => Promise<HizoFSApplicationExplicitBulkBuilder>;
-  #closePromise: Promise<void> | undefined;
-  #assertOperationAllowed: () => void;
-  #mutationPort: HizoFSApplicationMutationPort;
-  #mutationSuccessCondition: HizoFSApplicationMutationSuccessCondition;
-  #namespace: ReadOnlyNamespace;
-  #openPreparedMutations = new Set<Readonly<{ abort({ reason }: { reason: unknown }): Promise<void> }>>();
-  #runtimeSession: HizoFSApplicationRuntimeSession;
-  #sync: () => Promise<void>;
-  #state: "closed" | "closing" | "open" = "open";
+  private closePromise: Promise<void> | undefined;
+  private assertOperationAllowed: () => void;
+  private mutationPort: HizoFSApplicationMutationPort;
+  private mutationSuccessCondition: HizoFSApplicationMutationSuccessCondition;
+  private namespace: ReadOnlyNamespace;
+  private openPreparedMutations = new Set<Readonly<{ abort({ reason }: { reason: unknown }): Promise<void> }>>();
+  private runtimeSession: HizoFSApplicationRuntimeSession;
+  private syncValue: () => Promise<void>;
+  private state: "closed" | "closing" | "open" = "open";
 
   constructor({
     assertOperationAllowed = () => undefined,
@@ -428,43 +428,43 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     runtimeSession,
     sync,
   }: HizoFSApplicationSessionComposition) {
-    this.#assertOperationAllowed = assertOperationAllowed;
-    this.#mutationPort = mutationPort;
-    this.#mutationSuccessCondition = mutationSuccessCondition;
-    this.#namespace = namespace;
-    this.#runtimeSession = runtimeSession;
-    this.#sync = sync;
+    this.assertOperationAllowed = assertOperationAllowed;
+    this.mutationPort = mutationPort;
+    this.mutationSuccessCondition = mutationSuccessCondition;
+    this.namespace = namespace;
+    this.runtimeSession = runtimeSession;
+    this.syncValue = sync;
     if (createReadSnapshot !== undefined) {
       this.createReadSnapshot = async () => {
-        this.#assertOpen();
-        this.#assertOperationAllowed();
+        this.assertOpen();
+        this.assertOperationAllowed();
         return await createReadSnapshot();
       };
     }
     const openExplicitBulk = mutationPort.openExplicitBulk;
     if (openExplicitBulk !== undefined) {
-      this.openExplicitBulk = async ({ path }) => await this.#openExplicitBulk({ openExplicitBulk, path });
+      this.openExplicitBulk = async ({ path }) => await this.openExplicitBulkInternal({ openExplicitBulk, path });
     }
   }
 
-  #assertOpen(): void {
-    switch (this.#state) {
+  private assertOpen(): void {
+    switch (this.state) {
     case "open": return;
     case "closed":
     case "closing": throw new HizoFSApplicationSessionPortError({
       code: "session_closed",
       message: "HizoFS application operation port is closing or closed",
     });
-    default: return this.#state satisfies never;
+    default: return this.state satisfies never;
     }
   }
 
-  async #read<Value>({ operation }: { operation: () => Promise<Value> }): Promise<Value> {
-    this.#assertOpen();
-    this.#assertOperationAllowed();
+  private async read<Value>({ operation }: { operation: () => Promise<Value> }): Promise<Value> {
+    this.assertOpen();
+    this.assertOperationAllowed();
     try {
-      return await this.#runtimeSession.runReadOperation({ operation: async () => {
-        this.#assertOperationAllowed();
+      return await this.runtimeSession.runReadOperation({ operation: async () => {
+        this.assertOperationAllowed();
         return await operation();
       } });
     } catch (cause: unknown) {
@@ -472,22 +472,22 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     }
   }
 
-  async #mutate({ operation, run }: {
+  private async mutate({ operation, run }: {
     operation: string;
     run: ({ authority }: { authority: HizoFSApplicationPublicationAuthority }) => Promise<void>;
   }): Promise<void> {
-    this.#assertOpen();
-    this.#assertOperationAllowed();
-    const writer = await this.#runtimeSession.acquireWriter();
+    this.assertOpen();
+    this.assertOperationAllowed();
+    const writer = await this.runtimeSession.acquireWriter();
     let primary: unknown | undefined;
     try {
       await writer.runPublication({ operation: async ({ authority }) => {
-        this.#assertOperationAllowed();
+        this.assertOperationAllowed();
         const mutationAuthority = applicationAuthority({ authority });
         await run({ authority: mutationAuthority });
         requireMutationResolution({
           authority: mutationAuthority,
-          condition: this.#mutationSuccessCondition,
+          condition: this.mutationSuccessCondition,
           operation,
         });
       } });
@@ -514,26 +514,26 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
       path: [...path],
       replace,
     };
-    await this.#mutate({
+    await this.mutate({
       operation: "clone file",
-      run: async ({ authority }) => await this.#mutationPort.cloneFile({ authority, ...captured }),
+      run: async ({ authority }) => await this.mutationPort.cloneFile({ authority, ...captured }),
     });
   }
 
   async close(): Promise<void> {
-    this.#closePromise ??= this.#close();
-    await this.#closePromise;
+    this.closePromise ??= this.closeInternal();
+    await this.closePromise;
   }
 
-  async #close(): Promise<void> {
-    switch (this.#state) {
+  private async closeInternal(): Promise<void> {
+    switch (this.state) {
     case "closed": return;
     case "closing": return;
-    case "open": this.#state = "closing"; break;
-    default: return this.#state satisfies never;
+    case "open": this.state = "closing"; break;
+    default: return this.state satisfies never;
     }
     const failures: unknown[] = [];
-    for (const preparedMutation of [...this.#openPreparedMutations]) {
+    for (const preparedMutation of [...this.openPreparedMutations]) {
       try {
         await preparedMutation.abort({ reason: new Error("HizoFS application operation port closed") });
       } catch (cause: unknown) {
@@ -541,11 +541,11 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
       }
     }
     try {
-      await this.#runtimeSession.close();
+      await this.runtimeSession.close();
     } catch (cause: unknown) {
       failures.push(cause);
     }
-    this.#state = "closed";
+    this.state = "closed";
     if (failures.length !== 0) {
       throw new AggregateError(failures, "HizoFS application operation port close failed");
     }
@@ -553,9 +553,9 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
 
   async createDirectory({ name, path }: { name: string; path: readonly string[] }): Promise<void> {
     const capturedPath = [...path];
-    await this.#mutate({
+    await this.mutate({
       operation: "create directory",
-      run: async ({ authority }) => await this.#mutationPort.createDirectory({
+      run: async ({ authority }) => await this.mutationPort.createDirectory({
         authority,
         name,
         path: capturedPath,
@@ -565,9 +565,9 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
 
   async createFile({ name, path }: { name: string; path: readonly string[] }): Promise<void> {
     const capturedPath = [...path];
-    await this.#mutate({
+    await this.mutate({
       operation: "create file",
-      run: async ({ authority }) => await this.#mutationPort.createFile({
+      run: async ({ authority }) => await this.mutationPort.createFile({
         authority,
         name,
         path: capturedPath,
@@ -581,9 +581,9 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     target: string;
   }): Promise<void> {
     const capturedPath = [...path];
-    await this.#mutate({
+    await this.mutate({
       operation: "create symlink",
-      run: async ({ authority }) => await this.#mutationPort.createSymlink({
+      run: async ({ authority }) => await this.mutationPort.createSymlink({
         authority,
         name,
         path: capturedPath,
@@ -594,8 +594,8 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
 
   async listDirectory({ path }: { path: readonly string[] }): Promise<readonly HizoFSApplicationDirectoryEntry[]> {
     const capturedPath = [...path];
-    return await this.#read({ operation: async () => {
-      const entries = await this.#namespace.list({ pathComponents: capturedPath });
+    return await this.read({ operation: async () => {
+      const entries = await this.namespace.list({ pathComponents: capturedPath });
       return entries.map(entry => {
         switch (entry.targetType) {
         case "inode": return { kind: entry.inodeKind, name: entry.name };
@@ -623,15 +623,15 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
       path: [...path],
       replace,
     };
-    await this.#mutate({
+    await this.mutate({
       operation: "move entry",
-      run: async ({ authority }) => await this.#mutationPort.moveEntry({ authority, ...captured }),
+      run: async ({ authority }) => await this.mutationPort.moveEntry({ authority, ...captured }),
     });
   }
 
   async openReadable({ path }: { path: readonly string[] }): Promise<HizoFSApplicationReadableFile> {
     const capturedPath = [...path];
-    const stat = await this.#read({ operation: async () => await this.#namespace.stat({
+    const stat = await this.read({ operation: async () => await this.namespace.stat({
       pathComponents: capturedPath,
     }) });
     switch (stat.kind) {
@@ -661,8 +661,8 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
           message: "HizoFS application readable is closed",
         });
         signal?.throwIfAborted();
-        return await this.#read({ operation: async () => (
-          await this.#namespace.readFile({
+        return await this.read({ operation: async () => (
+          await this.namespace.readFile({
             length,
             offset,
             pathComponents: capturedPath,
@@ -672,19 +672,19 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     };
   }
 
-  async #openExplicitBulk({ openExplicitBulk, path }: {
+  private async openExplicitBulkInternal({ openExplicitBulk, path }: {
     openExplicitBulk: NonNullable<HizoFSApplicationMutationPort["openExplicitBulk"]>;
     path: readonly string[];
   }): Promise<HizoFSApplicationExplicitBulkBuilder> {
-    this.#assertOpen();
-    this.#assertOperationAllowed();
+    this.assertOpen();
+    this.assertOperationAllowed();
     const capturedPath = [...path];
-    const writer = await this.#runtimeSession.acquireWriter();
+    const writer = await this.runtimeSession.acquireWriter();
     let prepared: HizoFSApplicationPreparedExplicitBulk | undefined;
     try {
-      this.#assertOperationAllowed();
+      this.assertOperationAllowed();
       prepared = await openExplicitBulk({ path: capturedPath });
-      this.#assertOpen();
+      this.assertOpen();
     } catch (cause: unknown) {
       const boundaryCause = applicationBoundaryError({ cause });
       let primary: unknown = boundaryCause;
@@ -702,15 +702,15 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
       throw boundaryCause;
     }
     const builder = new RuntimeBoundExplicitBulk({
-      assertOperationAllowed: this.#assertOperationAllowed,
-      mutationSuccessCondition: this.#mutationSuccessCondition,
+      assertOperationAllowed: this.assertOperationAllowed,
+      mutationSuccessCondition: this.mutationSuccessCondition,
       onClosed: () => {
-        this.#openPreparedMutations.delete(builder);
+        this.openPreparedMutations.delete(builder);
       },
       prepared,
       writer,
     });
-    this.#openPreparedMutations.add(builder);
+    this.openPreparedMutations.add(builder);
     return builder;
   }
 
@@ -718,15 +718,15 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     keepExistingData: boolean;
     path: readonly string[];
   }): Promise<HizoFSApplicationWritableFile> {
-    this.#assertOpen();
-    this.#assertOperationAllowed();
+    this.assertOpen();
+    this.assertOperationAllowed();
     const capturedPath = [...path];
-    const writer = await this.#runtimeSession.acquireWriter();
+    const writer = await this.runtimeSession.acquireWriter();
     let prepared: HizoFSApplicationPreparedWritable | undefined;
     try {
-      this.#assertOperationAllowed();
-      prepared = await this.#mutationPort.openWritable({ keepExistingData, path: capturedPath });
-      this.#assertOpen();
+      this.assertOperationAllowed();
+      prepared = await this.mutationPort.openWritable({ keepExistingData, path: capturedPath });
+      this.assertOpen();
     } catch (cause: unknown) {
       const boundaryCause = applicationBoundaryError({ cause });
       let primary: unknown = boundaryCause;
@@ -744,21 +744,21 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
       throw boundaryCause;
     }
     const writable = new RuntimeBoundWritable({
-      assertOperationAllowed: this.#assertOperationAllowed,
-      mutationSuccessCondition: this.#mutationSuccessCondition,
+      assertOperationAllowed: this.assertOperationAllowed,
+      mutationSuccessCondition: this.mutationSuccessCondition,
       onClosed: () => {
-        this.#openPreparedMutations.delete(writable);
+        this.openPreparedMutations.delete(writable);
       },
       prepared,
       writer,
     });
-    this.#openPreparedMutations.add(writable);
+    this.openPreparedMutations.add(writable);
     return writable;
   }
 
   async readlink({ path }: { path: readonly string[] }): Promise<string> {
     const capturedPath = [...path];
-    return await this.#read({ operation: async () => await this.#namespace.readlink({
+    return await this.read({ operation: async () => await this.namespace.readlink({
       pathComponents: capturedPath,
     }) });
   }
@@ -769,9 +769,9 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     recursive: boolean;
   }): Promise<void> {
     const capturedPath = [...path];
-    await this.#mutate({
+    await this.mutate({
       operation: "remove entry",
-      run: async ({ authority }) => await this.#mutationPort.removeEntry({
+      run: async ({ authority }) => await this.mutationPort.removeEntry({
         authority,
         name,
         path: capturedPath,
@@ -781,20 +781,20 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
   }
 
   async sync(): Promise<void> {
-    this.#assertOpen();
-    this.#assertOperationAllowed();
-    await this.#sync();
+    this.assertOpen();
+    this.assertOperationAllowed();
+    await this.syncValue();
   }
 
   async stat({ path }: { path: readonly string[] }): Promise<HizoFSApplicationStat> {
     const capturedPath = [...path];
-    return await this.#read({ operation: async () => {
-      const stat = await this.#namespace.stat({ pathComponents: capturedPath });
+    return await this.read({ operation: async () => {
+      const stat = await this.namespace.stat({ pathComponents: capturedPath });
       switch (stat.kind) {
       case "directory":
       case "file": return applicationStat({ stat });
       case "symlink": {
-        const target = await this.#namespace.readlink({ pathComponents: capturedPath });
+        const target = await this.namespace.readlink({ pathComponents: capturedPath });
         return {
           createdAt: stat.createdAt ?? undefined,
           kind: "symlink",

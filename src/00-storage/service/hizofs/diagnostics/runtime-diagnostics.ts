@@ -511,23 +511,23 @@ function codecDiagnosticPhase({ format, operation }: {
  * this accumulator must never be used to manufacture unobserved zero values.
  */
 class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDiagnosticsPort, DecodedInodeIndexPageCacheDiagnosticsPort, ImmutableBTreeDiagnosticsPort {
-  readonly #phases = phaseCounters();
-  readonly #records = recordCounters();
-  readonly #caches = cacheCounters();
-  readonly #resources = resourceCounters();
-  readonly #coordinator = coordinatorCounters();
-  readonly #indexes = indexCounters();
-  readonly #inodeLeafLookup = inodeLeafLookupCounter();
-  readonly #mutation = mutationCounter();
-  readonly #publication = publicationCounter();
-  readonly #segmentWriters = segmentWriterCounters();
-  #activeMutationDepth = 0;
-  #activeMutationScope: ActivePhysicalAccessScope | undefined;
-  #activePublicationDepth = 0;
-  #activePublicationScope: ActivePhysicalAccessScope | undefined;
+  private readonly phases = phaseCounters();
+  private readonly records = recordCounters();
+  private readonly caches = cacheCounters();
+  private readonly resources = resourceCounters();
+  private readonly coordinator = coordinatorCounters();
+  private readonly indexes = indexCounters();
+  private readonly inodeLeafLookup = inodeLeafLookupCounter();
+  private readonly mutation = mutationCounter();
+  private readonly publication = publicationCounter();
+  private readonly segmentWriters = segmentWriterCounters();
+  private activeMutationDepth = 0;
+  private activeMutationScope: ActivePhysicalAccessScope | undefined;
+  private activePublicationDepth = 0;
+  private activePublicationScope: ActivePhysicalAccessScope | undefined;
 
   recordPhase({ durationMs, phase }: { durationMs: number; phase: HizoFSRuntimeDiagnosticPhase }): void {
-    const counter = this.#phases[phase];
+    const counter = this.phases[phase];
     const operationCount = incrementSafe({ current: counter.operationCount, delta: 1, label: `${phase} operation count` });
     const totalDurationMs = counter.totalDurationMs
       + finiteNonNegative({ label: `${phase} duration`, value: durationMs });
@@ -543,7 +543,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     plaintextBytes: number;
     recordKind: HizoFSV1PersistedRecordKindDiagnosticName;
   }): void {
-    const counter = this.#records[recordKind];
+    const counter = this.records[recordKind];
     const next = { ...counter };
     const physical = safeNonNegativeInteger({ label: `${recordKind} physical bytes`, value: physicalBytes });
     const plaintext = safeNonNegativeInteger({ label: `${recordKind} plaintext bytes`, value: plaintextBytes });
@@ -618,7 +618,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     case "validate_structure": this.recordPhase({ durationMs, phase: "index_validate_structure" }); break;
     default: operation satisfies never;
     }
-    const counter = this.#indexes[operation];
+    const counter = this.indexes[operation];
     counter.operations = incrementSafe({ current: counter.operations, delta: 1, label: `${operation} index operations` });
     for (const field of [
       "inputMutations",
@@ -648,13 +648,13 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
       return;
     case "hit": {
       const recordName = persistedRecordKindDiagnosticName({ recordKind });
-      const counter = this.#records[recordName];
+      const counter = this.records[recordName];
       counter.cacheHits = incrementSafe({ current: counter.cacheHits, delta: 1, label: `${recordName} cache hits` });
       return;
     }
     case "miss": {
       const recordName = persistedRecordKindDiagnosticName({ recordKind });
-      const counter = this.#records[recordName];
+      const counter = this.records[recordName];
       counter.cacheMisses = incrementSafe({ current: counter.cacheMisses, delta: 1, label: `${recordName} cache misses` });
       return;
     }
@@ -669,54 +669,54 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
   }): void {
     switch (observation.event) {
     case "begin": {
-      this.#activeMutationDepth = incrementSafe({
-        current: this.#activeMutationDepth,
+      this.activeMutationDepth = incrementSafe({
+        current: this.activeMutationDepth,
         delta: 1,
         label: "active mutation diagnostic depth",
       });
-      if (this.#activeMutationDepth === 1) {
-        this.#activeMutationScope = physicalAccessScope();
+      if (this.activeMutationDepth === 1) {
+        this.activeMutationScope = physicalAccessScope();
       } else {
-        this.#mutation.overlapping = incrementSafe({
-          current: this.#mutation.overlapping,
+        this.mutation.overlapping = incrementSafe({
+          current: this.mutation.overlapping,
           delta: 1,
           label: "overlapping mutation diagnostics",
         });
-        this.#activeMutationScope = undefined;
+        this.activeMutationScope = undefined;
       }
       return;
     }
     case "end": {
-      if (this.#activeMutationDepth === 0) return;
-      this.#activeMutationDepth -= 1;
-      if (this.#activeMutationDepth !== 0) return;
-      const scope = this.#activeMutationScope;
-      this.#activeMutationScope = undefined;
+      if (this.activeMutationDepth === 0) return;
+      this.activeMutationDepth -= 1;
+      if (this.activeMutationDepth !== 0) return;
+      const scope = this.activeMutationScope;
+      this.activeMutationScope = undefined;
       if (scope === undefined) return;
       switch (observation.outcome) {
       case "abandoned":
-        this.#mutation.abandoned = incrementSafe({ current: this.#mutation.abandoned, delta: 1, label: "abandoned mutation diagnostics" });
+        this.mutation.abandoned = incrementSafe({ current: this.mutation.abandoned, delta: 1, label: "abandoned mutation diagnostics" });
         break;
       case "failed":
-        this.#mutation.failed = incrementSafe({ current: this.#mutation.failed, delta: 1, label: "failed mutation diagnostics" });
+        this.mutation.failed = incrementSafe({ current: this.mutation.failed, delta: 1, label: "failed mutation diagnostics" });
         break;
       case "accepted":
       case "published":
-        this.#mutation.completed = incrementSafe({ current: this.#mutation.completed, delta: 1, label: "completed mutation diagnostics" });
+        this.mutation.completed = incrementSafe({ current: this.mutation.completed, delta: 1, label: "completed mutation diagnostics" });
         break;
       default: observation.outcome satisfies never;
       }
-      this.#finalizeScopedPhysicalAccess({ counter: this.#mutation.getFileSize, operation: "get_file_size", scope });
-      this.#finalizeScopedPhysicalAccess({ counter: this.#mutation.readExact, operation: "read_exact", scope });
+      this.finalizeScopedPhysicalAccess({ counter: this.mutation.getFileSize, operation: "get_file_size", scope });
+      this.finalizeScopedPhysicalAccess({ counter: this.mutation.readExact, operation: "read_exact", scope });
       for (const reason of AUTHENTICATED_PHYSICAL_ACCESS_REASONS) {
         const reasonScope = scope.reasonScopes[reason];
-        this.#finalizeScopedPhysicalAccess({
-          counter: this.#mutation.physicalAccessReasons[reason].getFileSize,
+        this.finalizeScopedPhysicalAccess({
+          counter: this.mutation.physicalAccessReasons[reason].getFileSize,
           operation: "get_file_size",
           scope: reasonScope,
         });
-        this.#finalizeScopedPhysicalAccess({
-          counter: this.#mutation.physicalAccessReasons[reason].readExact,
+        this.finalizeScopedPhysicalAccess({
+          counter: this.mutation.physicalAccessReasons[reason].readExact,
           operation: "read_exact",
           scope: reasonScope,
         });
@@ -730,37 +730,37 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
   recordPublicationScopeEvent({ event }: AuthenticatedPublicationScopeEventObservation): void {
     switch (event) {
     case "begin": {
-      this.#activePublicationDepth = incrementSafe({
-        current: this.#activePublicationDepth,
+      this.activePublicationDepth = incrementSafe({
+        current: this.activePublicationDepth,
         delta: 1,
         label: "active publication diagnostic depth",
       });
-      if (this.#activePublicationDepth === 1) {
-        this.#activePublicationScope = physicalAccessScope();
+      if (this.activePublicationDepth === 1) {
+        this.activePublicationScope = physicalAccessScope();
       } else {
-        this.#publication.overlapping = incrementSafe({
-          current: this.#publication.overlapping,
+        this.publication.overlapping = incrementSafe({
+          current: this.publication.overlapping,
           delta: 1,
           label: "overlapping publication diagnostics",
         });
-        this.#activePublicationScope = undefined;
+        this.activePublicationScope = undefined;
       }
       return;
     }
     case "end": {
-      if (this.#activePublicationDepth === 0) return;
-      this.#activePublicationDepth -= 1;
-      if (this.#activePublicationDepth !== 0) return;
-      const scope = this.#activePublicationScope;
-      this.#activePublicationScope = undefined;
+      if (this.activePublicationDepth === 0) return;
+      this.activePublicationDepth -= 1;
+      if (this.activePublicationDepth !== 0) return;
+      const scope = this.activePublicationScope;
+      this.activePublicationScope = undefined;
       if (scope === undefined) return;
-      this.#publication.completed = incrementSafe({
-        current: this.#publication.completed,
+      this.publication.completed = incrementSafe({
+        current: this.publication.completed,
         delta: 1,
         label: "completed publication diagnostics",
       });
-      this.#finalizeScopedPhysicalAccess({ counter: this.#publication.getFileSize, operation: "get_file_size", scope });
-      this.#finalizeScopedPhysicalAccess({ counter: this.#publication.readExact, operation: "read_exact", scope });
+      this.finalizeScopedPhysicalAccess({ counter: this.publication.getFileSize, operation: "get_file_size", scope });
+      this.finalizeScopedPhysicalAccess({ counter: this.publication.readExact, operation: "read_exact", scope });
       return;
     }
     default: event satisfies never;
@@ -771,19 +771,19 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     identity: string;
     operation: "get_file_size" | "read_exact";
   }): void {
-    if (this.#activeMutationDepth === 1 && this.#activeMutationScope !== undefined) {
-      this.#recordScopedPhysicalAccess({
+    if (this.activeMutationDepth === 1 && this.activeMutationScope !== undefined) {
+      this.recordScopedPhysicalAccess({
         identity,
         operation,
-        scope: this.#activeMutationScope,
+        scope: this.activeMutationScope,
         scopeLabel: "mutation",
       });
     }
-    if (this.#activePublicationDepth === 1 && this.#activePublicationScope !== undefined) {
-      this.#recordScopedPhysicalAccess({
+    if (this.activePublicationDepth === 1 && this.activePublicationScope !== undefined) {
+      this.recordScopedPhysicalAccess({
         identity,
         operation,
-        scope: this.#activePublicationScope,
+        scope: this.activePublicationScope,
         scopeLabel: "publication",
       });
     }
@@ -794,11 +794,11 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     operation: "get_file_size" | "read_exact";
     reason: AuthenticatedPhysicalAccessReason;
   }): void {
-    if (this.#activeMutationDepth !== 1 || this.#activeMutationScope === undefined) return;
-    this.#recordScopedPhysicalAccess({
+    if (this.activeMutationDepth !== 1 || this.activeMutationScope === undefined) return;
+    this.recordScopedPhysicalAccess({
       identity,
       operation,
-      scope: this.#activeMutationScope.reasonScopes[reason],
+      scope: this.activeMutationScope.reasonScopes[reason],
       scopeLabel: `mutation ${reason}`,
     });
   }
@@ -807,7 +807,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     observation: AuthenticatedSegmentWriterDiagnosticsObservation;
   }): void {
     const { event, segmentClass } = observation;
-    const counter = this.#segmentWriters[segmentClass];
+    const counter = this.segmentWriters[segmentClass];
     switch (event) {
     case "append_read_back_verified":
       counter.appendReadBackVerifications = incrementSafe({ current: counter.appendReadBackVerifications, delta: 1, label: `${segmentClass} append read-back verifications` });
@@ -839,7 +839,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     }
   }
 
-  #recordScopedPhysicalAccess({ identity, operation, scope, scopeLabel }: {
+  private recordScopedPhysicalAccess({ identity, operation, scope, scopeLabel }: {
     identity: string;
     operation: "get_file_size" | "read_exact";
     scope: PhysicalAccessScopeCounters;
@@ -870,14 +870,14 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     }
   }
 
-  #finalizeScopedPhysicalAccess({ counter, operation, scope }: {
+  private finalizeScopedPhysicalAccess({ counter, operation, scope }: {
     counter: MutableScopedAccessCounter;
     operation: "get_file_size" | "read_exact";
     scope: PhysicalAccessScopeCounters;
   }): void {
     switch (operation) {
     case "get_file_size":
-      this.#finalizeScopedAccess({
+      this.finalizeScopedAccess({
         counter,
         duplicateOperations: scope.getFileSizeDuplicateOperations,
         operations: scope.getFileSizeOperations,
@@ -886,7 +886,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
       });
       return;
     case "read_exact":
-      this.#finalizeScopedAccess({
+      this.finalizeScopedAccess({
         counter,
         duplicateOperations: scope.readExactDuplicateOperations,
         operations: scope.readExactOperations,
@@ -898,7 +898,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     }
   }
 
-  #finalizeScopedAccess({ counter, duplicateOperations, operations, observedUniqueTargets, unclassifiedOperations }: {
+  private finalizeScopedAccess({ counter, duplicateOperations, operations, observedUniqueTargets, unclassifiedOperations }: {
     counter: MutableScopedAccessCounter;
     duplicateOperations: number;
     operations: number;
@@ -931,7 +931,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     cache: HizoFSRuntimeDiagnosticCache;
     event: "eviction" | "hit" | "miss";
   }): void {
-    const counter = this.#caches[cache];
+    const counter = this.caches[cache];
     switch (event) {
     case "eviction": counter.evictions = incrementSafe({ current: counter.evictions, delta: 1, label: `${cache} evictions` }); return;
     case "hit": counter.hits = incrementSafe({ current: counter.hits, delta: 1, label: `${cache} hits` }); return;
@@ -945,7 +945,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
   }
 
   recordInodeLeafLookup({ observation }: { observation: InodeLeafLookupDiagnosticsObservation }): void {
-    const counter = this.#inodeLeafLookup;
+    const counter = this.inodeLeafLookup;
     switch (observation.event) {
     case "branch_page_decode":
       counter.branchPageDecodes = incrementSafe({
@@ -1023,7 +1023,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     cache: HizoFSRuntimeDiagnosticCache;
     entries: number;
   }): void {
-    const counter = this.#caches[cache];
+    const counter = this.caches[cache];
     const currentBytes = safeNonNegativeInteger({ label: `${cache} current bytes`, value: bytes });
     const currentEntries = safeNonNegativeInteger({ label: `${cache} current entries`, value: entries });
     counter.currentBytes = currentBytes;
@@ -1045,7 +1045,7 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     operations: number;
     resource: HizoFSRuntimeDiagnosticResource;
   }): void {
-    const counter = this.#resources[resource];
+    const counter = this.resources[resource];
     const currentBytes = safeNonNegativeInteger({ label: `${resource} current bytes`, value: bytes });
     const currentOperations = safeNonNegativeInteger({ label: `${resource} current operations`, value: operations });
     counter.currentBytes = currentBytes;
@@ -1055,8 +1055,8 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
   }
 
   incrementCoordinator({ counter }: { counter: HizoFSRuntimeDiagnosticCoordinatorCounter }): void {
-    this.#coordinator[counter] = incrementSafe({
-      current: this.#coordinator[counter],
+    this.coordinator[counter] = incrementSafe({
+      current: this.coordinator[counter],
       delta: 1,
       label: `${counter} coordinator count`,
     });
@@ -1064,40 +1064,40 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
 
   resetHighWaterMarks(): void {
     for (const cache of HIZOFS_RUNTIME_DIAGNOSTIC_CACHES) {
-      const counter = this.#caches[cache];
+      const counter = this.caches[cache];
       counter.maximumBytes = counter.currentBytes;
       counter.maximumEntries = counter.currentEntries;
     }
     for (const resource of HIZOFS_RUNTIME_DIAGNOSTIC_RESOURCES) {
-      const counter = this.#resources[resource];
+      const counter = this.resources[resource];
       counter.maximumBytes = counter.currentBytes;
       counter.maximumOperations = counter.currentOperations;
     }
-    this.#mutation.getFileSize.maximumOperationsPerScope = 0;
-    this.#mutation.readExact.maximumOperationsPerScope = 0;
+    this.mutation.getFileSize.maximumOperationsPerScope = 0;
+    this.mutation.readExact.maximumOperationsPerScope = 0;
     for (const reason of AUTHENTICATED_PHYSICAL_ACCESS_REASONS) {
-      this.#mutation.physicalAccessReasons[reason].getFileSize.maximumOperationsPerScope = 0;
-      this.#mutation.physicalAccessReasons[reason].readExact.maximumOperationsPerScope = 0;
+      this.mutation.physicalAccessReasons[reason].getFileSize.maximumOperationsPerScope = 0;
+      this.mutation.physicalAccessReasons[reason].readExact.maximumOperationsPerScope = 0;
     }
-    this.#publication.getFileSize.maximumOperationsPerScope = 0;
-    this.#publication.readExact.maximumOperationsPerScope = 0;
+    this.publication.getFileSize.maximumOperationsPerScope = 0;
+    this.publication.readExact.maximumOperationsPerScope = 0;
     for (const operation of IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS) {
-      this.#indexes[operation].maximumPageLevel = 0;
+      this.indexes[operation].maximumPageLevel = 0;
     }
   }
 
   snapshot(): HizoFSRuntimeDiagnosticsSnapshot {
     return structuredClone({
-      phases: this.#phases,
-      records: this.#records,
-      caches: this.#caches,
-      resources: this.#resources,
-      coordinator: this.#coordinator,
-      indexes: this.#indexes,
-      inodeLeafLookup: this.#inodeLeafLookup,
-      mutation: this.#mutation,
-      publication: this.#publication,
-      segmentWriters: this.#segmentWriters,
+      phases: this.phases,
+      records: this.records,
+      caches: this.caches,
+      resources: this.resources,
+      coordinator: this.coordinator,
+      indexes: this.indexes,
+      inodeLeafLookup: this.inodeLeafLookup,
+      mutation: this.mutation,
+      publication: this.publication,
+      segmentWriters: this.segmentWriters,
     });
   }
 }
@@ -1117,82 +1117,82 @@ export class HizoFSRuntimeDiagnosticsUnavailableError extends Error {
  * result or error of the observed filesystem operation.
  */
 export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDiagnosticsPort, DecodedInodeIndexPageCacheDiagnosticsPort, ImmutableBTreeDiagnosticsPort {
-  readonly #strict = new StrictHizoFSRuntimeDiagnosticsAccumulator();
-  #availability: "available" | "unavailable" = "available";
+  private readonly strict = new StrictHizoFSRuntimeDiagnosticsAccumulator();
+  private availability: "available" | "unavailable" = "available";
 
-  #record({ operation }: { operation: () => void }): void {
-    switch (this.#availability) {
+  private record({ operation }: { operation: () => void }): void {
+    switch (this.availability) {
     case "available": break;
     case "unavailable": return;
-    default: this.#availability satisfies never;
+    default: this.availability satisfies never;
     }
     try {
       operation();
     } catch {
-      this.#availability = "unavailable";
+      this.availability = "unavailable";
     }
   }
 
   recordPhase({ durationMs, phase }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordPhase"]>[0]): void {
-    this.#record({ operation: () => this.#strict.recordPhase({ durationMs, phase }) });
+    this.record({ operation: () => this.strict.recordPhase({ durationMs, phase }) });
   }
 
   recordRecord({ cacheHit, operation, physicalBytes, plaintextBytes, recordKind }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordRecord"]>[0]): void {
-    this.#record({
-      operation: () => this.#strict.recordRecord({ cacheHit, operation, physicalBytes, plaintextBytes, recordKind }),
+    this.record({
+      operation: () => this.strict.recordRecord({ cacheHit, operation, physicalBytes, plaintextBytes, recordKind }),
     });
   }
 
   recordCodecOperation({ durationMs, format, operation }: AuthenticatedCodecDiagnosticsObservation): void {
-    this.#record({ operation: () => this.#strict.recordCodecOperation({ durationMs, format, operation }) });
+    this.record({ operation: () => this.strict.recordCodecOperation({ durationMs, format, operation }) });
   }
 
   recordCryptoOperation({ durationMs, operation }: AuthenticatedCryptoDiagnosticsObservation): void {
-    this.#record({ operation: () => this.#strict.recordCryptoOperation({ durationMs, operation }) });
+    this.record({ operation: () => this.strict.recordCryptoOperation({ durationMs, operation }) });
   }
 
   recordPersistedRecord({ operation, physicalBytes, plaintextBytes, recordKind }: AuthenticatedRecordDiagnosticsObservation): void {
-    this.#record({
-      operation: () => this.#strict.recordPersistedRecord({ operation, physicalBytes, plaintextBytes, recordKind }),
+    this.record({
+      operation: () => this.strict.recordPersistedRecord({ operation, physicalBytes, plaintextBytes, recordKind }),
     });
   }
 
   recordPublicationOperation({ durationMs }: AuthenticatedPublicationDiagnosticsObservation): void {
-    this.#record({ operation: () => this.#strict.recordPublicationOperation({ durationMs }) });
+    this.record({ operation: () => this.strict.recordPublicationOperation({ durationMs }) });
   }
 
   recordIndexOperation({ durationMs, operation, structural }: ImmutableBTreeDiagnosticsObservation): void {
-    this.#record({ operation: () => this.#strict.recordIndexOperation({ durationMs, operation, structural }) });
+    this.record({ operation: () => this.strict.recordIndexOperation({ durationMs, operation, structural }) });
   }
 
   recordMetadataCacheEvent({ event, recordKind, scope }: AuthenticatedMetadataCacheEventObservation): void {
-    this.#record({ operation: () => this.#strict.recordMetadataCacheEvent({ event, recordKind, scope }) });
+    this.record({ operation: () => this.strict.recordMetadataCacheEvent({ event, recordKind, scope }) });
   }
 
   recordMutationScopeEvent({ observation }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordMutationScopeEvent"]>[0]): void {
-    this.#record({ operation: () => this.#strict.recordMutationScopeEvent({ observation }) });
+    this.record({ operation: () => this.strict.recordMutationScopeEvent({ observation }) });
   }
 
   recordPublicationScopeEvent({ event }: AuthenticatedPublicationScopeEventObservation): void {
-    this.#record({ operation: () => this.#strict.recordPublicationScopeEvent({ event }) });
+    this.record({ operation: () => this.strict.recordPublicationScopeEvent({ event }) });
   }
 
   recordPhysicalAccess({ identity, operation }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordPhysicalAccess"]>[0]): void {
-    this.#record({ operation: () => this.#strict.recordPhysicalAccess({ identity, operation }) });
+    this.record({ operation: () => this.strict.recordPhysicalAccess({ identity, operation }) });
   }
 
   recordPhysicalAccessReason({ identity, operation, reason }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordPhysicalAccessReason"]>[0]): void {
-    this.#record({ operation: () => this.#strict.recordPhysicalAccessReason({ identity, operation, reason }) });
+    this.record({ operation: () => this.strict.recordPhysicalAccessReason({ identity, operation, reason }) });
   }
 
   recordSegmentWriterEvent({ observation }: {
     observation: AuthenticatedSegmentWriterDiagnosticsObservation;
   }): void {
-    this.#record({ operation: () => this.#strict.recordSegmentWriterEvent({ observation }) });
+    this.record({ operation: () => this.strict.recordSegmentWriterEvent({ observation }) });
   }
 
   recordCacheEvent({ cache, event }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["recordCacheEvent"]>[0]): void {
-    this.#record({ operation: () => this.#strict.recordCacheEvent({ cache, event }) });
+    this.record({ operation: () => this.strict.recordCacheEvent({ cache, event }) });
   }
 
   recordDecodedInodeIndexPageCacheEvent({ event }: { event: "eviction" | "hit" | "miss" }): void {
@@ -1200,7 +1200,7 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
   }
 
   recordInodeLeafLookup({ observation }: { observation: InodeLeafLookupDiagnosticsObservation }): void {
-    this.#record({ operation: () => this.#strict.recordInodeLeafLookup({ observation }) });
+    this.record({ operation: () => this.strict.recordInodeLeafLookup({ observation }) });
   }
 
   setDecodedInodeIndexPageCacheUsage({ bytes, entries }: { bytes: number; entries: number }): void {
@@ -1208,35 +1208,35 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
   }
 
   setCacheUsage({ bytes, cache, entries }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["setCacheUsage"]>[0]): void {
-    this.#record({ operation: () => this.#strict.setCacheUsage({ bytes, cache, entries }) });
+    this.record({ operation: () => this.strict.setCacheUsage({ bytes, cache, entries }) });
   }
 
   setMetadataCacheUsage({ bytes, entries, scope }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["setMetadataCacheUsage"]>[0]): void {
-    this.#record({ operation: () => this.#strict.setMetadataCacheUsage({ bytes, entries, scope }) });
+    this.record({ operation: () => this.strict.setMetadataCacheUsage({ bytes, entries, scope }) });
   }
 
   setResourceUsage({ bytes, operations, resource }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["setResourceUsage"]>[0]): void {
-    this.#record({ operation: () => this.#strict.setResourceUsage({ bytes, operations, resource }) });
+    this.record({ operation: () => this.strict.setResourceUsage({ bytes, operations, resource }) });
   }
 
   incrementCoordinator({ counter }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["incrementCoordinator"]>[0]): void {
-    this.#record({ operation: () => this.#strict.incrementCoordinator({ counter }) });
+    this.record({ operation: () => this.strict.incrementCoordinator({ counter }) });
   }
 
   resetHighWaterMarks(): void {
-    this.#record({ operation: () => this.#strict.resetHighWaterMarks() });
+    this.record({ operation: () => this.strict.resetHighWaterMarks() });
   }
 
   snapshot(): HizoFSRuntimeDiagnosticsSnapshot {
-    switch (this.#availability) {
+    switch (this.availability) {
     case "available": break;
     case "unavailable": throw new HizoFSRuntimeDiagnosticsUnavailableError();
-    default: this.#availability satisfies never;
+    default: this.availability satisfies never;
     }
     try {
-      return this.#strict.snapshot();
+      return this.strict.snapshot();
     } catch {
-      this.#availability = "unavailable";
+      this.availability = "unavailable";
       throw new HizoFSRuntimeDiagnosticsUnavailableError();
     }
   }

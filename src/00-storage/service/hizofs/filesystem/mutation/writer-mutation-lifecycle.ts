@@ -17,16 +17,16 @@ export class WriterMutationLifecycleError extends Error {
 export type WriterMutationLifecycleState = "aborted" | "busy" | "closed" | "closing" | "open";
 
 export class WriterMutationLifecycle {
-  #closePromise: Promise<void> | undefined;
-  #resolveClose: (() => void) | undefined;
-  #state: WriterMutationLifecycleState = "open";
+  private closePromise: Promise<void> | undefined;
+  private resolveClose: (() => void) | undefined;
+  private stateValue: WriterMutationLifecycleState = "open";
 
   state(): WriterMutationLifecycleState {
-    return this.#state;
+    return this.stateValue;
   }
 
-  #assertPublicationAllowed(): void {
-    switch (this.#state) {
+  private assertPublicationAllowed(): void {
+    switch (this.stateValue) {
     case "busy": return;
     case "closing":
       throw new WriterMutationLifecycleError({ code: "publication_revoked", message: "writer owner is closing" });
@@ -35,34 +35,34 @@ export class WriterMutationLifecycle {
     case "closed":
     case "open":
       throw new WriterMutationLifecycleError({ code: "writer_closed", message: "writer is not executing this mutation" });
-    default: this.#state satisfies never;
+    default: this.stateValue satisfies never;
     }
   }
 
   async runExclusive<T>({ operation }: {
     operation: ({ assertPublicationAllowed }: { assertPublicationAllowed: () => void }) => Promise<T>;
   }): Promise<T> {
-    switch (this.#state) {
-    case "open": this.#state = "busy"; break;
+    switch (this.stateValue) {
+    case "open": this.stateValue = "busy"; break;
     case "busy": throw new WriterMutationLifecycleError({ code: "operation_in_progress", message: "writer mutation operation is already in progress" });
     case "aborted": throw new WriterMutationLifecycleError({ code: "writer_aborted", message: "writer was aborted" });
     case "closing":
     case "closed": throw new WriterMutationLifecycleError({ code: "writer_closed", message: "writer is closed" });
-    default: this.#state satisfies never;
+    default: this.stateValue satisfies never;
     }
     try {
       return await operation({
-        assertPublicationAllowed: () => this.#assertPublicationAllowed(),
+        assertPublicationAllowed: () => this.assertPublicationAllowed(),
       });
     } finally {
       const currentState = this.state();
       switch (currentState) {
-      case "busy": this.#state = "open"; break;
+      case "busy": this.stateValue = "open"; break;
       case "closing":
-        this.#state = "closed";
-        this.#resolveClose?.();
-        this.#resolveClose = undefined;
-        this.#closePromise = undefined;
+        this.stateValue = "closed";
+        this.resolveClose?.();
+        this.resolveClose = undefined;
+        this.closePromise = undefined;
         break;
       case "aborted":
       case "closed":
@@ -73,30 +73,30 @@ export class WriterMutationLifecycle {
   }
 
   abort(): void {
-    switch (this.#state) {
-    case "open": this.#state = "aborted"; return;
+    switch (this.stateValue) {
+    case "open": this.stateValue = "aborted"; return;
     case "aborted": return;
     case "busy": throw new WriterMutationLifecycleError({ code: "operation_in_progress", message: "abort overlaps an active writer mutation" });
     case "closing":
     case "closed": throw new WriterMutationLifecycleError({ code: "writer_closed", message: "writer is closed" });
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
   }
 
   async close(): Promise<void> {
-    switch (this.#state) {
+    switch (this.stateValue) {
     case "open":
-    case "aborted": this.#state = "closed"; return;
+    case "aborted": this.stateValue = "closed"; return;
     case "closed": return;
-    case "closing": await this.#closePromise; return;
+    case "closing": await this.closePromise; return;
     case "busy":
-      this.#state = "closing";
-      this.#closePromise = new Promise<void>(resolve => {
-        this.#resolveClose = resolve;
+      this.stateValue = "closing";
+      this.closePromise = new Promise<void>(resolve => {
+        this.resolveClose = resolve;
       });
-      await this.#closePromise;
+      await this.closePromise;
       return;
-    default: return this.#state satisfies never;
+    default: return this.stateValue satisfies never;
     }
   }
 }

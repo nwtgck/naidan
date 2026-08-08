@@ -15,7 +15,7 @@ type Page = ImmutableBTreePage<number, Entry, string>;
 class MemoryPageStore {
   readonly pages = new Map<string, Page>();
   readonly writes: Readonly<{ isRoot: boolean; page: Page }>[] = [];
-  #nextReference = 1;
+  private nextReference = 1;
 
   async readPage({ isRoot: _isRoot, reference }: { isRoot: boolean; reference: string }): Promise<Page> {
     const page = this.pages.get(reference);
@@ -24,8 +24,8 @@ class MemoryPageStore {
   }
 
   async writePage({ isRoot, page }: { isRoot: boolean; page: Page }): Promise<string> {
-    const reference = `page-${this.#nextReference}`;
-    this.#nextReference += 1;
+    const reference = `page-${this.nextReference}`;
+    this.nextReference += 1;
     this.pages.set(reference, page);
     this.writes.push({ isRoot, page });
     return reference;

@@ -89,15 +89,15 @@ function cloneSymlink({ symlink }: { symlink: SymlinkInodeEntry }): SymlinkInode
 }
 
 export class ExplicitBulkCandidate {
-  readonly #directories = new Map<InodeNumber, MutableDirectoryCandidate>();
-  readonly #files: FileInodeEntry[] = [];
-  readonly #limits: Readonly<{ maxEntries: number; maxInlineFileBytesTotal: number }>;
-  readonly #symlinks: SymlinkInodeEntry[] = [];
-  readonly #targetDirectoryInodeNumber: InodeNumber;
-  #entryCount = 0;
-  #nextInodeNumber: InodeNumber;
-  #sealed = false;
-  #totalInlineFileBytes = 0;
+  private readonly directories = new Map<InodeNumber, MutableDirectoryCandidate>();
+  private readonly files: FileInodeEntry[] = [];
+  private readonly limits: Readonly<{ maxEntries: number; maxInlineFileBytesTotal: number }>;
+  private readonly symlinks: SymlinkInodeEntry[] = [];
+  private readonly targetDirectoryInodeNumber: InodeNumber;
+  private entryCount = 0;
+  private nextInodeNumber: InodeNumber;
+  private sealed = false;
+  private totalInlineFileBytes = 0;
 
   constructor({ limits, nextInodeNumber, rootDirectory }: {
     limits: Readonly<{ maxEntries: number; maxInlineFileBytesTotal: number }>;
@@ -125,10 +125,10 @@ export class ExplicitBulkCandidate {
         message: "explicit bulk Inode Number allocator must exceed the root directory identity",
       });
     }
-    this.#limits = limits;
-    this.#nextInodeNumber = nextInodeNumber;
-    this.#targetDirectoryInodeNumber = rootDirectory.inodeNumber;
-    this.#directories.set(rootDirectory.inodeNumber, {
+    this.limits = limits;
+    this.nextInodeNumber = nextInodeNumber;
+    this.targetDirectoryInodeNumber = rootDirectory.inodeNumber;
+    this.directories.set(rootDirectory.inodeNumber, {
       entries: [],
       entryNames: new Set(),
       inodeNumber: rootDirectory.inodeNumber,
@@ -137,8 +137,8 @@ export class ExplicitBulkCandidate {
     });
   }
 
-  #assertActive(): void {
-    if (this.#sealed) {
+  private assertActive(): void {
+    if (this.sealed) {
       throw new ExplicitBulkCandidateError({
         code: "candidate_sealed",
         message: "explicit bulk candidate is sealed for publication",
@@ -146,13 +146,13 @@ export class ExplicitBulkCandidate {
     }
   }
 
-  #prepareParent({ name, parentDirectoryInodeNumber }: {
+  private prepareParent({ name, parentDirectoryInodeNumber }: {
     name: string;
     parentDirectoryInodeNumber: InodeNumber;
   }): MutableDirectoryCandidate {
-    this.#assertActive();
+    this.assertActive();
     encodeFilenameComponent({ value: name });
-    const parent = this.#directories.get(parentDirectoryInodeNumber);
+    const parent = this.directories.get(parentDirectoryInodeNumber);
     if (parent === undefined) {
       throw new ExplicitBulkCandidateError({
         code: "invalid_parent_directory",
@@ -165,13 +165,13 @@ export class ExplicitBulkCandidate {
         message: "explicit bulk directory entry already exists",
       });
     }
-    if (this.#entryCount >= this.#limits.maxEntries) {
+    if (this.entryCount >= this.limits.maxEntries) {
       throw new ExplicitBulkCandidateError({
         code: "entry_limit_exceeded",
         message: "explicit bulk candidate entry budget is exhausted",
       });
     }
-    if (this.#nextInodeNumber === UINT64_MAXIMUM) {
+    if (this.nextInodeNumber === UINT64_MAXIMUM) {
       throw new ExplicitBulkCandidateError({
         code: "allocator_exhausted",
         message: "explicit bulk Inode Number allocator is exhausted",
@@ -180,9 +180,9 @@ export class ExplicitBulkCandidate {
     return parent;
   }
 
-  #allocateInodeNumber(): InodeNumber {
-    const allocated = this.#nextInodeNumber;
-    this.#nextInodeNumber = createInodeNumber({ value: allocated + 1n });
+  private allocateInodeNumber(): InodeNumber {
+    const allocated = this.nextInodeNumber;
+    this.nextInodeNumber = createInodeNumber({ value: allocated + 1n });
     return allocated;
   }
 
@@ -191,8 +191,8 @@ export class ExplicitBulkCandidate {
     parentDirectoryInodeNumber: InodeNumber;
     timestamp: TimestampMilliseconds;
   }): InodeNumber {
-    const parent = this.#prepareParent({ name, parentDirectoryInodeNumber });
-    const inodeNumber = this.#allocateInodeNumber();
+    const parent = this.prepareParent({ name, parentDirectoryInodeNumber });
+    const inodeNumber = this.allocateInodeNumber();
     const entry = {
       inodeKind: "directory",
       inodeNumber,
@@ -202,14 +202,14 @@ export class ExplicitBulkCandidate {
     parent.entries.push(entry);
     parent.entryNames.add(name);
     parent.timestamps = { createdAt: parent.timestamps.createdAt, modifiedAt: timestamp };
-    this.#directories.set(inodeNumber, {
+    this.directories.set(inodeNumber, {
       entries: [],
       entryNames: new Set(),
       inodeNumber,
       inodeRevision: createInodeRevision({ value: 1n }),
       timestamps: { createdAt: timestamp, modifiedAt: timestamp },
     });
-    this.#entryCount += 1;
+    this.entryCount += 1;
     return inodeNumber;
   }
 
@@ -218,8 +218,8 @@ export class ExplicitBulkCandidate {
     parentDirectoryInodeNumber: InodeNumber;
     timestamps: InodeTimestamps;
   }): InodeNumber {
-    const parent = this.#prepareParent({ name, parentDirectoryInodeNumber });
-    const inodeNumber = this.#allocateInodeNumber();
+    const parent = this.prepareParent({ name, parentDirectoryInodeNumber });
+    const inodeNumber = this.allocateInodeNumber();
     parent.entries.push({
       inodeKind: "directory",
       inodeNumber,
@@ -227,14 +227,14 @@ export class ExplicitBulkCandidate {
       targetType: "inode",
     });
     parent.entryNames.add(name);
-    this.#directories.set(inodeNumber, {
+    this.directories.set(inodeNumber, {
       entries: [],
       entryNames: new Set(),
       inodeNumber,
       inodeRevision: createInodeRevision({ value: 1n }),
       timestamps: { ...timestamps },
     });
-    this.#entryCount += 1;
+    this.entryCount += 1;
     return inodeNumber;
   }
 
@@ -257,20 +257,20 @@ export class ExplicitBulkCandidate {
     parentDirectoryInodeNumber: InodeNumber;
     timestamp: TimestampMilliseconds;
   }): InodeNumber {
-    const parent = this.#prepareParent({ name, parentDirectoryInodeNumber });
+    const parent = this.prepareParent({ name, parentDirectoryInodeNumber });
     if (bytes.byteLength > HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes) {
       throw new ExplicitBulkCandidateError({
         code: "inline_file_too_large",
         message: "explicit bulk inline file exceeds the V1 inline file limit",
       });
     }
-    if (this.#totalInlineFileBytes + bytes.byteLength > this.#limits.maxInlineFileBytesTotal) {
+    if (this.totalInlineFileBytes + bytes.byteLength > this.limits.maxInlineFileBytesTotal) {
       throw new ExplicitBulkCandidateError({
         code: "inline_byte_limit_exceeded",
         message: "explicit bulk inline byte budget is exhausted",
       });
     }
-    const inodeNumber = this.#allocateInodeNumber();
+    const inodeNumber = this.allocateInodeNumber();
     const ownedBytes = new Uint8Array(bytes);
     const file: FileInodeEntry = {
       content: { bytes: ownedBytes, type: "inline" },
@@ -283,9 +283,9 @@ export class ExplicitBulkCandidate {
     parent.entries.push({ inodeKind: "file", inodeNumber, name, targetType: "inode" });
     parent.entryNames.add(name);
     parent.timestamps = { createdAt: parent.timestamps.createdAt, modifiedAt: timestamp };
-    this.#files.push(file);
-    this.#entryCount += 1;
-    this.#totalInlineFileBytes += ownedBytes.byteLength;
+    this.files.push(file);
+    this.entryCount += 1;
+    this.totalInlineFileBytes += ownedBytes.byteLength;
     return inodeNumber;
   }
 
@@ -296,7 +296,7 @@ export class ExplicitBulkCandidate {
     parentDirectoryInodeNumber: InodeNumber;
     timestamps: InodeTimestamps;
   }): InodeNumber {
-    const parent = this.#prepareParent({ name, parentDirectoryInodeNumber });
+    const parent = this.prepareParent({ name, parentDirectoryInodeNumber });
     const normalizedFileSize = createFileOffset({ value: fileSize });
     let ownedContent: FileInodeEntry["content"];
     switch (content.type) {
@@ -313,7 +313,7 @@ export class ExplicitBulkCandidate {
           message: "explicit bulk inline file bytes must equal its logical file size",
         });
       }
-      if (this.#totalInlineFileBytes + content.bytes.byteLength > this.#limits.maxInlineFileBytesTotal) {
+      if (this.totalInlineFileBytes + content.bytes.byteLength > this.limits.maxInlineFileBytesTotal) {
         throw new ExplicitBulkCandidateError({
           code: "inline_byte_limit_exceeded",
           message: "explicit bulk inline byte budget is exhausted",
@@ -325,8 +325,8 @@ export class ExplicitBulkCandidate {
     case "tree": ownedContent = content; break;
     default: return content satisfies never;
     }
-    const inodeNumber = this.#allocateInodeNumber();
-    this.#files.push({
+    const inodeNumber = this.allocateInodeNumber();
+    this.files.push({
       content: ownedContent,
       fileSize: normalizedFileSize,
       inodeKind: "file",
@@ -336,9 +336,9 @@ export class ExplicitBulkCandidate {
     });
     parent.entries.push({ inodeKind: "file", inodeNumber, name, targetType: "inode" });
     parent.entryNames.add(name);
-    this.#entryCount += 1;
+    this.entryCount += 1;
     switch (ownedContent.type) {
-    case "inline": this.#totalInlineFileBytes += ownedContent.bytes.byteLength; break;
+    case "inline": this.totalInlineFileBytes += ownedContent.bytes.byteLength; break;
     case "tree": break;
     default: return ownedContent satisfies never;
     }
@@ -351,9 +351,9 @@ export class ExplicitBulkCandidate {
     target: string;
     timestamps: InodeTimestamps;
   }): InodeNumber {
-    const parent = this.#prepareParent({ name, parentDirectoryInodeNumber });
+    const parent = this.prepareParent({ name, parentDirectoryInodeNumber });
     encodeSymlinkTarget({ value: target });
-    const inodeNumber = this.#allocateInodeNumber();
+    const inodeNumber = this.allocateInodeNumber();
     const symlink: SymlinkInodeEntry = {
       inodeKind: "symlink",
       inodeNumber,
@@ -363,15 +363,15 @@ export class ExplicitBulkCandidate {
     };
     parent.entries.push({ inodeKind: "symlink", inodeNumber, name, targetType: "inode" });
     parent.entryNames.add(name);
-    this.#symlinks.push(symlink);
-    this.#entryCount += 1;
+    this.symlinks.push(symlink);
+    this.entryCount += 1;
     return inodeNumber;
   }
 
   seal(): SealedExplicitBulkCandidate {
-    this.#sealed = true;
+    this.sealed = true;
     return {
-      directories: [...this.#directories.values()]
+      directories: [...this.directories.values()]
         .sort((left, right) => left.inodeNumber < right.inodeNumber ? -1 : left.inodeNumber > right.inodeNumber ? 1 : 0)
         .map(directory => ({
           entries: [...directory.entries].sort((left, right) => compareDirectoryEntries({ left, right })),
@@ -379,15 +379,15 @@ export class ExplicitBulkCandidate {
           inodeRevision: directory.inodeRevision,
           timestamps: { ...directory.timestamps },
         })),
-      files: [...this.#files]
+      files: [...this.files]
         .sort((left, right) => left.inodeNumber < right.inodeNumber ? -1 : left.inodeNumber > right.inodeNumber ? 1 : 0)
         .map(file => cloneFile({ file })),
-      nextInodeNumber: this.#nextInodeNumber,
-      symlinks: [...this.#symlinks]
+      nextInodeNumber: this.nextInodeNumber,
+      symlinks: [...this.symlinks]
         .sort((left, right) => left.inodeNumber < right.inodeNumber ? -1 : left.inodeNumber > right.inodeNumber ? 1 : 0)
         .map(symlink => cloneSymlink({ symlink })),
-      targetDirectoryInodeNumber: this.#targetDirectoryInodeNumber,
-      totalInlineFileBytes: this.#totalInlineFileBytes,
+      targetDirectoryInodeNumber: this.targetDirectoryInodeNumber,
+      totalInlineFileBytes: this.totalInlineFileBytes,
     };
   }
 }

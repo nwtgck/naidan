@@ -101,8 +101,8 @@ function capturedReferences({ entries }: { entries: ReadonlyMap<string, RootEntr
 }
 
 export class MaintenanceRootRegistry {
-  #maxRegistrationsPerContainer: number;
-  #scopes = new WeakMap<ContainerCoordinationKey, ScopeState>();
+  private maxRegistrationsPerContainer: number;
+  private scopes = new WeakMap<ContainerCoordinationKey, ScopeState>();
 
   constructor({ maxRegistrationsPerContainer }: { maxRegistrationsPerContainer: number }) {
     if (!Number.isSafeInteger(maxRegistrationsPerContainer) || maxRegistrationsPerContainer < 1) {
@@ -111,11 +111,11 @@ export class MaintenanceRootRegistry {
         message: "maintenance root registry requires a positive safe per-container registration limit",
       });
     }
-    this.#maxRegistrationsPerContainer = maxRegistrationsPerContainer;
+    this.maxRegistrationsPerContainer = maxRegistrationsPerContainer;
   }
 
-  #scope({ coordinationKey }: { coordinationKey: ContainerCoordinationKey }): ScopeState {
-    const existing = this.#scopes.get(coordinationKey);
+  private scope({ coordinationKey }: { coordinationKey: ContainerCoordinationKey }): ScopeState {
+    const existing = this.scopes.get(coordinationKey);
     if (existing !== undefined) return existing;
     const created: ScopeState = {
       captureActive: false,
@@ -130,23 +130,23 @@ export class MaintenanceRootRegistry {
       maintenanceRootEpoch: 0,
       registrationCount: 0,
     };
-    this.#scopes.set(coordinationKey, created);
+    this.scopes.set(coordinationKey, created);
     return created;
   }
 
-  #acquire({ category, reference, coordinationKey }: {
+  private acquire({ category, reference, coordinationKey }: {
     category: RootCategory;
     reference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): Readonly<{ reference: HomeRecordReference; release: () => void }> {
-    const scope = this.#scope({ coordinationKey });
+    const scope = this.scope({ coordinationKey });
     if (scope.captureActive) {
       throw new MaintenanceRootRegistryError({
         code: "registration_blocked",
         message: "maintenance root registration is blocked during root capture",
       });
     }
-    if (scope.registrationCount >= this.#maxRegistrationsPerContainer) {
+    if (scope.registrationCount >= this.maxRegistrationsPerContainer) {
       throw new MaintenanceRootRegistryError({
         code: "root_limit_exceeded",
         message: "maintenance root registry reached its explicit per-container memory bound",
@@ -190,7 +190,7 @@ export class MaintenanceRootRegistry {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootRegistration {
-    const registration = this.#acquire({ category: "inspector_pinned", reference: commitReference, coordinationKey });
+    const registration = this.acquire({ category: "inspector_pinned", reference: commitReference, coordinationKey });
     return Object.freeze({ commitReference: registration.reference, release: registration.release });
   }
 
@@ -198,7 +198,7 @@ export class MaintenanceRootRegistry {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootRegistration {
-    const registration = this.#acquire({ category: "reader_pinned", reference: commitReference, coordinationKey });
+    const registration = this.acquire({ category: "reader_pinned", reference: commitReference, coordinationKey });
     return Object.freeze({ commitReference: registration.reference, release: registration.release });
   }
 
@@ -206,7 +206,7 @@ export class MaintenanceRootRegistry {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootRegistration {
-    const registration = this.#acquire({ category: "source_segment_pinned", reference: commitReference, coordinationKey });
+    const registration = this.acquire({ category: "source_segment_pinned", reference: commitReference, coordinationKey });
     return Object.freeze({ commitReference: registration.reference, release: registration.release });
   }
 
@@ -214,7 +214,7 @@ export class MaintenanceRootRegistry {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootRegistration {
-    const registration = this.#acquire({ category: "unknown_feature", reference: commitReference, coordinationKey });
+    const registration = this.acquire({ category: "unknown_feature", reference: commitReference, coordinationKey });
     return Object.freeze({ commitReference: registration.reference, release: registration.release });
   }
 
@@ -222,7 +222,7 @@ export class MaintenanceRootRegistry {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootRegistration {
-    const registration = this.#acquire({ category: "writer_dependency", reference: commitReference, coordinationKey });
+    const registration = this.acquire({ category: "writer_dependency", reference: commitReference, coordinationKey });
     return Object.freeze({ commitReference: registration.reference, release: registration.release });
   }
 
@@ -231,7 +231,7 @@ export class MaintenanceRootRegistry {
     pageReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenancePageRootRegistration {
-    const registration = this.#acquire({
+    const registration = this.acquire({
       category: "writer_working_page",
       reference: pageReference,
       coordinationKey,
@@ -242,7 +242,7 @@ export class MaintenanceRootRegistry {
   activityState({ coordinationKey }: {
     coordinationKey: ContainerCoordinationKey;
   }): MaintenanceRootRegistryActivityState {
-    const scope = this.#scopes.get(coordinationKey);
+    const scope = this.scopes.get(coordinationKey);
     if (scope === undefined) return "idle";
     return scope.captureActive || scope.registrationCount > 0 ? "active" : "idle";
   }
@@ -251,7 +251,7 @@ export class MaintenanceRootRegistry {
     commitReference: HomeRecordReference;
     coordinationKey: ContainerCoordinationKey;
   }): boolean {
-    const scope = this.#scopes.get(coordinationKey);
+    const scope = this.scopes.get(coordinationKey);
     if (scope === undefined || scope.captureActive || scope.registrationCount !== 1) return false;
     const identity = referenceIdentity({
       encodedReference: encodeHomeRecordReference({ reference: commitReference }),
@@ -264,7 +264,7 @@ export class MaintenanceRootRegistry {
     pageReferences: readonly HomeRecordReference[];
   }): boolean {
     if (pageReferences.length === 0) return false;
-    const scope = this.#scopes.get(coordinationKey);
+    const scope = this.scopes.get(coordinationKey);
     if (scope === undefined || scope.captureActive || scope.registrationCount !== pageReferences.length) return false;
     const expectedCounts = new Map<string, number>();
     for (const pageReference of pageReferences) {
@@ -283,7 +283,7 @@ export class MaintenanceRootRegistry {
   captureRoots({ coordinationKey }: {
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceRootCapture {
-    const scope = this.#scope({ coordinationKey });
+    const scope = this.scope({ coordinationKey });
     if (scope.captureActive) {
       throw new MaintenanceRootRegistryError({
         code: "root_capture_active",

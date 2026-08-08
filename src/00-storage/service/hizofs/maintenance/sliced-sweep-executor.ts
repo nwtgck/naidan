@@ -110,12 +110,12 @@ async function removePreparedSegment({ removeSegment, state }: {
 }
 
 export class SlicedSweepExecutor {
-  #aborted = false;
-  #nextIndex = 0;
-  #policy: HizoFSMaintenancePolicy;
-  #removals: readonly RemovalState[];
-  #removed = new Map<string, SegmentId>();
-  #retained = new Map<string, SegmentId>();
+  private aborted = false;
+  private nextIndex = 0;
+  private policy: HizoFSMaintenancePolicy;
+  private removals: readonly RemovalState[];
+  private removed = new Map<string, SegmentId>();
+  private retained = new Map<string, SegmentId>();
 
   constructor({ policy, preparedRemovals }: {
     policy: HizoFSMaintenancePolicy;
@@ -138,17 +138,17 @@ export class SlicedSweepExecutor {
       }
       unique.set(identity, { acquireDeletionLease: prepared.acquireDeletionLease, plan: prepared.plan });
     }
-    this.#policy = policy;
-    this.#removals = Object.freeze([...unique.entries()]
+    this.policy = policy;
+    this.removals = Object.freeze([...unique.entries()]
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([, state]) => state));
   }
 
-  #terminal({ phase }: { phase: "aborted_after_partial_sweep" | "completed" }): SlicedSweepResult {
+  private terminal({ phase }: { phase: "aborted_after_partial_sweep" | "completed" }): SlicedSweepResult {
     return Object.freeze({
       phase,
-      removedSegmentIds: Object.freeze([...this.#removed.values()].map(segmentId => cloneSegmentId({ segmentId }))),
-      retainedSegmentIds: Object.freeze([...this.#retained.values()].map(segmentId => cloneSegmentId({ segmentId }))),
+      removedSegmentIds: Object.freeze([...this.removed.values()].map(segmentId => cloneSegmentId({ segmentId }))),
+      retainedSegmentIds: Object.freeze([...this.retained.values()].map(segmentId => cloneSegmentId({ segmentId }))),
     });
   }
 
@@ -159,33 +159,33 @@ export class SlicedSweepExecutor {
     removeSegment: ({ segmentId }: { segmentId: SegmentId }) => Promise<void>;
     signal: AbortSignal | undefined;
   }): Promise<SlicedSweepResult> {
-    if (this.#aborted) return this.#terminal({ phase: "aborted_after_partial_sweep" });
-    if (this.#nextIndex >= this.#removals.length) return this.#terminal({ phase: "completed" });
+    if (this.aborted) return this.terminal({ phase: "aborted_after_partial_sweep" });
+    if (this.nextIndex >= this.removals.length) return this.terminal({ phase: "completed" });
     const startedAt = now();
     if (!Number.isFinite(startedAt)) throw new TypeError("sweep clock must return a finite value");
     let startedThisSlice = 0;
 
-    while (this.#nextIndex < this.#removals.length) {
+    while (this.nextIndex < this.removals.length) {
       if (signal?.aborted === true) return Object.freeze({ phase: "sweeping", reason: "abort_requested" });
       if (hasForegroundWaiter()) return Object.freeze({ phase: "sweeping", reason: "foreground_waiter" });
-      if (startedThisSlice >= this.#policy.maxRemovalsPerSlice) {
+      if (startedThisSlice >= this.policy.maxRemovalsPerSlice) {
         return Object.freeze({ phase: "sweeping", reason: "slice_removal_limit" });
       }
       if (startedThisSlice > 0) {
         const elapsed = now() - startedAt;
         if (!Number.isFinite(elapsed) || elapsed < 0) throw new TypeError("sweep clock must be monotonic and finite");
-        if (elapsed >= this.#policy.softSliceMilliseconds) {
+        if (elapsed >= this.policy.softSliceMilliseconds) {
           return Object.freeze({ phase: "sweeping", reason: "soft_time_limit" });
         }
       }
-      const remainingInSlice = this.#policy.maxRemovalsPerSlice - startedThisSlice;
+      const remainingInSlice = this.policy.maxRemovalsPerSlice - startedThisSlice;
       const waveSize = Math.min(
-        this.#policy.removeConcurrency,
+        this.policy.removeConcurrency,
         remainingInSlice,
-        this.#removals.length - this.#nextIndex,
+        this.removals.length - this.nextIndex,
       );
-      const wave = this.#removals.slice(this.#nextIndex, this.#nextIndex + waveSize);
-      this.#nextIndex += wave.length;
+      const wave = this.removals.slice(this.nextIndex, this.nextIndex + waveSize);
+      this.nextIndex += wave.length;
       startedThisSlice += wave.length;
       const outcomes = await Promise.all(wave.map(async state => await removePreparedSegment({
         removeSegment,
@@ -195,14 +195,14 @@ export class SlicedSweepExecutor {
         const identity = segmentIdToLowercaseHex({ id: outcome.segmentId });
         switch (outcome.status) {
         case "removed":
-          this.#removed.set(identity, cloneSegmentId({ segmentId: outcome.segmentId }));
+          this.removed.set(identity, cloneSegmentId({ segmentId: outcome.segmentId }));
           break;
         case "failed": {
-          this.#retained.set(identity, cloneSegmentId({ segmentId: outcome.segmentId }));
+          this.retained.set(identity, cloneSegmentId({ segmentId: outcome.segmentId }));
           const disposition = classifyFailure({ cause: outcome.cause, segmentId: cloneSegmentId({ segmentId: outcome.segmentId }) });
           switch (disposition) {
           case "abort_cycle":
-            this.#aborted = true;
+            this.aborted = true;
             break;
           case "retain_and_continue":
             break;
@@ -214,16 +214,16 @@ export class SlicedSweepExecutor {
         default: outcome satisfies never;
         }
       }
-      if (this.#aborted) {
-        for (const remaining of this.#removals.slice(this.#nextIndex)) {
+      if (this.aborted) {
+        for (const remaining of this.removals.slice(this.nextIndex)) {
           const identity = segmentIdToLowercaseHex({ id: remaining.plan.segmentId });
-          this.#retained.set(identity, cloneSegmentId({ segmentId: remaining.plan.segmentId }));
+          this.retained.set(identity, cloneSegmentId({ segmentId: remaining.plan.segmentId }));
         }
-        this.#nextIndex = this.#removals.length;
-        return this.#terminal({ phase: "aborted_after_partial_sweep" });
+        this.nextIndex = this.removals.length;
+        return this.terminal({ phase: "aborted_after_partial_sweep" });
       }
     }
-    return this.#terminal({ phase: "completed" });
+    return this.terminal({ phase: "completed" });
   }
 }
 

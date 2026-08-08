@@ -34,20 +34,20 @@ export type RuntimeWriterLease = Readonly<{
 }>;
 
 export class RuntimeCoordinationRegistry {
-  #states = new WeakMap<ContainerCoordinationKey, CoordinationState>();
+  private states = new WeakMap<ContainerCoordinationKey, CoordinationState>();
 
-  #state({ coordinationKey }: { coordinationKey: ContainerCoordinationKey }): CoordinationState {
-    const existing = this.#states.get(coordinationKey);
+  private state({ coordinationKey }: { coordinationKey: ContainerCoordinationKey }): CoordinationState {
+    const existing = this.states.get(coordinationKey);
     if (existing !== undefined) return existing;
     const created = { maintenanceActive: false, publicationActive: false, writerActive: false };
-    this.#states.set(coordinationKey, created);
+    this.states.set(coordinationKey, created);
     return created;
   }
 
   activityState({ coordinationKey }: {
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeCoordinationRegistryActivityState {
-    const state = this.#states.get(coordinationKey);
+    const state = this.states.get(coordinationKey);
     if (state === undefined) return "idle";
     return state.maintenanceActive || state.publicationActive || state.writerActive ? "active" : "idle";
   }
@@ -55,7 +55,7 @@ export class RuntimeCoordinationRegistry {
   acquireWriter({ coordinationKey }: {
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeWriterLease {
-    const state = this.#state({ coordinationKey });
+    const state = this.state({ coordinationKey });
     if (state.maintenanceActive) {
       throw new RuntimeCoordinationError({
         code: "maintenance_active",
@@ -114,7 +114,7 @@ export class RuntimeCoordinationRegistry {
   beginMaintenance({ coordinationKey }: {
     coordinationKey: ContainerCoordinationKey;
   }): RuntimeMaintenanceLease {
-    const state = this.#state({ coordinationKey });
+    const state = this.state({ coordinationKey });
     if (state.maintenanceActive) {
       throw new RuntimeCoordinationError({
         code: "maintenance_active",

@@ -57,53 +57,53 @@ export class TransitionProviderAdapter implements TransitionEndpointReadinessPro
     hizofs: TransitionEndpointDriver;
     plain: TransitionEndpointDriver;
   }) {
-    this.#hizofs = hizofs;
-    this.#plain = plain;
+    this.hizofs = hizofs;
+    this.plain = plain;
   }
 
-  readonly #hizofs: TransitionEndpointDriver;
-  readonly #plain: TransitionEndpointDriver;
+  private readonly hizofs: TransitionEndpointDriver;
+  private readonly plain: TransitionEndpointDriver;
 
-  #driver({ endpoint }: { endpoint: NaidanPersistenceEndpointV1 }): TransitionEndpointDriver {
+  private driver({ endpoint }: { endpoint: NaidanPersistenceEndpointV1 }): TransitionEndpointDriver {
     switch (endpoint.type) {
-    case 'plain': return this.#plain;
-    case 'hizofs': return this.#hizofs;
+    case 'plain': return this.plain;
+    case 'hizofs': return this.hizofs;
     default: return endpoint satisfies never;
     }
   }
 
   public async cleanupEndpoint({ endpoint }: { endpoint: NaidanPersistenceEndpointV1 }): Promise<void> {
-    await this.#driver({ endpoint }).cleanupEndpoint({ endpoint });
+    await this.driver({ endpoint }).cleanupEndpoint({ endpoint });
   }
 
   public async finalizeTarget({ binding }: { binding: TransitionTargetOperationBinding }): Promise<void> {
-    await this.#driver({ endpoint: binding.target }).finalizeTarget({ binding });
+    await this.driver({ endpoint: binding.target }).finalizeTarget({ binding });
   }
 
   public async inspectEndpoint({ endpoint }: { endpoint: NaidanPersistenceEndpointV1 }): Promise<TransitionEndpointReadiness> {
-    return await this.#driver({ endpoint }).inspectEndpoint({ endpoint });
+    return await this.driver({ endpoint }).inspectEndpoint({ endpoint });
   }
 
   public async openSourceEndpoint({ endpoint }: { endpoint: NaidanPersistenceEndpointV1 }): Promise<TransitionSourceEndpointSession> {
-    return await this.#driver({ endpoint }).openSourceEndpoint({ endpoint });
+    return await this.driver({ endpoint }).openSourceEndpoint({ endpoint });
   }
 
   public async openTargetEndpoint({ binding }: { binding: TransitionTargetOperationBinding }): Promise<TransitionTargetEndpointSession> {
-    return await this.#driver({ endpoint: binding.target }).openTargetEndpoint({ binding });
+    return await this.driver({ endpoint: binding.target }).openTargetEndpoint({ binding });
   }
 
   public async prepareTarget({ binding, readiness }: {
     binding: TransitionTargetOperationBinding;
     readiness?: TransitionEndpointReadiness;
   }): Promise<void> {
-    const driver = this.#driver({ endpoint: binding.target });
+    const driver = this.driver({ endpoint: binding.target });
     await (readiness === undefined
       ? driver.prepareTarget({ binding })
       : driver.prepareTarget({ binding, readiness }));
   }
 
   public async verifyNormalOpen({ binding }: { binding: TransitionTargetOperationBinding }): Promise<void> {
-    await this.#driver({ endpoint: binding.target }).verifyNormalOpen({ binding });
+    await this.driver({ endpoint: binding.target }).verifyNormalOpen({ binding });
   }
 }
 

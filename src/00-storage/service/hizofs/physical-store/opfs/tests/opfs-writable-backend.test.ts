@@ -24,17 +24,17 @@ class TestSyncAccessHandle {
   }
 
   public flush(): void {
-    this.#requireOpen();
+    this.requireOpen();
     this.flushCount += 1;
   }
 
   public getSize(): number {
-    this.#requireOpen();
+    this.requireOpen();
     return this.file.bytes.byteLength;
   }
 
   public read(buffer: ArrayBufferView, options?: { at?: number }): number {
-    this.#requireOpen();
+    this.requireOpen();
     const target = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     const at = options?.at ?? 0;
     const available = Math.max(0, Math.min(target.byteLength, this.file.bytes.byteLength - at));
@@ -43,14 +43,14 @@ class TestSyncAccessHandle {
   }
 
   public truncate(newSize: number): void {
-    this.#requireOpen();
+    this.requireOpen();
     const next = new Uint8Array(newSize);
     next.set(this.file.bytes.subarray(0, newSize));
     this.file.bytes = next;
   }
 
   public write(buffer: ArrayBufferView, options?: { at?: number }): number {
-    this.#requireOpen();
+    this.requireOpen();
     const source = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     const written = Math.min(source.byteLength, this.maximumWriteLength);
     const at = options?.at ?? 0;
@@ -64,7 +64,7 @@ class TestSyncAccessHandle {
     return written;
   }
 
-  #requireOpen(): void {
+  private requireOpen(): void {
     if (this.closed) throw new DOMException("closed", "InvalidStateError");
   }
 }
@@ -90,7 +90,7 @@ class TestWritableStream {
   }
 
   public async close(): Promise<void> {
-    this.#requireOpen();
+    this.requireOpen();
     this.settled = true;
     this.file.bytes = Uint8Array.from(this.draft);
     this.file.writableOpen = false;
@@ -98,7 +98,7 @@ class TestWritableStream {
   }
 
   public async truncate(size: number): Promise<void> {
-    this.#requireOpen();
+    this.requireOpen();
     const next = new Uint8Array(size);
     next.set(this.draft.subarray(0, size));
     this.draft = next;
@@ -109,7 +109,7 @@ class TestWritableStream {
     position: number;
     type: 'write';
   }): Promise<void> {
-    this.#requireOpen();
+    this.requireOpen();
     expect(type).toBe('write');
     const source = ArrayBuffer.isView(data)
       ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
@@ -123,7 +123,7 @@ class TestWritableStream {
     this.draft.set(source, position);
   }
 
-  #requireOpen(): void {
+  private requireOpen(): void {
     if (this.settled) throw new DOMException('settled', 'InvalidStateError');
   }
 }
@@ -177,52 +177,52 @@ class TestFileHandle {
 class TestDirectoryHandle {
   public readonly kind = "directory" as const;
   public entriesReadCount = 0;
-  readonly #entries = new Map<string, TestEntry>();
-  readonly #stats: { directoryHandleLookups: number };
+  private readonly entriesValue = new Map<string, TestEntry>();
+  private readonly stats: { directoryHandleLookups: number };
 
   public constructor(
     public readonly name: string,
     stats: { directoryHandleLookups: number } = { directoryHandleLookups: 0 },
   ) {
-    this.#stats = stats;
+    this.stats = stats;
   }
 
   public get directoryHandleLookups(): number {
-    return this.#stats.directoryHandleLookups;
+    return this.stats.directoryHandleLookups;
   }
 
   public async getDirectoryHandle(name: string, options?: FileSystemGetDirectoryOptions): Promise<TestDirectoryHandle> {
-    this.#stats.directoryHandleLookups += 1;
-    const existing = this.#entries.get(name);
+    this.stats.directoryHandleLookups += 1;
+    const existing = this.entriesValue.get(name);
     if (existing !== undefined) {
       if (existing.kind !== "directory") throw new DOMException("not a directory", "TypeMismatchError");
       return existing;
     }
     if (options?.create !== true) throw new DOMException("missing", "NotFoundError");
-    const created = new TestDirectoryHandle(name, this.#stats);
-    this.#entries.set(name, created);
+    const created = new TestDirectoryHandle(name, this.stats);
+    this.entriesValue.set(name, created);
     return created;
   }
 
   public async getFileHandle(name: string, options?: FileSystemGetFileOptions): Promise<TestFileHandle> {
-    const existing = this.#entries.get(name);
+    const existing = this.entriesValue.get(name);
     if (existing !== undefined) {
       if (existing.kind !== "file") throw new DOMException("not a file", "TypeMismatchError");
       return existing;
     }
     if (options?.create !== true) throw new DOMException("missing", "NotFoundError");
     const created = new TestFileHandle(name);
-    this.#entries.set(name, created);
+    this.entriesValue.set(name, created);
     return created;
   }
 
   public entries(): AsyncIterableIterator<[string, TestEntry]> {
     this.entriesReadCount += 1;
-    return this.#entries.entries() as unknown as AsyncIterableIterator<[string, TestEntry]>;
+    return this.entriesValue.entries() as unknown as AsyncIterableIterator<[string, TestEntry]>;
   }
 
   public async removeEntry(name: string): Promise<void> {
-    if (!this.#entries.delete(name)) throw new DOMException("missing", "NotFoundError");
+    if (!this.entriesValue.delete(name)) throw new DOMException("missing", "NotFoundError");
   }
 }
 

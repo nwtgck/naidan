@@ -62,91 +62,91 @@ function sameProgressBinding({ binding, progress }: {
 
 /** Runtime-only ownership marker for the fixed native plain target namespace. */
 export class NativePlainTransitionRuntimeState implements NativePlainTransitionRuntime {
-  readonly #binding: RuntimeTransitionBinding;
-  #lifecycle: NativePlainTransitionTargetLifecycle | undefined;
-  #progress: TransitionRuntimeProgress | undefined;
-  #stagedLifecycle: NativePlainTransitionTargetLifecycle | undefined;
+  private readonly binding: RuntimeTransitionBinding;
+  private lifecycle: NativePlainTransitionTargetLifecycle | undefined;
+  private progress: TransitionRuntimeProgress | undefined;
+  private stagedLifecycle: NativePlainTransitionTargetLifecycle | undefined;
 
   public constructor({ binding }: { binding: RuntimeTransitionBinding }) {
-    this.#binding = structuredClone(binding);
+    this.binding = structuredClone(binding);
   }
 
   public async prepareTarget(): Promise<NativePlainTransitionTargetLifecycle> {
-    if (this.#lifecycle !== undefined) return this.#lifecycle;
-    this.#lifecycle = 'preparing';
-    this.#progress = initialProgress({ binding: this.#binding });
-    return this.#lifecycle;
+    if (this.lifecycle !== undefined) return this.lifecycle;
+    this.lifecycle = 'preparing';
+    this.progress = initialProgress({ binding: this.binding });
+    return this.lifecycle;
   }
 
   public async stageLifecycle({ lifecycle }: {
     lifecycle: NativePlainTransitionTargetLifecycle;
   }): Promise<void> {
-    const current = this.#stagedLifecycle ?? this.#lifecycle;
+    const current = this.stagedLifecycle ?? this.lifecycle;
     if (current === undefined) {
       throw new TypeError('native plain transition target must be prepared before staging lifecycle');
     }
     if (!canAdvanceLifecycle({ current, next: lifecycle })) {
       throw new TypeError(`native plain transition target cannot move from ${current} to ${lifecycle}`);
     }
-    this.#stagedLifecycle = lifecycle;
+    this.stagedLifecycle = lifecycle;
   }
 
   public async currentLifecycle(): Promise<NativePlainTransitionTargetLifecycle | undefined> {
-    return this.#stagedLifecycle ?? this.#lifecycle;
+    return this.stagedLifecycle ?? this.lifecycle;
   }
 
   public async abandonTarget({ operationId }: {
     operationId: TransitionOperationId;
   }): Promise<void> {
-    this.#requireOperation({ operationId });
-    this.#lifecycle = undefined;
-    this.#progress = undefined;
-    this.#stagedLifecycle = undefined;
+    this.requireOperation({ operationId });
+    this.lifecycle = undefined;
+    this.progress = undefined;
+    this.stagedLifecycle = undefined;
   }
 
   readonly progressPort: TransitionProgressPort = {
     clear: async ({ operationId }) => {
-      this.#requireOperation({ operationId });
-      const effective = this.#stagedLifecycle ?? this.#lifecycle;
+      this.requireOperation({ operationId });
+      const effective = this.stagedLifecycle ?? this.lifecycle;
       switch (effective) {
       case 'sealed':
-        this.#lifecycle = 'published';
-        this.#stagedLifecycle = undefined;
+        this.lifecycle = 'published';
+        this.stagedLifecycle = undefined;
         return;
       case 'preparing':
       case 'active':
       case 'published':
       case undefined:
-        this.#lifecycle = undefined;
-        this.#progress = undefined;
-        this.#stagedLifecycle = undefined;
+        this.lifecycle = undefined;
+        this.progress = undefined;
+        this.stagedLifecycle = undefined;
         return;
       default: effective satisfies never;
       }
     },
     load: async ({ operationId }) => {
-      this.#requireOperation({ operationId });
-      return structuredClone(this.#progress);
+      this.requireOperation({ operationId });
+      return structuredClone(this.progress);
     },
     save: async ({ progress }) => {
-      if (!sameProgressBinding({ binding: this.#binding, progress })) {
+      if (!sameProgressBinding({ binding: this.binding, progress })) {
         throw new TypeError('cannot save runtime progress for another transition binding');
       }
-      if (this.#lifecycle === undefined) {
+      if (this.lifecycle === undefined) {
         throw new TypeError('native plain transition target must be prepared before saving progress');
       }
-      if (this.#stagedLifecycle !== undefined) {
-        this.#lifecycle = this.#stagedLifecycle;
-        this.#stagedLifecycle = undefined;
+      if (this.stagedLifecycle !== undefined) {
+        this.lifecycle = this.stagedLifecycle;
+        this.stagedLifecycle = undefined;
       }
-      this.#progress = structuredClone(progress);
+      this.progress = structuredClone(progress);
     },
   };
 
-  #requireOperation({ operationId }: {
+  private requireOperation({ operationId }: {
     operationId: TransitionOperationId | string;
   }): void {
-    if (operationId !== this.#binding.operationId) {
+    if (operationId !== this.binding.operationId) {
       throw new TypeError('native plain transition runtime state belongs to another operation');
     }
   }

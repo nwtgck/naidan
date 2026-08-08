@@ -91,19 +91,19 @@ async function closeRuntimeSessionAfterFailure({ cause, message, session }: {
 
 
 class PinnedReadSnapshotRuntimeSession implements HizoFSApplicationRuntimeSession {
-  #closePromise: Promise<void> | undefined;
-  #idleWaiters = new Set<() => void>();
-  #inFlightOperations = 0;
-  #parent: ContainerRuntimeSession;
-  #pin: Awaited<ReturnType<ContainerRuntimeSession["acquireReaderPin"]>>;
-  #state: "closed" | "closing" | "open" = "open";
+  private closePromise: Promise<void> | undefined;
+  private idleWaiters = new Set<() => void>();
+  private inFlightOperations = 0;
+  private parent: ContainerRuntimeSession;
+  private pin: Awaited<ReturnType<ContainerRuntimeSession["acquireReaderPin"]>>;
+  private state: "closed" | "closing" | "open" = "open";
 
   constructor({ parent, pin }: {
     parent: ContainerRuntimeSession;
     pin: Awaited<ReturnType<ContainerRuntimeSession["acquireReaderPin"]>>;
   }) {
-    this.#parent = parent;
-    this.#pin = pin;
+    this.parent = parent;
+    this.pin = pin;
   }
 
   async acquireWriter(): Promise<HizoFSApplicationRuntimeWriter> {
@@ -111,45 +111,45 @@ class PinnedReadSnapshotRuntimeSession implements HizoFSApplicationRuntimeSessio
   }
 
   async close(): Promise<void> {
-    this.#closePromise ??= this.#close();
-    await this.#closePromise;
+    this.closePromise ??= this.closeInternal();
+    await this.closePromise;
   }
 
   async runReadOperation<Value>({ operation }: {
     operation: () => Promise<Value>;
   }): Promise<Value> {
-    switch (this.#state) {
+    switch (this.state) {
     case "open": break;
     case "closing":
     case "closed": throw new Error("HizoFS read snapshot is closing or closed");
-    default: this.#state satisfies never;
+    default: this.state satisfies never;
     }
-    this.#inFlightOperations += 1;
+    this.inFlightOperations += 1;
     try {
-      return await this.#parent.runReadOperation({ operation });
+      return await this.parent.runReadOperation({ operation });
     } finally {
-      this.#inFlightOperations -= 1;
-      if (this.#inFlightOperations === 0) {
-        for (const resolve of this.#idleWaiters) resolve();
-        this.#idleWaiters.clear();
+      this.inFlightOperations -= 1;
+      if (this.inFlightOperations === 0) {
+        for (const resolve of this.idleWaiters) resolve();
+        this.idleWaiters.clear();
       }
     }
   }
 
-  async #close(): Promise<void> {
-    switch (this.#state) {
+  private async closeInternal(): Promise<void> {
+    switch (this.state) {
     case "closed": return;
     case "closing": return;
     case "open": break;
-    default: this.#state satisfies never;
+    default: this.state satisfies never;
     }
-    this.#state = "closing";
-    if (this.#inFlightOperations > 0) {
-      await new Promise<void>(resolve => this.#idleWaiters.add(resolve));
+    this.state = "closing";
+    if (this.inFlightOperations > 0) {
+      await new Promise<void>(resolve => this.idleWaiters.add(resolve));
     }
-    this.#pin.release();
-    await this.#pin.released;
-    this.#state = "closed";
+    this.pin.release();
+    await this.pin.released;
+    this.state = "closed";
   }
 }
 
@@ -230,7 +230,7 @@ export class HizoFSWorkerRuntimeHostError extends Error {
 }
 
 export class HizoFSWorkerRuntimeHost {
-  #runtime: ContainerRuntime;
+  private runtime: ContainerRuntime;
 
   constructor({ crossRealmLockPort, lazyPublicationRollout, policy, scope }: {
     crossRealmLockPort: CrossRealmLockPort;
@@ -239,7 +239,7 @@ export class HizoFSWorkerRuntimeHost {
     policy: HizoFSRuntimePolicy;
     scope: ContainerCoordinationScope;
   }) {
-    this.#runtime = new ContainerRuntime({
+    this.runtime = new ContainerRuntime({
       crossRealmLockPort,
       ...(lazyPublicationRollout === undefined ? {} : { lazyPublicationRollout }),
       limits: policy,
@@ -247,7 +247,7 @@ export class HizoFSWorkerRuntimeHost {
     });
   }
 
-  async #openSessionWithRuntimeOwnerPolicy<Captured, Verified>({
+  private async openSessionWithRuntimeOwnerPolicy<Captured, Verified>({
     captureAuthority,
     createSessionResources,
     recheckAuthority,
@@ -265,9 +265,9 @@ export class HizoFSWorkerRuntimeHost {
   }): Promise<ContainerRuntimeSession> {
     const input = { captureAuthority, createSessionResources, recheckAuthority, verifyCapturedAuthority };
     switch (runtimeOwnerPolicy) {
-    case "wait": return await this.#runtime.openSessionWithAuthorityHandshake(input);
+    case "wait": return await this.runtime.openSessionWithAuthorityHandshake(input);
     case "reject_if_busy": {
-      const session = await this.#runtime.tryOpenSessionWithAuthorityHandshake(input);
+      const session = await this.runtime.tryOpenSessionWithAuthorityHandshake(input);
       if (session !== undefined) return session;
       throw new HizoFSWorkerRuntimeHostError({
         code: "runtime_owner_busy",
@@ -294,7 +294,7 @@ export class HizoFSWorkerRuntimeHost {
     runtimeOwnerPolicy?: HizoFSRuntimeOwnerOpenPolicy;
     verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
   }): Promise<ContainerRuntimeSession> {
-    return await this.#openSessionWithRuntimeOwnerPolicy({
+    return await this.openSessionWithRuntimeOwnerPolicy({
       captureAuthority,
       createSessionResources,
       recheckAuthority,
@@ -317,7 +317,7 @@ export class HizoFSWorkerRuntimeHost {
     recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
     verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
   }): Promise<ContainerRuntimeSession | undefined> {
-    return await this.#runtime.tryOpenSessionWithAuthorityHandshake({
+    return await this.runtime.tryOpenSessionWithAuthorityHandshake({
       captureAuthority,
       createSessionResources,
       recheckAuthority,
@@ -389,13 +389,13 @@ export class HizoFSWorkerRuntimeHost {
       syncDurability: StorageFileSystemSyncDurability;
       workerMountGrantIssuer: HizoFSWorkerMountGrantIssuer | undefined;
     }> | undefined;
-    const session = await this.#openSessionWithRuntimeOwnerPolicy({
+    const session = await this.openSessionWithRuntimeOwnerPolicy({
       captureAuthority,
       createSessionResources: ({ captured, verified }) => {
         const observedDurableAuthority = observeAuthenticatedDurableAuthority?.({ verified });
         const observedDurableIdentity = observedDurableAuthority?.identity
           ?? observeAuthenticatedDurableIdentity?.({ verified });
-        const publicationState = this.#runtime.workingCandidatePublicationState();
+        const publicationState = this.runtime.workingCandidatePublicationState();
         switch (publicationState) {
         case "empty":
         case "installed":
@@ -408,11 +408,11 @@ export class HizoFSWorkerRuntimeHost {
             );
           }
           if (observedDurableAuthority === undefined) {
-            this.#runtime.resolveWorkingCandidateOutcomeUnknownAgainstDurableAuthority({
+            this.runtime.resolveWorkingCandidateOutcomeUnknownAgainstDurableAuthority({
               observedDurableIdentity,
             });
           } else {
-            this.#runtime.resolveWorkingCandidateOutcomeUnknownAgainstAuthenticatedDurableAuthority({
+            this.runtime.resolveWorkingCandidateOutcomeUnknownAgainstAuthenticatedDurableAuthority({
               observedDurableAuthority,
             });
           }
@@ -424,7 +424,7 @@ export class HizoFSWorkerRuntimeHost {
         }
         const authenticatedGeneration = observedDurableAuthority === undefined
           ? undefined
-          : this.#runtime.attachAuthenticatedApplicationGeneration({
+          : this.runtime.attachAuthenticatedApplicationGeneration({
             durableAuthority: observedDurableAuthority,
             ...(observeWritableDurabilityProfile === undefined
               ? {}
@@ -445,7 +445,7 @@ export class HizoFSWorkerRuntimeHost {
               message: `${operationLabel} cannot reserve a candidate after its application session resources closed`,
             });
           }
-          return this.#runtime.openWorkingCandidateAdmission<Candidate>({
+          return this.runtime.openWorkingCandidateAdmission<Candidate>({
             durableBaseIdentity,
             operationLabel,
           });
@@ -525,7 +525,7 @@ export class HizoFSWorkerRuntimeHost {
       try {
         await resolvedApplicationResources.authenticatedGeneration?.requestExplicitFlush();
       } catch (cause: unknown) {
-        const publicationState = this.#runtime.workingCandidatePublicationState();
+        const publicationState = this.runtime.workingCandidatePublicationState();
         switch (publicationState) {
         case "outcome_unknown":
         case "poisoned": throw createStorageFileSystemSyncError({
@@ -605,7 +605,7 @@ export class HizoFSWorkerRuntimeHost {
     verifyCapturedAuthority: ({ captured }: { captured: Captured }) => Promise<Verified>;
   }): Promise<HizoFSReadApi> {
     let namespace: HizoFSReadApiNamespace | undefined;
-    const session = await this.#runtime.openSessionWithAuthorityHandshake({
+    const session = await this.runtime.openSessionWithAuthorityHandshake({
       captureAuthority,
       createSessionResources: ({ captured, verified }) => {
         const resources = createReadSessionResources({ captured, verified });
@@ -636,64 +636,64 @@ export class HizoFSWorkerRuntimeHost {
   openManagementCleanHeadBarrier({ writerOwnership }: {
     writerOwnership?: ContainerRuntimeManagementWriterOwnership;
   }): ContainerRuntimeManagementCleanHeadBarrier {
-    return this.#runtime.openManagementCleanHeadBarrier({ writerOwnership });
+    return this.runtime.openManagementCleanHeadBarrier({ writerOwnership });
   }
 
   async disposeIfIdleAndSafe(): Promise<ContainerRuntimeHostDisposalResult> {
-    return await this.#runtime.disposeIfIdleAndSafe();
+    return await this.runtime.disposeIfIdleAndSafe();
   }
 
   async flushAndDisposeIfIdleAndSafe(): Promise<ContainerRuntimeHostDisposalResult> {
-    return await this.#runtime.flushAndDisposeIfIdleAndSafe();
+    return await this.runtime.flushAndDisposeIfIdleAndSafe();
   }
 
   workingCandidatePublicationState(): ReturnType<ContainerRuntime["workingCandidatePublicationState"]> {
-    return this.#runtime.workingCandidatePublicationState();
+    return this.runtime.workingCandidatePublicationState();
   }
 
   async beginCleanHeadMaintenanceRootCapture(): Promise<ContainerRuntimeMaintenanceRootCapture> {
-    return await this.#runtime.beginCleanHeadMaintenanceRootCapture();
+    return await this.runtime.beginCleanHeadMaintenanceRootCapture();
   }
 
   async beginMaintenanceRootCapture(): Promise<ContainerRuntimeMaintenanceRootCapture> {
-    return await this.#runtime.beginMaintenanceRootCapture();
+    return await this.runtime.beginMaintenanceRootCapture();
   }
 
   acquireInspectorPinnedRoot({ commitReference }:
   Parameters<ContainerRuntime["acquireInspectorPinnedRoot"]>[0]):
   ReturnType<ContainerRuntime["acquireInspectorPinnedRoot"]> {
-    return this.#runtime.acquireInspectorPinnedRoot({ commitReference });
+    return this.runtime.acquireInspectorPinnedRoot({ commitReference });
   }
 
   acquireSourceSegmentPinnedRoot({ commitReference }:
   Parameters<ContainerRuntime["acquireSourceSegmentPinnedRoot"]>[0]):
   ReturnType<ContainerRuntime["acquireSourceSegmentPinnedRoot"]> {
-    return this.#runtime.acquireSourceSegmentPinnedRoot({ commitReference });
+    return this.runtime.acquireSourceSegmentPinnedRoot({ commitReference });
   }
 
   acquireUnknownFeatureRoot({ commitReference }:
   Parameters<ContainerRuntime["acquireUnknownFeatureRoot"]>[0]):
   ReturnType<ContainerRuntime["acquireUnknownFeatureRoot"]> {
-    return this.#runtime.acquireUnknownFeatureRoot({ commitReference });
+    return this.runtime.acquireUnknownFeatureRoot({ commitReference });
   }
 
   acquireWriterDependencyRoot({ commitReference }:
   Parameters<ContainerRuntime["acquireWriterDependencyRoot"]>[0]):
   ReturnType<ContainerRuntime["acquireWriterDependencyRoot"]> {
-    return this.#runtime.acquireWriterDependencyRoot({ commitReference });
+    return this.runtime.acquireWriterDependencyRoot({ commitReference });
   }
 
   acquireWriterWorkingPageRoot({ pageReference }:
   Parameters<ContainerRuntime["acquireWriterWorkingPageRoot"]>[0]):
   ReturnType<ContainerRuntime["acquireWriterWorkingPageRoot"]> {
-    return this.#runtime.acquireWriterWorkingPageRoot({ pageReference });
+    return this.runtime.acquireWriterWorkingPageRoot({ pageReference });
   }
 
   async beginSegmentDeletion({ segmentId }: Parameters<ContainerRuntime["beginSegmentDeletion"]>[0]):
   ReturnType<ContainerRuntime["beginSegmentDeletion"]> {
     // Keep the branded Segment ID inside the runtime owner type surface. The
     // worker host delegates the exact deletion gate without importing format.
-    return await this.#runtime.beginSegmentDeletion({ segmentId });
+    return await this.runtime.beginSegmentDeletion({ segmentId });
   }
 }
 

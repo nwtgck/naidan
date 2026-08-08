@@ -16,17 +16,17 @@ type LockState = {
 };
 
 export class InMemoryCrossRealmLockPort implements CrossRealmLockPort {
-  #locks = new Map<string, LockState>();
+  private locks = new Map<string, LockState>();
 
-  #state({ name }: { name: string }): LockState {
-    const existing = this.#locks.get(name);
+  private state({ name }: { name: string }): LockState {
+    const existing = this.locks.get(name);
     if (existing !== undefined) return existing;
     const created: LockState = { exclusiveHeld: false, pending: [], sharedHolders: 0 };
-    this.#locks.set(name, created);
+    this.locks.set(name, created);
     return created;
   }
 
-  #lease({ mode, name, state }: {
+  private lease({ mode, name, state }: {
     mode: CrossRealmLockMode;
     name: string;
     state: LockState;
@@ -54,7 +54,7 @@ export class InMemoryCrossRealmLockPort implements CrossRealmLockPort {
             break;
           default: mode satisfies never;
           }
-          this.#drain({ name, state });
+          this.drain({ name, state });
           completion.resolve();
         } catch (cause: unknown) {
           completion.reject(cause);
@@ -65,18 +65,18 @@ export class InMemoryCrossRealmLockPort implements CrossRealmLockPort {
     };
   }
 
-  #drain({ name, state }: { name: string; state: LockState }): void {
+  private drain({ name, state }: { name: string; state: LockState }): void {
     if (state.exclusiveHeld) return;
     const first = state.pending[0];
     if (first === undefined) {
-      if (state.sharedHolders === 0) this.#locks.delete(name);
+      if (state.sharedHolders === 0) this.locks.delete(name);
       return;
     }
     switch (first.mode) {
     case "exclusive":
       if (state.sharedHolders !== 0) return;
       state.pending.shift();
-      first.resolve({ lease: this.#lease({ mode: "exclusive", name, state }) });
+      first.resolve({ lease: this.lease({ mode: "exclusive", name, state }) });
       return;
     case "shared": break;
     default: first.mode satisfies never;
@@ -88,14 +88,14 @@ export class InMemoryCrossRealmLockPort implements CrossRealmLockPort {
       case "exclusive": return;
       case "shared":
         state.pending.shift();
-        request.resolve({ lease: this.#lease({ mode: "shared", name, state }) });
+        request.resolve({ lease: this.lease({ mode: "shared", name, state }) });
         break;
       default: request.mode satisfies never;
       }
     }
   }
 
-  #canAcquireImmediately({ mode, state }: {
+  private canAcquireImmediately({ mode, state }: {
     mode: CrossRealmLockMode;
     state: LockState;
   }): boolean {
@@ -113,11 +113,11 @@ export class InMemoryCrossRealmLockPort implements CrossRealmLockPort {
     mode: CrossRealmLockMode;
     name: string;
   }): Promise<CrossRealmLockLease> {
-    const state = this.#state({ name });
-    if (this.#canAcquireImmediately({ mode, state })) return this.#lease({ mode, name, state });
+    const state = this.state({ name });
+    if (this.canAcquireImmediately({ mode, state })) return this.lease({ mode, name, state });
     return await new Promise<CrossRealmLockLease>(resolvePromise => {
       state.pending.push({ mode, resolve: ({ lease }) => resolvePromise(lease) });
-      this.#drain({ name, state });
+      this.drain({ name, state });
     });
   }
 
@@ -125,13 +125,13 @@ export class InMemoryCrossRealmLockPort implements CrossRealmLockPort {
     mode: CrossRealmLockMode;
     name: string;
   }): Promise<CrossRealmLockLease | undefined> {
-    const state = this.#state({ name });
-    if (!this.#canAcquireImmediately({ mode, state })) return undefined;
-    return this.#lease({ mode, name, state });
+    const state = this.state({ name });
+    if (!this.canAcquireImmediately({ mode, state })) return undefined;
+    return this.lease({ mode, name, state });
   }
 
   async queryHeldLockNames(): Promise<readonly string[]> {
-    return [...this.#locks.entries()]
+    return [...this.locks.entries()]
       .filter(([, state]) => state.exclusiveHeld || state.sharedHolders > 0)
       .map(([name]) => name)
       .sort();

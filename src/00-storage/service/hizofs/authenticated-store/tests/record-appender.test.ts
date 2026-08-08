@@ -19,39 +19,39 @@ import type {
 
 
 class FileSizeBlockingBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
-  #blockNextFileSize = false;
-  readonly #fileSizeStarted: Promise<void>;
-  #fileSizeStartedResolve: (() => void) | undefined;
-  readonly #releaseFileSize: Promise<void>;
-  #releaseFileSizeResolve: (() => void) | undefined;
+  private blockNextFileSizeValue = false;
+  private readonly fileSizeStarted: Promise<void>;
+  private fileSizeStartedResolve: (() => void) | undefined;
+  private readonly releaseFileSizeValue: Promise<void>;
+  private releaseFileSizeResolve: (() => void) | undefined;
 
   public constructor() {
     super({});
-    this.#fileSizeStarted = new Promise(resolve => {
-      this.#fileSizeStartedResolve = resolve;
+    this.fileSizeStarted = new Promise(resolve => {
+      this.fileSizeStartedResolve = resolve;
     });
-    this.#releaseFileSize = new Promise(resolve => {
-      this.#releaseFileSizeResolve = resolve;
+    this.releaseFileSizeValue = new Promise(resolve => {
+      this.releaseFileSizeResolve = resolve;
     });
   }
 
   public blockNextFileSize(): void {
-    this.#blockNextFileSize = true;
+    this.blockNextFileSizeValue = true;
   }
   public async waitForFileSize(): Promise<void> {
-    await this.#fileSizeStarted;
+    await this.fileSizeStarted;
   }
   public releaseFileSize(): void {
-    this.#releaseFileSizeResolve?.();
+    this.releaseFileSizeResolve?.();
   }
 
   public override async getFileSize(
     input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["getFileSize"]>[0],
   ): Promise<bigint | undefined> {
-    if (this.#blockNextFileSize) {
-      this.#blockNextFileSize = false;
-      this.#fileSizeStartedResolve?.();
-      await this.#releaseFileSize;
+    if (this.blockNextFileSizeValue) {
+      this.blockNextFileSizeValue = false;
+      this.fileSizeStartedResolve?.();
+      await this.releaseFileSizeValue;
     }
     return await super.getFileSize(input);
   }
@@ -85,41 +85,41 @@ function repeatedThenFreshSegmentSource(): RandomByteSource {
 }
 
 class DurabilityBlockingBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
-  #blockNextDurability = false;
-  readonly #durabilityStarted: Promise<void>;
-  #durabilityStartedResolve: (() => void) | undefined;
-  readonly #releaseDurability: Promise<void>;
-  #releaseDurabilityResolve: (() => void) | undefined;
+  private blockNextDurabilityValue = false;
+  private readonly durabilityStarted: Promise<void>;
+  private durabilityStartedResolve: (() => void) | undefined;
+  private readonly releaseDurabilityValue: Promise<void>;
+  private releaseDurabilityResolve: (() => void) | undefined;
 
   public constructor() {
     super({});
-    this.#durabilityStarted = new Promise(resolve => {
-      this.#durabilityStartedResolve = resolve;
+    this.durabilityStarted = new Promise(resolve => {
+      this.durabilityStartedResolve = resolve;
     });
-    this.#releaseDurability = new Promise(resolve => {
-      this.#releaseDurabilityResolve = resolve;
+    this.releaseDurabilityValue = new Promise(resolve => {
+      this.releaseDurabilityResolve = resolve;
     });
   }
 
   public blockNextDurability(): void {
-    this.#blockNextDurability = true;
+    this.blockNextDurabilityValue = true;
   }
 
   public async waitForDurability(): Promise<void> {
-    await this.#durabilityStarted;
+    await this.durabilityStarted;
   }
 
   public releaseDurability(): void {
-    this.#releaseDurabilityResolve?.();
+    this.releaseDurabilityResolve?.();
   }
 
   public override async syncFileData(
     input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["syncFileData"]>[0],
   ): Promise<void> {
-    if (this.#blockNextDurability) {
-      this.#blockNextDurability = false;
-      this.#durabilityStartedResolve?.();
-      await this.#releaseDurability;
+    if (this.blockNextDurabilityValue) {
+      this.blockNextDurabilityValue = false;
+      this.durabilityStartedResolve?.();
+      await this.releaseDurabilityValue;
     }
     await super.syncFileData(input);
   }

@@ -52,7 +52,7 @@ class MemoryPagePort {
     },
   };
   readonly pages = new Map<string, FileExtentPage>();
-  #nextOffset = 10_000n;
+  private nextOffset = 10_000n;
 
   async readPage({ reference: value }: {
     isRoot: boolean;
@@ -69,9 +69,9 @@ class MemoryPagePort {
   }): Promise<HomeRecordReference> {
     const value = reference({
       kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
-      offset: this.#nextOffset,
+      offset: this.nextOffset,
     });
-    this.#nextOffset += 128n;
+    this.nextOffset += 128n;
     this.pages.set(identity({ value }), page);
     return value;
   }
@@ -81,16 +81,16 @@ class MemoryContentPort {
   readonly data = new Map<string, Uint8Array>();
   readonly pagePort = new MemoryPagePort();
   readonly extentPageStore = createFileExtentTreePageStore({ pagePort: this.pagePort });
-  #nextDataOffset = 50_000n;
+  private nextDataOffset = 50_000n;
 
   readonly port: FileContentMutationPort = {
     extentPageStore: this.extentPageStore,
     writeFileData: async ({ bytes }) => {
       const value = reference({
         kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data,
-        offset: this.#nextDataOffset,
+        offset: this.nextDataOffset,
       });
-      this.#nextDataOffset += 128n;
+      this.nextDataOffset += 128n;
       this.data.set(identity({ value }), new Uint8Array(bytes));
       return value;
     },

@@ -16,8 +16,8 @@ export class BoundedCompletedReferenceMemoError extends Error {
  * membership result may suppress child traversal.
  */
 export class BoundedCompletedReferenceMemo {
-  #entries = new Map<string, true>();
-  #maxEntries: number;
+  private entries = new Map<string, true>();
+  private maxEntries: number;
 
   constructor({ maxEntries }: { maxEntries: number }) {
     if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
@@ -25,30 +25,30 @@ export class BoundedCompletedReferenceMemo {
         message: "completed-reference memo bound must be a positive safe integer",
       });
     }
-    this.#maxEntries = maxEntries;
+    this.maxEntries = maxEntries;
   }
 
   get size(): number {
-    return this.#entries.size;
+    return this.entries.size;
   }
 
   has({ item }: { item: MaintenanceTraversalItem }): boolean {
-    return this.#entries.has(maintenanceTraversalItemIdentity({ item }));
+    return this.entries.has(maintenanceTraversalItemIdentity({ item }));
   }
 
   remember({ item }: { item: MaintenanceTraversalItem }): void {
     const key = maintenanceTraversalItemIdentity({ item });
-    if (this.#entries.delete(key)) {
-      this.#entries.set(key, true);
+    if (this.entries.delete(key)) {
+      this.entries.set(key, true);
       return;
     }
-    this.#entries.set(key, true);
-    if (this.#entries.size <= this.#maxEntries) return;
-    const oldest = this.#entries.keys().next();
+    this.entries.set(key, true);
+    if (this.entries.size <= this.maxEntries) return;
+    const oldest = this.entries.keys().next();
     if (oldest.done) {
       throw new Error("completed-reference memo exceeded its bound without an eviction candidate");
     }
-    this.#entries.delete(oldest.value);
+    this.entries.delete(oldest.value);
   }
 }
 
