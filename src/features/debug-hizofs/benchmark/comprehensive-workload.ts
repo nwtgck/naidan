@@ -1,3 +1,4 @@
+import { createInodeNumber, encodeDirectoryEntry } from '@/00-storage/service/hizofs/00-format';
 import { writeStorageFileText } from '@/00-storage/service/storage-file-system/io';
 import type {
   StorageDirectoryHandle,
@@ -8,12 +9,32 @@ import type {
 const FIXTURE_ROOT_NAME = '__hizofs_fixture__';
 const DEEP_DIRECTORY_LEVEL_COUNT = 12;
 
+function inlinePromotionEntryName({ index }: { index: number }): string {
+  return `inline-promotion-${String(index).padStart(3, '0')}.txt`;
+}
+
+function inlinePromotionEntryCount({ encodedByteLimit }: { encodedByteLimit: number }): number {
+  let encodedBytes = 0;
+  for (let index = 0; index < Number.MAX_SAFE_INTEGER; index += 1) {
+    encodedBytes += encodeDirectoryEntry({
+      entry: {
+        inodeKind: 'file',
+        inodeNumber: createInodeNumber({ value: BigInt(index + 1) }),
+        name: inlinePromotionEntryName({ index }),
+        targetType: 'inode',
+      },
+    }).byteLength;
+    if (encodedBytes > encodedByteLimit) return index + 1;
+  }
+  throw new Error('inline Directory fixture entry-count search exceeded the safe integer range');
+}
+
 export type HizoFSComprehensiveFixtureThresholds = Readonly<{
-  directoryIndexPageEntryLimit: number;
+  directoryIndexLeafEntryLimit: number;
   fileChunkSize: number;
-  fileExtentIndexPageEntryLimit: number;
-  inodeIndexPageEntryLimit: number;
-  inlineDirectoryEntryLimit: number;
+  fileExtentIndexLeafEntryLimit: number;
+  inodeIndexLeafEntryLimit: number;
+  inlineDirectoryEncodedByteLimit: number;
   inlineFileByteLimit: number;
 }>;
 
@@ -205,9 +226,12 @@ async function createDirectoryCoverage({ fixtureRoot, policy }: {
   await names.getFileHandle({ name: `long-${'x'.repeat(120)}.txt`, create: true });
 
   const indexed = await directories.getDirectoryHandle({ name: 'indexed', create: true });
-  for (let index = 0; index < policy.inlineDirectoryEntryLimit + 2; index += 1) {
+  const promotionEntryCount = inlinePromotionEntryCount({
+    encodedByteLimit: policy.inlineDirectoryEncodedByteLimit,
+  });
+  for (let index = 0; index < promotionEntryCount; index += 1) {
     await indexed.getFileHandle({
-      name: `inline-promotion-${String(index).padStart(3, '0')}.txt`,
+      name: inlinePromotionEntryName({ index }),
       create: true,
     });
   }
@@ -260,7 +284,10 @@ async function createIndexCoverage({ indexedDirectory, filesDirectory, policy }:
   filesDirectory: StorageDirectoryHandle;
   policy: HizoFSComprehensiveFixtureThresholds;
 }): Promise<void> {
-  for (let index = policy.inlineDirectoryEntryLimit + 2; index < policy.directoryIndexPageEntryLimit + 1; index += 1) {
+  const promotionEntryCount = inlinePromotionEntryCount({
+    encodedByteLimit: policy.inlineDirectoryEncodedByteLimit,
+  });
+  for (let index = promotionEntryCount; index < policy.directoryIndexLeafEntryLimit + 1; index += 1) {
     await indexedDirectory.getFileHandle({
       name: `index-branch-${String(index).padStart(3, '0')}.txt`,
       create: true,
@@ -270,7 +297,7 @@ async function createIndexCoverage({ indexedDirectory, filesDirectory, policy }:
   const extentIndexed = await filesDirectory.getFileHandle({ name: 'extent-index-branch.bin', create: true });
   const writer = await extentIndexed.createWritable({ keepExistingData: false });
   try {
-    for (let chunkIndex = 0; chunkIndex < policy.fileExtentIndexPageEntryLimit + 1; chunkIndex += 1) {
+    for (let chunkIndex = 0; chunkIndex < policy.fileExtentIndexLeafEntryLimit + 1; chunkIndex += 1) {
       await writer.write({
         position: chunkIndex * policy.fileChunkSize,
         data: new Uint8Array([(chunkIndex % 251) + 1]),
@@ -370,7 +397,7 @@ function createCoverageCases({ policy }: {
     {
       id: 'indexed-directory',
       path: `${HIZOFS_COMPREHENSIVE_FIXTURE_ROOT_PATH}/directories/indexed`,
-      purpose: `Directory with more than ${String(policy.inlineDirectoryEntryLimit)} entries`,
+      purpose: `Directory exceeding the ${String(policy.inlineDirectoryEncodedByteLimit)} byte inline-entry encoding limit`,
       expectedStructures: ['runtime:directory_inode:indexed', 'persisted:inode_table_page', 'persisted:directory_page'],
     },
     {
@@ -394,7 +421,7 @@ function createCoverageCases({ policy }: {
     {
       id: 'extent-index-branch',
       path: `${HIZOFS_COMPREHENSIVE_FIXTURE_ROOT_PATH}/files/extent-index-branch.bin`,
-      purpose: `Extent index with more than ${String(policy.fileExtentIndexPageEntryLimit)} entries`,
+      purpose: `Extent index with more than ${String(policy.fileExtentIndexLeafEntryLimit)} entries`,
       expectedStructures: ['persisted:file_extent_page', 'persisted:file_data'],
     },
     {
@@ -418,7 +445,7 @@ function createCoverageCases({ policy }: {
     {
       id: 'inode-index-branch',
       path: HIZOFS_COMPREHENSIVE_FIXTURE_ROOT_PATH,
-      purpose: `More than ${String(policy.inodeIndexPageEntryLimit)} filesystem nodes`,
+      purpose: `More than ${String(policy.inodeIndexLeafEntryLimit)} filesystem nodes`,
       expectedStructures: ['persisted:inode_table_page'],
     },
   ];

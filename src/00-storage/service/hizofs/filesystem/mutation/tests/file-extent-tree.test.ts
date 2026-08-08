@@ -70,6 +70,39 @@ function extent({ fileOffset, seed }: { fileOffset: bigint; seed: bigint }) {
 }
 
 describe("File Extent tree", () => {
+  it("splits File Extent roots at the 64-entry runtime packing limit", async () => {
+    const port = new MemoryPagePort();
+    const root = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
+      offset: 128n,
+    });
+    port.pages.set(identity({ value: root }), {
+      entries: Array.from({ length: 64 }, (_, index) => extent({
+        fileOffset: BigInt(index * 8),
+        seed: 1_024n + (BigInt(index) * 128n),
+      })),
+      level: 0,
+      type: "leaf",
+    });
+    const pageStore = createFileExtentTreePageStore({ pagePort: port });
+    const nextRoot = await applyFileExtentTreeMutations({
+      changes: [{ entry: extent({ fileOffset: 512n, seed: 16_384n }), type: "set" }],
+      pageStore,
+      rootReference: root,
+    });
+
+    const rootPage = port.pages.get(identity({ value: nextRoot }));
+    expect(rootPage).toMatchObject({ level: 1, type: "branch" });
+    if (rootPage?.type !== "branch") throw new Error("expected split File Extent branch root");
+    expect(rootPage.entries).toHaveLength(2);
+    for (const child of rootPage.entries) {
+      const childPage = port.pages.get(identity({ value: child.childPageHomeRef }));
+      expect(childPage?.type).toBe("leaf");
+      if (childPage?.type !== "leaf") throw new Error("expected File Extent leaf child");
+      expect(childPage.entries.length).toBeLessThanOrEqual(64);
+    }
+  });
+
   it("applies canonical sparse extent changes and supports predecessor iteration", async () => {
     const port = new MemoryPagePort();
     const root = reference({

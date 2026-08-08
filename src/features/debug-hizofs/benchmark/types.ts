@@ -550,8 +550,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(30),
-  benchmarkImplementationVersion: z.literal(43),
+  schemaVersion: z.literal(31),
+  benchmarkImplementationVersion: z.literal(44),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -600,9 +600,9 @@ export const hizoFSBenchmarkReportSchema = z.object({
       metadataObjectCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
       decodedInodeIndexPageCacheEntryLimitPerRuntime:
         z.number().int().nonnegative(),
-      inodeIndexPageEntryLimitPerRuntime: z.number().int().positive(),
-      directoryIndexPageEntryLimitPerRuntime: z.number().int().positive(),
-      fileExtentIndexPageEntryLimitPerRuntime: z.number().int().positive(),
+      inodeIndexLeafEntryLimitPerRuntime: z.number().int().positive(),
+      directoryIndexLeafEntryLimitPerRuntime: z.number().int().positive(),
+      fileExtentIndexLeafEntryLimitPerRuntime: z.number().int().positive(),
       fileChunkCacheByteLimitPerRuntime: z.number().int().nonnegative(),
       fileChunkCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
       fileChunkCacheAdmission: z.union([

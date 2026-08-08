@@ -1,8 +1,10 @@
 import {
+  HIZOFS_V1_FORMAT_CONSTANTS,
   HIZOFS_V1_PERSISTED_RECORD_KIND_DIAGNOSTIC_NAMES,
   type HizoFSV1PersistedRecordKindDiagnosticName,
 } from "@/00-storage/service/hizofs/00-format";
 import { HIZOFS_RUNTIME_DIAGNOSTIC_PHASES } from "@/00-storage/service/hizofs/diagnostics/runtime-diagnostics";
+import { DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS } from "@/00-storage/service/hizofs/filesystem/mutation/index-leaf-packing-policy";
 import type {
   StorageDirectoryHandle,
   StorageFileSystemSession,
@@ -21,11 +23,11 @@ import type {
  */
 export type HizoFSBenchmarkRuntimePolicy = {
   readonly inlineFileByteLimit: number;
-  readonly inlineDirectoryEntryLimit: number;
+  readonly inlineDirectoryEncodedByteLimit: number;
   readonly fileChunkSize: number;
-  readonly inodeIndexPageEntryLimit: number;
-  readonly directoryIndexPageEntryLimit: number;
-  readonly fileExtentIndexPageEntryLimit: number;
+  readonly inodeIndexLeafEntryLimit: number;
+  readonly directoryIndexLeafEntryLimit: number;
+  readonly fileExtentIndexLeafEntryLimit: number;
   readonly decodedInodeIndexPageCacheEntryLimit: number;
   readonly readerStreamChunkSize: number;
   readonly fileChunkReadPrefetchConcurrency: number;
@@ -114,11 +116,11 @@ export function createBenchmarkRuntimePolicy({ configuration }: {
 }): HizoFSBenchmarkRuntimePolicy {
   return {
     inlineFileByteLimit: 64 * 1024,
-    inlineDirectoryEntryLimit: 32,
+    inlineDirectoryEncodedByteLimit: HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes,
     fileChunkSize: configuration.hizoFSRuntimePolicy.fileChunkSize,
-    inodeIndexPageEntryLimit: 32,
-    directoryIndexPageEntryLimit: 64,
-    fileExtentIndexPageEntryLimit: 64,
+    inodeIndexLeafEntryLimit: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.rootInodeTable,
+    directoryIndexLeafEntryLimit: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.directory,
+    fileExtentIndexLeafEntryLimit: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.fileExtent,
     decodedInodeIndexPageCacheEntryLimit: 128,
     readerStreamChunkSize: 256 * 1024,
     fileChunkReadPrefetchConcurrency:

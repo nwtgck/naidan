@@ -17,6 +17,7 @@ import {
   type ImmutableBTreeMutation,
   type ImmutableBTreePageStore,
 } from "@/00-storage/service/hizofs/indexes/canonical-btree-writer";
+import { DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS } from "@/00-storage/service/hizofs/filesystem/mutation/index-leaf-packing-policy";
 import type {
   ImmutableBTreeDiagnosticOperation,
   ImmutableBTreeDiagnosticsPort,
@@ -139,6 +140,7 @@ export async function applyRootInodeTableMutations({
       right: entryBytes({ entry: right }),
     }),
     getEntryKey: ({ entry }) => entry.inodeNumber,
+    maximumLeafEntryCount: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.rootInodeTable,
     pageStore,
   });
   return await writer.applyChanges({ changes, rootReference });

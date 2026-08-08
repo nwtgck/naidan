@@ -181,6 +181,44 @@ describe("tree-backed directory creation", () => {
     });
   });
 
+  it("splits a Directory root once the runtime page-entry limit is exceeded", async () => {
+    const { directoryPageStore, directoryPort, parent } = fixture();
+    if (parent.content.type !== "tree") throw new Error("expected tree-backed directory");
+    directoryPort.pages.set(parent.content.directoryTreeRootHomeRef, {
+      entries: Array.from({ length: 64 }, (_, index): DirectoryLeafEntry => ({
+        inodeKind: "file",
+        inodeNumber: createInodeNumber({ value: 2n }),
+        name: `entry-${index.toString().padStart(3, "0")}`,
+        targetType: "inode",
+      })),
+      level: 0,
+      type: "leaf",
+    });
+
+    const result = await prepareTreeBackedDirectoryCreateMutation({
+      pageStore: directoryPageStore,
+      parent,
+      plan: plan({ entryName: "zz-new" }),
+    });
+
+    if (result.updatedParent.content.type !== "tree") throw new Error("expected tree-backed directory");
+    const nextRoot = directoryPort.pages.get(result.updatedParent.content.directoryTreeRootHomeRef);
+    expect(nextRoot).toMatchObject({ level: 1, type: "branch" });
+    if (nextRoot?.type !== "branch") throw new Error("expected split Directory branch root");
+    expect(nextRoot.entries).toHaveLength(2);
+    for (const child of nextRoot.entries) {
+      const childPage = directoryPort.pages.get(child.childPageHomeRef);
+      expect(childPage?.type).toBe("leaf");
+      if (childPage?.type !== "leaf") throw new Error("expected Directory leaf child");
+      expect(childPage.entries.length).toBeLessThanOrEqual(64);
+    }
+    await expect(readDirectoryPageTreeEntry({
+      name: "zz-new",
+      pageStore: directoryPageStore,
+      rootReference: result.updatedParent.content.directoryTreeRootHomeRef,
+    })).resolves.toMatchObject({ inodeNumber: 3n, name: "zz-new" });
+  });
+
   it("reads a pre-existing branch and rewrites the canonical Directory Page tree", async () => {
     const { directoryPageStore, directoryPort, parent } = fixture();
     if (parent.content.type !== "tree") throw new Error("expected tree-backed directory");

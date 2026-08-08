@@ -8,11 +8,11 @@ import {
 import { createInMemoryStorageRoot } from '@/00-storage/service/storage-file-system/test-support/in-memory-storage-file-system';
 
 const thresholds = {
-  directoryIndexPageEntryLimit: 5,
+  directoryIndexLeafEntryLimit: 5,
   fileChunkSize: 32,
-  fileExtentIndexPageEntryLimit: 3,
-  inodeIndexPageEntryLimit: 8,
-  inlineDirectoryEntryLimit: 3,
+  fileExtentIndexLeafEntryLimit: 3,
+  inodeIndexLeafEntryLimit: 8,
+  inlineDirectoryEncodedByteLimit: 128,
   inlineFileByteLimit: 16,
 } as const satisfies HizoFSComprehensiveFixtureThresholds;
 

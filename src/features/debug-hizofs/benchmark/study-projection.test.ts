@@ -24,8 +24,8 @@ function createReport({
   status: HizoFSBenchmarkReport['status'];
 }): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 30,
-    benchmarkImplementationVersion: 43,
+    schemaVersion: 31,
+    benchmarkImplementationVersion: 44,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: `run-${status}`,
@@ -76,9 +76,9 @@ function createReport({
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
         decodedInodeIndexPageCacheEntryLimitPerRuntime: 128,
-        inodeIndexPageEntryLimitPerRuntime: 32,
-        directoryIndexPageEntryLimitPerRuntime: 64,
-        fileExtentIndexPageEntryLimitPerRuntime: 64,
+        inodeIndexLeafEntryLimitPerRuntime: 32,
+        directoryIndexLeafEntryLimitPerRuntime: 64,
+        fileExtentIndexLeafEntryLimitPerRuntime: 64,
         fileChunkCacheByteLimitPerRuntime:
           configuration.hizoFSRuntimePolicy.fileChunkCacheByteLimit,
         fileChunkCacheEntryLimitPerRuntime:

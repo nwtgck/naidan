@@ -524,10 +524,18 @@ describe('production HizoFS benchmark runtime port', () => {
       if (runtime?.type !== 'measured') throw new Error(`${caseId} diagnostics are unavailable`);
       return runtime;
     };
-    expect(measuredRuntime('small_files_create_empty').indexes.validate_structure).toMatchObject({
+    const createRuntime = measuredRuntime('small_files_create_empty');
+    expect(createRuntime.indexes.validate_structure).toMatchObject({
       operations: 1,
       pageReads: 1,
     });
+    expect(createRuntime.indexes.update.maximumPageLevel).toBeGreaterThanOrEqual(1);
+    expect(createRuntime.indexes.update.splitOperations).toBeGreaterThan(0);
+    expect(createRuntime.indexes.update.pageWrites).toBeLessThan(createRuntime.indexes.update.operations * 3);
+    expect(
+      createRuntime.records.directory_page.plaintextBytesWritten
+      + createRuntime.records.inode_table_page.plaintextBytesWritten,
+    ).toBeLessThan(650_000);
     for (const caseId of ['small_files_write_existing', 'small_files_read']) {
       const runtime = measuredRuntime(caseId);
       expect(runtime.indexes.validate_structure).toMatchObject({

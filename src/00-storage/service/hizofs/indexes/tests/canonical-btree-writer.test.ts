@@ -36,7 +36,10 @@ function entrySize({ entry }: { entry: Entry }): number {
   return 4 + entry.payload.length;
 }
 
-function setup({ maximumPageByteLength = 24 }: { maximumPageByteLength?: number } = {}) {
+function setup({ maximumPageByteLength = 24, maximumLeafEntryCount }: {
+  maximumPageByteLength?: number;
+  maximumLeafEntryCount?: number;
+} = {}) {
   const store = new MemoryPageStore();
   const writer = new CanonicalBTreeWriter<number, Entry, string>({
     compareKeys: ({ left, right }) => left - right,
@@ -45,6 +48,7 @@ function setup({ maximumPageByteLength = 24 }: { maximumPageByteLength?: number 
     entriesEqual: ({ left, right }) => left.key === right.key && left.payload === right.payload,
     getEntryKey: ({ entry }) => entry.key,
     maximumPageByteLength,
+    ...(maximumLeafEntryCount === undefined ? {} : { maximumLeafEntryCount }),
     pageStore: store,
   });
   const reader = new ImmutableBTreeReader<number, Entry, string>({
@@ -89,6 +93,41 @@ describe("canonical immutable B-tree writer", () => {
       [3],
       [2, 3],
     ]);
+  });
+
+  it("bounds leaf entries without imposing the leaf packing target on branch fanout", async () => {
+    const { reader, store, writer } = setup({ maximumPageByteLength: 1_024, maximumLeafEntryCount: 3 });
+    let root = await writer.createEmpty();
+    root = await writer.applyChanges({
+      changes: Array.from({ length: 10 }, (_, key): ImmutableBTreeMutation<number, Entry> => ({
+        entry: { key, payload: "x" },
+        type: "set",
+      })),
+      rootReference: root,
+    });
+
+    expect(await collect({ reader, rootReference: root })).toHaveLength(10);
+    for (const { page } of store.writes) {
+      if (page.type === "leaf") expect(page.entries.length).toBeLessThanOrEqual(3);
+    }
+    const rootPage = await store.readPage({ isRoot: true, reference: root });
+    expect(rootPage.type).toBe("branch");
+    if (rootPage.type !== "branch") throw new Error("expected high-fanout branch root");
+    expect(rootPage.level).toBe(1);
+    expect(rootPage.children.length).toBeGreaterThan(3);
+  });
+
+  it("rejects a non-positive leaf entry packing limit", () => {
+    const store = new MemoryPageStore();
+    expect(() => new CanonicalBTreeWriter<number, Entry, string>({
+      compareKeys: ({ left, right }) => left - right,
+      encodedBranchChildByteLength: () => 8,
+      encodedLeafEntryByteLength: entrySize,
+      getEntryKey: ({ entry }) => entry.key,
+      maximumPageByteLength: 1_024,
+      maximumLeafEntryCount: 0,
+      pageStore: store,
+    })).toThrow("positive safe integer");
   });
 
   it("removes empty children, collapses a single-child root, and does not eagerly merge underfilled siblings", async () => {
@@ -256,8 +295,8 @@ describe("canonical immutable B-tree writer", () => {
     expect(store.writes.slice(0, -1).every(({ isRoot }) => !isRoot)).toBe(true);
   });
 
-  it("matches a reference Map across deterministic mixed mutation batches", async () => {
-    const { reader, writer } = setup({ maximumPageByteLength: 28 });
+  it("matches a reference Map across deterministic mixed count-bounded mutation batches", async () => {
+    const { reader, writer } = setup({ maximumPageByteLength: 1_024, maximumLeafEntryCount: 5 });
     let root = await writer.createEmpty();
     const model = new Map<number, Entry>();
     let state = 0x12345678;

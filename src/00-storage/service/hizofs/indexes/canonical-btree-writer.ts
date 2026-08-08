@@ -48,6 +48,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
   readonly #entriesEqual: ({ left, right }: { left: TEntry; right: TEntry }) => boolean;
   readonly #getEntryKey: GetImmutableBTreeEntryKey<TKey, TEntry>;
   readonly #maximumPageByteLength: number;
+  readonly #maximumLeafEntryCount: number;
   readonly #pageStore: ImmutableBTreePageStore<TKey, TEntry, TReference>;
 
   constructor({
@@ -57,6 +58,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     entriesEqual = ({ left, right }) => Object.is(left, right),
     getEntryKey,
     maximumPageByteLength = DEFAULT_MAXIMUM_PAGE_BYTE_LENGTH,
+    maximumLeafEntryCount = Number.MAX_SAFE_INTEGER,
     pageStore,
   }: {
     compareKeys: CompareImmutableBTreeKeys<TKey>;
@@ -65,10 +67,14 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     entriesEqual?: ({ left, right }: { left: TEntry; right: TEntry }) => boolean;
     getEntryKey: GetImmutableBTreeEntryKey<TKey, TEntry>;
     maximumPageByteLength?: number;
+    maximumLeafEntryCount?: number;
     pageStore: ImmutableBTreePageStore<TKey, TEntry, TReference>;
   }) {
     if (!Number.isSafeInteger(maximumPageByteLength) || maximumPageByteLength < 1) {
       throw new RangeError("B-tree maximum page byte length must be a positive safe integer");
+    }
+    if (!Number.isSafeInteger(maximumLeafEntryCount) || maximumLeafEntryCount < 1) {
+      throw new RangeError("B-tree maximum leaf entry count must be a positive safe integer");
     }
     this.#compareKeys = compareKeys;
     this.#encodedBranchChildByteLength = encodedBranchChildByteLength;
@@ -76,6 +82,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     this.#entriesEqual = entriesEqual;
     this.#getEntryKey = getEntryKey;
     this.#maximumPageByteLength = maximumPageByteLength;
+    this.#maximumLeafEntryCount = maximumLeafEntryCount;
     this.#pageStore = pageStore;
   }
 
@@ -112,9 +119,10 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return byteLength;
   }
 
-  #splitItems<TItem>({ itemByteLength, items }: {
+  #splitItems<TItem>({ itemByteLength, items, maximumItemCount }: {
     itemByteLength: ({ item }: { item: TItem }) => number;
     items: readonly TItem[];
+    maximumItemCount: number;
   }): readonly (readonly TItem[])[] {
     if (items.length === 0) return [];
     const prefixByteLengths = new Array<number>(items.length + 1).fill(0);
@@ -131,8 +139,12 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
       if (endLength === undefined || startLength === undefined) throw new Error("B-tree item-size range invariant failed");
       return COMMON_PAGE_HEADER_SIZE + endLength - startLength;
     };
+    const rangeFits = ({ end, start }: { end: number; start: number }): boolean => (
+      end - start <= maximumItemCount
+      && rangeByteLength({ end, start }) <= this.#maximumPageByteLength
+    );
     const splitRange = ({ end, start }: { end: number; start: number }): readonly (readonly TItem[])[] => {
-      if (rangeByteLength({ end, start }) <= this.#maximumPageByteLength) return [items.slice(start, end)];
+      if (rangeFits({ end, start })) return [items.slice(start, end)];
       if (end - start === 1) throw new RangeError("one B-tree item exceeds the maximum page byte length");
       let selectedBoundary: number | undefined;
       let selectedMaximum = Number.POSITIVE_INFINITY;
@@ -140,7 +152,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
       for (let boundary = start + 1; boundary < end; boundary += 1) {
         const leftLength = rangeByteLength({ end: boundary, start });
         const rightLength = rangeByteLength({ end, start: boundary });
-        const bothFit = leftLength <= this.#maximumPageByteLength && rightLength <= this.#maximumPageByteLength;
+        const bothFit = rangeFits({ end: boundary, start }) && rangeFits({ end, start: boundary });
         const maximum = Math.max(leftLength, rightLength);
         const leftItemCount = boundary - start;
         const selectedLeftItemCount = selectedBoundary === undefined ? Number.POSITIVE_INFINITY : selectedBoundary - start;
@@ -172,6 +184,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     const groups = this.#splitItems({
       itemByteLength: ({ item }) => this.#encodedLeafEntryByteLength({ entry: item }),
       items: entries,
+      maximumItemCount: this.#maximumLeafEntryCount,
     });
     if (structural !== undefined && groups.length > 1) {
       structural.splitOperations += 1;
@@ -205,6 +218,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     const groups = this.#splitItems({
       itemByteLength: ({ item }) => this.#encodedBranchChildByteLength({ child: item }),
       items: children,
+      maximumItemCount: Number.MAX_SAFE_INTEGER,
     });
     if (structural !== undefined) {
       structural.maximumPageLevel = Math.max(structural.maximumPageLevel, level);

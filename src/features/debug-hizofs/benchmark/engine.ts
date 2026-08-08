@@ -45,7 +45,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 43 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 44 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -377,7 +377,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 30,
+    schemaVersion: 31,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -433,12 +433,12 @@ async function runHizoFSBenchmarkWithLockHeld({
           hizoFSPolicy.metadataObjectCacheEntryLimit,
         decodedInodeIndexPageCacheEntryLimitPerRuntime:
           hizoFSPolicy.decodedInodeIndexPageCacheEntryLimit,
-        inodeIndexPageEntryLimitPerRuntime:
-          hizoFSPolicy.inodeIndexPageEntryLimit,
-        directoryIndexPageEntryLimitPerRuntime:
-          hizoFSPolicy.directoryIndexPageEntryLimit,
-        fileExtentIndexPageEntryLimitPerRuntime:
-          hizoFSPolicy.fileExtentIndexPageEntryLimit,
+        inodeIndexLeafEntryLimitPerRuntime:
+          hizoFSPolicy.inodeIndexLeafEntryLimit,
+        directoryIndexLeafEntryLimitPerRuntime:
+          hizoFSPolicy.directoryIndexLeafEntryLimit,
+        fileExtentIndexLeafEntryLimitPerRuntime:
+          hizoFSPolicy.fileExtentIndexLeafEntryLimit,
         fileChunkCacheByteLimitPerRuntime:
           hizoFSPolicy.fileChunkCacheByteLimit,
         fileChunkCacheEntryLimitPerRuntime:

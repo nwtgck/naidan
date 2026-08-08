@@ -112,6 +112,34 @@ describe("root Inode Table mutation preparation", () => {
     expect(store.writes[0]).toMatchObject({ isRoot: true, page: { type: "leaf" } });
   });
 
+  it("splits the root Inode Table at the 32-entry runtime packing limit", async () => {
+    const { baseCommit, store } = fixture();
+    store.pages.set(baseCommit.rootInodeTableRootHomeRef, {
+      entries: Array.from({ length: 32 }, (_, index) => directoryInode({ inodeNumber: BigInt(index + 1) })),
+      level: 0,
+      type: "leaf",
+    });
+    const result = await prepareRootInodeTableMutation({
+      baseCommit,
+      changes: [{ entry: fileInode({ inodeNumber: 33n }), type: "set" }],
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
+      pageStore: store,
+    });
+
+    expect(result.type).toBe("prepared");
+    if (result.type !== "prepared") throw new Error("expected prepared mutation");
+    const root = store.pages.get(result.commitPayload.rootInodeTableRootHomeRef);
+    expect(root).toMatchObject({ level: 1, type: "branch" });
+    if (root?.type !== "branch") throw new Error("expected split Inode Table branch root");
+    expect(root.children).toHaveLength(2);
+    for (const child of root.children) {
+      const childPage = store.pages.get(child.childPageReference);
+      expect(childPage?.type).toBe("leaf");
+      if (childPage?.type !== "leaf") throw new Error("expected Inode Table leaf child");
+      expect(childPage.entries.length).toBeLessThanOrEqual(32);
+    }
+  });
+
   it("does not prepare a Commit for a byte-identical inode set", async () => {
     const { baseCommit, rootEntry, store } = fixture();
     const result = await prepareRootInodeTableMutation({

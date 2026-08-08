@@ -88,6 +88,29 @@ class MemoryInodePageStore implements RootInodeTablePageStore {
   }
 }
 
+async function readInodeFromPageStore({ inodeNumber, rootReference, store }: {
+  inodeNumber: InodeNumber;
+  rootReference: HomeRecordReference;
+  store: MemoryInodePageStore;
+}): Promise<InodeLeafEntry | undefined> {
+  let referenceToRead = rootReference;
+  let isRoot = true;
+  for (;;) {
+    const page = await store.readPage({ isRoot, reference: referenceToRead });
+    switch (page.type) {
+    case "leaf": return page.entries.find(entry => entry.inodeNumber === inodeNumber);
+    case "branch": {
+      const child = page.children.find(candidate => inodeNumber <= candidate.upperBound);
+      if (child === undefined) return undefined;
+      referenceToRead = child.childPageReference;
+      isRoot = false;
+      break;
+    }
+    default: return page satisfies never;
+    }
+  }
+}
+
 function fileInode({ inodeNumber }: { inodeNumber: InodeNumber }): InodeLeafEntry {
   return {
     content: { bytes: new Uint8Array(), type: "inline" },
@@ -185,12 +208,19 @@ describe("prepareOrdinaryEntryCreateCommit", () => {
       },
     });
 
-    const writtenInodeRoot = inodePageStore.pages.get(result.commitPayload.rootInodeTableRootHomeRef);
-    if (writtenInodeRoot?.type !== "leaf") throw new Error("expected written Inode Table leaf");
-    const writtenParent = writtenInodeRoot.entries.find(entry => entry.inodeNumber === parent.inodeNumber);
+    const writtenParent = await readInodeFromPageStore({
+      inodeNumber: parent.inodeNumber,
+      rootReference: result.commitPayload.rootInodeTableRootHomeRef,
+      store: inodePageStore,
+    });
     if (writtenParent?.inodeKind !== "directory" || writtenParent.content.type !== "tree") {
       throw new Error("expected promoted directory parent");
     }
+    await expect(readInodeFromPageStore({
+      inodeNumber: nextInodeNumber,
+      rootReference: result.commitPayload.rootInodeTableRootHomeRef,
+      store: inodePageStore,
+    })).resolves.toMatchObject({ inodeKind: "file", inodeNumber: nextInodeNumber });
     expect(writtenParent.inodeRevision).toBe(10n);
     await expect(readDirectoryPageTreeEntry({
       name: existingEntries[0]!.name,
@@ -230,14 +260,19 @@ describe("prepareOrdinaryEntryCreateCommit", () => {
         parentSubvolumeId: createSubvolumeId({ value: 1n }),
       },
     });
-    const postPromotionRoot = inodePageStore.pages.get(postPromotion.commitPayload.rootInodeTableRootHomeRef);
-    if (postPromotionRoot?.type !== "leaf") throw new Error("expected post-promotion Inode Table leaf");
-    const postPromotionParent = postPromotionRoot.entries.find(
-      entry => entry.inodeNumber === parent.inodeNumber,
-    );
+    const postPromotionParent = await readInodeFromPageStore({
+      inodeNumber: parent.inodeNumber,
+      rootReference: postPromotion.commitPayload.rootInodeTableRootHomeRef,
+      store: inodePageStore,
+    });
     if (postPromotionParent?.inodeKind !== "directory" || postPromotionParent.content.type !== "tree") {
       throw new Error("expected tree-backed directory parent after post-promotion create");
     }
+    await expect(readInodeFromPageStore({
+      inodeNumber: postPromotionInodeNumber,
+      rootReference: postPromotion.commitPayload.rootInodeTableRootHomeRef,
+      store: inodePageStore,
+    })).resolves.toMatchObject({ inodeKind: "file", inodeNumber: postPromotionInodeNumber });
     await expect(readDirectoryPageTreeEntry({
       name: postPromotionEntryName,
       pageStore: directoryPageStore,
