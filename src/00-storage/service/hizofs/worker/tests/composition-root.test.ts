@@ -944,8 +944,15 @@ describe("HizoFS worker composition root", () => {
     expect(await docs.getEntryHandle({ name: "nested.txt" })).toMatchObject({ kind: "file" });
     await session.root.removeEntry({ name: "docs", recursive: true });
     await expect(session.root.getEntryHandle({ name: "docs" })).rejects.toThrow();
-    expect(authorityRechecks).toBe(4);
+    // One runtime-owner-fenced durable head needs one physical authority
+    // recheck regardless of how many ordinary mutations reuse it.
+    expect(authorityRechecks).toBe(1);
 
+    await session.sync();
+    await session.root.getFileHandle({ create: true, name: "after-sync.txt" });
+    // Publication changed the durable identity, so the next mutation must
+    // authenticate that exact new head before reusing it.
+    expect(authorityRechecks).toBe(2);
     await session.sync();
     await session.close();
     expect(opened.rootKey.isDestroyed()).toBe(true);
@@ -956,11 +963,14 @@ describe("HizoFS worker composition root", () => {
       supportedFeatureBits,
     });
     try {
-      // One dirty epoch publishes only its exact latest candidate.
-      expect(reopened.commit.commitSequence).toBe(2n);
+      // Each explicit sync publishes only the exact latest candidate from its
+      // dirty epoch; the second epoch adds after-sync.txt.
+      expect(reopened.commit.commitSequence).toBe(3n);
       const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
       try {
         await expect(resources.namespace.stat({ pathComponents: ["docs"] })).rejects.toThrow();
+        await expect(resources.namespace.stat({ pathComponents: ["after-sync.txt"] }))
+          .resolves.toMatchObject({ kind: "file" });
       } finally {
         await resources.releaseResources();
       }
@@ -2238,6 +2248,7 @@ describe("HizoFS worker composition root", () => {
         maximumDirtyAgeMilliseconds: 1,
       },
     });
+    let durableAuthorityRechecks = 0;
     const session = await openAuthenticatedReadWriteApplicationSession({
       captureAuthority: async () => ({ revision: 1 }),
       recheckAuthority: async () => undefined,
@@ -2251,7 +2262,9 @@ describe("HizoFS worker composition root", () => {
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
         removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
-        recheckDurableGenerationAuthority: async () => undefined,
+        recheckDurableGenerationAuthority: async () => {
+          durableAuthorityRechecks += 1;
+        },
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
         writableProfile: "release-qualified",
@@ -2281,6 +2294,14 @@ describe("HizoFS worker composition root", () => {
     }
     expect(published).toBe(true);
     expect(host.workingCandidatePublicationState()).toBe("empty");
+    expect(durableAuthorityRechecks).toBe(1);
+
+    await session.root.getFileHandle({ create: true, name: "after-background.txt" });
+    // Background publication changed the exact durable identity. The first
+    // mutation on that new head must authenticate it instead of reusing the
+    // previous head's physical A/B proof.
+    expect(durableAuthorityRechecks).toBe(2);
+    await session.sync();
     await session.close();
   });
 

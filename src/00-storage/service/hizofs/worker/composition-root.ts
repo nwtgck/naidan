@@ -3272,40 +3272,71 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     }
   };
 
+  let lastPhysicallyRecheckedDurableAuthorityIdentity: DurableGenerationIdentity | undefined;
   const captureRecheckedWorkingGeneration = async ({ operationLabel }: {
     operationLabel: string;
   }): Promise<AuthenticatedWritableApplicationGeneration> => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const captured = currentGeneration();
-      try {
-        await recheckDurableGenerationAuthority({
-          commit: captured.durableAuthority.commit,
-          superblock: captured.durableAuthority.superblock,
-        });
-      } catch (cause: unknown) {
-        // The runtime publishes its descriptor immediately before it releases
-        // the working-generation flush authority. Waiting for the tracked
-        // publication closes that narrow interval before a new admission can
-        // observe the promoted descriptor while the coordinator is still busy.
-        await authenticatedGeneration.waitForInFlightPublication();
-        const refreshed = currentGeneration();
-        const runtimePublishedCapturedWorkingGeneration = (
-          sameWorkingGenerationIdentity({
-            left: captured.workingIdentity,
-            right: refreshed.workingIdentity,
-          })
-          && !sameDurableGenerationIdentity({
-            left: captured.durableAuthority.identity,
-            right: refreshed.durableAuthority.identity,
-          })
-        );
-        if (attempt === 0 && runtimePublishedCapturedWorkingGeneration) continue;
-        throw cause;
+      const durableIdentity = captured.durableAuthority.identity;
+      const durableAuthorityAlreadyRechecked = (
+        lastPhysicallyRecheckedDurableAuthorityIdentity !== undefined
+        && sameDurableGenerationIdentity({
+          left: lastPhysicallyRecheckedDurableAuthorityIdentity,
+          right: durableIdentity,
+        })
+      );
+      if (!durableAuthorityAlreadyRechecked) {
+        try {
+          await recheckDurableGenerationAuthority({
+            commit: captured.durableAuthority.commit,
+            superblock: captured.durableAuthority.superblock,
+          });
+        } catch (cause: unknown) {
+          // The runtime publishes its descriptor immediately before it releases
+          // the working-generation flush authority. Waiting for the tracked
+          // publication closes that narrow interval before a new admission can
+          // observe the promoted descriptor while the coordinator is still busy.
+          await authenticatedGeneration.waitForInFlightPublication();
+          const refreshed = currentGeneration();
+          const runtimePublishedCapturedWorkingGeneration = (
+            sameWorkingGenerationIdentity({
+              left: captured.workingIdentity,
+              right: refreshed.workingIdentity,
+            })
+            && !sameDurableGenerationIdentity({
+              left: durableIdentity,
+              right: refreshed.durableAuthority.identity,
+            })
+          );
+          if (attempt === 0 && runtimePublishedCapturedWorkingGeneration) continue;
+          throw cause;
+        }
+        // A writable application session holds the cross-realm runtime-owner
+        // lease for its lifetime. Under that fence no supported HizoFS writer
+        // outside this runtime can publish a different durable authority, so
+        // re-reading the same A/B Superblocks before every operation adds no
+        // supported-authority information. Raw out-of-band physical mutation is
+        // not a concurrent-writer contract and remains covered by authenticated
+        // reader/reopen checks. Recheck after this runtime publishes/adopts a
+        // different exact durable identity.
+        lastPhysicallyRecheckedDurableAuthorityIdentity = durableIdentity;
       }
-      assertCurrentWorkingGeneration({
-        captured: captured.workingIdentity,
-        operationLabel,
-      });
+
+      const refreshed = currentGeneration();
+      if (!sameWorkingGenerationIdentity({
+        left: captured.workingIdentity,
+        right: refreshed.workingIdentity,
+      })) {
+        throw new TypeError(`${operationLabel} base working generation changed`);
+      }
+      if (!sameDurableGenerationIdentity({
+        left: durableIdentity,
+        right: refreshed.durableAuthority.identity,
+      })) {
+        if (attempt === 0) continue;
+        throw new TypeError(`${operationLabel} durable generation authority could not be stabilized`);
+      }
       return captured;
     }
     throw new TypeError(`${operationLabel} generation authority could not be stabilized`);
