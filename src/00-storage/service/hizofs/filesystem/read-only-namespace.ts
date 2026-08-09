@@ -120,6 +120,7 @@ export type ReadOnlyNamespaceResolver = ReadOnlyNamespace & Readonly<{
   }) => Promise<DirectoryLeafEntry | undefined>;
   resolveInode: ({ pathComponents }: { pathComponents: readonly string[] }) => Promise<InodeLeafEntry>;
   resolveInodeByNumber: ({ inodeNumber }: { inodeNumber: InodeNumber }) => Promise<InodeLeafEntry>;
+  validateDirectoryStructure: ({ directory }: { directory: DirectoryInodeEntry }) => Promise<void>;
 }>;
 
 function referenceIdentity({ reference }: { reference: HomeRecordReference }): string {
@@ -530,6 +531,13 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
     resolveInode,
     resolveInodeByNumber: getInode,
     stat: async ({ pathComponents }) => projectStat({ inode: await resolveInode({ pathComponents }) }),
+    validateDirectoryStructure: async ({ directory }) => {
+      switch (directory.content.type) {
+      case "inline": return;
+      case "tree": await validateDirectoryTree({ rootReference: directory.content.directoryTreeRootHomeRef }); return;
+      default: return directory.content satisfies never;
+      }
+    },
   };
 }
 
@@ -554,6 +562,7 @@ export function createReadOnlyNamespace({ inodeTableRootHomeRef, rootDirectoryIn
     resolveInode: _resolveInode,
     resolveInodeByNumber: _resolveInodeByNumber,
     stat,
+    validateDirectoryStructure: _validateDirectoryStructure,
     ...unhandledResolver
   } = resolver;
   unhandledResolver satisfies Record<PropertyKey, never>;

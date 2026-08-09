@@ -426,6 +426,16 @@ describe("HizoFS worker runtime host", () => {
         authority.markCandidateAccepted();
         authority.markCommitPointCrossed();
       },
+      async ensureDirectory({ authority }) {
+        mutations.push("ensure-directory");
+        authority.markCandidateAccepted();
+        authority.markCommitPointCrossed();
+      },
+      async ensureFile({ authority }) {
+        mutations.push("ensure-file");
+        authority.markCandidateAccepted();
+        authority.markCommitPointCrossed();
+      },
       async moveEntry({ authority }) {
         mutations.push("move");
         authority.markCandidateAccepted();

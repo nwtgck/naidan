@@ -638,6 +638,25 @@ describe('production HizoFS benchmark runtime port', () => {
       'directory_recursive_delete',
     ]);
     expect(report.results.every(result => result.backends.hizofs?.sampleCount === 1)).toBe(true);
+    const smallFileCreateRuntime = report.results.find(result => result.caseId === 'small_files_create_empty')
+      ?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime;
+    expect(smallFileCreateRuntime?.type).toBe('measured');
+    if (smallFileCreateRuntime?.type !== 'measured') {
+      throw new Error('small-file create structural diagnostics are unavailable');
+    }
+    // create:true is one writer-linearized ensure operation. A successful
+    // create must not add adapter-level pre/post stat traversals around the
+    // destination capture owned by the mutation itself.
+    expect(smallFileCreateRuntime.phases.index_get.operationCount)
+      .toBeLessThanOrEqual(configuration.smallFiles.count * 2);
+    const directoryCreateRuntime = report.results.find(result => result.caseId === 'directory_create_entries')
+      ?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime;
+    expect(directoryCreateRuntime?.type).toBe('measured');
+    if (directoryCreateRuntime?.type !== 'measured') {
+      throw new Error('directory create structural diagnostics are unavailable');
+    }
+    expect(directoryCreateRuntime.phases.index_get.operationCount)
+      .toBeLessThanOrEqual(configuration.directoryOperations.entryCount * 2 + 1);
     const smallFileWriteRuntime = report.results.find(result => result.caseId === 'small_files_write_existing')
       ?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime;
     expect(smallFileWriteRuntime?.type).toBe('measured');

@@ -150,12 +150,15 @@ import {
   prepareRootInodeTableMutation,
 } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
 import {
+  CapturedOrdinaryEntryCreateDestination,
   prepareOrdinaryEntryCreateCommit,
   type PreparedOrdinaryEntryCreateCommit,
 } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-commit";
+import { ReadOnlyNamespaceError } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
 import type {
   OrdinaryEntryCreateRequest,
   OrdinaryEntryCreateTarget,
+  OrdinaryEntryCreateTargetDescriptor,
 } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-plan";
 import {
   prepareOrdinaryEntryMoveCommit,
@@ -2065,7 +2068,7 @@ async function prepareAuthenticatedOrdinaryEntryCreate({
   operationTimestamp: TimestampMilliseconds;
   parent: DirectoryInodeEntry;
   request: OrdinaryEntryCreateRequest;
-  target: OrdinaryEntryCreateTarget;
+  target: OrdinaryEntryCreateTargetDescriptor;
 }>): Promise<PreparedOrdinaryEntryCreateCommit> {
   return await withAuthenticatedMetadataMutationPreparation({
     assertPublicationAllowed,
@@ -2085,6 +2088,80 @@ async function prepareAuthenticatedOrdinaryEntryCreate({
       request,
       target,
     }),
+  });
+}
+
+type OrdinaryEntryEnsureRequest = Extract<
+  OrdinaryEntryCreateRequest,
+  Readonly<{ type: "directory" | "file" }>
+>;
+
+async function prepareAuthenticatedOrdinaryEntryEnsure({
+  assertPublicationAllowed,
+  authority,
+  baseCommit,
+  baseSuperblock,
+  indexDiagnostics,
+  mutationId,
+  operationTimestamp,
+  parent,
+  request,
+  resolveMaximumKnownInodeNumber,
+  target,
+  targetPath,
+}: Readonly<{
+  assertPublicationAllowed: () => void;
+  authority: AuthenticatedMetadataMutationAuthority;
+  baseCommit: FileSystemCommitPayload;
+  baseSuperblock: OpenedSuperblockCopies;
+  indexDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
+  mutationId: MutationId;
+  operationTimestamp: TimestampMilliseconds;
+  parent: DirectoryInodeEntry;
+  request: OrdinaryEntryEnsureRequest;
+  resolveMaximumKnownInodeNumber: () => Promise<InodeNumber | undefined>;
+  target: OrdinaryEntryCreateTargetDescriptor;
+  targetPath: readonly string[];
+}>): Promise<PreparedOrdinaryEntryCreateCommit | null> {
+  return await withAuthenticatedMetadataMutationPreparation({
+    assertPublicationAllowed,
+    authority,
+    baseCommit,
+    baseSuperblock,
+    indexDiagnostics,
+    mode: "update",
+    prepare: async ({ directoryPageStore, inodeTablePageStore }) => {
+      const destination = await CapturedOrdinaryEntryCreateDestination.capture({
+        directoryPageStore,
+        parent,
+        target,
+      });
+      const existingEntry = destination.existingEntry;
+      if (existingEntry !== undefined) {
+        switch (existingEntry.targetType) {
+        case "inode": {
+          const expectedKind = request.type;
+          if (existingEntry.inodeKind === expectedKind) return null;
+          throw new TypeError(
+            `Expected ${expectedKind} at ${targetPath.join("/") || "/"}, found ${existingEntry.inodeKind}`,
+          );
+        }
+        case "subvolume": throw new ReadOnlyNamespaceError({
+          code: "subvolume_boundary",
+          message: `subvolume mount ${target.entryName} requires a topology-aware session resolver`,
+        });
+        default: return existingEntry satisfies never;
+        }
+      }
+      return await destination.prepareCommit({
+        baseCommit,
+        inodeTablePageStore,
+        maximumKnownInodeNumber: await resolveMaximumKnownInodeNumber(),
+        mutationId,
+        operationTimestamp,
+        request,
+      });
+    },
   });
 }
 
@@ -3974,7 +4051,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         const parent = requireWritableParentDirectory({
           inode: await base.resolver.resolveInode({ pathComponents: [...path] }),
         });
-        const destination = await base.resolver.lookupDirectoryEntry({ directory: parent, name });
+        await base.resolver.validateDirectoryStructure({ directory: parent });
         const maximumKnownInodeNumber = await base.resolver.maximumKnownInodeNumber();
         const prepared = await prepareAuthenticatedOrdinaryEntryCreate({
           assertPublicationAllowed: authority.assertPublicationAllowed,
@@ -3988,7 +4065,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           parent,
           request,
           target: {
-            destinationExists: destination !== undefined,
             entryName: name,
             parentAccess: "read_write",
             parentDirectoryInodeNumber: parent.inodeNumber,
@@ -4016,7 +4092,77 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           break;
         }
         case "file":
-        case "symlink": break;
+        case "symlink":
+          break;
+        default: return request satisfies never;
+        }
+        return prepared;
+      },
+    });
+    if (freshDirectory !== undefined) {
+      freshExplicitBulkTarget = {
+        ...freshDirectory,
+        targetIdentity: explicitBulkTargetIdentity({ path: [...path, name] }),
+        workingGeneration: currentGeneration().workingIdentity,
+      };
+    }
+  };
+
+  const ensureEntry = async ({ authority, name, path, request }: {
+    authority: import("@/00-storage/service/hizofs/api").HizoFSApplicationPublicationAuthority;
+    name: string;
+    path: readonly string[];
+    request: OrdinaryEntryEnsureRequest;
+  }): Promise<void> => {
+    let freshDirectory: Pick<FreshExplicitBulkTarget, "directory"> | undefined;
+    await runMutation({
+      applicationAuthority: authority,
+      prepare: async ({ base, candidateBaseCommit, metadataAuthority, mutationId, operationTimestamp: timestamp }) => {
+        const parent = requireWritableParentDirectory({
+          inode: await base.resolver.resolveInode({ pathComponents: [...path] }),
+        });
+        await base.resolver.validateDirectoryStructure({ directory: parent });
+        const prepared = await prepareAuthenticatedOrdinaryEntryEnsure({
+          assertPublicationAllowed: authority.assertPublicationAllowed,
+          authority: metadataAuthority,
+          baseCommit: candidateBaseCommit,
+          baseSuperblock: base.superblock,
+          indexDiagnostics,
+          mutationId,
+          operationTimestamp: timestamp,
+          parent,
+          request,
+          resolveMaximumKnownInodeNumber: async () => await base.resolver.maximumKnownInodeNumber(),
+          target: {
+            entryName: name,
+            parentAccess: "read_write",
+            parentDirectoryInodeNumber: parent.inodeNumber,
+            parentSubvolumeId: rootSubvolumeId,
+          },
+          targetPath: [...path, name],
+        });
+        if (prepared === null) return null;
+        inheritValidatedDirectoryTreeSuccessor({ base: parent, successor: prepared.updatedParent });
+        switch (request.type) {
+        case "directory": {
+          const inode = prepared.plan.inode;
+          switch (inode.inodeKind) {
+          case "directory":
+            freshDirectory = {
+              directory: {
+                inodeNumber: inode.inodeNumber,
+                inodeRevision: inode.inodeRevision,
+                timestamps: { ...inode.timestamps },
+              },
+            };
+            break;
+          case "file":
+          case "symlink": throw new TypeError("directory ensure produced a non-directory inode");
+          default: return inode satisfies never;
+          }
+          break;
+        }
+        case "file": break;
         default: return request satisfies never;
         }
         return prepared;
@@ -4800,6 +4946,18 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       path,
       request: { target, type: "symlink" },
     }),
+    ensureDirectory: async ({ authority, name, path }) => await ensureEntry({
+      authority,
+      name,
+      path,
+      request: { type: "directory" },
+    }),
+    ensureFile: async ({ authority, name, path }) => await ensureEntry({
+      authority,
+      name,
+      path,
+      request: { type: "file" },
+    }),
     moveEntry: async ({ authority, destinationPath, name, newName, path, replace }) => await moveEntry({
       authority,
       destinationPath,
@@ -5057,6 +5215,8 @@ function readOnlyMutationPort(): import("@/00-storage/service/hizofs/api").HizoF
     createDirectory: async () => await reject({ operation: "create a directory" }),
     createFile: async () => await reject({ operation: "create a file" }),
     createSymlink: async () => await reject({ operation: "create a symbolic link" }),
+    ensureDirectory: async () => await reject({ operation: "ensure a directory" }),
+    ensureFile: async () => await reject({ operation: "ensure a file" }),
     moveEntry: async () => await reject({ operation: "move an entry" }),
     openWritable: async () => await reject({ operation: "open a writable file" }),
     removeEntry: async () => await reject({ operation: "remove an entry" }),

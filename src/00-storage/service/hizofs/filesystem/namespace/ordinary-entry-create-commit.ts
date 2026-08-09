@@ -1,6 +1,7 @@
 import {
   createFileSystemCommitPayload,
   type DirectoryInodeEntry,
+  type DirectoryLeafEntry,
   type FileSystemCommitPayload,
   type InodeNumber,
   type MutationId,
@@ -24,9 +25,9 @@ import {
   prepareOrdinaryEntryCreatePlan,
   type OrdinaryEntryCreatePlan,
   type OrdinaryEntryCreateRequest,
-  type OrdinaryEntryCreateTarget,
+  type OrdinaryEntryCreateTargetDescriptor,
 } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-plan";
-import { prepareTreeBackedDirectoryCreateMutation } from "@/00-storage/service/hizofs/filesystem/namespace/tree-backed-directory-create-mutation";
+import { CapturedTreeBackedDirectoryCreateDestination } from "@/00-storage/service/hizofs/filesystem/namespace/tree-backed-directory-create-mutation";
 
 export type PreparedOrdinaryEntryCreateCommit = Readonly<{
   commitPayload: FileSystemCommitPayload;
@@ -38,6 +39,131 @@ type PreparedOrdinaryEntryCreateMutation = Readonly<{
   changes: readonly RootInodeTableMutation[];
   updatedParent: DirectoryInodeEntry;
 }>;
+
+type CapturedOrdinaryEntryCreateRepresentation = Readonly<
+  | { type: "inline" }
+  | { captured: CapturedTreeBackedDirectoryCreateDestination; type: "tree" }
+>;
+
+/**
+ * Nominally binds one destination observation to the immutable parent root and
+ * page-store capability used to prepare an ordinary create. Production
+ * create-if-missing can inspect this capture and, when absent, reuse the exact
+ * same observation for mutation preparation instead of traversing the
+ * namespace again. Standalone callers still capture defensively below.
+ */
+export class CapturedOrdinaryEntryCreateDestination {
+  readonly existingEntry: DirectoryLeafEntry | undefined;
+  private readonly directoryPageStore: DirectoryPageTreePageStore;
+  private readonly parent: DirectoryInodeEntry;
+  private readonly representation: CapturedOrdinaryEntryCreateRepresentation;
+  private readonly target: OrdinaryEntryCreateTargetDescriptor;
+
+  private constructor({ directoryPageStore, existingEntry, parent, representation, target }: {
+    directoryPageStore: DirectoryPageTreePageStore;
+    existingEntry: DirectoryLeafEntry | undefined;
+    parent: DirectoryInodeEntry;
+    representation: CapturedOrdinaryEntryCreateRepresentation;
+    target: OrdinaryEntryCreateTargetDescriptor;
+  }) {
+    this.directoryPageStore = directoryPageStore;
+    this.existingEntry = existingEntry;
+    this.parent = parent;
+    this.representation = representation;
+    this.target = target;
+  }
+
+  static async capture({ directoryPageStore, parent, target }: {
+    directoryPageStore: DirectoryPageTreePageStore;
+    parent: DirectoryInodeEntry;
+    target: OrdinaryEntryCreateTargetDescriptor;
+  }): Promise<CapturedOrdinaryEntryCreateDestination> {
+    switch (parent.content.type) {
+    case "inline": return new CapturedOrdinaryEntryCreateDestination({
+      directoryPageStore,
+      existingEntry: parent.content.entries.find(entry => entry.name === target.entryName),
+      parent,
+      representation: { type: "inline" },
+      target,
+    });
+    case "tree": {
+      const captured = await CapturedTreeBackedDirectoryCreateDestination.capture({
+        entryName: target.entryName,
+        pageStore: directoryPageStore,
+        parent,
+      });
+      return new CapturedOrdinaryEntryCreateDestination({
+        directoryPageStore,
+        existingEntry: captured.existingEntry,
+        parent,
+        representation: { captured, type: "tree" },
+        target,
+      });
+    }
+    default: return parent.content satisfies never;
+    }
+  }
+
+  async prepareCommit({
+    baseCommit,
+    inodeTablePageStore,
+    maximumKnownInodeNumber,
+    mutationId,
+    operationTimestamp,
+    request,
+  }: Readonly<{
+    baseCommit: FileSystemCommitPayload;
+    inodeTablePageStore: RootInodeTablePageStore;
+    maximumKnownInodeNumber: InodeNumber | undefined;
+    mutationId: MutationId;
+    operationTimestamp: TimestampMilliseconds;
+    request: OrdinaryEntryCreateRequest;
+  }>): Promise<PreparedOrdinaryEntryCreateCommit> {
+    const plan = prepareOrdinaryEntryCreatePlan({
+      maximumKnownInodeNumber,
+      nextInodeNumber: baseCommit.nextInodeNumber,
+      operationTimestamp,
+      request,
+      target: { ...this.target, destinationExists: this.existingEntry !== undefined },
+    });
+    const mutation: PreparedOrdinaryEntryCreateMutation = await (async () => {
+      switch (this.representation.type) {
+      case "inline": {
+        const candidateParent = prepareInlineDirectoryCreateCandidateParent({ parent: this.parent, plan });
+        if (inlineDirectoryCreateCandidateFits({ candidateParent })) {
+          return prepareInlineDirectoryCreateMutationFromCandidate({ candidateParent, plan });
+        }
+        return await prepareInlineDirectoryPromotionCreateMutation({
+          candidateParent,
+          pageStore: this.directoryPageStore,
+          plan,
+        });
+      }
+      case "tree": return await this.representation.captured.prepareMutation({ plan });
+      default: return this.representation satisfies never;
+      }
+    })();
+    const prepared = await prepareRootInodeTableMutation({
+      baseCommit,
+      changes: mutation.changes,
+      mutationId,
+      pageStore: inodeTablePageStore,
+    });
+    switch (prepared.type) {
+    case "unchanged":
+      throw new Error("ordinary entry creation unexpectedly produced no Inode Table change");
+    case "prepared": return {
+      commitPayload: createFileSystemCommitPayload({ payload: {
+        ...prepared.commitPayload,
+        nextInodeNumber: plan.nextInodeNumber,
+      } }),
+      plan,
+      updatedParent: mutation.updatedParent,
+    };
+    default: return prepared satisfies never;
+    }
+  }
+}
 
 /**
  * Selects the logical directory representation while remaining independent of
@@ -64,55 +190,21 @@ export async function prepareOrdinaryEntryCreateCommit({
   operationTimestamp: TimestampMilliseconds;
   parent: DirectoryInodeEntry;
   request: OrdinaryEntryCreateRequest;
-  target: OrdinaryEntryCreateTarget;
+  target: OrdinaryEntryCreateTargetDescriptor;
 }>): Promise<PreparedOrdinaryEntryCreateCommit> {
-  const plan = prepareOrdinaryEntryCreatePlan({
-    maximumKnownInodeNumber,
-    nextInodeNumber: baseCommit.nextInodeNumber,
-    operationTimestamp,
-    request,
+  const destination = await CapturedOrdinaryEntryCreateDestination.capture({
+    directoryPageStore,
+    parent,
     target,
   });
-  const mutation: PreparedOrdinaryEntryCreateMutation = await (async () => {
-    switch (parent.content.type) {
-    case "inline": {
-      const candidateParent = prepareInlineDirectoryCreateCandidateParent({ parent, plan });
-      if (inlineDirectoryCreateCandidateFits({ candidateParent })) {
-        return prepareInlineDirectoryCreateMutationFromCandidate({ candidateParent, plan });
-      }
-      return await prepareInlineDirectoryPromotionCreateMutation({
-        candidateParent,
-        pageStore: directoryPageStore,
-        plan,
-      });
-    }
-    case "tree": return await prepareTreeBackedDirectoryCreateMutation({
-      pageStore: directoryPageStore,
-      parent,
-      plan,
-    });
-    default: return parent.content satisfies never;
-    }
-  })();
-  const prepared = await prepareRootInodeTableMutation({
+  return await destination.prepareCommit({
     baseCommit,
-    changes: mutation.changes,
+    inodeTablePageStore,
+    maximumKnownInodeNumber,
     mutationId,
-    pageStore: inodeTablePageStore,
+    operationTimestamp,
+    request,
   });
-  switch (prepared.type) {
-  case "unchanged":
-    throw new Error("ordinary entry creation unexpectedly produced no Inode Table change");
-  case "prepared": return {
-    commitPayload: createFileSystemCommitPayload({ payload: {
-      ...prepared.commitPayload,
-      nextInodeNumber: plan.nextInodeNumber,
-    } }),
-    plan,
-    updatedParent: mutation.updatedParent,
-  };
-  default: return prepared satisfies never;
-  }
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

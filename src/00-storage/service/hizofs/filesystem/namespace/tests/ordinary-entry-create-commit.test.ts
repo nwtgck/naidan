@@ -197,7 +197,6 @@ describe("prepareOrdinaryEntryCreateCommit", () => {
       parent,
       request: { type: "file" },
       target: {
-        destinationExists: false,
         entryName: newEntryName,
         parentAccess: "read_write",
         parentDirectoryInodeNumber: parent.inodeNumber,
@@ -243,7 +242,6 @@ describe("prepareOrdinaryEntryCreateCommit", () => {
       parent: writtenParent,
       request: { type: "file" },
       target: {
-        destinationExists: false,
         entryName: postPromotionEntryName,
         parentAccess: "read_write",
         parentDirectoryInodeNumber: parent.inodeNumber,

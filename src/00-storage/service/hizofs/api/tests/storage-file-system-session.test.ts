@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { OrdinaryEntryCreatePlanError } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-plan";
 import {
   createHizoFSStorageFileSystemSession,
   type HizoFSApplicationSessionPort,
@@ -55,6 +54,30 @@ function createPort(): HizoFSApplicationSessionPort & {
     async createSymlink(request) {
       calls.push(["createSymlink", request]);
       stats.set(key({ path: [...request.path, request.name] }), stat({ kind: "symlink", size: BigInt(request.target.length) }));
+    },
+    async ensureDirectory(request) {
+      calls.push(["ensureDirectory", request]);
+      const destination = key({ path: [...request.path, request.name] });
+      const existing = stats.get(destination);
+      if (existing === undefined) {
+        stats.set(destination, stat({ kind: "directory" }));
+        return;
+      }
+      if (existing.kind !== "directory") {
+        throw new TypeError(`Expected directory at ${destination}, found ${existing.kind}`);
+      }
+    },
+    async ensureFile(request) {
+      calls.push(["ensureFile", request]);
+      const destination = key({ path: [...request.path, request.name] });
+      const existing = stats.get(destination);
+      if (existing === undefined) {
+        stats.set(destination, stat({ kind: "file" }));
+        return;
+      }
+      if (existing.kind !== "file") {
+        throw new TypeError(`Expected file at ${destination}, found ${existing.kind}`);
+      }
     },
     async listDirectory({ path }) {
       calls.push(["listDirectory", [...path]]);
@@ -169,43 +192,40 @@ describe("HizoFS StorageFileSystemSession adapter", () => {
     await expect(session.root.getDirectoryHandle({ create: true, name: "directory" }))
       .resolves.toMatchObject({ kind: "directory", name: "directory" });
 
-    expect(port.calls.some(([name]) => name === "createFile")).toBe(false);
-    expect(port.calls.some(([name]) => name === "createDirectory")).toBe(false);
+    expect(port.calls.filter(([name]) => name === "ensureFile")).toHaveLength(1);
+    expect(port.calls.filter(([name]) => name === "ensureDirectory")).toHaveLength(1);
+    expect(port.calls.some(([name]) => name === "stat")).toBe(false);
   });
 
-  it("accepts a create-if-missing race only after the expected entry becomes observable", async () => {
+  it("delegates create-if-missing atomically without a separate stat", async () => {
     const port = createPort();
     const session = createHizoFSStorageFileSystemSession({ port });
-    port.stats.delete("raced");
-    let statCalls = 0;
-    port.stat = async ({ path }) => {
-      port.calls.push(["stat", [...path]]);
-      statCalls += 1;
-      if (statCalls === 1) throw new DOMException("missing", "NotFoundError");
-      return stat({ kind: "file" });
-    };
-    port.createFile = async request => {
-      port.calls.push(["createFile", request]);
-      throw new OrdinaryEntryCreatePlanError({
-        code: "destination_exists",
-        message: "destination already exists",
-      });
-    };
+    port.stats.delete("new-file");
 
-    await expect(session.root.getFileHandle({ create: true, name: "raced" }))
-      .resolves.toMatchObject({ kind: "file", name: "raced" });
-    expect(statCalls).toBe(2);
-    expect(port.calls.filter(([name]) => name === "createFile")).toHaveLength(1);
+    await expect(session.root.getFileHandle({ create: true, name: "new-file" }))
+      .resolves.toMatchObject({ kind: "file", name: "new-file" });
+
+    expect(port.calls.filter(([name]) => name === "stat")).toHaveLength(0);
+    expect(port.calls.filter(([name]) => name === "ensureFile")).toEqual([
+      ["ensureFile", { name: "new-file", path: [] }],
+    ]);
   });
 
-  it("does not hide a create failure when the expected entry remains absent", async () => {
+  it("rejects a create-if-missing request when the atomic ensure observes the wrong kind", async () => {
+    const port = createPort();
+    const session = createHizoFSStorageFileSystemSession({ port });
+    port.stats.set("raced", stat({ kind: "directory" }));
+
+    await expect(session.root.getFileHandle({ create: true, name: "raced" }))
+      .rejects.toThrow("Expected file at raced, found directory");
+    expect(port.calls.filter(([name]) => name === "stat")).toHaveLength(0);
+  });
+
+  it("does not hide an atomic ensure failure", async () => {
     const port = createPort();
     const session = createHizoFSStorageFileSystemSession({ port });
     const creationFailure = new Error("create failed");
-    port.stat = async () => {
-      throw new DOMException("missing", "NotFoundError");
-    };
-    port.createFile = async () => {
+    port.ensureFile = async () => {
       throw creationFailure;
     };
 

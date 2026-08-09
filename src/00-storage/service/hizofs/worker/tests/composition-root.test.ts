@@ -611,6 +611,61 @@ describe("HizoFS worker composition root", () => {
     await session.close();
   });
 
+  it("linearizes create-if-missing as one production mutation observation", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const passphrase = "correct horse battery staple";
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase,
+      randomSource,
+      supportedFeatureBits,
+    });
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: immediateRuntimeHost(),
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://composition-root-test.hizofs",
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        opened,
+        operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+        randomSource,
+        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+
+    const first = await session.root.getFileHandle({ create: true, name: "stable.txt" });
+    const second = await session.root.getFileHandle({ create: true, name: "stable.txt" });
+    expect(second).toMatchObject({ kind: "file", name: first.name });
+    await expect(session.root.getDirectoryHandle({ create: true, name: "stable.txt" }))
+      .rejects.toThrow("Expected directory at stable.txt, found file");
+
+    await session.close();
+    const reopened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+    try {
+      // Only the first ensure creates a successor. Same-kind ensure is an
+      // explicit no-change result, and wrong-kind ensure never publishes.
+      expect(reopened.commit.commitSequence).toBe(2n);
+      const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+      try {
+        await expect(resources.namespace.stat({ pathComponents: ["stable.txt"] }))
+          .resolves.toMatchObject({ kind: "file" });
+      } finally {
+        await resources.releaseResources();
+      }
+    } finally {
+      if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+    }
+  });
+
   it("preserves ordinary mutation and writer-dependency cleanup failures in order", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();

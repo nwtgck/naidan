@@ -1,6 +1,4 @@
 import type { StorageBinaryObjectReadHandle } from "@/00-storage/service/binary-object-io";
-import { OrdinaryEntryCreatePlanError } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-plan";
-import { isStorageEntryNotFoundError } from "@/00-storage/service/storage-file-system/errors";
 import { createStorageFileSystemSyncError } from "@/00-storage/service/storage-file-system/sync-error";
 import type {
   StorageDirectoryHandle,
@@ -81,6 +79,8 @@ export interface HizoFSApplicationSessionPort {
     path: readonly string[];
     target: string;
   }): Promise<void>;
+  ensureDirectory({ name, path }: { name: string; path: readonly string[] }): Promise<void>;
+  ensureFile({ name, path }: { name: string; path: readonly string[] }): Promise<void>;
   listDirectory({ path }: { path: readonly string[] }): Promise<readonly HizoFSApplicationDirectoryEntry[]>;
   moveEntry({ destinationPath, name, newName, path, replace }: {
     destinationPath: readonly string[];
@@ -397,9 +397,6 @@ class HizoFSStorageDirectoryHandle implements StorageDirectoryHandle {
     const path = childPath({ name, path: this.path });
     await this.owner.ensureEntry({
       create,
-      createEntry: async () => {
-        await this.owner.port.createFile({ name, path: [...this.path] });
-      },
       expectedKind: "file",
       path,
     });
@@ -410,9 +407,6 @@ class HizoFSStorageDirectoryHandle implements StorageDirectoryHandle {
     const path = childPath({ name, path: this.path });
     await this.owner.ensureEntry({
       create,
-      createEntry: async () => {
-        await this.owner.port.createDirectory({ name, path: [...this.path] });
-      },
       expectedKind: "directory",
       path,
     });
@@ -627,42 +621,29 @@ export class HizoFSStorageFileSystemSession implements StorageFileSystemSession 
     }
   }
 
-  async ensureEntry({ create, createEntry, expectedKind, path }: {
+  async ensureEntry({ create, expectedKind, path }: {
     create: boolean;
-    createEntry: () => Promise<void>;
-    expectedKind: HizoFSApplicationEntryKind;
+    expectedKind: "directory" | "file";
     path: readonly string[];
   }): Promise<void> {
     if (!create) {
       await this.statExpected({ expectedKind, path });
       return;
     }
-
-    try {
-      await this.statExpected({ expectedKind, path });
-      return;
-    } catch (cause: unknown) {
-      if (!isStorageEntryNotFoundError({ error: cause })) throw cause;
-    }
-
-    let destinationExistsFailure: OrdinaryEntryCreatePlanError | undefined;
-    try {
-      await this.runOperation({ operation: createEntry });
-    } catch (cause: unknown) {
-      if (!(cause instanceof OrdinaryEntryCreatePlanError) || cause.code !== "destination_exists") {
-        throw cause;
+    const parentPath = path.slice(0, -1);
+    const name = path.at(-1);
+    if (name === undefined) throw new TypeError("cannot create the HizoFS root entry");
+    await this.runOperation({ operation: async () => {
+      switch (expectedKind) {
+      case "directory": await this.port.ensureDirectory({ name, path: parentPath }); return;
+      case "file": await this.port.ensureFile({ name, path: parentPath }); return;
+      default: return expectedKind satisfies never;
       }
-      destinationExistsFailure = cause;
-    }
-
-    try {
-      await this.statExpected({ expectedKind, path });
-    } catch (cause: unknown) {
-      if (destinationExistsFailure !== undefined && isStorageEntryNotFoundError({ error: cause })) {
-        throw destinationExistsFailure;
-      }
-      throw cause;
-    }
+    }});
+    // The writer may have crossed its durability point before close won the
+    // public capability-return race. Preserve the completed mutation, but do
+    // not hand a new entry handle to an application after closing began.
+    this.assertOpen();
   }
 
   async statExpected({ expectedKind, path }: {

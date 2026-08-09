@@ -34,13 +34,16 @@ export type OrdinaryEntryCreateRequest =
   | Readonly<{ type: "file" }>
   | Readonly<{ target: string; type: "symlink" }>;
 
-export type OrdinaryEntryCreateTarget = Readonly<{
-  destinationExists: boolean;
+export type OrdinaryEntryCreateTargetDescriptor = Readonly<{
   entryName: string;
   parentAccess: SubvolumeAccess;
   parentDirectoryInodeNumber: InodeNumber;
   parentSubvolumeId: SubvolumeId;
 }>;
+
+export type OrdinaryEntryCreateTarget = Readonly<
+  OrdinaryEntryCreateTargetDescriptor & { destinationExists: boolean }
+>;
 
 export type OrdinaryEntryCreatePlan = Readonly<{
   directoryEntry: Extract<DirectoryLeafEntry, { targetType: "inode" }>;

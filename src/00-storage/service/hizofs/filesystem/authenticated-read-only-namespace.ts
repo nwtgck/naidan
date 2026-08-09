@@ -270,6 +270,7 @@ export function createAuthenticatedReadOnlyNamespace({
     resolveInode: _resolveInode,
     resolveInodeByNumber: _resolveInodeByNumber,
     stat,
+    validateDirectoryStructure: _validateDirectoryStructure,
     ...unhandledResolver
   } = resolver;
   unhandledResolver satisfies Record<PropertyKey, never>;

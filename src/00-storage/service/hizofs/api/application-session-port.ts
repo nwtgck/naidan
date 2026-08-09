@@ -18,6 +18,7 @@ import type {
 } from "@/00-storage/service/hizofs/api/storage-file-system-session";
 
 export type HizoFSApplicationPublicationAuthority = Readonly<{
+  assertCapabilityReturnAllowed: () => void;
   assertPublicationAllowed: () => void;
   candidateAccepted: () => boolean;
   commitPointCrossed: () => boolean;
@@ -72,6 +73,16 @@ export interface HizoFSApplicationMutationPort {
     name: string;
     path: readonly string[];
     target: string;
+  }): Promise<void>;
+  ensureDirectory({ authority, name, path }: {
+    authority: HizoFSApplicationPublicationAuthority;
+    name: string;
+    path: readonly string[];
+  }): Promise<void>;
+  ensureFile({ authority, name, path }: {
+    authority: HizoFSApplicationPublicationAuthority;
+    name: string;
+    path: readonly string[];
   }): Promise<void>;
   moveEntry({ authority, destinationPath, name, newName, path, replace }: {
     authority: HizoFSApplicationPublicationAuthority;
@@ -159,6 +170,7 @@ function applicationAuthority({ authority }: {
   let candidateAccepted = false;
   let noChangeResolved = false;
   return {
+    assertCapabilityReturnAllowed: authority.assertCapabilityReturnAllowed,
     assertPublicationAllowed: authority.assertPublicationAllowed,
     candidateAccepted: () => candidateAccepted,
     commitPointCrossed: authority.commitPointCrossed,
@@ -197,13 +209,22 @@ function requireMutationResolution({ authority, condition, operation }: {
   condition: HizoFSApplicationMutationSuccessCondition;
   operation: string;
 }): void {
-  if (authority.noChangeResolved()) return;
+  if (authority.noChangeResolved()) {
+    authority.assertCapabilityReturnAllowed();
+    return;
+  }
   switch (condition) {
   case "durable_publication":
-    if (authority.commitPointCrossed()) return;
+    if (authority.commitPointCrossed()) {
+      authority.assertCapabilityReturnAllowed();
+      return;
+    }
     break;
   case "working_candidate_acceptance":
-    if (authority.candidateAccepted()) return;
+    if (authority.candidateAccepted()) {
+      authority.assertCapabilityReturnAllowed();
+      return;
+    }
     break;
   default: return condition satisfies never;
   }
@@ -588,6 +609,30 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
         name,
         path: capturedPath,
         target,
+      }),
+    });
+  }
+
+  async ensureDirectory({ name, path }: { name: string; path: readonly string[] }): Promise<void> {
+    const capturedPath = [...path];
+    await this.mutate({
+      operation: "ensure directory",
+      run: async ({ authority }) => await this.mutationPort.ensureDirectory({
+        authority,
+        name,
+        path: capturedPath,
+      }),
+    });
+  }
+
+  async ensureFile({ name, path }: { name: string; path: readonly string[] }): Promise<void> {
+    const capturedPath = [...path];
+    await this.mutate({
+      operation: "ensure file",
+      run: async ({ authority }) => await this.mutationPort.ensureFile({
+        authority,
+        name,
+        path: capturedPath,
       }),
     });
   }

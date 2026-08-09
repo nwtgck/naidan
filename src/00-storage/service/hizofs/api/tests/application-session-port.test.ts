@@ -152,6 +152,12 @@ function mutationPort({ markCommitPoint = true }: {
     async createSymlink(request) {
       complete({ authority: request.authority, name: "symlink", request });
     },
+    async ensureDirectory(request) {
+      complete({ authority: request.authority, name: "ensure-directory", request });
+    },
+    async ensureFile(request) {
+      complete({ authority: request.authority, name: "ensure-file", request });
+    },
     async moveEntry(request) {
       complete({ authority: request.authority, name: "move", request });
     },
@@ -309,6 +315,32 @@ describe("runtime-bound HizoFS application session port", () => {
       "close-writer",
     ]);
     expect(mutations.calls[0]?.[0]).toBe("move-no-change");
+  });
+
+  it("accepts an atomic ensure no-change result without claiming durable publication", async () => {
+    const runtimeState = runtime();
+    const mutations = mutationPort({ markCommitPoint: false });
+    mutations.port.ensureFile = async ({ authority, ...request }) => {
+      mutations.calls.push(["ensure-file-no-change", request]);
+      authority.markNoChangeResolved();
+    };
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      namespace: namespace(),
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+
+    await port.ensureFile({ name: "existing.txt", path: ["parent"] });
+
+    expect(runtimeState.calls).toEqual([
+      "acquire-writer",
+      "run-publication",
+      "close-writer",
+    ]);
+    expect(mutations.calls).toEqual([
+      ["ensure-file-no-change", { name: "existing.txt", path: ["parent"] }],
+    ]);
   });
 
   it("rejects a durable commit point that has no accepted working candidate", async () => {

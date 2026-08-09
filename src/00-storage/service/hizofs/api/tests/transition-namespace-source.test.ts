@@ -122,6 +122,7 @@ function fixture(): Readonly<{
     resolveInode,
     resolveInodeByNumber,
     stat: async ({ pathComponents }) => stat({ inode: await resolveInode({ pathComponents }) }),
+    validateDirectoryStructure: async () => undefined,
   };
   return { listDirectoryEntriesAfterBounded, resolver };
 }
