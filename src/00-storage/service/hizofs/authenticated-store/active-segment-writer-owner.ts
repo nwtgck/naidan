@@ -8,7 +8,7 @@ import type { AuthenticatedStoreDiagnosticsPort } from "./diagnostics-hooks";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import {
   AuthenticatedSegmentCapacityError,
-  createAuthenticatedSegmentWriter,
+  createReusableAuthenticatedSegmentWriter,
   type AuthenticatedSegmentWriter,
 } from "./record-appender";
 
@@ -45,6 +45,9 @@ export class AuthenticatedSegmentWriterOwner {
   private readonly segmentClass: SegmentClass;
   private activeLease: symbol | undefined;
   private activeLeaseAppendedEncryptedFrameBytes = 0;
+  private closeFailure: unknown | undefined;
+  private pendingWriterCleanup: Promise<void> | undefined;
+  private pendingWriterCleanupFailure: unknown | undefined;
   private stateValue: AuthenticatedSegmentWriterOwnerState = "open";
   private writer: AuthenticatedSegmentWriter | undefined;
 
@@ -77,7 +80,7 @@ export class AuthenticatedSegmentWriterOwner {
   }
 
   private async createWriter(): Promise<AuthenticatedSegmentWriter> {
-    return await createAuthenticatedSegmentWriter({
+    return await createReusableAuthenticatedSegmentWriter({
       backend: this.backend,
       diagnostics: this.diagnostics,
       fileSystemId: this.fileSystemId,
@@ -87,7 +90,34 @@ export class AuthenticatedSegmentWriterOwner {
     });
   }
 
+  private beginWriterCleanup({ writer }: { writer: AuthenticatedSegmentWriter }): void {
+    if (this.pendingWriterCleanup !== undefined) {
+      throw new Error("active Segment writer cleanup is already pending");
+    }
+    this.pendingWriterCleanupFailure = undefined;
+    const cleanup = writer.settleAbandonment().then(
+      () => undefined,
+      (cause: unknown) => {
+        this.pendingWriterCleanupFailure = cause;
+      },
+    );
+    this.pendingWriterCleanup = cleanup;
+  }
+
+  private async awaitWriterCleanup(): Promise<void> {
+    const cleanup = this.pendingWriterCleanup;
+    if (cleanup !== undefined) {
+      await cleanup;
+      if (this.pendingWriterCleanup === cleanup) this.pendingWriterCleanup = undefined;
+    }
+    const failure = this.pendingWriterCleanupFailure;
+    if (failure !== undefined) {
+      throw failure;
+    }
+  }
+
   private async writerForAppend(): Promise<AuthenticatedSegmentWriter> {
+    await this.awaitWriterCleanup();
     const current = this.writer;
     if (current !== undefined) {
       switch (current.state) {
@@ -153,7 +183,10 @@ export class AuthenticatedSegmentWriterOwner {
       switch (writer.state) {
       case "active": break;
       case "abandoned":
-      case "sealed": this.writer = undefined; break;
+      case "sealed":
+        this.writer = undefined;
+        this.beginWriterCleanup({ writer });
+        break;
       default: return writer.state satisfies never;
       }
       throw cause;
@@ -192,6 +225,7 @@ export class AuthenticatedSegmentWriterOwner {
         case "reuse": return;
         case "discard":
           this.writer?.abandon();
+          if (this.writer !== undefined) this.beginWriterCleanup({ writer: this.writer });
           this.writer = undefined;
           return;
         default: return disposition satisfies never;
@@ -207,7 +241,9 @@ export class AuthenticatedSegmentWriterOwner {
 
   async close(): Promise<void> {
     switch (this.stateValue) {
-    case "closed": return;
+    case "closed":
+      if (this.closeFailure !== undefined) throw this.closeFailure;
+      return;
     case "open": break;
     default: return this.stateValue satisfies never;
     }
@@ -215,20 +251,26 @@ export class AuthenticatedSegmentWriterOwner {
       throw new Error("cannot close active Segment writer owner while a mutation lease is active");
     }
     this.stateValue = "closed";
-    const writer = this.writer;
-    this.writer = undefined;
-    if (writer === undefined) return;
-    switch (writer.state) {
-    case "abandoned":
-    case "sealed": return;
-    case "active":
-      if (writer.hasRecords()) {
-        await writer.seal();
-      } else {
-        writer.abandon();
+    try {
+      await this.awaitWriterCleanup();
+      const writer = this.writer;
+      this.writer = undefined;
+      if (writer === undefined) return;
+      switch (writer.state) {
+      case "abandoned":
+      case "sealed": return;
+      case "active":
+        if (writer.hasRecords()) {
+          await writer.seal();
+        } else {
+          writer.abandon();
+        }
+        return;
+      default: return writer.state satisfies never;
       }
-      return;
-    default: return writer.state satisfies never;
+    } catch (cause: unknown) {
+      this.closeFailure = cause;
+      throw cause;
     }
   }
 }

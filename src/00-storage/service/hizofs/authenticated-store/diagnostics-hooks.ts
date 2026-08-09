@@ -1,4 +1,4 @@
-import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
+import type { HizoFSPhysicalWriteBackend, HizoFSReadableBackend, HizoFSWritableFile } from "@/00-storage/service/hizofs/physical-store/backend";
 import type { CanonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
 import type {
   AuthenticatedCodecDiagnosticsObservation,
@@ -22,6 +22,25 @@ export type {
   AuthenticatedSegmentWriterDiagnosticsObservation,
   AuthenticatedStoreDiagnosticsPort,
 } from "@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics";
+
+export async function getOpenFileSizeWithAuthenticatedReason<AuthenticatedPhysicalBytes extends Uint8Array>({
+  backend,
+  diagnostics,
+  file,
+  reason,
+}: {
+  backend: HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>;
+  diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
+  file: HizoFSWritableFile;
+  reason: AuthenticatedPhysicalAccessReason;
+}): Promise<bigint> {
+  diagnostics?.recordPhysicalAccessReason?.({
+    identity: String(file.path),
+    operation: "get_file_size",
+    reason,
+  });
+  return await backend.getOpenFileSize({ file });
+}
 
 export async function getFileSizeWithAuthenticatedReason({
   backend,

@@ -617,6 +617,7 @@ describe("OPFS writable backend", () => {
     await backend.writeAt({ file, offset: 2n, bytes: authenticatedBytes([7, 8, 9]) });
     await backend.truncate({ file, length: 7n });
     await backend.syncFileData({ file });
+    expect(await backend.getOpenFileSize({ file })).toBe(7n);
     expect(native.writableCreateCount).toBe(2);
     expect(native.writableCloseCount).toBe(2);
     expect(native.writableAbortCount).toBe(0);

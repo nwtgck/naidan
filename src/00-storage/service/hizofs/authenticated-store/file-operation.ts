@@ -21,6 +21,17 @@ async function closeWithSingleRetry({ backend, file }: {
   }
 }
 
+export async function closeAuthenticatedFile({ backend, file, operationLabel }: {
+  backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  file: HizoFSWritableFile;
+  operationLabel: string;
+}): Promise<void> {
+  const closeFailures = await closeWithSingleRetry({ backend, file });
+  if (closeFailures.length === 0) return;
+  if (closeFailures.length === 1) throw closeFailures[0];
+  throw new AggregateError(closeFailures, `${operationLabel} explicit close failed twice`);
+}
+
 export async function runAndCloseAuthenticatedFile({ backend, file, operation, operationLabel }: {
   backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   file: HizoFSWritableFile;

@@ -21,6 +21,26 @@ import { DeterministicPhysicalStoreFaultInjector } from "@/00-storage/service/hi
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import { describe, expect, it } from "vitest";
 
+class CountingInMemoryBackend
+  extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
+  public closeFileOperations = 0;
+  public openFileForUpdateOperations = 0;
+
+  public override async closeFile(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["closeFile"]>[0],
+  ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["closeFile"]> {
+    this.closeFileOperations += 1;
+    return await super.closeFile(input);
+  }
+
+  public override async openFileForUpdate(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["openFileForUpdate"]>[0],
+  ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["openFileForUpdate"]> {
+    this.openFileForUpdateOperations += 1;
+    return await super.openFileForUpdate(input);
+  }
+}
+
 function deterministicRandomSource(): RandomByteSource {
   let next = 1;
   return ({ bytes }) => {
@@ -34,7 +54,7 @@ function deterministicRandomSource(): RandomByteSource {
 function fixture({ faultInjector }: {
   faultInjector?: DeterministicPhysicalStoreFaultInjector;
 } = {}) {
-  const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({ faultInjector });
+  const backend = new CountingInMemoryBackend({ faultInjector });
   const randomSource = deterministicRandomSource();
   const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
   const rootKey = generateFileSystemRootKey({ randomSource });
@@ -92,8 +112,14 @@ describe("authenticated active Segment writer owner", () => {
 
       expect(second.segmentId).toEqual(first.segmentId);
       expect(second.writer).toBe(first.writer);
+      expect(value.backend.openFileForUpdateOperations).toBe(1);
+      expect(value.backend.closeFileOperations).toBe(1);
       await value.owner.close();
       expect(first.writer.state).toBe("sealed");
+      // Initial Segment creation closes once, then the retained append handle
+      // and the separate Footer publication handle each close once.
+      expect(value.backend.openFileForUpdateOperations).toBe(2);
+      expect(value.backend.closeFileOperations).toBe(3);
       expect(value.backend.openHandleCount()).toBe(0);
     } finally {
       value.rootKey.destroy();
@@ -208,6 +234,51 @@ describe("authenticated active Segment writer owner", () => {
       lease.release({ disposition: "discard" });
       await value.owner.close();
       expect(value.owner.state()).toBe("closed");
+    } finally {
+      value.rootKey.destroy();
+    }
+  });
+
+  it("drains a retained update handle before replacing a discarded writer", async () => {
+    const value = fixture();
+    try {
+      const firstLease = value.owner.acquire();
+      const first = await appendOne({ lease: firstLease, value: 1 });
+      expect(value.backend.openFileForUpdateOperations).toBe(1);
+      expect(value.backend.closeFileOperations).toBe(1);
+      firstLease.release({ disposition: "discard" });
+
+      const secondLease = value.owner.acquire();
+      const second = await appendOne({ lease: secondLease, value: 2 });
+      expect(second.segmentId).not.toEqual(first.segmentId);
+      expect(value.backend.closeFileOperations).toBe(3);
+      expect(value.backend.openFileForUpdateOperations).toBe(2);
+      secondLease.release({ disposition: "reuse" });
+      await value.owner.close();
+      expect(value.backend.openHandleCount()).toBe(0);
+    } finally {
+      value.rootKey.destroy();
+    }
+  });
+
+  it("fails closed when retained-handle cleanup is outcome-unknown", async () => {
+    const injector = new DeterministicPhysicalStoreFaultInjector({
+      schedule: [{ occurrence: 2, operation: "closeFile", timing: "after" }],
+    });
+    const value = fixture({ faultInjector: injector });
+    try {
+      const firstLease = value.owner.acquire();
+      await appendOne({ lease: firstLease, value: 1 });
+      firstLease.release({ disposition: "discard" });
+
+      const secondLease = value.owner.acquire();
+      await expect(appendOne({ lease: secondLease, value: 2 })).rejects.toThrow("injected");
+      await expect(appendOne({ lease: secondLease, value: 3 })).rejects.toThrow("injected");
+      secondLease.release({ disposition: "discard" });
+      await expect(value.owner.close()).rejects.toThrow("injected");
+      await expect(value.owner.close()).rejects.toThrow("injected");
+      injector.assertExhausted();
+      expect(value.backend.openHandleCount()).toBe(0);
     } finally {
       value.rootKey.destroy();
     }

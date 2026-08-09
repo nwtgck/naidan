@@ -77,6 +77,7 @@ describe('HizoFS physical-store backend contract', () => {
     source.fill(9);
 
     expect(await backend.getFileSize({ path })).toBe(5n);
+    expect(await backend.getOpenFileSize({ file })).toBe(5n);
     expect(await backend.readExact({ path, offset: 0n, length: 5 })).toEqual(Uint8Array.from([0, 0, 1, 2, 3]));
     expect(await backend.readExactWithFileSize({ path, offset: 1n, length: 3 })).toEqual({
       bytes: Uint8Array.from([0, 1, 2]),
@@ -91,8 +92,10 @@ describe('HizoFS physical-store backend contract', () => {
     await backend.truncate({ file, length: 2n });
     expect(await backend.readFileBounded({ path, maximumByteLength: 2 })).toEqual(Uint8Array.from([0, 0]));
     await backend.truncate({ file, length: 4n });
+    expect(await backend.getOpenFileSize({ file })).toBe(4n);
     expect(await backend.readExact({ path, offset: 0n, length: 4 })).toEqual(Uint8Array.from([0, 0, 0, 0]));
     await backend.closeFile({ file });
+    await expect(backend.getOpenFileSize({ file })).rejects.toMatchObject({ code: 'closed_handle' });
   });
 
   it('sorts directory entries and reports file sizes without exposing mutable storage', async () => {

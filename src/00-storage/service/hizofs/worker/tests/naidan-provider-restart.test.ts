@@ -60,6 +60,7 @@ function developmentBackend({ backend }: {
     createDirectoryExclusive: async ({ path }) => await backend.createDirectoryExclusive({ path }),
     createFileExclusive: async ({ path }) => await backend.createFileExclusive({ path }),
     getFileSize: async ({ path }) => await backend.getFileSize({ path }),
+    getOpenFileSize: async ({ file }) => await backend.getOpenFileSize({ file }),
     list: async ({ directory }) => await backend.list({ directory }),
     syncDirectoryEntries: async ({ parent }) => await backend.syncDirectoryEntries({ parent }),
     syncFileData: async ({ file }) => await backend.syncFileData({ file }),

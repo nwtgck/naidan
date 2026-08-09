@@ -29,17 +29,23 @@ import {
   type RandomByteSource,
   type RecordNonce,
 } from "@/00-storage/service/hizofs/01-crypto";
-import type { HizoFSWritableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
+import type {
+  HizoFSWritableBackend,
+  HizoFSWritableFile,
+} from "@/00-storage/service/hizofs/physical-store/backend";
 import {
   canonicalContainerDirectory,
   type CanonicalContainerPath,
 } from "@/00-storage/service/hizofs/physical-store/paths";
 import { authenticatedStoreError } from "./errors";
 import { ensureAuthenticatedContainerDirectoryHierarchy } from "./ensure-container-directory";
-import { runAndCloseAuthenticatedFile } from "./file-operation";
+import {
+  closeAuthenticatedFile,
+  runAndCloseAuthenticatedFile,
+} from "./file-operation";
 import { authenticatedHizoFSPhysicalBytes, type AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import {
-  getFileSizeWithAuthenticatedReason,
+  getOpenFileSizeWithAuthenticatedReason,
   measureAuthenticatedCodecOperation,
   measureAuthenticatedCryptoOperation,
   readExactWithAuthenticatedReason,
@@ -90,6 +96,8 @@ export type AuthenticatedSegmentAppendTarget = Readonly<{
 }>;
 
 export type SegmentWriterState = "abandoned" | "active" | "sealed";
+
+type SegmentWriterWritableFileLifetime = "append" | "writer";
 
 export class AuthenticatedSegmentCapacityError extends RangeError {
   readonly capacity: "frame_count" | "record_area";
@@ -260,6 +268,7 @@ export class AuthenticatedSegmentWriter {
   private readonly rootKey: FileSystemRootKey;
   private readonly segmentClassValue: SegmentClass;
   private readonly segmentId: SegmentId;
+  private readonly writableFileLifetime: SegmentWriterWritableFileLifetime;
   private durableFooterIndexBytes = new Uint8Array();
   private durableFooterIndexLength = 0;
   private readonly usedNonceKeys = new Set<string>();
@@ -268,9 +277,22 @@ export class AuthenticatedSegmentWriter {
   private nextOffset = BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
   private operationInProgress = false;
   private persistedFrameBytesValue = 0;
+  private retainedWritableFile: HizoFSWritableFile | undefined;
+  private retainedWritableFileCloseFailure: unknown | undefined;
+  private retainedWritableFileCloseOperation: Promise<void> | undefined;
   private stateValue: SegmentWriterState = "active";
 
-  private constructor({ backend, diagnostics, fileSystemId, path, randomSource, rootKey, segmentClass, segmentId }: {
+  private constructor({
+    backend,
+    diagnostics,
+    fileSystemId,
+    path,
+    randomSource,
+    rootKey,
+    segmentClass,
+    segmentId,
+    writableFileLifetime,
+  }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
     fileSystemId: FileSystemId;
@@ -279,6 +301,7 @@ export class AuthenticatedSegmentWriter {
     rootKey: FileSystemRootKey;
     segmentClass: SegmentClass;
     segmentId: SegmentId;
+    writableFileLifetime: SegmentWriterWritableFileLifetime;
   }) {
     this.backend = backend;
     this.diagnostics = diagnostics;
@@ -288,6 +311,72 @@ export class AuthenticatedSegmentWriter {
     this.rootKey = rootKey;
     this.segmentClassValue = segmentClass;
     this.segmentId = segmentId;
+    this.writableFileLifetime = writableFileLifetime;
+  }
+
+  private beginRetainedWritableFileClose(): void {
+    const file = this.retainedWritableFile;
+    if (file === undefined) return;
+    if (this.retainedWritableFileCloseOperation !== undefined) {
+      throw new Error("active Segment retained writable-file close is already in progress");
+    }
+    this.retainedWritableFile = undefined;
+    this.retainedWritableFileCloseFailure = undefined;
+    const closeOperation = closeAuthenticatedFile({
+      backend: this.backend,
+      file,
+      operationLabel: "active Segment writer retained handle",
+    }).then(
+      () => undefined,
+      (cause: unknown) => {
+        this.retainedWritableFileCloseFailure = cause;
+      },
+    );
+    this.retainedWritableFileCloseOperation = closeOperation;
+  }
+
+  private async awaitRetainedWritableFileClose(): Promise<void> {
+    const closeOperation = this.retainedWritableFileCloseOperation;
+    if (closeOperation !== undefined) {
+      await closeOperation;
+      if (this.retainedWritableFileCloseOperation === closeOperation) {
+        this.retainedWritableFileCloseOperation = undefined;
+      }
+    }
+    const failure = this.retainedWritableFileCloseFailure;
+    if (failure !== undefined) {
+      throw failure;
+    }
+  }
+
+  private async closeRetainedWritableFile(): Promise<void> {
+    this.beginRetainedWritableFileClose();
+    await this.awaitRetainedWritableFileClose();
+  }
+
+  private async writableFileForAppend(): Promise<Readonly<{
+    closeAfterAppend: boolean;
+    file: HizoFSWritableFile;
+  }>> {
+    await this.awaitRetainedWritableFileClose();
+    switch (this.writableFileLifetime) {
+    case "append":
+      return Object.freeze({
+        closeAfterAppend: true,
+        file: await this.backend.openFileForUpdate({ path: this.path }),
+      });
+    case "writer": {
+      const current = this.retainedWritableFile;
+      if (current !== undefined) {
+        return Object.freeze({ closeAfterAppend: false, file: current });
+      }
+      const opened = await this.backend.openFileForUpdate({ path: this.path });
+      this.retainedWritableFile = opened;
+      return Object.freeze({ closeAfterAppend: false, file: opened });
+    }
+    default:
+      return this.writableFileLifetime satisfies never;
+    }
   }
 
   private releaseDurableFooterIndex(): void {
@@ -332,13 +421,22 @@ export class AuthenticatedSegmentWriter {
     return this.persistedFrameBytesValue;
   }
 
-  public static async create({ backend, diagnostics, fileSystemId, randomSource, rootKey, segmentClass }: {
+  public static async create({
+    backend,
+    diagnostics,
+    fileSystemId,
+    randomSource,
+    rootKey,
+    segmentClass,
+    writableFileLifetime,
+  }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
     fileSystemId: FileSystemId;
     randomSource?: RandomByteSource;
     rootKey: FileSystemRootKey;
     segmentClass: SegmentClass;
+    writableFileLifetime: SegmentWriterWritableFileLifetime;
   }): Promise<AuthenticatedSegmentWriter> {
     for (let attempt = 0; attempt < HIZOFS_V1_FORMAT_CONSTANTS.limits.randomIdentityGenerationAttempts; attempt += 1) {
       const segmentId = await generateSegmentId({ isUsed: async () => false, randomSource });
@@ -354,7 +452,17 @@ export class AuthenticatedSegmentWriter {
       await readAuthenticatedSegmentDescriptor({ backend, diagnostics, fileSystemId, physicalSegmentId: segmentId, rootKey, segmentClass });
       diagnostics?.recordSegmentWriterEvent?.({ observation: { event: "descriptor_validated", segmentClass } });
       diagnostics?.recordSegmentWriterEvent?.({ observation: { event: "created", segmentClass } });
-      return new AuthenticatedSegmentWriter({ backend, diagnostics, fileSystemId, path, randomSource, rootKey, segmentClass, segmentId });
+      return new AuthenticatedSegmentWriter({
+        backend,
+        diagnostics,
+        fileSystemId,
+        path,
+        randomSource,
+        rootKey,
+        segmentClass,
+        segmentId,
+        writableFileLifetime,
+      });
     }
     throw new Error("Segment ID creation exhausted the collision retry bound");
   }
@@ -458,11 +566,24 @@ export class AuthenticatedSegmentWriter {
     case "active":
       this.explicitAbandonRequested = true;
       this.stateValue = "abandoned";
-      if (!this.operationInProgress) this.releaseDurableFooterIndex();
+      if (!this.operationInProgress) {
+        this.beginRetainedWritableFileClose();
+        this.releaseDurableFooterIndex();
+      }
       return;
     default:
       return this.stateValue satisfies never;
     }
+  }
+
+  /**
+   * Drains a retained native update handle after synchronous abandonment.
+   * Owner code must await this before creating another writer or closing the
+   * owning epoch so close failures cannot disappear behind a fire-and-forget
+   * cleanup path.
+   */
+  public async settleAbandonment(): Promise<void> {
+    await this.closeRetainedWritableFile();
   }
 
   public async append({ records }: { records: readonly EncodedHizoFSRecord[] }): Promise<readonly AppendedRecord[]> {
@@ -567,47 +688,52 @@ export class AuthenticatedSegmentWriter {
         message: "segment writer was abandoned during append preparation",
         state: this.stateValue,
       });
-      const observedSize = await getFileSizeWithAuthenticatedReason({
-        backend: this.backend,
-        diagnostics: this.diagnostics,
-        path: this.path,
-        reason: "trusted_tail",
-      });
-      requireWriterStillActive({
-        message: "segment writer was abandoned while checking its trusted append tail",
-        state: this.stateValue,
-      });
-      if (observedSize !== this.nextOffset) {
+      const { closeAfterAppend, file } = await this.writableFileForAppend();
+      const writeAndSync = async (): Promise<void> => {
+        const observedSize = await getOpenFileSizeWithAuthenticatedReason({
+          backend: this.backend,
+          diagnostics: this.diagnostics,
+          file,
+          reason: "trusted_tail",
+        });
+        requireWriterStillActive({
+          message: "segment writer was abandoned while checking its trusted append tail",
+          state: this.stateValue,
+        });
+        if (observedSize !== this.nextOffset) {
+          this.diagnostics?.recordSegmentWriterEvent?.({ observation: {
+            event: "trusted_tail_mismatch",
+            segmentClass: this.segmentClassValue,
+          } });
+          this.stateValue = "abandoned";
+          throw authenticatedStoreError({ code: "control_plane_corrupt", message: "active Segment trusted append tail changed" });
+        }
         this.diagnostics?.recordSegmentWriterEvent?.({ observation: {
-          event: "trusted_tail_mismatch",
+          event: "trusted_tail_match",
           segmentClass: this.segmentClassValue,
         } });
+        requireWriterStillActive({
+          message: "segment writer was abandoned before physical append",
+          state: this.stateValue,
+        });
         this.stateValue = "abandoned";
-        throw authenticatedStoreError({ code: "control_plane_corrupt", message: "active Segment trusted append tail changed" });
+        await this.backend.writeAt({
+          bytes: authenticatedHizoFSPhysicalBytes({ bytes: batch }),
+          file,
+          offset: this.nextOffset,
+        });
+        await this.backend.syncFileData({ file });
+      };
+      if (closeAfterAppend) {
+        await runAndCloseAuthenticatedFile({
+          backend: this.backend,
+          file,
+          operation: writeAndSync,
+          operationLabel: "record append",
+        });
+      } else {
+        await writeAndSync();
       }
-      this.diagnostics?.recordSegmentWriterEvent?.({ observation: {
-        event: "trusted_tail_match",
-        segmentClass: this.segmentClassValue,
-      } });
-      const file = await this.backend.openFileForUpdate({ path: this.path });
-      await runAndCloseAuthenticatedFile({
-        backend: this.backend,
-        file,
-        operation: async () => {
-          requireWriterStillActive({
-            message: "segment writer was abandoned before physical append",
-            state: this.stateValue,
-          });
-          this.stateValue = "abandoned";
-          await this.backend.writeAt({
-            bytes: authenticatedHizoFSPhysicalBytes({ bytes: batch }),
-            file,
-            offset: this.nextOffset,
-          });
-          await this.backend.syncFileData({ file });
-        },
-        operationLabel: "record append",
-      });
       const readBack = await readExactWithAuthenticatedReason({
         backend: this.backend,
         diagnostics: this.diagnostics,
@@ -657,6 +783,7 @@ export class AuthenticatedSegmentWriter {
         break;
       case "abandoned":
       case "sealed":
+        this.beginRetainedWritableFileClose();
         this.releaseDurableFooterIndex();
         break;
       default:
@@ -672,6 +799,7 @@ export class AuthenticatedSegmentWriter {
     try {
       if (this.frameCount === 0) throw new RangeError("an empty active Segment must not be sealed");
       this.stateValue = "abandoned";
+      await this.closeRetainedWritableFile();
       await sealAuthenticatedSegment({
         writerCapability: {
           [activeSegmentWriterCapabilityBrand]: true,
@@ -707,7 +835,19 @@ export class AuthenticatedSegmentWriter {
   }
 }
 
-export async function createAuthenticatedSegmentWriter({ backend, diagnostics, fileSystemId, randomSource, rootKey, segmentClass }: Parameters<typeof AuthenticatedSegmentWriter.create>[0]): Promise<AuthenticatedSegmentWriter> {
+type CreateAuthenticatedSegmentWriterOptions = Omit<
+  Parameters<typeof AuthenticatedSegmentWriter.create>[0],
+  "writableFileLifetime"
+>;
+
+export async function createAuthenticatedSegmentWriter({
+  backend,
+  diagnostics,
+  fileSystemId,
+  randomSource,
+  rootKey,
+  segmentClass,
+}: CreateAuthenticatedSegmentWriterOptions): Promise<AuthenticatedSegmentWriter> {
   return await AuthenticatedSegmentWriter.create({
     backend,
     diagnostics,
@@ -715,6 +855,26 @@ export async function createAuthenticatedSegmentWriter({ backend, diagnostics, f
     randomSource,
     rootKey,
     segmentClass,
+    writableFileLifetime: "append",
+  });
+}
+
+export async function createReusableAuthenticatedSegmentWriter({
+  backend,
+  diagnostics,
+  fileSystemId,
+  randomSource,
+  rootKey,
+  segmentClass,
+}: CreateAuthenticatedSegmentWriterOptions): Promise<AuthenticatedSegmentWriter> {
+  return await AuthenticatedSegmentWriter.create({
+    backend,
+    diagnostics,
+    fileSystemId,
+    randomSource,
+    rootKey,
+    segmentClass,
+    writableFileLifetime: "writer",
   });
 }
 

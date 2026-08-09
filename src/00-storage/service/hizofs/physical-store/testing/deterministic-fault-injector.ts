@@ -4,6 +4,7 @@ export const PHYSICAL_STORE_OPERATIONS = [
   'createDirectoryExclusive',
   'createFileExclusive',
   'getFileSize',
+  'getOpenFileSize',
   'list',
   'syncDirectoryEntries',
   'syncFileData',

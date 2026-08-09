@@ -145,6 +145,7 @@ extends HizoFSReadableBackend {
   }): Promise<PhysicalDirectoryHierarchyProvisioningResult>;
   createFileExclusive({ path }: { path: CanonicalContainerPath }): Promise<HizoFSWritableFile>;
   openFileForUpdate({ path }: { path: CanonicalContainerPath }): Promise<HizoFSWritableFile>;
+  getOpenFileSize({ file }: { file: HizoFSWritableFile }): Promise<bigint>;
   writeAt({ bytes, file, offset }: {
     bytes: AuthenticatedPhysicalBytes;
     file: HizoFSWritableFile;

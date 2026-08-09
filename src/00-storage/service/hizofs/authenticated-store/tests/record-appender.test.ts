@@ -47,15 +47,15 @@ class FileSizeBlockingBackend extends InMemoryCrashDurabilityBackend<Authenticat
     this.releaseFileSizeResolve?.();
   }
 
-  public override async getFileSize(
-    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["getFileSize"]>[0],
-  ): Promise<bigint | undefined> {
+  public override async getOpenFileSize(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["getOpenFileSize"]>[0],
+  ): Promise<bigint> {
     if (this.blockNextFileSizeValue) {
       this.blockNextFileSizeValue = false;
       this.fileSizeStartedResolve?.();
       await this.releaseFileSizeValue;
     }
-    return await super.getFileSize(input);
+    return await super.getOpenFileSize(input);
   }
 }
 
@@ -107,6 +107,13 @@ class PhysicalAccessRecordingBackend extends InMemoryCrashDurabilityBackend<Auth
   ): Promise<bigint | undefined> {
     this.events.push(`size:${input.path}`);
     return await super.getFileSize(input);
+  }
+
+  public override async getOpenFileSize(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["getOpenFileSize"]>[0],
+  ): Promise<bigint> {
+    this.events.push(`open-size:${input.file.path}`);
+    return await super.getOpenFileSize(input);
   }
 
   public override async createFileExclusive(
@@ -203,6 +210,32 @@ describe("authenticated record appender", () => {
     const preflightSizes = backend.events.slice(0, firstCreateIndex).filter(event => event.startsWith("size:"));
     expect(preflightSizes).toHaveLength(1);
     expect(preflightSizes[0]).toContain("/data/");
+    rootKey.destroy();
+  });
+
+  it("checks the trusted append tail through the owned writable capability", async () => {
+    const backend = new PhysicalAccessRecordingBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const writer = await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    backend.events.length = 0;
+
+    await writer.append({ records: [encodedHizoFSRecord({
+      plaintext: new Uint8Array([1]),
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+    })] });
+
+    expect(backend.events.filter(event => event.startsWith("open-size:"))).toHaveLength(1);
+    expect(backend.events.filter(event => event.startsWith("size:"))).toHaveLength(0);
+    writer.abandon();
+    await writer.settleAbandonment();
     rootKey.destroy();
   });
 
@@ -650,6 +683,28 @@ describe("authenticated record appender", () => {
     expect(writer.state).toBe("sealed");
     expect(backend.openHandleCount()).toBe(0);
     rootKey.destroy();
+  });
+
+  it("keeps a writer reusable when trusted-tail size observation fails before mutation", async () => {
+    const injector = new DeterministicPhysicalStoreFaultInjector({
+      schedule: [{ occurrence: 1, operation: "getOpenFileSize", timing: "before" }],
+    });
+    const value = fixture({ faultInjector: injector });
+    const writer = await createAuthenticatedSegmentWriter({ ...value, segmentClass: "metadata" });
+    const record = encodedHizoFSRecord({
+      plaintext: new Uint8Array([1]),
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+    });
+
+    await expect(writer.append({ records: [record] })).rejects.toThrow("injected");
+    expect(writer.state).toBe("active");
+    expect(value.backend.openHandleCount()).toBe(0);
+    injector.assertExhausted();
+    await expect(writer.append({ records: [record] })).resolves.toHaveLength(1);
+    writer.abandon();
+    await writer.settleAbandonment();
+    expect(value.backend.openHandleCount()).toBe(0);
+    value.rootKey.destroy();
   });
 
   it("retries explicit close once without making an uncertain append reusable", async () => {

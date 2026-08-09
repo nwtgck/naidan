@@ -232,6 +232,7 @@ function developmentBackend({ backend }: {
     createDirectoryExclusive: async ({ path }) => await backend.createDirectoryExclusive({ path }),
     createFileExclusive: async ({ path }) => await backend.createFileExclusive({ path }),
     getFileSize: async ({ path }) => await backend.getFileSize({ path }),
+    getOpenFileSize: async ({ file }) => await backend.getOpenFileSize({ file }),
     list: async ({ directory }) => await backend.list({ directory }),
     openFileForUpdate: async ({ path }) => await backend.openFileForUpdate({ path }),
     readExact: async ({ length, offset, path }) => await backend.readExact({ length, offset, path }),
@@ -4059,6 +4060,7 @@ describe("HizoFS worker composition root", () => {
       createDirectoryExclusive: async () => ({ parentEntrySyncRequired: false }),
       createFileExclusive: async () => file,
       getFileSize: async () => 0n,
+      getOpenFileSize: async () => 0n,
       list: async () => [],
       openFileForUpdate: async () => file,
       provisionDirectoryHierarchy: async () => ({ parentEntriesRequiringSync: [] }),
@@ -4087,6 +4089,7 @@ describe("HizoFS worker composition root", () => {
     if (backend.provisionDirectoryHierarchy === undefined) throw new Error("expected hierarchy provisioning capability");
     await backend.provisionDirectoryHierarchy({ path: CANONICAL_CONTAINER_ROOT });
     await backend.openFileForUpdate({ path });
+    await backend.getOpenFileSize({ file });
     await backend.getFileSize({ path });
     await backend.readExact({ length: 0, offset: 0n, path });
     await backend.readExactWithFileSize({ length: 0, offset: 0n, path });
@@ -4119,7 +4122,7 @@ describe("HizoFS worker composition root", () => {
     const physical = Object.entries(diagnostics.snapshot().phases)
       .filter(([phase]) => phase.startsWith("physical_"));
     expect(physical).toHaveLength(14);
-    expect(diagnostics.snapshot().phases.physical_get_file_size).toEqual({ operationCount: 3, totalDurationMs: 3 });
+    expect(diagnostics.snapshot().phases.physical_get_file_size).toEqual({ operationCount: 4, totalDurationMs: 4 });
     expect(diagnostics.snapshot().phases.physical_read_exact).toEqual({ operationCount: 5, totalDurationMs: 5 });
     expect(diagnostics.snapshot().phases.physical_sync_directory_entries).toEqual({
       operationCount: 2,

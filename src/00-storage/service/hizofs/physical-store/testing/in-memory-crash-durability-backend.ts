@@ -190,6 +190,14 @@ implements HizoFSPhysicalWriteBackend<AuthenticatedPhysicalBytes>, HizoFSDirecto
     }
   }
 
+  public async getOpenFileSize({ file }: { file: HizoFSWritableFile }): Promise<bigint> {
+    const state = this.requireOpenHandle({ file });
+    this.checkpoint({ operation: 'getOpenFileSize', timing: 'before' });
+    const byteLength = BigInt(state.file.bytes.byteLength);
+    this.checkpoint({ operation: 'getOpenFileSize', timing: 'after' });
+    return byteLength;
+  }
+
   public async getFileSize({ path }: { path: CanonicalContainerPath }): Promise<bigint | undefined> {
     const node = this.lookupNode({ path });
     if (node === undefined) return undefined;

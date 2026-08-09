@@ -5539,6 +5539,16 @@ function instrumentHizoFSWritableBackend<AuthenticatedPhysicalBytes extends Uint
         phase: "physical_get_file_size",
       });
     },
+    getOpenFileSize: async ({ file }) => {
+      diagnostics.recordPhysicalAccess({
+        identity: String(file.path),
+        operation: "get_file_size",
+      });
+      return await measured({
+        operation: async () => await backend.getOpenFileSize({ file }),
+        phase: "physical_get_file_size",
+      });
+    },
     list: async ({ directory }) => await measured({
       operation: async () => await backend.list({ directory }),
       phase: "physical_list",

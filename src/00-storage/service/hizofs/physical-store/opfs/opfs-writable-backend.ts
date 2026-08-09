@@ -23,6 +23,7 @@ import {
 interface OpfsSyncAccessHandle {
   close(): void;
   flush(): void;
+  getSize(): number;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors FileSystemSyncAccessHandle.read.
   read(buffer: ArrayBufferView, options?: { at?: number }): number;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors FileSystemSyncAccessHandle.truncate.
@@ -310,6 +311,23 @@ implements HizoFSDevelopmentWritableBackend<AuthenticatedPhysicalBytes>, HizoFSD
         });
       }
       throw error;
+    }
+  }
+
+  public async getOpenFileSize({
+    file,
+  }: {
+    file: HizoFSWritableFile;
+  }): Promise<bigint> {
+    const state = this.requireOpenHandle({ file });
+    switch (state.access.type) {
+    case 'sync_access':
+      return BigInt(state.access.handle.getSize());
+    case 'writable_stream':
+      await state.access.pending;
+      return BigInt((await state.access.fileHandle.getFile()).size);
+    default:
+      return state.access satisfies never;
     }
   }
 
