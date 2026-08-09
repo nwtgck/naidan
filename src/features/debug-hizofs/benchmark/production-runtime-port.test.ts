@@ -658,6 +658,14 @@ describe('production HizoFS benchmark runtime port', () => {
       .toBe(configuration.randomAccess.operationCount + 1);
     expect(randomWriteRuntime.indexes.update.inputMutations)
       .toBe(configuration.randomAccess.operationCount + 1);
+    expect(randomWriteRuntime.segmentWriters.data.appendOperations)
+      .toBe(configuration.randomAccess.operationCount);
+    // One prepared writable owns one shared data Segment writer lease. Its
+    // per-block durable appends must not reopen the physical Segment file.
+    expect(randomWriteRuntime.phases.physical_open_file_for_update.operationCount)
+      .toBeLessThan(configuration.randomAccess.operationCount / 2);
+    expect(randomWriteRuntime.phases.physical_close_file.operationCount)
+      .toBeLessThan(configuration.randomAccess.operationCount / 2);
   }, 30_000);
 
   it('retains an isolated production run only by configuration and removes it explicitly', async () => {

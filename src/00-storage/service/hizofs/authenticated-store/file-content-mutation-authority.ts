@@ -4,6 +4,10 @@ import {
   type FileExtentPage,
   type HomeRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
+import type {
+  AuthenticatedSegmentWriterLease,
+  AuthenticatedSegmentWriterOwner,
+} from "./active-segment-writer-owner";
 import type { AuthenticatedSegmentWriter } from "./record-appender";
 import { createAuthenticatedSegmentWriter } from "./record-appender";
 import { appendAuthenticatedFileData } from "./file-data-store";
@@ -48,6 +52,13 @@ export type AuthenticatedFileContentMutationAuthorityState =
   | "closed"
   | "publishing";
 
+type CreateAuthenticatedFileContentMutationAuthorityParameters =
+  Omit<Parameters<typeof createAuthenticatedMetadataMutationAuthority>[0], "writerOwner">
+  & Readonly<{
+    dataWriterOwner?: AuthenticatedSegmentWriterOwner;
+    metadataWriterOwner?: AuthenticatedSegmentWriterOwner;
+  }>;
+
 /**
  * Owns exactly the additional data-segment capability needed by file content
  * mutations while delegating metadata pages and Commit publication to the
@@ -57,21 +68,26 @@ export type AuthenticatedFileContentMutationAuthorityState =
 export class AuthenticatedFileContentMutationAuthority {
   private readonly metadata: AuthenticatedMetadataMutationAuthority;
   private readonly parameters: Parameters<typeof createAuthenticatedMetadataMutationAuthority>[0];
+  private readonly dataWriterOwner: AuthenticatedSegmentWriterOwner | undefined;
   private appendedDataFrameBytes = 0;
   private dataFrameCount = 0;
   private dataRecordAreaBytes = 0;
   private dataWriter: AuthenticatedSegmentWriter | undefined;
+  private dataWriterLease: AuthenticatedSegmentWriterLease | undefined;
   private operationInProgress = false;
   private stateValue: AuthenticatedFileContentMutationAuthorityState = "active";
   private workingAcceptancePrepared = false;
 
   private constructor({
+    dataWriterOwner,
     metadata,
     parameters,
   }: {
+    dataWriterOwner: AuthenticatedSegmentWriterOwner | undefined;
     metadata: AuthenticatedMetadataMutationAuthority;
     parameters: Parameters<typeof createAuthenticatedMetadataMutationAuthority>[0];
   }) {
+    this.dataWriterOwner = dataWriterOwner;
     this.metadata = metadata;
     this.parameters = parameters;
   }
@@ -85,8 +101,9 @@ export class AuthenticatedFileContentMutationAuthority {
     rootKey,
     sharedMetadataRecordCache,
     supportedFeatureBits,
-    writerOwner,
-  }: Parameters<typeof createAuthenticatedMetadataMutationAuthority>[0]): Promise<AuthenticatedFileContentMutationAuthority> {
+    dataWriterOwner,
+    metadataWriterOwner,
+  }: CreateAuthenticatedFileContentMutationAuthorityParameters): Promise<AuthenticatedFileContentMutationAuthority> {
     const parameters = {
       backend,
       diagnostics,
@@ -96,10 +113,12 @@ export class AuthenticatedFileContentMutationAuthority {
       rootKey,
       sharedMetadataRecordCache,
       supportedFeatureBits,
-      writerOwner,
+      writerOwner: metadataWriterOwner,
     };
+    const metadata = await createAuthenticatedMetadataMutationAuthority(parameters);
     return new AuthenticatedFileContentMutationAuthority({
-      metadata: await createAuthenticatedMetadataMutationAuthority(parameters),
+      dataWriterOwner,
+      metadata,
       parameters,
     });
   }
@@ -135,6 +154,9 @@ export class AuthenticatedFileContentMutationAuthority {
   }
 
   private async writerFor({ frameLength }: { frameLength: number }): Promise<AuthenticatedSegmentWriter> {
+    if (this.dataWriterOwner !== undefined) {
+      throw new Error("shared data Segment writer owner must not use the mutation-local writer path");
+    }
     if (this.dataWriter !== undefined && segmentCanFit({
       frameCount: this.dataFrameCount,
       nextFrameLength: frameLength,
@@ -155,21 +177,45 @@ export class AuthenticatedFileContentMutationAuthority {
     return this.dataWriter;
   }
 
+  private sharedDataWriterLease(): AuthenticatedSegmentWriterLease {
+    if (this.dataWriterOwner === undefined) {
+      throw new Error("shared data Segment writer lease requires an owner");
+    }
+    // Do not consume a Data Segment ID for inline-only mutations. The lease is
+    // acquired only when the mutation actually appends its first File Data Record.
+    this.dataWriterLease ??= this.dataWriterOwner.acquire();
+    return this.dataWriterLease;
+  }
+
+  private releaseDataWriterCapability(): void {
+    this.dataWriter?.abandon();
+    this.dataWriter = undefined;
+    const lease = this.dataWriterLease;
+    this.dataWriterLease = undefined;
+    lease?.release({ disposition: "reuse" });
+  }
+
   async writeFileData({ bytes }: { bytes: Uint8Array }): Promise<HomeRecordReference> {
     this.requireActive({ operation: "write File Data" });
     this.operationInProgress = true;
     try {
       const frameLength = fileDataFrameLength({ plaintextLength: bytes.byteLength });
-      const reference = await appendAuthenticatedFileData({
-        bytes,
-        writer: await this.writerFor({ frameLength }),
-      });
+      const reference = this.dataWriterOwner === undefined
+        ? await appendAuthenticatedFileData({
+          bytes,
+          writer: await this.writerFor({ frameLength }),
+        })
+        : await this.sharedDataWriterLease().append({
+          append: async ({ writer }) => await appendAuthenticatedFileData({ bytes, writer }),
+        });
       this.appendedDataFrameBytes += frameLength;
       if (!Number.isSafeInteger(this.appendedDataFrameBytes)) {
         throw new Error("File Data frame byte count exceeds the safe integer bound");
       }
-      this.dataFrameCount += 1;
-      this.dataRecordAreaBytes += frameLength;
+      if (this.dataWriterOwner === undefined) {
+        this.dataFrameCount += 1;
+        this.dataRecordAreaBytes += frameLength;
+      }
       return reference;
     } finally {
       this.operationInProgress = false;
@@ -268,13 +314,14 @@ export class AuthenticatedFileContentMutationAuthority {
     if (this.workingAcceptancePrepared) return;
     this.operationInProgress = true;
     try {
-      // WHY: data writers are operation-scoped and the shared metadata lease
-      // must be gone before the staged successor is visible to background
-      // Commit materialization. The still-open runtime mutation admission is
-      // the authority fence during this hand-off.
-      this.dataWriter?.abandon();
-      this.dataWriter = undefined;
       this.metadata.prepareWorkingAcceptanceWithoutCandidate();
+      // WHY: shared data and metadata writer leases must both be gone before
+      // the staged successor is visible to background Commit materialization.
+      // Metadata preparation can still reject an unflushed provisional batch,
+      // so retain the data lease until that reversible check succeeds. The
+      // still-open runtime mutation admission remains the authority fence while
+      // both leases are released before the accepted successor becomes visible.
+      this.releaseDataWriterCapability();
       this.workingAcceptancePrepared = true;
     } finally {
       this.operationInProgress = false;
@@ -312,8 +359,7 @@ export class AuthenticatedFileContentMutationAuthority {
   }: Parameters<AuthenticatedMetadataMutationAuthority["appendCandidate"]>[0]): Promise<Awaited<ReturnType<AuthenticatedMetadataMutationAuthority["appendCandidate"]>>> {
     this.requireActive({ operation: "append file content Commit candidate" });
     this.operationInProgress = true;
-    this.dataWriter?.abandon();
-    this.dataWriter = undefined;
+    this.releaseDataWriterCapability();
     try {
       const candidate = await this.metadata.appendCandidate({ commitPayload });
       this.stateValue = "candidate_prepared";
@@ -383,7 +429,7 @@ export class AuthenticatedFileContentMutationAuthority {
     this.requireActive({ operation: "publish file content" });
     this.operationInProgress = true;
     this.stateValue = "publishing";
-    this.dataWriter?.abandon();
+    this.releaseDataWriterCapability();
     try {
       return await this.metadata.publish({
         base,
@@ -418,7 +464,7 @@ export class AuthenticatedFileContentMutationAuthority {
       if (this.operationInProgress) {
         throw new Error("cannot abandon file content mutation authority while an operation is in progress");
       }
-      this.dataWriter?.abandon();
+      this.releaseDataWriterCapability();
       this.metadata.abandon();
       this.stateValue = "closed";
       return;
@@ -431,6 +477,7 @@ export class AuthenticatedFileContentMutationAuthority {
 
 export async function createAuthenticatedFileContentMutationAuthority({
   backend,
+  dataWriterOwner,
   diagnostics,
   fileSystemId,
   randomSource,
@@ -438,10 +485,11 @@ export async function createAuthenticatedFileContentMutationAuthority({
   rootKey,
   sharedMetadataRecordCache,
   supportedFeatureBits,
-  writerOwner,
-}: Parameters<typeof AuthenticatedFileContentMutationAuthority.create>[0]): Promise<AuthenticatedFileContentMutationAuthority> {
+  metadataWriterOwner,
+}: CreateAuthenticatedFileContentMutationAuthorityParameters): Promise<AuthenticatedFileContentMutationAuthority> {
   return await AuthenticatedFileContentMutationAuthority.create({
     backend,
+    dataWriterOwner,
     diagnostics,
     fileSystemId,
     randomSource,
@@ -449,7 +497,7 @@ export async function createAuthenticatedFileContentMutationAuthority({
     rootKey,
     sharedMetadataRecordCache,
     supportedFeatureBits,
-    writerOwner,
+    metadataWriterOwner,
   });
 }
 

@@ -2978,6 +2978,14 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     diagnostics: recordDiagnostics,
     policy: metadataRecordCachePolicy ?? APPLICATION_METADATA_RECORD_CACHE_POLICY,
   });
+  const dataWriterOwner = new AuthenticatedSegmentWriterOwner({
+    backend,
+    diagnostics: recordDiagnostics,
+    fileSystemId: opened.fileSystemId,
+    randomSource,
+    rootKey: opened.rootKey,
+    segmentClass: "data",
+  });
   const metadataWriterOwner = new AuthenticatedSegmentWriterOwner({
     backend,
     diagnostics: recordDiagnostics,
@@ -4279,6 +4287,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     });
     const fileAuthority = await createAuthenticatedFileContentMutationAuthority({
       backend,
+      dataWriterOwner,
       diagnostics: recordDiagnostics,
       fileSystemId: opened.fileSystemId,
       randomSource,
@@ -4286,7 +4295,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       rootKey: opened.rootKey,
       sharedMetadataRecordCache: metadataRecordCache,
       supportedFeatureBits,
-      writerOwner: metadataWriterOwner,
+      metadataWriterOwner,
     });
     const contentPort = {
       extentPageStore: createFileExtentTreePageStore({ pagePort: {
@@ -4868,6 +4877,11 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       if (released) return;
       released = true;
       const failures: unknown[] = [];
+      try {
+        await dataWriterOwner.close();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
       try {
         await metadataWriterOwner.close();
       } catch (cause: unknown) {

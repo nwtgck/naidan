@@ -24,6 +24,26 @@ import {
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
 import { describe, expect, it } from "vitest";
 
+class CountingInMemoryBackend
+  extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
+  public closeFileOperations = 0;
+  public openFileForUpdateOperations = 0;
+
+  public override async closeFile(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["closeFile"]>[0],
+  ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["closeFile"]> {
+    this.closeFileOperations += 1;
+    return await super.closeFile(input);
+  }
+
+  public override async openFileForUpdate(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["openFileForUpdate"]>[0],
+  ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["openFileForUpdate"]> {
+    this.openFileForUpdateOperations += 1;
+    return await super.openFileForUpdate(input);
+  }
+}
+
 function deterministicRandomSource(): RandomByteSource {
   let next = 1;
   return ({ bytes }) => {
@@ -108,7 +128,7 @@ describe("authenticated file content mutation authority", () => {
     rootKey.destroy();
   });
 
-  it("releases the shared metadata writer lease before staged file acceptance becomes visible", async () => {
+  it("releases shared data and metadata writer leases before staged file acceptance becomes visible", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
     const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
@@ -120,25 +140,97 @@ describe("authenticated file content mutation authority", () => {
       rootKey,
       segmentClass: "metadata",
     });
+    const dataWriterOwner = new AuthenticatedSegmentWriterOwner({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "data",
+    });
     const authority = await createAuthenticatedFileContentMutationAuthority({
       backend,
+      dataWriterOwner,
       fileSystemId,
       randomSource,
       relocationIndexRootPhysicalRef: null,
       rootKey,
       supportedFeatureBits: createFeatureBits({ value: 0n }),
-      writerOwner,
+      metadataWriterOwner: writerOwner,
     });
 
     expect(() => writerOwner.acquire()).toThrow("already has a lease");
+    const beforeDataAppendLease = dataWriterOwner.acquire();
+    beforeDataAppendLease.release({ disposition: "reuse" });
+    await authority.writeFileData({ bytes: Uint8Array.of(5, 4, 3) });
+    expect(() => dataWriterOwner.acquire()).toThrow("already has a lease");
     authority.prepareWorkingAcceptanceWithoutCandidate();
 
     const publicationLease = writerOwner.acquire();
     publicationLease.release({ disposition: "reuse" });
+    const nextDataLease = dataWriterOwner.acquire();
+    nextDataLease.release({ disposition: "reuse" });
     expect(authority.state()).toBe("active");
     authority.completeWorkingAcceptanceWithoutCandidate();
     expect(authority.state()).toBe("closed");
     await expect(writerOwner.close()).resolves.toBeUndefined();
+    await expect(dataWriterOwner.close()).resolves.toBeUndefined();
+    rootKey.destroy();
+  });
+
+  it("reuses one shared data Segment writer across accepted and abandoned file mutations", async () => {
+    const backend = new CountingInMemoryBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const dataWriterOwner = new AuthenticatedSegmentWriterOwner({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "data",
+    });
+
+    const createAuthority = async () => await createAuthenticatedFileContentMutationAuthority({
+      backend,
+      dataWriterOwner,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const firstAuthority = await createAuthority();
+    const firstReference = await firstAuthority.writeFileData({ bytes: Uint8Array.of(1, 2, 3) });
+    firstAuthority.completeWorkingAcceptanceWithoutCandidate();
+    await expect(readAuthenticatedFileData({
+      backend,
+      fileSystemId,
+      homeReference: firstReference,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+    })).resolves.toEqual(Uint8Array.of(1, 2, 3));
+
+    const secondAuthority = await createAuthority();
+    const secondReference = await secondAuthority.writeFileData({ bytes: Uint8Array.of(4, 5, 6) });
+    secondAuthority.abandon();
+
+    const thirdAuthority = await createAuthority();
+    const thirdReference = await thirdAuthority.writeFileData({ bytes: Uint8Array.of(7, 8, 9) });
+    thirdAuthority.completeWorkingAcceptanceWithoutCandidate();
+
+    expect(secondReference.segmentId).toEqual(firstReference.segmentId);
+    expect(thirdReference.segmentId).toEqual(firstReference.segmentId);
+    expect(backend.openFileForUpdateOperations).toBe(1);
+    expect(backend.openHandleCount()).toBe(1);
+    await expect(dataWriterOwner.close()).resolves.toBeUndefined();
+    expect(backend.openHandleCount()).toBe(0);
+    await expect(readAuthenticatedFileData({
+      backend,
+      fileSystemId,
+      homeReference: thirdReference,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+    })).resolves.toEqual(Uint8Array.of(7, 8, 9));
     rootKey.destroy();
   });
 
