@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   createCommitSequence,
@@ -288,6 +288,86 @@ describe("authenticated metadata mutation authority", () => {
       currentEntries: 0,
       maximumEntries: 1,
     });
+  });
+
+  it("keeps provisional Inode branch routing mutation-local until the metadata batch is durable", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const getBranchPage = vi.fn(() => undefined);
+    const setBranchPage = vi.fn();
+    const authority = await createAuthenticatedMetadataMutationAuthority({
+      backend,
+      decodedInodeBranchPageCache: { getBranchPage, setBranchPage },
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const childPageHomeRef = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 64n }),
+      frameLength: 128,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(144) }),
+    } });
+    const page = {
+      entries: [{ childPageHomeRef, upperBound: createInodeNumber({ value: 9n }) }],
+      level: 1,
+      type: "branch" as const,
+    };
+
+    const reference = await authority.writeInodeTablePage({ isRoot: true, page });
+    expect(setBranchPage).not.toHaveBeenCalled();
+    await expect(authority.readInodeTablePage({ isRoot: true, reference })).resolves.toEqual(page);
+    expect(getBranchPage).not.toHaveBeenCalled();
+
+    await authority.flushPendingMetadataRecords();
+    expect(setBranchPage).toHaveBeenCalledTimes(1);
+    expect(setBranchPage).toHaveBeenCalledWith({
+      isRoot: true,
+      page: { entries: page.entries, level: 1 },
+      reference,
+    });
+    authority.abandon();
+    rootKey.destroy();
+  });
+
+  it("does not publish provisional Inode branch routing when the mutation is abandoned", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const setBranchPage = vi.fn();
+    const authority = await createAuthenticatedMetadataMutationAuthority({
+      backend,
+      decodedInodeBranchPageCache: { getBranchPage: () => undefined, setBranchPage },
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    await authority.writeInodeTablePage({
+      isRoot: true,
+      page: {
+        entries: [{
+          childPageHomeRef: createHomeRecordReference({ fields: {
+            byteOffset: createUInt64({ value: 64n }),
+            frameLength: 128,
+            recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+            segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(145) }),
+          } }),
+          upperBound: createInodeNumber({ value: 9n }),
+        }],
+        level: 1,
+        type: "branch",
+      },
+    });
+    authority.abandon();
+    expect(setBranchPage).not.toHaveBeenCalled();
+    rootKey.destroy();
   });
 
   it("releases the shared metadata writer lease before staged acceptance becomes visible", async () => {

@@ -538,6 +538,10 @@ describe('production HizoFS benchmark runtime port', () => {
     });
     expect(createRuntime.indexes.update.maximumPageLevel).toBeGreaterThanOrEqual(1);
     expect(createRuntime.indexes.update.splitOperations).toBeGreaterThan(0);
+    // Durable branch routing is admitted after the metadata append proof, so
+    // this promoted-tree workload should not re-decode Inode branch plaintext
+    // inside the measured run. Leaf bodies remain selectively decoded.
+    expect(createRuntime.inodeLeafLookup.branchPageDecodes).toBe(0);
     expect(createRuntime.indexes.update.pageWrites).toBeLessThan(createRuntime.indexes.update.operations * 3);
     expect(
       createRuntime.records.directory_page.plaintextBytesWritten

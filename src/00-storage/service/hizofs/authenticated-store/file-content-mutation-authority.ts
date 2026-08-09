@@ -94,6 +94,7 @@ export class AuthenticatedFileContentMutationAuthority {
 
   static async create({
     backend,
+    decodedInodeBranchPageCache,
     diagnostics,
     fileSystemId,
     randomSource,
@@ -106,6 +107,7 @@ export class AuthenticatedFileContentMutationAuthority {
   }: CreateAuthenticatedFileContentMutationAuthorityParameters): Promise<AuthenticatedFileContentMutationAuthority> {
     const parameters = {
       backend,
+      decodedInodeBranchPageCache,
       diagnostics,
       fileSystemId,
       randomSource,
@@ -478,6 +480,7 @@ export class AuthenticatedFileContentMutationAuthority {
 export async function createAuthenticatedFileContentMutationAuthority({
   backend,
   dataWriterOwner,
+  decodedInodeBranchPageCache,
   diagnostics,
   fileSystemId,
   randomSource,
@@ -490,6 +493,7 @@ export async function createAuthenticatedFileContentMutationAuthority({
   return await AuthenticatedFileContentMutationAuthority.create({
     backend,
     dataWriterOwner,
+    decodedInodeBranchPageCache,
     diagnostics,
     fileSystemId,
     randomSource,

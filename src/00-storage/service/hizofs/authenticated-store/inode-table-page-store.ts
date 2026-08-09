@@ -31,9 +31,22 @@ export type AuthenticatedInodeTablePage =
     type: "branch";
   }>;
 
+export type AuthenticatedInodeBranchPageCache = Readonly<{
+  getBranchPage: ({ isRoot, reference }: {
+    isRoot: boolean;
+    reference: HomeRecordReference;
+  }) => InodeBranchPage | undefined;
+  setBranchPage: ({ isRoot, page, reference }: {
+    isRoot: boolean;
+    page: InodeBranchPage;
+    reference: HomeRecordReference;
+  }) => void;
+}>;
+
 export async function readAuthenticatedInodeTablePage({
   backend,
   diagnostics,
+  decodedBranchPageCache,
   fileSystemId,
   homeReference,
   isRoot,
@@ -44,6 +57,7 @@ export async function readAuthenticatedInodeTablePage({
 }: {
   backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  decodedBranchPageCache?: AuthenticatedInodeBranchPageCache;
   fileSystemId: FileSystemId;
   homeReference: HomeRecordReference;
   isRoot: boolean;
@@ -55,6 +69,8 @@ export async function readAuthenticatedInodeTablePage({
   if (homeReference.recordKind !== HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page) {
     throw new TypeError("Inode Table page reference has the wrong record kind");
   }
+  const cachedBranch = decodedBranchPageCache?.getBranchPage({ isRoot, reference: homeReference });
+  if (cachedBranch !== undefined) return { ...cachedBranch, type: "branch" };
   const record = await readAuthenticatedNamespaceHomeRecord({
     backend,
     diagnostics,

@@ -1,12 +1,16 @@
-import type {
-  DirectoryPage,
-  FeatureBits,
-  FileExtentPage,
-  FileSystemCommitPayload,
-  FileSystemId,
-  HomeRecordReference,
-  PhysicalRecordReference,
-  PublicationSequence,
+import {
+  createHomeRecordReference,
+  createInodeNumber,
+  encodeHomeRecordReference,
+  type DirectoryPage,
+  type FeatureBits,
+  type FileExtentPage,
+  type FileSystemCommitPayload,
+  type FileSystemId,
+  type HomeRecordReference,
+  type InodeBranchPage,
+  type PhysicalRecordReference,
+  type PublicationSequence,
 } from "@/00-storage/service/hizofs/00-format";
 import type {
   FileSystemRootKey,
@@ -24,6 +28,7 @@ import {
 import {
   appendAuthenticatedInodeTablePage,
   readAuthenticatedInodeTablePage,
+  type AuthenticatedInodeBranchPageCache,
   type AuthenticatedInodeTablePage,
 } from "./inode-table-page-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
@@ -316,6 +321,31 @@ const MUTATION_METADATA_RECORD_CACHE_POLICY = Object.freeze({
 
 type MutationScopeDiagnosticsMode = "record" | "suppress";
 
+type PendingInodeBranchPage = Readonly<{
+  isRoot: boolean;
+  page: InodeBranchPage;
+  reference: HomeRecordReference;
+}>;
+
+function inodeBranchIdentity({ isRoot, reference }: {
+  isRoot: boolean;
+  reference: HomeRecordReference;
+}): string {
+  let value = isRoot ? "root:" : "non_root:";
+  for (const byte of encodeHomeRecordReference({ reference })) value += byte.toString(16).padStart(2, "0");
+  return value;
+}
+
+function cloneInodeBranchPage({ page }: { page: InodeBranchPage }): InodeBranchPage {
+  return Object.freeze({
+    entries: Object.freeze(page.entries.map(entry => Object.freeze({
+      childPageHomeRef: createHomeRecordReference({ fields: entry.childPageHomeRef }),
+      upperBound: createInodeNumber({ value: entry.upperBound }),
+    }))),
+    level: page.level,
+  });
+}
+
 function shouldRecordMutationScopeDiagnostics({ mode }: {
   mode: MutationScopeDiagnosticsMode;
 }): boolean {
@@ -328,6 +358,7 @@ function shouldRecordMutationScopeDiagnostics({ mode }: {
 
 export class AuthenticatedMetadataMutationAuthority {
   private readonly backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  private readonly decodedInodeBranchPageCache: AuthenticatedInodeBranchPageCache | undefined;
   private readonly diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
   private readonly fileSystemId: FileSystemId;
   private readonly metadataRecordCache: AuthenticatedMetadataRecordCache;
@@ -339,6 +370,10 @@ export class AuthenticatedMetadataMutationAuthority {
   private readonly supportedFeatureBits: FeatureBits;
   private mutationDiagnosticsOpen = true;
   private pendingAppendBatch: AuthenticatedMetadataAppendBatch | undefined;
+  // Metadata batching may return a predicted Home Reference before the Record is physically durable.
+  // Keep branch routing mutation-local until that prediction is proven by the batch flush so an
+  // abandoned provisional slot can never alias a later Record through the session cache.
+  private readonly pendingInodeBranchPages = new Map<string, PendingInodeBranchPage>();
   private releasedWriterUsage: AuthenticatedSegmentWriterLeaseUsage | undefined;
   private operationInProgress = false;
   private detachedPublicationAuthority: AuthenticatedPreparedMutationPublicationAuthority | undefined;
@@ -351,6 +386,7 @@ export class AuthenticatedMetadataMutationAuthority {
 
   private constructor({
     backend,
+    decodedInodeBranchPageCache,
     diagnostics,
     fileSystemId,
     metadataRecordCache,
@@ -364,6 +400,7 @@ export class AuthenticatedMetadataMutationAuthority {
     writerReleaseDisposition,
   }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+    decodedInodeBranchPageCache?: AuthenticatedInodeBranchPageCache;
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
     fileSystemId: FileSystemId;
     metadataRecordCache: AuthenticatedMetadataRecordCache;
@@ -377,6 +414,7 @@ export class AuthenticatedMetadataMutationAuthority {
     writerReleaseDisposition: ActiveSegmentWriterReleaseDisposition;
   }) {
     this.backend = backend;
+    this.decodedInodeBranchPageCache = decodedInodeBranchPageCache;
     this.diagnostics = diagnostics;
     this.fileSystemId = fileSystemId;
     this.metadataRecordCache = metadataRecordCache;
@@ -393,6 +431,7 @@ export class AuthenticatedMetadataMutationAuthority {
 
   static async create({
     backend,
+    decodedInodeBranchPageCache,
     diagnostics,
     fileSystemId,
     mutationScopeDiagnostics = "record",
@@ -404,6 +443,7 @@ export class AuthenticatedMetadataMutationAuthority {
     writerOwner,
   }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+    decodedInodeBranchPageCache?: AuthenticatedInodeBranchPageCache;
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
     fileSystemId: FileSystemId;
     mutationScopeDiagnostics?: MutationScopeDiagnosticsMode;
@@ -434,6 +474,7 @@ export class AuthenticatedMetadataMutationAuthority {
       });
       return new AuthenticatedMetadataMutationAuthority({
         backend,
+        decodedInodeBranchPageCache,
         diagnostics,
         fileSystemId,
         metadataRecordCache,
@@ -503,12 +544,16 @@ export class AuthenticatedMetadataMutationAuthority {
   private discardPendingAppendBatch(): void {
     this.pendingAppendBatch?.discard();
     this.pendingAppendBatch = undefined;
+    this.pendingInodeBranchPages.clear();
   }
 
   private releaseWriterLease(): void {
     if (this.writerLeaseReleased) return;
     if (this.pendingAppendBatch?.hasRecords() === true) {
       throw new Error("cannot release metadata writer lease while a provisional append batch is pending");
+    }
+    if (this.pendingInodeBranchPages.size !== 0) {
+      throw new Error("cannot release metadata writer lease while provisional Inode branch routing is pending");
     }
     this.pendingAppendBatch?.discard();
     this.pendingAppendBatch = undefined;
@@ -519,10 +564,20 @@ export class AuthenticatedMetadataMutationAuthority {
 
   private async flushPendingAppendBatch(): Promise<void> {
     const batch = this.pendingAppendBatch;
-    if (batch === undefined) return;
+    const branchPages = [...this.pendingInodeBranchPages.values()];
+    this.pendingInodeBranchPages.clear();
+    if (batch === undefined) {
+      if (branchPages.length !== 0) {
+        throw new Error("provisional Inode branch routing exists without a metadata append batch");
+      }
+      return;
+    }
     this.pendingAppendBatch = undefined;
     if (!batch.hasRecords()) {
       batch.discard();
+      if (branchPages.length !== 0) {
+        throw new Error("provisional Inode branch routing exists for an empty metadata append batch");
+      }
       return;
     }
     await this.writerLease.append({
@@ -534,6 +589,11 @@ export class AuthenticatedMetadataMutationAuthority {
         await batch.flush();
       },
     });
+    // batch.flush() has matched every predicted Home Reference to the durable append result. Only
+    // after that proof may routing metadata escape the mutation and become reusable session state.
+    for (const branchPage of branchPages) {
+      this.decodedInodeBranchPageCache?.setBranchPage(branchPage);
+    }
   }
 
   private async appendMetadataPageWithBatch<Result>({ append }: {
@@ -646,8 +706,13 @@ export class AuthenticatedMetadataMutationAuthority {
     this.requireActive({ operation: "read an Inode Table page" });
     this.operationInProgress = true;
     try {
+      const pending = this.pendingInodeBranchPages.get(inodeBranchIdentity({ isRoot, reference }));
+      if (pending !== undefined) {
+        return { ...cloneInodeBranchPage({ page: pending.page }), type: "branch" };
+      }
       return await readAuthenticatedInodeTablePage({
         backend: this.backend,
+        decodedBranchPageCache: this.decodedInodeBranchPageCache,
         diagnostics: this.diagnostics,
         fileSystemId: this.fileSystemId,
         homeReference: reference,
@@ -669,7 +734,7 @@ export class AuthenticatedMetadataMutationAuthority {
     this.requireActive({ operation: "write an Inode Table page" });
     this.operationInProgress = true;
     try {
-      return await this.appendMetadataPageWithBatch({
+      const reference = await this.appendMetadataPageWithBatch({
         append: async ({ writer }) => await appendAuthenticatedInodeTablePage({
           isRoot,
           page,
@@ -677,6 +742,18 @@ export class AuthenticatedMetadataMutationAuthority {
           writer,
         }),
       });
+      switch (page.type) {
+      case "branch":
+        this.pendingInodeBranchPages.set(inodeBranchIdentity({ isRoot, reference }), Object.freeze({
+          isRoot,
+          page: cloneInodeBranchPage({ page }),
+          reference: createHomeRecordReference({ fields: reference }),
+        }));
+        break;
+      case "leaf": break;
+      default: return page satisfies never;
+      }
+      return reference;
     } finally {
       this.operationInProgress = false;
     }
@@ -987,6 +1064,7 @@ export class AuthenticatedMetadataMutationAuthority {
 
 export async function createAuthenticatedMetadataMutationAuthority({
   backend,
+  decodedInodeBranchPageCache,
   diagnostics,
   fileSystemId,
   mutationScopeDiagnostics,
@@ -999,6 +1077,7 @@ export async function createAuthenticatedMetadataMutationAuthority({
 }: Parameters<typeof AuthenticatedMetadataMutationAuthority.create>[0]): Promise<AuthenticatedMetadataMutationAuthority> {
   return await AuthenticatedMetadataMutationAuthority.create({
     backend,
+    decodedInodeBranchPageCache,
     diagnostics,
     fileSystemId,
     mutationScopeDiagnostics,

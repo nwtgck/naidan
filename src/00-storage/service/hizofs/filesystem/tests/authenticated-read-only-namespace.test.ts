@@ -25,7 +25,7 @@ import {
   createAuthenticatedReadOnlyNamespace,
   createAuthenticatedReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/authenticated-read-only-namespace";
-import { DecodedInodeLeafPageIndexCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-leaf-page-index-cache";
+import { DecodedInodeIndexPageCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-index-page-cache";
 
 const KINDS = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds;
 
@@ -193,13 +193,18 @@ describe("authenticated read-only HizoFS namespace", () => {
       }],
     ]);
     const recordInodeLeafLookup = vi.fn();
-    const cache = new DecodedInodeLeafPageIndexCache({
+    const cache = new DecodedInodeIndexPageCache({
       diagnostics: {
         recordDecodedInodeIndexPageCacheEvent: vi.fn(),
         recordInodeLeafLookup,
         setDecodedInodeIndexPageCacheUsage: vi.fn(),
       },
       maximumEntries: 8,
+    });
+    const readHomeRecord = vi.fn(async ({ reference: value }: { reference: HomeRecordReference }) => {
+      const record = records.get(referenceIdentity({ reference: value }));
+      if (record === undefined) throw new Error("missing record fixture");
+      return { plaintext: Uint8Array.from(record.plaintext), recordKind: record.recordKind };
     });
     const resolver = createAuthenticatedReadOnlyNamespaceResolver({
       commit: createFileSystemCommitPayload({ payload: {
@@ -211,18 +216,22 @@ describe("authenticated read-only HizoFS namespace", () => {
         rootDirectoryInodeNumber: rootDirectoryNumber,
         rootInodeTableRootHomeRef: inodeRoot,
       } }),
-      decodedInodeLeafPageIndexCache: cache,
+      decodedInodeIndexPageCache: cache,
       recordSource: {
         decodeRecordPayload: ({ decode }) => decode(),
-        readHomeRecord: async ({ reference: value }) => {
-          const record = records.get(referenceIdentity({ reference: value }));
-          if (record === undefined) throw new Error("missing record fixture");
-          return { plaintext: Uint8Array.from(record.plaintext), recordKind: record.recordKind };
-        },
+        readHomeRecord,
       },
     });
 
     expect((await resolver.resolveInodeByNumber({ inodeNumber: fileNumber })).inodeNumber).toBe(fileNumber);
+    const rootReadsAfterFirstLookup = readHomeRecord.mock.calls.filter(([argument]) =>
+      referenceIdentity({ reference: argument.reference }) === referenceIdentity({ reference: inodeRoot })
+    ).length;
+    expect((await resolver.resolveInodeByNumber({ inodeNumber: fileNumber })).inodeNumber).toBe(fileNumber);
+    const rootReadsAfterSecondLookup = readHomeRecord.mock.calls.filter(([argument]) =>
+      referenceIdentity({ reference: argument.reference }) === referenceIdentity({ reference: inodeRoot })
+    ).length;
+    expect(rootReadsAfterSecondLookup).toBe(rootReadsAfterFirstLookup);
     expect(recordInodeLeafLookup).toHaveBeenCalledWith({ observation: expect.objectContaining({
       event: "branch_page_decode",
     }) });

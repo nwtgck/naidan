@@ -25,7 +25,7 @@ import {
   type ReadOnlyNamespacePageSource,
   type ReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
-import type { DecodedInodeLeafPageIndexCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-leaf-page-index-cache";
+import type { DecodedInodeIndexPageCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-index-page-cache";
 import type { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 import {
   ImmutableBTreeReader,
@@ -67,13 +67,13 @@ function safeReadLength({ length }: { length: bigint }): number {
 
 export function createAuthenticatedReadOnlyNamespaceResolver({
   commit,
-  decodedInodeLeafPageIndexCache,
+  decodedInodeIndexPageCache,
   indexDiagnostics,
   recordSource,
   validationCache,
 }: {
   commit: FileSystemCommitPayload;
-  decodedInodeLeafPageIndexCache?: DecodedInodeLeafPageIndexCache;
+  decodedInodeIndexPageCache?: DecodedInodeIndexPageCache;
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   recordSource: AuthenticatedNamespaceRecordSource;
   validationCache?: ReadOnlyNamespaceValidationCache;
@@ -178,6 +178,8 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
       return output;
     },
     readInodePointPage: async ({ inodeNumber, isRoot, reference }) => {
+      const cachedBranch = decodedInodeIndexPageCache?.getBranchPage({ isRoot, reference });
+      if (cachedBranch !== undefined) return { page: cachedBranch, type: "branch" as const };
       const bytes = await readPlaintext({
         expectedRecordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
         reference,
@@ -186,16 +188,15 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
         return recordSource.decodeRecordPayload({ decode: () => {
           const header = decodeCommonPageHeader({ bytes, family: "inode", isRoot });
           if (header.level !== 0) {
-            decodedInodeLeafPageIndexCache?.recordBranchPageDecode({ pageBytes: bytes.byteLength });
-            return {
-              page: decodeInodeBranchPage({ bytes, isRoot }),
-              type: "branch" as const,
-            };
+            decodedInodeIndexPageCache?.recordBranchPageDecode({ pageBytes: bytes.byteLength });
+            const page = decodeInodeBranchPage({ bytes, isRoot });
+            decodedInodeIndexPageCache?.setBranchPage({ isRoot, page, reference });
+            return { page, type: "branch" as const };
           }
-          let index = decodedInodeLeafPageIndexCache?.get({ isRoot, reference });
+          let index = decodedInodeIndexPageCache?.getLeafIndex({ isRoot, reference });
           if (index === undefined) {
             index = indexInodeLeafPage({ bytes, isRoot });
-            index = decodedInodeLeafPageIndexCache?.set({
+            index = decodedInodeIndexPageCache?.setLeafIndex({
               index,
               isRoot,
               pageBytes: bytes.byteLength,
@@ -204,13 +205,13 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
           }
           const entryIndex = findIndexedInodeLeafEntry({ index, inodeNumber });
           if (entryIndex === undefined) {
-            decodedInodeLeafPageIndexCache?.recordSelectiveEntryMiss({ pageBytes: bytes.byteLength });
+            decodedInodeIndexPageCache?.recordSelectiveEntryMiss({ pageBytes: bytes.byteLength });
             return { entry: undefined, type: "leaf" as const };
           }
           const entry = decodeIndexedInodeLeafEntry({ bytes, entryIndex, index });
           const entryBytes = index.entryLengths[entryIndex];
           if (entryBytes === undefined) throw new Error("Inode leaf-page index entry length is missing");
-          decodedInodeLeafPageIndexCache?.recordSelectiveEntryHit({
+          decodedInodeIndexPageCache?.recordSelectiveEntryHit({
             entryBytes,
             pageBytes: bytes.byteLength,
           });

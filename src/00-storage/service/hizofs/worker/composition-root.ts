@@ -106,7 +106,7 @@ import {
   createAuthenticatedReadOnlyNamespace,
   createAuthenticatedReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/authenticated-read-only-namespace";
-import { DecodedInodeLeafPageIndexCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-leaf-page-index-cache";
+import { DecodedInodeIndexPageCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-index-page-cache";
 import { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 import {
   StreamingNamespaceImport,
@@ -2720,7 +2720,7 @@ function writableGeneration({
   backend,
   commit,
   commitReference,
-  decodedInodeLeafPageIndexCache,
+  decodedInodeIndexPageCache,
   durableAuthority,
   fileSystemId,
   indexDiagnostics,
@@ -2733,7 +2733,7 @@ function writableGeneration({
   backend: HizoFSReadableBackend;
   commit: FileSystemCommitPayload;
   commitReference: HomeRecordReference;
-  decodedInodeLeafPageIndexCache: DecodedInodeLeafPageIndexCache;
+  decodedInodeIndexPageCache: DecodedInodeIndexPageCache;
   durableAuthority: AuthenticatedDurableApplicationGenerationAuthority;
   fileSystemId: OpenedEmptyEncryptedContainer["fileSystemId"];
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
@@ -2753,7 +2753,7 @@ function writableGeneration({
     ...descriptor,
     resolver: createAuthenticatedReadOnlyNamespaceResolver({
       commit: descriptor.commit,
-      decodedInodeLeafPageIndexCache,
+      decodedInodeIndexPageCache,
       indexDiagnostics,
       recordSource: createAuthenticatedNamespaceRecordSource({
         backend,
@@ -2770,7 +2770,7 @@ function writableGeneration({
 
 function writableGenerationFromDescriptor({
   backend,
-  decodedInodeLeafPageIndexCache,
+  decodedInodeIndexPageCache,
   descriptor,
   fileSystemId,
   indexDiagnostics,
@@ -2780,7 +2780,7 @@ function writableGenerationFromDescriptor({
   rootKey,
 }: {
   backend: HizoFSReadableBackend;
-  decodedInodeLeafPageIndexCache: DecodedInodeLeafPageIndexCache;
+  decodedInodeIndexPageCache: DecodedInodeIndexPageCache;
   descriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
   fileSystemId: OpenedEmptyEncryptedContainer["fileSystemId"];
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
@@ -2793,7 +2793,7 @@ function writableGenerationFromDescriptor({
     ...descriptor,
     resolver: createAuthenticatedReadOnlyNamespaceResolver({
       commit: descriptor.commit,
-      decodedInodeLeafPageIndexCache,
+      decodedInodeIndexPageCache,
       indexDiagnostics,
       recordSource: createAuthenticatedNamespaceRecordSource({
         backend,
@@ -2995,7 +2995,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     segmentClass: "metadata",
   });
   const namespaceValidationCache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 256 });
-  const decodedInodeLeafPageIndexCache = new DecodedInodeLeafPageIndexCache({
+  const decodedInodeIndexPageCache = new DecodedInodeIndexPageCache({
     diagnostics: decodedInodeIndexPageCacheDiagnostics,
     maximumEntries: decodedInodeIndexPageCacheEntryLimit ?? 128,
   });
@@ -3035,7 +3035,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     backend,
     commit,
     commitReference,
-    decodedInodeLeafPageIndexCache,
+    decodedInodeIndexPageCache,
     durableAuthority,
     fileSystemId: opened.fileSystemId,
     indexDiagnostics,
@@ -3049,7 +3049,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     descriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
   }): AuthenticatedWritableApplicationGeneration => writableGenerationFromDescriptor({
     backend,
-    decodedInodeLeafPageIndexCache,
+    decodedInodeIndexPageCache,
     descriptor,
     fileSystemId: opened.fileSystemId,
     indexDiagnostics,
@@ -3669,6 +3669,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       usedMutationIds.add(mutationIdentity({ mutationId }));
       const metadataAuthority = await createAuthenticatedMetadataMutationAuthority({
         backend,
+        decodedInodeBranchPageCache: decodedInodeIndexPageCache,
         diagnostics: recordDiagnostics,
         fileSystemId: opened.fileSystemId,
         randomSource,
@@ -3822,6 +3823,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             commitPayload: prepared.commitPayload,
             createMaterializationAuthority: async () => await createAuthenticatedMetadataMutationAuthority({
               backend,
+              decodedInodeBranchPageCache: decodedInodeIndexPageCache,
               diagnostics: recordDiagnostics,
               fileSystemId: opened.fileSystemId,
               mutationScopeDiagnostics: "suppress",
@@ -4288,6 +4290,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     const fileAuthority = await createAuthenticatedFileContentMutationAuthority({
       backend,
       dataWriterOwner,
+      decodedInodeBranchPageCache: decodedInodeIndexPageCache,
       diagnostics: recordDiagnostics,
       fileSystemId: opened.fileSystemId,
       randomSource,
@@ -4618,6 +4621,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
               commitPayload,
               createMaterializationAuthority: async () => await createAuthenticatedMetadataMutationAuthority({
                 backend,
+                decodedInodeBranchPageCache: decodedInodeIndexPageCache,
                 diagnostics: recordDiagnostics,
                 fileSystemId: opened.fileSystemId,
                 mutationScopeDiagnostics: "suppress",
@@ -4888,7 +4892,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         failures.push(cause);
       }
       try {
-        decodedInodeLeafPageIndexCache.dispose();
+        decodedInodeIndexPageCache.dispose();
       } catch (cause: unknown) {
         failures.push(cause);
       }
