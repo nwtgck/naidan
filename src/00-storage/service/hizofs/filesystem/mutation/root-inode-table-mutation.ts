@@ -107,7 +107,11 @@ export type PreparedRootInodeTableMutation =
   }>;
 
 function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
-  return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
 }
 
 function sameMutationId({ left, right }: { left: MutationId; right: MutationId }): boolean {

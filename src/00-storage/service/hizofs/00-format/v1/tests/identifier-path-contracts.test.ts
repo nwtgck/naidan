@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { copyBinaryId, parseCredentialSlotId, parseFileSystemId, parseMutationId, parsePublicationId, parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
+import { assertSegmentId, copyBinaryId, parseCredentialSlotId, parseFileSystemId, parseMutationId, parsePublicationId, parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
 import {
   assertSegmentPathBinding,
   HIZOFS_SUPERBLOCK_FILES,
@@ -27,6 +27,7 @@ describe('HizoFS V1 identifier and path contracts', () => {
     const segment = parseSegmentId({ bytes: source });
     source[0] = 255;
     expect(segment[0]).toBe(1);
+    expect(() => assertSegmentId({ id: segment })).not.toThrow();
     expect(copyBinaryId({ id: parseMutationId({ bytes: segment }) })).toEqual(segment);
     expect(copyBinaryId({ id: parsePublicationId({ bytes: segment }) })).toEqual(segment);
     expect(() => parseSegmentId({ bytes: new Uint8Array(15) })).toThrow('16 bytes');

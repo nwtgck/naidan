@@ -158,6 +158,98 @@ function fixture(): Readonly<{
 }
 
 describe("read-only HizoFS namespace", () => {
+  it("validates the complete Directory tree before using a selective point reader", async () => {
+    const root = reference({ kind: KINDS.directory_page, offset: 704n });
+    const first = reference({ kind: KINDS.directory_page, offset: 832n });
+    const corruptSibling = reference({ kind: KINDS.directory_page, offset: 960n });
+    const pointReads = vi.fn(async () => ({
+      entry: { inodeKind: "file" as const, inodeNumber: createInodeNumber({ value: 2n }), name: "alpha", targetType: "inode" as const },
+      type: "leaf" as const,
+    }));
+    const pages = new Map<HomeRecordReference, DirectoryPage>([
+      [root, {
+        entries: [
+          { childPageHomeRef: first, upperBoundName: "m" },
+          { childPageHomeRef: corruptSibling, upperBoundName: "z" },
+        ],
+        level: 1,
+        type: "branch",
+      }],
+      [first, {
+        entries: [{ inodeKind: "file", inodeNumber: createInodeNumber({ value: 2n }), name: "alpha", targetType: "inode" }],
+        level: 0,
+        type: "leaf",
+      }],
+      // A non-root immutable leaf may not be empty. The lookup key routes to
+      // the other child, so only complete-tree validation can detect this.
+      [corruptSibling, { entries: [], level: 0, type: "leaf" }],
+    ]);
+    const resolver = createReadOnlyNamespaceResolver({
+      inodeTableRootHomeRef: inodeRoot,
+      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      source: {
+        readDirectoryPage: async ({ reference: value }) => {
+          const page = pages.get(value);
+          if (page === undefined) throw new Error("missing Directory page fixture");
+          return page;
+        },
+        readDirectoryPointPage: pointReads,
+        readExtentFile: async () => new Uint8Array(),
+        readInodePage: async () => ({ entries: [], level: 0, type: "leaf" }),
+      },
+    });
+    const directory = inode({
+      content: { directoryTreeRootHomeRef: root, type: "tree" },
+      inodeKind: "directory",
+      inodeNumber: createInodeNumber({ value: 7n }),
+    });
+    if (directory.inodeKind !== "directory") throw new Error("expected Directory fixture");
+
+    await expect(resolver.lookupDirectoryEntry({ directory, name: "alpha" })).rejects.toBeInstanceOf(TypeError);
+    expect(pointReads).not.toHaveBeenCalled();
+  });
+
+  it("treats a selective branch point above the maximum upper bound as absent", async () => {
+    const root = reference({ kind: KINDS.directory_page, offset: 1088n });
+    const leaf = reference({ kind: KINDS.directory_page, offset: 1216n });
+    const pages = new Map<HomeRecordReference, DirectoryPage>([
+      [root, {
+        entries: [{ childPageHomeRef: leaf, upperBoundName: "m" }],
+        level: 1,
+        type: "branch",
+      }],
+      [leaf, {
+        entries: [{ inodeKind: "file", inodeNumber: createInodeNumber({ value: 2n }), name: "m", targetType: "inode" }],
+        level: 0,
+        type: "leaf",
+      }],
+    ]);
+    const pointReads = vi.fn(async () => ({ level: 1, type: "absent" as const }));
+    const resolver = createReadOnlyNamespaceResolver({
+      inodeTableRootHomeRef: inodeRoot,
+      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      source: {
+        readDirectoryPage: async ({ reference: value }) => {
+          const page = pages.get(value);
+          if (page === undefined) throw new Error("missing Directory page fixture");
+          return page;
+        },
+        readDirectoryPointPage: pointReads,
+        readExtentFile: async () => new Uint8Array(),
+        readInodePage: async () => ({ entries: [], level: 0, type: "leaf" }),
+      },
+    });
+    const directory = inode({
+      content: { directoryTreeRootHomeRef: root, type: "tree" },
+      inodeKind: "directory",
+      inodeNumber: createInodeNumber({ value: 7n }),
+    });
+    if (directory.inodeKind !== "directory") throw new Error("expected Directory fixture");
+
+    await expect(resolver.lookupDirectoryEntry({ directory, name: "zz" })).resolves.toBeUndefined();
+    expect(pointReads).toHaveBeenCalledTimes(1);
+  });
+
   it("looks up inline and tree directories through the immutable B-tree reader", async () => {
     const { namespace, pointReads } = fixture();
     expect((await namespace.stat({ pathComponents: [] })).kind).toBe("directory");

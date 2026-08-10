@@ -1,5 +1,6 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
+  compareUnsignedBytes,
   createFileOffset,
   decodeCommonPageHeader,
   decodeDirectoryPage,
@@ -10,6 +11,7 @@ import {
   decodeInodeLeafPage,
   findIndexedInodeLeafEntry,
   indexInodeLeafPage,
+  encodeFilenameComponent,
   encodeHomeRecordReference,
   validateExtentAgainstReferencedData,
   type FileExtentLeafEntry,
@@ -26,12 +28,14 @@ import {
   type ReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
 import type { DecodedInodeIndexPageCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-index-page-cache";
+import type { DecodedDirectoryPageIndexCache } from "@/00-storage/service/hizofs/filesystem/decoded-directory-page-index-cache";
 import type { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 import {
   ImmutableBTreeReader,
   type ImmutableBTreePage,
 } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
 import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
+import { findBranchChildIndex } from "@/00-storage/service/hizofs/indexes/ordering";
 
 const MAXIMUM_SINGLE_NAMESPACE_READ_BYTES = 64 * 1024 * 1024;
 
@@ -67,12 +71,14 @@ function safeReadLength({ length }: { length: bigint }): number {
 
 export function createAuthenticatedReadOnlyNamespaceResolver({
   commit,
+  decodedDirectoryPageIndexCache,
   decodedInodeIndexPageCache,
   indexDiagnostics,
   recordSource,
   validationCache,
 }: {
   commit: FileSystemCommitPayload;
+  decodedDirectoryPageIndexCache?: DecodedDirectoryPageIndexCache;
   decodedInodeIndexPageCache?: DecodedInodeIndexPageCache;
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   recordSource: AuthenticatedNamespaceRecordSource;
@@ -101,9 +107,70 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
         reference,
       });
       try {
-        return recordSource.decodeRecordPayload({ decode: () => decodeDirectoryPage({ bytes, isRoot }) });
+        return recordSource.decodeRecordPayload({ decode: () => {
+          const page = decodeDirectoryPage({ bytes, isRoot });
+          decodedDirectoryPageIndexCache?.setPage({ isRoot, page, reference });
+          return page;
+        } });
       } finally {
         bytes.fill(0);
+      }
+    },
+    readDirectoryPointPage: async ({ isRoot, key, reference }) => {
+      const cached = decodedDirectoryPageIndexCache?.getPoint({ isRoot, key, reference });
+      if (cached !== undefined) return cached;
+      const page = await source.readDirectoryPage({ isRoot, reference });
+      const populated = decodedDirectoryPageIndexCache?.getPoint({ isRoot, key, reference });
+      if (populated !== undefined) return populated;
+      switch (page.type) {
+      case "leaf": {
+        let lower = 0;
+        let upper = page.entries.length;
+        while (lower < upper) {
+          const middle = lower + Math.floor((upper - lower) / 2);
+          const entry = page.entries[middle];
+          if (entry === undefined) throw new Error("Directory point-read leaf invariant failed");
+          const entryKey = encodeFilenameComponent({ value: entry.name });
+          try {
+            if (compareUnsignedBytes({ left: entryKey, right: key }) < 0) lower = middle + 1;
+            else upper = middle;
+          } finally {
+            entryKey.fill(0);
+          }
+        }
+        const entry = page.entries[lower];
+        if (entry === undefined) return { entry: undefined, type: "leaf" as const };
+        const entryKey = encodeFilenameComponent({ value: entry.name });
+        try {
+          return {
+            entry: compareUnsignedBytes({ left: entryKey, right: key }) === 0 ? entry : undefined,
+            type: "leaf" as const,
+          };
+        } finally {
+          entryKey.fill(0);
+        }
+      }
+      case "branch": {
+        const keys = page.entries.map(entry => encodeFilenameComponent({ value: entry.upperBoundName }));
+        try {
+          const children = page.entries.map((entry, index) => {
+            const upperBound = keys[index];
+            if (upperBound === undefined) throw new Error("Directory point-read branch key invariant failed");
+            return { childPageReference: entry.childPageHomeRef, upperBound };
+          });
+          const childIndex = findBranchChildIndex({
+            children,
+            compareKeys: compareUnsignedBytes,
+            key,
+          });
+          const child = page.entries[childIndex];
+          if (child === undefined) return { level: page.level, type: "absent" as const };
+          return { childPageReference: child.childPageHomeRef, level: page.level, type: "branch" as const };
+        } finally {
+          for (const value of keys) value.fill(0);
+        }
+      }
+      default: return page satisfies never;
       }
     },
     readExtentFile: async ({ inode, length, offset }) => {
@@ -129,21 +196,11 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
         referenceIdentity,
       });
       const requestedEnd = offset + length;
-      let copiedUntil = offset;
-      for await (const extent of extentReader.entriesFromFloor({
-        key: createFileOffset({ value: offset }),
-        rootReference: inode.content.extentTreeRootHomeRef,
-      })) {
-        const extentEnd = extent.fileOffset + BigInt(extent.byteLength);
-        if (extentEnd <= copiedUntil) continue;
-        if (extent.fileOffset >= requestedEnd) return output;
-        if (extent.fileOffset > copiedUntil) {
-          // Extent gaps are authenticated sparse topology, not corruption. The
-          // output buffer starts zeroed, so advance across the hole without
-          // allocating or synthesizing a File Data Record.
-          copiedUntil = extent.fileOffset < requestedEnd ? extent.fileOffset : requestedEnd;
-          if (copiedUntil === requestedEnd) return output;
-        }
+      const copyAuthenticatedExtentRange = async ({ copyEnd, copyStart, extent }: {
+        copyEnd: bigint;
+        copyStart: bigint;
+        extent: FileExtentLeafEntry;
+      }): Promise<void> => {
         const record = await recordSource.readHomeRecord({ reference: extent.fileDataHomeRef });
         try {
           if (record.recordKind !== HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data) {
@@ -158,20 +215,55 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
               fileDataPlaintextLength: payload.bytes.byteLength,
               inodeFileSize: inode.fileSize,
             });
-            const copyStart = copiedUntil > extent.fileOffset ? copiedUntil : extent.fileOffset;
-            const copyEnd = requestedEnd < extentEnd ? requestedEnd : extentEnd;
             const sourceStart = extent.dataOffset + Number(copyStart - extent.fileOffset);
             const sourceEnd = sourceStart + Number(copyEnd - copyStart);
             const destinationStart = Number(copyStart - offset);
             output.set(payload.bytes.subarray(sourceStart, sourceEnd), destinationStart);
-            copiedUntil = copyEnd;
-            if (copiedUntil === requestedEnd) return output;
           } finally {
             payload.bytes.fill(0);
           }
         } finally {
           record.plaintext.fill(0);
         }
+      };
+
+      const extentRootReference = inode.content.extentTreeRootHomeRef;
+      const floorExtent = await extentReader.seekFloor({
+        key: createFileOffset({ value: offset }),
+        rootReference: extentRootReference,
+      });
+      if (floorExtent !== undefined) {
+        const floorExtentEnd = floorExtent.fileOffset + BigInt(floorExtent.byteLength);
+        if (floorExtent.fileOffset <= offset && floorExtentEnd >= requestedEnd) {
+          // WHY: a range proven to be fully covered by one authenticated Extent
+          // needs only a floor lookup. Avoid constructing the general async
+          // range cursor, but fall back unchanged for holes and boundary-crossing
+          // reads so sparse and successor semantics stay owned by that path.
+          await copyAuthenticatedExtentRange({ copyEnd: requestedEnd, copyStart: offset, extent: floorExtent });
+          return output;
+        }
+      }
+
+      let copiedUntil = offset;
+      for await (const extent of extentReader.entriesFromFloor({
+        key: createFileOffset({ value: offset }),
+        rootReference: extentRootReference,
+      })) {
+        const extentEnd = extent.fileOffset + BigInt(extent.byteLength);
+        if (extentEnd <= copiedUntil) continue;
+        if (extent.fileOffset >= requestedEnd) return output;
+        if (extent.fileOffset > copiedUntil) {
+          // Extent gaps are authenticated sparse topology, not corruption. The
+          // output buffer starts zeroed, so advance across the hole without
+          // allocating or synthesizing a File Data Record.
+          copiedUntil = extent.fileOffset < requestedEnd ? extent.fileOffset : requestedEnd;
+          if (copiedUntil === requestedEnd) return output;
+        }
+        const copyStart = copiedUntil > extent.fileOffset ? copiedUntil : extent.fileOffset;
+        const copyEnd = requestedEnd < extentEnd ? requestedEnd : extentEnd;
+        await copyAuthenticatedExtentRange({ copyEnd, copyStart, extent });
+        copiedUntil = copyEnd;
+        if (copiedUntil === requestedEnd) return output;
       }
       // Any trailing logical range after the last extent is an implicit sparse
       // hole and remains zero in the bounded output buffer.

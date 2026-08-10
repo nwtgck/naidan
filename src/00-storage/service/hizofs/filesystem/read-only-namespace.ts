@@ -51,6 +51,15 @@ export type ReadOnlyNamespacePageSource = Readonly<{
     isRoot: boolean;
     reference: HomeRecordReference;
   }) => Promise<DirectoryPage>;
+  readDirectoryPointPage?: ({ isRoot, key, reference }: {
+    isRoot: boolean;
+    key: Uint8Array;
+    reference: HomeRecordReference;
+  }) => Promise<
+    | Readonly<{ level: number; type: "absent" }>
+    | Readonly<{ childPageReference: HomeRecordReference; level: number; type: "branch" }>
+    | Readonly<{ entry: DirectoryLeafEntry | undefined; type: "leaf" }>
+  >;
   readExtentFile: ({ inode, length, offset }: {
     inode: FileInodeEntry & Readonly<{ content: Readonly<{ extentTreeRootHomeRef: HomeRecordReference; type: "tree" }> }>;
     length: bigint;
@@ -267,6 +276,56 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
     });
   };
 
+  const getValidatedDirectoryPoint = async ({ key, rootReference }: {
+    key: Uint8Array;
+    rootReference: HomeRecordReference;
+  }): Promise<DirectoryLeafEntry | undefined> => {
+    const pointReader = source.readDirectoryPointPage;
+    if (pointReader === undefined) return await directoryReader.get({ key, rootReference });
+    return await measureImmutableBTreeOperation({
+      diagnostics: source.indexDiagnostics,
+      operation: "get",
+      run: async ({ structural }) => {
+        const visited = new Set<string>();
+        let expectedLevel: number | undefined;
+        let isRoot = true;
+        let reference = rootReference;
+        while (true) {
+          const identity = referenceIdentity({ reference });
+          if (visited.has(identity)) throw new TypeError("B-tree contains a cycle or duplicate page reference");
+          visited.add(identity);
+          const point = await pointReader({ isRoot, key, reference });
+          const level = (() => {
+            switch (point.type) {
+            case "absent": return point.level;
+            case "leaf": return 0;
+            case "branch": return point.level;
+            default: return point satisfies never;
+            }
+          })();
+          if (structural !== undefined) {
+            structural.pageReads += 1;
+            structural.maximumPageLevel = Math.max(structural.maximumPageLevel, level);
+          }
+          if (expectedLevel !== undefined && level !== expectedLevel) {
+            throw new TypeError("B-tree child level does not decrease by exactly one");
+          }
+          switch (point.type) {
+          case "absent": return undefined;
+          case "leaf": return point.entry;
+          case "branch":
+            if (point.level < 1) throw new RangeError("B-tree branch level must be a positive safe integer");
+            expectedLevel = point.level - 1;
+            reference = point.childPageReference;
+            isRoot = false;
+            break;
+          default: return point satisfies never;
+          }
+        }
+      },
+    });
+  };
+
   const getValidatedInodePoint = async ({ inodeNumber }: {
     inodeNumber: InodeNumber;
   }): Promise<InodeLeafEntry | undefined> => {
@@ -450,7 +509,7 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
     }
     case "tree": {
       await validateDirectoryTree({ rootReference: directory.content.directoryTreeRootHomeRef });
-      return await directoryReader.get({ key, rootReference: directory.content.directoryTreeRootHomeRef });
+      return await getValidatedDirectoryPoint({ key, rootReference: directory.content.directoryTreeRootHomeRef });
     }
     default: return directory.content satisfies never;
     }

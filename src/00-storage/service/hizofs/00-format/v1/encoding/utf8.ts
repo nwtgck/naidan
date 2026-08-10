@@ -71,7 +71,14 @@ export function decodeFilenameComponent({
 }): string {
   assertEncodedLength({ bytes, label: 'filename component', maximum: maximumBytes, minimum: 1 });
   const value = decodeUtf8Strict({ bytes, label: 'filename component' });
-  encodeFilenameComponent({ maximumBytes, value });
+  // WHY: fatal UTF-8 decoding already proves the resulting string is valid
+  // Unicode, and byte length was checked above. Re-encoding here only to
+  // repeat filename semantics creates hot-path allocation without adding a
+  // stronger format proof. Keep the remaining semantic checks explicit.
+  if (value === '.' || value === '..') throw new TypeError('filename component must not be dot or dot-dot');
+  if (value.includes('/') || value.includes('\0')) {
+    throw new TypeError('filename component must not contain slash or NUL');
+  }
   return value;
 }
 

@@ -106,6 +106,7 @@ import {
   createAuthenticatedReadOnlyNamespace,
   createAuthenticatedReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/authenticated-read-only-namespace";
+import { DecodedDirectoryPageIndexCache } from "@/00-storage/service/hizofs/filesystem/decoded-directory-page-index-cache";
 import { DecodedInodeIndexPageCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-index-page-cache";
 import { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 import {
@@ -2797,6 +2798,7 @@ function writableGeneration({
   backend,
   commit,
   commitReference,
+  decodedDirectoryPageIndexCache,
   decodedInodeIndexPageCache,
   durableAuthority,
   fileSystemId,
@@ -2810,6 +2812,7 @@ function writableGeneration({
   backend: HizoFSReadableBackend;
   commit: FileSystemCommitPayload;
   commitReference: HomeRecordReference;
+  decodedDirectoryPageIndexCache: DecodedDirectoryPageIndexCache;
   decodedInodeIndexPageCache: DecodedInodeIndexPageCache;
   durableAuthority: AuthenticatedDurableApplicationGenerationAuthority;
   fileSystemId: OpenedEmptyEncryptedContainer["fileSystemId"];
@@ -2830,6 +2833,7 @@ function writableGeneration({
     ...descriptor,
     resolver: createAuthenticatedReadOnlyNamespaceResolver({
       commit: descriptor.commit,
+      decodedDirectoryPageIndexCache,
       decodedInodeIndexPageCache,
       indexDiagnostics,
       recordSource: createAuthenticatedNamespaceRecordSource({
@@ -2847,6 +2851,7 @@ function writableGeneration({
 
 function writableGenerationFromDescriptor({
   backend,
+  decodedDirectoryPageIndexCache,
   decodedInodeIndexPageCache,
   descriptor,
   fileSystemId,
@@ -2857,6 +2862,7 @@ function writableGenerationFromDescriptor({
   rootKey,
 }: {
   backend: HizoFSReadableBackend;
+  decodedDirectoryPageIndexCache: DecodedDirectoryPageIndexCache;
   decodedInodeIndexPageCache: DecodedInodeIndexPageCache;
   descriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
   fileSystemId: OpenedEmptyEncryptedContainer["fileSystemId"];
@@ -2870,6 +2876,7 @@ function writableGenerationFromDescriptor({
     ...descriptor,
     resolver: createAuthenticatedReadOnlyNamespaceResolver({
       commit: descriptor.commit,
+      decodedDirectoryPageIndexCache,
       decodedInodeIndexPageCache,
       indexDiagnostics,
       recordSource: createAuthenticatedNamespaceRecordSource({
@@ -3072,6 +3079,13 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     segmentClass: "metadata",
   });
   const namespaceValidationCache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 256 });
+  const decodedDirectoryPageIndexCache = new DecodedDirectoryPageIndexCache({
+    // WHY: Directory keys may contain user-sensitive names. Keep the point-read
+    // accelerator bounded by bytes as well as entry count so large valid pages
+    // cannot turn a decode optimization into an unbounded plaintext retention path.
+    maximumBytes: 8 * HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes,
+    maximumEntries: 128,
+  });
   const decodedInodeIndexPageCache = new DecodedInodeIndexPageCache({
     diagnostics: decodedInodeIndexPageCacheDiagnostics,
     maximumEntries: decodedInodeIndexPageCacheEntryLimit ?? 128,
@@ -3112,6 +3126,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     backend,
     commit,
     commitReference,
+    decodedDirectoryPageIndexCache,
     decodedInodeIndexPageCache,
     durableAuthority,
     fileSystemId: opened.fileSystemId,
@@ -3126,6 +3141,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     descriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
   }): AuthenticatedWritableApplicationGeneration => writableGenerationFromDescriptor({
     backend,
+    decodedDirectoryPageIndexCache,
     decodedInodeIndexPageCache,
     descriptor,
     fileSystemId: opened.fileSystemId,
@@ -5046,6 +5062,11 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       }
       try {
         await metadataWriterOwner.close();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      try {
+        decodedDirectoryPageIndexCache.dispose();
       } catch (cause: unknown) {
         failures.push(cause);
       }

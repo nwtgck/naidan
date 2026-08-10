@@ -9,6 +9,16 @@ const FIELD_BYTES_MAXIMUM = HIZOFS_V1_FORMAT_CONSTANTS.limits.unlockEnvelopeJson
 
 export type HizoFSCryptoDomain = typeof HIZOFS_V1_FORMAT_CONSTANTS.crypto.domains[number];
 
+const encodedDomainBytesByDomain = new Map<HizoFSCryptoDomain, Uint8Array>();
+
+function encodedDomainBytes({ domain }: { domain: HizoFSCryptoDomain }): Uint8Array {
+  const cached = encodedDomainBytesByDomain.get(domain);
+  if (cached !== undefined) return cached;
+  const bytes = encodeUtf8Strict({ label: 'crypto domain', value: domain });
+  encodedDomainBytesByDomain.set(domain, bytes);
+  return bytes;
+}
+
 function expectedFieldCount({ domain }: { domain: HizoFSCryptoDomain }): number {
   if (!Object.hasOwn(HIZOFS_V1_FORMAT_CONSTANTS.crypto.contextFields, domain)) {
     throw new TypeError('crypto domain is not registered by the HizoFS V1 owner');
@@ -21,7 +31,7 @@ export function encodeCryptoContext({ domain, fields }: {
   fields: readonly Uint8Array[];
 }): Uint8Array {
   if (!/^[\x20-\x7e]+$/u.test(domain)) throw new TypeError('crypto domain must be non-empty printable ASCII');
-  const domainBytes = encodeUtf8Strict({ label: 'crypto domain', value: domain });
+  const domainBytes = encodedDomainBytes({ domain });
   if (domainBytes.byteLength < 1 || domainBytes.byteLength > 0xffff) {
     throw new RangeError('crypto domain byte length is outside u16');
   }

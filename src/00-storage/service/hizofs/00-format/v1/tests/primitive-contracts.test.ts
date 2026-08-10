@@ -18,6 +18,13 @@ describe('HizoFS V1 primitive contracts', () => {
     expect(decodeFilenameComponent({ bytes: encodeFilenameComponent({ value: maximum }) })).toBe(maximum);
     expect(() => encodeFilenameComponent({ value: 'a'.repeat(256) })).toThrow('1..255');
     for (const invalid of ['', '.', '..', 'a/b', 'a\0b']) expect(() => encodeFilenameComponent({ value: invalid })).toThrow();
+    for (const invalid of ['.', '..', 'a/b', 'a\0b']) {
+      expect(() => decodeFilenameComponent({ bytes: encodeUtf8Strict({ value: invalid }) })).toThrow();
+    }
+    expect(() => decodeFilenameComponent({ bytes: new Uint8Array(0) })).toThrow('1..255');
+    expect(() => decodeFilenameComponent({ bytes: encodeUtf8Strict({ value: 'a'.repeat(256) }) })).toThrow('1..255');
+    expect(() => decodeFilenameComponent({ bytes: Uint8Array.of(0xc0, 0x80) })).toThrow('well-formed UTF-8');
+    expect(() => decodeFilenameComponent({ bytes: Uint8Array.of(0xed, 0xa0, 0x80) })).toThrow('well-formed UTF-8');
     expect([...encodeSymlinkTarget({ value: '../a/b' })]).toEqual([...encodeUtf8Strict({ value: '../a/b' })]);
     expect(() => encodePassphraseUtf8({ value: `\
 line

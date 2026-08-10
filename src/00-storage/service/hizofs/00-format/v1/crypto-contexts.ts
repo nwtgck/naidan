@@ -3,9 +3,9 @@ import { encodeCryptoContext } from './crypto-context-codec';
 import { encodeUtf8Strict } from './encoding/utf8';
 import { HIZOFS_V1_FORMAT_CRYPTO_CONTEXTS } from './crypto-contracts';
 import {
+  assertSegmentId,
   parseCredentialSlotId,
   parseFileSystemId,
-  parseSegmentId,
   type CredentialSlotId,
   type FileSystemId,
   type SegmentId,
@@ -25,7 +25,8 @@ function credentialSlotIdBytes({ slotId }: { slotId: CredentialSlotId }): Uint8A
 }
 
 function segmentIdBytes({ segmentId }: { segmentId: SegmentId }): Uint8Array {
-  return Uint8Array.from(parseSegmentId({ bytes: segmentId }));
+  assertSegmentId({ id: segmentId });
+  return Uint8Array.from(segmentId);
 }
 
 function u64Bytes({ value }: { value: UInt64 }): Uint8Array {

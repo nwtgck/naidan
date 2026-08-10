@@ -19,7 +19,7 @@ import {
   type SegmentId,
 } from "@/00-storage/service/hizofs/00-format";
 import {
-  encryptRecord,
+  createRecordEncryptionBatchCapability,
   encryptSegmentHeader,
   generateRecordNonce,
   generateSegmentId,
@@ -43,7 +43,11 @@ import {
   closeAuthenticatedFile,
   runAndCloseAuthenticatedFile,
 } from "./file-operation";
-import { authenticatedHizoFSPhysicalBytes, type AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
+import {
+  allocateAuthenticatedHizoFSPhysicalBytes,
+  authenticatedHizoFSPhysicalBytes,
+  type AuthenticatedHizoFSPhysicalBytes,
+} from "./physical-bytes";
 import {
   getOpenFileSizeWithAuthenticatedReason,
   measureAuthenticatedCodecOperation,
@@ -95,6 +99,13 @@ export type AuthenticatedSegmentAppendTarget = Readonly<{
   encodeRecordPayload({ encode }: { encode: () => Uint8Array }): Uint8Array;
 }>;
 
+export type AuthenticatedSegmentAppendPreviewPlanner = Readonly<{
+  previewAppend({ acceptPreview, records }: {
+    acceptPreview: ({ results }: { results: readonly AppendedRecord[] }) => void;
+    records: readonly EncodedHizoFSRecord[];
+  }): readonly AppendedRecord[];
+}>;
+
 export type SegmentWriterState = "abandoned" | "active" | "sealed";
 
 type SegmentWriterWritableFileLifetime = "append" | "writer";
@@ -127,18 +138,11 @@ export function encodedHizoFSRecord({ plaintext, recordKind }: {
 }
 
 function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
-  return left.byteLength === right.byteLength && left.every((value, index) => value === right[index]);
-}
-
-function concatenate({ chunks, totalLength }: { chunks: readonly Uint8Array[]; totalLength: number }): Uint8Array {
-  const bytes = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
   }
-  if (offset !== totalLength) throw new Error("record append concatenation length invariant failed");
-  return bytes;
+  return true;
 }
 
 function recordAreaMaximum({ segmentClass }: { segmentClass: SegmentClass }): number {
@@ -161,6 +165,76 @@ function plaintextMaximum({ recordKind }: { recordKind: number }): number {
   return recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data
     ? HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes
     : HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes;
+}
+
+function planRecordAppend({
+  frameCount,
+  nextOffset,
+  records,
+  segmentClass,
+  segmentId,
+}: {
+  frameCount: number;
+  nextOffset: bigint;
+  records: readonly EncodedHizoFSRecord[];
+  segmentClass: SegmentClass;
+  segmentId: SegmentId;
+}): Readonly<{ nextOffset: bigint; results: readonly AppendedRecord[] }> {
+  if (records.length === 0) throw new RangeError("record append batch must not be empty");
+  if (frameCount + records.length > frameMaximumCount({ segmentClass })) {
+    throw new AuthenticatedSegmentCapacityError({
+      capacity: "frame_count",
+      message: "record append batch exceeds the segment frame-count bound",
+    });
+  }
+
+  let plannedOffset = nextOffset;
+  const results: AppendedRecord[] = [];
+  for (const record of records) {
+    if (segmentClassForRecordKind({ recordKind: record.recordKind }) !== segmentClass) {
+      throw new TypeError("record kind does not belong to the active segment class");
+    }
+    if (record.plaintext.byteLength > plaintextMaximum({ recordKind: record.recordKind })) {
+      throw new RangeError("record plaintext exceeds its V1 bound");
+    }
+    const physicalOnly = record.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page;
+    const header = createRecordFrameHeader({
+      flags: physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0,
+      homeOffset: createUInt64({ value: plannedOffset }),
+      homeSegmentId: segmentId,
+      nonce: new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.crypto.nonceBytes),
+      plaintextLength: record.plaintext.byteLength,
+      recordKind: record.recordKind,
+    });
+    const end = plannedOffset + BigInt(header.frameLength);
+    const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
+    if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass }))) {
+      throw new AuthenticatedSegmentCapacityError({
+        capacity: "record_area",
+        message: "record append batch exceeds the segment record-area bound",
+      });
+    }
+    const physicalReference = createPhysicalRecordReference({ fields: {
+      byteOffset: header.homeOffset,
+      frameLength: header.frameLength,
+      recordKind: header.recordKind,
+      segmentId,
+    } });
+    results.push(physicalOnly
+      ? { physicalReference, type: "physical_only" }
+      : {
+        homeReference: createHomeRecordReference({ fields: {
+          byteOffset: header.homeOffset,
+          frameLength: header.frameLength,
+          recordKind: header.recordKind,
+          segmentId,
+        } }),
+        physicalReference,
+        type: "home",
+      });
+    plannedOffset = end;
+  }
+  return Object.freeze({ nextOffset: plannedOffset, results: Object.freeze(results) });
 }
 
 async function ensureSegmentDirectories({ backend, segmentClass, segmentId }: {
@@ -501,61 +575,55 @@ export class AuthenticatedSegmentWriter {
   public previewAppend({ records }: { records: readonly EncodedHizoFSRecord[] }): readonly AppendedRecord[] {
     requireActiveWriter({ operation: "append", state: this.stateValue });
     if (this.operationInProgress) throw new Error("segment writer operation already in progress");
-    if (records.length === 0) throw new RangeError("record append batch must not be empty");
-    if (this.frameCount + records.length > frameMaximumCount({ segmentClass: this.segmentClassValue })) {
-      throw new AuthenticatedSegmentCapacityError({
-        capacity: "frame_count",
-        message: "record append batch exceeds the segment frame-count bound",
-      });
-    }
+    return planRecordAppend({
+      frameCount: this.frameCount,
+      nextOffset: this.nextOffset,
+      records,
+      segmentClass: this.segmentClassValue,
+      segmentId: this.segmentId,
+    }).results;
+  }
 
-    let nextOffset = this.nextOffset;
-    const results: AppendedRecord[] = [];
-    for (const record of records) {
-      if (segmentClassForRecordKind({ recordKind: record.recordKind }) !== this.segmentClassValue) {
-        throw new TypeError("record kind does not belong to the active segment class");
-      }
-      if (record.plaintext.byteLength > plaintextMaximum({ recordKind: record.recordKind })) {
-        throw new RangeError("record plaintext exceeds its V1 bound");
-      }
-      const physicalOnly = record.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page;
-      const header = createRecordFrameHeader({
-        flags: physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0,
-        homeOffset: createUInt64({ value: nextOffset }),
-        homeSegmentId: this.segmentId,
-        nonce: new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.crypto.nonceBytes),
-        plaintextLength: record.plaintext.byteLength,
-        recordKind: record.recordKind,
-      });
-      const end = nextOffset + BigInt(header.frameLength);
-      const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
-      if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.segmentClassValue }))) {
-        throw new AuthenticatedSegmentCapacityError({
-          capacity: "record_area",
-          message: "record append batch exceeds the segment record-area bound",
+  /**
+   * Creates a mutation-local incremental preview over the current trusted tail.
+   *
+   * WHY: metadata B+tree construction discovers child Records incrementally.
+   * Replanning the complete pending prefix after every discovery is quadratic
+   * CPU work and allocation. The planner advances only after a successful
+   * preview, while verifying that the writer itself has not advanced. Flush
+   * still performs the canonical full append and compares every predicted
+   * reference, so this capability cannot weaken publication or durability.
+   */
+  public createAppendPreviewPlanner(): AuthenticatedSegmentAppendPreviewPlanner {
+    requireActiveWriter({ operation: "append", state: this.stateValue });
+    if (this.operationInProgress) throw new Error("segment writer operation already in progress");
+    const writerFrameCount = this.frameCount;
+    const writerNextOffset = this.nextOffset;
+    let plannedFrameCount = writerFrameCount;
+    let plannedNextOffset = writerNextOffset;
+    return Object.freeze({
+      previewAppend: ({ acceptPreview, records }) => {
+        requireActiveWriter({ operation: "append", state: this.stateValue });
+        if (this.operationInProgress) throw new Error("segment writer operation already in progress");
+        if (this.frameCount !== writerFrameCount || this.nextOffset !== writerNextOffset) {
+          throw new Error("segment append preview planner is stale");
+        }
+        const planned = planRecordAppend({
+          frameCount: plannedFrameCount,
+          nextOffset: plannedNextOffset,
+          records,
+          segmentClass: this.segmentClassValue,
+          segmentId: this.segmentId,
         });
-      }
-      const physicalReference = createPhysicalRecordReference({ fields: {
-        byteOffset: header.homeOffset,
-        frameLength: header.frameLength,
-        recordKind: header.recordKind,
-        segmentId: this.segmentId,
-      } });
-      results.push(physicalOnly
-        ? { physicalReference, type: "physical_only" }
-        : {
-          homeReference: createHomeRecordReference({ fields: {
-            byteOffset: header.homeOffset,
-            frameLength: header.frameLength,
-            recordKind: header.recordKind,
-            segmentId: this.segmentId,
-          } }),
-          physicalReference,
-          type: "home",
-        });
-      nextOffset = end;
-    }
-    return results;
+        // WHY: callers may need to reject an otherwise valid preview because of
+        // a stricter mutation-local bound. Advance the incremental tail only
+        // after that acceptance so a rejected stage is observationally pure.
+        acceptPreview({ results: planned.results });
+        plannedFrameCount += records.length;
+        plannedNextOffset = planned.nextOffset;
+        return planned.results;
+      },
+    });
   }
 
   public abandon(): void {
@@ -612,78 +680,112 @@ export class AuthenticatedSegmentWriter {
           throw new RangeError("record plaintext exceeds its V1 bound");
         }
         return {
-          plaintext: Uint8Array.from(record.plaintext),
+          // This is the sole caller-mutation isolation copy for append. Keep the
+          // snapshot branded so crypto does not copy the same owned bytes again.
+          plaintext: plaintextRecordBytes({ bytes: record.plaintext }),
           recordKind: record.recordKind,
         };
       });
 
       const batchNonceKeys = new Set<string>();
-      const frames: Array<{ bytes: Uint8Array; header: RecordFrameHeaderV1; physicalOffset: bigint; result: AppendedRecord }> = [];
+      const frames: Array<{
+        ciphertext: Uint8Array;
+        header: RecordFrameHeaderV1;
+        headerBytes: Uint8Array;
+        physicalOffset: bigint;
+        result: AppendedRecord;
+      }> = [];
+      let encryptionCapability: Awaited<ReturnType<typeof createRecordEncryptionBatchCapability>> | undefined;
       let nextOffset = this.nextOffset;
-      for (const record of recordSnapshots) {
-        const nonce = freshRecordNonce({
-          batchNonceKeys,
-          randomSource: this.randomSource,
-          usedNonceKeys: this.usedNonceKeys,
-        });
-        batchNonceKeys.add(nonceKey({ nonce }));
-        const physicalOnly = record.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page;
-        const header = createRecordFrameHeader({
-          flags: physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0,
-          homeOffset: createUInt64({ value: nextOffset }),
-          homeSegmentId: this.segmentId,
-          nonce,
-          plaintextLength: record.plaintext.byteLength,
-          recordKind: record.recordKind,
-        });
-        const end = nextOffset + BigInt(header.frameLength);
-        const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
-        if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.segmentClassValue }))) {
-          throw new AuthenticatedSegmentCapacityError({
-            capacity: "record_area",
-            message: "record append batch exceeds the segment record-area bound",
+      try {
+        for (const record of recordSnapshots) {
+          const nonce = freshRecordNonce({
+            batchNonceKeys,
+            randomSource: this.randomSource,
+            usedNonceKeys: this.usedNonceKeys,
           });
-        }
-        const headerBytes = encodeRecordFrameHeader({ header });
-        const ciphertext = await measureAuthenticatedCryptoOperation({
-          diagnostics: this.diagnostics,
-          operation: "encrypt",
-          run: async () => await encryptRecord({
-            completeFrameHeader: headerBytes,
-            fileSystemId: this.fileSystemId,
+          batchNonceKeys.add(nonceKey({ nonce }));
+          const physicalOnly = record.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page;
+          const header = createRecordFrameHeader({
+            flags: physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0,
+            homeOffset: createUInt64({ value: nextOffset }),
             homeSegmentId: this.segmentId,
             nonce,
-            plaintext: plaintextRecordBytes({ bytes: record.plaintext }),
-            rootKey: this.rootKey,
-          }),
-        });
-        const bytes = new Uint8Array(header.frameLength);
-        bytes.set(headerBytes);
-        bytes.set(ciphertext, headerBytes.byteLength);
-        const physicalReference = createPhysicalRecordReference({ fields: {
-          byteOffset: header.homeOffset,
-          frameLength: header.frameLength,
-          recordKind: header.recordKind,
-          segmentId: this.segmentId,
-        } });
-        const result: AppendedRecord = physicalOnly
-          ? { physicalReference, type: "physical_only" }
-          : {
-            homeReference: createHomeRecordReference({ fields: {
-              byteOffset: header.homeOffset,
-              frameLength: header.frameLength,
-              recordKind: header.recordKind,
-              segmentId: this.segmentId,
-            } }),
-            physicalReference,
-            type: "home",
-          };
-        frames.push({ bytes, header, physicalOffset: nextOffset, result });
-        nextOffset = end;
+            plaintextLength: record.plaintext.byteLength,
+            recordKind: record.recordKind,
+          });
+          const end = nextOffset + BigInt(header.frameLength);
+          const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
+          if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.segmentClassValue }))) {
+            throw new AuthenticatedSegmentCapacityError({
+              capacity: "record_area",
+              message: "record append batch exceeds the segment record-area bound",
+            });
+          }
+          const headerBytes = encodeRecordFrameHeader({ header });
+          const ciphertext = await measureAuthenticatedCryptoOperation({
+            diagnostics: this.diagnostics,
+            operation: "encrypt",
+            run: async () => {
+              // Keep key derivation inside the existing encrypt measurement so a
+              // lower phase duration reflects real work removed, not timer drift.
+              const capability = encryptionCapability ??= await createRecordEncryptionBatchCapability({
+                fileSystemId: this.fileSystemId,
+                homeSegmentId: this.segmentId,
+                rootKey: this.rootKey,
+              });
+              return await capability.encrypt({
+                completeFrameHeader: headerBytes,
+                nonce,
+                plaintext: record.plaintext,
+              });
+            },
+          });
+          const physicalReference = createPhysicalRecordReference({ fields: {
+            byteOffset: header.homeOffset,
+            frameLength: header.frameLength,
+            recordKind: header.recordKind,
+            segmentId: this.segmentId,
+          } });
+          const result: AppendedRecord = physicalOnly
+            ? { physicalReference, type: "physical_only" }
+            : {
+              homeReference: createHomeRecordReference({ fields: {
+                byteOffset: header.homeOffset,
+                frameLength: header.frameLength,
+                recordKind: header.recordKind,
+                segmentId: this.segmentId,
+              } }),
+              physicalReference,
+              type: "home",
+            };
+          frames.push({ ciphertext, header, headerBytes, physicalOffset: nextOffset, result });
+          nextOffset = end;
+        }
+      } finally {
+        // Web Crypto keys cannot be explicitly zeroized. Drop the only batch
+        // reference before backend I/O so lifetime is no longer than needed.
+        encryptionCapability?.expire();
+        // The append-owned plaintext snapshots are no longer needed once frame
+        // encryption preparation completes. Clear them before physical I/O so
+        // reducing copies also shortens, rather than extends, secret lifetime.
+        for (const record of recordSnapshots) record.plaintext.fill(0);
       }
 
-      const batchLength = frames.reduce((total, frame) => total + frame.bytes.byteLength, 0);
-      const batch = concatenate({ chunks: frames.map(frame => frame.bytes), totalLength: batchLength });
+      const batchLength = frames.reduce((total, frame) => total + frame.header.frameLength, 0);
+      const batch = allocateAuthenticatedHizoFSPhysicalBytes({ byteLength: batchLength });
+      let batchOffset = 0;
+      for (const frame of frames) {
+        // WHY: ciphertext already exists as a Web Crypto result. Assemble each
+        // canonical header + ciphertext directly into the one physical batch
+        // instead of first materializing per-frame buffers and then copying
+        // those complete frames again. Capacity checks, crypto ordering, and
+        // the exact durable/read-back bytes remain unchanged.
+        batch.set(frame.headerBytes, batchOffset);
+        batch.set(frame.ciphertext, batchOffset + frame.headerBytes.byteLength);
+        batchOffset += frame.header.frameLength;
+      }
+      if (batchOffset !== batchLength) throw new Error("record append batch length invariant failed");
       requireWriterStillActive({
         message: "segment writer was abandoned during append preparation",
         state: this.stateValue,
@@ -718,7 +820,7 @@ export class AuthenticatedSegmentWriter {
         });
         this.stateValue = "abandoned";
         await this.backend.writeAt({
-          bytes: authenticatedHizoFSPhysicalBytes({ bytes: batch }),
+          bytes: batch,
           file,
           offset: this.nextOffset,
         });
@@ -766,7 +868,7 @@ export class AuthenticatedSegmentWriter {
       for (const frame of frames) {
         this.diagnostics?.recordPersistedRecord({
           operation: "write",
-          physicalBytes: frame.bytes.byteLength,
+          physicalBytes: frame.header.frameLength,
           plaintextBytes: frame.header.plaintextLength,
           recordKind: frame.header.recordKind,
         });

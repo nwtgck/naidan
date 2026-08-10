@@ -5,7 +5,7 @@ import {
 import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import { DeterministicPhysicalStoreFaultInjector } from "@/00-storage/service/hizofs/physical-store/testing/deterministic-fault-injector";
 import { InMemoryCrashDurabilityBackend } from "@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import {
   readAuthenticatedHomeRecord,
@@ -239,6 +239,39 @@ describe("authenticated record appender", () => {
     rootKey.destroy();
   });
 
+  it("derives one Record Key for a multi-record append batch", async () => {
+    const { backend, fileSystemId, randomSource, rootKey } = fixture();
+    const writer = await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    const deriveKey = vi.spyOn(globalThis.crypto.subtle, "deriveKey");
+
+    try {
+      deriveKey.mockClear();
+      await writer.append({ records: [
+        encodedHizoFSRecord({
+          plaintext: new Uint8Array([1]),
+          recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+        }),
+        encodedHizoFSRecord({
+          plaintext: new Uint8Array([2]),
+          recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+        }),
+      ] });
+
+      expect(deriveKey).toHaveBeenCalledTimes(1);
+    } finally {
+      deriveKey.mockRestore();
+      writer.abandon();
+      await writer.settleAbandonment();
+      rootKey.destroy();
+    }
+  });
+
   it("retries a same-class Segment ID collision through exclusive creation", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
@@ -345,6 +378,37 @@ describe("authenticated record appender", () => {
     const actual = await writer.append({ records });
     expect(actual).toEqual(preview);
     expect(writer.persistedFrameBytes()).toBeGreaterThan(0);
+    value.rootKey.destroy();
+  });
+
+  it("plans an incremental preview without replanning the already-predicted prefix", async () => {
+    const value = fixture();
+    const writer = await createAuthenticatedSegmentWriter({ ...value, segmentClass: "metadata" });
+    const first = encodedHizoFSRecord({
+      plaintext: new Uint8Array([1, 2, 3]),
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    });
+    const second = encodedHizoFSRecord({
+      plaintext: new Uint8Array([4, 5]),
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+    });
+    const expected = writer.previewAppend({ records: [first, second] });
+    const planner = writer.createAppendPreviewPlanner();
+
+    expect(() => planner.previewAppend({
+      acceptPreview: () => {
+        throw new Error("reject preview");
+      },
+      records: [first],
+    })).toThrow("reject preview");
+    const plannedFirst = planner.previewAppend({ acceptPreview: () => {}, records: [first] });
+    const plannedSecond = planner.previewAppend({ acceptPreview: () => {}, records: [second] });
+
+    expect([...plannedFirst, ...plannedSecond]).toEqual(expected);
+    expect(writer.persistedFrameBytes()).toBe(0);
+    const actual = await writer.append({ records: [first, second] });
+    expect(actual).toEqual(expected);
+    expect(() => planner.previewAppend({ acceptPreview: () => {}, records: [first] })).toThrow("stale");
     value.rootKey.destroy();
   });
 

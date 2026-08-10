@@ -3,6 +3,7 @@ import {
   assertFileExtentLeafEntryValid,
   HIZOFS_V1_FORMAT_CONSTANTS,
   encodeHomeRecordReference,
+  sameRecordReferenceFields,
   type FileExtentLeafEntry,
   type FileExtentPage,
   type FileOffset,
@@ -61,8 +62,11 @@ function entriesEqual({ left, right }: {
   return left.byteLength === right.byteLength
     && left.dataOffset === right.dataOffset
     && left.fileOffset === right.fileOffset
-    && referenceIdentity({ reference: left.fileDataHomeRef })
-      === referenceIdentity({ reference: right.fileDataHomeRef });
+    // WHY: both references crossed their validation/ownership boundary before
+    // becoming Extent entries. Equality only needs the complete validated
+    // fields; rebuilding persisted bytes and a hex string here adds allocation
+    // to every no-change check without providing additional validation.
+    && sameRecordReferenceFields({ left: left.fileDataHomeRef, right: right.fileDataHomeRef });
 }
 
 export function createFileExtentTreePageStore({ pagePort }: {

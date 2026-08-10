@@ -21,6 +21,52 @@ function validateFrameHeader({ completeFrameHeader }: { completeFrameHeader: Uin
   }
 }
 
+export type RecordEncryptionBatchCapability = Readonly<{
+  encrypt({ completeFrameHeader, nonce, plaintext }: {
+    completeFrameHeader: Uint8Array;
+    nonce: RecordNonce;
+    plaintext: PlaintextRecordBytes;
+  }): Promise<AuthenticatedRecordBytes>;
+  expire(): void;
+}>;
+
+/**
+ * Reuses one non-extractable Record Key only while one same-home-Segment
+ * encryption batch is being prepared.
+ *
+ * WHY: Record Key derivation depends on File System ID + home Segment ID, not
+ * on the individual Record. Keeping the capability batch-scoped removes
+ * repeated HKDF work without retaining derived key material on a long-lived
+ * writer. Expiration drops the JavaScript reference before physical I/O; the
+ * Root Key destruction check also prevents later use after owner teardown.
+ */
+export async function createRecordEncryptionBatchCapability({ fileSystemId, homeSegmentId, rootKey }: {
+  fileSystemId: FileSystemId;
+  homeSegmentId: SegmentId;
+  rootKey: FileSystemRootKey;
+}): Promise<RecordEncryptionBatchCapability> {
+  let key: CryptoKey | undefined = await deriveRecordKey({ fileSystemId, homeSegmentId, rootKey });
+  return Object.freeze({
+    encrypt: async ({ completeFrameHeader, nonce, plaintext }) => {
+      validateFrameHeader({ completeFrameHeader });
+      const activeKey = key;
+      if (activeKey === undefined) throw new TypeError('Record encryption batch capability has expired');
+      if (rootKey.isDestroyed()) throw new TypeError('File System Root Key has been destroyed');
+      return authenticatedRecordBytes({
+        bytes: await encryptAesGcm({
+          aad: encodeRecordAad({ completeFrameHeader, fileSystemId }),
+          key: activeKey,
+          nonce,
+          plaintext,
+        }),
+      });
+    },
+    expire: () => {
+      key = undefined;
+    },
+  });
+}
+
 export async function encryptRecord({ completeFrameHeader, fileSystemId, homeSegmentId, nonce, plaintext, rootKey }: {
   completeFrameHeader: Uint8Array;
   fileSystemId: FileSystemId;
@@ -29,16 +75,12 @@ export async function encryptRecord({ completeFrameHeader, fileSystemId, homeSeg
   plaintext: PlaintextRecordBytes;
   rootKey: FileSystemRootKey;
 }): Promise<AuthenticatedRecordBytes> {
-  validateFrameHeader({ completeFrameHeader });
-  const key = await deriveRecordKey({ fileSystemId, homeSegmentId, rootKey });
-  return authenticatedRecordBytes({
-    bytes: await encryptAesGcm({
-      aad: encodeRecordAad({ completeFrameHeader, fileSystemId }),
-      key,
-      nonce,
-      plaintext,
-    }),
-  });
+  const capability = await createRecordEncryptionBatchCapability({ fileSystemId, homeSegmentId, rootKey });
+  try {
+    return await capability.encrypt({ completeFrameHeader, nonce, plaintext });
+  } finally {
+    capability.expire();
+  }
 }
 
 export async function decryptAuthenticatedRecord({ ciphertext, completeFrameHeader, fileSystemId, homeSegmentId, nonce, rootKey }: {

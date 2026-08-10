@@ -19,6 +19,7 @@ import type {
   ImmutableBTreeDiagnosticsPort,
 } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import { ImmutableBTreeReader } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
+import type { CompareImmutableBTreeKeys } from "@/00-storage/service/hizofs/indexes/ordering";
 
 export type DirectoryPageTreeMutation = ImmutableBTreeMutation<string, DirectoryLeafEntry>;
 export type DirectoryPageTreePageStore = ImmutableBTreePageStore<
@@ -52,15 +53,44 @@ export type DirectoryPagePort = Readonly<{
   writePage: WriteDirectoryPage;
 }>;
 
-function compareDirectoryNames({ left, right }: { left: string; right: string }): number {
-  return compareUnsignedBytes({
-    left: encodeFilenameComponent({ value: left }),
-    right: encodeFilenameComponent({ value: right }),
-  });
+function createDirectoryNameComparator(): Readonly<{
+  compareKeys: CompareImmutableBTreeKeys<string>;
+  dispose: () => void;
+}> {
+  // WHY: immutable B-tree traversal compares the same page names repeatedly.
+  // Keep canonical bytes only for this operation and explicitly zeroize them
+  // afterwards; this removes repeated encoding without creating a long-lived
+  // plaintext filename cache or changing unsigned UTF-8 ordering.
+  const encodedNames = new Map<string, Uint8Array>();
+  let disposed = false;
+  const encodedName = ({ value }: { value: string }): Uint8Array => {
+    if (disposed) throw new Error("directory name comparator is disposed");
+    const cached = encodedNames.get(value);
+    if (cached !== undefined) return cached;
+    const encoded = encodeFilenameComponent({ value });
+    encodedNames.set(value, encoded);
+    return encoded;
+  };
+  return {
+    compareKeys: ({ left, right }) => compareUnsignedBytes({
+      left: encodedName({ value: left }),
+      right: encodedName({ value: right }),
+    }),
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      for (const bytes of encodedNames.values()) bytes.fill(0);
+      encodedNames.clear();
+    },
+  };
 }
 
 function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
-  return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
 }
 
 function referenceIdentity({ reference }: { reference: HomeRecordReference }): string {
@@ -111,11 +141,12 @@ export function createDirectoryPageTreePageStore({ pagePort }: {
   };
 }
 
-function createDirectoryPageTreeReader({ pageStore }: {
+function createDirectoryPageTreeReader({ compareKeys, pageStore }: {
+  compareKeys: CompareImmutableBTreeKeys<string>;
   pageStore: DirectoryPageTreePageStore;
 }): ImmutableBTreeReader<string, DirectoryLeafEntry, HomeRecordReference> {
   return new ImmutableBTreeReader({
-    compareKeys: compareDirectoryNames,
+    compareKeys,
     getEntryKey: ({ entry }) => entry.name,
     operationDiagnostics: pageStore.operationDiagnostics?.port,
     pageReader: pageStore.readPage,
@@ -123,7 +154,8 @@ function createDirectoryPageTreeReader({ pageStore }: {
   });
 }
 
-function createDirectoryPageTreeWriter({ pageStore }: {
+function createDirectoryPageTreeWriter({ compareKeys, pageStore }: {
+  compareKeys: CompareImmutableBTreeKeys<string>;
   pageStore: DirectoryPageTreePageStore;
 }): CanonicalBTreeWriter<string, DirectoryLeafEntry, HomeRecordReference> {
   const encodedEntries = new WeakMap<DirectoryLeafEntry, Uint8Array>();
@@ -135,7 +167,7 @@ function createDirectoryPageTreeWriter({ pageStore }: {
     return encoded;
   };
   return new CanonicalBTreeWriter({
-    compareKeys: compareDirectoryNames,
+    compareKeys,
     encodedBranchChildByteLength: ({ child }) => encodedDirectoryBranchEntryByteLength({ entry: {
       childPageHomeRef: child.childPageReference,
       upperBoundName: child.upperBound,
@@ -156,7 +188,13 @@ export async function readDirectoryPageTreeEntry({ name, pageStore, rootReferenc
   pageStore: DirectoryPageTreePageStore;
   rootReference: HomeRecordReference;
 }): Promise<DirectoryLeafEntry | undefined> {
-  return await createDirectoryPageTreeReader({ pageStore }).get({ key: name, rootReference });
+  const comparator = createDirectoryNameComparator();
+  try {
+    return await createDirectoryPageTreeReader({ compareKeys: comparator.compareKeys, pageStore })
+      .get({ key: name, rootReference });
+  } finally {
+    comparator.dispose();
+  }
 }
 
 export async function applyDirectoryPageTreeMutations({ changes, pageStore, rootReference }: {
@@ -164,7 +202,13 @@ export async function applyDirectoryPageTreeMutations({ changes, pageStore, root
   pageStore: DirectoryPageTreePageStore;
   rootReference: HomeRecordReference;
 }): Promise<HomeRecordReference> {
-  return await createDirectoryPageTreeWriter({ pageStore }).applyChanges({ changes, rootReference });
+  const comparator = createDirectoryNameComparator();
+  try {
+    return await createDirectoryPageTreeWriter({ compareKeys: comparator.compareKeys, pageStore })
+      .applyChanges({ changes, rootReference });
+  } finally {
+    comparator.dispose();
+  }
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

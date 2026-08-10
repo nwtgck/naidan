@@ -9,6 +9,7 @@ import {
   createInodeRevision,
   createSubvolumeId,
   createUInt64,
+  encodeDirectoryPage,
   encodeFileDataPayload,
   encodeFileExtentPage,
   encodeHomeRecordReference,
@@ -25,6 +26,7 @@ import {
   createAuthenticatedReadOnlyNamespace,
   createAuthenticatedReadOnlyNamespaceResolver,
 } from "@/00-storage/service/hizofs/filesystem/authenticated-read-only-namespace";
+import { DecodedDirectoryPageIndexCache } from "@/00-storage/service/hizofs/filesystem/decoded-directory-page-index-cache";
 import { DecodedInodeIndexPageCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-index-page-cache";
 
 const KINDS = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds;
@@ -45,6 +47,83 @@ function referenceIdentity({ reference: value }: { reference: HomeRecordReferenc
 }
 
 describe("authenticated read-only HizoFS namespace", () => {
+  it("reuses validated zeroizable Directory routing for repeated point lookup", async () => {
+    const inodeRoot = reference({ kind: KINDS.inode_table_page, offset: 64n });
+    const directoryRoot = reference({ kind: KINDS.directory_page, offset: 320n });
+    const rootDirectoryNumber = createInodeNumber({ value: 1n });
+    const fileNumber = createInodeNumber({ value: 2n });
+    const records = new Map<string, Readonly<{ plaintext: Uint8Array; recordKind: number }>>([
+      [referenceIdentity({ reference: inodeRoot }), {
+        plaintext: encodeInodeLeafPage({
+          isRoot: true,
+          entries: [
+            {
+              content: { directoryTreeRootHomeRef: directoryRoot, type: "tree" },
+              inodeKind: "directory",
+              inodeNumber: rootDirectoryNumber,
+              inodeRevision: createInodeRevision({ value: 1n }),
+              timestamps: { createdAt: null, modifiedAt: null },
+            },
+            {
+              content: { bytes: new Uint8Array([1, 2, 3]), type: "inline" },
+              fileSize: createFileOffset({ value: 3n }),
+              inodeKind: "file",
+              inodeNumber: fileNumber,
+              inodeRevision: createInodeRevision({ value: 1n }),
+              timestamps: { createdAt: null, modifiedAt: null },
+            },
+          ],
+        }),
+        recordKind: KINDS.inode_table_page,
+      }],
+      [referenceIdentity({ reference: directoryRoot }), {
+        plaintext: encodeDirectoryPage({
+          isRoot: true,
+          page: {
+            entries: [{ inodeKind: "file", inodeNumber: fileNumber, name: "data.bin", targetType: "inode" }],
+            level: 0,
+            type: "leaf",
+          },
+        }),
+        recordKind: KINDS.directory_page,
+      }],
+    ]);
+    const readHomeRecord = vi.fn(async ({ reference: value }: { reference: HomeRecordReference }) => {
+      const record = records.get(referenceIdentity({ reference: value }));
+      if (record === undefined) throw new Error("missing record fixture");
+      return { plaintext: Uint8Array.from(record.plaintext), recordKind: record.recordKind };
+    });
+    const directoryCache = new DecodedDirectoryPageIndexCache({ maximumBytes: 4096, maximumEntries: 8 });
+    const resolver = createAuthenticatedReadOnlyNamespaceResolver({
+      commit: createFileSystemCommitPayload({ payload: {
+        commitSequence: createCommitSequence({ value: 1n }),
+        mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
+        nestedSubvolumeTableRootHomeRef: null,
+        nextInodeNumber: createInodeNumber({ value: 3n }),
+        nextSubvolumeId: createSubvolumeId({ value: 2n }),
+        rootDirectoryInodeNumber: rootDirectoryNumber,
+        rootInodeTableRootHomeRef: inodeRoot,
+      } }),
+      decodedDirectoryPageIndexCache: directoryCache,
+      recordSource: {
+        decodeRecordPayload: ({ decode }) => decode(),
+        readHomeRecord,
+      },
+    });
+
+    expect((await resolver.stat({ pathComponents: ["data.bin"] })).inodeNumber).toBe(fileNumber);
+    const directoryReadsAfterFirst = readHomeRecord.mock.calls.filter(([argument]) =>
+      referenceIdentity({ reference: argument.reference }) === referenceIdentity({ reference: directoryRoot })
+    ).length;
+    expect(directoryReadsAfterFirst).toBe(1);
+    expect((await resolver.stat({ pathComponents: ["data.bin"] })).inodeNumber).toBe(fileNumber);
+    const directoryReadsAfterSecond = readHomeRecord.mock.calls.filter(([argument]) =>
+      referenceIdentity({ reference: argument.reference }) === referenceIdentity({ reference: directoryRoot })
+    ).length;
+    expect(directoryReadsAfterSecond).toBe(directoryReadsAfterFirst);
+    directoryCache.dispose();
+  });
+
   it("reads an authenticated extent range across File Data payload offsets", async () => {
     const inodeRoot = reference({ kind: KINDS.inode_table_page, offset: 64n });
     const extentRoot = reference({ kind: KINDS.file_extent_page, offset: 320n });
@@ -120,6 +199,7 @@ describe("authenticated read-only HizoFS namespace", () => {
         return { plaintext: Uint8Array.from(record.plaintext), recordKind: record.recordKind };
       },
     };
+    const recordIndexOperation = vi.fn();
     const namespace = createAuthenticatedReadOnlyNamespace({
       commit: createFileSystemCommitPayload({ payload: {
         commitSequence: createCommitSequence({ value: 1n }),
@@ -130,6 +210,7 @@ describe("authenticated read-only HizoFS namespace", () => {
         rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
         rootInodeTableRootHomeRef: inodeRoot,
       } }),
+      indexDiagnostics: { recordIndexOperation },
       recordSource,
     });
 
@@ -138,6 +219,17 @@ describe("authenticated read-only HizoFS namespace", () => {
       offset: 1n,
       pathComponents: ["data.bin"],
     })).toEqual(new Uint8Array([2, 3, 4, 5, 6, 7]));
+    expect(recordIndexOperation.mock.calls.some(([observation]) => observation.operation === "entries_from_floor")).toBe(true);
+
+    recordIndexOperation.mockClear();
+    expect(await namespace.readFile({
+      length: 2n,
+      offset: 1n,
+      pathComponents: ["data.bin"],
+    })).toEqual(new Uint8Array([2, 3]));
+    const extentOperations = recordIndexOperation.mock.calls.map(([observation]) => observation.operation);
+    expect(extentOperations).toContain("seek_floor");
+    expect(extentOperations).not.toContain("entries_from_floor");
   });
 
 

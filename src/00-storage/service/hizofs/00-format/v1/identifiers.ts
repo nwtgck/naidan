@@ -21,9 +21,20 @@ function parseNanoId21({ label, value }: { label: string; value: string }): stri
   return value;
 }
 
-function parseRandomId16<T extends Uint8Array>({ bytes, label }: { bytes: Uint8Array; label: string }): T {
+function validateRandomId16({ bytes, label }: { bytes: Uint8Array; label: string }): void {
   if (bytes.byteLength !== RANDOM_ID_BYTES) throw new RangeError(`${label} must be exactly ${RANDOM_ID_BYTES} bytes`);
-  if (bytes.every(byte => byte === 0)) throw new TypeError(`${label} must not be all-zero`);
+  let hasNonZero = false;
+  for (let index = 0; index < bytes.byteLength; index += 1) {
+    if (bytes[index] !== 0) {
+      hasNonZero = true;
+      break;
+    }
+  }
+  if (!hasNonZero) throw new TypeError(`${label} must not be all-zero`);
+}
+
+function parseRandomId16<T extends Uint8Array>({ bytes, label }: { bytes: Uint8Array; label: string }): T {
+  validateRandomId16({ bytes, label });
   return Uint8Array.from(bytes) as T;
 }
 
@@ -37,6 +48,11 @@ export function parseCredentialSlotId({ value }: { value: string }): CredentialS
 
 export function parseSegmentId({ bytes }: { bytes: Uint8Array }): SegmentId {
   return parseRandomId16<SegmentId>({ bytes, label: 'Segment ID' });
+}
+
+/** Validates an already-owned Segment ID without creating a throwaway copy. */
+export function assertSegmentId({ id }: { id: SegmentId }): void {
+  validateRandomId16({ bytes: id, label: 'Segment ID' });
 }
 
 export function parseMutationId({ bytes }: { bytes: Uint8Array }): MutationId {

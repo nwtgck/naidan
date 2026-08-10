@@ -6,6 +6,7 @@ import {
   decodeRequiredPhysicalRecordReference,
   encodeHomeRecordReference,
   encodePhysicalRecordReference,
+  sameRecordReferenceFields,
 } from '@/00-storage/service/hizofs/00-format/v1/binary/record-reference';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
@@ -34,6 +35,16 @@ describe('HizoFS V1 Record Reference', () => {
     expect(encodePhysicalRecordReference({ reference: physical })).toEqual(expected);
     expect(decodeRequiredHomeRecordReference({ bytes: expected })).toEqual(home);
     expect(decodeRequiredPhysicalRecordReference({ bytes: expected })).toEqual(physical);
+  });
+
+  it('compares validated Record Reference fields without re-encoding', () => {
+    const left = createHomeRecordReference({ fields: fields() });
+    const equal = createPhysicalRecordReference({ fields: fields() });
+    const different = createHomeRecordReference({
+      fields: { ...fields(), byteOffset: createUInt64({ value: 72n }) },
+    });
+    expect(sameRecordReferenceFields({ left, right: equal })).toBe(true);
+    expect(sameRecordReferenceFields({ left, right: different })).toBe(false);
   });
 
   it('rejects all-zero, reserved bytes, unknown kinds, and wrong size', () => {

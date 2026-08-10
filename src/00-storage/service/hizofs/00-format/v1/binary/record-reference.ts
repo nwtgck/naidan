@@ -1,5 +1,5 @@
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
-import { parseSegmentId, type SegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
+import { assertSegmentId, parseSegmentId, type SegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
 import { createUInt64, UINT64_MAXIMUM, type UInt64 } from '@/00-storage/service/hizofs/00-format/v1/scalars';
 import { readU32Be, readU64Be, writeU32Be, writeU64Be } from './scalars';
 
@@ -20,7 +20,7 @@ export type HomeRecordReference = RecordReferenceFields & { readonly [homeRecord
 export type PhysicalRecordReference = RecordReferenceFields & { readonly [physicalRecordReferenceBrand]: true };
 
 function validateFields({ fields }: { fields: RecordReferenceFields }): void {
-  parseSegmentId({ bytes: fields.segmentId });
+  assertSegmentId({ id: fields.segmentId });
   if (fields.byteOffset < 64n || fields.byteOffset % 8n !== 0n) {
     throw new RangeError('Record Reference byte offset must be aligned and after the Segment Header');
   }
@@ -31,6 +31,13 @@ function validateFields({ fields }: { fields: RecordReferenceFields }): void {
     throw new RangeError('Record Reference range exceeds u64');
   }
   if (!KNOWN_RECORD_KINDS.has(fields.recordKind)) throw new TypeError('Record Reference kind is unknown');
+}
+
+function bytesAreAllZero({ bytes }: { bytes: Uint8Array }): boolean {
+  for (let index = 0; index < bytes.byteLength; index += 1) {
+    if (bytes[index] !== 0) return false;
+  }
+  return true;
 }
 
 function encodeReference({ fields }: { fields: RecordReferenceFields }): Uint8Array {
@@ -45,7 +52,7 @@ function encodeReference({ fields }: { fields: RecordReferenceFields }): Uint8Ar
 
 function decodeReference({ bytes }: { bytes: Uint8Array }): RecordReferenceFields {
   if (bytes.byteLength !== SIZE) throw new RangeError(`Record Reference must be exactly ${SIZE} bytes`);
-  if (bytes.every(byte => byte === 0)) throw new TypeError('required Record Reference must not be all-zero');
+  if (bytesAreAllZero({ bytes })) throw new TypeError('required Record Reference must not be all-zero');
   if (bytes[29] !== 0 || bytes[30] !== 0 || bytes[31] !== 0) {
     throw new TypeError('Record Reference flags and reserved bytes must be zero');
   }
@@ -59,6 +66,19 @@ function decodeReference({ bytes }: { bytes: Uint8Array }): RecordReferenceField
   };
   validateFields({ fields });
   return fields;
+}
+
+export function sameRecordReferenceFields({ left, right }: {
+  left: RecordReferenceFields;
+  right: RecordReferenceFields;
+}): boolean {
+  if (left.byteOffset !== right.byteOffset
+    || left.frameLength !== right.frameLength
+    || left.recordKind !== right.recordKind) return false;
+  for (let index = 0; index < left.segmentId.byteLength; index += 1) {
+    if (left.segmentId[index] !== right.segmentId[index]) return false;
+  }
+  return true;
 }
 
 export function encodeHomeRecordReference({ reference }: { reference: HomeRecordReference }): Uint8Array {
@@ -88,12 +108,12 @@ export function encodeOptionalPhysicalRecordReference({ reference }: { reference
 
 export function decodeOptionalHomeRecordReference({ bytes }: { bytes: Uint8Array }): HomeRecordReference | null {
   if (bytes.byteLength !== SIZE) throw new RangeError(`Record Reference must be exactly ${SIZE} bytes`);
-  return bytes.every(byte => byte === 0) ? null : decodeRequiredHomeRecordReference({ bytes });
+  return bytesAreAllZero({ bytes }) ? null : decodeRequiredHomeRecordReference({ bytes });
 }
 
 export function decodeOptionalPhysicalRecordReference({ bytes }: { bytes: Uint8Array }): PhysicalRecordReference | null {
   if (bytes.byteLength !== SIZE) throw new RangeError(`Record Reference must be exactly ${SIZE} bytes`);
-  return bytes.every(byte => byte === 0) ? null : decodeRequiredPhysicalRecordReference({ bytes });
+  return bytesAreAllZero({ bytes }) ? null : decodeRequiredPhysicalRecordReference({ bytes });
 }
 
 export function createHomeRecordReference({ fields }: { fields: RecordReferenceFields }): HomeRecordReference {

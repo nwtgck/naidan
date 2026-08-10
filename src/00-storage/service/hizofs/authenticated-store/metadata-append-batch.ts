@@ -1,12 +1,12 @@
 import {
-  encodeHomeRecordReference,
-  encodePhysicalRecordReference,
+  sameRecordReferenceFields,
 } from "@/00-storage/service/hizofs/00-format";
 import { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
 import {
   AuthenticatedSegmentCapacityError,
   encodedHizoFSRecord,
   type AppendedRecord,
+  type AuthenticatedSegmentAppendPreviewPlanner,
   type AuthenticatedSegmentAppendTarget,
   type AuthenticatedSegmentWriter,
   type EncodedHizoFSRecord,
@@ -22,26 +22,21 @@ export class AuthenticatedMetadataAppendBatchFlushRequiredError extends Error {
   }
 }
 
-function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
-  return left.byteLength === right.byteLength && left.every((value, index) => value === right[index]);
-}
-
 function sameAppendResult({ actual, expected }: {
   actual: AppendedRecord;
   expected: AppendedRecord;
 }): boolean {
-  if (actual.type !== expected.type) return false;
-  if (!bytesEqual({
-    left: encodePhysicalRecordReference({ reference: actual.physicalReference }),
-    right: encodePhysicalRecordReference({ reference: expected.physicalReference }),
-  })) return false;
+  if (actual.type !== expected.type
+    || !sameRecordReferenceFields({ left: actual.physicalReference, right: expected.physicalReference })) return false;
   switch (actual.type) {
   case "physical_only": return expected.type === "physical_only";
   case "home":
-    return expected.type === "home" && bytesEqual({
-      left: encodeHomeRecordReference({ reference: actual.homeReference }),
-      right: encodeHomeRecordReference({ reference: expected.homeReference }),
-    });
+    // WHY: both sides are fully validated Record References. The proof needs
+    // exact field equality, not another serialization round-trip; comparing the
+    // fields directly preserves the proof while avoiding four throwaway buffers
+    // for every Home Record flushed from a metadata batch.
+    return expected.type === "home"
+      && sameRecordReferenceFields({ left: actual.homeReference, right: expected.homeReference });
   default: return actual satisfies never;
   }
 }
@@ -60,10 +55,12 @@ function sameAppendResult({ actual, expected }: {
  */
 export class AuthenticatedMetadataAppendBatch {
   private readonly mutationCache: AuthenticatedMetadataRecordCache;
+  private readonly appendPreviewPlanner: AuthenticatedSegmentAppendPreviewPlanner;
   private readonly sharedCache: AuthenticatedMetadataRecordCache | undefined;
   private readonly target: AuthenticatedSegmentAppendTarget;
   private readonly writer: AuthenticatedSegmentWriter;
   private closed = false;
+  private pendingFrameBytesValue = 0;
   private plannedResults: AppendedRecord[] = [];
   private records: EncodedHizoFSRecord[] = [];
 
@@ -75,6 +72,7 @@ export class AuthenticatedMetadataAppendBatch {
     this.mutationCache = mutationCache;
     this.sharedCache = sharedCache;
     this.writer = writer;
+    this.appendPreviewPlanner = writer.createAppendPreviewPlanner();
     this.target = Object.freeze({
       append: async ({ records }) => await this.stage({ records }),
       encodeRecordPayload: ({ encode }) => this.writer.encodeRecordPayload({ encode }),
@@ -95,7 +93,7 @@ export class AuthenticatedMetadataAppendBatch {
   }
 
   pendingFrameBytes(): number {
-    return this.plannedResults.reduce((total, result) => total + result.physicalReference.frameLength, 0);
+    return this.pendingFrameBytesValue;
   }
 
   private requireOpen(): void {
@@ -115,31 +113,38 @@ export class AuthenticatedMetadataAppendBatch {
       if (this.records.length !== 0 && this.records.length + snapshots.length > MAXIMUM_PENDING_RECORDS) {
         throw new AuthenticatedMetadataAppendBatchFlushRequiredError();
       }
-      let planned: readonly AppendedRecord[];
+      let nextFrameBytes = this.pendingFrameBytesValue;
+      let newlyPlanned: readonly AppendedRecord[];
       try {
-        planned = this.writer.previewAppend({ records: [...this.records, ...snapshots] });
+        newlyPlanned = this.appendPreviewPlanner.previewAppend({
+          acceptPreview: ({ results }) => {
+            if (results.length !== snapshots.length) {
+              throw new Error("metadata append preview result count is inconsistent");
+            }
+            const additionalFrameBytes = results.reduce(
+              (total, result) => total + result.physicalReference.frameLength,
+              0,
+            );
+            const acceptedFrameBytes = this.pendingFrameBytesValue + additionalFrameBytes;
+            if (
+              this.records.length !== 0
+              && acceptedFrameBytes > MAXIMUM_PENDING_FRAME_BYTES
+            ) {
+              throw new AuthenticatedMetadataAppendBatchFlushRequiredError();
+            }
+            nextFrameBytes = acceptedFrameBytes;
+          },
+          records: snapshots,
+        });
       } catch (cause: unknown) {
         if (cause instanceof AuthenticatedSegmentCapacityError && this.records.length !== 0) {
           throw new AuthenticatedMetadataAppendBatchFlushRequiredError({ cause });
         }
         throw cause;
       }
-      const nextFrameBytes = planned.reduce(
-        (total, result) => total + result.physicalReference.frameLength,
-        0,
-      );
-      if (
-        this.records.length !== 0
-        && nextFrameBytes > MAXIMUM_PENDING_FRAME_BYTES
-      ) {
-        throw new AuthenticatedMetadataAppendBatchFlushRequiredError();
-      }
-      const newlyPlanned = planned.slice(this.records.length);
-      if (newlyPlanned.length !== snapshots.length) {
-        throw new Error("metadata append preview result count is inconsistent");
-      }
       this.records.push(...snapshots);
-      this.plannedResults = [...planned];
+      this.plannedResults.push(...newlyPlanned);
+      this.pendingFrameBytesValue = nextFrameBytes;
       for (let index = 0; index < snapshots.length; index += 1) {
         const snapshot = snapshots[index];
         const result = newlyPlanned[index];
@@ -176,6 +181,7 @@ export class AuthenticatedMetadataAppendBatch {
     const expected = this.plannedResults;
     this.records = [];
     this.plannedResults = [];
+    this.pendingFrameBytesValue = 0;
     this.closed = true;
     try {
       let actual: readonly AppendedRecord[];
@@ -233,6 +239,7 @@ export class AuthenticatedMetadataAppendBatch {
     for (const record of this.records) record.plaintext.fill(0);
     this.records = [];
     this.plannedResults = [];
+    this.pendingFrameBytesValue = 0;
   }
 }
 

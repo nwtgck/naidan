@@ -25,6 +25,7 @@ import {
 } from '@/00-storage/service/hizofs/00-format';
 import * as cryptoBoundary from '@/00-storage/service/hizofs/01-crypto';
 import {
+  createRecordEncryptionBatchCapability,
   createUnlockAuthenticatorTag,
   decryptAuthenticatedRecord,
   encryptRecord,
@@ -122,8 +123,18 @@ describe('HizoFS purpose-specific crypto boundary and known-answer vectors', () 
     const plaintext = plaintextRecordBytes({ bytes: hex({ value: String(vector.inputs.recordPlaintextHex) }) });
     const encrypted = await encryptRecord({ completeFrameHeader: frame, fileSystemId, homeSegmentId, nonce, plaintext, rootKey });
     expect(Buffer.from(encrypted).toString('hex')).toBe(vector.expected.recordCiphertextAndTagHex);
+    const batchCapability = await createRecordEncryptionBatchCapability({ fileSystemId, homeSegmentId, rootKey });
+    const batchEncrypted = await batchCapability.encrypt({ completeFrameHeader: frame, nonce, plaintext });
+    expect(Buffer.from(batchEncrypted).toString('hex')).toBe(vector.expected.recordCiphertextAndTagHex);
+    batchCapability.expire();
+    await expect(batchCapability.encrypt({ completeFrameHeader: frame, nonce, plaintext })).rejects.toThrow('expired');
     await expect(decryptAuthenticatedRecord({ ciphertext: encrypted, completeFrameHeader: Uint8Array.from(frame, value => value ^ 1), fileSystemId, homeSegmentId, nonce, rootKey })).rejects.toThrow();
     await expect(decryptAuthenticatedRecord({ ciphertext: encrypted, completeFrameHeader: frame, fileSystemId, homeSegmentId, nonce, rootKey })).resolves.toEqual(plaintext);
+
+    const destroyedRootCapability = await createRecordEncryptionBatchCapability({ fileSystemId, homeSegmentId, rootKey });
+    rootKey.destroy();
+    await expect(destroyedRootCapability.encrypt({ completeFrameHeader: frame, nonce, plaintext })).rejects.toThrow('destroyed');
+    destroyedRootCapability.expire();
   });
 
   it('matches credential wrapping and Unlock Authenticator vectors', async () => {

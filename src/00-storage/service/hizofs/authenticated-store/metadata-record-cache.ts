@@ -29,7 +29,11 @@ function validateBound({ name, value }: { name: string; value: number }): void {
 }
 
 function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
-  return left.byteLength === right.byteLength && left.every((value, index) => value === right[index]);
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
 }
 
 function referenceIdentity({ reference }: { reference: HomeRecordReference }): string {
