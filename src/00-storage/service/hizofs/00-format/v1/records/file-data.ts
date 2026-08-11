@@ -4,19 +4,19 @@ export type FileDataPayload = Readonly<{
   bytes: Uint8Array;
 }>;
 
-function validateBytes({ bytes }: { bytes: Uint8Array }): void {
+export function assertFileDataPayloadBytesValid({ bytes }: { bytes: Uint8Array }): void {
   if (bytes.byteLength < 1 || bytes.byteLength > HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes) {
     throw new RangeError('File Data payload must contain 1..1,048,576 bytes');
   }
 }
 
 export function encodeFileDataPayload({ payload }: { payload: FileDataPayload }): Uint8Array {
-  validateBytes({ bytes: payload.bytes });
+  assertFileDataPayloadBytesValid({ bytes: payload.bytes });
   return Uint8Array.from(payload.bytes);
 }
 
 export function decodeFileDataPayload({ bytes }: { bytes: Uint8Array }): FileDataPayload {
-  validateBytes({ bytes });
+  assertFileDataPayloadBytesValid({ bytes });
   return { bytes: Uint8Array.from(bytes) };
 }
 

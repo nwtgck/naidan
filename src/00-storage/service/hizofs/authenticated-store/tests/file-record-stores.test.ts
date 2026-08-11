@@ -41,7 +41,13 @@ describe("authenticated file record stores", () => {
       rootKey,
       segmentClass: "data",
     });
-    const homeReference = await appendAuthenticatedFileData({ bytes: Uint8Array.of(1, 2, 3), writer });
+    const input = Uint8Array.of(1, 2, 3);
+    const append = appendAuthenticatedFileData({ bytes: input, writer });
+    // appendAuthenticatedFileData must synchronously establish Record ownership
+    // before its first asynchronous boundary, even though File Data encoding is
+    // an identity mapping over the validated payload bytes.
+    input.fill(9);
+    const homeReference = await append;
     writer.abandon();
 
     const result = await readAuthenticatedFileData({

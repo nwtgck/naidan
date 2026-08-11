@@ -330,7 +330,7 @@ describe('HizoFS benchmark engine', () => {
         decodedInodeIndexPageCacheEntryLimitPerRuntime: 128,
         inodeIndexLeafEntryLimitPerRuntime: 32,
         directoryIndexLeafEntryLimitPerRuntime: 64,
-        fileExtentIndexLeafEntryLimitPerRuntime: 64,
+        fileExtentIndexLeafEntryLimitPerRuntime: 32,
         fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024 + 64 * 1024,
         fileChunkCacheEntryLimitPerRuntime: 2048,
         fileChunkCacheAdmission: 'read',

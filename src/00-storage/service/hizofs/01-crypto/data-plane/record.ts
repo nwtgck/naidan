@@ -5,10 +5,9 @@ import {
   type SegmentId,
 } from '@/00-storage/service/hizofs/00-format';
 import { deriveRecordKey } from '@/00-storage/service/hizofs/01-crypto/key-application/derived-keys';
-import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm';
+import { decryptAesGcm, encryptAesGcmOwnedRecord } from '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm';
 import type { FileSystemRootKey } from '@/00-storage/service/hizofs/01-crypto/secret-types';
 import {
-  authenticatedRecordBytes,
   plaintextRecordBytes,
   type AuthenticatedRecordBytes,
   type PlaintextRecordBytes,
@@ -52,13 +51,11 @@ export async function createRecordEncryptionBatchCapability({ fileSystemId, home
       const activeKey = key;
       if (activeKey === undefined) throw new TypeError('Record encryption batch capability has expired');
       if (rootKey.isDestroyed()) throw new TypeError('File System Root Key has been destroyed');
-      return authenticatedRecordBytes({
-        bytes: await encryptAesGcm({
-          aad: encodeRecordAad({ completeFrameHeader, fileSystemId }),
-          key: activeKey,
-          nonce,
-          plaintext,
-        }),
+      return await encryptAesGcmOwnedRecord({
+        aad: encodeRecordAad({ completeFrameHeader, fileSystemId }),
+        key: activeKey,
+        nonce,
+        plaintext,
       });
     },
     expire: () => {

@@ -11,7 +11,7 @@ import {
   readAuthenticatedHomeRecord,
   readAuthenticatedPhysicalRecord,
 } from "@/00-storage/service/hizofs/authenticated-store/record-reader";
-import { createAuthenticatedSegmentWriter, encodedHizoFSRecord } from "@/00-storage/service/hizofs/authenticated-store/record-appender";
+import { createAuthenticatedSegmentWriter, encodedHizoFSRecord, TEST_ONLY as RECORD_APPENDER_TEST_ONLY } from "@/00-storage/service/hizofs/authenticated-store/record-appender";
 import { readAuthenticatedSegmentIndex } from "@/00-storage/service/hizofs/authenticated-store/segment-footer-store";
 import type {
   AuthenticatedCryptoDiagnosticsObservation,
@@ -192,6 +192,24 @@ function fixture({ faultInjector }: { faultInjector?: DeterministicPhysicalStore
 }
 
 describe("authenticated record appender", () => {
+  it("compares durable read-back bytes exactly across word, tail, and misaligned boundaries", () => {
+    const aligned = Uint8Array.from({ length: 13 }, (_, index) => index + 1);
+    expect(RECORD_APPENDER_TEST_ONLY.bytesEqual({ left: aligned, right: Uint8Array.from(aligned) })).toBe(true);
+
+    const wordMismatch = Uint8Array.from(aligned);
+    wordMismatch[4] = (wordMismatch[4] ?? 0) ^ 0xff;
+    expect(RECORD_APPENDER_TEST_ONLY.bytesEqual({ left: aligned, right: wordMismatch })).toBe(false);
+
+    const tailMismatch = Uint8Array.from(aligned);
+    tailMismatch[12] = (tailMismatch[12] ?? 0) ^ 0xff;
+    expect(RECORD_APPENDER_TEST_ONLY.bytesEqual({ left: aligned, right: tailMismatch })).toBe(false);
+
+    const misalignedBacking = Uint8Array.from([99, ...aligned, 100]);
+    const misaligned = misalignedBacking.subarray(1, 1 + aligned.byteLength);
+    expect(RECORD_APPENDER_TEST_ONLY.bytesEqual({ left: misaligned, right: aligned })).toBe(true);
+    misaligned[7] = (misaligned[7] ?? 0) ^ 0xff;
+    expect(RECORD_APPENDER_TEST_ONLY.bytesEqual({ left: misaligned, right: aligned })).toBe(false);
+  });
   it("subtracts the same-class preflight probe and lets exclusive creation claim the target path", async () => {
     const backend = new PhysicalAccessRecordingBackend({});
     const randomSource = deterministicRandomSource();

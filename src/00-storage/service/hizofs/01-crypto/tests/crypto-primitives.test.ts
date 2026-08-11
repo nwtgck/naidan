@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createPublicationSequence, encodeCryptoContext, parseCredentialSlotId, parseFileSystemId, parseSegmentId, type PublicationSequence } from '@/00-storage/service/hizofs/00-format';
 import { deriveRecordKey, deriveSuperblockKey } from '@/00-storage/service/hizofs/01-crypto/key-application/derived-keys';
-import { decryptAesGcm, encryptAesGcm } from '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm';
+import { decryptAesGcm, encryptAesGcm, encryptAesGcmOwnedRecord } from '@/00-storage/service/hizofs/01-crypto/primitives/aes-gcm';
 import { deriveCredentialWrappingKey } from '@/00-storage/service/hizofs/01-crypto/primitives/pbkdf2';
 import { generateFileSystemRootKey, generateNonce, generateUniqueRandomBytes } from '@/00-storage/service/hizofs/01-crypto/random/random-bytes';
 import { FileSystemRootKey } from '@/00-storage/service/hizofs/01-crypto/secret-types';
+import { plaintextRecordBytes, recordNonce } from '@/00-storage/service/hizofs/01-crypto/types';
 import {
   HizoFSCryptoAuthenticationError,
   throwNormalizedHizoFSCryptoFailure,
@@ -69,6 +70,34 @@ describe('HizoFS crypto primitives', () => {
       publicationSequence: createPublicationSequence({ value: 1n }),
       rootKey,
     })).rejects.toThrow('destroyed');
+  });
+
+  it('passes append-owned Record crypto inputs to Web Crypto without another JavaScript snapshot', async () => {
+    const rootKey = FileSystemRootKey.create({ bytes: new Uint8Array(32).fill(9) });
+    const key = await deriveRecordKey({
+      fileSystemId: parseFileSystemId({ value: 'abcdefghijklmnopqrstu' }),
+      homeSegmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(4) }),
+      rootKey,
+    });
+    const aad = Uint8Array.of(1, 2, 3, 4);
+    const nonce = recordNonce({ bytes: new Uint8Array(12).fill(5) });
+    const plaintext = plaintextRecordBytes({ bytes: Uint8Array.of(6, 7, 8, 9) });
+    const encryptedBuffer = new ArrayBuffer(plaintext.byteLength + 16);
+    const encryptSpy = vi.spyOn(globalThis.crypto.subtle, 'encrypt').mockResolvedValue(encryptedBuffer);
+    try {
+      const result = await encryptAesGcmOwnedRecord({ aad, key, nonce, plaintext });
+      expect(encryptSpy).toHaveBeenCalledTimes(1);
+      const [algorithm, observedKey, observedPlaintext] = encryptSpy.mock.calls[0]!;
+      expect(observedKey).toBe(key);
+      expect(observedPlaintext).toBe(plaintext);
+      expect((algorithm as AesGcmParams).additionalData).toBe(aad);
+      expect((algorithm as AesGcmParams).iv).toBe(nonce);
+      expect(result.buffer).toBe(encryptedBuffer);
+    } finally {
+      encryptSpy.mockRestore();
+      plaintext.fill(0);
+      rootKey.destroy();
+    }
   });
 
   it('preserves non-authentication infrastructure failures and their identity', () => {

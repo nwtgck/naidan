@@ -1,7 +1,7 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
+  assertFileDataPayloadBytesValid,
   decodeFileDataPayload,
-  encodeFileDataPayload,
   type FileSystemId,
   type HomeRecordReference,
   type PhysicalRecordReference,
@@ -68,7 +68,13 @@ export async function appendAuthenticatedFileData({ bytes, writer }: {
   default: return writer.segmentClass satisfies never;
   }
   const appended = await writer.appendCallerOwnedRecord({
-    plaintext: writer.encodeRecordPayload({ encode: () => encodeFileDataPayload({ payload: { bytes } }) }),
+    plaintext: writer.encodeRecordPayload({ encode: () => {
+      // File Data V1 encoding is the exact payload bytes. Validate inside the
+      // codec measurement, then let append take its synchronous ownership
+      // snapshot instead of copying once here and immediately copying again.
+      assertFileDataPayloadBytesValid({ bytes });
+      return bytes;
+    } }),
     recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data,
   });
   switch (appended.type) {

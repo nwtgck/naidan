@@ -139,6 +139,26 @@ export function encodedHizoFSRecord({ plaintext, recordKind }: {
 
 function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
   if (left.byteLength !== right.byteLength) return false;
+
+  // Durable append read-back commonly compares hundreds of KiB. Compare whole
+  // aligned words without changing the exact byte proof, then handle any tail.
+  // Misaligned views retain the bytewise path instead of creating a copied view.
+  const wordSize = Uint32Array.BYTES_PER_ELEMENT;
+  if ((left.byteOffset % wordSize) === 0 && (right.byteOffset % wordSize) === 0) {
+    const wordCount = Math.floor(left.byteLength / wordSize);
+    if (wordCount > 0) {
+      const leftWords = new Uint32Array(left.buffer, left.byteOffset, wordCount);
+      const rightWords = new Uint32Array(right.buffer, right.byteOffset, wordCount);
+      for (let index = 0; index < wordCount; index += 1) {
+        if (leftWords[index] !== rightWords[index]) return false;
+      }
+      for (let index = wordCount * wordSize; index < left.byteLength; index += 1) {
+        if (left[index] !== right[index]) return false;
+      }
+      return true;
+    }
+  }
+
   for (let index = 0; index < left.byteLength; index += 1) {
     if (left[index] !== right[index]) return false;
   }
@@ -1010,4 +1030,5 @@ export async function createReusableAuthenticatedSegmentWriter({
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  bytesEqual,
 };
