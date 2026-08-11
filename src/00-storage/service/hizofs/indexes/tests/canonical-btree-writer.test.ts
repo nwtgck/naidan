@@ -36,9 +36,10 @@ function entrySize({ entry }: { entry: Entry }): number {
   return 4 + entry.payload.length;
 }
 
-function setup({ maximumPageByteLength = 24, maximumLeafEntryCount }: {
+function setup({ maximumPageByteLength = 24, maximumLeafEntryCount, maximumRootLeafEntryCount }: {
   maximumPageByteLength?: number;
   maximumLeafEntryCount?: number;
+  maximumRootLeafEntryCount?: number;
 } = {}) {
   const store = new MemoryPageStore();
   const writer = new CanonicalBTreeWriter<number, Entry, string>({
@@ -49,6 +50,7 @@ function setup({ maximumPageByteLength = 24, maximumLeafEntryCount }: {
     getEntryKey: ({ entry }) => entry.key,
     maximumPageByteLength,
     ...(maximumLeafEntryCount === undefined ? {} : { maximumLeafEntryCount }),
+    ...(maximumRootLeafEntryCount === undefined ? {} : { maximumRootLeafEntryCount }),
     pageStore: store,
   });
   const reader = new ImmutableBTreeReader<number, Entry, string>({
@@ -115,6 +117,52 @@ describe("canonical immutable B-tree writer", () => {
     if (rootPage.type !== "branch") throw new Error("expected high-fanout branch root");
     expect(rootPage.level).toBe(1);
     expect(rootPage.children.length).toBeGreaterThan(3);
+  });
+
+  it("keeps a larger root leaf but uses the smaller child limit after branching", async () => {
+    const { reader, store, writer } = setup({
+      maximumLeafEntryCount: 3,
+      maximumPageByteLength: 1_024,
+      maximumRootLeafEntryCount: 6,
+    });
+    let root = await writer.createEmpty();
+    root = await writer.applyChanges({
+      changes: Array.from({ length: 6 }, (_, key): ImmutableBTreeMutation<number, Entry> => ({
+        entry: { key, payload: "x" },
+        type: "set",
+      })),
+      rootReference: root,
+    });
+    const sixEntryRoot = await store.readPage({ isRoot: true, reference: root });
+    expect(sixEntryRoot).toMatchObject({ level: 0, type: "leaf" });
+    if (sixEntryRoot.type !== "leaf") throw new Error("expected root leaf below explicit root limit");
+    expect(sixEntryRoot.entries).toHaveLength(6);
+
+    store.writes.length = 0;
+    root = await writer.applyChanges({
+      changes: [{ entry: { key: 6, payload: "x" }, type: "set" }],
+      rootReference: root,
+    });
+    expect(await collect({ reader, rootReference: root })).toHaveLength(7);
+    const splitRoot = await store.readPage({ isRoot: true, reference: root });
+    expect(splitRoot).toMatchObject({ level: 1, type: "branch" });
+    const nonRootLeaves = store.writes.filter(({ isRoot, page }) => !isRoot && page.type === "leaf");
+    expect(nonRootLeaves.length).toBeGreaterThan(1);
+    expect(nonRootLeaves.every(({ page }) => page.type === "leaf" && page.entries.length <= 3)).toBe(true);
+  });
+
+  it("rejects a root-leaf limit smaller than the child-leaf limit", () => {
+    const store = new MemoryPageStore();
+    expect(() => new CanonicalBTreeWriter<number, Entry, string>({
+      compareKeys: ({ left, right }) => left - right,
+      encodedBranchChildByteLength: () => 8,
+      encodedLeafEntryByteLength: entrySize,
+      getEntryKey: ({ entry }) => entry.key,
+      maximumLeafEntryCount: 4,
+      maximumPageByteLength: 1_024,
+      maximumRootLeafEntryCount: 3,
+      pageStore: store,
+    })).toThrow("no smaller than the leaf limit");
   });
 
   it("rejects a non-positive leaf entry packing limit", () => {

@@ -63,12 +63,6 @@ import { tryCreateAuthenticatedWholeFile } from "./whole-file";
 const activeSegmentWriterCapabilityBrand: unique symbol = Symbol("active-segment-writer-capability");
 declare const encodedRecordBrand: unique symbol;
 
-// Keep crypto overlap explicit and small. Record batches are already bounded by
-// Segment limits, but Web Crypto jobs can retain plaintext/ciphertext while in
-// flight. Four workers overlap scheduler latency without turning a large valid
-// metadata batch into unbounded concurrent secret-bearing work.
-const RECORD_ENCRYPTION_CONCURRENCY_LIMIT = 4;
-
 export type ActiveSegmentWriterCapability = Readonly<{
   backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
   diagnostics?: AuthenticatedStoreDiagnosticsPort;
@@ -693,207 +687,90 @@ export class AuthenticatedSegmentWriter {
         };
       });
 
-      type PreparedFrame = {
-        header: RecordFrameHeaderV1;
-        headerBytes: Uint8Array;
-        nonce: RecordNonce;
-        physicalOffset: bigint;
-        plaintext: ReturnType<typeof plaintextRecordBytes>;
-        result: AppendedRecord;
-      };
-      type EncryptedFrame = {
+      const batchNonceKeys = new Set<string>();
+      const frames: Array<{
         ciphertext: Uint8Array;
         header: RecordFrameHeaderV1;
         headerBytes: Uint8Array;
         physicalOffset: bigint;
         result: AppendedRecord;
-      };
-
-      const batchNonceKeys = new Set<string>();
-      let nextOffset = this.nextOffset;
-      const prepareFrame = ({ physicalOffset, record }: {
-        physicalOffset: bigint;
-        record: (typeof recordSnapshots)[number];
-      }): Readonly<{ frame: PreparedFrame; nextOffset: bigint }> => {
-        const nonce = freshRecordNonce({
-          batchNonceKeys,
-          randomSource: this.randomSource,
-          usedNonceKeys: this.usedNonceKeys,
-        });
-        batchNonceKeys.add(nonceKey({ nonce }));
-        const physicalOnly = record.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page;
-        const header = createRecordFrameHeader({
-          flags: physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0,
-          homeOffset: createUInt64({ value: physicalOffset }),
-          homeSegmentId: this.segmentId,
-          nonce,
-          plaintextLength: record.plaintext.byteLength,
-          recordKind: record.recordKind,
-        });
-        const end = physicalOffset + BigInt(header.frameLength);
-        const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
-        if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.segmentClassValue }))) {
-          throw new AuthenticatedSegmentCapacityError({
-            capacity: "record_area",
-            message: "record append batch exceeds the segment record-area bound",
-          });
-        }
-        const headerBytes = encodeRecordFrameHeader({ header });
-        const physicalReference = createPhysicalRecordReference({ fields: {
-          byteOffset: header.homeOffset,
-          frameLength: header.frameLength,
-          recordKind: header.recordKind,
-          segmentId: this.segmentId,
-        } });
-        const result: AppendedRecord = physicalOnly
-          ? { physicalReference, type: "physical_only" }
-          : {
-            homeReference: createHomeRecordReference({ fields: {
-              byteOffset: header.homeOffset,
-              frameLength: header.frameLength,
-              recordKind: header.recordKind,
-              segmentId: this.segmentId,
-            } }),
-            physicalReference,
-            type: "home",
-          };
-        return {
-          frame: {
-            header,
-            headerBytes,
-            nonce,
-            physicalOffset,
-            plaintext: record.plaintext,
-            result,
-          },
-          nextOffset: end,
-        };
-      };
-
-      const encryptedFrames: Array<EncryptedFrame | undefined> = new Array(recordSnapshots.length);
+      }> = [];
       let encryptionCapability: Awaited<ReturnType<typeof createRecordEncryptionBatchCapability>> | undefined;
+      let nextOffset = this.nextOffset;
       try {
-        const firstRecord = recordSnapshots[0];
-        if (firstRecord === undefined) throw new Error("record append preparation produced no records");
-        const firstPreparation = prepareFrame({ physicalOffset: nextOffset, record: firstRecord });
-        nextOffset = firstPreparation.nextOffset;
-        const firstPrepared = firstPreparation.frame;
-        const firstCiphertext = await measureAuthenticatedCryptoOperation({
-          diagnostics: this.diagnostics,
-          operation: "encrypt",
-          run: async () => {
-            // Keep key derivation inside the first encrypt measurement so a
-            // lower phase duration reflects real work removed, not timer drift.
-            const capability = encryptionCapability ??= await createRecordEncryptionBatchCapability({
-              fileSystemId: this.fileSystemId,
-              homeSegmentId: this.segmentId,
-              rootKey: this.rootKey,
+        for (const record of recordSnapshots) {
+          const nonce = freshRecordNonce({
+            batchNonceKeys,
+            randomSource: this.randomSource,
+            usedNonceKeys: this.usedNonceKeys,
+          });
+          batchNonceKeys.add(nonceKey({ nonce }));
+          const physicalOnly = record.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page;
+          const header = createRecordFrameHeader({
+            flags: physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0,
+            homeOffset: createUInt64({ value: nextOffset }),
+            homeSegmentId: this.segmentId,
+            nonce,
+            plaintextLength: record.plaintext.byteLength,
+            recordKind: record.recordKind,
+          });
+          const end = nextOffset + BigInt(header.frameLength);
+          const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
+          if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.segmentClassValue }))) {
+            throw new AuthenticatedSegmentCapacityError({
+              capacity: "record_area",
+              message: "record append batch exceeds the segment record-area bound",
             });
-            return await capability.encrypt({
-              completeFrameHeader: firstPrepared.headerBytes,
-              nonce: firstPrepared.nonce,
-              plaintext: firstPrepared.plaintext,
-            });
-          },
-        });
-        encryptedFrames[0] = {
-          ciphertext: firstCiphertext,
-          header: firstPrepared.header,
-          headerBytes: firstPrepared.headerBytes,
-          physicalOffset: firstPrepared.physicalOffset,
-          result: firstPrepared.result,
-        };
-
-        // WHY: keep the first Record on the historical serial failure path, then
-        // overlap only bounded groups of later independent AES-GCM operations.
-        // Canonical nonce/header preparation remains ordered. If preparation and
-        // encryption both fail within a group, report the earliest Record index
-        // after every in-flight operation settles; no worker performs physical I/O.
-        let nextRecordIndex = 1;
-        while (nextRecordIndex < recordSnapshots.length) {
-          const group: Array<{ index: number; prepared: PreparedFrame }> = [];
-          let preparationFailure: { cause: unknown; index: number } | undefined;
-          for (
-            let count = 0;
-            count < RECORD_ENCRYPTION_CONCURRENCY_LIMIT && nextRecordIndex < recordSnapshots.length;
-            count += 1
-          ) {
-            const index = nextRecordIndex;
-            const record = recordSnapshots[index];
-            if (record === undefined) throw new Error("record append preparation index invariant failed");
-            try {
-              const preparation = prepareFrame({ physicalOffset: nextOffset, record });
-              nextOffset = preparation.nextOffset;
-              group.push({ index, prepared: preparation.frame });
-              nextRecordIndex += 1;
-            } catch (cause: unknown) {
-              preparationFailure = { cause, index };
-              break;
-            }
           }
-
-          const capability = encryptionCapability;
-          if (capability === undefined) throw new Error("record encryption batch capability is unavailable");
-          const results = await Promise.all(group.map(async ({ index, prepared }) => {
-            try {
-              const ciphertext = await measureAuthenticatedCryptoOperation({
-                diagnostics: this.diagnostics,
-                operation: "encrypt",
-                run: async () => await capability.encrypt({
-                  completeFrameHeader: prepared.headerBytes,
-                  nonce: prepared.nonce,
-                  plaintext: prepared.plaintext,
-                }),
+          const headerBytes = encodeRecordFrameHeader({ header });
+          const ciphertext = await measureAuthenticatedCryptoOperation({
+            diagnostics: this.diagnostics,
+            operation: "encrypt",
+            run: async () => {
+              // Keep key derivation inside the existing encrypt measurement so a
+              // lower phase duration reflects real work removed, not timer drift.
+              const capability = encryptionCapability ??= await createRecordEncryptionBatchCapability({
+                fileSystemId: this.fileSystemId,
+                homeSegmentId: this.segmentId,
+                rootKey: this.rootKey,
               });
-              return {
-                frame: {
-                  ciphertext,
-                  header: prepared.header,
-                  headerBytes: prepared.headerBytes,
-                  physicalOffset: prepared.physicalOffset,
-                  result: prepared.result,
-                } satisfies EncryptedFrame,
-                index,
-                type: "success" as const,
-              };
-            } catch (cause: unknown) {
-              return { cause, index, type: "failure" as const };
-            }
-          }));
-
-          const failures: Array<{ cause: unknown; index: number }> = [];
-          if (preparationFailure !== undefined) failures.push(preparationFailure);
-          for (const result of results) {
-            switch (result.type) {
-            case "success":
-              encryptedFrames[result.index] = result.frame;
-              break;
-            case "failure":
-              failures.push({ cause: result.cause, index: result.index });
-              break;
-            default:
-              return result satisfies never;
-            }
-          }
-          if (failures.length > 0) {
-            failures.sort((left, right) => left.index - right.index);
-            throw failures[0]?.cause ?? new Error("record encryption group failed without a cause");
-          }
+              return await capability.encrypt({
+                completeFrameHeader: headerBytes,
+                nonce,
+                plaintext: record.plaintext,
+              });
+            },
+          });
+          const physicalReference = createPhysicalRecordReference({ fields: {
+            byteOffset: header.homeOffset,
+            frameLength: header.frameLength,
+            recordKind: header.recordKind,
+            segmentId: this.segmentId,
+          } });
+          const result: AppendedRecord = physicalOnly
+            ? { physicalReference, type: "physical_only" }
+            : {
+              homeReference: createHomeRecordReference({ fields: {
+                byteOffset: header.homeOffset,
+                frameLength: header.frameLength,
+                recordKind: header.recordKind,
+                segmentId: this.segmentId,
+              } }),
+              physicalReference,
+              type: "home",
+            };
+          frames.push({ ciphertext, header, headerBytes, physicalOffset: nextOffset, result });
+          nextOffset = end;
         }
       } finally {
         // Web Crypto keys cannot be explicitly zeroized. Drop the only batch
         // reference before backend I/O so lifetime is no longer than needed.
         encryptionCapability?.expire();
-        // All validation, nonce preparation, and encryption are inside this
-        // try/finally so every append-owned snapshot is cleared even when a
-        // later Record fails before encryption begins.
+        // The append-owned plaintext snapshots are no longer needed once frame
+        // encryption preparation completes. Clear them before physical I/O so
+        // reducing copies also shortens, rather than extends, secret lifetime.
         for (const record of recordSnapshots) record.plaintext.fill(0);
       }
-
-      const frames = encryptedFrames.map(frame => {
-        if (frame === undefined) throw new Error("record encryption result is incomplete");
-        return frame;
-      });
 
       const batchLength = frames.reduce((total, frame) => total + frame.header.frameLength, 0);
       const batch = allocateAuthenticatedHizoFSPhysicalBytes({ byteLength: batchLength });

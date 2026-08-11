@@ -140,6 +140,7 @@ function createWriter({ pageStore }: {
     entriesEqual,
     getEntryKey: ({ entry }) => entry.fileOffset,
     maximumLeafEntryCount: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.fileExtent,
+    maximumRootLeafEntryCount: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.fileExtentRootLeaf,
     pageStore,
   });
 }

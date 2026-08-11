@@ -1,6 +1,7 @@
 export type HizoFSIndexLeafEntryLimits = Readonly<{
   directory: number;
   fileExtent: number;
+  fileExtentRootLeaf: number;
   rootInodeTable: number;
 }>;
 
@@ -13,7 +14,8 @@ export type HizoFSIndexLeafEntryLimits = Readonly<{
  */
 export const DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS: HizoFSIndexLeafEntryLimits = Object.freeze({
   directory: 64,
-  fileExtent: 64,
+  fileExtent: 32,
+  fileExtentRootLeaf: 64,
   rootInodeTable: 32,
 });
 

@@ -49,6 +49,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
   private readonly getEntryKey: GetImmutableBTreeEntryKey<TKey, TEntry>;
   private readonly maximumPageByteLength: number;
   private readonly maximumLeafEntryCount: number;
+  private readonly maximumRootLeafEntryCount: number;
   private readonly pageStore: ImmutableBTreePageStore<TKey, TEntry, TReference>;
 
   constructor({
@@ -59,6 +60,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     getEntryKey,
     maximumPageByteLength = DEFAULT_MAXIMUM_PAGE_BYTE_LENGTH,
     maximumLeafEntryCount = Number.MAX_SAFE_INTEGER,
+    maximumRootLeafEntryCount = maximumLeafEntryCount,
     pageStore,
   }: {
     compareKeys: CompareImmutableBTreeKeys<TKey>;
@@ -68,6 +70,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     getEntryKey: GetImmutableBTreeEntryKey<TKey, TEntry>;
     maximumPageByteLength?: number;
     maximumLeafEntryCount?: number;
+    maximumRootLeafEntryCount?: number;
     pageStore: ImmutableBTreePageStore<TKey, TEntry, TReference>;
   }) {
     if (!Number.isSafeInteger(maximumPageByteLength) || maximumPageByteLength < 1) {
@@ -76,6 +79,9 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     if (!Number.isSafeInteger(maximumLeafEntryCount) || maximumLeafEntryCount < 1) {
       throw new RangeError("B-tree maximum leaf entry count must be a positive safe integer");
     }
+    if (!Number.isSafeInteger(maximumRootLeafEntryCount) || maximumRootLeafEntryCount < maximumLeafEntryCount) {
+      throw new RangeError("B-tree maximum root-leaf entry count must be a safe integer no smaller than the leaf limit");
+    }
     this.compareKeys = compareKeys;
     this.encodedBranchChildByteLength = encodedBranchChildByteLength;
     this.encodedLeafEntryByteLength = encodedLeafEntryByteLength;
@@ -83,6 +89,7 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     this.getEntryKey = getEntryKey;
     this.maximumPageByteLength = maximumPageByteLength;
     this.maximumLeafEntryCount = maximumLeafEntryCount;
+    this.maximumRootLeafEntryCount = maximumRootLeafEntryCount;
     this.pageStore = pageStore;
   }
 
@@ -181,11 +188,22 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     isRootWhenSingleGroup: boolean;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<readonly ReferenceSummary<TKey, TReference>[]> {
-    const groups = this.splitItems({
+    const splitWithLimit = ({ maximumItemCount }: { maximumItemCount: number }) => this.splitItems({
       itemByteLength: ({ item }) => this.encodedLeafEntryByteLength({ entry: item }),
       items: entries,
-      maximumItemCount: this.maximumLeafEntryCount,
+      maximumItemCount,
     });
+    // WHY: a root leaf has no parent page to rewrite. Some index owners can
+    // therefore keep a larger single-page root while using smaller leaves once
+    // the tree branches. If the root no longer fits its explicit root limit,
+    // re-split using the ordinary child-leaf limit so no non-root leaf exceeds
+    // the owner's bounded Copy-on-Write packing policy.
+    const rootGroups = isRootWhenSingleGroup && this.maximumRootLeafEntryCount !== this.maximumLeafEntryCount
+      ? splitWithLimit({ maximumItemCount: this.maximumRootLeafEntryCount })
+      : undefined;
+    const groups = rootGroups !== undefined && rootGroups.length === 1
+      ? rootGroups
+      : splitWithLimit({ maximumItemCount: this.maximumLeafEntryCount });
     if (structural !== undefined && groups.length > 1) {
       structural.splitOperations += 1;
       structural.splitOutputPages += groups.length;
