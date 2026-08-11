@@ -16,6 +16,7 @@ import type { ImmutableBTreeDiagnosticsObservation } from "@/00-storage/service/
 import {
   prepareFileTruncateMutation,
   prepareFileWriteMutation,
+  prepareFileWriteMutationWithAppendTailWitness,
   type FileContentMutationPort,
 } from "@/00-storage/service/hizofs/filesystem/file/file-content-mutation";
 import { prepareFileTruncatePlan } from "@/00-storage/service/hizofs/filesystem/file/file-truncate-plan";
@@ -52,12 +53,14 @@ class MemoryPagePort {
     },
   };
   readonly pages = new Map<string, FileExtentPage>();
+  readCount = 0;
   private nextOffset = 10_000n;
 
   async readPage({ reference: value }: {
     isRoot: boolean;
     reference: HomeRecordReference;
   }): Promise<FileExtentPage> {
+    this.readCount += 1;
     const page = this.pages.get(identity({ value }));
     if (page === undefined) throw new Error("missing File Extent page");
     return page;
@@ -299,6 +302,85 @@ describe("file content mutation", () => {
     const sparseWriteOffset = BigInt(HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes) + 10n;
     expect(result.map(entry => [entry.fileOffset, entry.byteLength])).toEqual([[0n, 3], [sparseWriteOffset, 2]]);
     expect(inode.fileSize).toBe(sparseWriteOffset + 2n);
+  });
+
+  it("reuses only a mutation-owned append-tail witness to skip the redundant overlap scan", async () => {
+    const memory = new MemoryContentPort();
+    const inlineLimit = HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes;
+    const source = fileInode({ content: { bytes: new Uint8Array(), type: "inline" } });
+    const firstPlan = prepareFileWritePlan({
+      bytes: new Uint8Array(inlineLimit + 1).fill(3),
+      operationTimestamp,
+      position: createFileOffset({ value: 0n }),
+      source,
+    });
+    if (firstPlan === null) throw new Error("expected first write plan");
+    const first = await prepareFileWriteMutationWithAppendTailWitness({
+      appendTailWitness: undefined,
+      limits: { maximumExtentMutationsPerBatch: 128 },
+      plan: firstPlan,
+      port: memory.port,
+      source,
+    });
+    expect(first.appendTailWitness).toBeDefined();
+    if (first.inode.content.type !== "tree") throw new Error("expected extent-backed inode");
+
+    memory.pagePort.readCount = 0;
+    const secondPlan = prepareFileWritePlan({
+      bytes: new Uint8Array(7).fill(4),
+      operationTimestamp,
+      position: first.inode.fileSize,
+      source: first.inode,
+    });
+    if (secondPlan === null) throw new Error("expected second write plan");
+    const second = await prepareFileWriteMutationWithAppendTailWitness({
+      appendTailWitness: first.appendTailWitness,
+      limits: { maximumExtentMutationsPerBatch: 128 },
+      plan: secondPlan,
+      port: memory.port,
+      source: first.inode,
+    });
+
+    // One authenticated B+tree read remains for the actual immutable update.
+    // The general overlap scan would read the same root once more.
+    expect(memory.pagePort.readCount).toBe(1);
+    expect(second.appendTailWitness).toBeDefined();
+    expect(second.inode.fileSize).toBe(first.inode.fileSize + 7n);
+  });
+
+  it("drops the append-tail witness before a non-tail overwrite", async () => {
+    const memory = new MemoryContentPort();
+    const inlineLimit = HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes;
+    const source = fileInode({ content: { bytes: new Uint8Array(), type: "inline" } });
+    const firstPlan = prepareFileWritePlan({
+      bytes: new Uint8Array(inlineLimit + 1).fill(3),
+      operationTimestamp,
+      position: createFileOffset({ value: 0n }),
+      source,
+    });
+    if (firstPlan === null) throw new Error("expected first write plan");
+    const first = await prepareFileWriteMutationWithAppendTailWitness({
+      appendTailWitness: undefined,
+      limits: { maximumExtentMutationsPerBatch: 128 },
+      plan: firstPlan,
+      port: memory.port,
+      source,
+    });
+    const overwritePlan = prepareFileWritePlan({
+      bytes: new Uint8Array(3).fill(8),
+      operationTimestamp,
+      position: createFileOffset({ value: 1n }),
+      source: first.inode,
+    });
+    if (overwritePlan === null) throw new Error("expected overwrite plan");
+    const overwritten = await prepareFileWriteMutationWithAppendTailWitness({
+      appendTailWitness: first.appendTailWitness,
+      limits: { maximumExtentMutationsPerBatch: 128 },
+      plan: overwritePlan,
+      port: memory.port,
+      source: first.inode,
+    });
+    expect(overwritten.appendTailWitness).toBeUndefined();
   });
 
   it("trims all extents after the new size in bounded batches", async () => {

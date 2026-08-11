@@ -11,7 +11,11 @@ import {
   UINT64_MAXIMUM,
   type FileInodeEntry,
 } from "@/00-storage/service/hizofs/00-format";
-import { prepareFileWritePlan } from "@/00-storage/service/hizofs/filesystem/file/file-write-plan";
+import { captureFileWriteBytes } from "@/00-storage/service/hizofs/filesystem/file/file-write-input";
+import {
+  prepareCapturedFileWritePlan,
+  prepareFileWritePlan,
+} from "@/00-storage/service/hizofs/filesystem/file/file-write-plan";
 
 const extentRoot = createHomeRecordReference({ fields: {
   byteOffset: createUInt64({ value: 64n }),
@@ -119,6 +123,23 @@ describe("File write plan", () => {
     expect([...plan.sourceInlineBytes]).toEqual([1, 2, 3, 4]);
     expect([...plan.writeBytes]).toEqual([9, 8]);
     expect(plan.writeBytes).not.toBe(writeBytes);
+  });
+
+  it("adopts an already captured write buffer without taking another full snapshot", () => {
+    const callerBytes = Uint8Array.from([9, 8, 7]);
+    const capturedBytes = captureFileWriteBytes({ bytes: callerBytes });
+    callerBytes.fill(0);
+
+    const plan = prepareCapturedFileWritePlan({
+      bytes: capturedBytes,
+      operationTimestamp,
+      position: createFileOffset({ value: 10n }),
+      source: extentFile({ fileSize: 100n }),
+    });
+    if (plan?.action !== "copy_on_write_extent_range") throw new Error("Expected extent write plan");
+
+    expect(plan.writeBytes).toBe(capturedBytes);
+    expect([...plan.writeBytes]).toEqual([9, 8, 7]);
   });
 
   it("plans extent writes as Copy-on-Write and never shrinks on overwrite", () => {

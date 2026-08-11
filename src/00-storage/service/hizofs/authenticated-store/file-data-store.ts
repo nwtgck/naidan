@@ -11,10 +11,7 @@ import type { HizoFSWritableBackend } from "@/00-storage/service/hizofs/physical
 import { authenticatedStoreError } from "./errors";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
-import {
-  encodedHizoFSRecord,
-  type AuthenticatedSegmentWriter,
-} from "./record-appender";
+import type { AuthenticatedSegmentWriter } from "./record-appender";
 import { resolveAuthenticatedHomeRecord } from "./relocation-index-reader";
 
 export async function readAuthenticatedFileData({
@@ -70,11 +67,10 @@ export async function appendAuthenticatedFileData({ bytes, writer }: {
   case "metadata": throw new TypeError("File Data requires a data Segment writer");
   default: return writer.segmentClass satisfies never;
   }
-  const [appended] = await writer.append({ records: [encodedHizoFSRecord({
+  const appended = await writer.appendCallerOwnedRecord({
     plaintext: writer.encodeRecordPayload({ encode: () => encodeFileDataPayload({ payload: { bytes } }) }),
     recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data,
-  })] });
-  if (appended === undefined) throw new Error("File Data append result is missing");
+  });
   switch (appended.type) {
   case "home": return appended.homeReference;
   case "physical_only": throw new Error("File Data cannot be a physical-only record");

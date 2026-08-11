@@ -11,6 +11,7 @@ import {
   type InodeTimestamps,
   type TimestampMilliseconds,
 } from "@/00-storage/service/hizofs/00-format";
+import type { CapturedFileWriteBytes } from "@/00-storage/service/hizofs/filesystem/file/file-write-input";
 
 export type FileWritePlanErrorCode =
   | "file_size_overflow"
@@ -71,8 +72,9 @@ function validateInlineState({ source }: { source: FileInodeEntry }): void {
   }
 }
 
-export function prepareFileWritePlan({ bytes, operationTimestamp, position, source }: {
+function prepareFileWritePlanWithInput({ bytes, copyWriteBytes, operationTimestamp, position, source }: {
   bytes: Uint8Array;
+  copyWriteBytes: boolean;
   operationTimestamp: TimestampMilliseconds;
   position: FileOffset | "append";
   source: FileInodeEntry;
@@ -97,7 +99,7 @@ export function prepareFileWritePlan({ bytes, operationTimestamp, position, sour
   const targetFileSize = createFileOffset({
     value: writeEnd > source.fileSize ? writeEnd : source.fileSize,
   });
-  const writeBytes = new Uint8Array(bytes);
+  const writeBytes = copyWriteBytes ? new Uint8Array(bytes) : bytes;
   const common: FileWritePlanCommon = {
     inodeNumber: source.inodeNumber,
     nextInodeRevision: createInodeRevision({ value: source.inodeRevision + 1n }),
@@ -137,6 +139,36 @@ export function prepareFileWritePlan({ bytes, operationTimestamp, position, sour
     };
   default: return source.content satisfies never;
   }
+}
+
+export function prepareFileWritePlan({ bytes, operationTimestamp, position, source }: {
+  bytes: Uint8Array;
+  operationTimestamp: TimestampMilliseconds;
+  position: FileOffset | "append";
+  source: FileInodeEntry;
+}): FileWritePlan | null {
+  return prepareFileWritePlanWithInput({
+    bytes,
+    copyWriteBytes: true,
+    operationTimestamp,
+    position,
+    source,
+  });
+}
+
+export function prepareCapturedFileWritePlan({ bytes, operationTimestamp, position, source }: {
+  bytes: CapturedFileWriteBytes;
+  operationTimestamp: TimestampMilliseconds;
+  position: FileOffset | "append";
+  source: FileInodeEntry;
+}): FileWritePlan | null {
+  return prepareFileWritePlanWithInput({
+    bytes,
+    copyWriteBytes: false,
+    operationTimestamp,
+    position,
+    source,
+  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

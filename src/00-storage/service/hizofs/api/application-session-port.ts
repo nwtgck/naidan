@@ -16,6 +16,7 @@ import type {
   HizoFSApplicationStat,
   HizoFSApplicationWritableFile,
 } from "@/00-storage/service/hizofs/api/storage-file-system-session";
+import type { CapturedFileWriteBytes } from "@/00-storage/service/hizofs/filesystem/file/file-write-input";
 
 export type HizoFSApplicationPublicationAuthority = Readonly<{
   assertCapabilityReturnAllowed: () => void;
@@ -32,7 +33,7 @@ export interface HizoFSApplicationPreparedWritable {
   abort({ reason }: { reason: unknown }): Promise<void>;
   commit({ authority }: { authority: HizoFSApplicationPublicationAuthority }): Promise<void>;
   truncate({ size }: { size: bigint }): Promise<void>;
-  write({ data, position }: { data: Uint8Array; position: bigint }): Promise<void>;
+  write({ data, position }: { data: CapturedFileWriteBytes; position: bigint }): Promise<void>;
 }
 
 export interface HizoFSApplicationPreparedExplicitBulk {
@@ -420,10 +421,14 @@ class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
     await this.prepared.truncate({ size });
   }
 
-  async write({ data, position }: { data: Uint8Array; position: bigint }): Promise<void> {
-    this.assertOpen();
-    this.assertOperationAllowed();
-    await this.prepared.write({ data: data.slice(), position });
+  async write({ data, position }: { data: CapturedFileWriteBytes; position: bigint }): Promise<void> {
+    try {
+      this.assertOpen();
+      this.assertOperationAllowed();
+      await this.prepared.write({ data, position });
+    } finally {
+      data.fill(0);
+    }
   }
 }
 

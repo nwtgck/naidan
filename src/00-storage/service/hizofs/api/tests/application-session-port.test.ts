@@ -14,6 +14,7 @@ import {
   type HizoFSApplicationRuntimeSession,
   type HizoFSApplicationRuntimeWriter,
 } from "@/00-storage/service/hizofs/api/application-session-port";
+import { captureFileWriteBytes } from "@/00-storage/service/hizofs/filesystem/file/file-write-input";
 import { ReadOnlyNamespaceError, type ReadOnlyNamespace } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
 import type { SessionOperationAuthority } from "@/00-storage/service/hizofs/runtime/session-lifecycle";
 
@@ -509,7 +510,7 @@ describe("runtime-bound HizoFS application session port", () => {
     expect(runtimeState.calls).toEqual(["acquire-writer"]);
 
     const bytes = new Uint8Array([7, 8]);
-    await writable.write({ data: bytes, position: 2n });
+    await writable.write({ data: captureFileWriteBytes({ bytes }), position: 2n });
     bytes.fill(0);
     await writable.truncate({ size: 9n });
     await writable.commit();
@@ -546,7 +547,9 @@ describe("runtime-bound HizoFS application session port", () => {
     allowed = false;
     await expect(port.stat({ path: ["file"] })).rejects.toBe(rejection);
     await expect(readable.read({ length: 1n, offset: 0n, signal: undefined })).rejects.toBe(rejection);
-    await expect(writable.write({ data: new Uint8Array([1]), position: 0n })).rejects.toBe(rejection);
+    const rejectedWriteData = captureFileWriteBytes({ bytes: new Uint8Array([1]) });
+    await expect(writable.write({ data: rejectedWriteData, position: 0n })).rejects.toBe(rejection);
+    expect([...rejectedWriteData]).toEqual([0]);
     expect(vi.mocked(readNamespace.stat)).toHaveBeenCalledTimes(namespaceCallsBeforeRejection);
     expect(mutations.calls.map(([name]) => name)).not.toContain("write");
 

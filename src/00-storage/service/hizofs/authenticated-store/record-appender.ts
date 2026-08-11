@@ -655,6 +655,33 @@ export class AuthenticatedSegmentWriter {
   }
 
   public async append({ records }: { records: readonly EncodedHizoFSRecord[] }): Promise<readonly AppendedRecord[]> {
+    return await this.appendCallerOwnedRecords({ records });
+  }
+
+  /**
+   * Appends one already-encoded Record payload without requiring the caller to
+   * manufacture an EncodedHizoFSRecord snapshot first. The payload remains
+   * caller-owned: appendCallerOwnedRecords makes the single asynchronous
+   * ownership snapshot synchronously before its first await.
+   *
+   * WHY: File Data encoding already materializes a fresh canonical payload.
+   * Wrapping that payload with encodedHizoFSRecord and then snapshotting it
+   * again at append moved the same large bytes twice before crypto. Keeping the
+   * ownership snapshot here preserves TOCTOU isolation while removing only the
+   * redundant pre-snapshot copy.
+   */
+  public async appendCallerOwnedRecord({ plaintext, recordKind }: {
+    plaintext: Uint8Array;
+    recordKind: number;
+  }): Promise<AppendedRecord> {
+    const [result] = await this.appendCallerOwnedRecords({ records: [{ plaintext, recordKind }] });
+    if (result === undefined) throw new Error("single Record append result is missing");
+    return result;
+  }
+
+  private async appendCallerOwnedRecords({ records }: {
+    records: readonly Readonly<{ plaintext: Uint8Array; recordKind: number }>[];
+  }): Promise<readonly AppendedRecord[]> {
     requireActiveWriter({ operation: "append", state: this.stateValue });
     if (this.operationInProgress) throw new Error("segment writer operation already in progress");
     this.operationInProgress = true;

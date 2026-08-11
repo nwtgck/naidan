@@ -578,6 +578,26 @@ describe("authenticated record appender", () => {
     value.rootKey.destroy();
   });
 
+  it("snapshots caller-owned direct Record bytes before its first asynchronous step", async () => {
+    const value = fixture();
+    const writer = await createAuthenticatedSegmentWriter({ ...value, segmentClass: "metadata" });
+    const plaintext = new Uint8Array([4, 5, 6]);
+    const append = writer.appendCallerOwnedRecord({
+      plaintext,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+    });
+    plaintext[0] = 9;
+    const result = await append;
+    if (result.type !== "home") throw new Error("expected a home record");
+    await expect(readAuthenticatedHomeRecord({
+      backend: value.backend,
+      fileSystemId: value.fileSystemId,
+      homeReference: result.homeReference,
+      rootKey: value.rootKey,
+    })).resolves.toMatchObject({ plaintext: new Uint8Array([4, 5, 6]) });
+    value.rootKey.destroy();
+  });
+
   it("rejects nonce reuse across append batches", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const repeatedNonceSource: RandomByteSource = ({ bytes }) => bytes.fill(7);

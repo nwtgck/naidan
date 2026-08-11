@@ -1,6 +1,7 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   createFileOffset,
+  sameRecordReferenceFields,
   type FileExtentLeafEntry,
   type FileInodeEntry,
   type FileOffset,
@@ -23,6 +24,45 @@ export type FileContentMutationPort = Readonly<{
   extentPageStore: FileExtentTreePageStore;
   writeFileData: ({ bytes }: { bytes: Uint8Array }) => Promise<HomeRecordReference>;
 }>;
+
+const fileExtentAppendTailWitnessBrand: unique symbol = Symbol("file-extent-append-tail-witness");
+
+/**
+ * Mutation-local proof that this prepared writable constructed the current
+ * File Extent tree and has changed it only by appending at its logical tail.
+ * The private brand prevents callers from manufacturing the proof from an
+ * arbitrary persisted root.
+ */
+export type FileExtentAppendTailWitness = Readonly<{
+  fileSize: FileOffset;
+  rootReference: HomeRecordReference;
+  readonly [fileExtentAppendTailWitnessBrand]: true;
+}>;
+
+export type FileWriteMutationWithAppendTailWitnessResult = Readonly<{
+  appendTailWitness: FileExtentAppendTailWitness | undefined;
+  inode: FileInodeEntry;
+}>;
+
+function createFileExtentAppendTailWitness({ fileSize, rootReference }: {
+  fileSize: FileOffset;
+  rootReference: HomeRecordReference;
+}): FileExtentAppendTailWitness {
+  return Object.freeze({
+    fileSize,
+    rootReference,
+    [fileExtentAppendTailWitnessBrand]: true,
+  });
+}
+
+function matchesFileExtentAppendTailWitness({ source, witness }: {
+  source: FileInodeEntry;
+  witness: FileExtentAppendTailWitness | undefined;
+}): boolean {
+  if (witness === undefined || source.content.type !== "tree") return false;
+  return witness.fileSize === source.fileSize
+    && sameRecordReferenceFields({ left: witness.rootReference, right: source.content.extentTreeRootHomeRef });
+}
 
 function requirePositiveBatchSize({ limits }: { limits: FileContentMutationLimits }): number {
   const value = limits.maximumExtentMutationsPerBatch;
@@ -254,42 +294,91 @@ async function inlinePromotionRoot({ limits, plan, port }: {
   });
 }
 
+export async function prepareFileWriteMutationWithAppendTailWitness({
+  appendTailWitness,
+  limits,
+  plan,
+  port,
+  source,
+}: {
+  appendTailWitness: FileExtentAppendTailWitness | undefined;
+  limits: FileContentMutationLimits;
+  plan: FileWritePlan;
+  port: FileContentMutationPort;
+  source: FileInodeEntry;
+}): Promise<FileWriteMutationWithAppendTailWitnessResult> {
+  sameInodePlan({ inode: source, plannedInodeNumber: plan.inodeNumber, plannedRevision: plan.nextInodeRevision });
+  switch (plan.action) {
+  case "write_inline": return Object.freeze({
+    appendTailWitness: undefined,
+    inode: updatedFileInode({
+      content: { bytes: new Uint8Array(plan.bytes), type: "inline" },
+      plan,
+      source,
+    }),
+  });
+  case "promote_inline_to_extent": {
+    const root = await inlinePromotionRoot({ limits, plan, port });
+    return Object.freeze({
+      appendTailWitness: createFileExtentAppendTailWitness({
+        fileSize: plan.targetFileSize,
+        rootReference: root,
+      }),
+      inode: updatedFileInode({
+        content: { extentTreeRootHomeRef: root, type: "tree" },
+        plan,
+        source,
+      }),
+    });
+  }
+  case "copy_on_write_extent_range": {
+    const written = await appendExtentBytes({ bytes: plan.writeBytes, fileOffset: plan.writeOffset, port });
+    const extendsProvenAppendTail = plan.writeOffset === source.fileSize
+      && plan.targetFileSize > source.fileSize
+      && matchesFileExtentAppendTailWitness({ source, witness: appendTailWitness });
+    const root = extendsProvenAppendTail
+      ? await applyMutationBatches({
+        changes: written.map(entry => ({ entry, type: "set" as const })),
+        limits,
+        pageStore: port.extentPageStore,
+        rootReference: plan.sourceExtentTreeRootHomeRef,
+      })
+      : await replaceExtentRange({
+        end: createFileOffset({ value: plan.writeOffset + BigInt(plan.writeBytes.byteLength) }),
+        limits,
+        newEntries: written,
+        pageStore: port.extentPageStore,
+        rootReference: plan.sourceExtentTreeRootHomeRef,
+        start: plan.writeOffset,
+      });
+    return Object.freeze({
+      appendTailWitness: extendsProvenAppendTail
+        ? createFileExtentAppendTailWitness({ fileSize: plan.targetFileSize, rootReference: root })
+        : undefined,
+      inode: updatedFileInode({
+        content: { extentTreeRootHomeRef: root, type: "tree" },
+        plan,
+        source,
+      }),
+    });
+  }
+  default: return plan satisfies never;
+  }
+}
+
 export async function prepareFileWriteMutation({ limits, plan, port, source }: {
   limits: FileContentMutationLimits;
   plan: FileWritePlan;
   port: FileContentMutationPort;
   source: FileInodeEntry;
 }): Promise<FileInodeEntry> {
-  sameInodePlan({ inode: source, plannedInodeNumber: plan.inodeNumber, plannedRevision: plan.nextInodeRevision });
-  switch (plan.action) {
-  case "write_inline": return updatedFileInode({
-    content: { bytes: new Uint8Array(plan.bytes), type: "inline" },
+  return (await prepareFileWriteMutationWithAppendTailWitness({
+    appendTailWitness: undefined,
+    limits,
     plan,
+    port,
     source,
-  });
-  case "promote_inline_to_extent": return updatedFileInode({
-    content: { extentTreeRootHomeRef: await inlinePromotionRoot({ limits, plan, port }), type: "tree" },
-    plan,
-    source,
-  });
-  case "copy_on_write_extent_range": {
-    const written = await appendExtentBytes({ bytes: plan.writeBytes, fileOffset: plan.writeOffset, port });
-    const root = await replaceExtentRange({
-      end: createFileOffset({ value: plan.writeOffset + BigInt(plan.writeBytes.byteLength) }),
-      limits,
-      newEntries: written,
-      pageStore: port.extentPageStore,
-      rootReference: plan.sourceExtentTreeRootHomeRef,
-      start: plan.writeOffset,
-    });
-    return updatedFileInode({
-      content: { extentTreeRootHomeRef: root, type: "tree" },
-      plan,
-      source,
-    });
-  }
-  default: return plan satisfies never;
-  }
+  })).inode;
 }
 
 export async function prepareFileTruncateMutation({ limits, plan, port, source }: {

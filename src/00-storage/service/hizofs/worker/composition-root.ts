@@ -123,11 +123,12 @@ import { prepareTransitionImportCommit } from "@/00-storage/service/hizofs/files
 import { StreamingNamespaceImportTargetSession } from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import-target-session";
 import {
   prepareFileTruncateMutation,
-  prepareFileWriteMutation,
+  prepareFileWriteMutationWithAppendTailWitness,
   type FileContentMutationLimits,
+  type FileExtentAppendTailWitness,
 } from "@/00-storage/service/hizofs/filesystem/file/file-content-mutation";
 import { prepareFileTruncatePlan } from "@/00-storage/service/hizofs/filesystem/file/file-truncate-plan";
-import { prepareFileWritePlan } from "@/00-storage/service/hizofs/filesystem/file/file-write-plan";
+import { prepareCapturedFileWritePlan } from "@/00-storage/service/hizofs/filesystem/file/file-write-plan";
 import { createDirectoryPageTreePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
 import type { DecodedInodeIndexPageCacheDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/decoded-inode-index-page-cache-diagnostics";
 import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
@@ -4479,6 +4480,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     let operationFailure: unknown | undefined;
     let activeOperation: Promise<void> | undefined;
     let staged = source;
+    let extentAppendTailWitness: FileExtentAppendTailWitness | undefined;
     let state: "closed" | "open" = "open";
     const requireOpen = (): void => {
       switch (state) {
@@ -4525,6 +4527,9 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             port: contentPort,
             source: staged,
           });
+          // Any non-no-op truncate can change the logical tail independently
+          // of the append-only proof owned by this prepared writable.
+          extentAppendTailWitness = undefined;
           changed = true;
         } finally {
           switch (plan.action) {
@@ -4845,21 +4850,23 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       truncate: stageTruncate,
       write: async ({ data, position }) => await stage({
         operation: async () => {
-          const plan = prepareFileWritePlan({
+          const plan = prepareCapturedFileWritePlan({
             bytes: data,
             operationTimestamp: operationTimestamp(),
             position: createFileOffset({ value: position }),
             source: staged,
           });
-          data.fill(0);
           if (plan === null) return;
           try {
-            staged = await prepareFileWriteMutation({
+            const prepared = await prepareFileWriteMutationWithAppendTailWitness({
+              appendTailWitness: extentAppendTailWitness,
               limits: fileMutationLimits,
               plan,
               port: contentPort,
               source: staged,
             });
+            staged = prepared.inode;
+            extentAppendTailWitness = prepared.appendTailWitness;
             changed = true;
           } finally {
             plan.writeBytes.fill(0);

@@ -1,4 +1,8 @@
 import type { StorageBinaryObjectReadHandle } from "@/00-storage/service/binary-object-io";
+import {
+  captureFileWriteBytes,
+  type CapturedFileWriteBytes,
+} from "@/00-storage/service/hizofs/filesystem/file/file-write-input";
 import { createStorageFileSystemSyncError } from "@/00-storage/service/storage-file-system/sync-error";
 import type {
   StorageDirectoryHandle,
@@ -46,7 +50,7 @@ export interface HizoFSApplicationWritableFile {
   abort({ reason }: { reason: unknown }): Promise<void>;
   commit(): Promise<void>;
   truncate({ size }: { size: bigint }): Promise<void>;
-  write({ data, position }: { data: Uint8Array; position: bigint }): Promise<void>;
+  write({ data, position }: { data: CapturedFileWriteBytes; position: bigint }): Promise<void>;
 }
 
 /**
@@ -333,13 +337,17 @@ class HizoFSStorageFileHandle implements StorageFileHandle {
       },
       async write({ data, position }) {
         requireOpen();
-        const captured = data.slice();
-        await owner.runOperation({ operation: async () => {
-          await writable.write({
-            data: captured,
-            position: safeBigInt({ label: "write position", value: position }),
-          });
-        }});
+        const captured = captureFileWriteBytes({ bytes: data });
+        try {
+          await owner.runOperation({ operation: async () => {
+            await writable.write({
+              data: captured,
+              position: safeBigInt({ label: "write position", value: position }),
+            });
+          }});
+        } finally {
+          captured.fill(0);
+        }
       },
     };
   }
