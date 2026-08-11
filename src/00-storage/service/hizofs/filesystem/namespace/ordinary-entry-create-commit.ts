@@ -104,6 +104,14 @@ export class CapturedOrdinaryEntryCreateDestination {
     }
   }
 
+  release(): void {
+    switch (this.representation.type) {
+    case "inline": return;
+    case "tree": this.representation.captured.release(); return;
+    default: return this.representation satisfies never;
+    }
+  }
+
   async prepareCommit({
     baseCommit,
     inodeTablePageStore,
@@ -119,48 +127,52 @@ export class CapturedOrdinaryEntryCreateDestination {
     operationTimestamp: TimestampMilliseconds;
     request: OrdinaryEntryCreateRequest;
   }>): Promise<PreparedOrdinaryEntryCreateCommit> {
-    const plan = prepareOrdinaryEntryCreatePlan({
-      maximumKnownInodeNumber,
-      nextInodeNumber: baseCommit.nextInodeNumber,
-      operationTimestamp,
-      request,
-      target: { ...this.target, destinationExists: this.existingEntry !== undefined },
-    });
-    const mutation: PreparedOrdinaryEntryCreateMutation = await (async () => {
-      switch (this.representation.type) {
-      case "inline": {
-        const candidateParent = prepareInlineDirectoryCreateCandidateParent({ parent: this.parent, plan });
-        if (inlineDirectoryCreateCandidateFits({ candidateParent })) {
-          return prepareInlineDirectoryCreateMutationFromCandidate({ candidateParent, plan });
+    try {
+      const plan = prepareOrdinaryEntryCreatePlan({
+        maximumKnownInodeNumber,
+        nextInodeNumber: baseCommit.nextInodeNumber,
+        operationTimestamp,
+        request,
+        target: { ...this.target, destinationExists: this.existingEntry !== undefined },
+      });
+      const mutation: PreparedOrdinaryEntryCreateMutation = await (async () => {
+        switch (this.representation.type) {
+        case "inline": {
+          const candidateParent = prepareInlineDirectoryCreateCandidateParent({ parent: this.parent, plan });
+          if (inlineDirectoryCreateCandidateFits({ candidateParent })) {
+            return prepareInlineDirectoryCreateMutationFromCandidate({ candidateParent, plan });
+          }
+          return await prepareInlineDirectoryPromotionCreateMutation({
+            candidateParent,
+            pageStore: this.directoryPageStore,
+            plan,
+          });
         }
-        return await prepareInlineDirectoryPromotionCreateMutation({
-          candidateParent,
-          pageStore: this.directoryPageStore,
-          plan,
-        });
+        case "tree": return await this.representation.captured.prepareMutation({ plan });
+        default: return this.representation satisfies never;
+        }
+      })();
+      const prepared = await prepareRootInodeTableMutation({
+        baseCommit,
+        changes: mutation.changes,
+        mutationId,
+        pageStore: inodeTablePageStore,
+      });
+      switch (prepared.type) {
+      case "unchanged":
+        throw new Error("ordinary entry creation unexpectedly produced no Inode Table change");
+      case "prepared": return {
+        commitPayload: createFileSystemCommitPayload({ payload: {
+          ...prepared.commitPayload,
+          nextInodeNumber: plan.nextInodeNumber,
+        } }),
+        plan,
+        updatedParent: mutation.updatedParent,
+      };
+      default: return prepared satisfies never;
       }
-      case "tree": return await this.representation.captured.prepareMutation({ plan });
-      default: return this.representation satisfies never;
-      }
-    })();
-    const prepared = await prepareRootInodeTableMutation({
-      baseCommit,
-      changes: mutation.changes,
-      mutationId,
-      pageStore: inodeTablePageStore,
-    });
-    switch (prepared.type) {
-    case "unchanged":
-      throw new Error("ordinary entry creation unexpectedly produced no Inode Table change");
-    case "prepared": return {
-      commitPayload: createFileSystemCommitPayload({ payload: {
-        ...prepared.commitPayload,
-        nextInodeNumber: plan.nextInodeNumber,
-      } }),
-      plan,
-      updatedParent: mutation.updatedParent,
-    };
-    default: return prepared satisfies never;
+    } finally {
+      this.release();
     }
   }
 }

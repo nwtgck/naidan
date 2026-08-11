@@ -183,17 +183,55 @@ function createDirectoryPageTreeWriter({ compareKeys, pageStore }: {
   });
 }
 
+export type DirectoryPageTreeOperation = Readonly<{
+  applyMutations({ changes, rootReference }: {
+    changes: readonly DirectoryPageTreeMutation[];
+    rootReference: HomeRecordReference;
+  }): Promise<HomeRecordReference>;
+  dispose(): void;
+  readEntry({ name, rootReference }: {
+    name: string;
+    rootReference: HomeRecordReference;
+  }): Promise<DirectoryLeafEntry | undefined>;
+}>;
+
+export function createDirectoryPageTreeOperation({ pageStore }: {
+  pageStore: DirectoryPageTreePageStore;
+}): DirectoryPageTreeOperation {
+  const comparator = createDirectoryNameComparator();
+  let disposed = false;
+  const requireActive = (): void => {
+    if (disposed) throw new TypeError("Directory Page tree operation is disposed");
+  };
+  return Object.freeze({
+    applyMutations: async ({ changes, rootReference }) => {
+      requireActive();
+      return await createDirectoryPageTreeWriter({ compareKeys: comparator.compareKeys, pageStore })
+        .applyChanges({ changes, rootReference });
+    },
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      comparator.dispose();
+    },
+    readEntry: async ({ name, rootReference }) => {
+      requireActive();
+      return await createDirectoryPageTreeReader({ compareKeys: comparator.compareKeys, pageStore })
+        .get({ key: name, rootReference });
+    },
+  });
+}
+
 export async function readDirectoryPageTreeEntry({ name, pageStore, rootReference }: {
   name: string;
   pageStore: DirectoryPageTreePageStore;
   rootReference: HomeRecordReference;
 }): Promise<DirectoryLeafEntry | undefined> {
-  const comparator = createDirectoryNameComparator();
+  const operation = createDirectoryPageTreeOperation({ pageStore });
   try {
-    return await createDirectoryPageTreeReader({ compareKeys: comparator.compareKeys, pageStore })
-      .get({ key: name, rootReference });
+    return await operation.readEntry({ name, rootReference });
   } finally {
-    comparator.dispose();
+    operation.dispose();
   }
 }
 
@@ -202,12 +240,11 @@ export async function applyDirectoryPageTreeMutations({ changes, pageStore, root
   pageStore: DirectoryPageTreePageStore;
   rootReference: HomeRecordReference;
 }): Promise<HomeRecordReference> {
-  const comparator = createDirectoryNameComparator();
+  const operation = createDirectoryPageTreeOperation({ pageStore });
   try {
-    return await createDirectoryPageTreeWriter({ compareKeys: comparator.compareKeys, pageStore })
-      .applyChanges({ changes, rootReference });
+    return await operation.applyMutations({ changes, rootReference });
   } finally {
-    comparator.dispose();
+    operation.dispose();
   }
 }
 

@@ -19,7 +19,6 @@ import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import {
   createAuthenticatedSegmentWriter,
-  encodedHizoFSRecord,
   type AuthenticatedSegmentWriter,
 } from "./record-appender";
 import {
@@ -121,15 +120,17 @@ export async function appendPreparedMutationCommit({
   commitPayload: FileSystemCommitPayload;
   writer: AuthenticatedSegmentWriter;
 }): Promise<HomeRecordReference> {
-  const [appended] = await writer.append({ records: [encodedHizoFSRecord({
-    plaintext: writer.encodeRecordPayload({ encode: () => encodeFileSystemCommitPayload({ payload: commitPayload }) }),
-    recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
-  })] });
-  if (appended === undefined) throw new Error("Commit append result is missing");
-  switch (appended.type) {
-  case "home": return appended.homeReference;
-  case "physical_only": throw new Error("File System Commit cannot be a physical-only record");
-  default: return appended satisfies never;
+  const recordKind = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit;
+  const plaintext = writer.encodeRecordPayload({ encode: () => encodeFileSystemCommitPayload({ payload: commitPayload }) });
+  try {
+    const appended = await writer.appendCallerOwnedRecord({ plaintext, recordKind });
+    switch (appended.type) {
+    case "home": return appended.homeReference;
+    case "physical_only": throw new Error("File System Commit cannot be a physical-only record");
+    default: return appended satisfies never;
+    }
+  } finally {
+    plaintext.fill(0);
   }
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createHomeRecordReference,
+  createInodeNumber,
   createUInt64,
   HIZOFS_V1_FORMAT_CONSTANTS,
   parseSegmentId,
@@ -70,6 +71,50 @@ describe("read-only namespace validation cache", () => {
     const ordinaryValidation = vi.fn(async () => undefined);
     await cache.validate({ kind: "inode_table", reference: unrelatedSuccessor, validate: ordinaryValidation });
     expect(ordinaryValidation).toHaveBeenCalledTimes(1);
+  });
+
+  it("binds allocator high-water proof to a completed exact Inode Table root only", async () => {
+    const cache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 4 });
+    const root = reference({ offset: 640n });
+    const maximumKnownInodeNumber = createInodeNumber({ value: 17n });
+
+    cache.rememberInodeTableHighWaterProof({ maximumKnownInodeNumber, reference: root });
+    expect(cache.inodeTableHighWaterProof({ reference: root })).toBeUndefined();
+
+    await cache.validate({ kind: "inode_table", reference: root, validate: async () => undefined });
+    cache.rememberInodeTableHighWaterProof({ maximumKnownInodeNumber, reference: root });
+    expect(cache.inodeTableHighWaterProof({ reference: root })).toEqual({ maximumKnownInodeNumber });
+    cache.rememberInodeTableHighWaterProof({
+      maximumKnownInodeNumber: createInodeNumber({ value: 18n }),
+      reference: root,
+    });
+    expect(cache.inodeTableHighWaterProof({ reference: root })).toBeUndefined();
+  });
+
+  it("does not infer allocator high-water proof for an inherited structural successor", async () => {
+    const cache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 4 });
+    const base = reference({ offset: 704n });
+    const successor = reference({ offset: 768n });
+    const maximumKnownInodeNumber = createInodeNumber({ value: 23n });
+    await cache.validate({ kind: "inode_table", reference: base, validate: async () => undefined });
+    cache.rememberInodeTableHighWaterProof({ maximumKnownInodeNumber, reference: base });
+
+    cache.inheritValidatedSuccessor({ baseReference: base, kind: "inode_table", successorReference: successor });
+    expect(cache.inodeTableHighWaterProof({ reference: successor })).toBeUndefined();
+  });
+
+  it("drops allocator high-water proof when its bounded structural entry is evicted", async () => {
+    const cache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 1 });
+    const first = reference({ offset: 832n });
+    const second = reference({ offset: 896n });
+    await cache.validate({ kind: "inode_table", reference: first, validate: async () => undefined });
+    cache.rememberInodeTableHighWaterProof({
+      maximumKnownInodeNumber: createInodeNumber({ value: 31n }),
+      reference: first,
+    });
+    await cache.validate({ kind: "directory_tree", reference: second, validate: async () => undefined });
+
+    expect(cache.inodeTableHighWaterProof({ reference: first })).toBeUndefined();
   });
 
   it("evicts completed proofs within the configured entry bound", async () => {

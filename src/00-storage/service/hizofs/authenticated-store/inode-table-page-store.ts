@@ -18,10 +18,7 @@ import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import type { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
 import { readAuthenticatedNamespaceHomeRecord } from "./namespace-record-source";
 import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
-import {
-  encodedHizoFSRecord,
-  type AuthenticatedSegmentAppendTarget,
-} from "./record-appender";
+import type { AuthenticatedSegmentAppendTarget } from "./record-appender";
 
 export type AuthenticatedInodeTablePage =
   | InodeLeafPage
@@ -127,18 +124,14 @@ export async function appendAuthenticatedInodeTablePage({
     default: return page satisfies never;
     }
   } });
-  const encoded = encodedHizoFSRecord({
-    plaintext,
-    recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
-  });
+  const recordKind = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page;
   try {
-    const [appended] = await writer.append({ records: [encoded] });
-    if (appended === undefined) throw new Error("Inode Table page append result is missing");
+    const appended = await writer.appendCallerOwnedRecord({ plaintext, recordKind });
     switch (appended.type) {
     case "home":
       sharedMetadataRecordCache?.admitAuthenticatedWrite({
-        plaintext: encoded.plaintext,
-        recordKind: encoded.recordKind,
+        plaintext,
+        recordKind,
         reference: appended.homeReference,
       });
       return appended.homeReference;
@@ -147,7 +140,6 @@ export async function appendAuthenticatedInodeTablePage({
     }
   } finally {
     plaintext.fill(0);
-    encoded.plaintext.fill(0);
   }
 }
 

@@ -1,11 +1,17 @@
 import {
   encodeHomeRecordReference,
   type HomeRecordReference,
+  type InodeNumber,
 } from "@/00-storage/service/hizofs/00-format";
 
 export type ReadOnlyNamespaceValidationKind = "directory_tree" | "inode_table";
 
+type InodeTableHighWaterProof = Readonly<{
+  maximumKnownInodeNumber: InodeNumber | undefined;
+}>;
+
 type ValidationEntry = {
+  inodeTableHighWaterProof: InodeTableHighWaterProof | undefined;
   promise: Promise<void>;
   settled: boolean;
 };
@@ -76,7 +82,47 @@ export class ReadOnlyNamespaceValidationCache {
       // Evict completed proof entries only. Pending validation is never cancelled.
     }
     if (this.entries.size >= this.maximumEntries) return;
-    this.entries.set(successorKey, { promise: Promise.resolve(), settled: true });
+    this.entries.set(successorKey, {
+      inodeTableHighWaterProof: undefined,
+      promise: Promise.resolve(),
+      settled: true,
+    });
+  }
+
+  inodeTableHighWaterProof({ reference }: {
+    reference: HomeRecordReference;
+  }): InodeTableHighWaterProof | undefined {
+    const key = this.key({ kind: "inode_table", reference });
+    const entry = this.entries.get(key);
+    if (entry?.settled !== true) return undefined;
+    this.entries.delete(key);
+    this.entries.set(key, entry);
+    return entry.inodeTableHighWaterProof;
+  }
+
+  /**
+   * Binds an allocator high-water observation to one exact immutable Inode
+   * Table root, but only while that root's complete structural proof is still
+   * retained. Losing this cache entry can only cause a fresh seek-floor proof.
+   */
+  rememberInodeTableHighWaterProof({ maximumKnownInodeNumber, reference }: {
+    maximumKnownInodeNumber: InodeNumber | undefined;
+    reference: HomeRecordReference;
+  }): void {
+    const key = this.key({ kind: "inode_table", reference });
+    const entry = this.entries.get(key);
+    if (entry?.settled !== true) return;
+    const existing = entry.inodeTableHighWaterProof;
+    if (existing !== undefined && existing.maximumKnownInodeNumber !== maximumKnownInodeNumber) {
+      // Cache disagreement must never turn an already-published mutation into a
+      // caller-visible failure. Drop the entire derived proof entry so the next
+      // access performs ordinary full validation and a fresh high-water seek.
+      this.entries.delete(key);
+      return;
+    }
+    entry.inodeTableHighWaterProof = Object.freeze({ maximumKnownInodeNumber });
+    this.entries.delete(key);
+    this.entries.set(key, entry);
   }
 
   async validate({ kind, reference, validate }: {
@@ -100,6 +146,7 @@ export class ReadOnlyNamespaceValidationCache {
     }
 
     const entry: ValidationEntry = {
+      inodeTableHighWaterProof: undefined,
       promise: Promise.resolve().then(validate),
       settled: false,
     };

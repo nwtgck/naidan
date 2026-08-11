@@ -2140,6 +2140,7 @@ async function prepareAuthenticatedOrdinaryEntryEnsure({
       });
       const existingEntry = destination.existingEntry;
       if (existingEntry !== undefined) {
+        destination.release();
         switch (existingEntry.targetType) {
         case "inode": {
           const expectedKind = request.type;
@@ -2155,14 +2156,20 @@ async function prepareAuthenticatedOrdinaryEntryEnsure({
         default: return existingEntry satisfies never;
         }
       }
-      return await destination.prepareCommit({
-        baseCommit,
-        inodeTablePageStore,
-        maximumKnownInodeNumber: await resolveMaximumKnownInodeNumber(),
-        mutationId,
-        operationTimestamp,
-        request,
-      });
+      try {
+        return await destination.prepareCommit({
+          baseCommit,
+          inodeTablePageStore,
+          maximumKnownInodeNumber: await resolveMaximumKnownInodeNumber(),
+          mutationId,
+          operationTimestamp,
+          request,
+        });
+      } finally {
+        // WHY: allocator proof resolution is asynchronous and can fail before
+        // prepareCommit() gets a chance to release the operation-local pages.
+        destination.release();
+      }
     },
   });
 }
@@ -3484,9 +3491,56 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   // Directory emptiness is observable state, not provenance. Only a successful
   // create in this session may mint the single-use capability used by bulk open.
   let freshExplicitBulkTarget: FreshExplicitBulkTarget | undefined;
-  const explicitBulkTargetIdentity = ({ path }: { path: readonly string[] }): string => JSON.stringify(path);
+  type RecentOrdinaryCreateParentWitness = Readonly<{
+    directory: DirectoryInodeEntry;
+    pathIdentity: string;
+    workingGeneration: WorkingGenerationIdentity;
+  }>;
+  // WHY: a successful ordinary create owns the exact replacement parent inode
+  // encoded into its published successor. Retain at most that one bounded
+  // object, tied to the exact path and working generation, so a consecutive
+  // create in the same directory need not point-read the Inode Table merely to
+  // reconstruct state this session just published. A generation mismatch
+  // discards the witness and falls back to authenticated namespace resolution.
+  let recentOrdinaryCreateParentWitness: RecentOrdinaryCreateParentWitness | undefined;
+  const sessionPathIdentity = ({ path }: { path: readonly string[] }): string => JSON.stringify(path);
   const invalidateFreshExplicitBulkTarget = (): void => {
     freshExplicitBulkTarget = undefined;
+  };
+  const resolveOrdinaryCreateParent = async ({ base, path }: {
+    base: AuthenticatedWritableApplicationGeneration;
+    path: readonly string[];
+  }): Promise<DirectoryInodeEntry> => {
+    const witness = recentOrdinaryCreateParentWitness;
+    if (witness !== undefined) {
+      if (!sameWorkingGenerationIdentity({ left: base.workingIdentity, right: witness.workingGeneration })) {
+        recentOrdinaryCreateParentWitness = undefined;
+      } else if (witness.pathIdentity === sessionPathIdentity({ path })) {
+        return witness.directory;
+      }
+    }
+    return requireWritableParentDirectory({
+      inode: await base.resolver.resolveInode({ pathComponents: [...path] }),
+    });
+  };
+  const rememberOrdinaryCreateParent = ({ directory, expectedInodeTableRootReference, path }: {
+    directory: DirectoryInodeEntry;
+    expectedInodeTableRootReference: HomeRecordReference;
+    path: readonly string[];
+  }): void => {
+    const current = currentGeneration();
+    if (!bytesEqual({
+      left: encodeHomeRecordReference({ reference: current.commit.rootInodeTableRootHomeRef }),
+      right: encodeHomeRecordReference({ reference: expectedInodeTableRootReference }),
+    })) {
+      recentOrdinaryCreateParentWitness = undefined;
+      return;
+    }
+    recentOrdinaryCreateParentWitness = Object.freeze({
+      directory,
+      pathIdentity: sessionPathIdentity({ path }),
+      workingGeneration: current.workingIdentity,
+    });
   };
   const containerCoordinationKey = Object.freeze({}) as ContainerCoordinationKey;
 
@@ -4062,12 +4116,15 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     request: OrdinaryEntryCreateRequest;
   }): Promise<void> => {
     let freshDirectory: Pick<FreshExplicitBulkTarget, "directory"> | undefined;
+    let successorInodeTableHighWaterProof: Readonly<{
+      maximumKnownInodeNumber: InodeNumber;
+      reference: HomeRecordReference;
+    }> | undefined;
+    let successorParent: DirectoryInodeEntry | undefined;
     await runMutation({
       applicationAuthority: authority,
       prepare: async ({ base, candidateBaseCommit, metadataAuthority, mutationId, operationTimestamp: timestamp }) => {
-        const parent = requireWritableParentDirectory({
-          inode: await base.resolver.resolveInode({ pathComponents: [...path] }),
-        });
+        const parent = await resolveOrdinaryCreateParent({ base, path });
         await base.resolver.validateDirectoryStructure({ directory: parent });
         const maximumKnownInodeNumber = await base.resolver.maximumKnownInodeNumber();
         const prepared = await prepareAuthenticatedOrdinaryEntryCreate({
@@ -4089,6 +4146,11 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           },
         });
         inheritValidatedDirectoryTreeSuccessor({ base: parent, successor: prepared.updatedParent });
+        successorParent = prepared.updatedParent;
+        successorInodeTableHighWaterProof = {
+          maximumKnownInodeNumber: prepared.plan.inode.inodeNumber,
+          reference: prepared.commitPayload.rootInodeTableRootHomeRef,
+        };
         switch (request.type) {
         case "directory": {
           const inode = prepared.plan.inode;
@@ -4116,10 +4178,20 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         return prepared;
       },
     });
+    if (successorInodeTableHighWaterProof !== undefined) {
+      namespaceValidationCache.rememberInodeTableHighWaterProof(successorInodeTableHighWaterProof);
+    }
+    if (successorParent !== undefined && successorInodeTableHighWaterProof !== undefined) {
+      rememberOrdinaryCreateParent({
+        directory: successorParent,
+        expectedInodeTableRootReference: successorInodeTableHighWaterProof.reference,
+        path,
+      });
+    }
     if (freshDirectory !== undefined) {
       freshExplicitBulkTarget = {
         ...freshDirectory,
-        targetIdentity: explicitBulkTargetIdentity({ path: [...path, name] }),
+        targetIdentity: sessionPathIdentity({ path: [...path, name] }),
         workingGeneration: currentGeneration().workingIdentity,
       };
     }
@@ -4132,12 +4204,15 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     request: OrdinaryEntryEnsureRequest;
   }): Promise<void> => {
     let freshDirectory: Pick<FreshExplicitBulkTarget, "directory"> | undefined;
+    let successorInodeTableHighWaterProof: Readonly<{
+      maximumKnownInodeNumber: InodeNumber;
+      reference: HomeRecordReference;
+    }> | undefined;
+    let successorParent: DirectoryInodeEntry | undefined;
     await runMutation({
       applicationAuthority: authority,
       prepare: async ({ base, candidateBaseCommit, metadataAuthority, mutationId, operationTimestamp: timestamp }) => {
-        const parent = requireWritableParentDirectory({
-          inode: await base.resolver.resolveInode({ pathComponents: [...path] }),
-        });
+        const parent = await resolveOrdinaryCreateParent({ base, path });
         await base.resolver.validateDirectoryStructure({ directory: parent });
         const prepared = await prepareAuthenticatedOrdinaryEntryEnsure({
           assertPublicationAllowed: authority.assertPublicationAllowed,
@@ -4160,6 +4235,11 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         });
         if (prepared === null) return null;
         inheritValidatedDirectoryTreeSuccessor({ base: parent, successor: prepared.updatedParent });
+        successorParent = prepared.updatedParent;
+        successorInodeTableHighWaterProof = {
+          maximumKnownInodeNumber: prepared.plan.inode.inodeNumber,
+          reference: prepared.commitPayload.rootInodeTableRootHomeRef,
+        };
         switch (request.type) {
         case "directory": {
           const inode = prepared.plan.inode;
@@ -4185,10 +4265,20 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         return prepared;
       },
     });
+    if (successorInodeTableHighWaterProof !== undefined) {
+      namespaceValidationCache.rememberInodeTableHighWaterProof(successorInodeTableHighWaterProof);
+    }
+    if (successorParent !== undefined && successorInodeTableHighWaterProof !== undefined) {
+      rememberOrdinaryCreateParent({
+        directory: successorParent,
+        expectedInodeTableRootReference: successorInodeTableHighWaterProof.reference,
+        path,
+      });
+    }
     if (freshDirectory !== undefined) {
       freshExplicitBulkTarget = {
         ...freshDirectory,
-        targetIdentity: explicitBulkTargetIdentity({ path: [...path, name] }),
+        targetIdentity: sessionPathIdentity({ path: [...path, name] }),
         workingGeneration: currentGeneration().workingIdentity,
       };
     }
@@ -4317,7 +4407,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     if (mutationPoison !== undefined) {
       throw new HizoFSApplicationMutationSessionPoisonedError({ cause: mutationPoison });
     }
-    const targetIdentity = explicitBulkTargetIdentity({ path });
+    const targetIdentity = sessionPathIdentity({ path });
     const freshTarget = freshExplicitBulkTarget;
     // A failed or misdirected open consumes the capability so callers cannot
     // probe paths and later reuse an authority whose generation may be stale.

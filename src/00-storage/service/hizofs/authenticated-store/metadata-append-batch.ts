@@ -75,6 +75,11 @@ export class AuthenticatedMetadataAppendBatch {
     this.appendPreviewPlanner = writer.createAppendPreviewPlanner();
     this.target = Object.freeze({
       append: async ({ records }) => await this.stage({ records }),
+      appendCallerOwnedRecord: async ({ plaintext, recordKind }) => {
+        const [result] = await this.stage({ records: [{ plaintext, recordKind }] });
+        if (result === undefined) throw new Error("metadata append result is missing");
+        return result;
+      },
       encodeRecordPayload: ({ encode }) => this.writer.encodeRecordPayload({ encode }),
       segmentClass: writer.segmentClass,
     });
@@ -101,7 +106,7 @@ export class AuthenticatedMetadataAppendBatch {
   }
 
   private async stage({ records }: {
-    records: readonly EncodedHizoFSRecord[];
+    records: readonly Readonly<{ plaintext: Uint8Array; recordKind: number }>[];
   }): Promise<readonly AppendedRecord[]> {
     this.requireOpen();
     if (records.length === 0) throw new RangeError("metadata append batch must not stage an empty record set");

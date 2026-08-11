@@ -96,6 +96,10 @@ export type AppendedRecord =
 export type AuthenticatedSegmentAppendTarget = Readonly<{
   segmentClass: SegmentClass;
   append({ records }: { records: readonly EncodedHizoFSRecord[] }): Promise<readonly AppendedRecord[]>;
+  appendCallerOwnedRecord({ plaintext, recordKind }: {
+    plaintext: Uint8Array;
+    recordKind: number;
+  }): Promise<AppendedRecord>;
   encodeRecordPayload({ encode }: { encode: () => Uint8Array }): Uint8Array;
 }>;
 
@@ -684,11 +688,11 @@ export class AuthenticatedSegmentWriter {
    * caller-owned: appendCallerOwnedRecords makes the single asynchronous
    * ownership snapshot synchronously before its first await.
    *
-   * WHY: File Data encoding already materializes a fresh canonical payload.
-   * Wrapping that payload with encodedHizoFSRecord and then snapshotting it
-   * again at append moved the same large bytes twice before crypto. Keeping the
-   * ownership snapshot here preserves TOCTOU isolation while removing only the
-   * redundant pre-snapshot copy.
+   * WHY: authoritative File Data and metadata encoders already materialize a
+   * fresh canonical payload. Wrapping those bytes with encodedHizoFSRecord and
+   * then snapshotting them again at append moves the same payload twice before
+   * crypto. Keeping the ownership snapshot here preserves TOCTOU isolation
+   * while removing only the redundant pre-snapshot copy.
    */
   public async appendCallerOwnedRecord({ plaintext, recordKind }: {
     plaintext: Uint8Array;

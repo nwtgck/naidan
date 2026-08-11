@@ -266,8 +266,7 @@ describe("read-only HizoFS namespace", () => {
     expect(await resolver.maximumKnownInodeNumber()).toBe(5n);
     readInodePage.mockClear();
     expect(await resolver.maximumKnownInodeNumber()).toBe(5n);
-    expect(readInodePage).toHaveBeenCalledTimes(2);
-    expect(readInodePage.mock.calls.map(([call]) => call.reference)).toEqual([inodeRoot, inodeLeafB]);
+    expect(readInodePage).not.toHaveBeenCalled();
     const root = await resolver.resolveInode({ pathComponents: [] });
     if (root.inodeKind !== "directory") throw new Error("expected root directory");
     expect(await resolver.lookupDirectoryEntry({ directory: root, name: "inline.txt" })).toEqual({

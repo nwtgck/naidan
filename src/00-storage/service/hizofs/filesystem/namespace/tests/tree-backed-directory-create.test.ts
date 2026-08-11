@@ -48,12 +48,14 @@ function reference({ kind, offset }: { kind: number; offset: bigint }): HomeReco
 
 class MemoryDirectoryPagePort implements DirectoryPagePort {
   readonly pages = new Map<HomeRecordReference, DirectoryPage>();
+  readonly readReferences: HomeRecordReference[] = [];
   private nextOffset = 1_024n;
 
   async readPage({ reference: pageReference }: {
     isRoot: boolean;
     reference: HomeRecordReference;
   }): Promise<DirectoryPage> {
+    this.readReferences.push(pageReference);
     const page = this.pages.get(pageReference);
     if (page === undefined) throw new Error("missing Directory page");
     return page;
@@ -240,6 +242,7 @@ describe("tree-backed directory creation", () => {
     });
 
     if (result.updatedParent.content.type !== "tree") throw new Error("expected tree-backed directory");
+    expect(directoryPort.readReferences).toEqual([parent.content.directoryTreeRootHomeRef, childReference]);
     const nextRootReference = result.updatedParent.content.directoryTreeRootHomeRef;
     expect(directoryPort.pages.get(nextRootReference)).toMatchObject({ level: 0, type: "leaf" });
     await expect(readDirectoryPageTreeEntry({

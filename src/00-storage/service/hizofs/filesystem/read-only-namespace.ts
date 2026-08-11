@@ -544,13 +544,20 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
   return {
     maximumKnownInodeNumber: async () => {
       // Allocator regression detection needs only the highest persisted identity.
-      // Keep the full immutable-tree validation proof, but avoid materializing every
-      // inode on every create/reflink as the table grows.
+      // Keep the full immutable-tree validation proof, but avoid repeating its
+      // high-water seek for this exact immutable root while that proof is retained.
       await validateInodeTable();
-      return (await inodeReader.seekFloor({
+      const cachedProof = validations.inodeTableHighWaterProof({ reference: inodeTableRootHomeRef });
+      if (cachedProof !== undefined) return cachedProof.maximumKnownInodeNumber;
+      const maximumKnownInodeNumber = (await inodeReader.seekFloor({
         key: createInodeNumber({ value: UINT64_MAXIMUM }),
         rootReference: inodeTableRootHomeRef,
       }))?.inodeNumber;
+      validations.rememberInodeTableHighWaterProof({
+        maximumKnownInodeNumber,
+        reference: inodeTableRootHomeRef,
+      });
+      return maximumKnownInodeNumber;
     },
     list: async ({ pathComponents }) => {
       const inode = requireDirectory({

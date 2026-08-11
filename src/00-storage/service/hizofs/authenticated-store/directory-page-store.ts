@@ -14,10 +14,7 @@ import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import type { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
 import { readAuthenticatedNamespaceHomeRecord } from "./namespace-record-source";
 import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
-import {
-  encodedHizoFSRecord,
-  type AuthenticatedSegmentAppendTarget,
-} from "./record-appender";
+import type { AuthenticatedSegmentAppendTarget } from "./record-appender";
 
 export async function readAuthenticatedDirectoryPage({
   backend,
@@ -77,18 +74,15 @@ export async function appendAuthenticatedDirectoryPage({ isRoot, page, sharedMet
   case "data": throw new TypeError("Directory pages require a metadata Segment writer");
   default: return writer.segmentClass satisfies never;
   }
-  const encoded = encodedHizoFSRecord({
-    plaintext: writer.encodeRecordPayload({ encode: () => encodeDirectoryPage({ isRoot, page }) }),
-    recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page,
-  });
+  const recordKind = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page;
+  const plaintext = writer.encodeRecordPayload({ encode: () => encodeDirectoryPage({ isRoot, page }) });
   try {
-    const [appended] = await writer.append({ records: [encoded] });
-    if (appended === undefined) throw new Error("Directory page append result is missing");
+    const appended = await writer.appendCallerOwnedRecord({ plaintext, recordKind });
     switch (appended.type) {
     case "home":
       sharedMetadataRecordCache?.admitAuthenticatedWrite({
-        plaintext: encoded.plaintext,
-        recordKind: encoded.recordKind,
+        plaintext,
+        recordKind,
         reference: appended.homeReference,
       });
       return appended.homeReference;
@@ -96,7 +90,7 @@ export async function appendAuthenticatedDirectoryPage({ isRoot, page, sharedMet
     default: return appended satisfies never;
     }
   } finally {
-    encoded.plaintext.fill(0);
+    plaintext.fill(0);
   }
 }
 

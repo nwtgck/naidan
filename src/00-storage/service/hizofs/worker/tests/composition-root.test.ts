@@ -611,6 +611,56 @@ describe("HizoFS worker composition root", () => {
     await session.close();
   });
 
+  it("reuses allocator high-water proof across trusted ordinary-create successors", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase: "correct horse battery staple",
+      randomSource,
+      supportedFeatureBits,
+    });
+    const indexOperations: string[] = [];
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: immediateRuntimeHost(),
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://composition-root-test.hizofs",
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        indexDiagnostics: {
+          recordIndexOperation: ({ operation }) => indexOperations.push(operation),
+        },
+        opened,
+        operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+        randomSource,
+        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+
+    const first = await session.root.getFileHandle({ create: true, name: "first.txt" });
+    await session.root.getFileHandle({ create: true, name: "second.txt" });
+    await session.root.getFileHandle({ create: true, name: "third.txt" });
+
+    expect(indexOperations.filter(operation => operation === "seek_floor")).toHaveLength(1);
+    expect(indexOperations.filter(operation => operation === "get")).toHaveLength(1);
+
+    const writable = await first.createWritable({ keepExistingData: false });
+    await writable.write({ data: Uint8Array.of(1), position: 0 });
+    await writable.close();
+    indexOperations.length = 0;
+    await session.root.getFileHandle({ create: true, name: "after-file-mutation.txt" });
+    expect(indexOperations.filter(operation => operation === "get")).toHaveLength(1);
+    await session.close();
+  });
+
   it("linearizes create-if-missing as one production mutation observation", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();

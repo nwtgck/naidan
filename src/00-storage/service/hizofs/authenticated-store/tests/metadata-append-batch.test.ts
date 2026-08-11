@@ -42,17 +42,25 @@ describe("authenticated metadata append batch", () => {
     const mutationCache = new AuthenticatedMetadataRecordCache({
       diagnosticScope: "mutation",
       diagnostics: undefined,
-      policy: { maximumBytes: 0, maximumEntries: 0 },
+      policy: { maximumBytes: 1024, maximumEntries: 8 },
     });
     const batch = new AuthenticatedMetadataAppendBatch({ mutationCache, writer });
     const appendTarget = batch.appendTarget();
     const recordKind = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page;
-    const first = await appendTarget.append({ records: [encodedHizoFSRecord({
-      plaintext: new Uint8Array([1]),
-      recordKind,
-    })] });
-    const firstReference = first[0]?.physicalReference;
-    if (firstReference === undefined) throw new Error("first metadata append preview is missing");
+    const firstPlaintext = new Uint8Array([1]);
+    const firstAppend = appendTarget.appendCallerOwnedRecord({ plaintext: firstPlaintext, recordKind });
+    firstPlaintext[0] = 9;
+    const first = await firstAppend;
+    const firstReference = first.physicalReference;
+    if (first.type !== "home") throw new Error("first metadata append preview is not a Home Record");
+    const cachedFirst = await mutationCache.read({
+      load: async () => {
+        throw new Error("staged metadata plaintext was not retained");
+      },
+      reference: first.homeReference,
+    });
+    expect([...cachedFirst.plaintext]).toEqual([1]);
+    cachedFirst.plaintext.fill(0);
 
     const recordsThatExceedBatchByteLimit = Array.from({ length: 16 }, (_, index) => encodedHizoFSRecord({
       plaintext: new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes).fill(index + 1),
@@ -62,12 +70,11 @@ describe("authenticated metadata append batch", () => {
       AuthenticatedMetadataAppendBatchFlushRequiredError,
     );
 
-    const retried = await appendTarget.append({ records: [encodedHizoFSRecord({
+    const retried = await appendTarget.appendCallerOwnedRecord({
       plaintext: new Uint8Array([2]),
       recordKind,
-    })] });
-    const retriedReference = retried[0]?.physicalReference;
-    if (retriedReference === undefined) throw new Error("retried metadata append preview is missing");
+    });
+    const retriedReference = retried.physicalReference;
     expect(retriedReference.byteOffset).toBe(
       firstReference.byteOffset + BigInt(firstReference.frameLength),
     );
