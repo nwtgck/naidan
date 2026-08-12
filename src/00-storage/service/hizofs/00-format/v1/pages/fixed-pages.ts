@@ -1,8 +1,8 @@
 import {
   decodeRequiredHomeRecordReference,
   decodeRequiredPhysicalRecordReference,
-  encodeHomeRecordReference,
   encodePhysicalRecordReference,
+  writeHomeRecordReference,
   type HomeRecordReference,
   type PhysicalRecordReference,
 } from '@/00-storage/service/hizofs/00-format/v1/binary/record-reference';
@@ -103,7 +103,7 @@ function encodeUInt64BranchPage<T extends UInt64>({ entries, family, isRoot, lev
     assertReferenceKind({ expected: recordKind, label: 'branch child reference', reference: entry.childPageHomeRef });
     const offset = COMMON_PAGE_HEADER_SIZE + index * FIXED_SIZES.inodeBranchChild;
     writeU64Be({ bytes, offset, value: entry.upperBound });
-    bytes.set(encodeHomeRecordReference({ reference: entry.childPageHomeRef }), offset + 8);
+    writeHomeRecordReference({ bytes, offset: offset + 8, reference: entry.childPageHomeRef });
     previous = entry.upperBound;
   });
   return bytes;
@@ -246,7 +246,7 @@ export function encodeFileExtentPage({ isRoot, page }: { isRoot: boolean; page: 
       writeU64Be({ bytes, offset, value: entry.fileOffset });
       writeU32Be({ bytes, offset: offset + 8, value: entry.byteLength });
       writeU32Be({ bytes, offset: offset + 12, value: entry.dataOffset });
-      bytes.set(encodeHomeRecordReference({ reference: entry.fileDataHomeRef }), offset + 16);
+      writeHomeRecordReference({ bytes, offset: offset + 16, reference: entry.fileDataHomeRef });
     });
     return bytes;
   }

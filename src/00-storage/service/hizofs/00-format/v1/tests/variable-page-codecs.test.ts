@@ -4,7 +4,9 @@ import {
   assertDirectoryLeafEntryFitsMetadataPage,
   decodeDirectoryPage,
   decodeNestedSubvolumeLeafPage,
+  encodeDirectoryEntry,
   encodeDirectoryPage,
+  encodedDirectoryLeafEntryByteLength,
   encodeNestedSubvolumeLeafPage,
 } from '@/00-storage/service/hizofs/00-format/v1/pages/variable-pages';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
@@ -84,6 +86,23 @@ describe('variable page codecs', () => {
     expect(() => assertDirectoryLeafEntryFitsMetadataPage({
       entry: { ...entry, inodeNumber: createInodeNumber({ value: 0n }) },
     })).toThrow('at least 1');
+  });
+
+  it('measures directory leaf entries exactly without materializing the complete entry', () => {
+    const entries = [
+      { inodeKind: 'file' as const, inodeNumber: createInodeNumber({ value: 4n }), name: 'entry', targetType: 'inode' as const },
+      { inodeKind: 'directory' as const, inodeNumber: createInodeNumber({ value: 5n }), name: '日本語', targetType: 'inode' as const },
+      { name: 'subvolume', subvolumeId: createSubvolumeId({ value: 2n }), targetType: 'subvolume' as const },
+    ];
+    for (const entry of entries) {
+      expect(encodedDirectoryLeafEntryByteLength({ entry })).toBe(encodeDirectoryEntry({ entry }).byteLength);
+    }
+    expect(() => encodedDirectoryLeafEntryByteLength({ entry: {
+      inodeKind: 'file' as const,
+      inodeNumber: createInodeNumber({ value: 0n }),
+      name: 'invalid',
+      targetType: 'inode' as const,
+    } })).toThrow('at least 1');
   });
 
   it('round-trips directory inode and Subvolume targets in UTF-8 order', () => {

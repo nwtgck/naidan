@@ -1,6 +1,7 @@
 import {
   compareUnsignedBytes,
   encodeDirectoryEntry,
+  encodedDirectoryLeafEntryByteLength,
   encodedDirectoryBranchEntryByteLength,
   encodeFilenameComponent,
   encodeHomeRecordReference,
@@ -172,7 +173,7 @@ function createDirectoryPageTreeWriter({ compareKeys, pageStore }: {
       childPageHomeRef: child.childPageReference,
       upperBoundName: child.upperBound,
     } }),
-    encodedLeafEntryByteLength: ({ entry }) => entryBytes({ entry }).byteLength,
+    encodedLeafEntryByteLength: ({ entry }) => encodedDirectoryLeafEntryByteLength({ entry }),
     entriesEqual: ({ left, right }) => bytesEqual({
       left: entryBytes({ entry: left }),
       right: entryBytes({ entry: right }),

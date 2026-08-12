@@ -40,13 +40,27 @@ function bytesAreAllZero({ bytes }: { bytes: Uint8Array }): boolean {
   return true;
 }
 
-function encodeReference({ fields }: { fields: RecordReferenceFields }): Uint8Array {
+function writeReference({ bytes, fields, offset }: {
+  bytes: Uint8Array;
+  fields: RecordReferenceFields;
+  offset: number;
+}): void {
   validateFields({ fields });
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset + SIZE > bytes.byteLength) {
+    throw new RangeError('Record Reference exceeds destination boundary');
+  }
+  bytes.set(fields.segmentId, offset);
+  writeU64Be({ bytes, offset: offset + 16, value: fields.byteOffset });
+  writeU32Be({ bytes, offset: offset + 24, value: fields.frameLength });
+  bytes[offset + 28] = fields.recordKind;
+  bytes[offset + 29] = 0;
+  bytes[offset + 30] = 0;
+  bytes[offset + 31] = 0;
+}
+
+function encodeReference({ fields }: { fields: RecordReferenceFields }): Uint8Array {
   const bytes = new Uint8Array(SIZE);
-  bytes.set(fields.segmentId, 0);
-  writeU64Be({ bytes, offset: 16, value: fields.byteOffset });
-  writeU32Be({ bytes, offset: 24, value: fields.frameLength });
-  bytes[28] = fields.recordKind;
+  writeReference({ bytes, fields, offset: 0 });
   return bytes;
 }
 
@@ -87,6 +101,14 @@ export function encodeHomeRecordReference({ reference }: { reference: HomeRecord
 
 export function encodePhysicalRecordReference({ reference }: { reference: PhysicalRecordReference }): Uint8Array {
   return encodeReference({ fields: reference });
+}
+
+export function writeHomeRecordReference({ bytes, offset, reference }: {
+  bytes: Uint8Array;
+  offset: number;
+  reference: HomeRecordReference;
+}): void {
+  writeReference({ bytes, fields: reference, offset });
 }
 
 export function decodeRequiredHomeRecordReference({ bytes }: { bytes: Uint8Array }): HomeRecordReference {

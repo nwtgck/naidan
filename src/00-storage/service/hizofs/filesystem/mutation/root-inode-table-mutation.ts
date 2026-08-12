@@ -3,6 +3,7 @@ import {
   createCommitSequence,
   createFileSystemCommitPayload,
   encodeInodeLeafEntry,
+  encodedInodeLeafEntryByteLength,
   parseMutationId,
   type FileSystemCommitPayload,
   type HomeRecordReference,
@@ -138,8 +139,8 @@ export async function applyRootInodeTableMutations({
   const writer = new CanonicalBTreeWriter<InodeNumber, InodeLeafEntry, HomeRecordReference>({
     compareKeys: ({ left, right }) => left < right ? -1 : left > right ? 1 : 0,
     encodedBranchChildByteLength: () => HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.inodeBranchChild,
-    encodedLeafEntryByteLength: ({ entry }) => entryBytes({ entry }).byteLength,
-    entriesEqual: ({ left, right }) => bytesEqual({
+    encodedLeafEntryByteLength: ({ entry }) => encodedInodeLeafEntryByteLength({ entry }),
+    entriesEqual: ({ left, right }) => left.inodeRevision === right.inodeRevision && bytesEqual({
       left: entryBytes({ entry: left }),
       right: entryBytes({ entry: right }),
     }),

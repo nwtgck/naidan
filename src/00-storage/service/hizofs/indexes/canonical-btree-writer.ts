@@ -8,6 +8,7 @@ import {
 import {
   assertLocallyValidImmutableBTreePage,
   findBranchChildIndex,
+  findLeafEntryIndex,
   immutableBTreePageMaximumKey,
   type CompareImmutableBTreeKeys,
   type GetImmutableBTreeEntryKey,
@@ -104,6 +105,10 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
   private sortedUniqueMutations({ changes }: {
     changes: readonly ImmutableBTreeMutation<TKey, TEntry>[];
   }): readonly ImmutableBTreeMutation<TKey, TEntry>[] {
+    // WHY: ordinary namespace and inode updates overwhelmingly carry one key.
+    // A single mutation is already sorted and unique, so copying and invoking
+    // Array.sort only creates hot-path work without strengthening validation.
+    if (changes.length <= 1) return changes;
     const sorted = [...changes].sort((left, right) => this.compareKeys({
       left: this.mutationKey({ mutation: left }),
       right: this.mutationKey({ mutation: right }),
@@ -151,7 +156,13 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
       && rangeByteLength({ end, start }) <= this.maximumPageByteLength
     );
     const splitRange = ({ end, start }: { end: number; start: number }): readonly (readonly TItem[])[] => {
-      if (rangeFits({ end, start })) return [items.slice(start, end)];
+      if (rangeFits({ end, start })) {
+        // WHY: the common no-split case already owns an immutable item array.
+        // Preserve that array rather than cloning every page solely to wrap it
+        // as one split group. Actual split ranges still receive independent
+        // slices below.
+        return start === 0 && end === items.length ? [items] : [items.slice(start, end)];
+      }
       if (end - start === 1) throw new RangeError("one B-tree item exceeds the maximum page byte length");
       let selectedBoundary: number | undefined;
       let selectedMaximum = Number.POSITIVE_INFINITY;
@@ -296,6 +307,8 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     changes: readonly ImmutableBTreeMutation<TKey, TEntry>[];
     entries: readonly TEntry[];
   }): Readonly<{ changed: boolean; entries: readonly TEntry[] }> {
+    const onlyChange = changes.length === 1 ? changes[0] : undefined;
+    if (onlyChange !== undefined) return this.mergeSingleLeafChange({ entries, mutation: onlyChange });
     const next: TEntry[] = [];
     let changed = false;
     let entryIndex = 0;
@@ -332,6 +345,42 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
       }
     }
     return { changed, entries: next };
+  }
+
+  private mergeSingleLeafChange({ entries, mutation }: {
+    entries: readonly TEntry[];
+    mutation: ImmutableBTreeMutation<TKey, TEntry>;
+  }): Readonly<{ changed: boolean; entries: readonly TEntry[] }> {
+    const key = this.mutationKey({ mutation });
+    const index = findLeafEntryIndex({
+      compareKeys: this.compareKeys,
+      entries,
+      getEntryKey: this.getEntryKey,
+      key,
+    });
+    const existing = entries[index];
+    const matches = existing !== undefined && this.compareKeys({ left: this.getEntryKey({ entry: existing }), right: key }) === 0;
+    switch (mutation.type) {
+    case "delete": {
+      if (!matches) return { changed: false, entries };
+      const next = [...entries];
+      next.splice(index, 1);
+      return { changed: true, entries: next };
+    }
+    case "set": {
+      if (matches) {
+        if (existing === undefined) throw new Error("matched B-tree entry is missing");
+        if (this.entriesEqual({ left: existing, right: mutation.entry })) return { changed: false, entries };
+        const next = [...entries];
+        next[index] = mutation.entry;
+        return { changed: true, entries: next };
+      }
+      const next = [...entries];
+      next.splice(index, 0, mutation.entry);
+      return { changed: true, entries: next };
+    }
+    default: return mutation satisfies never;
+    }
   }
 
   private async mutatePage({ changes, isRoot, reference, structural }: {

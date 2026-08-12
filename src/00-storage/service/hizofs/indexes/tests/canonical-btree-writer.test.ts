@@ -72,6 +72,45 @@ async function collect({ reader, rootReference }: {
 }
 
 describe("canonical immutable B-tree writer", () => {
+  it("uses binary search for the ordinary single-key leaf mutation path", async () => {
+    const store = new MemoryPageStore();
+    let comparisonCount = 0;
+    const writer = new CanonicalBTreeWriter<number, Entry, string>({
+      compareKeys: ({ left, right }) => {
+        comparisonCount += 1;
+        return left - right;
+      },
+      encodedBranchChildByteLength: () => 8,
+      encodedLeafEntryByteLength: entrySize,
+      entriesEqual: ({ left, right }) => left.key === right.key && left.payload === right.payload,
+      getEntryKey: ({ entry }) => entry.key,
+      maximumLeafEntryCount: 128,
+      maximumPageByteLength: 16_384,
+      maximumRootLeafEntryCount: 128,
+      pageStore: store,
+    });
+    let root = await writer.createEmpty();
+    root = await writer.applyChanges({
+      changes: Array.from({ length: 64 }, (_, key): ImmutableBTreeMutation<number, Entry> => ({
+        entry: { key, payload: "x" },
+        type: "set",
+      })),
+      rootReference: root,
+    });
+
+    comparisonCount = 0;
+    root = await writer.applyChanges({
+      changes: [{ entry: { key: 62, payload: "updated" }, type: "set" }],
+      rootReference: root,
+    });
+
+    expect(comparisonCount).toBeLessThan(90);
+    const rootPage = await store.readPage({ isRoot: true, reference: root });
+    expect(rootPage.type).toBe("leaf");
+    if (rootPage.type !== "leaf") throw new Error("expected one root leaf");
+    expect(rootPage.entries[62]).toEqual({ key: 62, payload: "updated" });
+  });
+
   it("batches sorted changes and uses deterministic encoded-byte-balanced splits", async () => {
     const { reader, store, writer } = setup();
     const empty = await writer.createEmpty();

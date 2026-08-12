@@ -7,6 +7,7 @@ import {
   encodeHomeRecordReference,
   encodePhysicalRecordReference,
   sameRecordReferenceFields,
+  writeHomeRecordReference,
 } from '@/00-storage/service/hizofs/00-format/v1/binary/record-reference';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
@@ -45,6 +46,17 @@ describe('HizoFS V1 Record Reference', () => {
     });
     expect(sameRecordReferenceFields({ left, right: equal })).toBe(true);
     expect(sameRecordReferenceFields({ left, right: different })).toBe(false);
+  });
+
+  it('writes exact canonical references into an owned destination without touching surrounding bytes', () => {
+    const home = createHomeRecordReference({ fields: fields() });
+    const expected = encodeHomeRecordReference({ reference: home });
+    const destination = new Uint8Array(40).fill(0xa5);
+    writeHomeRecordReference({ bytes: destination, offset: 4, reference: home });
+    expect(destination.subarray(4, 36)).toEqual(expected);
+    expect(destination.subarray(0, 4)).toEqual(new Uint8Array(4).fill(0xa5));
+    expect(destination.subarray(36)).toEqual(new Uint8Array(4).fill(0xa5));
+    expect(() => writeHomeRecordReference({ bytes: destination, offset: 9, reference: home })).toThrow('destination boundary');
   });
 
   it('rejects all-zero, reserved bytes, unknown kinds, and wrong size', () => {

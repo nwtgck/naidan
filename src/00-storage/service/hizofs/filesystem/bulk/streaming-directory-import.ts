@@ -1,7 +1,7 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   compareUnsignedBytes,
-  encodeDirectoryEntry,
+  encodedDirectoryLeafEntryByteLength,
   encodeFilenameComponent,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
@@ -116,7 +116,7 @@ export class StreamingDirectoryImport {
     case "inline": {
       value.inlineEntries = checkpoint.content.entries.map(entry => cloneDirectoryEntry({ entry }));
       value.inlineEncodedBytes = value.inlineEntries.reduce(
-        (total, entry) => total + encodeDirectoryEntry({ entry }).byteLength,
+        (total, entry) => total + encodedDirectoryLeafEntryByteLength({ entry }),
         0,
       );
       break;
@@ -186,7 +186,7 @@ export class StreamingDirectoryImport {
       this.previousNameBytes = nameBytes;
       this.previousName = entry.name;
       const ownedEntry = cloneDirectoryEntry({ entry });
-      const encodedLength = encodeDirectoryEntry({ entry: ownedEntry }).byteLength;
+      const encodedLength = encodedDirectoryLeafEntryByteLength({ entry: ownedEntry });
 
       if (this.treeRoot === undefined
         && this.inlineEncodedBytes + encodedLength <= HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes) {

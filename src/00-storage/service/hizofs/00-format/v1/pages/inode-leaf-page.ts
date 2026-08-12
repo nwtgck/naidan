@@ -1,6 +1,6 @@
 import {
   decodeRequiredHomeRecordReference,
-  encodeHomeRecordReference,
+  writeHomeRecordReference,
   type HomeRecordReference,
 } from '@/00-storage/service/hizofs/00-format/v1/binary/record-reference';
 import {
@@ -11,7 +11,7 @@ import {
   writeU16Be,
   writeU64Be,
 } from '@/00-storage/service/hizofs/00-format/v1/binary/scalars';
-import { decodeSymlinkTarget, encodeFilenameComponent, encodeSymlinkTarget } from '@/00-storage/service/hizofs/00-format/v1/encoding/utf8';
+import { decodeSymlinkTarget, encodeFilenameComponent, encodeSymlinkTarget, encodedSymlinkTargetByteLength } from '@/00-storage/service/hizofs/00-format/v1/encoding/utf8';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { compareUnsignedBytes } from '@/00-storage/service/hizofs/00-format/v1/ordering/unsigned-bytes';
 import {
@@ -32,6 +32,7 @@ import {
 import {
   decodeDirectoryEntry,
   encodeDirectoryEntry,
+  encodedDirectoryLeafEntryByteLength,
   type DirectoryLeafEntry,
 } from './variable-pages';
 
@@ -90,23 +91,44 @@ function assertReferenceKind({ expected, label, reference }: {
   if (reference.recordKind !== expected) throw new TypeError(`${label} has the wrong record kind`);
 }
 
-function encodeTimestamps({ timestamps }: { timestamps: InodeTimestamps }): Readonly<{
-  bytes: Uint8Array;
+type TimestampEncodingPlan = Readonly<{
+  byteLength: number;
+  createdAt: TimestampMilliseconds | null;
+  modifiedAt: TimestampMilliseconds | null;
   presence: number;
-}> {
-  const values: TimestampMilliseconds[] = [];
+}>;
+
+function planTimestampEncoding({ timestamps }: { timestamps: InodeTimestamps }): TimestampEncodingPlan {
   let presence = 0;
+  let createdAt: TimestampMilliseconds | null = null;
+  let modifiedAt: TimestampMilliseconds | null = null;
   if (timestamps.createdAt !== null) {
     presence |= 1;
-    values.push(createTimestampMilliseconds({ value: timestamps.createdAt }));
+    createdAt = createTimestampMilliseconds({ value: timestamps.createdAt });
   }
   if (timestamps.modifiedAt !== null) {
     presence |= 2;
-    values.push(createTimestampMilliseconds({ value: timestamps.modifiedAt }));
+    modifiedAt = createTimestampMilliseconds({ value: timestamps.modifiedAt });
   }
-  const bytes = new Uint8Array(values.length * 8);
-  values.forEach((value, index) => writeI64Be({ bytes, offset: index * 8, value }));
-  return { bytes, presence };
+  return {
+    byteLength: (createdAt === null ? 0 : 8) + (modifiedAt === null ? 0 : 8),
+    createdAt,
+    modifiedAt,
+    presence,
+  };
+}
+
+function writeTimestamps({ bytes, offset, plan }: {
+  bytes: Uint8Array;
+  offset: number;
+  plan: TimestampEncodingPlan;
+}): void {
+  let nextOffset = offset;
+  if (plan.createdAt !== null) {
+    writeI64Be({ bytes, offset: nextOffset, value: plan.createdAt });
+    nextOffset += 8;
+  }
+  if (plan.modifiedAt !== null) writeI64Be({ bytes, offset: nextOffset, value: plan.modifiedAt });
 }
 
 function decodeTimestamps({ bytes, offset, presence }: {
@@ -136,30 +158,33 @@ function inodeKindTag({ entry }: { entry: InodeLeafEntry }): number {
   }
 }
 
-function encodeKindBody({ entry }: { entry: InodeLeafEntry }): Uint8Array {
+function writeKindBody({ bytes, entry, offset }: {
+  bytes: Uint8Array;
+  entry: InodeLeafEntry;
+  offset: number;
+}): number {
   switch (entry.inodeKind) {
   case 'file': {
-    const prefix = new Uint8Array(FIXED_SIZES.fileInodeBodyPrefix);
-    writeU64Be({ bytes: prefix, offset: 0, value: entry.fileSize });
+    writeU64Be({ bytes, offset, value: entry.fileSize });
     switch (entry.content.type) {
     case 'inline': {
       if (entry.content.bytes.byteLength > LIMITS.inlineFileBytes || BigInt(entry.content.bytes.byteLength) !== entry.fileSize) {
         throw new RangeError('inline file bytes must equal fileSize and remain within the inline bound');
       }
-      prefix[8] = TAGS.inodeContent.inline;
-      const body = new Uint8Array(prefix.byteLength + 2 + entry.content.bytes.byteLength);
-      body.set(prefix);
-      writeU16Be({ bytes: body, offset: prefix.byteLength, value: entry.content.bytes.byteLength });
-      body.set(entry.content.bytes, prefix.byteLength + 2);
-      return body;
+      bytes[offset + 8] = TAGS.inodeContent.inline;
+      writeU16Be({ bytes, offset: offset + FIXED_SIZES.fileInodeBodyPrefix, value: entry.content.bytes.byteLength });
+      bytes.set(entry.content.bytes, offset + FIXED_SIZES.fileInodeBodyPrefix + 2);
+      return FIXED_SIZES.fileInodeBodyPrefix + 2 + entry.content.bytes.byteLength;
     }
     case 'tree': {
       assertReferenceKind({ expected: KINDS.file_extent_page, label: 'file extent root reference', reference: entry.content.extentTreeRootHomeRef });
-      prefix[8] = TAGS.inodeContent.tree;
-      const body = new Uint8Array(prefix.byteLength + FIXED_SIZES.recordReference);
-      body.set(prefix);
-      body.set(encodeHomeRecordReference({ reference: entry.content.extentTreeRootHomeRef }), prefix.byteLength);
-      return body;
+      bytes[offset + 8] = TAGS.inodeContent.tree;
+      writeHomeRecordReference({
+        bytes,
+        offset: offset + FIXED_SIZES.fileInodeBodyPrefix,
+        reference: entry.content.extentTreeRootHomeRef,
+      });
+      return FIXED_SIZES.fileInodeBodyPrefix + FIXED_SIZES.recordReference;
     }
     default: {
       const exhaustive: never = entry.content;
@@ -168,7 +193,6 @@ function encodeKindBody({ entry }: { entry: InodeLeafEntry }): Uint8Array {
     }
   }
   case 'directory': {
-    const prefix = new Uint8Array(FIXED_SIZES.directoryInodeBodyPrefix);
     switch (entry.content.type) {
     case 'inline': {
       let previousNameBytes: Uint8Array | undefined;
@@ -183,24 +207,25 @@ function encodeKindBody({ entry }: { entry: InodeLeafEntry }): Uint8Array {
       const encodedLength = encodedEntries.reduce((total, value) => total + value.byteLength, 0);
       if (encodedLength > LIMITS.inlineDirectoryEncodedBytes) throw new RangeError('inline directory entries exceed the inline bound');
       if (encodedEntries.length > 0xffff) throw new RangeError('inline directory entry count exceeds u16');
-      prefix[0] = TAGS.inodeContent.inline;
-      writeU16Be({ bytes: prefix, offset: 1, value: encodedEntries.length });
-      const body = new Uint8Array(prefix.byteLength + encodedLength);
-      body.set(prefix);
-      let offset = prefix.byteLength;
+      bytes[offset] = TAGS.inodeContent.inline;
+      writeU16Be({ bytes, offset: offset + 1, value: encodedEntries.length });
+      let nextOffset = offset + FIXED_SIZES.directoryInodeBodyPrefix;
       for (const encoded of encodedEntries) {
-        body.set(encoded, offset);
-        offset += encoded.byteLength;
+        bytes.set(encoded, nextOffset);
+        nextOffset += encoded.byteLength;
       }
-      return body;
+      return FIXED_SIZES.directoryInodeBodyPrefix + encodedLength;
     }
     case 'tree': {
       assertReferenceKind({ expected: KINDS.directory_page, label: 'directory tree root reference', reference: entry.content.directoryTreeRootHomeRef });
-      prefix[0] = TAGS.inodeContent.tree;
-      const body = new Uint8Array(prefix.byteLength + FIXED_SIZES.recordReference);
-      body.set(prefix);
-      body.set(encodeHomeRecordReference({ reference: entry.content.directoryTreeRootHomeRef }), prefix.byteLength);
-      return body;
+      bytes[offset] = TAGS.inodeContent.tree;
+      writeU16Be({ bytes, offset: offset + 1, value: 0 });
+      writeHomeRecordReference({
+        bytes,
+        offset: offset + FIXED_SIZES.directoryInodeBodyPrefix,
+        reference: entry.content.directoryTreeRootHomeRef,
+      });
+      return FIXED_SIZES.directoryInodeBodyPrefix + FIXED_SIZES.recordReference;
     }
     default: {
       const exhaustive: never = entry.content;
@@ -210,10 +235,9 @@ function encodeKindBody({ entry }: { entry: InodeLeafEntry }): Uint8Array {
   }
   case 'symlink': {
     const target = encodeSymlinkTarget({ value: entry.target });
-    const body = new Uint8Array(FIXED_SIZES.symlinkInodeBodyPrefix + target.byteLength);
-    writeU16Be({ bytes: body, offset: 0, value: target.byteLength });
-    body.set(target, FIXED_SIZES.symlinkInodeBodyPrefix);
-    return body;
+    writeU16Be({ bytes, offset, value: target.byteLength });
+    bytes.set(target, offset + FIXED_SIZES.symlinkInodeBodyPrefix);
+    return FIXED_SIZES.symlinkInodeBodyPrefix + target.byteLength;
   }
   default: {
     const exhaustive: never = entry;
@@ -222,28 +246,110 @@ function encodeKindBody({ entry }: { entry: InodeLeafEntry }): Uint8Array {
   }
 }
 
+function encodedTimestampByteLength({ timestamps }: { timestamps: InodeTimestamps }): number {
+  return planTimestampEncoding({ timestamps }).byteLength;
+}
+
+export function encodedInodeLeafEntryByteLength({ entry }: { entry: InodeLeafEntry }): number {
+  if (entry.inodeNumber < 1n) throw new RangeError('Inode Number must be at least 1');
+  if (entry.inodeRevision < 1n) throw new RangeError('inode revision must be at least 1');
+  const timestampByteLength = encodedTimestampByteLength({ timestamps: entry.timestamps });
+  let kindBodyByteLength: number;
+  switch (entry.inodeKind) {
+  case 'file':
+    switch (entry.content.type) {
+    case 'inline':
+      if (entry.content.bytes.byteLength > LIMITS.inlineFileBytes || BigInt(entry.content.bytes.byteLength) !== entry.fileSize) {
+        throw new RangeError('inline file bytes must equal fileSize and remain within the inline bound');
+      }
+      kindBodyByteLength = FIXED_SIZES.fileInodeBodyPrefix + 2 + entry.content.bytes.byteLength;
+      break;
+    case 'tree':
+      assertReferenceKind({ expected: KINDS.file_extent_page, label: 'file extent root reference', reference: entry.content.extentTreeRootHomeRef });
+      kindBodyByteLength = FIXED_SIZES.fileInodeBodyPrefix + FIXED_SIZES.recordReference;
+      break;
+    default: return entry.content satisfies never;
+    }
+    break;
+  case 'directory':
+    switch (entry.content.type) {
+    case 'inline': {
+      let entriesByteLength = 0;
+      let previousNameBytes: Uint8Array | undefined;
+      for (const directoryEntry of entry.content.entries) {
+        const nameBytes = encodeFilenameComponent({ value: directoryEntry.name });
+        if (previousNameBytes !== undefined && compareUnsignedBytes({ left: previousNameBytes, right: nameBytes }) >= 0) {
+          throw new TypeError('inline directory names must be strictly ascending by UTF-8 bytes');
+        }
+        entriesByteLength += encodedDirectoryLeafEntryByteLength({ entry: directoryEntry });
+        previousNameBytes = nameBytes;
+      }
+      // Keep validation order identical to the canonical encoder: encoded
+      // payload bound first, then the stored u16 entry-count bound.
+      if (entriesByteLength > LIMITS.inlineDirectoryEncodedBytes) throw new RangeError('inline directory entries exceed the inline bound');
+      if (entry.content.entries.length > 0xffff) throw new RangeError('inline directory entry count exceeds u16');
+      kindBodyByteLength = FIXED_SIZES.directoryInodeBodyPrefix + entriesByteLength;
+      break;
+    }
+    case 'tree':
+      assertReferenceKind({ expected: KINDS.directory_page, label: 'directory tree root reference', reference: entry.content.directoryTreeRootHomeRef });
+      kindBodyByteLength = FIXED_SIZES.directoryInodeBodyPrefix + FIXED_SIZES.recordReference;
+      break;
+    default: return entry.content satisfies never;
+    }
+    break;
+  case 'symlink': {
+    kindBodyByteLength = FIXED_SIZES.symlinkInodeBodyPrefix + encodedSymlinkTargetByteLength({ value: entry.target });
+    break;
+  }
+  default: return entry satisfies never;
+  }
+  const entryLength = FIXED_SIZES.inodeLeafEntryPrefix + timestampByteLength + kindBodyByteLength;
+  if (entryLength > 0xffff) throw new RangeError('inode entry exceeds u16 length');
+  return entryLength;
+}
+
+function writeInodeLeafEntry({ bytes, entry, expectedEntryLength, offset }: {
+  bytes: Uint8Array;
+  entry: InodeLeafEntry;
+  expectedEntryLength: number;
+  offset: number;
+}): number {
+  const timestamps = planTimestampEncoding({ timestamps: entry.timestamps });
+  const entryLength = expectedEntryLength;
+  if (entryLength > 0xffff) throw new RangeError('inode entry exceeds u16 length');
+  if (offset + entryLength > bytes.byteLength) throw new RangeError('inode entry exceeds destination boundary');
+  writeU16Be({ bytes, offset, value: entryLength });
+  bytes[offset + 2] = inodeKindTag({ entry });
+  bytes[offset + 3] = timestamps.presence;
+  writeU64Be({ bytes, offset: offset + 4, value: entry.inodeNumber });
+  writeU64Be({ bytes, offset: offset + 12, value: entry.inodeRevision });
+  writeTimestamps({ bytes, offset: offset + FIXED_SIZES.inodeLeafEntryPrefix, plan: timestamps });
+  const kindBodyLength = writeKindBody({
+    bytes,
+    entry,
+    offset: offset + FIXED_SIZES.inodeLeafEntryPrefix + timestamps.byteLength,
+  });
+  if (FIXED_SIZES.inodeLeafEntryPrefix + timestamps.byteLength + kindBodyLength !== expectedEntryLength) {
+    throw new Error('inode kind-body encoded length invariant failed');
+  }
+  return entryLength;
+}
+
 export function encodeInodeLeafEntry({ entry }: { entry: InodeLeafEntry }): Uint8Array {
   if (entry.inodeNumber < 1n) throw new RangeError('Inode Number must be at least 1');
   if (entry.inodeRevision < 1n) throw new RangeError('inode revision must be at least 1');
-  const timestamps = encodeTimestamps({ timestamps: entry.timestamps });
-  const kindBody = encodeKindBody({ entry });
-  const entryLength = FIXED_SIZES.inodeLeafEntryPrefix + timestamps.bytes.byteLength + kindBody.byteLength;
-  if (entryLength > 0xffff) throw new RangeError('inode entry exceeds u16 length');
+  const entryLength = encodedInodeLeafEntryByteLength({ entry });
   const bytes = new Uint8Array(entryLength);
-  writeU16Be({ bytes, offset: 0, value: entryLength });
-  bytes[2] = inodeKindTag({ entry });
-  bytes[3] = timestamps.presence;
-  writeU64Be({ bytes, offset: 4, value: entry.inodeNumber });
-  writeU64Be({ bytes, offset: 12, value: entry.inodeRevision });
-  bytes.set(timestamps.bytes, FIXED_SIZES.inodeLeafEntryPrefix);
-  bytes.set(kindBody, FIXED_SIZES.inodeLeafEntryPrefix + timestamps.bytes.byteLength);
+  const writtenLength = writeInodeLeafEntry({ bytes, entry, expectedEntryLength: entryLength, offset: 0 });
+  if (writtenLength !== entryLength) throw new Error('inode entry encoded length invariant failed');
   return bytes;
 }
 
 
 export function assertInodeLeafEntryFitsMetadataPage({ entry }: { entry: InodeLeafEntry }): void {
-  const encoded = encodeInodeLeafEntry({ entry });
-  if (COMMON_PAGE_HEADER_SIZE + encoded.byteLength > LIMITS.metadataPlaintextBytes) {
+  const encodedByteLength = encodedInodeLeafEntryByteLength({ entry });
+  if (COMMON_PAGE_HEADER_SIZE + encodedByteLength > LIMITS.metadataPlaintextBytes) {
     throw new RangeError('Inode Table page exceeds the metadata plaintext maximum');
   }
 }
@@ -342,23 +448,27 @@ function decodeInodeEntry({ bytes }: { bytes: Uint8Array }): InodeLeafEntry {
 
 export function encodeInodeLeafPage({ entries, isRoot }: { entries: readonly InodeLeafEntry[]; isRoot: boolean }): Uint8Array {
   const header = encodeCommonPageHeader({ family: 'inode', header: { itemCount: entries.length, level: 0 }, isRoot });
-  const encodedEntries: Uint8Array[] = [];
+  const entryLengths: number[] = [];
   let totalLength = header.byteLength;
   let previous: InodeNumber | undefined;
   for (const entry of entries) {
     if (previous !== undefined && entry.inodeNumber <= previous) throw new TypeError('Inode Numbers must be strictly ascending');
-    const encoded = encodeInodeLeafEntry({ entry });
-    encodedEntries.push(encoded);
-    totalLength += encoded.byteLength;
+    const entryLength = encodedInodeLeafEntryByteLength({ entry });
+    entryLengths.push(entryLength);
+    totalLength += entryLength;
     previous = entry.inodeNumber;
   }
   if (totalLength > LIMITS.metadataPlaintextBytes) throw new RangeError('Inode Table page exceeds the metadata plaintext maximum');
   const bytes = new Uint8Array(totalLength);
   bytes.set(header);
   let offset = header.byteLength;
-  for (const encoded of encodedEntries) {
-    bytes.set(encoded, offset);
-    offset += encoded.byteLength;
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    const expectedLength = entryLengths[index];
+    if (entry === undefined || expectedLength === undefined) throw new Error('inode page encoding plan is incomplete');
+    const writtenLength = writeInodeLeafEntry({ bytes, entry, expectedEntryLength: expectedLength, offset });
+    if (writtenLength !== expectedLength) throw new Error('inode page entry encoded length invariant failed');
+    offset += writtenLength;
   }
   return bytes;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHomeRecordReference } from '@/00-storage/service/hizofs/00-format/v1/binary/record-reference';
-import { assertInodeLeafEntryFitsMetadataPage, decodeIndexedInodeLeafEntry, decodeInodeLeafPage, encodeInodeLeafEntry, encodeInodeLeafPage, findIndexedInodeLeafEntry, indexInodeLeafPage } from '@/00-storage/service/hizofs/00-format/v1/pages/inode-leaf-page';
+import { assertInodeLeafEntryFitsMetadataPage, decodeIndexedInodeLeafEntry, decodeInodeLeafPage, encodeInodeLeafEntry, encodeInodeLeafPage, encodedInodeLeafEntryByteLength, findIndexedInodeLeafEntry, indexInodeLeafPage } from '@/00-storage/service/hizofs/00-format/v1/pages/inode-leaf-page';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
 import { createFileOffset, createInodeNumber, createInodeRevision, createSubvolumeId, createTimestampMilliseconds, createUInt64 } from '@/00-storage/service/hizofs/00-format/v1/scalars';
@@ -103,6 +103,72 @@ describe('Inode Table leaf codec', () => {
     };
     const page = encodeInodeLeafPage({ entries: [entry], isRoot: true });
     expect(encodeInodeLeafEntry({ entry })).toEqual(page.subarray(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.commonPageHeader));
+  });
+
+  it('measures every inode representation exactly without materializing ordinary hot-path entries', () => {
+    const entries = [
+      {
+        content: { bytes: Uint8Array.of(), type: 'inline' as const },
+        fileSize: createFileOffset({ value: 0n }),
+        inodeKind: 'file' as const,
+        inodeNumber: createInodeNumber({ value: 1n }),
+        inodeRevision: createInodeRevision({ value: 1n }),
+        timestamps: noTimestamps,
+      },
+      {
+        content: { extentTreeRootHomeRef: homeRef({ kind: KINDS.file_extent_page, seed: 9 }), type: 'tree' as const },
+        fileSize: createFileOffset({ value: 4096n }),
+        inodeKind: 'file' as const,
+        inodeNumber: createInodeNumber({ value: 2n }),
+        inodeRevision: createInodeRevision({ value: 2n }),
+        timestamps: { createdAt: createTimestampMilliseconds({ value: 1n }), modifiedAt: null },
+      },
+      {
+        content: { entries: [], type: 'inline' as const },
+        inodeKind: 'directory' as const,
+        inodeNumber: createInodeNumber({ value: 3n }),
+        inodeRevision: createInodeRevision({ value: 1n }),
+        timestamps: noTimestamps,
+      },
+      {
+        content: { directoryTreeRootHomeRef: homeRef({ kind: KINDS.directory_page, seed: 10 }), type: 'tree' as const },
+        inodeKind: 'directory' as const,
+        inodeNumber: createInodeNumber({ value: 4n }),
+        inodeRevision: createInodeRevision({ value: 5n }),
+        timestamps: { createdAt: null, modifiedAt: createTimestampMilliseconds({ value: 2n }) },
+      },
+      {
+        content: {
+          entries: [
+            { inodeKind: 'file' as const, inodeNumber: createInodeNumber({ value: 7n }), name: 'a', targetType: 'inode' as const },
+            { name: 'β', subvolumeId: createSubvolumeId({ value: 2n }), targetType: 'subvolume' as const },
+          ],
+          type: 'inline' as const,
+        },
+        inodeKind: 'directory' as const,
+        inodeNumber: createInodeNumber({ value: 5n }),
+        inodeRevision: createInodeRevision({ value: 1n }),
+        timestamps: noTimestamps,
+      },
+      {
+        inodeKind: 'symlink' as const,
+        inodeNumber: createInodeNumber({ value: 6n }),
+        inodeRevision: createInodeRevision({ value: 1n }),
+        target: '../target/α',
+        timestamps: noTimestamps,
+      },
+    ];
+    for (const entry of entries) {
+      expect(encodedInodeLeafEntryByteLength({ entry })).toBe(encodeInodeLeafEntry({ entry }).byteLength);
+    }
+    expect(() => encodedInodeLeafEntryByteLength({ entry: {
+      content: { bytes: Uint8Array.of(), type: 'inline' as const },
+      fileSize: createFileOffset({ value: 1n }),
+      inodeKind: 'file' as const,
+      inodeNumber: createInodeNumber({ value: 1n }),
+      inodeRevision: createInodeRevision({ value: 1n }),
+      timestamps: noTimestamps,
+    } })).toThrow('equal fileSize');
   });
 
   it('indexes one leaf page and decodes only the selected inode entry', () => {

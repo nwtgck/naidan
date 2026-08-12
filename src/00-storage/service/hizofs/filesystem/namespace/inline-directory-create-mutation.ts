@@ -1,7 +1,7 @@
 import {
   compareUnsignedBytes,
   createInodeRevision,
-  encodeDirectoryEntry,
+  encodedDirectoryLeafEntryByteLength,
   encodeFilenameComponent,
   assertInodeLeafEntryFitsMetadataPage,
   HIZOFS_V1_FORMAT_CONSTANTS,
@@ -107,7 +107,7 @@ export function inlineDirectoryCreateCandidateFits({ candidateParent }: {
   candidateParent: InlineDirectoryCreateCandidateParent;
 }): boolean {
   const encodedBytes = candidateParent.content.entries.reduce(
-    (total, entry) => total + encodeDirectoryEntry({ entry }).byteLength,
+    (total, entry) => total + encodedDirectoryLeafEntryByteLength({ entry }),
     0,
   );
   return encodedBytes <= HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes;

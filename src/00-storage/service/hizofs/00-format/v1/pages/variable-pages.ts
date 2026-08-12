@@ -1,10 +1,10 @@
 import {
   decodeRequiredHomeRecordReference,
-  encodeHomeRecordReference,
+  writeHomeRecordReference,
   type HomeRecordReference,
 } from '@/00-storage/service/hizofs/00-format/v1/binary/record-reference';
 import { readU16Be, readU64Be, writeU16Be, writeU64Be } from '@/00-storage/service/hizofs/00-format/v1/binary/scalars';
-import { decodeFilenameComponent, encodeFilenameComponent } from '@/00-storage/service/hizofs/00-format/v1/encoding/utf8';
+import { compareFilenameComponentsByUtf8, decodeFilenameComponent, encodeFilenameComponent, encodedFilenameComponentByteLength, writeFilenameComponent } from '@/00-storage/service/hizofs/00-format/v1/encoding/utf8';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { compareUnsignedBytes } from '@/00-storage/service/hizofs/00-format/v1/ordering/unsigned-bytes';
 import {
@@ -147,7 +147,7 @@ export function encodeNestedSubvolumeLeafPage({ entries, isRoot }: {
     bytes[2] = accessToTag({ access: entry.access });
     writeU64Be({ bytes, offset: 4, value: entry.subvolumeId });
     writeU64Be({ bytes, offset: 12, value: entry.rootDirectoryInodeNumber });
-    bytes.set(encodeHomeRecordReference({ reference: entry.inodeTableRootHomeRef }), 20);
+    writeHomeRecordReference({ bytes, offset: 20, reference: entry.inodeTableRootHomeRef });
     writeU64Be({ bytes, offset: 52, value: entry.parentSubvolumeId });
     writeU64Be({ bytes, offset: 60, value: entry.parentDirectoryInodeNumber });
     writeU16Be({ bytes, offset: 68, value: nameBytes.byteLength });
@@ -199,38 +199,82 @@ export function decodeNestedSubvolumeLeafPage({ bytes, isRoot }: {
   return { entries, level: 0, type: 'leaf' };
 }
 
-export function encodeDirectoryEntry({ entry }: { entry: DirectoryLeafEntry }): Uint8Array {
-  const nameBytes = encodeFilenameComponent({ value: entry.name });
-  const entryLength = FIXED_SIZES.directoryEntryPrefix + nameBytes.byteLength;
-  const bytes = new Uint8Array(entryLength);
-  writeU16Be({ bytes, offset: 0, value: entryLength });
-  writeU16Be({ bytes, offset: 4, value: nameBytes.byteLength });
+type DirectoryLeafEntryEncodingPlan = Readonly<{
+  entryLength: number;
+  inodeKindTag: number;
+  name: string;
+  nameByteLength: number;
+  targetId: InodeNumber | SubvolumeId;
+  targetTag: number;
+}>;
+
+type DirectoryLeafTargetEncoding = Readonly<{
+  inodeKindTag: number;
+  targetId: InodeNumber | SubvolumeId;
+  targetTag: number;
+}>;
+
+function directoryLeafTargetEncoding({ entry }: { entry: DirectoryLeafEntry }): DirectoryLeafTargetEncoding {
   switch (entry.targetType) {
   case 'inode':
     if (entry.inodeNumber < 1n) throw new RangeError('directory target Inode Number must be at least 1');
-    bytes[2] = TAGS.directoryTarget.inode;
-    bytes[3] = inodeKindToTag({ kind: entry.inodeKind });
-    writeU64Be({ bytes, offset: 6, value: entry.inodeNumber });
-    break;
+    return {
+      inodeKindTag: inodeKindToTag({ kind: entry.inodeKind }),
+      targetId: entry.inodeNumber,
+      targetTag: TAGS.directoryTarget.inode,
+    };
   case 'subvolume':
     if (entry.subvolumeId < 2n) throw new RangeError('directory target Subvolume ID must be at least 2');
-    bytes[2] = TAGS.directoryTarget.subvolume;
-    bytes[3] = 0;
-    writeU64Be({ bytes, offset: 6, value: entry.subvolumeId });
-    break;
-  default: {
-    const exhaustive: never = entry;
-    throw new Error(`Unhandled directory target: ${((exhaustive satisfies never) as { readonly targetType: string }).targetType}`);
+    return { inodeKindTag: 0, targetId: entry.subvolumeId, targetTag: TAGS.directoryTarget.subvolume };
+  default: return entry satisfies never;
   }
-  }
-  bytes.set(nameBytes, FIXED_SIZES.directoryEntryPrefix);
+}
+
+function planDirectoryLeafEntryEncoding({ entry }: { entry: DirectoryLeafEntry }): DirectoryLeafEntryEncodingPlan {
+  const nameByteLength = encodedFilenameComponentByteLength({ value: entry.name });
+  const target = directoryLeafTargetEncoding({ entry });
+  return {
+    entryLength: FIXED_SIZES.directoryEntryPrefix + nameByteLength,
+    inodeKindTag: target.inodeKindTag,
+    name: entry.name,
+    nameByteLength,
+    targetId: target.targetId,
+    targetTag: target.targetTag,
+  };
+}
+
+function writeDirectoryLeafEntry({ bytes, offset, plan }: {
+  bytes: Uint8Array;
+  offset: number;
+  plan: DirectoryLeafEntryEncodingPlan;
+}): void {
+  writeU16Be({ bytes, offset, value: plan.entryLength });
+  bytes[offset + 2] = plan.targetTag;
+  bytes[offset + 3] = plan.inodeKindTag;
+  writeU16Be({ bytes, offset: offset + 4, value: plan.nameByteLength });
+  writeU64Be({ bytes, offset: offset + 6, value: plan.targetId });
+  const nameOffset = offset + FIXED_SIZES.directoryEntryPrefix;
+  const written = writeFilenameComponent({ bytes, offset: nameOffset, value: plan.name });
+  if (written !== plan.nameByteLength) throw new Error('directory entry filename length changed after planning');
+}
+
+export function encodedDirectoryLeafEntryByteLength({ entry }: { entry: DirectoryLeafEntry }): number {
+  const nameByteLength = encodedFilenameComponentByteLength({ value: entry.name });
+  directoryLeafTargetEncoding({ entry });
+  return FIXED_SIZES.directoryEntryPrefix + nameByteLength;
+}
+
+export function encodeDirectoryEntry({ entry }: { entry: DirectoryLeafEntry }): Uint8Array {
+  const plan = planDirectoryLeafEntryEncoding({ entry });
+  const bytes = new Uint8Array(plan.entryLength);
+  writeDirectoryLeafEntry({ bytes, offset: 0, plan });
   return bytes;
 }
 
 
 export function assertDirectoryLeafEntryFitsMetadataPage({ entry }: { entry: DirectoryLeafEntry }): void {
-  const encoded = encodeDirectoryEntry({ entry });
-  if (COMMON_PAGE_HEADER_SIZE + encoded.byteLength > HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes) {
+  const encodedByteLength = encodedDirectoryLeafEntryByteLength({ entry });
+  if (COMMON_PAGE_HEADER_SIZE + encodedByteLength > HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes) {
     throw new RangeError('page exceeds the V1 metadata plaintext maximum');
   }
 }
@@ -269,51 +313,98 @@ export function encodedDirectoryBranchEntryByteLength({ entry }: { entry: Direct
     label: 'directory branch child reference',
     reference: entry.childPageHomeRef,
   });
-  return FIXED_SIZES.directoryBranchChildPrefix + encodeFilenameComponent({ value: entry.upperBoundName }).byteLength;
+  return FIXED_SIZES.directoryBranchChildPrefix + encodedFilenameComponentByteLength({ value: entry.upperBoundName });
+}
+
+type DirectoryBranchEntryEncodingPlan = Readonly<{
+  childPageHomeRef: HomeRecordReference;
+  entryLength: number;
+  name: string;
+  nameByteLength: number;
+}>;
+
+function planDirectoryBranchEntryEncoding({ entry }: { entry: DirectoryBranchEntry }): DirectoryBranchEntryEncodingPlan {
+  assertHomeReferenceKind({
+    expected: KINDS.directory_page,
+    label: 'directory branch child reference',
+    reference: entry.childPageHomeRef,
+  });
+  const nameByteLength = encodedFilenameComponentByteLength({ value: entry.upperBoundName });
+  return {
+    childPageHomeRef: entry.childPageHomeRef,
+    entryLength: FIXED_SIZES.directoryBranchChildPrefix + nameByteLength,
+    name: entry.upperBoundName,
+    nameByteLength,
+  };
+}
+
+function writeDirectoryBranchEntry({ bytes, offset, plan }: {
+  bytes: Uint8Array;
+  offset: number;
+  plan: DirectoryBranchEntryEncodingPlan;
+}): void {
+  writeU16Be({ bytes, offset, value: plan.entryLength });
+  writeU16Be({ bytes, offset: offset + 2, value: plan.nameByteLength });
+  writeHomeRecordReference({ bytes, offset: offset + 4, reference: plan.childPageHomeRef });
+  const nameOffset = offset + FIXED_SIZES.directoryBranchChildPrefix;
+  const written = writeFilenameComponent({ bytes, offset: nameOffset, value: plan.name });
+  if (written !== plan.nameByteLength) throw new Error('directory branch bound length changed after planning');
 }
 
 export function encodeDirectoryPage({ isRoot, page }: { isRoot: boolean; page: DirectoryPage }): Uint8Array {
   switch (page.type) {
   case 'leaf': {
     const header = encodeCommonPageHeader({ family: 'directory', header: { itemCount: page.entries.length, level: 0 }, isRoot });
-    const chunks: Uint8Array[] = [header];
+    const plans: DirectoryLeafEntryEncodingPlan[] = [];
     let totalLength = header.byteLength;
-    let previousNameBytes: Uint8Array | undefined;
+    let previousName: string | undefined;
     for (const entry of page.entries) {
-      const encoded = encodeDirectoryEntry({ entry });
-      const nameBytes = encoded.subarray(FIXED_SIZES.directoryEntryPrefix);
-      if (previousNameBytes !== undefined && compareUnsignedBytes({ left: previousNameBytes, right: nameBytes }) >= 0) {
+      const plan = planDirectoryLeafEntryEncoding({ entry });
+      if (previousName !== undefined && compareFilenameComponentsByUtf8({ left: previousName, right: plan.name }) >= 0) {
         throw new TypeError('directory names must be strictly ascending by UTF-8 bytes');
       }
-      chunks.push(encoded);
-      totalLength += encoded.byteLength;
-      previousNameBytes = nameBytes;
+      plans.push(plan);
+      totalLength += plan.entryLength;
+      previousName = plan.name;
     }
-    return concatenate({ chunks, totalLength });
+    if (totalLength > HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes) {
+      throw new RangeError('page exceeds the V1 metadata plaintext maximum');
+    }
+    const bytes = new Uint8Array(totalLength);
+    bytes.set(header);
+    let offset = header.byteLength;
+    for (const plan of plans) {
+      writeDirectoryLeafEntry({ bytes, offset, plan });
+      offset += plan.entryLength;
+    }
+    return bytes;
   }
   case 'branch': {
     if (page.level < 1) throw new RangeError('directory branch page level must be at least 1');
     const header = encodeCommonPageHeader({ family: 'directory', header: { itemCount: page.entries.length, level: page.level }, isRoot });
-    const chunks: Uint8Array[] = [header];
+    const plans: DirectoryBranchEntryEncodingPlan[] = [];
     let totalLength = header.byteLength;
-    let previousNameBytes: Uint8Array | undefined;
+    let previousName: string | undefined;
     for (const entry of page.entries) {
-      assertHomeReferenceKind({ expected: KINDS.directory_page, label: 'directory branch child reference', reference: entry.childPageHomeRef });
-      const nameBytes = encodeFilenameComponent({ value: entry.upperBoundName });
-      if (previousNameBytes !== undefined && compareUnsignedBytes({ left: previousNameBytes, right: nameBytes }) >= 0) {
+      const plan = planDirectoryBranchEntryEncoding({ entry });
+      if (previousName !== undefined && compareFilenameComponentsByUtf8({ left: previousName, right: plan.name }) >= 0) {
         throw new TypeError('directory branch bounds must be strictly ascending by UTF-8 bytes');
       }
-      const childLength = FIXED_SIZES.directoryBranchChildPrefix + nameBytes.byteLength;
-      const encoded = new Uint8Array(childLength);
-      writeU16Be({ bytes: encoded, offset: 0, value: childLength });
-      writeU16Be({ bytes: encoded, offset: 2, value: nameBytes.byteLength });
-      encoded.set(encodeHomeRecordReference({ reference: entry.childPageHomeRef }), 4);
-      encoded.set(nameBytes, FIXED_SIZES.directoryBranchChildPrefix);
-      chunks.push(encoded);
-      totalLength += encoded.byteLength;
-      previousNameBytes = nameBytes;
+      plans.push(plan);
+      totalLength += plan.entryLength;
+      previousName = plan.name;
     }
-    return concatenate({ chunks, totalLength });
+    if (totalLength > HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes) {
+      throw new RangeError('page exceeds the V1 metadata plaintext maximum');
+    }
+    const bytes = new Uint8Array(totalLength);
+    bytes.set(header);
+    let offset = header.byteLength;
+    for (const plan of plans) {
+      writeDirectoryBranchEntry({ bytes, offset, plan });
+      offset += plan.entryLength;
+    }
+    return bytes;
   }
   default: {
     const exhaustive: never = page;

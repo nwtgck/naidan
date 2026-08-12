@@ -6,7 +6,7 @@ import {
   createInodeNumber,
   createInodeRevision,
   createTimestampMilliseconds,
-  encodeDirectoryEntry,
+  encodedDirectoryLeafEntryByteLength,
   encodeFilenameComponent,
   encodeHomeRecordReference,
   type HomeRecordReference,
@@ -178,7 +178,7 @@ function validateDirectoryCheckpoint({ checkpoint, nextInodeNumber }: {
         });
       }
       previousBytes = nameBytes;
-      encodedBytes += encodeDirectoryEntry({ entry }).byteLength;
+      encodedBytes += encodedDirectoryLeafEntryByteLength({ entry });
     }
     if (encodedBytes > HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes) {
       throw new StreamingNamespaceImportError({
