@@ -4,7 +4,7 @@ import {
   createPhysicalRecordReference,
   createRecordFrameHeader,
   createUInt64,
-  encodeRecordFrameHeader,
+  writeRecordFrameHeader,
   encodeSegmentFooterIndexEntry,
   encodeSegmentHeader,
   segmentClassForRecordKind,
@@ -27,6 +27,7 @@ import {
   plaintextSegmentHeaderBytes,
   type FileSystemRootKey,
   type RandomByteSource,
+  type PlaintextRecordBytes,
   type RecordNonce,
 } from "@/00-storage/service/hizofs/01-crypto";
 import type {
@@ -62,6 +63,7 @@ import { tryCreateAuthenticatedWholeFile } from "./whole-file";
 
 const activeSegmentWriterCapabilityBrand: unique symbol = Symbol("active-segment-writer-capability");
 declare const encodedRecordBrand: unique symbol;
+declare const ownedRecordPayloadBrand: unique symbol;
 
 export type ActiveSegmentWriterCapability = Readonly<{
   backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
@@ -82,6 +84,8 @@ export type EncodedHizoFSRecord = Readonly<{
   recordKind: number;
 }>;
 
+export type OwnedRecordPayload = Uint8Array & { readonly [ownedRecordPayloadBrand]: true };
+
 export type AppendedRecord =
   | Readonly<{
     homeReference: HomeRecordReference;
@@ -100,13 +104,28 @@ export type AuthenticatedSegmentAppendTarget = Readonly<{
     plaintext: Uint8Array;
     recordKind: number;
   }): Promise<AppendedRecord>;
+  appendOwnedRecord({ plaintext, recordKind }: {
+    plaintext: OwnedRecordPayload;
+    recordKind: number;
+  }): Promise<AppendedRecord>;
   encodeRecordPayload({ encode }: { encode: () => Uint8Array }): Uint8Array;
+  encodeOwnedRecordPayload({ encode }: { encode: () => Uint8Array }): OwnedRecordPayload;
+}>;
+
+type RecordAppendDescriptor = Readonly<{
+  plaintext: Uint8Array;
+  recordKind: number;
+}>;
+
+export type TransferredPlaintextRecord = Readonly<{
+  plaintext: PlaintextRecordBytes;
+  recordKind: number;
 }>;
 
 export type AuthenticatedSegmentAppendPreviewPlanner = Readonly<{
   previewAppend({ acceptPreview, records }: {
     acceptPreview: ({ results }: { results: readonly AppendedRecord[] }) => void;
-    records: readonly EncodedHizoFSRecord[];
+    records: readonly RecordAppendDescriptor[];
   }): readonly AppendedRecord[];
 }>;
 
@@ -200,7 +219,7 @@ function planRecordAppend({
 }: {
   frameCount: number;
   nextOffset: bigint;
-  records: readonly EncodedHizoFSRecord[];
+  records: readonly RecordAppendDescriptor[];
   segmentClass: SegmentClass;
   segmentId: SegmentId;
 }): Readonly<{ nextOffset: bigint; results: readonly AppendedRecord[] }> {
@@ -590,6 +609,22 @@ export class AuthenticatedSegmentWriter {
   }
 
   /**
+   * Brands one fresh canonical encoder result for ownership transfer.
+   *
+   * WHY: metadata page encoders allocate a new ArrayBuffer for the exact
+   * Record payload. A mutation-local append batch can own those bytes directly
+   * instead of copying the whole page solely to establish asynchronous
+   * ownership. Caller-owned data such as File Data does not use this API.
+   */
+  public encodeOwnedRecordPayload({ encode }: { encode: () => Uint8Array }): OwnedRecordPayload {
+    const bytes = this.encodeRecordPayload({ encode });
+    if (!(bytes.buffer instanceof ArrayBuffer)) {
+      throw new TypeError("owned Record payload must be backed by a fresh ArrayBuffer");
+    }
+    return bytes as OwnedRecordPayload;
+  }
+
+  /**
    * Predicts the exact immutable references a batch would receive without
    * mutating writer state or generating cryptographic material. This exists so
    * a mutation-local batch can encode parent records from child references and
@@ -683,6 +718,61 @@ export class AuthenticatedSegmentWriter {
   }
 
   /**
+   * Validates and snapshots one caller-owned payload for a later transferred
+   * append. The returned bytes are owned by the receiving mutation-local scope.
+   */
+  public claimOwnedRecordForTransferredAppend({ plaintext, recordKind }: {
+    plaintext: OwnedRecordPayload;
+    recordKind: number;
+  }): TransferredPlaintextRecord {
+    if (segmentClassForRecordKind({ recordKind }) !== this.segmentClassValue) {
+      throw new TypeError("record kind does not belong to the active segment class");
+    }
+    if (plaintext.byteLength > plaintextMaximum({ recordKind })) {
+      throw new RangeError("record plaintext exceeds its V1 bound");
+    }
+    return {
+      plaintext: plaintext as unknown as PlaintextRecordBytes,
+      recordKind,
+    };
+  }
+
+  public snapshotRecordForTransferredAppend({ plaintext, recordKind }: {
+    plaintext: Uint8Array;
+    recordKind: number;
+  }): TransferredPlaintextRecord {
+    if (segmentClassForRecordKind({ recordKind }) !== this.segmentClassValue) {
+      throw new TypeError("record kind does not belong to the active segment class");
+    }
+    if (plaintext.byteLength > plaintextMaximum({ recordKind })) {
+      throw new RangeError("record plaintext exceeds its V1 bound");
+    }
+    return {
+      plaintext: plaintextRecordBytes({ bytes: plaintext }),
+      recordKind,
+    };
+  }
+
+  /**
+   * Consumes plaintext snapshots whose ownership has already been established
+   * by a bounded mutation-local owner. The caller must not mutate these bytes
+   * until the returned Promise settles.
+   *
+   * WHY: metadata batching already takes its synchronous TOCTOU snapshot at
+   * stage time and retains that same private snapshot through durable flush.
+   * Copying it again here adds no isolation. Raw/public append entry points do
+   * not use this path and keep their existing defensive snapshot.
+   */
+  public async appendTransferredPlaintextRecords({ records }: {
+    records: readonly TransferredPlaintextRecord[];
+  }): Promise<readonly AppendedRecord[]> {
+    return await this.appendPreparedRecords({
+      clearPreparedPlaintextBeforePhysicalIo: false,
+      records,
+    });
+  }
+
+  /**
    * Appends one already-encoded Record payload without requiring the caller to
    * manufacture an EncodedHizoFSRecord snapshot first. The payload remains
    * caller-owned: appendCallerOwnedRecords makes the single asynchronous
@@ -703,8 +793,45 @@ export class AuthenticatedSegmentWriter {
     return result;
   }
 
+  public async appendOwnedRecord({ plaintext, recordKind }: {
+    plaintext: OwnedRecordPayload;
+    recordKind: number;
+  }): Promise<AppendedRecord> {
+    try {
+      const record = this.claimOwnedRecordForTransferredAppend({ plaintext, recordKind });
+      const [result] = await this.appendPreparedRecords({
+        clearPreparedPlaintextBeforePhysicalIo: true,
+        records: [record],
+      });
+      if (result === undefined) throw new Error("single owned Record append result is missing");
+      return result;
+    } finally {
+      // Ownership transfers at call entry, including rejection paths.
+      plaintext.fill(0);
+    }
+  }
+
   private async appendCallerOwnedRecords({ records }: {
-    records: readonly Readonly<{ plaintext: Uint8Array; recordKind: number }>[];
+    records: readonly RecordAppendDescriptor[];
+  }): Promise<readonly AppendedRecord[]> {
+    // Preserve the public append failure boundary: inactive/in-progress writers
+    // reject before allocating caller-sized snapshots. appendPreparedRecords
+    // repeats the check synchronously before claiming the operation.
+    requireActiveWriter({ operation: "append", state: this.stateValue });
+    if (this.operationInProgress) throw new Error("segment writer operation already in progress");
+    const recordSnapshots = records.map(record => this.snapshotRecordForTransferredAppend({
+      plaintext: record.plaintext,
+      recordKind: record.recordKind,
+    }));
+    return await this.appendPreparedRecords({
+      clearPreparedPlaintextBeforePhysicalIo: true,
+      records: recordSnapshots,
+    });
+  }
+
+  private async appendPreparedRecords({ clearPreparedPlaintextBeforePhysicalIo, records }: {
+    clearPreparedPlaintextBeforePhysicalIo: boolean;
+    records: readonly TransferredPlaintextRecord[];
   }): Promise<readonly AppendedRecord[]> {
     requireActiveWriter({ operation: "append", state: this.stateValue });
     if (this.operationInProgress) throw new Error("segment writer operation already in progress");
@@ -721,35 +848,23 @@ export class AuthenticatedSegmentWriter {
           message: "record append batch exceeds the segment frame-count bound",
         });
       }
-      const recordSnapshots = records.map(record => {
-        // Validate caller-controlled size and kind before copying. Rejected input
-        // must not force an allocation proportional to bytes that V1 cannot store.
-        if (segmentClassForRecordKind({ recordKind: record.recordKind }) !== this.segmentClassValue) {
-          throw new TypeError("record kind does not belong to the active segment class");
-        }
-        if (record.plaintext.byteLength > plaintextMaximum({ recordKind: record.recordKind })) {
-          throw new RangeError("record plaintext exceeds its V1 bound");
-        }
-        return {
-          // This is the sole caller-mutation isolation copy for append. Keep the
-          // snapshot branded so crypto does not copy the same owned bytes again.
-          plaintext: plaintextRecordBytes({ bytes: record.plaintext }),
-          recordKind: record.recordKind,
-        };
-      });
-
       const batchNonceKeys = new Set<string>();
       const frames: Array<{
         ciphertext: Uint8Array;
         header: RecordFrameHeaderV1;
-        headerBytes: Uint8Array;
         physicalOffset: bigint;
         result: AppendedRecord;
       }> = [];
+      // WHY: the canonical Record Frame Header is needed as AEAD AAD before
+      // the final physical batch can be sized. Reuse one fixed-size scratch
+      // view instead of allocating and retaining one header buffer per frame.
+      // The final batch receives the same canonical header bytes directly from
+      // 00-format after encryption preparation completes.
+      const headerScratch = new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader);
       let encryptionCapability: Awaited<ReturnType<typeof createRecordEncryptionBatchCapability>> | undefined;
       let nextOffset = this.nextOffset;
       try {
-        for (const record of recordSnapshots) {
+        for (const record of records) {
           const nonce = freshRecordNonce({
             batchNonceKeys,
             randomSource: this.randomSource,
@@ -773,7 +888,7 @@ export class AuthenticatedSegmentWriter {
               message: "record append batch exceeds the segment record-area bound",
             });
           }
-          const headerBytes = encodeRecordFrameHeader({ header });
+          writeRecordFrameHeader({ bytes: headerScratch, header, offset: 0 });
           const ciphertext = await measureAuthenticatedCryptoOperation({
             diagnostics: this.diagnostics,
             operation: "encrypt",
@@ -786,7 +901,7 @@ export class AuthenticatedSegmentWriter {
                 rootKey: this.rootKey,
               });
               return await capability.encrypt({
-                completeFrameHeader: headerBytes,
+                completeFrameHeader: headerScratch,
                 nonce,
                 plaintext: record.plaintext,
               });
@@ -810,7 +925,7 @@ export class AuthenticatedSegmentWriter {
               physicalReference,
               type: "home",
             };
-          frames.push({ ciphertext, header, headerBytes, physicalOffset: nextOffset, result });
+          frames.push({ ciphertext, header, physicalOffset: nextOffset, result });
           nextOffset = end;
         }
       } finally {
@@ -820,7 +935,9 @@ export class AuthenticatedSegmentWriter {
         // The append-owned plaintext snapshots are no longer needed once frame
         // encryption preparation completes. Clear them before physical I/O so
         // reducing copies also shortens, rather than extends, secret lifetime.
-        for (const record of recordSnapshots) record.plaintext.fill(0);
+        if (clearPreparedPlaintextBeforePhysicalIo) {
+          for (const record of records) record.plaintext.fill(0);
+        }
       }
 
       const batchLength = frames.reduce((total, frame) => total + frame.header.frameLength, 0);
@@ -832,8 +949,11 @@ export class AuthenticatedSegmentWriter {
         // instead of first materializing per-frame buffers and then copying
         // those complete frames again. Capacity checks, crypto ordering, and
         // the exact durable/read-back bytes remain unchanged.
-        batch.set(frame.headerBytes, batchOffset);
-        batch.set(frame.ciphertext, batchOffset + frame.headerBytes.byteLength);
+        writeRecordFrameHeader({ bytes: batch, header: frame.header, offset: batchOffset });
+        batch.set(
+          frame.ciphertext,
+          batchOffset + HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader,
+        );
         batchOffset += frame.header.frameLength;
       }
       if (batchOffset !== batchLength) throw new Error("record append batch length invariant failed");

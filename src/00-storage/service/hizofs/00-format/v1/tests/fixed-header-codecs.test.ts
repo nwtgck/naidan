@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRecordFrameHeader, decodeRecordFrameHeader, encodeRecordFrameHeader } from '@/00-storage/service/hizofs/00-format/v1/binary/record-frame-header';
+import { createRecordFrameHeader, decodeRecordFrameHeader, encodeRecordFrameHeader, writeRecordFrameHeader } from '@/00-storage/service/hizofs/00-format/v1/binary/record-frame-header';
 import {
   calculateSegmentFooterTotalLength,
   createSegmentFooterHeader,
@@ -53,6 +53,25 @@ describe('HizoFS V1 fixed headers', () => {
     const bytes = encodeRecordFrameHeader({ header });
     expect(new TextDecoder().decode(bytes.subarray(0, 8))).toBe('HZRECORD');
     expect(decodeRecordFrameHeader({ bytes })).toEqual(header);
+  });
+
+  it('writes the canonical Record Frame Header into an owned destination without touching surrounding bytes', () => {
+    const header = createRecordFrameHeader({
+      flags: 0,
+      homeOffset: createUInt64({ value: 64n }),
+      homeSegmentId: segmentId(),
+      nonce: Uint8Array.from({ length: 12 }, (_, index) => index + 40),
+      plaintextLength: 513,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+    });
+    const canonical = encodeRecordFrameHeader({ header });
+    const destination = new Uint8Array(canonical.byteLength + 7).fill(0xa5);
+    writeRecordFrameHeader({ bytes: destination, header, offset: 3 });
+    expect(destination.subarray(3, 3 + canonical.byteLength)).toEqual(canonical);
+    expect([...destination.subarray(0, 3)]).toEqual([0xa5, 0xa5, 0xa5]);
+    expect([...destination.subarray(3 + canonical.byteLength)]).toEqual([0xa5, 0xa5, 0xa5, 0xa5]);
+    expect(() => writeRecordFrameHeader({ bytes: destination, header, offset: destination.byteLength - canonical.byteLength + 1 }))
+      .toThrow('destination');
   });
 
   it('requires physical-only exactly for relocation index records', () => {

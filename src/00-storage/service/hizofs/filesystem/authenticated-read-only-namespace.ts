@@ -12,7 +12,6 @@ import {
   findIndexedInodeLeafEntry,
   indexInodeLeafPage,
   encodeFilenameComponent,
-  encodeHomeRecordReference,
   validateExtentAgainstReferencedData,
   type FileExtentLeafEntry,
   type FileExtentPage,
@@ -35,14 +34,13 @@ import {
   type ImmutableBTreePage,
 } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
 import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
+import { runtimeHomeRecordReferenceIdentity } from "@/00-storage/service/hizofs/authenticated-store/runtime-home-record-reference-identity";
 import { findBranchChildIndex } from "@/00-storage/service/hizofs/indexes/ordering";
 
 const MAXIMUM_SINGLE_NAMESPACE_READ_BYTES = 64 * 1024 * 1024;
 
 function referenceIdentity({ reference }: { reference: HomeRecordReference }): string {
-  return [...encodeHomeRecordReference({ reference })]
-    .map(byte => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return runtimeHomeRecordReferenceIdentity({ reference });
 }
 
 function extentPageToImmutable({ page }: {

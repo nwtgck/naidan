@@ -4,12 +4,12 @@ import {
 import { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
 import {
   AuthenticatedSegmentCapacityError,
-  encodedHizoFSRecord,
   type AppendedRecord,
   type AuthenticatedSegmentAppendPreviewPlanner,
   type AuthenticatedSegmentAppendTarget,
   type AuthenticatedSegmentWriter,
-  type EncodedHizoFSRecord,
+  type OwnedRecordPayload,
+  type TransferredPlaintextRecord,
 } from "./record-appender";
 
 const MAXIMUM_PENDING_RECORDS = 128;
@@ -62,7 +62,7 @@ export class AuthenticatedMetadataAppendBatch {
   private closed = false;
   private pendingFrameBytesValue = 0;
   private plannedResults: AppendedRecord[] = [];
-  private records: EncodedHizoFSRecord[] = [];
+  private records: TransferredPlaintextRecord[] = [];
 
   constructor({ mutationCache, sharedCache, writer }: {
     mutationCache: AuthenticatedMetadataRecordCache;
@@ -80,7 +80,13 @@ export class AuthenticatedMetadataAppendBatch {
         if (result === undefined) throw new Error("metadata append result is missing");
         return result;
       },
+      appendOwnedRecord: async ({ plaintext, recordKind }) => {
+        const [result] = await this.stageOwned({ records: [{ plaintext, recordKind }] });
+        if (result === undefined) throw new Error("metadata owned append result is missing");
+        return result;
+      },
       encodeRecordPayload: ({ encode }) => this.writer.encodeRecordPayload({ encode }),
+      encodeOwnedRecordPayload: ({ encode }) => this.writer.encodeOwnedRecordPayload({ encode }),
       segmentClass: writer.segmentClass,
     });
   }
@@ -105,15 +111,33 @@ export class AuthenticatedMetadataAppendBatch {
     if (this.closed) throw new Error("metadata append batch is closed");
   }
 
-  private async stage({ records }: {
+  private async stageOwned({ records }: {
+    records: readonly Readonly<{ plaintext: OwnedRecordPayload; recordKind: number }>[];
+  }): Promise<readonly AppendedRecord[]> {
+    try {
+      return await this.stage({ records, transferOwnership: true });
+    } catch (cause: unknown) {
+      // Ownership transfers at call entry even when validation/preview rejects.
+      for (const record of records) record.plaintext.fill(0);
+      throw cause;
+    }
+  }
+
+  private async stage({ records, transferOwnership = false }: {
     records: readonly Readonly<{ plaintext: Uint8Array; recordKind: number }>[];
+    transferOwnership?: boolean;
   }): Promise<readonly AppendedRecord[]> {
     this.requireOpen();
     if (records.length === 0) throw new RangeError("metadata append batch must not stage an empty record set");
-    const snapshots = records.map(record => encodedHizoFSRecord({
-      plaintext: record.plaintext,
-      recordKind: record.recordKind,
-    }));
+    const snapshots = records.map(record => transferOwnership
+      ? this.writer.claimOwnedRecordForTransferredAppend({
+        plaintext: record.plaintext as OwnedRecordPayload,
+        recordKind: record.recordKind,
+      })
+      : this.writer.snapshotRecordForTransferredAppend({
+        plaintext: record.plaintext,
+        recordKind: record.recordKind,
+      }));
     try {
       if (this.records.length !== 0 && this.records.length + snapshots.length > MAXIMUM_PENDING_RECORDS) {
         throw new AuthenticatedMetadataAppendBatchFlushRequiredError();
@@ -191,7 +215,7 @@ export class AuthenticatedMetadataAppendBatch {
     try {
       let actual: readonly AppendedRecord[];
       try {
-        actual = await this.writer.append({ records });
+        actual = await this.writer.appendTransferredPlaintextRecords({ records });
       } catch (cause: unknown) {
         if (cause instanceof AuthenticatedSegmentCapacityError) {
           this.writer.abandon();

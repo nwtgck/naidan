@@ -1,3 +1,4 @@
+import { COMMON_PAGE_HEADER_SIZE } from "@/00-storage/service/hizofs/00-format";
 import { describe, expect, it } from "vitest";
 import {
   CanonicalBTreeWriter,
@@ -72,6 +73,232 @@ async function collect({ reader, rootReference }: {
 }
 
 describe("canonical immutable B-tree writer", () => {
+  it("rejects an invalid claimed loaded page byte length before rewriting", async () => {
+    const page: Page = { entries: [{ key: 1, payload: "x" }], level: 0, type: "leaf" };
+    let writes = 0;
+    const writer = new CanonicalBTreeWriter<number, Entry, string>({
+      compareKeys: ({ left, right }) => left - right,
+      encodedBranchChildByteLength: () => 8,
+      encodedLeafEntryByteLength: entrySize,
+      entriesEqual: ({ left, right }) => left.key === right.key && left.payload === right.payload,
+      getEntryKey: ({ entry }) => entry.key,
+      maximumPageByteLength: 16_384,
+      pageStore: {
+        readPage: async () => page,
+        readPageForUpdate: async () => ({
+          encodedByteLength: COMMON_PAGE_HEADER_SIZE - 1,
+          localStructureValidated: true as const,
+          page,
+        }),
+        writePage: async () => {
+          writes += 1;
+          return "next";
+        },
+      },
+    });
+
+    await expect(writer.applyChanges({
+      changes: [{ entry: { key: 1, payload: "updated" }, type: "set" }],
+      rootReference: "root",
+    })).rejects.toThrow("validated B-tree page byte length");
+    expect(writes).toBe(0);
+  });
+
+  it("does not repeat local ordering validation for an authenticated update page", async () => {
+    const entries = Array.from({ length: 64 }, (_, key): Entry => ({ key, payload: "x" }));
+    const page: Page = { entries, level: 0, type: "leaf" };
+    let comparisonCount = 0;
+    const writer = new CanonicalBTreeWriter<number, Entry, string>({
+      compareKeys: ({ left, right }) => {
+        comparisonCount += 1;
+        return left - right;
+      },
+      encodedBranchChildByteLength: () => 8,
+      encodedLeafEntryByteLength: entrySize,
+      entriesEqual: ({ left, right }) => left.key === right.key && left.payload === right.payload,
+      getEntryKey: ({ entry }) => entry.key,
+      maximumLeafEntryCount: 128,
+      maximumPageByteLength: 16_384,
+      maximumRootLeafEntryCount: 128,
+      pageStore: {
+        readPage: async () => page,
+        readPageForUpdate: async () => ({
+          encodedByteLength: COMMON_PAGE_HEADER_SIZE + entries.reduce((total, entry) => total + entrySize({ entry }), 0),
+          localStructureValidated: true as const,
+          page,
+        }),
+        writePage: async () => "next",
+      },
+    });
+
+    await writer.applyChanges({
+      changes: [{ entry: { key: 62, payload: "updated" }, type: "set" }],
+      rootReference: "root",
+    });
+
+    expect(comparisonCount).toBeLessThan(25);
+  });
+
+  it("reuses exact loaded page byte length for ordinary no-split leaf updates", async () => {
+    const entries = Array.from({ length: 32 }, (_, key): Entry => ({ key, payload: "x" }));
+    const page: Page = { entries, level: 0, type: "leaf" };
+    let sizeCalls = 0;
+    let written: Page | undefined;
+    const pageStore = {
+      readPage: async () => page,
+      readPageForUpdate: async () => ({
+        encodedByteLength: COMMON_PAGE_HEADER_SIZE + entries.reduce((total, entry) => total + entrySize({ entry }), 0),
+        localStructureValidated: true as const,
+        page,
+      }),
+      writePage: async ({ page: next }: { isRoot: boolean; page: Page }) => {
+        written = next;
+        return "next";
+      },
+    };
+    const writer = new CanonicalBTreeWriter<number, Entry, string>({
+      compareKeys: ({ left, right }) => left - right,
+      encodedBranchChildByteLength: () => 8,
+      encodedLeafEntryByteLength: ({ entry }) => {
+        sizeCalls += 1;
+        return entrySize({ entry });
+      },
+      entriesEqual: ({ left, right }) => left.key === right.key && left.payload === right.payload,
+      getEntryKey: ({ entry }) => entry.key,
+      maximumLeafEntryCount: 64,
+      maximumPageByteLength: 16_384,
+      maximumRootLeafEntryCount: 64,
+      pageStore,
+    });
+
+    await writer.applyChanges({
+      changes: [{ entry: { key: 30, payload: "updated" }, type: "set" }],
+      rootReference: "root",
+    });
+
+    expect(written).toMatchObject({ type: "leaf" });
+    expect(sizeCalls).toBeLessThanOrEqual(2);
+  });
+
+  it("reuses exact loaded page byte length for ordinary no-split branch rewrites", async () => {
+    const pages = new Map<string, Page>();
+    const children = Array.from({ length: 32 }, (_, key) => {
+      const reference = `leaf-${key}`;
+      pages.set(reference, { entries: [{ key, payload: "x" }], level: 0, type: "leaf" });
+      return { childPageReference: reference, upperBound: key };
+    });
+    pages.set("root", { children, level: 1, type: "branch" });
+    let branchSizeCalls = 0;
+    let nextReference = 0;
+    const pageStore = {
+      readPage: async ({ reference }: { isRoot: boolean; reference: string }) => {
+        const page = pages.get(reference);
+        if (page === undefined) throw new Error(`missing page ${reference}`);
+        return page;
+      },
+      readPageForUpdate: async ({ reference }: { isRoot: boolean; reference: string }) => {
+        const page = pages.get(reference);
+        if (page === undefined) throw new Error(`missing page ${reference}`);
+        return {
+          encodedByteLength: page.type === "leaf"
+            ? COMMON_PAGE_HEADER_SIZE + page.entries.reduce((total, entry) => total + entrySize({ entry }), 0)
+            : COMMON_PAGE_HEADER_SIZE + page.children.length * 8,
+          localStructureValidated: true as const,
+          page,
+        };
+      },
+      writePage: async ({ page }: { isRoot: boolean; page: Page }) => {
+        const reference = `next-${nextReference}`;
+        nextReference += 1;
+        pages.set(reference, page);
+        return reference;
+      },
+    };
+    const writer = new CanonicalBTreeWriter<number, Entry, string>({
+      compareKeys: ({ left, right }) => left - right,
+      encodedBranchChildByteLength: () => {
+        branchSizeCalls += 1;
+        return 8;
+      },
+      encodedLeafEntryByteLength: entrySize,
+      entriesEqual: ({ left, right }) => left.key === right.key && left.payload === right.payload,
+      getEntryKey: ({ entry }) => entry.key,
+      maximumLeafEntryCount: 64,
+      maximumPageByteLength: 16_384,
+      maximumRootLeafEntryCount: 64,
+      pageStore,
+    });
+
+    const root = await writer.applyChanges({
+      changes: [{ entry: { key: 30, payload: "updated" }, type: "set" }],
+      rootReference: "root",
+    });
+
+    const rewritten = pages.get(root);
+    expect(rewritten).toMatchObject({ type: "branch" });
+    expect(branchSizeCalls).toBeLessThanOrEqual(2);
+  });
+
+  it("rejects duplicate keys in the two-mutation fast path", async () => {
+    const { writer } = setup({ maximumPageByteLength: 16_384 });
+    const root = await writer.createEmpty();
+
+    await expect(writer.applyChanges({
+      changes: [
+        { entry: { key: 7, payload: "first" }, type: "set" },
+        { entry: { key: 7, payload: "second" }, type: "set" },
+      ],
+      rootReference: root,
+    })).rejects.toThrow("one B-tree mutation batch may change each key only once");
+  });
+
+  it("reuses exact loaded byte length across ordinary few-key leaf mutations", async () => {
+    const entries = Array.from({ length: 64 }, (_, key): Entry => ({ key, payload: "x" }));
+    const page: Page = { entries, level: 0, type: "leaf" };
+    let sizeCalls = 0;
+    let written: Page | undefined;
+    const pageStore = {
+      readPage: async () => page,
+      readPageForUpdate: async () => ({
+        encodedByteLength: COMMON_PAGE_HEADER_SIZE + entries.reduce((total, entry) => total + entrySize({ entry }), 0),
+        localStructureValidated: true as const,
+        page,
+      }),
+      writePage: async ({ page: next }: { isRoot: boolean; page: Page }) => {
+        written = next;
+        return "next";
+      },
+    };
+    const writer = new CanonicalBTreeWriter<number, Entry, string>({
+      compareKeys: ({ left, right }) => left - right,
+      encodedBranchChildByteLength: () => 8,
+      encodedLeafEntryByteLength: ({ entry }) => {
+        sizeCalls += 1;
+        return entrySize({ entry });
+      },
+      entriesEqual: ({ left, right }) => left.key === right.key && left.payload === right.payload,
+      getEntryKey: ({ entry }) => entry.key,
+      maximumLeafEntryCount: 128,
+      maximumPageByteLength: 16_384,
+      maximumRootLeafEntryCount: 128,
+      pageStore,
+    });
+
+    await writer.applyChanges({
+      changes: [
+        { entry: { key: 30, payload: "updated-30" }, type: "set" },
+        { entry: { key: 64, payload: "inserted-64" }, type: "set" },
+      ],
+      rootReference: "root",
+    });
+
+    expect(written).toMatchObject({ type: "leaf" });
+    if (written?.type !== "leaf") throw new Error("expected written leaf");
+    expect(written.entries).toHaveLength(65);
+    expect(written.entries.at(-1)).toEqual({ key: 64, payload: "inserted-64" });
+    expect(sizeCalls).toBeLessThanOrEqual(4);
+  });
+
   it("uses binary search for the ordinary single-key leaf mutation path", async () => {
     const store = new MemoryPageStore();
     let comparisonCount = 0;

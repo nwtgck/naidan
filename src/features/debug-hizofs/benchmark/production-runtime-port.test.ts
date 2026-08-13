@@ -494,9 +494,9 @@ describe('production HizoFS benchmark runtime port', () => {
       hits: 0,
       misses: 1,
     });
-    // Two dependency-ordered metadata pages may coexist only inside the bounded
-    // mutation-local batch before their single authenticated append succeeds.
-    expect(runtimeDiagnostics.caches.mutationMetadata.maximumEntries).toBe(2);
+    // One-shot predecessor reads stay identity-only under two-touch admission, while
+    // dependency-ordered provisional pages remain owned by the bounded append batch.
+    expect(runtimeDiagnostics.caches.mutationMetadata.maximumEntries).toBe(1);
     expect(Object.values(runtimeDiagnostics.records).reduce((sum, counter) => sum + counter.cacheHits, 0))
       .toBe(runtimeDiagnostics.caches.metadata.hits + runtimeDiagnostics.caches.mutationMetadata.hits);
     expect(Object.values(runtimeDiagnostics.records).reduce((sum, counter) => sum + counter.cacheMisses, 0))

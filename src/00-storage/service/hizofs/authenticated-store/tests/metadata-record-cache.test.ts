@@ -8,6 +8,7 @@ import {
 } from "@/00-storage/service/hizofs/00-format";
 import {
   AuthenticatedMetadataRecordCache,
+  TEST_ONLY as METADATA_CACHE_TEST_ONLY,
   type AuthenticatedMetadataRecord,
 } from "@/00-storage/service/hizofs/authenticated-store/metadata-record-cache";
 import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
@@ -87,6 +88,26 @@ function loadedRecord({ bytes, reference }: {
 
 describe("AuthenticatedMetadataRecordCache", () => {
 
+  it("uses complete collision-free Record Reference fields for runtime cache identity", () => {
+    const base = metadataReference({ offset: 64n, seed: 1 });
+    const equal = metadataReference({ offset: 64n, seed: 1 });
+    const differentSegment = metadataReference({ offset: 64n, seed: 2 });
+    const differentOffset = metadataReference({ offset: 160n, seed: 1 });
+    const differentLength = createHomeRecordReference({ fields: { ...base, frameLength: 104 } });
+    const differentKind = createHomeRecordReference({ fields: {
+      ...base,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page,
+    } });
+    const identity = METADATA_CACHE_TEST_ONLY.referenceIdentity({ reference: base });
+    expect(METADATA_CACHE_TEST_ONLY.referenceIdentity({ reference: equal })).toBe(identity);
+    for (const reference of [differentSegment, differentOffset, differentLength, differentKind]) {
+      expect(METADATA_CACHE_TEST_ONLY.referenceIdentity({ reference })).not.toBe(identity);
+    }
+    expect(() => METADATA_CACHE_TEST_ONLY.referenceIdentity({
+      reference: { ...base, frameLength: 89 } as HomeRecordReference,
+    })).toThrow("aligned");
+  });
+
   it("rejects invalid resource bounds before accepting authenticated plaintext", () => {
     expect(() => new AuthenticatedMetadataRecordCache({
       diagnostics: undefined,
@@ -96,6 +117,57 @@ describe("AuthenticatedMetadataRecordCache", () => {
       diagnostics: undefined,
       policy: { maximumBytes: 1, maximumEntries: Number.MAX_SAFE_INTEGER + 1 },
     })).toThrow("non-negative safe integer");
+  });
+
+  it("requires two read observations before mutation scope retains loaded plaintext", async () => {
+    const { diagnostics, state } = createMetadataDiagnostics();
+    const cache = new AuthenticatedMetadataRecordCache({
+      diagnosticScope: "mutation",
+      diagnostics,
+      policy: { maximumBytes: 32, maximumEntries: 4 },
+    });
+    const reference = metadataReference();
+    let loads = 0;
+    const load = async (): Promise<AuthenticatedMetadataRecord> => {
+      loads += 1;
+      return loadedRecord({ bytes: [1, 2, 3], reference });
+    };
+
+    const first = await cache.read({ load, reference });
+    first.plaintext.fill(0);
+    expect(state.currentEntries).toBe(0);
+    const second = await cache.read({ load, reference });
+    second.plaintext.fill(0);
+    expect(state.currentEntries).toBe(1);
+    const third = await cache.read({ load, reference });
+    third.plaintext.fill(0);
+
+    expect(loads).toBe(2);
+    expect(state).toMatchObject({ hits: 1, misses: 2 });
+  });
+
+  it("retains mutation-scope authenticated writes immediately", async () => {
+    const { diagnostics, state } = createMetadataDiagnostics();
+    const cache = new AuthenticatedMetadataRecordCache({
+      diagnosticScope: "mutation",
+      diagnostics,
+      policy: { maximumBytes: 32, maximumEntries: 4 },
+    });
+    const reference = metadataReference();
+    cache.admitAuthenticatedWrite({
+      plaintext: new Uint8Array([4, 5, 6]),
+      recordKind: reference.recordKind,
+      reference,
+    });
+    const value = await cache.read({
+      load: async () => {
+        throw new Error("write-admitted metadata was not retained");
+      },
+      reference,
+    });
+    expect([...value.plaintext]).toEqual([4, 5, 6]);
+    value.plaintext.fill(0);
+    expect(state).toMatchObject({ currentEntries: 1, hits: 1, misses: 0 });
   });
 
   it("returns detached plaintext while retaining authenticated immutable metadata", async () => {

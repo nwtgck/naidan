@@ -1,5 +1,6 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
+  createRecordAadEncoder,
   encodeRecordAad,
   type FileSystemId,
   type SegmentId,
@@ -45,6 +46,7 @@ export async function createRecordEncryptionBatchCapability({ fileSystemId, home
   rootKey: FileSystemRootKey;
 }): Promise<RecordEncryptionBatchCapability> {
   let key: CryptoKey | undefined = await deriveRecordKey({ fileSystemId, homeSegmentId, rootKey });
+  const aadEncoder = createRecordAadEncoder({ fileSystemId });
   return Object.freeze({
     encrypt: async ({ completeFrameHeader, nonce, plaintext }) => {
       validateFrameHeader({ completeFrameHeader });
@@ -52,7 +54,7 @@ export async function createRecordEncryptionBatchCapability({ fileSystemId, home
       if (activeKey === undefined) throw new TypeError('Record encryption batch capability has expired');
       if (rootKey.isDestroyed()) throw new TypeError('File System Root Key has been destroyed');
       return await encryptAesGcmOwnedRecord({
-        aad: encodeRecordAad({ completeFrameHeader, fileSystemId }),
+        aad: aadEncoder.encode({ completeFrameHeader }),
         key: activeKey,
         nonce,
         plaintext,

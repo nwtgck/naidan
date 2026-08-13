@@ -2,7 +2,6 @@ import {
   UINT64_MAXIMUM,
   createInodeRevision,
   assertInodeLeafEntryFitsMetadataPage,
-  encodeHomeRecordReference,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
   type HomeRecordReference,
@@ -14,6 +13,7 @@ import {
 } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
 import type { RootInodeTableMutation } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
 import type { OrdinaryEntryCreatePlan } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-plan";
+import { runtimeHomeRecordReferenceIdentity } from "@/00-storage/service/hizofs/authenticated-store/runtime-home-record-reference-identity";
 
 export type TreeBackedDirectoryCreateMutationErrorCode =
   | "destination_exists"
@@ -48,22 +48,21 @@ function createCapturedDirectoryPageStore({ pageStore }: {
   pageStore: DirectoryPageTreePageStore;
 }): CapturedDirectoryPageStore {
   type Page = Awaited<ReturnType<DirectoryPageTreePageStore["readPage"]>>;
+  type LoadedPage = Exclude<
+    Awaited<ReturnType<NonNullable<DirectoryPageTreePageStore["readPageForUpdate"]>>>,
+    undefined
+  >;
   const pages = new Map<string, Page>();
+  const loadedPages = new Map<string, LoadedPage>();
   let released = false;
-  const identity = ({ isRoot, reference }: { isRoot: boolean; reference: HomeRecordReference }): string => {
-    const encoded = encodeHomeRecordReference({ reference });
-    try {
-      let value = isRoot ? "root:" : "non_root:";
-      for (const byte of encoded) value += byte.toString(16).padStart(2, "0");
-      return value;
-    } finally {
-      encoded.fill(0);
-    }
-  };
+  const identity = ({ isRoot, reference }: { isRoot: boolean; reference: HomeRecordReference }): string => (
+    `${isRoot ? "root" : "non_root"}:${runtimeHomeRecordReferenceIdentity({ reference })}`
+  );
   const release = (): void => {
     if (released) return;
     released = true;
     pages.clear();
+    loadedPages.clear();
   };
   return Object.freeze({
     pageStore: {
@@ -73,11 +72,35 @@ function createCapturedDirectoryPageStore({ pageStore }: {
         const key = identity({ isRoot, reference });
         const captured = pages.get(key);
         if (captured !== undefined) return captured;
+        const updateReader = pageStore.readPageForUpdate;
+        if (updateReader !== undefined) {
+          const loaded = await updateReader({ isRoot, reference });
+          if (released) throw new TypeError("captured Directory page store was released while reading");
+          if (loaded !== undefined) {
+            pages.set(key, loaded.page);
+            loadedPages.set(key, loaded);
+            return loaded.page;
+          }
+        }
         const page = await pageStore.readPage({ isRoot, reference });
         if (released) throw new TypeError("captured Directory page store was released while reading");
         pages.set(key, page);
         return page;
       },
+      ...(pageStore.readPageForUpdate === undefined ? {} : {
+        readPageForUpdate: async ({ isRoot, reference }: { isRoot: boolean; reference: HomeRecordReference }) => {
+          if (released) throw new TypeError("captured Directory page store is released");
+          const key = identity({ isRoot, reference });
+          const captured = loadedPages.get(key);
+          if (captured !== undefined) return captured;
+          const loaded = await pageStore.readPageForUpdate?.({ isRoot, reference });
+          if (released) throw new TypeError("captured Directory page store was released while reading");
+          if (loaded === undefined) return undefined;
+          pages.set(key, loaded.page);
+          loadedPages.set(key, loaded);
+          return loaded;
+        },
+      }),
       writePage: async ({ isRoot, page }) => {
         if (released) throw new TypeError("captured Directory page store is released");
         return await pageStore.writePage({ isRoot, page });

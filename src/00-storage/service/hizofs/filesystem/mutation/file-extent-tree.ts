@@ -2,7 +2,6 @@ import {
   assertFileExtentBranchEntryValid,
   assertFileExtentLeafEntryValid,
   HIZOFS_V1_FORMAT_CONSTANTS,
-  encodeHomeRecordReference,
   sameRecordReferenceFields,
   type FileExtentLeafEntry,
   type FileExtentPage,
@@ -20,6 +19,7 @@ import type {
   ImmutableBTreeDiagnosticsPort,
 } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import { ImmutableBTreeReader } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
+import { runtimeHomeRecordReferenceIdentity } from "@/00-storage/service/hizofs/authenticated-store/runtime-home-record-reference-identity";
 
 export type FileExtentTreeMutation = ImmutableBTreeMutation<FileOffset, FileExtentLeafEntry>;
 export type FileExtentTreePageStore = ImmutableBTreePageStore<
@@ -37,6 +37,10 @@ export type FileExtentPagePort = Readonly<{
     isRoot: boolean;
     reference: HomeRecordReference;
   }) => Promise<FileExtentPage>;
+  readPageForUpdate?: ({ isRoot, reference }: {
+    isRoot: boolean;
+    reference: HomeRecordReference;
+  }) => Promise<Readonly<{ encodedByteLength: number; localStructureValidated: true; page: FileExtentPage }> | undefined>;
   writePage: ({ isRoot, page }: {
     isRoot: boolean;
     page: FileExtentPage;
@@ -48,11 +52,7 @@ function compareOffsets({ left, right }: { left: FileOffset; right: FileOffset }
 }
 
 function referenceIdentity({ reference }: { reference: HomeRecordReference }): string {
-  let identity = "";
-  for (const byte of encodeHomeRecordReference({ reference })) {
-    identity += byte.toString(16).padStart(2, "0");
-  }
-  return identity;
+  return runtimeHomeRecordReferenceIdentity({ reference });
 }
 
 function entriesEqual({ left, right }: {
@@ -72,23 +72,36 @@ function entriesEqual({ left, right }: {
 export function createFileExtentTreePageStore({ pagePort }: {
   pagePort: FileExtentPagePort;
 }): FileExtentTreePageStore {
+  const toTreePage = ({ page }: { page: FileExtentPage }): Awaited<ReturnType<FileExtentTreePageStore["readPage"]>> => {
+    switch (page.type) {
+    case "leaf": return page;
+    case "branch": return {
+      children: page.entries.map(entry => ({
+        childPageReference: entry.childPageHomeRef,
+        upperBound: entry.upperBound,
+      })),
+      level: page.level,
+      type: "branch",
+    };
+    default: return page satisfies never;
+    }
+  };
   return {
     operationDiagnostics: pagePort.operationDiagnostics,
-    readPage: async ({ isRoot, reference }) => {
-      const page = await pagePort.readPage({ isRoot, reference });
-      switch (page.type) {
-      case "leaf": return page;
-      case "branch": return {
-        children: page.entries.map(entry => ({
-          childPageReference: entry.childPageHomeRef,
-          upperBound: entry.upperBound,
-        })),
-        level: page.level,
-        type: "branch",
-      };
-      default: return page satisfies never;
-      }
-    },
+    readPage: async ({ isRoot, reference }) => toTreePage({
+      page: await pagePort.readPage({ isRoot, reference }),
+    }),
+    ...(pagePort.readPageForUpdate === undefined ? {} : {
+      readPageForUpdate: async ({ isRoot, reference }) => {
+        const loaded = await pagePort.readPageForUpdate?.({ isRoot, reference });
+        if (loaded === undefined) return undefined;
+        return Object.freeze({
+          encodedByteLength: loaded.encodedByteLength,
+          localStructureValidated: true,
+          page: toTreePage({ page: loaded.page }),
+        });
+      },
+    }),
     writePage: async ({ isRoot, page }) => {
       switch (page.type) {
       case "leaf": return await pagePort.writePage({ isRoot, page });

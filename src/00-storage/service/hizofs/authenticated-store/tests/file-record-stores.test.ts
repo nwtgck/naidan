@@ -1,4 +1,5 @@
 import {
+  encodeFileExtentPage,
   parseFileSystemId,
 } from "@/00-storage/service/hizofs/00-format";
 import {
@@ -8,6 +9,7 @@ import {
 import {
   appendAuthenticatedFileExtentPage,
   readAuthenticatedFileExtentPage,
+  readAuthenticatedFileExtentPageForUpdate,
 } from "@/00-storage/service/hizofs/authenticated-store/file-extent-page-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import { createAuthenticatedSegmentWriter } from "@/00-storage/service/hizofs/authenticated-store/record-appender";
@@ -85,6 +87,18 @@ describe("authenticated file record stores", () => {
       relocationIndexRootPhysicalRef: null,
       rootKey,
     })).resolves.toEqual(page);
+    await expect(readAuthenticatedFileExtentPageForUpdate({
+      backend,
+      fileSystemId,
+      homeReference,
+      isRoot: true,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+    })).resolves.toEqual({
+      encodedByteLength: encodeFileExtentPage({ isRoot: true, page }).byteLength,
+      localStructureValidated: true,
+      page,
+    });
     rootKey.destroy();
   });
 });

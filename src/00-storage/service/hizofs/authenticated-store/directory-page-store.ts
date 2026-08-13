@@ -16,7 +16,7 @@ import { readAuthenticatedNamespaceHomeRecord } from "./namespace-record-source"
 import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import type { AuthenticatedSegmentAppendTarget } from "./record-appender";
 
-export async function readAuthenticatedDirectoryPage({
+export async function readAuthenticatedDirectoryPageForUpdate({
   backend,
   diagnostics,
   fileSystemId,
@@ -36,7 +36,7 @@ export async function readAuthenticatedDirectoryPage({
   sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
   relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
   rootKey: FileSystemRootKey;
-}): Promise<DirectoryPage> {
+}): Promise<Readonly<{ encodedByteLength: number; localStructureValidated: true; page: DirectoryPage }>> {
   if (homeReference.recordKind !== HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page) {
     throw new TypeError("Directory page reference has the wrong record kind");
   }
@@ -51,7 +51,14 @@ export async function readAuthenticatedDirectoryPage({
     rootKey,
   });
   try {
-    return measureAuthenticatedCodecOperation({ diagnostics, format: "record", operation: "decode", run: () => decodeDirectoryPage({ bytes: record.plaintext, isRoot }) });
+    const encodedByteLength = record.plaintext.byteLength;
+    const page = measureAuthenticatedCodecOperation({
+      diagnostics,
+      format: "record",
+      operation: "decode",
+      run: () => decodeDirectoryPage({ bytes: record.plaintext, isRoot }),
+    });
+    return Object.freeze({ encodedByteLength, localStructureValidated: true, page });
   } catch (cause: unknown) {
     throw authenticatedStoreError({
       cause,
@@ -61,6 +68,23 @@ export async function readAuthenticatedDirectoryPage({
   } finally {
     record.plaintext.fill(0);
   }
+}
+
+export async function readAuthenticatedDirectoryPage({
+  backend,
+  diagnostics,
+  fileSystemId,
+  homeReference,
+  isRoot,
+  metadataRecordCache,
+  relocationIndexRootPhysicalRef,
+  rootKey,
+  sharedMetadataRecordCache,
+}: Parameters<typeof readAuthenticatedDirectoryPageForUpdate>[0]): Promise<DirectoryPage> {
+  return (await readAuthenticatedDirectoryPageForUpdate({
+    backend, diagnostics, fileSystemId, homeReference, isRoot, metadataRecordCache,
+    relocationIndexRootPhysicalRef, rootKey, sharedMetadataRecordCache,
+  })).page;
 }
 
 export async function appendAuthenticatedDirectoryPage({ isRoot, page, sharedMetadataRecordCache, writer }: {
@@ -75,7 +99,15 @@ export async function appendAuthenticatedDirectoryPage({ isRoot, page, sharedMet
   default: return writer.segmentClass satisfies never;
   }
   const recordKind = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.directory_page;
-  const plaintext = writer.encodeRecordPayload({ encode: () => encodeDirectoryPage({ isRoot, page }) });
+  const plaintext = writer.encodeOwnedRecordPayload({ encode: () => encodeDirectoryPage({ isRoot, page }) });
+  if (sharedMetadataRecordCache === undefined) {
+    const appended = await writer.appendOwnedRecord({ plaintext, recordKind });
+    switch (appended.type) {
+    case "home": return appended.homeReference;
+    case "physical_only": throw new Error("Directory page cannot be a physical-only record");
+    default: return appended satisfies never;
+    }
+  }
   try {
     const appended = await writer.appendCallerOwnedRecord({ plaintext, recordKind });
     switch (appended.type) {

@@ -1,8 +1,8 @@
 import {
-  encodeHomeRecordReference,
   type HomeRecordReference,
   type InodeNumber,
 } from "@/00-storage/service/hizofs/00-format";
+import { runtimeHomeRecordReferenceIdentity } from "@/00-storage/service/hizofs/authenticated-store/runtime-home-record-reference-identity";
 
 export type ReadOnlyNamespaceValidationKind = "directory_tree" | "inode_table";
 
@@ -17,11 +17,7 @@ type ValidationEntry = {
 };
 
 function referenceIdentity({ reference }: { reference: HomeRecordReference }): string {
-  let identity = "";
-  for (const byte of encodeHomeRecordReference({ reference })) {
-    identity += byte.toString(16).padStart(2, "0");
-  }
-  return identity;
+  return runtimeHomeRecordReferenceIdentity({ reference });
 }
 
 /**

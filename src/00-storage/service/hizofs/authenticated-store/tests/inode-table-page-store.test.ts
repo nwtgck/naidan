@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   createInodeNumber,
   createInodeRevision,
+  encodeInodeLeafPage,
   parseFileSystemId,
 } from "@/00-storage/service/hizofs/00-format";
 import {
   appendAuthenticatedInodeTablePage,
   readAuthenticatedInodeTablePage,
+  readAuthenticatedInodeTablePageForUpdate,
 } from "@/00-storage/service/hizofs/authenticated-store/inode-table-page-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import { createAuthenticatedSegmentWriter } from "@/00-storage/service/hizofs/authenticated-store/record-appender";
@@ -64,6 +66,18 @@ describe("authenticated Inode Table page store", () => {
       relocationIndexRootPhysicalRef: null,
       rootKey,
     })).resolves.toEqual({ entries: [rootEntry()], level: 0, type: "leaf" });
+    await expect(readAuthenticatedInodeTablePageForUpdate({
+      backend,
+      fileSystemId,
+      homeReference,
+      isRoot: true,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+    })).resolves.toEqual({
+      encodedByteLength: encodeInodeLeafPage({ entries: [rootEntry()], isRoot: true }).byteLength,
+      localStructureValidated: true,
+      page: { entries: [rootEntry()], level: 0, type: "leaf" },
+    });
     rootKey.destroy();
   });
 

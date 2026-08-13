@@ -1,10 +1,12 @@
 import {
   createInodeNumber,
+  encodeDirectoryPage,
   parseFileSystemId,
 } from "@/00-storage/service/hizofs/00-format";
 import {
   appendAuthenticatedDirectoryPage,
   readAuthenticatedDirectoryPage,
+  readAuthenticatedDirectoryPageForUpdate,
 } from "@/00-storage/service/hizofs/authenticated-store/directory-page-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import { createAuthenticatedSegmentWriter } from "@/00-storage/service/hizofs/authenticated-store/record-appender";
@@ -66,6 +68,18 @@ describe("authenticated Directory page store", () => {
       relocationIndexRootPhysicalRef: null,
       rootKey,
     })).resolves.toEqual(rootLeaf());
+    await expect(readAuthenticatedDirectoryPageForUpdate({
+      backend,
+      fileSystemId,
+      homeReference,
+      isRoot: true,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+    })).resolves.toEqual({
+      encodedByteLength: encodeDirectoryPage({ isRoot: true, page: rootLeaf() }).byteLength,
+      localStructureValidated: true,
+      page: rootLeaf(),
+    });
     rootKey.destroy();
   });
 

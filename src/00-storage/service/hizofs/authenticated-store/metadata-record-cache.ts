@@ -1,8 +1,8 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
-  encodeHomeRecordReference,
   type HomeRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
+import { runtimeHomeRecordReferenceIdentity } from "@/00-storage/service/hizofs/authenticated-store/runtime-home-record-reference-identity";
 import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 
 export type AuthenticatedMetadataRecordCachePolicy = Readonly<{
@@ -37,11 +37,7 @@ function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): b
 }
 
 function referenceIdentity({ reference }: { reference: HomeRecordReference }): string {
-  let identity = "";
-  for (const byte of encodeHomeRecordReference({ reference })) {
-    identity += byte.toString(16).padStart(2, "0");
-  }
-  return identity;
+  return runtimeHomeRecordReferenceIdentity({ reference });
 }
 
 function isMetadataReference({ reference }: { reference: HomeRecordReference }): boolean {
@@ -62,6 +58,7 @@ export class AuthenticatedMetadataRecordCache {
   private readonly diagnosticScope: AuthenticatedMetadataRecordCacheScope;
   private readonly diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
   private readonly entries = new Map<string, CacheEntry>();
+  private readonly pendingReadAdmissions = new Set<string>();
   private readonly policy: AuthenticatedMetadataRecordCachePolicy;
   private currentBytes = 0;
   private disposed = false;
@@ -82,6 +79,7 @@ export class AuthenticatedMetadataRecordCache {
   clear(): void {
     for (const entry of this.entries.values()) entry.plaintext.fill(0);
     this.entries.clear();
+    this.pendingReadAdmissions.clear();
     this.currentBytes = 0;
     this.reportUsage();
   }
@@ -104,6 +102,7 @@ export class AuthenticatedMetadataRecordCache {
     if (!isMetadataReference({ reference })) return;
 
     const identity = referenceIdentity({ reference });
+    this.pendingReadAdmissions.delete(identity);
     const existing = this.entries.get(identity);
     if (existing !== undefined) {
       if (existing.recordKind !== recordKind || !bytesEqual({ left: existing.plaintext, right: plaintext })) {
@@ -143,6 +142,32 @@ export class AuthenticatedMetadataRecordCache {
     this.reportUsage();
   }
 
+  private shouldRetainLoadedIdentity({ identity }: { identity: string }): boolean {
+    switch (this.diagnosticScope) {
+    case "session":
+      return true;
+    case "mutation":
+      if (this.pendingReadAdmissions.delete(identity)) return true;
+
+      // Mutation-local readers often touch immutable predecessor pages once and
+      // then replace them. Do not copy-retain those one-shot plaintexts. Keep a
+      // bounded identity-only admission history so a second observation promotes
+      // genuinely hot pages, preserving the benefit seen in repeated-write paths
+      // without paying a full plaintext copy for every first miss.
+      this.pendingReadAdmissions.add(identity);
+      while (this.pendingReadAdmissions.size > this.policy.maximumEntries) {
+        const oldest = this.pendingReadAdmissions.values().next().value as string | undefined;
+        if (oldest === undefined) break;
+        this.pendingReadAdmissions.delete(oldest);
+      }
+      return false;
+    default: {
+      const _ex: never = this.diagnosticScope;
+      throw new Error(`Unhandled metadata cache diagnostic scope: ${_ex}`);
+    }
+    }
+  }
+
   async read({ load, reference }: {
     load: () => Promise<AuthenticatedMetadataRecord>;
     reference: HomeRecordReference;
@@ -153,6 +178,7 @@ export class AuthenticatedMetadataRecordCache {
     const identity = referenceIdentity({ reference });
     const cached = this.entries.get(identity);
     if (cached !== undefined) {
+      this.pendingReadAdmissions.delete(identity);
       this.entries.delete(identity);
       this.entries.set(identity, cached);
       this.diagnostics?.recordMetadataCacheEvent?.({
@@ -183,6 +209,7 @@ export class AuthenticatedMetadataRecordCache {
 
     const concurrentlyCached = this.entries.get(identity);
     if (concurrentlyCached !== undefined) {
+      this.pendingReadAdmissions.delete(identity);
       loaded.plaintext.fill(0);
       this.entries.delete(identity);
       this.entries.set(identity, concurrentlyCached);
@@ -203,6 +230,7 @@ export class AuthenticatedMetadataRecordCache {
     ) {
       return loaded;
     }
+    if (!this.shouldRetainLoadedIdentity({ identity })) return loaded;
 
     const retained = loaded.plaintext.slice();
     while (

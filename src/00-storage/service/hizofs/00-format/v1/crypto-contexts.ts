@@ -2,6 +2,7 @@ import { writeU64Be } from './binary/scalars';
 import { encodeCryptoContext } from './crypto-context-codec';
 import { encodeUtf8Strict } from './encoding/utf8';
 import { HIZOFS_V1_FORMAT_CRYPTO_CONTEXTS } from './crypto-contracts';
+import { HIZOFS_V1_FORMAT_CONSTANTS } from './format-constants';
 import {
   assertSegmentId,
   parseCredentialSlotId,
@@ -128,13 +129,41 @@ export function encodeRecordKeyContext({ fileSystemId, homeSegmentId }: {
   });
 }
 
+export type RecordAadEncoder = Readonly<{
+  encode({ completeFrameHeader }: { completeFrameHeader: Uint8Array }): Uint8Array;
+}>;
+
+export function createRecordAadEncoder({ fileSystemId }: {
+  fileSystemId: FileSystemId;
+}): RecordAadEncoder {
+  const frameHeaderBytes = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader;
+  const template = encodeDescriptor({
+    descriptor: HIZOFS_V1_FORMAT_CRYPTO_CONTEXTS.recordAad,
+    fields: [fileSystemIdBytes({ fileSystemId }), new Uint8Array(frameHeaderBytes)],
+  });
+  const frameHeaderOffset = template.byteLength - frameHeaderBytes;
+  return Object.freeze({
+    encode: ({ completeFrameHeader }: { completeFrameHeader: Uint8Array }) => {
+      if (completeFrameHeader.byteLength !== frameHeaderBytes) {
+        throw new RangeError("Record Frame Header must have the exact V1 byte length");
+      }
+      // The domain, framing, and File System ID are invariant for one batch.
+      // Clone the authoritative template so each Web Crypto call still owns a
+      // fresh AAD buffer, then replace only the exact complete-header field.
+      const bytes = Uint8Array.from(template);
+      bytes.set(completeFrameHeader, frameHeaderOffset);
+      return bytes;
+    },
+  });
+}
+
 export function encodeRecordAad({ completeFrameHeader, fileSystemId }: {
   completeFrameHeader: Uint8Array;
   fileSystemId: FileSystemId;
 }): Uint8Array {
   return encodeDescriptor({
     descriptor: HIZOFS_V1_FORMAT_CRYPTO_CONTEXTS.recordAad,
-    fields: [fileSystemIdBytes({ fileSystemId }), Uint8Array.from(completeFrameHeader)],
+    fields: [fileSystemIdBytes({ fileSystemId }), completeFrameHeader],
   });
 }
 

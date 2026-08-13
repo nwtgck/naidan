@@ -16,7 +16,7 @@ import { readAuthenticatedNamespaceHomeRecord } from "./namespace-record-source"
 import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import type { AuthenticatedSegmentAppendTarget } from "./record-appender";
 
-export async function readAuthenticatedFileExtentPage({
+export async function readAuthenticatedFileExtentPageForUpdate({
   backend,
   diagnostics,
   fileSystemId,
@@ -36,7 +36,7 @@ export async function readAuthenticatedFileExtentPage({
   sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
   relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
   rootKey: FileSystemRootKey;
-}): Promise<FileExtentPage> {
+}): Promise<Readonly<{ encodedByteLength: number; localStructureValidated: true; page: FileExtentPage }>> {
   if (homeReference.recordKind !== HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page) {
     throw new TypeError("File Extent page reference has the wrong record kind");
   }
@@ -51,7 +51,14 @@ export async function readAuthenticatedFileExtentPage({
     rootKey,
   });
   try {
-    return measureAuthenticatedCodecOperation({ diagnostics, format: "record", operation: "decode", run: () => decodeFileExtentPage({ bytes: record.plaintext, isRoot }) });
+    const encodedByteLength = record.plaintext.byteLength;
+    const page = measureAuthenticatedCodecOperation({
+      diagnostics,
+      format: "record",
+      operation: "decode",
+      run: () => decodeFileExtentPage({ bytes: record.plaintext, isRoot }),
+    });
+    return Object.freeze({ encodedByteLength, localStructureValidated: true, page });
   } catch (cause: unknown) {
     throw authenticatedStoreError({
       cause,
@@ -61,6 +68,23 @@ export async function readAuthenticatedFileExtentPage({
   } finally {
     record.plaintext.fill(0);
   }
+}
+
+export async function readAuthenticatedFileExtentPage({
+  backend,
+  diagnostics,
+  fileSystemId,
+  homeReference,
+  isRoot,
+  metadataRecordCache,
+  relocationIndexRootPhysicalRef,
+  rootKey,
+  sharedMetadataRecordCache,
+}: Parameters<typeof readAuthenticatedFileExtentPageForUpdate>[0]): Promise<FileExtentPage> {
+  return (await readAuthenticatedFileExtentPageForUpdate({
+    backend, diagnostics, fileSystemId, homeReference, isRoot, metadataRecordCache,
+    relocationIndexRootPhysicalRef, rootKey, sharedMetadataRecordCache,
+  })).page;
 }
 
 export async function appendAuthenticatedFileExtentPage({ isRoot, page, sharedMetadataRecordCache, writer }: {
@@ -75,7 +99,15 @@ export async function appendAuthenticatedFileExtentPage({ isRoot, page, sharedMe
   default: return writer.segmentClass satisfies never;
   }
   const recordKind = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page;
-  const plaintext = writer.encodeRecordPayload({ encode: () => encodeFileExtentPage({ isRoot, page }) });
+  const plaintext = writer.encodeOwnedRecordPayload({ encode: () => encodeFileExtentPage({ isRoot, page }) });
+  if (sharedMetadataRecordCache === undefined) {
+    const appended = await writer.appendOwnedRecord({ plaintext, recordKind });
+    switch (appended.type) {
+    case "home": return appended.homeReference;
+    case "physical_only": throw new Error("File Extent page cannot be a physical-only record");
+    default: return appended satisfies never;
+    }
+  }
   try {
     const appended = await writer.appendCallerOwnedRecord({ plaintext, recordKind });
     switch (appended.type) {

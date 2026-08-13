@@ -1,7 +1,6 @@
 import {
   compareUnsignedBytes,
   encodeFilenameComponent,
-  encodeHomeRecordReference,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
   type DirectoryPage,
@@ -25,6 +24,7 @@ import {
 import { measureImmutableBTreeOperation } from "@/00-storage/service/hizofs/indexes/diagnostics-hooks";
 import { findBranchChildIndex } from "@/00-storage/service/hizofs/indexes/ordering";
 import type { ImmutableBTreeDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
+import { runtimeHomeRecordReferenceIdentity } from "@/00-storage/service/hizofs/authenticated-store/runtime-home-record-reference-identity";
 import { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 
 export type ReadOnlyNamespaceErrorCode =
@@ -133,9 +133,7 @@ export type ReadOnlyNamespaceResolver = ReadOnlyNamespace & Readonly<{
 }>;
 
 function referenceIdentity({ reference }: { reference: HomeRecordReference }): string {
-  let identity = "";
-  for (const byte of encodeHomeRecordReference({ reference })) identity += byte.toString(16).padStart(2, "0");
-  return identity;
+  return runtimeHomeRecordReferenceIdentity({ reference });
 }
 
 function inodePageToImmutable({ page }: {

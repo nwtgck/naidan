@@ -80,21 +80,32 @@ export function createRecordFrameHeader({
   return header;
 }
 
-export function encodeRecordFrameHeader({ header }: { header: RecordFrameHeaderV1 }): Uint8Array {
+export function writeRecordFrameHeader({ bytes, header, offset }: {
+  bytes: Uint8Array;
+  header: RecordFrameHeaderV1;
+  offset: number;
+}): void {
   validate({ header });
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset + SIZE > bytes.byteLength) {
+    throw new RangeError('Record Frame Header destination range is invalid');
+  }
+  writeFixedAscii({ bytes, offset, value: MAGIC });
+  writeU16Be({ bytes, offset: offset + 8, value: CONSTANTS.formatVersion });
+  writeU16Be({ bytes, offset: offset + 10, value: SIZE });
+  bytes[offset + 12] = header.recordKind;
+  bytes[offset + 13] = header.flags;
+  writeU16Be({ bytes, offset: offset + 14, value: header.recordCodecVersion });
+  bytes.set(header.homeSegmentId, offset + 16);
+  writeU64Be({ bytes, offset: offset + 32, value: header.homeOffset });
+  writeU32Be({ bytes, offset: offset + 40, value: header.plaintextLength });
+  writeU32Be({ bytes, offset: offset + 44, value: header.sealedLength });
+  writeU32Be({ bytes, offset: offset + 48, value: header.frameLength });
+  bytes.set(header.nonce, offset + 52);
+}
+
+export function encodeRecordFrameHeader({ header }: { header: RecordFrameHeaderV1 }): Uint8Array {
   const bytes = new Uint8Array(SIZE);
-  writeFixedAscii({ bytes, offset: 0, value: MAGIC });
-  writeU16Be({ bytes, offset: 8, value: CONSTANTS.formatVersion });
-  writeU16Be({ bytes, offset: 10, value: SIZE });
-  bytes[12] = header.recordKind;
-  bytes[13] = header.flags;
-  writeU16Be({ bytes, offset: 14, value: header.recordCodecVersion });
-  bytes.set(header.homeSegmentId, 16);
-  writeU64Be({ bytes, offset: 32, value: header.homeOffset });
-  writeU32Be({ bytes, offset: 40, value: header.plaintextLength });
-  writeU32Be({ bytes, offset: 44, value: header.sealedLength });
-  writeU32Be({ bytes, offset: 48, value: header.frameLength });
-  bytes.set(header.nonce, 52);
+  writeRecordFrameHeader({ bytes, header, offset: 0 });
   return bytes;
 }
 

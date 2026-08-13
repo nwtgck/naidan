@@ -1962,11 +1962,13 @@ function createAuthenticatedMetadataMutationPreparationStores({
     directoryPageStore: createDirectoryPageTreePageStore({ pagePort: {
       operationDiagnostics,
       readPage: async ({ isRoot, reference }) => await authority.readDirectoryPage({ isRoot, reference }),
+      readPageForUpdate: async ({ isRoot, reference }) => await authority.readDirectoryPageForUpdate({ isRoot, reference }),
       writePage: async ({ isRoot, page }) => await authority.writeDirectoryPage({ isRoot, page }),
     } }),
     inodeTablePageStore: createRootInodeTablePageStore({ pagePort: {
       operationDiagnostics,
       readPage: async ({ isRoot, reference }) => await authority.readInodeTablePage({ isRoot, reference }),
+      readPageForUpdate: async ({ isRoot, reference }) => await authority.readInodeTablePageForUpdate({ isRoot, reference }),
       writePage: async ({ isRoot, page }) => await authority.writeInodeTablePage({ isRoot, page }),
     } }),
   });
@@ -4557,6 +4559,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       extentPageStore: createFileExtentTreePageStore({ pagePort: {
         operationDiagnostics: indexUpdateOperationDiagnostics({ diagnostics: indexDiagnostics }),
         readPage: async ({ isRoot, reference }) => await fileAuthority.readFileExtentPage({ isRoot, reference }),
+        readPageForUpdate: async ({ isRoot, reference }) => await fileAuthority.readFileExtentPageForUpdate({ isRoot, reference }),
         writePage: async ({ isRoot, page }) => await fileAuthority.writeFileExtentPage({ isRoot, page }),
       } }),
       writeFileData: async ({ bytes }: { bytes: Uint8Array }) => await fileAuthority.writeFileData({ bytes }),
@@ -4564,6 +4567,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     const inodeTablePageStore = createRootInodeTablePageStore({ pagePort: {
       operationDiagnostics: indexUpdateOperationDiagnostics({ diagnostics: indexDiagnostics }),
       readPage: async ({ isRoot, reference }) => await fileAuthority.readInodeTablePage({ isRoot, reference }),
+      readPageForUpdate: async ({ isRoot, reference }) => await fileAuthority.readInodeTablePageForUpdate({ isRoot, reference }),
       writePage: async ({ isRoot, page }) => await fileAuthority.writeInodeTablePage({ isRoot, page }),
     } });
     let changed = false;
@@ -5992,17 +5996,20 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
     const port = {
       directoryPageStore: createDirectoryPageTreePageStore({ pagePort: {
         readPage: async ({ isRoot, reference }) => await authority.readDirectoryPage({ isRoot, reference }),
+        readPageForUpdate: async ({ isRoot, reference }) => await authority.readDirectoryPageForUpdate({ isRoot, reference }),
         writePage: async ({ isRoot, page }) => await authority.writeDirectoryPage({ isRoot, page }),
       } }),
       fileContentPort: {
         extentPageStore: createFileExtentTreePageStore({ pagePort: {
           readPage: async ({ isRoot, reference }) => await authority.readFileExtentPage({ isRoot, reference }),
+          readPageForUpdate: async ({ isRoot, reference }) => await authority.readFileExtentPageForUpdate({ isRoot, reference }),
           writePage: async ({ isRoot, page }) => await authority.writeFileExtentPage({ isRoot, page }),
         } }),
         writeFileData: async ({ bytes }: { bytes: Uint8Array }) => await authority.writeFileData({ bytes }),
       },
       rootInodeTablePageStore: createRootInodeTablePageStore({ pagePort: {
         readPage: async ({ isRoot, reference }) => await authority.readInodeTablePage({ isRoot, reference }),
+        readPageForUpdate: async ({ isRoot, reference }) => await authority.readInodeTablePageForUpdate({ isRoot, reference }),
         writePage: async ({ isRoot, page }) => await authority.writeInodeTablePage({ isRoot, page }),
       } }),
     };

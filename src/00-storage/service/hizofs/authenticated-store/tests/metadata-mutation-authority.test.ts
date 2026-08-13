@@ -274,12 +274,17 @@ describe("authenticated metadata mutation authority", () => {
       isRoot: true,
       reference: opened.commit.rootInodeTableRootHomeRef,
     });
+    const third = await authority.readInodeTablePage({
+      isRoot: true,
+      reference: opened.commit.rootInodeTableRootHomeRef,
+    });
 
     expect(second).toEqual(first);
+    expect(third).toEqual(first);
     expect(diagnostics.snapshot().caches.mutationMetadata).toMatchObject({
       currentEntries: 1,
       hits: 1,
-      misses: 1,
+      misses: 2,
     });
 
     authority.abandon();

@@ -57,29 +57,46 @@ export type RootInodeTablePagePort = Readonly<{
     port: ImmutableBTreeDiagnosticsPort;
   }>;
   readPage: ReadRootInodeTablePage;
+  readPageForUpdate?: ({ isRoot, reference }: {
+    isRoot: boolean;
+    reference: HomeRecordReference;
+  }) => Promise<Readonly<{ encodedByteLength: number; localStructureValidated: true; page: RootInodeTablePage }> | undefined>;
   writePage: WriteRootInodeTablePage;
 }>;
 
 export function createRootInodeTablePageStore({ pagePort }: {
   pagePort: RootInodeTablePagePort;
 }): RootInodeTablePageStore {
+  const toTreePage = ({ page }: { page: RootInodeTablePage }): Awaited<ReturnType<RootInodeTablePageStore["readPage"]>> => {
+    switch (page.type) {
+    case "leaf": return page;
+    case "branch": return {
+      children: page.entries.map(entry => ({
+        childPageReference: entry.childPageHomeRef,
+        upperBound: entry.upperBound,
+      })),
+      level: page.level,
+      type: "branch",
+    };
+    default: return page satisfies never;
+    }
+  };
   return {
     operationDiagnostics: pagePort.operationDiagnostics,
-    readPage: async ({ isRoot, reference }) => {
-      const page = await pagePort.readPage({ isRoot, reference });
-      switch (page.type) {
-      case "leaf": return page;
-      case "branch": return {
-        children: page.entries.map(entry => ({
-          childPageReference: entry.childPageHomeRef,
-          upperBound: entry.upperBound,
-        })),
-        level: page.level,
-        type: "branch",
-      };
-      default: return page satisfies never;
-      }
-    },
+    readPage: async ({ isRoot, reference }) => toTreePage({
+      page: await pagePort.readPage({ isRoot, reference }),
+    }),
+    ...(pagePort.readPageForUpdate === undefined ? {} : {
+      readPageForUpdate: async ({ isRoot, reference }) => {
+        const loaded = await pagePort.readPageForUpdate?.({ isRoot, reference });
+        if (loaded === undefined) return undefined;
+        return Object.freeze({
+          encodedByteLength: loaded.encodedByteLength,
+          localStructureValidated: true,
+          page: toTreePage({ page: loaded.page }),
+        });
+      },
+    }),
     writePage: async ({ isRoot, page }) => {
       switch (page.type) {
       case "leaf": return await pagePort.writePage({ isRoot, page });

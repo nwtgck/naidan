@@ -82,6 +82,12 @@ function decodeReference({ bytes }: { bytes: Uint8Array }): RecordReferenceField
   return fields;
 }
 
+export function assertHomeRecordReferenceValid({ reference }: {
+  reference: HomeRecordReference;
+}): void {
+  validateFields({ fields: reference });
+}
+
 export function sameRecordReferenceFields({ left, right }: {
   left: RecordReferenceFields;
   right: RecordReferenceFields;

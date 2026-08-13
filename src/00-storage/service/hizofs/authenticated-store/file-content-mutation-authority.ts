@@ -234,6 +234,18 @@ export class AuthenticatedFileContentMutationAuthority {
     }
   }
 
+  async readDirectoryPageForUpdate(
+    { isRoot, reference }: Parameters<AuthenticatedMetadataMutationAuthority["readDirectoryPageForUpdate"]>[0],
+  ): Promise<Awaited<ReturnType<AuthenticatedMetadataMutationAuthority["readDirectoryPageForUpdate"]>>> {
+    this.requireActive({ operation: "read a Directory page for update" });
+    this.operationInProgress = true;
+    try {
+      return await this.metadata.readDirectoryPageForUpdate({ isRoot, reference });
+    } finally {
+      this.operationInProgress = false;
+    }
+  }
+
   async writeDirectoryPage({ isRoot, page }: Parameters<AuthenticatedMetadataMutationAuthority["writeDirectoryPage"]>[0]): Promise<HomeRecordReference> {
     this.requireActive({ operation: "write a Directory page" });
     this.operationInProgress = true;
@@ -249,6 +261,18 @@ export class AuthenticatedFileContentMutationAuthority {
     this.operationInProgress = true;
     try {
       return await this.metadata.readFileExtentPage({ isRoot, reference });
+    } finally {
+      this.operationInProgress = false;
+    }
+  }
+
+  async readFileExtentPageForUpdate(
+    { isRoot, reference }: Parameters<AuthenticatedMetadataMutationAuthority["readFileExtentPageForUpdate"]>[0],
+  ): Promise<Awaited<ReturnType<AuthenticatedMetadataMutationAuthority["readFileExtentPageForUpdate"]>>> {
+    this.requireActive({ operation: "read a File Extent page for update" });
+    this.operationInProgress = true;
+    try {
+      return await this.metadata.readFileExtentPageForUpdate({ isRoot, reference });
     } finally {
       this.operationInProgress = false;
     }
@@ -272,6 +296,18 @@ export class AuthenticatedFileContentMutationAuthority {
     this.operationInProgress = true;
     try {
       return await this.metadata.readInodeTablePage({ isRoot, reference });
+    } finally {
+      this.operationInProgress = false;
+    }
+  }
+
+  async readInodeTablePageForUpdate(
+    { isRoot, reference }: Parameters<AuthenticatedMetadataMutationAuthority["readInodeTablePageForUpdate"]>[0],
+  ): Promise<Awaited<ReturnType<AuthenticatedMetadataMutationAuthority["readInodeTablePageForUpdate"]>>> {
+    this.requireActive({ operation: "read an Inode Table page for update" });
+    this.operationInProgress = true;
+    try {
+      return await this.metadata.readInodeTablePageForUpdate({ isRoot, reference });
     } finally {
       this.operationInProgress = false;
     }

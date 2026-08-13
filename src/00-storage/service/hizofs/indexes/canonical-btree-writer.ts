@@ -20,12 +20,28 @@ export type ImmutableBTreeMutation<TKey, TEntry> =
   | Readonly<{ entry: TEntry; type: "set" }>
   | Readonly<{ key: TKey; type: "delete" }>;
 
+export type ValidatedImmutableBTreePageForUpdate<TKey, TEntry, TReference> = Readonly<{
+  /**
+   * Exact canonical encoded byte length of `page`. The page owner may expose
+   * this stronger capability only after its authoritative decoder validated
+   * every persisted item and the complete local B-tree structure. Newly
+   * supplied mutation items are still validated before persistence.
+   */
+  encodedByteLength: number;
+  localStructureValidated: true;
+  page: ImmutableBTreePage<TKey, TEntry, TReference>;
+}>;
+
 export type ImmutableBTreePageStore<TKey, TEntry, TReference> = Readonly<{
   operationDiagnostics?: Readonly<{
     operation: ImmutableBTreeDiagnosticOperation;
     port: ImmutableBTreeDiagnosticsPort;
   }>;
   readPage: ({ isRoot, reference }: { isRoot: boolean; reference: TReference }) => Promise<ImmutableBTreePage<TKey, TEntry, TReference>>;
+  readPageForUpdate?: ({ isRoot, reference }: {
+    isRoot: boolean;
+    reference: TReference;
+  }) => Promise<ValidatedImmutableBTreePageForUpdate<TKey, TEntry, TReference> | undefined>;
   writePage: ({ isRoot, page }: { isRoot: boolean; page: ImmutableBTreePage<TKey, TEntry, TReference> }) => Promise<TReference>;
 }>;
 
@@ -109,6 +125,20 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     // A single mutation is already sorted and unique, so copying and invoking
     // Array.sort only creates hot-path work without strengthening validation.
     if (changes.length <= 1) return changes;
+    if (changes.length === 2) {
+      const left = changes[0];
+      const right = changes[1];
+      if (left === undefined || right === undefined) throw new Error("two-key B-tree mutation batch is incomplete");
+      const comparison = this.compareKeys({
+        left: this.mutationKey({ mutation: left }),
+        right: this.mutationKey({ mutation: right }),
+      });
+      if (comparison === 0) throw new TypeError("one B-tree mutation batch may change each key only once");
+      // WHY: ordinary inode creation updates the parent and inserts one child.
+      // Compare/swap avoids allocating and invoking the generic sort machinery
+      // for that dominant two-key batch while preserving exact ordering.
+      return comparison < 0 ? changes : [right, left];
+    }
     const sorted = [...changes].sort((left, right) => this.compareKeys({
       left: this.mutationKey({ mutation: left }),
       right: this.mutationKey({ mutation: right }),
@@ -127,6 +157,13 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
   private validatedItemByteLength({ byteLength }: { byteLength: number }): number {
     if (!Number.isSafeInteger(byteLength) || byteLength < 1) {
       throw new RangeError("encoded B-tree item byte length must be a positive safe integer");
+    }
+    return byteLength;
+  }
+
+  private validatedLoadedPageByteLength({ byteLength }: { byteLength: number }): number {
+    if (!Number.isSafeInteger(byteLength) || byteLength < COMMON_PAGE_HEADER_SIZE) {
+      throw new RangeError("validated B-tree page byte length must include the common page header");
     }
     return byteLength;
   }
@@ -194,11 +231,31 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return splitRange({ end: items.length, start: 0 });
   }
 
-  private async writeLeafGroups({ entries, isRootWhenSingleGroup, structural }: {
+  private async writeLeafGroups({ entries, isRootWhenSingleGroup, knownSingleGroupByteLength, structural }: {
     entries: readonly TEntry[];
     isRootWhenSingleGroup: boolean;
+    knownSingleGroupByteLength?: number;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<readonly ReferenceSummary<TKey, TReference>[]> {
+    const singleGroupEntryLimit = isRootWhenSingleGroup
+      ? this.maximumRootLeafEntryCount
+      : this.maximumLeafEntryCount;
+    if (
+      knownSingleGroupByteLength !== undefined
+      && entries.length <= singleGroupEntryLimit
+      && knownSingleGroupByteLength <= this.maximumPageByteLength
+    ) {
+      const page = { entries, level: 0, type: "leaf" } as const;
+      if (structural !== undefined) structural.pageWrites += 1;
+      const reference = await this.pageStore.writePage({ isRoot: isRootWhenSingleGroup, page });
+      const upperBoundEntry = entries.at(-1);
+      if (upperBoundEntry === undefined) throw new Error("B-tree no-split leaf is empty");
+      return [{
+        level: 0,
+        reference,
+        upperBound: this.getEntryKey({ entry: upperBoundEntry }),
+      }];
+    }
     const splitWithLimit = ({ maximumItemCount }: { maximumItemCount: number }) => this.splitItems({
       itemByteLength: ({ item }) => this.encodedLeafEntryByteLength({ entry: item }),
       items: entries,
@@ -238,12 +295,24 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return references;
   }
 
-  private async writeBranchGroups({ children, isRootWhenSingleGroup, level, structural }: {
+  private async writeBranchGroups({ children, isRootWhenSingleGroup, knownSingleGroupByteLength, level, structural }: {
     children: readonly ImmutableBTreeBranchChild<TKey, TReference>[];
     isRootWhenSingleGroup: boolean;
+    knownSingleGroupByteLength?: number;
     level: number;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<readonly ReferenceSummary<TKey, TReference>[]> {
+    if (knownSingleGroupByteLength !== undefined && knownSingleGroupByteLength <= this.maximumPageByteLength) {
+      const page = { children, level, type: "branch" } as const;
+      if (structural !== undefined) {
+        structural.maximumPageLevel = Math.max(structural.maximumPageLevel, level);
+        structural.pageWrites += 1;
+      }
+      const reference = await this.pageStore.writePage({ isRoot: isRootWhenSingleGroup, page });
+      const upperBound = children.at(-1)?.upperBound;
+      if (upperBound === undefined) throw new Error("B-tree no-split branch is empty");
+      return [{ level, reference, upperBound }];
+    }
     const groups = this.splitItems({
       itemByteLength: ({ item }) => this.encodedBranchChildByteLength({ child: item }),
       items: children,
@@ -303,12 +372,21 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     }
   }
 
-  private mergeLeafChanges({ changes, entries }: {
+  private mergeLeafChanges({ changes, entries, reuseLoadedByteLength }: {
     changes: readonly ImmutableBTreeMutation<TKey, TEntry>[];
     entries: readonly TEntry[];
-  }): Readonly<{ changed: boolean; entries: readonly TEntry[] }> {
+    reuseLoadedByteLength: boolean;
+  }): Readonly<{ changed: boolean; encodedByteLengthDelta?: number; entries: readonly TEntry[] }> {
     const onlyChange = changes.length === 1 ? changes[0] : undefined;
     if (onlyChange !== undefined) return this.mergeSingleLeafChange({ entries, mutation: onlyChange });
+    // WHY: ordinary inode creation changes only a tiny number of keys in one
+    // already-authenticated immutable leaf. When its exact encoded length is
+    // known, binary-locate those few keys and account only for their encoded
+    // byte deltas. Large batches and page stores without the stronger loaded
+    // page capability keep the general linear merge/split path below.
+    if (reuseLoadedByteLength && changes.length <= 4) {
+      return this.mergeFewLeafChanges({ changes, entries });
+    }
     const next: TEntry[] = [];
     let changed = false;
     let entryIndex = 0;
@@ -347,10 +425,76 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     return { changed, entries: next };
   }
 
+  private mergeFewLeafChanges({ changes, entries }: {
+    changes: readonly ImmutableBTreeMutation<TKey, TEntry>[];
+    entries: readonly TEntry[];
+  }): Readonly<{ changed: boolean; encodedByteLengthDelta: number; entries: readonly TEntry[] }> {
+    const next = [...entries];
+    let changed = false;
+    let encodedByteLengthDelta = 0;
+    // Changes are sorted and unique before mutation begins. Apply them from
+    // high to low so an insertion/deletion cannot invalidate the original
+    // binary-search index of a lower key.
+    for (let changeIndex = changes.length - 1; changeIndex >= 0; changeIndex -= 1) {
+      const mutation = changes[changeIndex];
+      if (mutation === undefined) throw new Error("B-tree few-key mutation index invariant failed");
+      const key = this.mutationKey({ mutation });
+      const index = findLeafEntryIndex({
+        compareKeys: this.compareKeys,
+        entries,
+        getEntryKey: this.getEntryKey,
+        key,
+      });
+      const existing = entries[index];
+      const matches = existing !== undefined
+        && this.compareKeys({ left: this.getEntryKey({ entry: existing }), right: key }) === 0;
+      switch (mutation.type) {
+      case "delete": {
+        if (!matches) break;
+        if (existing === undefined) throw new Error("matched B-tree entry is missing");
+        encodedByteLengthDelta -= this.validatedItemByteLength({
+          byteLength: this.encodedLeafEntryByteLength({ entry: existing }),
+        });
+        next.splice(index, 1);
+        changed = true;
+        break;
+      }
+      case "set": {
+        if (matches) {
+          if (existing === undefined) throw new Error("matched B-tree entry is missing");
+          if (this.entriesEqual({ left: existing, right: mutation.entry })) break;
+          const existingByteLength = this.validatedItemByteLength({
+            byteLength: this.encodedLeafEntryByteLength({ entry: existing }),
+          });
+          const replacementByteLength = this.validatedItemByteLength({
+            byteLength: this.encodedLeafEntryByteLength({ entry: mutation.entry }),
+          });
+          next[index] = mutation.entry;
+          encodedByteLengthDelta += replacementByteLength - existingByteLength;
+          changed = true;
+          break;
+        }
+        const insertedByteLength = this.validatedItemByteLength({
+          byteLength: this.encodedLeafEntryByteLength({ entry: mutation.entry }),
+        });
+        next.splice(index, 0, mutation.entry);
+        encodedByteLengthDelta += insertedByteLength;
+        changed = true;
+        break;
+      }
+      default: {
+        const exhaustive: never = mutation;
+        throw new Error(`Unhandled B-tree mutation: ${((exhaustive satisfies never) as { readonly type: string }).type}`);
+      }
+      }
+    }
+    return changed ? { changed: true, encodedByteLengthDelta, entries: next } : { changed: false, encodedByteLengthDelta: 0, entries };
+  }
+
   private mergeSingleLeafChange({ entries, mutation }: {
     entries: readonly TEntry[];
     mutation: ImmutableBTreeMutation<TKey, TEntry>;
-  }): Readonly<{ changed: boolean; entries: readonly TEntry[] }> {
+  }): Readonly<{ changed: boolean; encodedByteLengthDelta: number; entries: readonly TEntry[] }> {
     const key = this.mutationKey({ mutation });
     const index = findLeafEntryIndex({
       compareKeys: this.compareKeys,
@@ -362,22 +506,41 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     const matches = existing !== undefined && this.compareKeys({ left: this.getEntryKey({ entry: existing }), right: key }) === 0;
     switch (mutation.type) {
     case "delete": {
-      if (!matches) return { changed: false, entries };
+      if (!matches) return { changed: false, encodedByteLengthDelta: 0, entries };
+      if (existing === undefined) throw new Error("matched B-tree entry is missing");
+      const existingByteLength = this.validatedItemByteLength({
+        byteLength: this.encodedLeafEntryByteLength({ entry: existing }),
+      });
       const next = [...entries];
       next.splice(index, 1);
-      return { changed: true, entries: next };
+      return { changed: true, encodedByteLengthDelta: -existingByteLength, entries: next };
     }
     case "set": {
       if (matches) {
         if (existing === undefined) throw new Error("matched B-tree entry is missing");
-        if (this.entriesEqual({ left: existing, right: mutation.entry })) return { changed: false, entries };
+        if (this.entriesEqual({ left: existing, right: mutation.entry })) {
+          return { changed: false, encodedByteLengthDelta: 0, entries };
+        }
+        const existingByteLength = this.validatedItemByteLength({
+          byteLength: this.encodedLeafEntryByteLength({ entry: existing }),
+        });
+        const replacementByteLength = this.validatedItemByteLength({
+          byteLength: this.encodedLeafEntryByteLength({ entry: mutation.entry }),
+        });
         const next = [...entries];
         next[index] = mutation.entry;
-        return { changed: true, entries: next };
+        return {
+          changed: true,
+          encodedByteLengthDelta: replacementByteLength - existingByteLength,
+          entries: next,
+        };
       }
+      const insertedByteLength = this.validatedItemByteLength({
+        byteLength: this.encodedLeafEntryByteLength({ entry: mutation.entry }),
+      });
       const next = [...entries];
       next.splice(index, 0, mutation.entry);
-      return { changed: true, entries: next };
+      return { changed: true, encodedByteLengthDelta: insertedByteLength, entries: next };
     }
     default: return mutation satisfies never;
     }
@@ -389,20 +552,32 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
     reference: TReference;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): Promise<MutationResult<TKey, TReference>> {
-    const page = await this.pageStore.readPage({ isRoot, reference });
+    const loaded = this.pageStore.readPageForUpdate === undefined
+      ? undefined
+      : await this.pageStore.readPageForUpdate({ isRoot, reference });
+    const page = loaded?.page ?? await this.pageStore.readPage({ isRoot, reference });
+    const loadedEncodedByteLength = loaded === undefined
+      ? undefined
+      : this.validatedLoadedPageByteLength({ byteLength: loaded.encodedByteLength });
     if (structural !== undefined) {
       structural.pageReads += 1;
       structural.maximumPageLevel = Math.max(structural.maximumPageLevel, page.level);
     }
-    assertLocallyValidImmutableBTreePage({
-      compareKeys: this.compareKeys,
-      getEntryKey: this.getEntryKey,
-      isRoot,
-      page,
-    });
+    if (loaded === undefined) {
+      assertLocallyValidImmutableBTreePage({
+        compareKeys: this.compareKeys,
+        getEntryKey: this.getEntryKey,
+        isRoot,
+        page,
+      });
+    }
     switch (page.type) {
     case "leaf": {
-      const merged = this.mergeLeafChanges({ changes, entries: page.entries });
+      const merged = this.mergeLeafChanges({
+        changes,
+        entries: page.entries,
+        reuseLoadedByteLength: loadedEncodedByteLength !== undefined,
+      });
       if (!merged.changed) {
         if (structural !== undefined) structural.unchangedPageReuses += 1;
         return {
@@ -424,11 +599,17 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
           }],
         };
       }
+      const knownSingleGroupByteLength = loadedEncodedByteLength === undefined || merged.encodedByteLengthDelta === undefined
+        ? undefined
+        : this.validatedLoadedPageByteLength({
+          byteLength: loadedEncodedByteLength + merged.encodedByteLengthDelta,
+        });
       return {
         changed: true,
         references: await this.writeLeafGroups({
           entries: merged.entries,
           isRootWhenSingleGroup: isRoot,
+          ...(knownSingleGroupByteLength === undefined ? {} : { knownSingleGroupByteLength }),
           structural,
         }),
       };
@@ -459,6 +640,8 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
         return { changed: false, references: [{ level: page.level, reference, upperBound }] };
       }
       let changed = false;
+      let encodedByteLengthDelta = 0;
+      const encodedByteLengthDeltaKnown = loadedEncodedByteLength !== undefined;
       const nextChildren: ImmutableBTreeBranchChild<TKey, TReference>[] = [];
       for (let index = 0; index < page.children.length; index += 1) {
         const child = page.children[index];
@@ -475,13 +658,24 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
           structural,
         });
         changed ||= result.changed;
+        if (result.changed && encodedByteLengthDeltaKnown) {
+          encodedByteLengthDelta -= this.validatedItemByteLength({
+            byteLength: this.encodedBranchChildByteLength({ child }),
+          });
+        }
         for (const replacement of result.references) {
           if (replacement.upperBound === undefined) throw new Error("non-root B-tree replacement is empty");
           if (replacement.level !== page.level - 1) throw new TypeError("B-tree replacement changed child level");
-          nextChildren.push({
+          const replacementChild = {
             childPageReference: replacement.reference,
             upperBound: replacement.upperBound,
-          });
+          };
+          nextChildren.push(replacementChild);
+          if (result.changed && encodedByteLengthDeltaKnown) {
+            encodedByteLengthDelta += this.validatedItemByteLength({
+              byteLength: this.encodedBranchChildByteLength({ child: replacementChild }),
+            });
+          }
         }
       }
       if (!changed) {
@@ -504,11 +698,17 @@ export class CanonicalBTreeWriter<TKey, TEntry, TReference> {
           }],
         };
       }
+      const knownSingleGroupByteLength = loadedEncodedByteLength === undefined
+        ? undefined
+        : this.validatedLoadedPageByteLength({
+          byteLength: loadedEncodedByteLength + encodedByteLengthDelta,
+        });
       return {
         changed: true,
         references: await this.writeBranchGroups({
           children: nextChildren,
           isRootWhenSingleGroup: isRoot,
+          ...(knownSingleGroupByteLength === undefined ? {} : { knownSingleGroupByteLength }),
           level: page.level,
           structural,
         }),

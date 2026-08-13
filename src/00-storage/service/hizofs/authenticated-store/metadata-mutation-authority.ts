@@ -20,14 +20,17 @@ import type { HizoFSWritableBackend } from "@/00-storage/service/hizofs/physical
 import {
   appendAuthenticatedDirectoryPage,
   readAuthenticatedDirectoryPage,
+  readAuthenticatedDirectoryPageForUpdate,
 } from "./directory-page-store";
 import {
   appendAuthenticatedFileExtentPage,
   readAuthenticatedFileExtentPage,
+  readAuthenticatedFileExtentPageForUpdate,
 } from "./file-extent-page-store";
 import {
   appendAuthenticatedInodeTablePage,
   readAuthenticatedInodeTablePage,
+  readAuthenticatedInodeTablePageForUpdate,
   type AuthenticatedInodeBranchPageCache,
   type AuthenticatedInodeTablePage,
 } from "./inode-table-page-store";
@@ -679,6 +682,29 @@ export class AuthenticatedMetadataMutationAuthority {
     }
   }
 
+  async readFileExtentPageForUpdate({ isRoot, reference }: {
+    isRoot: boolean;
+    reference: HomeRecordReference;
+  }): Promise<Awaited<ReturnType<typeof readAuthenticatedFileExtentPageForUpdate>>> {
+    this.requireActive({ operation: "read a File Extent page for update" });
+    this.operationInProgress = true;
+    try {
+      return await readAuthenticatedFileExtentPageForUpdate({
+        backend: this.backend,
+        diagnostics: this.diagnostics,
+        fileSystemId: this.fileSystemId,
+        homeReference: reference,
+        isRoot,
+        metadataRecordCache: this.metadataRecordCache,
+        sharedMetadataRecordCache: this.sharedMetadataRecordCache,
+        relocationIndexRootPhysicalRef: this.relocationIndexRootPhysicalRef,
+        rootKey: this.rootKey,
+      });
+    } finally {
+      this.operationInProgress = false;
+    }
+  }
+
   async writeFileExtentPage({ isRoot, page }: {
     isRoot: boolean;
     page: FileExtentPage;
@@ -711,6 +737,32 @@ export class AuthenticatedMetadataMutationAuthority {
         return { ...cloneInodeBranchPage({ page: pending.page }), type: "branch" };
       }
       return await readAuthenticatedInodeTablePage({
+        backend: this.backend,
+        decodedBranchPageCache: this.decodedInodeBranchPageCache,
+        diagnostics: this.diagnostics,
+        fileSystemId: this.fileSystemId,
+        homeReference: reference,
+        isRoot,
+        metadataRecordCache: this.metadataRecordCache,
+        sharedMetadataRecordCache: this.sharedMetadataRecordCache,
+        relocationIndexRootPhysicalRef: this.relocationIndexRootPhysicalRef,
+        rootKey: this.rootKey,
+      });
+    } finally {
+      this.operationInProgress = false;
+    }
+  }
+
+  async readInodeTablePageForUpdate({ isRoot, reference }: {
+    isRoot: boolean;
+    reference: HomeRecordReference;
+  }): Promise<Awaited<ReturnType<typeof readAuthenticatedInodeTablePageForUpdate>> | undefined> {
+    this.requireActive({ operation: "read an Inode Table page for update" });
+    this.operationInProgress = true;
+    try {
+      const pending = this.pendingInodeBranchPages.get(inodeBranchIdentity({ isRoot, reference }));
+      if (pending !== undefined) return undefined;
+      return await readAuthenticatedInodeTablePageForUpdate({
         backend: this.backend,
         decodedBranchPageCache: this.decodedInodeBranchPageCache,
         diagnostics: this.diagnostics,
@@ -767,6 +819,29 @@ export class AuthenticatedMetadataMutationAuthority {
     this.operationInProgress = true;
     try {
       return await readAuthenticatedDirectoryPage({
+        backend: this.backend,
+        diagnostics: this.diagnostics,
+        fileSystemId: this.fileSystemId,
+        homeReference: reference,
+        isRoot,
+        metadataRecordCache: this.metadataRecordCache,
+        sharedMetadataRecordCache: this.sharedMetadataRecordCache,
+        relocationIndexRootPhysicalRef: this.relocationIndexRootPhysicalRef,
+        rootKey: this.rootKey,
+      });
+    } finally {
+      this.operationInProgress = false;
+    }
+  }
+
+  async readDirectoryPageForUpdate({ isRoot, reference }: {
+    isRoot: boolean;
+    reference: HomeRecordReference;
+  }): Promise<Awaited<ReturnType<typeof readAuthenticatedDirectoryPageForUpdate>>> {
+    this.requireActive({ operation: "read a Directory page for update" });
+    this.operationInProgress = true;
+    try {
+      return await readAuthenticatedDirectoryPageForUpdate({
         backend: this.backend,
         diagnostics: this.diagnostics,
         fileSystemId: this.fileSystemId,

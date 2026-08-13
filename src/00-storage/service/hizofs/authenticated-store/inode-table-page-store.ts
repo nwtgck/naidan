@@ -1,4 +1,5 @@
 import {
+  COMMON_PAGE_HEADER_SIZE,
   HIZOFS_V1_FORMAT_CONSTANTS,
   decodeCommonPageHeader,
   decodeInodeBranchPage,
@@ -40,7 +41,7 @@ export type AuthenticatedInodeBranchPageCache = Readonly<{
   }) => void;
 }>;
 
-export async function readAuthenticatedInodeTablePage({
+export async function readAuthenticatedInodeTablePageForUpdate({
   backend,
   diagnostics,
   decodedBranchPageCache,
@@ -62,12 +63,19 @@ export async function readAuthenticatedInodeTablePage({
   sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
   relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
   rootKey: FileSystemRootKey;
-}): Promise<AuthenticatedInodeTablePage> {
+}): Promise<Readonly<{ encodedByteLength: number; localStructureValidated: true; page: AuthenticatedInodeTablePage }>> {
   if (homeReference.recordKind !== HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page) {
     throw new TypeError("Inode Table page reference has the wrong record kind");
   }
   const cachedBranch = decodedBranchPageCache?.getBranchPage({ isRoot, reference: homeReference });
-  if (cachedBranch !== undefined) return { ...cachedBranch, type: "branch" };
+  if (cachedBranch !== undefined) {
+    return Object.freeze({
+      encodedByteLength: COMMON_PAGE_HEADER_SIZE
+        + cachedBranch.entries.length * HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.inodeBranchChild,
+      localStructureValidated: true,
+      page: { ...cachedBranch, type: "branch" as const },
+    });
+  }
   const record = await readAuthenticatedNamespaceHomeRecord({
     backend,
     diagnostics,
@@ -79,17 +87,19 @@ export async function readAuthenticatedInodeTablePage({
     rootKey,
   });
   try {
-    return measureAuthenticatedCodecOperation({
+    const encodedByteLength = record.plaintext.byteLength;
+    const page = measureAuthenticatedCodecOperation({
       diagnostics,
       format: "record",
       operation: "decode",
       run: () => {
         const header = decodeCommonPageHeader({ bytes: record.plaintext, family: "inode", isRoot });
         if (header.level === 0) return decodeInodeLeafPage({ bytes: record.plaintext, isRoot });
-        const page = decodeInodeBranchPage({ bytes: record.plaintext, isRoot });
-        return { ...page, type: "branch" };
+        const decoded = decodeInodeBranchPage({ bytes: record.plaintext, isRoot });
+        return { ...decoded, type: "branch" } as const;
       },
     });
+    return Object.freeze({ encodedByteLength, localStructureValidated: true, page });
   } catch (cause: unknown) {
     throw authenticatedStoreError({
       cause,
@@ -99,6 +109,24 @@ export async function readAuthenticatedInodeTablePage({
   } finally {
     record.plaintext.fill(0);
   }
+}
+
+export async function readAuthenticatedInodeTablePage({
+  backend,
+  decodedBranchPageCache,
+  diagnostics,
+  fileSystemId,
+  homeReference,
+  isRoot,
+  metadataRecordCache,
+  relocationIndexRootPhysicalRef,
+  rootKey,
+  sharedMetadataRecordCache,
+}: Parameters<typeof readAuthenticatedInodeTablePageForUpdate>[0]): Promise<AuthenticatedInodeTablePage> {
+  return (await readAuthenticatedInodeTablePageForUpdate({
+    backend, decodedBranchPageCache, diagnostics, fileSystemId, homeReference, isRoot, metadataRecordCache,
+    relocationIndexRootPhysicalRef, rootKey, sharedMetadataRecordCache,
+  })).page;
 }
 
 export async function appendAuthenticatedInodeTablePage({
@@ -117,7 +145,7 @@ export async function appendAuthenticatedInodeTablePage({
   case "data": throw new TypeError("Inode Table pages require a metadata Segment writer");
   default: return writer.segmentClass satisfies never;
   }
-  const plaintext = writer.encodeRecordPayload({ encode: () => {
+  const plaintext = writer.encodeOwnedRecordPayload({ encode: () => {
     switch (page.type) {
     case "leaf": return encodeInodeLeafPage({ entries: page.entries, isRoot });
     case "branch": return encodeInodeBranchPage({ page: { entries: page.entries, level: page.level }, isRoot });
@@ -125,6 +153,14 @@ export async function appendAuthenticatedInodeTablePage({
     }
   } });
   const recordKind = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page;
+  if (sharedMetadataRecordCache === undefined) {
+    const appended = await writer.appendOwnedRecord({ plaintext, recordKind });
+    switch (appended.type) {
+    case "home": return appended.homeReference;
+    case "physical_only": throw new Error("Inode Table page cannot be a physical-only record");
+    default: return appended satisfies never;
+    }
+  }
   try {
     const appended = await writer.appendCallerOwnedRecord({ plaintext, recordKind });
     switch (appended.type) {

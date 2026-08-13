@@ -79,7 +79,23 @@ describe("authenticated metadata append batch", () => {
       firstReference.byteOffset + BigInt(firstReference.frameLength),
     );
 
+    const ownedPlaintext = appendTarget.encodeOwnedRecordPayload({
+      encode: () => new Uint8Array([3, 4, 5]),
+    });
+    await appendTarget.appendOwnedRecord({ plaintext: ownedPlaintext, recordKind });
+    expect([...ownedPlaintext]).toEqual([3, 4, 5]);
+
+    const rejectedOwnedPlaintext = appendTarget.encodeOwnedRecordPayload({
+      encode: () => new Uint8Array([6, 7, 8]),
+    });
+    await expect(appendTarget.appendOwnedRecord({
+      plaintext: rejectedOwnedPlaintext,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data,
+    })).rejects.toThrow("segment class");
+    expect([...rejectedOwnedPlaintext]).toEqual([0, 0, 0]);
+
     await batch.flush();
+    expect([...ownedPlaintext]).toEqual([0, 0, 0]);
     mutationCache.dispose();
     writer.abandon();
     await writer.settleAbandonment();
