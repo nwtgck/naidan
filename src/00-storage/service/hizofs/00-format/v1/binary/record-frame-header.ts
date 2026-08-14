@@ -27,6 +27,19 @@ function align8({ value }: { value: number }): number {
   return Math.ceil(value / 8) * 8;
 }
 
+export function recordFrameLayoutForPlaintextLength({ plaintextLength }: {
+  plaintextLength: number;
+}): Readonly<{ frameLength: number; sealedLength: number }> {
+  if (!Number.isInteger(plaintextLength) || plaintextLength < 0 || plaintextLength > 0xffff_ffff) {
+    throw new RangeError('Record Frame plaintext length is outside u32');
+  }
+  const sealedLength = plaintextLength + CONSTANTS.crypto.tagBytes;
+  return Object.freeze({
+    frameLength: align8({ value: SIZE + sealedLength }),
+    sealedLength,
+  });
+}
+
 function validate({ header }: { header: RecordFrameHeaderV1 }): void {
   if (!KNOWN_KINDS.has(header.recordKind)) throw new TypeError('Record Frame kind is unknown');
   const physicalOnly = (header.flags & PHYSICAL_ONLY) !== 0;
@@ -64,10 +77,10 @@ export function createRecordFrameHeader({
   plaintextLength: number;
   recordKind: number;
 }): RecordFrameHeaderV1 {
-  const sealedLength = plaintextLength + CONSTANTS.crypto.tagBytes;
+  const { frameLength, sealedLength } = recordFrameLayoutForPlaintextLength({ plaintextLength });
   const header: RecordFrameHeaderV1 = {
     flags,
-    frameLength: align8({ value: SIZE + sealedLength }),
+    frameLength,
     homeOffset: createUInt64({ value: homeOffset }),
     homeSegmentId: parseSegmentId({ bytes: homeSegmentId }),
     nonce: Uint8Array.from(nonce),

@@ -107,7 +107,7 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
       try {
         return recordSource.decodeRecordPayload({ decode: () => {
           const page = decodeDirectoryPage({ bytes, isRoot });
-          decodedDirectoryPageIndexCache?.setPage({ isRoot, page, reference });
+          decodedDirectoryPageIndexCache?.setPage({ encodedByteLength: bytes.byteLength, isRoot, page, reference });
           return page;
         } });
       } finally {

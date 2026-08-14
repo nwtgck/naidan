@@ -1,7 +1,6 @@
 import {
-  compareUnsignedBytes,
   encodeBase64UrlUnpadded,
-  encodeFileSystemCommitPayload,
+  sameFileSystemCommitPayloadFields,
   encodeHomeRecordReference,
   type DirectoryLeafEntry,
   type HomeRecordReference,
@@ -2069,10 +2068,10 @@ export class ContainerRuntime {
     });
     switch (resolution) {
     case "confirmed_published": {
-      const commitPayloadMatches = compareUnsignedBytes({
-        left: encodeFileSystemCommitPayload({ payload: current.commit }),
-        right: encodeFileSystemCommitPayload({ payload: observedDurableAuthority.commit }),
-      }) === 0;
+      const commitPayloadMatches = sameFileSystemCommitPayloadFields({
+        left: current.commit,
+        right: observedDurableAuthority.commit,
+      });
       const physicalIdentityMatches = (() => {
         switch (current.workingRootAuthority.type) {
         case "direct_working_pages": return true;

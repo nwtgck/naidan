@@ -295,6 +295,74 @@ describe("authenticated metadata mutation authority", () => {
     });
   });
 
+  it("commits provisional Directory page cache admission only after the metadata batch is durable", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const commit = vi.fn();
+    const discard = vi.fn();
+    const preparePageAdmission = vi.fn(() => Object.freeze({ commit, discard }));
+    const authority = await createAuthenticatedMetadataMutationAuthority({
+      backend,
+      decodedDirectoryPageCache: {
+        getPageForUpdate: () => undefined,
+        preparePageAdmission,
+        setPage: vi.fn(),
+      },
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const page = { entries: [], level: 0 as const, type: "leaf" as const };
+
+    const reference = await authority.writeDirectoryPage({ isRoot: true, page });
+    expect(preparePageAdmission).toHaveBeenCalledWith({
+      encodedByteLength: expect.any(Number),
+      isRoot: true,
+      page,
+      reference,
+    });
+    expect(commit).not.toHaveBeenCalled();
+    expect(discard).not.toHaveBeenCalled();
+
+    await authority.flushPendingMetadataRecords();
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(discard).not.toHaveBeenCalled();
+    authority.abandon();
+    rootKey.destroy();
+  });
+
+  it("discards provisional Directory page cache admission when the mutation is abandoned", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const commit = vi.fn();
+    const discard = vi.fn();
+    const authority = await createAuthenticatedMetadataMutationAuthority({
+      backend,
+      decodedDirectoryPageCache: {
+        getPageForUpdate: () => undefined,
+        preparePageAdmission: () => Object.freeze({ commit, discard }),
+        setPage: vi.fn(),
+      },
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+
+    await authority.writeDirectoryPage({ isRoot: true, page: { entries: [], level: 0, type: "leaf" } });
+    authority.abandon();
+    expect(commit).not.toHaveBeenCalled();
+    expect(discard).toHaveBeenCalledTimes(1);
+    rootKey.destroy();
+  });
+
   it("keeps provisional Inode branch routing mutation-local until the metadata batch is durable", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();

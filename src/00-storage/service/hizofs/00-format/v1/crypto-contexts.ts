@@ -130,7 +130,9 @@ export function encodeRecordKeyContext({ fileSystemId, homeSegmentId }: {
 }
 
 export type RecordAadEncoder = Readonly<{
+  byteLength: number;
   encode({ completeFrameHeader }: { completeFrameHeader: Uint8Array }): Uint8Array;
+  write({ bytes, completeFrameHeader }: { bytes: Uint8Array; completeFrameHeader: Uint8Array }): Uint8Array;
 }>;
 
 export function createRecordAadEncoder({ fileSystemId }: {
@@ -142,18 +144,24 @@ export function createRecordAadEncoder({ fileSystemId }: {
     fields: [fileSystemIdBytes({ fileSystemId }), new Uint8Array(frameHeaderBytes)],
   });
   const frameHeaderOffset = template.byteLength - frameHeaderBytes;
+  const write = ({ bytes, completeFrameHeader }: { bytes: Uint8Array; completeFrameHeader: Uint8Array }): Uint8Array => {
+    if (completeFrameHeader.byteLength !== frameHeaderBytes) {
+      throw new RangeError("Record Frame Header must have the exact V1 byte length");
+    }
+    if (bytes.byteLength !== template.byteLength) {
+      throw new RangeError("Record AAD destination must have the exact V1 byte length");
+    }
+    bytes.set(template);
+    bytes.set(completeFrameHeader, frameHeaderOffset);
+    return bytes;
+  };
   return Object.freeze({
-    encode: ({ completeFrameHeader }: { completeFrameHeader: Uint8Array }) => {
-      if (completeFrameHeader.byteLength !== frameHeaderBytes) {
-        throw new RangeError("Record Frame Header must have the exact V1 byte length");
-      }
-      // The domain, framing, and File System ID are invariant for one batch.
-      // Clone the authoritative template so each Web Crypto call still owns a
-      // fresh AAD buffer, then replace only the exact complete-header field.
-      const bytes = Uint8Array.from(template);
-      bytes.set(completeFrameHeader, frameHeaderOffset);
-      return bytes;
-    },
+    byteLength: template.byteLength,
+    encode: ({ completeFrameHeader }: { completeFrameHeader: Uint8Array }) => write({
+      bytes: new Uint8Array(template.byteLength),
+      completeFrameHeader,
+    }),
+    write,
   });
 }
 

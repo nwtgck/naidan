@@ -3286,6 +3286,55 @@ describe("HizoFS worker composition root", () => {
     }
   });
 
+  it("reuses a durably admitted tree-backed Directory successor without decoding it on the next create", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const diagnostics = new HizoFSRuntimeDiagnosticsAccumulator();
+    const created = await createEmptyEncryptedContainer({
+      backend,
+      diagnostics,
+      passphrase: "passphrase",
+      randomSource: deterministicRandomSource(),
+      supportedFeatureBits,
+    });
+    created.rootKey.destroy();
+    const capability = await openAuthenticatedDevelopmentWritableContainerCapability({
+      backend: developmentBackend({ backend }),
+      passphrase: "passphrase",
+      recordDiagnostics: diagnostics,
+      verifyProofAuthority: async () => undefined,
+    });
+    if (capability.type !== "opened") throw new Error("expected development writable capability");
+    const session = await openAuthenticatedDevelopmentWritableApplicationSessionFromCapability({
+      authority: capability.authority,
+      canonicalBackingLocation: "memory://directory-write-through-cache.hizofs",
+      recheckAuthority: async () => undefined,
+      runtimeHost: runtimeHost(),
+    });
+
+    try {
+      for (let index = 0; index < 24; index += 1) {
+        await session.root.getFileHandle({
+          create: true,
+          name: `seed-${String(index).padStart(2, "0")}-${"x".repeat(180)}`,
+        });
+      }
+      const beforeNextCreate = diagnostics.snapshot();
+      await session.root.getFileHandle({ create: true, name: "tree-backed-successor.txt" });
+      const afterNextCreate = diagnostics.snapshot();
+      expect(afterNextCreate.records.directory_page.readOperations)
+        .toBe(beforeNextCreate.records.directory_page.readOperations);
+      // WHY: session plaintext caching already prevents physical Directory Record reads here. The
+      // durable decoded-page admission removes the remaining Directory page codec pass; at most
+      // the Inode-page decode needed by this create remains observable.
+      expect(afterNextCreate.phases.record_decode.operationCount - beforeNextCreate.phases.record_decode.operationCount)
+        .toBeLessThan(2);
+    } finally {
+      await capability.releaseResources();
+      await session.close();
+    }
+  });
+
   it("replaces the authenticated development session passphrase and reopens only with the replacement", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const supportedFeatureBits = createFeatureBits({ value: 0n });

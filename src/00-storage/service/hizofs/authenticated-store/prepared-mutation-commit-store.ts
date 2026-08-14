@@ -1,9 +1,8 @@
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
-  decodeFileSystemCommitPayload,
-  decodeRequiredHomeRecordReference,
+  copyFileSystemCommitPayload,
+  createHomeRecordReference,
   encodeFileSystemCommitPayload,
-  encodeHomeRecordReference,
   type FeatureBits,
   type FileSystemCommitPayload,
   type FileSystemId,
@@ -50,11 +49,11 @@ const PREPARED_MUTATION_COMMIT_CANDIDATE_AUTHORITY = new WeakMap<
 >();
 
 function cloneCommitPayload({ payload }: { payload: FileSystemCommitPayload }): FileSystemCommitPayload {
-  return decodeFileSystemCommitPayload({ bytes: encodeFileSystemCommitPayload({ payload }) });
+  return copyFileSystemCommitPayload({ payload });
 }
 
 function cloneCommitHomeRef({ reference }: { reference: HomeRecordReference }): HomeRecordReference {
-  return decodeRequiredHomeRecordReference({ bytes: encodeHomeRecordReference({ reference }) });
+  return createHomeRecordReference({ fields: reference });
 }
 
 function exposePreparedMutationCommitCandidate({ authority }: {

@@ -4,8 +4,9 @@ import {
   createPhysicalRecordReference,
   createRecordFrameHeader,
   createUInt64,
+  recordFrameLayoutForPlaintextLength,
   writeRecordFrameHeader,
-  encodeSegmentFooterIndexEntry,
+  writeSegmentFooterIndexEntry,
   encodeSegmentHeader,
   segmentClassForRecordKind,
   segmentFooterIndexEntryFromFrame,
@@ -14,8 +15,8 @@ import {
   type FileSystemId,
   type HomeRecordReference,
   type PhysicalRecordReference,
-  type RecordFrameHeaderV1,
   type SegmentClass,
+  type SegmentFooterIndexEntryV1,
   type SegmentId,
 } from "@/00-storage/service/hizofs/00-format";
 import {
@@ -241,15 +242,9 @@ function planRecordAppend({
       throw new RangeError("record plaintext exceeds its V1 bound");
     }
     const physicalOnly = record.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page;
-    const header = createRecordFrameHeader({
-      flags: physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0,
-      homeOffset: createUInt64({ value: plannedOffset }),
-      homeSegmentId: segmentId,
-      nonce: new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.crypto.nonceBytes),
-      plaintextLength: record.plaintext.byteLength,
-      recordKind: record.recordKind,
-    });
-    const end = plannedOffset + BigInt(header.frameLength);
+    const { frameLength } = recordFrameLayoutForPlaintextLength({ plaintextLength: record.plaintext.byteLength });
+    const homeOffset = createUInt64({ value: plannedOffset });
+    const end = plannedOffset + BigInt(frameLength);
     const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
     if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass }))) {
       throw new AuthenticatedSegmentCapacityError({
@@ -258,18 +253,18 @@ function planRecordAppend({
       });
     }
     const physicalReference = createPhysicalRecordReference({ fields: {
-      byteOffset: header.homeOffset,
-      frameLength: header.frameLength,
-      recordKind: header.recordKind,
+      byteOffset: homeOffset,
+      frameLength,
+      recordKind: record.recordKind,
       segmentId,
     } });
     results.push(physicalOnly
       ? { physicalReference, type: "physical_only" }
       : {
         homeReference: createHomeRecordReference({ fields: {
-          byteOffset: header.homeOffset,
-          frameLength: header.frameLength,
-          recordKind: header.recordKind,
+          byteOffset: homeOffset,
+          frameLength,
+          recordKind: record.recordKind,
           segmentId,
         } }),
         physicalReference,
@@ -336,11 +331,11 @@ function freshRecordNonce({ batchNonceKeys, randomSource, usedNonceKeys }: {
   batchNonceKeys: ReadonlySet<string>;
   randomSource?: RandomByteSource;
   usedNonceKeys: ReadonlySet<string>;
-}): RecordNonce {
+}): Readonly<{ key: string; nonce: RecordNonce }> {
   for (let attempt = 0; attempt < HIZOFS_V1_FORMAT_CONSTANTS.limits.randomIdentityGenerationAttempts; attempt += 1) {
     const nonce = generateRecordNonce({ randomSource });
     const key = nonceKey({ nonce });
-    if (!usedNonceKeys.has(key) && !batchNonceKeys.has(key)) return nonce;
+    if (!usedNonceKeys.has(key) && !batchNonceKeys.has(key)) return { key, nonce };
   }
   throw new Error("Record nonce generation exhausted the collision retry bound");
 }
@@ -502,7 +497,7 @@ export class AuthenticatedSegmentWriter {
   }
 
   private appendDurableFooterIndex({ frames }: {
-    frames: readonly Readonly<{ header: RecordFrameHeaderV1; physicalOffset: bigint }>[];
+    frames: readonly Readonly<{ footerEntry: SegmentFooterIndexEntryV1 }>[];
   }): void {
     const entrySize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentFooterIndexEntry;
     const maximumBytes = frameMaximumCount({ segmentClass: this.segmentClassValue }) * entrySize;
@@ -521,10 +516,11 @@ export class AuthenticatedSegmentWriter {
     }
     let offset = this.durableFooterIndexLength;
     for (const frame of frames) {
-      const bytes = encodeSegmentFooterIndexEntry({
-        entry: segmentFooterIndexEntryFromFrame({ frame }),
+      writeSegmentFooterIndexEntry({
+        bytes: this.durableFooterIndexBytes,
+        entry: frame.footerEntry,
+        offset,
       });
-      this.durableFooterIndexBytes.set(bytes, offset);
       offset += entrySize;
     }
     this.durableFooterIndexLength = requiredBytes;
@@ -850,27 +846,51 @@ export class AuthenticatedSegmentWriter {
       }
       const batchNonceKeys = new Set<string>();
       const frames: Array<{
-        ciphertext: Uint8Array;
-        header: RecordFrameHeaderV1;
-        physicalOffset: bigint;
+        footerEntry: SegmentFooterIndexEntryV1;
         result: AppendedRecord;
       }> = [];
-      // WHY: the canonical Record Frame Header is needed as AEAD AAD before
-      // the final physical batch can be sized. Reuse one fixed-size scratch
-      // view instead of allocating and retaining one header buffer per frame.
-      // The final batch receives the same canonical header bytes directly from
-      // 00-format after encryption preparation completes.
-      const headerScratch = new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader);
       let encryptionCapability: Awaited<ReturnType<typeof createRecordEncryptionBatchCapability>> | undefined;
-      let nextOffset = this.nextOffset;
+      let batch: AuthenticatedHizoFSPhysicalBytes | undefined;
+      let batchLength = 0;
+      let batchOffset = 0;
       try {
+        // WHY: exact frame lengths depend only on plaintext lengths and the V1
+        // AEAD tag/padding contract. Preflight the complete bounded batch with
+        // the canonical format layout before generating nonces or Web Crypto
+        // state, then materialize each nonce-bearing Header only when its
+        // ciphertext is ready to enter the final physical buffer.
+        let plannedOffset = this.nextOffset;
         for (const record of records) {
-          const nonce = freshRecordNonce({
+          if (segmentClassForRecordKind({ recordKind: record.recordKind }) !== this.segmentClassValue) {
+            throw new TypeError("record kind does not belong to the active segment class");
+          }
+          if (record.plaintext.byteLength > plaintextMaximum({ recordKind: record.recordKind })) {
+            throw new RangeError("record plaintext exceeds its V1 bound");
+          }
+          const { frameLength } = recordFrameLayoutForPlaintextLength({ plaintextLength: record.plaintext.byteLength });
+          plannedOffset += BigInt(frameLength);
+          const recordAreaLength = plannedOffset - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
+          if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.segmentClassValue }))) {
+            throw new AuthenticatedSegmentCapacityError({
+              capacity: "record_area",
+              message: "record append batch exceeds the segment record-area bound",
+            });
+          }
+          batchLength += frameLength;
+          if (!Number.isSafeInteger(batchLength)) {
+            throw new RangeError("record append batch byte length exceeds the safe integer bound");
+          }
+        }
+
+        batch = allocateAuthenticatedHizoFSPhysicalBytes({ byteLength: batchLength });
+        let nextOffset = this.nextOffset;
+        for (const record of records) {
+          const { key: nonceIdentity, nonce } = freshRecordNonce({
             batchNonceKeys,
             randomSource: this.randomSource,
             usedNonceKeys: this.usedNonceKeys,
           });
-          batchNonceKeys.add(nonceKey({ nonce }));
+          batchNonceKeys.add(nonceIdentity);
           const physicalOnly = record.recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page;
           const header = createRecordFrameHeader({
             flags: physicalOnly ? HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly : 0,
@@ -880,15 +900,11 @@ export class AuthenticatedSegmentWriter {
             plaintextLength: record.plaintext.byteLength,
             recordKind: record.recordKind,
           });
-          const end = nextOffset + BigInt(header.frameLength);
-          const recordAreaLength = end - BigInt(HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader);
-          if (recordAreaLength > BigInt(recordAreaMaximum({ segmentClass: this.segmentClassValue }))) {
-            throw new AuthenticatedSegmentCapacityError({
-              capacity: "record_area",
-              message: "record append batch exceeds the segment record-area bound",
-            });
-          }
-          writeRecordFrameHeader({ bytes: headerScratch, header, offset: 0 });
+          writeRecordFrameHeader({ bytes: batch, header, offset: batchOffset });
+          const completeFrameHeader = batch.subarray(
+            batchOffset,
+            batchOffset + HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader,
+          );
           const ciphertext = await measureAuthenticatedCryptoOperation({
             diagnostics: this.diagnostics,
             operation: "encrypt",
@@ -901,12 +917,19 @@ export class AuthenticatedSegmentWriter {
                 rootKey: this.rootKey,
               });
               return await capability.encrypt({
-                completeFrameHeader: headerScratch,
+                completeFrameHeader,
                 nonce,
                 plaintext: record.plaintext,
               });
             },
           });
+          if (ciphertext.byteLength !== header.sealedLength) {
+            throw new Error("Record ciphertext length differs from the canonical Frame Header");
+          }
+          batch.set(
+            ciphertext,
+            batchOffset + HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader,
+          );
           const physicalReference = createPhysicalRecordReference({ fields: {
             byteOffset: header.homeOffset,
             frameLength: header.frameLength,
@@ -925,8 +948,12 @@ export class AuthenticatedSegmentWriter {
               physicalReference,
               type: "home",
             };
-          frames.push({ ciphertext, header, physicalOffset: nextOffset, result });
-          nextOffset = end;
+          frames.push({
+            footerEntry: segmentFooterIndexEntryFromFrame({ frame: { header, physicalOffset: nextOffset } }),
+            result,
+          });
+          nextOffset += BigInt(header.frameLength);
+          batchOffset += header.frameLength;
         }
       } finally {
         // Web Crypto keys cannot be explicitly zeroized. Drop the only batch
@@ -939,23 +966,7 @@ export class AuthenticatedSegmentWriter {
           for (const record of records) record.plaintext.fill(0);
         }
       }
-
-      const batchLength = frames.reduce((total, frame) => total + frame.header.frameLength, 0);
-      const batch = allocateAuthenticatedHizoFSPhysicalBytes({ byteLength: batchLength });
-      let batchOffset = 0;
-      for (const frame of frames) {
-        // WHY: ciphertext already exists as a Web Crypto result. Assemble each
-        // canonical header + ciphertext directly into the one physical batch
-        // instead of first materializing per-frame buffers and then copying
-        // those complete frames again. Capacity checks, crypto ordering, and
-        // the exact durable/read-back bytes remain unchanged.
-        writeRecordFrameHeader({ bytes: batch, header: frame.header, offset: batchOffset });
-        batch.set(
-          frame.ciphertext,
-          batchOffset + HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader,
-        );
-        batchOffset += frame.header.frameLength;
-      }
+      if (batch === undefined) throw new Error("record append batch allocation invariant failed");
       if (batchOffset !== batchLength) throw new Error("record append batch length invariant failed");
       requireWriterStillActive({
         message: "segment writer was abandoned during append preparation",
@@ -1025,7 +1036,7 @@ export class AuthenticatedSegmentWriter {
         segmentClass: this.segmentClassValue,
       } });
       this.appendDurableFooterIndex({ frames });
-      this.nextOffset = nextOffset;
+      this.nextOffset += BigInt(batchLength);
       this.frameCount += frames.length;
       if (this.durableFooterIndexLength
         !== this.frameCount * HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentFooterIndexEntry) {
@@ -1039,9 +1050,9 @@ export class AuthenticatedSegmentWriter {
       for (const frame of frames) {
         this.diagnostics?.recordPersistedRecord({
           operation: "write",
-          physicalBytes: frame.header.frameLength,
-          plaintextBytes: frame.header.plaintextLength,
-          recordKind: frame.header.recordKind,
+          physicalBytes: frame.footerEntry.frameLength,
+          plaintextBytes: frame.footerEntry.plaintextLength,
+          recordKind: frame.footerEntry.recordKind,
         });
       }
       if (this.explicitAbandonRequested) {

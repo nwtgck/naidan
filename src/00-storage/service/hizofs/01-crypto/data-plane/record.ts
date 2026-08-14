@@ -47,21 +47,36 @@ export async function createRecordEncryptionBatchCapability({ fileSystemId, home
 }): Promise<RecordEncryptionBatchCapability> {
   let key: CryptoKey | undefined = await deriveRecordKey({ fileSystemId, homeSegmentId, rootKey });
   const aadEncoder = createRecordAadEncoder({ fileSystemId });
+  const serialAadScratch = new Uint8Array(aadEncoder.byteLength);
+  let serialAadScratchInUse = false;
   return Object.freeze({
     encrypt: async ({ completeFrameHeader, nonce, plaintext }) => {
       validateFrameHeader({ completeFrameHeader });
       const activeKey = key;
       if (activeKey === undefined) throw new TypeError('Record encryption batch capability has expired');
       if (rootKey.isDestroyed()) throw new TypeError('File System Root Key has been destroyed');
-      return await encryptAesGcmOwnedRecord({
-        aad: aadEncoder.encode({ completeFrameHeader }),
-        key: activeKey,
-        nonce,
-        plaintext,
-      });
+      // D0077 restored the production Record schedule to serial execution. Reuse
+      // one batch-owned non-secret AAD buffer on that hot path, but preserve the
+      // capability's existing concurrent-call behavior by falling back to a
+      // fresh AAD buffer if an overlapping caller ever appears.
+      const reuseSerialScratch = !serialAadScratchInUse;
+      if (reuseSerialScratch) serialAadScratchInUse = true;
+      try {
+        return await encryptAesGcmOwnedRecord({
+          aad: reuseSerialScratch
+            ? aadEncoder.write({ bytes: serialAadScratch, completeFrameHeader })
+            : aadEncoder.encode({ completeFrameHeader }),
+          key: activeKey,
+          nonce,
+          plaintext,
+        });
+      } finally {
+        if (reuseSerialScratch) serialAadScratchInUse = false;
+      }
     },
     expire: () => {
       key = undefined;
+      serialAadScratch.fill(0);
     },
   });
 }

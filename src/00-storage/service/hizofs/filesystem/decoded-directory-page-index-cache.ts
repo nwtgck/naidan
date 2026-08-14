@@ -4,14 +4,15 @@ import {
   createSubvolumeId,
   decodeFilenameComponent,
   decodeRequiredHomeRecordReference,
-  encodeFilenameComponent,
-  encodeHomeRecordReference,
+  writeFilenameComponent,
+  writeHomeRecordReference,
   HIZOFS_V1_FORMAT_CONSTANTS,
   type DirectoryLeafEntry,
   type DirectoryPage,
   type HomeRecordReference,
   type InodeKind,
 } from "@/00-storage/service/hizofs/00-format";
+import { runtimeHomeRecordReferenceIdentity } from "@/00-storage/service/hizofs/authenticated-store/runtime-home-record-reference-identity";
 
 const RECORD_REFERENCE_BYTES = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordReference;
 const TARGET_INODE = 1;
@@ -43,6 +44,12 @@ type RetainedBranch = Readonly<{
 
 type RetainedPage = RetainedBranch | RetainedLeaf;
 
+type RetainedCacheEntry = Readonly<{
+  bytes: number;
+  encodedByteLength: number;
+  page: RetainedPage;
+}>;
+
 export type DirectoryPointPage = Readonly<
   | { level: number; type: "absent" }
   | { childPageReference: HomeRecordReference; level: number; type: "branch" }
@@ -50,36 +57,39 @@ export type DirectoryPointPage = Readonly<
 >;
 
 function identity({ isRoot, reference }: { isRoot: boolean; reference: HomeRecordReference }): string {
-  const encoded = encodeHomeRecordReference({ reference });
-  try {
-    let value = isRoot ? "root:" : "non_root:";
-    for (const byte of encoded) value += byte.toString(16).padStart(2, "0");
-    return value;
-  } finally {
-    encoded.fill(0);
-  }
+  return `${isRoot ? "root" : "non_root"}:${runtimeHomeRecordReferenceIdentity({ reference })}`;
 }
 
-function encodeNames({ values }: { values: readonly string[] }): RetainedNames {
-  const encoded = values.map(value => encodeFilenameComponent({ value }));
+function encodeNames({ totalBytes, values }: { totalBytes: number; values: readonly string[] }): RetainedNames {
+  if (!Number.isSafeInteger(totalBytes) || totalBytes < 0) {
+    throw new RangeError("Directory page index retained filename bytes must be a non-negative safe integer");
+  }
+  const lengths = new Uint16Array(values.length);
+  const offsets = new Uint32Array(values.length);
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
   try {
-    let totalBytes = 0;
-    for (const value of encoded) totalBytes += value.byteLength;
-    const bytes = new Uint8Array(totalBytes);
-    const lengths = new Uint16Array(encoded.length);
-    const offsets = new Uint32Array(encoded.length);
-    let offset = 0;
-    for (let index = 0; index < encoded.length; index += 1) {
-      const value = encoded[index];
+    for (let index = 0; index < values.length; index += 1) {
+      const value = values[index];
       if (value === undefined) throw new Error("Directory page index name invariant failed");
       offsets[index] = offset;
-      lengths[index] = value.byteLength;
-      bytes.set(value, offset);
-      offset += value.byteLength;
+      const written = writeFilenameComponent({ bytes, offset, value });
+      if (written > 0xffff) throw new RangeError("Directory page index filename length exceeds retained index width");
+      lengths[index] = written;
+      offset += written;
+      if (offset > bytes.byteLength) {
+        throw new Error("Directory page index canonical filename bytes exceed the authenticated page length");
+      }
+    }
+    if (offset !== bytes.byteLength) {
+      throw new Error("Directory page index canonical filename bytes do not match the authenticated page length");
     }
     return Object.freeze({ bytes, lengths, offsets });
-  } finally {
-    for (const value of encoded) value.fill(0);
+  } catch (error: unknown) {
+    bytes.fill(0);
+    lengths.fill(0);
+    offsets.fill(0);
+    throw error;
   }
 }
 
@@ -125,25 +135,28 @@ function inodeKindFromTag({ tag }: { tag: number }): InodeKind {
   }
 }
 
-function retainPage({ page }: { page: DirectoryPage }): RetainedPage {
+function retainPage({ encodedByteLength, page }: {
+  encodedByteLength: number;
+  page: DirectoryPage;
+}): RetainedPage {
+  const nameBytes = plannedNameBytes({ encodedByteLength, page });
   switch (page.type) {
   case "branch": {
-    const names = encodeNames({ values: page.entries.map(entry => entry.upperBoundName) });
+    const names = encodeNames({ totalBytes: nameBytes, values: page.entries.map(entry => entry.upperBoundName) });
     const references = new Uint8Array(page.entries.length * RECORD_REFERENCE_BYTES);
     for (let index = 0; index < page.entries.length; index += 1) {
       const entry = page.entries[index];
       if (entry === undefined) throw new Error("Directory branch page cache entry invariant failed");
-      const encoded = encodeHomeRecordReference({ reference: entry.childPageHomeRef });
-      try {
-        references.set(encoded, index * RECORD_REFERENCE_BYTES);
-      } finally {
-        encoded.fill(0);
-      }
+      writeHomeRecordReference({
+        bytes: references,
+        offset: index * RECORD_REFERENCE_BYTES,
+        reference: entry.childPageHomeRef,
+      });
     }
     return Object.freeze({ level: page.level, names, references, type: "branch" });
   }
   case "leaf": {
-    const names = encodeNames({ values: page.entries.map(entry => entry.name) });
+    const names = encodeNames({ totalBytes: nameBytes, values: page.entries.map(entry => entry.name) });
     const ids = new BigUint64Array(page.entries.length);
     const inodeKinds = new Uint8Array(page.entries.length);
     const targetTypes = new Uint8Array(page.entries.length);
@@ -177,6 +190,46 @@ function retainedBytes({ page }: { page: RetainedPage }): number {
   }
 }
 
+function plannedNameBytes({ encodedByteLength, page }: {
+  encodedByteLength: number;
+  page: DirectoryPage;
+}): number {
+  assertEncodedByteLength({ encodedByteLength });
+  const entryCount = page.entries.length;
+  const entryPrefixBytes = (() => {
+    switch (page.type) {
+    case "branch": return HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.directoryBranchChildPrefix;
+    case "leaf": return HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.directoryEntryPrefix;
+    default: return page satisfies never;
+    }
+  })();
+  const fixedBytes = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.commonPageHeader + entryCount * entryPrefixBytes;
+  if (encodedByteLength < fixedBytes) {
+    throw new RangeError("decoded Directory page cache encoded byte length is shorter than the page prefixes");
+  }
+  return encodedByteLength - fixedBytes;
+}
+
+function plannedRetainedBytes({ encodedByteLength, page }: {
+  encodedByteLength: number;
+  page: DirectoryPage;
+}): number {
+  const nameBytes = plannedNameBytes({ encodedByteLength, page });
+  const entryCount = page.entries.length;
+  const nameIndexBytes = entryCount * (Uint16Array.BYTES_PER_ELEMENT + Uint32Array.BYTES_PER_ELEMENT);
+  switch (page.type) {
+  case "branch": return nameBytes + nameIndexBytes + entryCount * RECORD_REFERENCE_BYTES;
+  case "leaf": return nameBytes + nameIndexBytes
+    + entryCount * (BigUint64Array.BYTES_PER_ELEMENT + 2 * Uint8Array.BYTES_PER_ELEMENT);
+  default: return page satisfies never;
+  }
+}
+
+const NOOP_CACHE_ADMISSION = Object.freeze({
+  commit: (): void => undefined,
+  discard: (): void => undefined,
+});
+
 function clearNames({ names }: { names: RetainedNames }): void {
   names.bytes.fill(0);
   names.lengths.fill(0);
@@ -196,16 +249,71 @@ function clearPage({ page }: { page: RetainedPage }): void {
   }
 }
 
+
+function restorePage({ page }: { page: RetainedPage }): DirectoryPage {
+  switch (page.type) {
+  case "branch":
+    return Object.freeze({
+      entries: Object.freeze(Array.from({ length: page.names.offsets.length }, (_, index) => {
+        const offset = index * RECORD_REFERENCE_BYTES;
+        return Object.freeze({
+          childPageHomeRef: decodeRequiredHomeRecordReference({
+            bytes: page.references.subarray(offset, offset + RECORD_REFERENCE_BYTES),
+          }),
+          upperBoundName: decodeFilenameComponent({ bytes: nameAt({ index, names: page.names }) }),
+        });
+      })),
+      level: page.level,
+      type: "branch" as const,
+    });
+  case "leaf":
+    return Object.freeze({
+      entries: Object.freeze(Array.from({ length: page.names.offsets.length }, (_, index) => {
+        const id = page.ids[index];
+        const targetType = page.targetTypes[index];
+        if (id === undefined || targetType === undefined) throw new Error("Directory page cache target invariant failed");
+        const name = decodeFilenameComponent({ bytes: nameAt({ index, names: page.names }) });
+        if (targetType === TARGET_INODE) {
+          const inodeKind = page.inodeKinds[index];
+          if (inodeKind === undefined) throw new Error("Directory page cache Inode kind invariant failed");
+          return Object.freeze({
+            inodeKind: inodeKindFromTag({ tag: inodeKind }),
+            inodeNumber: createInodeNumber({ value: id }),
+            name,
+            targetType: "inode" as const,
+          });
+        }
+        if (targetType === TARGET_SUBVOLUME) {
+          return Object.freeze({ name, subvolumeId: createSubvolumeId({ value: id }), targetType: "subvolume" as const });
+        }
+        throw new Error("Directory page cache target type is invalid");
+      })),
+      level: 0 as const,
+      type: "leaf" as const,
+    });
+  default: return page satisfies never;
+  }
+}
+
+function assertEncodedByteLength({ encodedByteLength }: { encodedByteLength: number }): void {
+  if (!Number.isSafeInteger(encodedByteLength) || encodedByteLength <= 0) {
+    throw new RangeError("decoded Directory page cache encoded byte length must be a positive safe integer");
+  }
+}
+
 /**
  * Retains only bounded, zeroizable Directory routing data after a page has
  * already passed the authoritative full decoder. No decoded filename strings
- * or Directory entry objects survive in this cache.
+ * or Directory entry objects survive in this cache. Pending durable admissions reserve from the
+ * same byte and entry budgets as committed entries, so write-through cannot exceed the cache bound.
  */
 export class DecodedDirectoryPageIndexCache {
-  private readonly entries = new Map<string, Readonly<{ bytes: number; page: RetainedPage }>>();
+  private readonly entries = new Map<string, RetainedCacheEntry>();
   private readonly maximumBytes: number;
   private readonly maximumEntries: number;
   private bytes = 0;
+  private pendingBytes = 0;
+  private pendingEntries = 0;
   private disposed = false;
 
   constructor({ maximumBytes, maximumEntries }: { maximumBytes: number; maximumEntries: number }) {
@@ -269,15 +377,109 @@ export class DecodedDirectoryPageIndexCache {
     }
   }
 
-  setPage({ isRoot, page, reference }: { isRoot: boolean; page: DirectoryPage; reference: HomeRecordReference }): void {
+  getPageForUpdate({ isRoot, reference }: {
+    isRoot: boolean;
+    reference: HomeRecordReference;
+  }): Readonly<{ encodedByteLength: number; localStructureValidated: true; page: DirectoryPage }> | undefined {
     if (this.disposed) throw new TypeError("decoded Directory page cache is disposed");
-    if (this.maximumBytes === 0 || this.maximumEntries === 0) return;
-    const retainedPage = retainPage({ page });
-    const bytes = retainedBytes({ page: retainedPage });
-    if (bytes > this.maximumBytes) {
-      clearPage({ page: retainedPage });
-      return;
+    const cacheKey = identity({ isRoot, reference });
+    const retained = this.entries.get(cacheKey);
+    if (retained === undefined) return undefined;
+    this.entries.delete(cacheKey);
+    this.entries.set(cacheKey, retained);
+    return Object.freeze({
+      encodedByteLength: retained.encodedByteLength,
+      localStructureValidated: true as const,
+      page: restorePage({ page: retained.page }),
+    });
+  }
+
+  preparePageAdmission({ encodedByteLength, isRoot, page, reference }: {
+    encodedByteLength: number;
+    isRoot: boolean;
+    page: DirectoryPage;
+    reference: HomeRecordReference;
+  }): Readonly<{ commit: () => void; discard: () => void }> {
+    if (this.disposed) throw new TypeError("decoded Directory page cache is disposed");
+    assertEncodedByteLength({ encodedByteLength });
+    if (this.maximumBytes === 0 || this.maximumEntries === 0) return NOOP_CACHE_ADMISSION;
+    const plannedBytes = plannedRetainedBytes({ encodedByteLength, page });
+    if (plannedBytes > this.maximumBytes) return NOOP_CACHE_ADMISSION;
+    while (
+      this.entries.size + this.pendingEntries >= this.maximumEntries
+      || this.bytes + this.pendingBytes + plannedBytes > this.maximumBytes
+    ) {
+      if (!this.evictOldest()) return NOOP_CACHE_ADMISSION;
     }
+    const retainedPage = retainPage({ encodedByteLength, page });
+    const bytes = retainedBytes({ page: retainedPage });
+    if (bytes !== plannedBytes) {
+      clearPage({ page: retainedPage });
+      throw new Error("decoded Directory page cache retained-byte planning invariant failed");
+    }
+    this.pendingBytes += bytes;
+    this.pendingEntries += 1;
+    let state: "pending" | "committed" | "discarded" = "pending";
+    const releaseReservation = (): void => {
+      this.pendingBytes -= bytes;
+      this.pendingEntries -= 1;
+      if (this.pendingBytes < 0 || this.pendingEntries < 0) {
+        throw new Error("decoded Directory page cache pending reservation accounting underflowed");
+      }
+    };
+    const discard = (): void => {
+      switch (state) {
+      case "pending":
+        state = "discarded";
+        releaseReservation();
+        clearPage({ page: retainedPage });
+        return;
+      case "committed":
+      case "discarded": return;
+      default: return state satisfies never;
+      }
+    };
+    const commit = (): void => {
+      switch (state) {
+      case "pending": break;
+      case "committed":
+      case "discarded": return;
+      default: return state satisfies never;
+      }
+      if (this.disposed) {
+        discard();
+        return;
+      }
+      releaseReservation();
+      try {
+        this.commitRetainedPage({ bytes, encodedByteLength, isRoot, page: retainedPage, reference });
+        state = "committed";
+      } catch (error: unknown) {
+        state = "discarded";
+        clearPage({ page: retainedPage });
+        throw error;
+      }
+    };
+    return Object.freeze({ commit, discard });
+  }
+
+  setPage({ encodedByteLength, isRoot, page, reference }: {
+    encodedByteLength: number;
+    isRoot: boolean;
+    page: DirectoryPage;
+    reference: HomeRecordReference;
+  }): void {
+    const admission = this.preparePageAdmission({ encodedByteLength, isRoot, page, reference });
+    admission.commit();
+  }
+
+  private commitRetainedPage({ bytes, encodedByteLength, isRoot, page, reference }: {
+    bytes: number;
+    encodedByteLength: number;
+    isRoot: boolean;
+    page: RetainedPage;
+    reference: HomeRecordReference;
+  }): void {
     const key = identity({ isRoot, reference });
     const existing = this.entries.get(key);
     if (existing !== undefined) {
@@ -286,14 +488,19 @@ export class DecodedDirectoryPageIndexCache {
       clearPage({ page: existing.page });
     }
     while (this.entries.size >= this.maximumEntries || this.bytes + bytes > this.maximumBytes) {
-      const oldest = this.entries.entries().next().value as [string, Readonly<{ bytes: number; page: RetainedPage }>] | undefined;
-      if (oldest === undefined) break;
-      this.entries.delete(oldest[0]);
-      this.bytes -= oldest[1].bytes;
-      clearPage({ page: oldest[1].page });
+      if (!this.evictOldest()) break;
     }
-    this.entries.set(key, { bytes, page: retainedPage });
+    this.entries.set(key, { bytes, encodedByteLength, page });
     this.bytes += bytes;
+  }
+
+  private evictOldest(): boolean {
+    const oldest = this.entries.entries().next().value as [string, RetainedCacheEntry] | undefined;
+    if (oldest === undefined) return false;
+    this.entries.delete(oldest[0]);
+    this.bytes -= oldest[1].bytes;
+    clearPage({ page: oldest[1].page });
+    return true;
   }
 
   dispose(): void {
@@ -310,5 +517,7 @@ export const TEST_ONLY = {
   identity,
   lowerBoundName,
   retainPage,
+  plannedRetainedBytes,
   retainedBytes,
+  restorePage,
 };

@@ -44,14 +44,15 @@ import {
 } from "@/00-storage/service/hizofs/api";
 import { createHizoFSTransitionNamespaceSource } from "@/00-storage/service/hizofs/api/transition-namespace-source";
 import {
+  assertHomeRecordReferenceValid,
   createFeatureBits,
   createFileOffset,
   createFileSystemCommitPayload,
   createSubvolumeId,
   createTimestampMilliseconds,
   createUnlockSequence,
-  encodeFileSystemCommitPayload,
-  encodeHomeRecordReference,
+  sameFileSystemCommitPayloadFields,
+  sameRecordReferenceFields,
   sameSuperblockLogicalStateExceptMinimumUnlockSequence,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
@@ -1214,6 +1215,15 @@ function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): b
   return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
 }
 
+function validatedHomeRecordReferencesEqual({ left, right }: {
+  left: HomeRecordReference;
+  right: HomeRecordReference;
+}): boolean {
+  assertHomeRecordReferenceValid({ reference: left });
+  assertHomeRecordReferenceValid({ reference: right });
+  return sameRecordReferenceFields({ left, right });
+}
+
 /**
  * Joins logical ordinary-entry planning to authenticated metadata writes and
  * converged Superblock publication. Keeping this join in the exact composition
@@ -1257,15 +1267,15 @@ function assertDeferredSuccessor({
   ) {
     throw new TypeError("deferred mutation successor is not the exact next working generation");
   }
-  if (!bytesEqual({
-    left: encodeHomeRecordReference({ reference: deferred.candidate.commitHomeRef }),
-    right: encodeHomeRecordReference({ reference: successor.commitReference }),
+  if (!validatedHomeRecordReferencesEqual({
+    left: deferred.candidate.commitHomeRef,
+    right: successor.commitReference,
   })) {
     throw new TypeError("deferred mutation candidate reference does not match its working successor");
   }
-  if (!bytesEqual({
-    left: encodeFileSystemCommitPayload({ payload: deferred.candidate.commitPayload }),
-    right: encodeFileSystemCommitPayload({ payload: successor.commit }),
+  if (!sameFileSystemCommitPayloadFields({
+    left: deferred.candidate.commitPayload,
+    right: successor.commit,
   })) {
     throw new TypeError("deferred mutation candidate payload does not match its working successor");
   }
@@ -1438,9 +1448,9 @@ function createPublishedStagedSuccessor({ candidate, stagedSuccessor, superblock
   stagedSuccessor: AuthenticatedStagedApplicationGenerationDescriptor;
   superblock: Parameters<typeof createAuthenticatedDurableApplicationGenerationAuthority>[0]["superblock"];
 }): AuthenticatedApplicationGenerationDescriptor {
-  if (!bytesEqual({
-    left: encodeFileSystemCommitPayload({ payload: candidate.commitPayload }),
-    right: encodeFileSystemCommitPayload({ payload: stagedSuccessor.commit }),
+  if (!sameFileSystemCommitPayloadFields({
+    left: candidate.commitPayload,
+    right: stagedSuccessor.commit,
   })) {
     throw new TypeError("materialized staged Commit does not match its accepted working payload");
   }
@@ -1485,9 +1495,9 @@ function createStagedMutationSelectedCandidatePublisher({
   })) {
     throw new TypeError("staged mutation successor does not retain its durable publication base");
   }
-  if (!bytesEqual({
-    left: encodeFileSystemCommitPayload({ payload: staged.commitPayload }),
-    right: encodeFileSystemCommitPayload({ payload: stagedSuccessor.commit }),
+  if (!sameFileSystemCommitPayloadFields({
+    left: staged.commitPayload,
+    right: stagedSuccessor.commit,
   })) {
     throw new TypeError("staged mutation publisher payload does not match its working successor");
   }
@@ -2789,8 +2799,11 @@ async function openStableAcceptedApplicationMutationAdmission({
 }
 
 function mutationIdentity({ mutationId }: { mutationId: MutationId }): string {
+  // Mutation IDs are fixed-width binary values. A one-code-unit-per-byte key is
+  // injective for this worker-local Set and avoids formatting two hex chars for
+  // every byte on every collision check. This is not an external/persisted ID.
   let identity = "";
-  for (const byte of mutationId) identity += byte.toString(16).padStart(2, "0");
+  for (const byte of mutationId) identity += String.fromCharCode(byte);
   return identity;
 }
 
@@ -2798,10 +2811,7 @@ function sameCommitPayload({ left, right }: {
   left: FileSystemCommitPayload;
   right: FileSystemCommitPayload;
 }): boolean {
-  return bytesEqual({
-    left: encodeFileSystemCommitPayload({ payload: left }),
-    right: encodeFileSystemCommitPayload({ payload: right }),
-  });
+  return sameFileSystemCommitPayloadFields({ left, right });
 }
 
 function writableGeneration({
@@ -3531,9 +3541,9 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     path: readonly string[];
   }): void => {
     const current = currentGeneration();
-    if (!bytesEqual({
-      left: encodeHomeRecordReference({ reference: current.commit.rootInodeTableRootHomeRef }),
-      right: encodeHomeRecordReference({ reference: expectedInodeTableRootReference }),
+    if (!validatedHomeRecordReferencesEqual({
+      left: current.commit.rootInodeTableRootHomeRef,
+      right: expectedInodeTableRootReference,
     })) {
       recentOrdinaryCreateParentWitness = undefined;
       return;
@@ -3819,6 +3829,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       usedMutationIds.add(mutationIdentity({ mutationId }));
       const metadataAuthority = await createAuthenticatedMetadataMutationAuthority({
         backend,
+        decodedDirectoryPageCache: decodedDirectoryPageIndexCache,
         decodedInodeBranchPageCache: decodedInodeIndexPageCache,
         diagnostics: recordDiagnostics,
         fileSystemId: opened.fileSystemId,
@@ -3973,6 +3984,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             commitPayload: prepared.commitPayload,
             createMaterializationAuthority: async () => await createAuthenticatedMetadataMutationAuthority({
               backend,
+              decodedDirectoryPageCache: decodedDirectoryPageIndexCache,
               decodedInodeBranchPageCache: decodedInodeIndexPageCache,
               diagnostics: recordDiagnostics,
               fileSystemId: opened.fileSystemId,
@@ -4882,6 +4894,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
               commitPayload,
               createMaterializationAuthority: async () => await createAuthenticatedMetadataMutationAuthority({
                 backend,
+                decodedDirectoryPageCache: decodedDirectoryPageIndexCache,
                 decodedInodeBranchPageCache: decodedInodeIndexPageCache,
                 diagnostics: recordDiagnostics,
                 fileSystemId: opened.fileSystemId,
@@ -6160,12 +6173,9 @@ function commitMatchesSealedTransitionImport({ commit, sealed }: {
 }): boolean {
   return commit.nextInodeNumber === sealed.nextInodeNumber
     && commit.rootDirectoryInodeNumber === sealed.rootDirectoryInodeNumber
-    && bytesEqual({
-      left: encodeFileSystemCommitPayload({ payload: {
-        ...commit,
-        rootInodeTableRootHomeRef: sealed.rootInodeTableRootHomeRef,
-      } }),
-      right: encodeFileSystemCommitPayload({ payload: commit }),
+    && validatedHomeRecordReferencesEqual({
+      left: sealed.rootInodeTableRootHomeRef,
+      right: commit.rootInodeTableRootHomeRef,
     });
 }
 

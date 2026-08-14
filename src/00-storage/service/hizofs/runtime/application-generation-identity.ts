@@ -1,8 +1,8 @@
 import {
-  copyBinaryId,
-  decodeRequiredHomeRecordReference,
-  encodeHomeRecordReference,
+  assertHomeRecordReferenceValid,
+  createHomeRecordReference,
   parseMutationId,
+  sameRecordReferenceFields,
   type CommitSequence,
   type HomeRecordReference,
   type MutationId,
@@ -32,13 +32,11 @@ export type WorkingGenerationIdentity = Readonly<{
 }>;
 
 function cloneCommitReference({ reference }: { reference: HomeRecordReference }): HomeRecordReference {
-  return decodeRequiredHomeRecordReference({
-    bytes: encodeHomeRecordReference({ reference }).slice(),
-  });
+  return createHomeRecordReference({ fields: reference });
 }
 
 function cloneMutationId({ mutationId }: { mutationId: MutationId }): MutationId {
-  return parseMutationId({ bytes: copyBinaryId({ id: mutationId }) });
+  return parseMutationId({ bytes: mutationId });
 }
 
 function sameBytes({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
@@ -53,10 +51,11 @@ function sameCommitReference({ left, right }: {
   left: HomeRecordReference;
   right: HomeRecordReference;
 }): boolean {
-  return sameBytes({
-    left: encodeHomeRecordReference({ reference: left }),
-    right: encodeHomeRecordReference({ reference: right }),
-  });
+  // Preserve the previous fail-closed encoder boundary without allocating two
+  // canonical 32-byte encodings for every hot generation comparison.
+  assertHomeRecordReferenceValid({ reference: left });
+  assertHomeRecordReferenceValid({ reference: right });
+  return sameRecordReferenceFields({ left, right });
 }
 
 export function createWorkingGenerationAuthorityEpoch(): WorkingGenerationAuthorityEpoch {

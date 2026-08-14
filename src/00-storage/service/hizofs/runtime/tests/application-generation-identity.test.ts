@@ -101,6 +101,20 @@ describe("application generation identity", () => {
     expect(sameDurableGenerationIdentity({ left, right: differentReference })).toBe(false);
   });
 
+  it("copies mutable durable Record Reference bytes at the authority boundary", () => {
+    const sourceReference = reference({ offset: 64n });
+    const originalSegmentId = Uint8Array.from(sourceReference.segmentId);
+    const identity = createDurableGenerationIdentity({
+      commitReference: sourceReference,
+      commitSequence: createCommitSequence({ value: 1n }),
+      mutationId: mutationId({ seed: 4 }),
+    });
+
+    sourceReference.segmentId.fill(0xff);
+
+    expect([...identity.commitReference.segmentId]).toEqual([...originalSegmentId]);
+  });
+
   it("copies mutable binary identity inputs at the authority boundary", () => {
     const sourceMutationId = mutationId({ seed: 3 });
     const identity = createWorkingGenerationIdentity({

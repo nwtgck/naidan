@@ -1,8 +1,11 @@
 import {
+  assertHomeRecordReferenceValid,
+  createHomeRecordReference,
   decodeOptionalHomeRecordReference,
   decodeRequiredHomeRecordReference,
   encodeOptionalHomeRecordReference,
   encodeHomeRecordReference,
+  sameRecordReferenceFields,
   type HomeRecordReference,
 } from '@/00-storage/service/hizofs/00-format/v1/binary/record-reference';
 import { readU64Be, writeU64Be } from '@/00-storage/service/hizofs/00-format/v1/binary/scalars';
@@ -96,6 +99,53 @@ export function createFileSystemCommitPayload({ payload }: { payload: FileSystem
     nextSubvolumeId: createSubvolumeId({ value: payload.nextSubvolumeId }),
     rootDirectoryInodeNumber: createInodeNumber({ value: payload.rootDirectoryInodeNumber }),
   };
+}
+
+export function copyFileSystemCommitPayload({ payload }: { payload: FileSystemCommitPayload }): FileSystemCommitPayload {
+  validatePayload({ payload });
+  return {
+    commitSequence: createCommitSequence({ value: payload.commitSequence }),
+    mutationId: parseMutationId({ bytes: payload.mutationId }),
+    nestedSubvolumeTableRootHomeRef: payload.nestedSubvolumeTableRootHomeRef === null
+      ? null
+      : createHomeRecordReference({ fields: payload.nestedSubvolumeTableRootHomeRef }),
+    nextInodeNumber: createInodeNumber({ value: payload.nextInodeNumber }),
+    nextSubvolumeId: createSubvolumeId({ value: payload.nextSubvolumeId }),
+    rootDirectoryInodeNumber: createInodeNumber({ value: payload.rootDirectoryInodeNumber }),
+    rootInodeTableRootHomeRef: createHomeRecordReference({ fields: payload.rootInodeTableRootHomeRef }),
+  };
+}
+
+function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+export function sameFileSystemCommitPayloadFields({ left, right }: {
+  left: FileSystemCommitPayload;
+  right: FileSystemCommitPayload;
+}): boolean {
+  // Preserve the fail-closed canonical-encoding boundary while avoiding two
+  // throwaway 112-byte payload buffers on hot runtime authority comparisons.
+  validatePayload({ payload: left });
+  validatePayload({ payload: right });
+  assertHomeRecordReferenceValid({ reference: left.rootInodeTableRootHomeRef });
+  assertHomeRecordReferenceValid({ reference: right.rootInodeTableRootHomeRef });
+  const leftNested = left.nestedSubvolumeTableRootHomeRef;
+  const rightNested = right.nestedSubvolumeTableRootHomeRef;
+  if (leftNested !== null) assertHomeRecordReferenceValid({ reference: leftNested });
+  if (rightNested !== null) assertHomeRecordReferenceValid({ reference: rightNested });
+  return left.commitSequence === right.commitSequence
+    && bytesEqual({ left: left.mutationId, right: right.mutationId })
+    && left.rootDirectoryInodeNumber === right.rootDirectoryInodeNumber
+    && sameRecordReferenceFields({ left: left.rootInodeTableRootHomeRef, right: right.rootInodeTableRootHomeRef })
+    && ((leftNested === null && rightNested === null)
+      || (leftNested !== null && rightNested !== null && sameRecordReferenceFields({ left: leftNested, right: rightNested })))
+    && left.nextInodeNumber === right.nextInodeNumber
+    && left.nextSubvolumeId === right.nextSubvolumeId;
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

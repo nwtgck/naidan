@@ -2,12 +2,13 @@ import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   createInodeNumber,
   decodeRequiredHomeRecordReference,
-  encodeHomeRecordReference,
+  writeHomeRecordReference,
   type HomeRecordReference,
   type InodeBranchPage,
   type InodeLeafPageIndex,
 } from "@/00-storage/service/hizofs/00-format";
 import type { AuthenticatedInodeBranchPageCache } from "@/00-storage/service/hizofs/authenticated-store/inode-table-page-store";
+import { runtimeHomeRecordReferenceIdentity } from "@/00-storage/service/hizofs/authenticated-store/runtime-home-record-reference-identity";
 import type { DecodedInodeIndexPageCacheDiagnosticsPort } from "@/00-storage/service/hizofs/diagnostics/decoded-inode-index-page-cache-diagnostics";
 
 const RECORD_REFERENCE_BYTES = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordReference;
@@ -33,9 +34,7 @@ type BranchCacheEntry = Readonly<{
 type CacheEntry = BranchCacheEntry | LeafCacheEntry;
 
 function identity({ isRoot, reference }: { isRoot: boolean; reference: HomeRecordReference }): string {
-  let value = isRoot ? "root:" : "non_root:";
-  for (const byte of encodeHomeRecordReference({ reference })) value += byte.toString(16).padStart(2, "0");
-  return value;
+  return `${isRoot ? "root" : "non_root"}:${runtimeHomeRecordReferenceIdentity({ reference })}`;
 }
 
 function cloneIndex({ index }: { index: InodeLeafPageIndex }): InodeLeafPageIndex {
@@ -62,7 +61,11 @@ function retainBranchRouting({ page }: { page: InodeBranchPage }): RetainedBranc
   for (let index = 0; index < page.entries.length; index += 1) {
     const entry = page.entries[index];
     if (entry === undefined) throw new Error("Inode branch cache entry index invariant failed");
-    references.set(encodeHomeRecordReference({ reference: entry.childPageHomeRef }), index * RECORD_REFERENCE_BYTES);
+    writeHomeRecordReference({
+      bytes: references,
+      offset: index * RECORD_REFERENCE_BYTES,
+      reference: entry.childPageHomeRef,
+    });
     upperBounds[index] = entry.upperBound;
   }
   return Object.freeze({ level: page.level, references, upperBounds });

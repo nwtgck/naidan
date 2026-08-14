@@ -216,17 +216,29 @@ function validateIndexEntry({ entry }: { entry: SegmentFooterIndexEntryV1 }): vo
   }
 }
 
-export function encodeSegmentFooterIndexEntry({ entry }: { entry: SegmentFooterIndexEntryV1 }): Uint8Array {
+export function writeSegmentFooterIndexEntry({ bytes, entry, offset }: {
+  bytes: Uint8Array;
+  entry: SegmentFooterIndexEntryV1;
+  offset: number;
+}): void {
   validateIndexEntry({ entry });
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset + ENTRY_SIZE > bytes.byteLength) {
+    throw new RangeError("Segment Footer index entry destination is outside the output buffer");
+  }
+  writeU64Be({ bytes, offset, value: entry.physicalOffset });
+  writeU32Be({ bytes, offset: offset + 8, value: entry.frameLength });
+  writeU32Be({ bytes, offset: offset + 12, value: entry.plaintextLength });
+  bytes[offset + 16] = entry.recordKind;
+  bytes[offset + 17] = entry.flags;
+  writeU16Be({ bytes, offset: offset + 18, value: entry.recordCodecVersion });
+  bytes.set(entry.homeSegmentId, offset + 20);
+  writeU64Be({ bytes, offset: offset + 36, value: entry.homeOffset });
+  bytes.fill(0, offset + 44, offset + ENTRY_SIZE);
+}
+
+export function encodeSegmentFooterIndexEntry({ entry }: { entry: SegmentFooterIndexEntryV1 }): Uint8Array {
   const bytes = new Uint8Array(ENTRY_SIZE);
-  writeU64Be({ bytes, offset: 0, value: entry.physicalOffset });
-  writeU32Be({ bytes, offset: 8, value: entry.frameLength });
-  writeU32Be({ bytes, offset: 12, value: entry.plaintextLength });
-  bytes[16] = entry.recordKind;
-  bytes[17] = entry.flags;
-  writeU16Be({ bytes, offset: 18, value: entry.recordCodecVersion });
-  bytes.set(entry.homeSegmentId, 20);
-  writeU64Be({ bytes, offset: 36, value: entry.homeOffset });
+  writeSegmentFooterIndexEntry({ bytes, entry, offset: 0 });
   return bytes;
 }
 

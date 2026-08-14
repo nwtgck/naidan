@@ -1,7 +1,6 @@
 import {
   createHomeRecordReference,
   createInodeNumber,
-  encodeHomeRecordReference,
   type DirectoryPage,
   type FeatureBits,
   type FileExtentPage,
@@ -21,6 +20,8 @@ import {
   appendAuthenticatedDirectoryPage,
   readAuthenticatedDirectoryPage,
   readAuthenticatedDirectoryPageForUpdate,
+  type AuthenticatedDirectoryPageCache,
+  type AuthenticatedDirectoryPageCacheAdmission,
 } from "./directory-page-store";
 import {
   appendAuthenticatedFileExtentPage,
@@ -36,6 +37,7 @@ import {
 } from "./inode-table-page-store";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
+import { runtimeHomeRecordReferenceIdentity } from "./runtime-home-record-reference-identity";
 import {
   measureAuthenticatedPublicationOperation,
   type AuthenticatedStoreDiagnosticsPort,
@@ -334,9 +336,7 @@ function inodeBranchIdentity({ isRoot, reference }: {
   isRoot: boolean;
   reference: HomeRecordReference;
 }): string {
-  let value = isRoot ? "root:" : "non_root:";
-  for (const byte of encodeHomeRecordReference({ reference })) value += byte.toString(16).padStart(2, "0");
-  return value;
+  return `${isRoot ? "root" : "non_root"}:${runtimeHomeRecordReferenceIdentity({ reference })}`;
 }
 
 function cloneInodeBranchPage({ page }: { page: InodeBranchPage }): InodeBranchPage {
@@ -361,6 +361,7 @@ function shouldRecordMutationScopeDiagnostics({ mode }: {
 
 export class AuthenticatedMetadataMutationAuthority {
   private readonly backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  private readonly decodedDirectoryPageCache: AuthenticatedDirectoryPageCache | undefined;
   private readonly decodedInodeBranchPageCache: AuthenticatedInodeBranchPageCache | undefined;
   private readonly diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
   private readonly fileSystemId: FileSystemId;
@@ -377,6 +378,7 @@ export class AuthenticatedMetadataMutationAuthority {
   // Keep branch routing mutation-local until that prediction is proven by the batch flush so an
   // abandoned provisional slot can never alias a later Record through the session cache.
   private readonly pendingInodeBranchPages = new Map<string, PendingInodeBranchPage>();
+  private pendingDirectoryPageAdmissions: AuthenticatedDirectoryPageCacheAdmission[] = [];
   private releasedWriterUsage: AuthenticatedSegmentWriterLeaseUsage | undefined;
   private operationInProgress = false;
   private detachedPublicationAuthority: AuthenticatedPreparedMutationPublicationAuthority | undefined;
@@ -389,6 +391,7 @@ export class AuthenticatedMetadataMutationAuthority {
 
   private constructor({
     backend,
+    decodedDirectoryPageCache,
     decodedInodeBranchPageCache,
     diagnostics,
     fileSystemId,
@@ -403,6 +406,7 @@ export class AuthenticatedMetadataMutationAuthority {
     writerReleaseDisposition,
   }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+    decodedDirectoryPageCache?: AuthenticatedDirectoryPageCache;
     decodedInodeBranchPageCache?: AuthenticatedInodeBranchPageCache;
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
     fileSystemId: FileSystemId;
@@ -417,6 +421,7 @@ export class AuthenticatedMetadataMutationAuthority {
     writerReleaseDisposition: ActiveSegmentWriterReleaseDisposition;
   }) {
     this.backend = backend;
+    this.decodedDirectoryPageCache = decodedDirectoryPageCache;
     this.decodedInodeBranchPageCache = decodedInodeBranchPageCache;
     this.diagnostics = diagnostics;
     this.fileSystemId = fileSystemId;
@@ -434,6 +439,7 @@ export class AuthenticatedMetadataMutationAuthority {
 
   static async create({
     backend,
+    decodedDirectoryPageCache,
     decodedInodeBranchPageCache,
     diagnostics,
     fileSystemId,
@@ -446,6 +452,7 @@ export class AuthenticatedMetadataMutationAuthority {
     writerOwner,
   }: {
     backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+    decodedDirectoryPageCache?: AuthenticatedDirectoryPageCache;
     decodedInodeBranchPageCache?: AuthenticatedInodeBranchPageCache;
     diagnostics?: AuthenticatedStoreDiagnosticsPort;
     fileSystemId: FileSystemId;
@@ -477,6 +484,7 @@ export class AuthenticatedMetadataMutationAuthority {
       });
       return new AuthenticatedMetadataMutationAuthority({
         backend,
+        decodedDirectoryPageCache,
         decodedInodeBranchPageCache,
         diagnostics,
         fileSystemId,
@@ -544,10 +552,17 @@ export class AuthenticatedMetadataMutationAuthority {
     this.diagnostics?.recordMutationScopeEvent?.({ observation: { event: "end", outcome } });
   }
 
+  private discardPendingDirectoryPageAdmissions(): void {
+    const admissions = this.pendingDirectoryPageAdmissions;
+    this.pendingDirectoryPageAdmissions = [];
+    for (const admission of admissions) admission.discard();
+  }
+
   private discardPendingAppendBatch(): void {
     this.pendingAppendBatch?.discard();
     this.pendingAppendBatch = undefined;
     this.pendingInodeBranchPages.clear();
+    this.discardPendingDirectoryPageAdmissions();
   }
 
   private releaseWriterLease(): void {
@@ -557,6 +572,9 @@ export class AuthenticatedMetadataMutationAuthority {
     }
     if (this.pendingInodeBranchPages.size !== 0) {
       throw new Error("cannot release metadata writer lease while provisional Inode branch routing is pending");
+    }
+    if (this.pendingDirectoryPageAdmissions.length !== 0) {
+      throw new Error("cannot release metadata writer lease while provisional Directory page cache admission is pending");
     }
     this.pendingAppendBatch?.discard();
     this.pendingAppendBatch = undefined;
@@ -568,32 +586,47 @@ export class AuthenticatedMetadataMutationAuthority {
   private async flushPendingAppendBatch(): Promise<void> {
     const batch = this.pendingAppendBatch;
     const branchPages = [...this.pendingInodeBranchPages.values()];
+    const directoryAdmissions = this.pendingDirectoryPageAdmissions;
     this.pendingInodeBranchPages.clear();
+    this.pendingDirectoryPageAdmissions = [];
     if (batch === undefined) {
-      if (branchPages.length !== 0) {
-        throw new Error("provisional Inode branch routing exists without a metadata append batch");
+      for (const admission of directoryAdmissions) admission.discard();
+      if (branchPages.length !== 0 || directoryAdmissions.length !== 0) {
+        throw new Error("provisional metadata routing exists without a metadata append batch");
       }
       return;
     }
     this.pendingAppendBatch = undefined;
     if (!batch.hasRecords()) {
       batch.discard();
-      if (branchPages.length !== 0) {
-        throw new Error("provisional Inode branch routing exists for an empty metadata append batch");
+      for (const admission of directoryAdmissions) admission.discard();
+      if (branchPages.length !== 0 || directoryAdmissions.length !== 0) {
+        throw new Error("provisional metadata routing exists for an empty metadata append batch");
       }
       return;
     }
-    await this.writerLease.append({
-      append: async ({ writer }) => {
-        if (!batch.isBoundTo({ writer })) {
-          batch.discard();
-          throw new Error("metadata append batch writer ownership changed before flush");
-        }
-        await batch.flush();
-      },
-    });
+    try {
+      await this.writerLease.append({
+        append: async ({ writer }) => {
+          if (!batch.isBoundTo({ writer })) {
+            batch.discard();
+            throw new Error("metadata append batch writer ownership changed before flush");
+          }
+          await batch.flush();
+        },
+      });
+    } catch (error: unknown) {
+      for (const admission of directoryAdmissions) admission.discard();
+      throw error;
+    }
     // batch.flush() has matched every predicted Home Reference to the durable append result. Only
     // after that proof may routing metadata escape the mutation and become reusable session state.
+    try {
+      for (const admission of directoryAdmissions) admission.commit();
+    } catch (error: unknown) {
+      for (const admission of directoryAdmissions) admission.discard();
+      throw error;
+    }
     for (const branchPage of branchPages) {
       this.decodedInodeBranchPageCache?.setBranchPage(branchPage);
     }
@@ -820,6 +853,7 @@ export class AuthenticatedMetadataMutationAuthority {
     try {
       return await readAuthenticatedDirectoryPage({
         backend: this.backend,
+        decodedPageCache: this.decodedDirectoryPageCache,
         diagnostics: this.diagnostics,
         fileSystemId: this.fileSystemId,
         homeReference: reference,
@@ -843,6 +877,7 @@ export class AuthenticatedMetadataMutationAuthority {
     try {
       return await readAuthenticatedDirectoryPageForUpdate({
         backend: this.backend,
+        decodedPageCache: this.decodedDirectoryPageCache,
         diagnostics: this.diagnostics,
         fileSystemId: this.fileSystemId,
         homeReference: reference,
@@ -864,7 +899,7 @@ export class AuthenticatedMetadataMutationAuthority {
     this.requireActive({ operation: "write a Directory page" });
     this.operationInProgress = true;
     try {
-      return await this.appendMetadataPageWithBatch({
+      const appended = await this.appendMetadataPageWithBatch({
         append: async ({ writer }) => await appendAuthenticatedDirectoryPage({
           isRoot,
           page,
@@ -872,6 +907,15 @@ export class AuthenticatedMetadataMutationAuthority {
           writer,
         }),
       });
+      if (this.decodedDirectoryPageCache !== undefined) {
+        this.pendingDirectoryPageAdmissions.push(this.decodedDirectoryPageCache.preparePageAdmission({
+          encodedByteLength: appended.encodedByteLength,
+          isRoot,
+          page,
+          reference: appended.homeReference,
+        }));
+      }
+      return appended.homeReference;
     } finally {
       this.operationInProgress = false;
     }
@@ -1139,6 +1183,7 @@ export class AuthenticatedMetadataMutationAuthority {
 
 export async function createAuthenticatedMetadataMutationAuthority({
   backend,
+  decodedDirectoryPageCache,
   decodedInodeBranchPageCache,
   diagnostics,
   fileSystemId,
@@ -1152,6 +1197,7 @@ export async function createAuthenticatedMetadataMutationAuthority({
 }: Parameters<typeof AuthenticatedMetadataMutationAuthority.create>[0]): Promise<AuthenticatedMetadataMutationAuthority> {
   return await AuthenticatedMetadataMutationAuthority.create({
     backend,
+    decodedDirectoryPageCache,
     decodedInodeBranchPageCache,
     diagnostics,
     fileSystemId,

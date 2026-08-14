@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRecordFrameHeader, decodeRecordFrameHeader, encodeRecordFrameHeader, writeRecordFrameHeader } from '@/00-storage/service/hizofs/00-format/v1/binary/record-frame-header';
+import { createRecordFrameHeader, decodeRecordFrameHeader, encodeRecordFrameHeader, recordFrameLayoutForPlaintextLength, writeRecordFrameHeader } from '@/00-storage/service/hizofs/00-format/v1/binary/record-frame-header';
 import {
   calculateSegmentFooterTotalLength,
   createSegmentFooterHeader,
@@ -8,6 +8,7 @@ import {
   decodeSegmentFooterTrailer,
   encodeSegmentFooterHeader,
   encodeSegmentFooterIndexEntry,
+  writeSegmentFooterIndexEntry,
   encodeSegmentFooterTrailer,
 } from '@/00-storage/service/hizofs/00-format/v1/binary/segment-footer';
 import { decodeSegmentHeader, encodeSegmentHeader, segmentHeaderAuthenticatedPrefix } from '@/00-storage/service/hizofs/00-format/v1/binary/segment-header';
@@ -53,6 +54,25 @@ describe('HizoFS V1 fixed headers', () => {
     const bytes = encodeRecordFrameHeader({ header });
     expect(new TextDecoder().decode(bytes.subarray(0, 8))).toBe('HZRECORD');
     expect(decodeRecordFrameHeader({ bytes })).toEqual(header);
+  });
+
+  it('derives Record Frame layout without constructing a nonce-bearing Header', () => {
+    for (const plaintextLength of [0, 1, 7, 8, 513, 4096, 65_535]) {
+      const header = createRecordFrameHeader({
+        flags: 0,
+        homeOffset: createUInt64({ value: 64n }),
+        homeSegmentId: segmentId(),
+        nonce: new Uint8Array(12),
+        plaintextLength,
+        recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
+      });
+      expect(recordFrameLayoutForPlaintextLength({ plaintextLength })).toEqual({
+        frameLength: header.frameLength,
+        sealedLength: header.sealedLength,
+      });
+    }
+    expect(() => recordFrameLayoutForPlaintextLength({ plaintextLength: -1 })).toThrow('plaintext length');
+    expect(() => recordFrameLayoutForPlaintextLength({ plaintextLength: 0x1_0000_0000 })).toThrow('plaintext length');
   });
 
   it('writes the canonical Record Frame Header into an owned destination without touching surrounding bytes', () => {
@@ -140,7 +160,13 @@ describe('Segment Footer codecs', () => {
       recordCodecVersion: 1 as const,
       recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_system_commit,
     };
-    expect(decodeSegmentFooterIndexEntry({ bytes: encodeSegmentFooterIndexEntry({ entry }) })).toEqual(entry);
+    const encoded = encodeSegmentFooterIndexEntry({ entry });
+    const destination = new Uint8Array(encoded.byteLength + 9).fill(0xa5);
+    writeSegmentFooterIndexEntry({ bytes: destination, entry, offset: 5 });
+    expect(destination.subarray(5, 5 + encoded.byteLength)).toEqual(encoded);
+    expect(destination.subarray(0, 5)).toEqual(new Uint8Array(5).fill(0xa5));
+    expect(destination.subarray(5 + encoded.byteLength)).toEqual(new Uint8Array(4).fill(0xa5));
+    expect(decodeSegmentFooterIndexEntry({ bytes: encoded })).toEqual(entry);
   });
 
   it('rejects zero-entry and class-bound footer headers', () => {

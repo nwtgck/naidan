@@ -1,9 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createRecordAadEncoder,
   createUnlockSequence,
   decodeFileExtentPage,
   decodeFileSystemCommitPayload,
@@ -111,6 +112,53 @@ describe('HizoFS purpose-specific crypto boundary and known-answer vectors', () 
       fileSystemId,
       unlockSequence: createUnlockSequence({ value: BigInt(Number(vector.inputs.unlockSequence)) }),
     })).toString('hex')).toBe(vector.expected.contextsHex.unlockAuthenticatorKey);
+  });
+
+  it('writes Record AAD into an exact destination and reuses one serial batch scratch without breaking overlap', async () => {
+    const vector = await vectors();
+    const fileSystemId = parseFileSystemId({ value: String(vector.inputs.fileSystemIdAscii) });
+    const homeSegmentId = parseSegmentId({ bytes: hex({ value: String(vector.inputs.homeSegmentIdHex) }) });
+    const rootKey = FileSystemRootKey.create({ bytes: hex({ value: String(vector.inputs.rootKeyHex) }) });
+    const nonce = recordNonce({ bytes: hex({ value: String(vector.inputs.recordNonceHex) }) });
+    const frame = hex({ value: String(vector.inputs.recordFrameHeaderHex) });
+    const plaintext = plaintextRecordBytes({ bytes: hex({ value: String(vector.inputs.recordPlaintextHex) }) });
+    const encoder = createRecordAadEncoder({ fileSystemId });
+    const destination = new Uint8Array(encoder.byteLength);
+    expect(encoder.write({ bytes: destination, completeFrameHeader: frame })).toBe(destination);
+    expect(destination).toEqual(encodeRecordAad({ completeFrameHeader: frame, fileSystemId }));
+    expect(() => encoder.write({ bytes: new Uint8Array(encoder.byteLength - 1), completeFrameHeader: frame })).toThrow('destination');
+
+    const capability = await createRecordEncryptionBatchCapability({ fileSystemId, homeSegmentId, rootKey });
+    const ciphertextLength = plaintext.byteLength + 16;
+    const encryptSpy = vi.spyOn(globalThis.crypto.subtle, 'encrypt').mockResolvedValue(new ArrayBuffer(ciphertextLength));
+    try {
+      await capability.encrypt({ completeFrameHeader: frame, nonce, plaintext });
+      await capability.encrypt({ completeFrameHeader: frame, nonce, plaintext });
+      const serialAadFirst = (encryptSpy.mock.calls[0]![0] as AesGcmParams).additionalData;
+      const serialAadSecond = (encryptSpy.mock.calls[1]![0] as AesGcmParams).additionalData;
+      expect(serialAadSecond).toBe(serialAadFirst);
+
+      let resolveOverlap: ((value: ArrayBuffer) => void) | undefined;
+      encryptSpy.mockImplementationOnce(() => new Promise<ArrayBuffer>(resolve => {
+        resolveOverlap = resolve;
+      }));
+      encryptSpy.mockResolvedValueOnce(new ArrayBuffer(ciphertextLength));
+      const firstOverlap = capability.encrypt({ completeFrameHeader: frame, nonce, plaintext });
+      await Promise.resolve();
+      const secondOverlap = capability.encrypt({ completeFrameHeader: frame, nonce, plaintext });
+      await Promise.resolve();
+      const overlapAadFirst = (encryptSpy.mock.calls[2]![0] as AesGcmParams).additionalData;
+      const overlapAadSecond = (encryptSpy.mock.calls[3]![0] as AesGcmParams).additionalData;
+      expect(overlapAadSecond).not.toBe(overlapAadFirst);
+      if (resolveOverlap === undefined) throw new Error('test overlap encryption did not start');
+      resolveOverlap(new ArrayBuffer(ciphertextLength));
+      await Promise.all([firstOverlap, secondOverlap]);
+    } finally {
+      encryptSpy.mockRestore();
+      capability.expire();
+      plaintext.fill(0);
+      rootKey.destroy();
+    }
   });
 
   it('matches record encryption and rejects a wrong purpose-bound header', async () => {

@@ -18,9 +18,11 @@ import {
 } from '@/00-storage/service/hizofs/00-format/v1/pages/fixed-pages';
 import { decodeFileDataPayload, encodeFileDataPayload } from '@/00-storage/service/hizofs/00-format/v1/records/file-data';
 import {
+  copyFileSystemCommitPayload,
   createFileSystemCommitPayload,
   decodeFileSystemCommitPayload,
   encodeFileSystemCommitPayload,
+  sameFileSystemCommitPayloadFields,
 } from '@/00-storage/service/hizofs/00-format/v1/records/file-system-commit';
 import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format/v1/format-constants';
 import { parseMutationId, parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
@@ -105,6 +107,51 @@ describe('record payload foundations', () => {
       ...payload,
       mutationId: new Uint8Array(16) as never,
     } })).toThrow('all-zero');
+  });
+
+  it('deep-copies File System Commit binary identities without a serialization round-trip', () => {
+    const payload = createFileSystemCommitPayload({ payload: {
+      commitSequence: createCommitSequence({ value: 5n }),
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
+      nestedSubvolumeTableRootHomeRef: homeRef({ kind: KINDS.nested_subvolume_table_page, offset: 160n }),
+      nextInodeNumber: createInodeNumber({ value: 9n }),
+      nextSubvolumeId: createSubvolumeId({ value: 4n }),
+      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      rootInodeTableRootHomeRef: homeRef({ kind: KINDS.inode_table_page }),
+    } });
+    const copied = copyFileSystemCommitPayload({ payload });
+    const expected = encodeFileSystemCommitPayload({ payload: copied });
+
+    payload.mutationId.fill(0xaa);
+    payload.rootInodeTableRootHomeRef.segmentId.fill(0xbb);
+    payload.nestedSubvolumeTableRootHomeRef?.segmentId.fill(0xcc);
+
+    expect(encodeFileSystemCommitPayload({ payload: copied })).toEqual(expected);
+  });
+
+  it('compares canonical File System Commit fields without serialization allocation', () => {
+    const left = createFileSystemCommitPayload({ payload: {
+      commitSequence: createCommitSequence({ value: 5n }),
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
+      nestedSubvolumeTableRootHomeRef: homeRef({ kind: KINDS.nested_subvolume_table_page, offset: 160n }),
+      nextInodeNumber: createInodeNumber({ value: 9n }),
+      nextSubvolumeId: createSubvolumeId({ value: 4n }),
+      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      rootInodeTableRootHomeRef: homeRef({ kind: KINDS.inode_table_page }),
+    } });
+    const exact = copyFileSystemCommitPayload({ payload: left });
+    expect(sameFileSystemCommitPayloadFields({ left, right: exact })).toBe(true);
+    expect(sameFileSystemCommitPayloadFields({
+      left,
+      right: { ...exact, nextInodeNumber: createInodeNumber({ value: 10n }) },
+    })).toBe(false);
+    expect(() => sameFileSystemCommitPayloadFields({
+      left,
+      right: {
+        ...exact,
+        rootInodeTableRootHomeRef: { ...exact.rootInodeTableRootHomeRef, frameLength: 1 } as never,
+      },
+    })).toThrow('frame length');
   });
 
   it('copies File Data bytes and enforces the exact payload bound', () => {

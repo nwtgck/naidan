@@ -1,7 +1,7 @@
 import {
-  decodeFileSystemCommitPayload,
-  encodeFileSystemCommitPayload,
+  copyFileSystemCommitPayload,
   HIZOFS_V1_FORMAT_CONSTANTS,
+  sameFileSystemCommitPayloadFields,
   type FileSystemCommitPayload,
   type HomeRecordReference,
   type PublicationSequence,
@@ -107,18 +107,11 @@ export type DetachablePreparedMutationCommitPublicationPort =
     }) => ResolvablePreparedMutationCommitDurablePublicationPort;
   }>;
 
-function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
-  return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
-}
-
 function sameCommitPayload({ left, right }: {
   left: FileSystemCommitPayload;
   right: FileSystemCommitPayload;
 }): boolean {
-  return bytesEqual({
-    left: encodeFileSystemCommitPayload({ payload: left }),
-    right: encodeFileSystemCommitPayload({ payload: right }),
-  });
+  return sameFileSystemCommitPayloadFields({ left, right });
 }
 
 function assertCandidatePlan({ base, commitPayload }: {
@@ -149,11 +142,10 @@ export function prepareStagedMutationCommit({
   assertCandidatePlan({ base, commitPayload });
   assertPublicationAllowed();
   // WHY: a staged working generation must not retain aliases into caller-owned
-  // mutable byte arrays. The authoritative codec both validates and clones all
-  // nested Home Record References and the Mutation ID without physical I/O.
-  const stagedPayload = decodeFileSystemCommitPayload({
-    bytes: encodeFileSystemCommitPayload({ payload: commitPayload }),
-  });
+  // mutable byte arrays. The format authority validates and deep-copies all
+  // nested Home Record References and the Mutation ID without a serialization
+  // round-trip or physical I/O.
+  const stagedPayload = copyFileSystemCommitPayload({ payload: commitPayload });
   return Object.freeze({ commitPayload: stagedPayload });
 }
 
