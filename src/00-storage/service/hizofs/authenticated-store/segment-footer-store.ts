@@ -166,47 +166,51 @@ async function tryReadAuthenticatedFooter({
     if (isHizoFSCryptoAuthenticationError({ cause })) return undefined;
     throw cause;
   }
-  if (plaintextIndex.byteLength !== header.plaintextIndexLength) return undefined;
+  try {
+    if (plaintextIndex.byteLength !== header.plaintextIndexLength) return undefined;
 
-  const entrySize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentFooterIndexEntry;
-  const frameHeaderSize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader;
-  const frames: AuthenticatedSegmentFrame[] = [];
-  let expectedPhysicalOffset = BigInt(headerSize);
-  for (let index = 0; index < header.entryCount; index += 1) {
-    const entryBytes = plaintextIndex.subarray(index * entrySize, (index + 1) * entrySize);
-    let entry: SegmentFooterIndexEntryV1;
-    try {
-      entry = decodeSegmentFooterIndexEntry({ bytes: entryBytes });
-    } catch {
-      return undefined;
+    const entrySize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentFooterIndexEntry;
+    const frameHeaderSize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader;
+    const frames: AuthenticatedSegmentFrame[] = [];
+    let expectedPhysicalOffset = BigInt(headerSize);
+    for (let index = 0; index < header.entryCount; index += 1) {
+      const entryBytes = plaintextIndex.subarray(index * entrySize, (index + 1) * entrySize);
+      let entry: SegmentFooterIndexEntryV1;
+      try {
+        entry = decodeSegmentFooterIndexEntry({ bytes: entryBytes });
+      } catch {
+        return undefined;
+      }
+      if (entry.physicalOffset !== expectedPhysicalOffset) return undefined;
+      const frameHeaderBytes = await backend.readExact({
+        length: frameHeaderSize,
+        offset: entry.physicalOffset,
+        path,
+      });
+      let frameHeader: ReturnType<typeof decodeRecordFrameHeader>;
+      try {
+        frameHeader = decodeRecordFrameHeader({ bytes: frameHeaderBytes });
+        if (!segmentFooterIndexEntryMatchesFrame({
+          entry,
+          frameHeader,
+          physicalOffset: expectedPhysicalOffset,
+          physicalSegmentId,
+          segmentClass,
+        })) return undefined;
+      } catch {
+        return undefined;
+      }
+      frames.push({ header: frameHeader, physicalOffset: expectedPhysicalOffset });
+      expectedPhysicalOffset += BigInt(entry.frameLength);
     }
-    if (entry.physicalOffset !== expectedPhysicalOffset) return undefined;
-    const frameHeaderBytes = await backend.readExact({
-      length: frameHeaderSize,
-      offset: entry.physicalOffset,
-      path,
-    });
-    let frameHeader: ReturnType<typeof decodeRecordFrameHeader>;
-    try {
-      frameHeader = decodeRecordFrameHeader({ bytes: frameHeaderBytes });
-      if (!segmentFooterIndexEntryMatchesFrame({
-        entry,
-        frameHeader,
-        physicalOffset: expectedPhysicalOffset,
-        physicalSegmentId,
-        segmentClass,
-      })) return undefined;
-    } catch {
-      return undefined;
-    }
-    frames.push({ header: frameHeader, physicalOffset: expectedPhysicalOffset });
-    expectedPhysicalOffset += BigInt(entry.frameLength);
+    if (expectedPhysicalOffset !== footerOffset) return undefined;
+    return {
+      footer: { header, physicalOffset: footerOffset, totalLength: trailer.footerTotalLength },
+      frames,
+    };
+  } finally {
+    plaintextIndex.fill(0);
   }
-  if (expectedPhysicalOffset !== footerOffset) return undefined;
-  return {
-    footer: { header, physicalOffset: footerOffset, totalLength: trailer.footerTotalLength },
-    frames,
-  };
 }
 
 export async function readAuthenticatedSegmentIndex({ backend, diagnostics, fileSystemId, physicalSegmentId, rootKey, segmentClass }: {

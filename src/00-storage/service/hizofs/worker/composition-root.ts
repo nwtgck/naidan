@@ -123,6 +123,8 @@ import type { StreamingDirectoryImportLimits } from "@/00-storage/service/hizofs
 import { prepareTransitionImportCommit } from "@/00-storage/service/hizofs/filesystem/bulk/transition-import-commit";
 import { StreamingNamespaceImportTargetSession } from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import-target-session";
 import {
+  DEFAULT_FILE_CONTENT_MUTATION_LIMITS,
+  PreparedFileExtentTailAppendBatch,
   prepareFileTruncateMutation,
   prepareFileWriteMutationWithAppendTailWitness,
   type FileContentMutationLimits,
@@ -2649,6 +2651,7 @@ function syncDurabilityForWritableProfile({ writableProfile }: {
 
 export type AuthenticatedApplicationReadWriteSessionResources = Readonly<{
   adoptManagementCleanGeneration: AuthenticatedManagementCleanGenerationAdopter;
+  captureStableReadNamespace: () => import("@/00-storage/service/hizofs/api").HizoFSApplicationStableReadNamespaceCapture;
   createReadSnapshotResources: () => Readonly<{
     commitReference: HomeRecordReference;
     mutationPort: import("@/00-storage/service/hizofs/api").HizoFSApplicationMutationPort;
@@ -2798,15 +2801,6 @@ async function openStableAcceptedApplicationMutationAdmission({
   }
 }
 
-function mutationIdentity({ mutationId }: { mutationId: MutationId }): string {
-  // Mutation IDs are fixed-width binary values. A one-code-unit-per-byte key is
-  // injective for this worker-local Set and avoids formatting two hex chars for
-  // every byte on every collision check. This is not an external/persisted ID.
-  let identity = "";
-  for (const byte of mutationId) identity += String.fromCharCode(byte);
-  return identity;
-}
-
 function sameCommitPayload({ left, right }: {
   left: FileSystemCommitPayload;
   right: FileSystemCommitPayload;
@@ -2920,6 +2914,18 @@ function stableGenerationNamespace({ current }: {
       const resolver = current().resolver;
       return await resolver.list({ pathComponents: [...pathComponents] });
     },
+    listAfterBounded: async ({ afterName, maximumEntries, pathComponents }) => {
+      const resolver = current().resolver;
+      const listAfterBounded = resolver.listAfterBounded;
+      if (listAfterBounded === undefined) {
+        throw new Error("HizoFS resolver does not support bounded directory continuation");
+      }
+      return await listAfterBounded({
+        afterName,
+        maximumEntries,
+        pathComponents: [...pathComponents],
+      });
+    },
     listBounded: async ({ maximumEntries, pathComponents }) => {
       const resolver = current().resolver;
       return await resolver.listBounded({ maximumEntries, pathComponents: [...pathComponents] });
@@ -2973,22 +2979,22 @@ function acquireWorkingGenerationRootDependency({ generation, runtimeHost }: {
   generation: AuthenticatedWorkingApplicationGenerationDescriptor;
   runtimeHost: Pick<
     import("@/00-storage/service/hizofs/worker/runtime-host").HizoFSWorkerRuntimeHost,
-    "acquireWriterDependencyRoot" | "acquireWriterWorkingPageRoot"
+    "acquireWorkingGenerationDependencyRoot" | "acquireWorkingGenerationPageRoot"
   >;
 }): Readonly<{ release: () => void }> {
   switch (generation.workingRootAuthority.type) {
   case "materialized_commit":
-    return runtimeHost.acquireWriterDependencyRoot({
+    return runtimeHost.acquireWorkingGenerationDependencyRoot({
       commitReference: generation.workingRootAuthority.commitReference,
     });
   case "direct_working_pages": {
     const registrations = [
-      runtimeHost.acquireWriterWorkingPageRoot({
+      runtimeHost.acquireWorkingGenerationPageRoot({
         pageReference: generation.workingRootAuthority.rootInodeTableRootHomeRef,
       }),
       ...(generation.workingRootAuthority.nestedSubvolumeTableRootHomeRef === null
         ? []
-        : [runtimeHost.acquireWriterWorkingPageRoot({
+        : [runtimeHost.acquireWorkingGenerationPageRoot({
           pageReference: generation.workingRootAuthority.nestedSubvolumeTableRootHomeRef,
         })]),
     ];
@@ -3045,7 +3051,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   metadataRecordCachePolicy?: AuthenticatedMetadataRecordCachePolicy;
   runtimeHost: Pick<
     import("@/00-storage/service/hizofs/worker/runtime-host").HizoFSWorkerRuntimeHost,
-    "acquireWriterDependencyRoot" | "acquireWriterWorkingPageRoot" | "openManagementCleanHeadBarrier"
+    "acquireWorkingGenerationDependencyRoot" | "acquireWorkingGenerationPageRoot" | "openManagementCleanHeadBarrier"
   >;
 }>): AuthenticatedApplicationReadWriteSessionResources {
   switch (writableProfile) {
@@ -3173,14 +3179,19 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   });
   let generationDescriptor = authenticatedGeneration.capture();
   let generation = generationFromDescriptor({ descriptor: generationDescriptor });
-  const usedMutationIds = new Set<string>([
-    mutationIdentity({ mutationId: generationDescriptor.commit.mutationId }),
-  ]);
+  const generateSuccessorMutationId = async ({ baseMutationId }: {
+    baseMutationId: MutationId;
+  }): Promise<MutationId> => await generateMutationId({
+    // V1 requires a successor Mutation ID to differ from its captured base.
+    // Retaining every historical random ID would make session memory grow with
+    // mutation count without strengthening that persisted transition rule.
+    isUsed: async ({ id }) => bytesEqual({ left: id, right: baseMutationId }),
+    randomSource,
+  });
   const adoptGenerationDescriptor = ({ descriptor }: {
     descriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
   }): AuthenticatedWritableApplicationGeneration => {
     generationDescriptor = descriptor;
-    usedMutationIds.add(mutationIdentity({ mutationId: descriptor.commit.mutationId }));
     generation = generationFromDescriptor({ descriptor });
     return generation;
   };
@@ -3820,13 +3831,9 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     // writer has either transferred a successor into runtime ownership or
     // settled without mutation. The root intentionally follows the working
     // generation rather than only the durable Superblock authority.
-    const writerDependency = acquireWorkingGenerationRootDependency({ generation: base, runtimeHost });
+    const workingGenerationDependency = acquireWorkingGenerationRootDependency({ generation: base, runtimeHost });
     const performMutation = async (): Promise<void> => {
-      const mutationId = await generateMutationId({
-        isUsed: async ({ id }) => usedMutationIds.has(mutationIdentity({ mutationId: id })),
-        randomSource,
-      });
-      usedMutationIds.add(mutationIdentity({ mutationId }));
+      const mutationId = await generateSuccessorMutationId({ baseMutationId: base.commit.mutationId });
       const metadataAuthority = await createAuthenticatedMetadataMutationAuthority({
         backend,
         decodedDirectoryPageCache: decodedDirectoryPageIndexCache,
@@ -4036,7 +4043,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     }
     let releaseFailure: unknown | undefined;
     try {
-      writerDependency.release();
+      workingGenerationDependency.release();
     } catch (cause: unknown) {
       releaseFailure = cause;
     }
@@ -4467,12 +4474,12 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       ownerView: "mutable_live",
       target: { empty: true, fresh: true },
     });
-    const writerDependency = acquireWorkingGenerationRootDependency({ generation: base, runtimeHost });
-    let writerDependencyActive = true;
+    const workingGenerationDependency = acquireWorkingGenerationRootDependency({ generation: base, runtimeHost });
+    let workingGenerationDependencyActive = true;
     const releaseWriterDependency = (): void => {
-      if (!writerDependencyActive) return;
-      writerDependencyActive = false;
-      writerDependency.release();
+      if (!workingGenerationDependencyActive) return;
+      workingGenerationDependencyActive = false;
+      workingGenerationDependency.release();
     };
     const settle = async ({ message, operation }: {
       message: string;
@@ -4587,6 +4594,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     let activeOperation: Promise<void> | undefined;
     let staged = source;
     let extentAppendTailWitness: FileExtentAppendTailWitness | undefined;
+    let extentTailAppendBatch: PreparedFileExtentTailAppendBatch | undefined;
     let state: "closed" | "open" = "open";
     const requireOpen = (): void => {
       switch (state) {
@@ -4618,8 +4626,22 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       }
     };
 
+    const flushExtentTailAppendBatch = async (): Promise<void> => {
+      const batch = extentTailAppendBatch;
+      if (batch === undefined) return;
+      const prepared = await batch.flush({
+        limits: fileMutationLimits,
+        pageStore: contentPort.extentPageStore,
+        source: staged,
+      });
+      staged = prepared.inode;
+      extentAppendTailWitness = prepared.appendTailWitness;
+      extentTailAppendBatch = undefined;
+    };
+
     const stageTruncate = async ({ size }: { size: bigint }): Promise<void> => await stage({
       operation: async () => {
+        await flushExtentTailAppendBatch();
         const plan = prepareFileTruncatePlan({
           operationTimestamp: operationTimestamp(),
           source: staged,
@@ -4708,11 +4730,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           throw new TypeError("prepared file mutation base generation changed");
         }
         applicationAuthority.assertPublicationAllowed();
-        const mutationId = await generateMutationId({
-          isUsed: async ({ id }) => usedMutationIds.has(mutationIdentity({ mutationId: id })),
-          randomSource,
-        });
-        usedMutationIds.add(mutationIdentity({ mutationId }));
+        const mutationId = await generateSuccessorMutationId({ baseMutationId: checkedBase.commit.mutationId });
         const publicationMode = authenticatedGeneration.publicationModeApplied();
         const baseDescriptor = descriptorFromGeneration({ value: checkedBase });
         const prepareCommitPayload = async ({ candidateBaseCommit }: {
@@ -4732,6 +4750,19 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           default: return prepared satisfies never;
           }
         };
+
+        try {
+          // File Data references staged by this prepared writable may still be
+          // provisional. Persist the bounded data batch before final metadata
+          // preparation so no accepted working generation can outlive the
+          // physical bytes referenced by its File Extent tree.
+          await fileAuthority.flushPendingFileDataRecords();
+          await flushExtentTailAppendBatch();
+        } catch (cause: unknown) {
+          fileAuthority.abandon();
+          state = "closed";
+          throw cause;
+        }
 
         switch (publicationMode) {
         case "immediate_publication_requested":
@@ -4957,14 +4988,59 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       truncate: stageTruncate,
       write: async ({ data, position }) => await stage({
         operation: async () => {
+          const writeOffset = createFileOffset({ value: position });
+          if (
+            extentTailAppendBatch !== undefined
+            && !extentTailAppendBatch.canStage({
+              byteLength: data.byteLength,
+              limits: fileMutationLimits,
+              source: staged,
+              writeOffset,
+            })
+          ) {
+            await flushExtentTailAppendBatch();
+          }
           const plan = prepareCapturedFileWritePlan({
             bytes: data,
             operationTimestamp: operationTimestamp(),
-            position: createFileOffset({ value: position }),
+            position: writeOffset,
             source: staged,
           });
           if (plan === null) return;
           try {
+            if (extentTailAppendBatch !== undefined) {
+              switch (plan.action) {
+              case "copy_on_write_extent_range": break;
+              case "promote_inline_to_extent":
+              case "write_inline": throw new TypeError("File Extent tail append batch produced a non-extent write plan");
+              default: return plan satisfies never;
+              }
+              staged = await extentTailAppendBatch.stage({ plan, port: contentPort, source: staged });
+              extentAppendTailWitness = undefined;
+              changed = true;
+              return;
+            }
+            if (
+              extentAppendTailWitness !== undefined
+              && plan.action === "copy_on_write_extent_range"
+            ) {
+              const batch = PreparedFileExtentTailAppendBatch.create({
+                source: staged,
+                witness: extentAppendTailWitness,
+              });
+              if (batch.canStage({
+                byteLength: plan.writeBytes.byteLength,
+                limits: fileMutationLimits,
+                source: staged,
+                writeOffset: plan.writeOffset,
+              })) {
+                staged = await batch.stage({ plan, port: contentPort, source: staged });
+                extentTailAppendBatch = batch;
+                extentAppendTailWitness = undefined;
+                changed = true;
+                return;
+              }
+            }
             const prepared = await prepareFileWriteMutationWithAppendTailWitness({
               appendTailWitness: extentAppendTailWitness,
               limits: fileMutationLimits,
@@ -4987,9 +5063,9 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         },
       }),
     };
-    let writerDependency: Readonly<{ release: () => void }>;
+    let workingGenerationDependency: Readonly<{ release: () => void }>;
     try {
-      writerDependency = acquireWorkingGenerationRootDependency({ generation: base, runtimeHost });
+      workingGenerationDependency = acquireWorkingGenerationRootDependency({ generation: base, runtimeHost });
     } catch (cause: unknown) {
       try {
         fileAuthority.abandon();
@@ -5002,11 +5078,11 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       }
       throw cause;
     }
-    let writerDependencyActive = true;
+    let workingGenerationDependencyActive = true;
     const releaseWriterDependency = (): void => {
-      if (!writerDependencyActive) return;
-      writerDependencyActive = false;
-      writerDependency.release();
+      if (!workingGenerationDependencyActive) return;
+      workingGenerationDependencyActive = false;
+      workingGenerationDependency.release();
     };
     const settleWithWriterDependencyRelease = async ({ message, operation }: {
       message: string;
@@ -5119,6 +5195,19 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
   };
   return {
     adoptManagementCleanGeneration,
+    captureStableReadNamespace: () => {
+      const captured = currentGeneration();
+      const dependency = acquireWorkingGenerationRootDependency({ generation: captured, runtimeHost });
+      let active = true;
+      return Object.freeze({
+        namespace: stableGenerationNamespace({ current: () => captured }),
+        release: () => {
+          if (!active) return;
+          active = false;
+          dependency.release();
+        },
+      });
+    },
     createReadSnapshotResources: async () => {
       let captured = currentGeneration();
       if ("commitReference" in captured) {
@@ -5452,7 +5541,7 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
           decodedInodeIndexPageCacheDiagnostics: openedAuthority.decodedInodeIndexPageCacheDiagnostics,
           decodedInodeIndexPageCacheEntryLimit,
           explicitBulkLimits: DEFAULT_EXPLICIT_BULK_LIMITS,
-          fileMutationLimits: { maximumExtentMutationsPerBatch: 64 },
+          fileMutationLimits: DEFAULT_FILE_CONTENT_MUTATION_LIMITS,
           indexDiagnostics: openedAuthority.indexDiagnostics,
           opened: openedAuthority.opened,
           operationTimestamp: () => createTimestampMilliseconds({ value: BigInt(Date.now()) }),
@@ -5731,7 +5820,7 @@ export async function openHizoFSWorkerMountGrant({
           backend,
           canonicalBackingLocation: plaintext.canonicalBackingLocation,
           explicitBulkLimits: DEFAULT_EXPLICIT_BULK_LIMITS,
-          fileMutationLimits: { maximumExtentMutationsPerBatch: 64 },
+          fileMutationLimits: DEFAULT_FILE_CONTENT_MUTATION_LIMITS,
           opened,
           operationTimestamp: () => createTimestampMilliseconds({ value: BigInt(Date.now()) }),
           randomSource: undefined,
@@ -6825,8 +6914,8 @@ async function captureAuthenticatedMaintenanceRootsWithReader<Authority>({
           readerPinnedRoots: runtimeCapture.readerPinnedRoots,
           relocationIndexRoots: current.relocationIndexRoots,
           unknownFeatureRoots: runtimeCapture.unknownFeatureRoots,
-          writerDependencyRoots: runtimeCapture.writerDependencyRoots,
-          writerWorkingPageRoots: runtimeCapture.writerWorkingPageRoots,
+          workingGenerationDependencyRoots: runtimeCapture.workingGenerationDependencyRoots,
+          workingGenerationPageRoots: runtimeCapture.workingGenerationPageRoots,
         },
       });
     },

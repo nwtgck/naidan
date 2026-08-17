@@ -232,8 +232,8 @@ export type ContainerRuntimeMaintenanceRootCapture = Readonly<{
   released: Promise<void>;
   sourceSegmentPinnedRoots: readonly HomeRecordReference[];
   unknownFeatureRoots: readonly HomeRecordReference[];
-  writerDependencyRoots: readonly HomeRecordReference[];
-  writerWorkingPageRoots: readonly HomeRecordReference[];
+  workingGenerationDependencyRoots: readonly HomeRecordReference[];
+  workingGenerationPageRoots: readonly HomeRecordReference[];
 }>;
 
 export type ContainerRuntimeLazyDurabilityDiagnostics = Readonly<{
@@ -566,25 +566,29 @@ export class ContainerRuntimeSession {
     return await this.lifecycle.runOperation({ operation: async () => await operation() });
   }
 
-  private async acquireReaderPinInternal({ commitReference, ownedBySession }: {
-    commitReference: HomeRecordReference;
+  private async captureAndAcquireReaderPinInternal<Value>({ capture, ownedBySession }: {
+    capture: () => Promise<Readonly<{ commitReference: HomeRecordReference; value: Value }>>;
     ownedBySession: boolean;
-  }): Promise<OwnedReaderPin> {
+  }): Promise<Readonly<{ pin: OwnedReaderPin; value: Value }>> {
     return await this.lifecycle.runOperation({ operation: async ({ authority }) => {
-      const crossRealmPin = await this.crossRealm.acquireReaderPin({ commitReference });
+      const captured = await this.crossRealm.captureAndAcquireReaderPin({ capture });
+      const crossRealmPin = captured.pin;
       let localPin: ReaderPin | undefined;
       try {
         localPin = this.readerPins.acquire({
-          commitReference,
+          commitReference: crossRealmPin.commitReference,
           coordinationKey: this.coordinationKey,
         });
         authority.assertCapabilityReturnAllowed();
-        return new OwnedReaderPin({
-          crossRealmPin,
-          localPin,
-          ownedBySession,
-          session: this.lifecycle,
-        });
+        return {
+          pin: new OwnedReaderPin({
+            crossRealmPin,
+            localPin,
+            ownedBySession,
+            session: this.lifecycle,
+          }),
+          value: captured.value,
+        };
       } catch (cause: unknown) {
         const acquiredLocalPin = localPin;
         const releases = acquiredLocalPin === undefined
@@ -601,10 +605,27 @@ export class ContainerRuntimeSession {
     } });
   }
 
+  private async acquireReaderPinInternal({ commitReference, ownedBySession }: {
+    commitReference: HomeRecordReference;
+    ownedBySession: boolean;
+  }): Promise<OwnedReaderPin> {
+    const captured = await this.captureAndAcquireReaderPinInternal({
+      capture: async () => ({ commitReference, value: undefined }),
+      ownedBySession,
+    });
+    return captured.pin;
+  }
+
   async acquireReaderPin({ commitReference }: {
     commitReference: HomeRecordReference;
   }): Promise<ContainerRuntimeReaderPin> {
     return await this.acquireReaderPinInternal({ commitReference, ownedBySession: true });
+  }
+
+  async captureAndAcquireReaderPin<Value>({ capture }: {
+    capture: () => Promise<Readonly<{ commitReference: HomeRecordReference; value: Value }>>;
+  }): Promise<Readonly<{ pin: ContainerRuntimeReaderPin; value: Value }>> {
+    return await this.captureAndAcquireReaderPinInternal({ capture, ownedBySession: true });
   }
 
   async createDirectoryIterator({ entries, generation }: {
@@ -804,14 +825,14 @@ export class ContainerRuntime {
     });
     this.scope = scope;
     this.workingCandidates = new WorkingCandidateCoordinator({
-      acquireWriterDependencyRoot: ({ commitReference }) => (
-        this.maintenanceRoots.acquireWriterDependencyRoot({
+      acquireWorkingGenerationDependencyRoot: ({ commitReference }) => (
+        this.maintenanceRoots.acquireWorkingGenerationDependencyRoot({
           commitReference,
           coordinationKey: this.scope.key,
         })
       ),
-      acquireWriterWorkingPageRoot: ({ pageReference }) => (
-        this.maintenanceRoots.acquireWriterWorkingPageRoot({
+      acquireWorkingGenerationPageRoot: ({ pageReference }) => (
+        this.maintenanceRoots.acquireWorkingGenerationPageRoot({
           coordinationKey: this.scope.key,
           pageReference,
         })
@@ -1803,7 +1824,7 @@ export class ContainerRuntime {
         : undefined;
       if (
         flushableCandidateRoot !== undefined
-        && this.maintenanceRoots.isSoleWriterDependencyRoot({
+        && this.maintenanceRoots.isSoleWorkingGenerationDependencyRoot({
           commitReference: flushableCandidateRoot,
           coordinationKey: this.scope.key,
         })
@@ -1815,7 +1836,7 @@ export class ContainerRuntime {
         : undefined;
       if (
         flushableWorkingPageRoots !== undefined
-        && this.maintenanceRoots.isExactSoleWriterWorkingPageRoots({
+        && this.maintenanceRoots.isExactSoleWorkingGenerationPageRoots({
           coordinationKey: this.scope.key,
           pageReferences: flushableWorkingPageRoots,
         })
@@ -2156,8 +2177,8 @@ export class ContainerRuntime {
         released: capture.released,
         sourceSegmentPinnedRoots: capture.sourceSegmentPinnedRoots,
         unknownFeatureRoots: capture.unknownFeatureRoots,
-        writerDependencyRoots: capture.writerDependencyRoots,
-        writerWorkingPageRoots: capture.writerWorkingPageRoots,
+        workingGenerationDependencyRoots: capture.workingGenerationDependencyRoots,
+        workingGenerationPageRoots: capture.workingGenerationPageRoots,
       });
     } catch (cause: unknown) {
       const cleanupFailures: unknown[] = [];
@@ -2221,8 +2242,8 @@ export class ContainerRuntime {
         released: crossRealmCapture.released,
         sourceSegmentPinnedRoots: localRoots.rootSets.sourceSegmentPinnedRoots,
         unknownFeatureRoots: localRoots.rootSets.unknownFeatureRoots,
-        writerDependencyRoots: localRoots.rootSets.writerDependencyRoots,
-        writerWorkingPageRoots: localRoots.rootSets.writerWorkingPageRoots,
+        workingGenerationDependencyRoots: localRoots.rootSets.workingGenerationDependencyRoots,
+        workingGenerationPageRoots: localRoots.rootSets.workingGenerationPageRoots,
       };
     } catch (cause: unknown) {
       try {
@@ -2266,19 +2287,19 @@ export class ContainerRuntime {
     });
   }
 
-  acquireWriterDependencyRoot({ commitReference }: {
+  acquireWorkingGenerationDependencyRoot({ commitReference }: {
     commitReference: HomeRecordReference;
   }): RuntimeMaintenanceRootRegistration {
-    return this.maintenanceRoots.acquireWriterDependencyRoot({
+    return this.maintenanceRoots.acquireWorkingGenerationDependencyRoot({
       commitReference,
       coordinationKey: this.scope.key,
     });
   }
 
-  acquireWriterWorkingPageRoot({ pageReference }: {
+  acquireWorkingGenerationPageRoot({ pageReference }: {
     pageReference: HomeRecordReference;
   }): import("@/00-storage/service/hizofs/runtime/maintenance-root-registry").RuntimeMaintenancePageRootRegistration {
-    return this.maintenanceRoots.acquireWriterWorkingPageRoot({
+    return this.maintenanceRoots.acquireWorkingGenerationPageRoot({
       pageReference,
       coordinationKey: this.scope.key,
     });

@@ -1,4 +1,5 @@
 import {
+  compareFilenameComponentsByUtf8,
   compareUnsignedBytes,
   encodeFilenameComponent,
   type DirectoryInodeEntry,
@@ -95,6 +96,11 @@ export type ReadOnlyDirectoryListing = Readonly<{
 
 export type ReadOnlyNamespace = Readonly<{
   list: ({ pathComponents }: { pathComponents: readonly string[] }) => Promise<readonly DirectoryLeafEntry[]>;
+  listAfterBounded?: ({ afterName, maximumEntries, pathComponents }: {
+    afterName: string | undefined;
+    maximumEntries: number;
+    pathComponents: readonly string[];
+  }) => Promise<ReadOnlyDirectoryListing>;
   listBounded: ({ maximumEntries, pathComponents }: {
     maximumEntries: number;
     pathComponents: readonly string[];
@@ -424,8 +430,8 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
       throw new RangeError("maximumEntries must be a nonnegative safe integer");
     }
     const afterKey = afterName === undefined ? undefined : encodeFilenameComponent({ value: afterName });
-    const accept = ({ entry }: { entry: DirectoryLeafEntry }): boolean => afterKey === undefined
-      || compareUnsignedBytes({ left: encodeFilenameComponent({ value: entry.name }), right: afterKey }) > 0;
+    const accept = ({ entry }: { entry: DirectoryLeafEntry }): boolean => afterName === undefined
+      || compareFilenameComponentsByUtf8({ left: entry.name, right: afterName }) > 0;
     const entries: DirectoryLeafEntry[] = [];
     const append = ({ entry }: { entry: DirectoryLeafEntry }): boolean => {
       if (!accept({ entry })) return false;
@@ -564,6 +570,13 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
       });
       return await listDirectoryEntries({ inode });
     },
+    listAfterBounded: async ({ afterName, maximumEntries, pathComponents }) => {
+      const inode = requireDirectory({
+        inode: await resolveInode({ pathComponents }),
+        message: "list target is not a directory",
+      });
+      return await listDirectoryEntriesAfterBounded({ afterName, inode, maximumEntries });
+    },
     listBounded: async ({ maximumEntries, pathComponents }) => {
       const inode = requireDirectory({
         inode: await resolveInode({ pathComponents }),
@@ -616,6 +629,7 @@ export function createReadOnlyNamespace({ inodeTableRootHomeRef, rootDirectoryIn
   const {
     maximumKnownInodeNumber: _maximumKnownInodeNumber,
     list,
+    listAfterBounded,
     listBounded,
     listDirectoryEntries: _listDirectoryEntries,
     listDirectoryEntriesAfterBounded: _listDirectoryEntriesAfterBounded,
@@ -630,7 +644,7 @@ export function createReadOnlyNamespace({ inodeTableRootHomeRef, rootDirectoryIn
     ...unhandledResolver
   } = resolver;
   unhandledResolver satisfies Record<PropertyKey, never>;
-  return { list, listBounded, readFile, readlink, stat };
+  return { list, listAfterBounded, listBounded, readFile, readlink, stat };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

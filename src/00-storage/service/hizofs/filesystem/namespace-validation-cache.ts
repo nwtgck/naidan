@@ -48,10 +48,12 @@ export class ReadOnlyNamespaceValidationCache {
   }
 
   private evictSettledEntry(): boolean {
-    const evictable = [...this.entries].find(([, entry]) => entry.settled);
-    if (evictable === undefined) return false;
-    this.entries.delete(evictable[0]);
-    return true;
+    for (const [key, entry] of this.entries) {
+      if (!entry.settled) continue;
+      this.entries.delete(key);
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -127,33 +129,42 @@ export class ReadOnlyNamespaceValidationCache {
     validate: () => Promise<void>;
   }): Promise<void> {
     const key = this.key({ kind, reference });
-    const existing = this.entries.get(key);
-    if (existing !== undefined) {
-      this.entries.delete(key);
-      this.entries.set(key, existing);
-      return await existing.promise;
-    }
-
-    while (this.entries.size >= this.maximumEntries) {
-      if (!this.evictSettledEntry()) {
-        await validate();
-        return;
+    while (true) {
+      const existing = this.entries.get(key);
+      if (existing !== undefined) {
+        this.entries.delete(key);
+        this.entries.set(key, existing);
+        return await existing.promise;
       }
+      if (this.entries.size < this.maximumEntries) break;
+      if (this.evictSettledEntry()) continue;
+      const pending = this.entries.values().next().value as ValidationEntry | undefined;
+      if (pending === undefined) throw new Error("namespace validation cache capacity invariant failed");
+      // Saturation must apply backpressure rather than bypassing the cache.
+      // Otherwise many distinct roots can start unbounded full-tree validation
+      // even though the cache itself remains nominally bounded. A failed older
+      // validation does not fail this unrelated request; its own caller still
+      // observes that failure and the entry removes itself below. Re-check the
+      // requested key after every wait so concurrent waiters still coalesce.
+      await pending.promise.catch(() => undefined);
     }
 
     const entry: ValidationEntry = {
       inodeTableHighWaterProof: undefined,
-      promise: Promise.resolve().then(validate),
+      promise: Promise.resolve(),
       settled: false,
     };
+    entry.promise = Promise.resolve().then(validate).then(
+      () => {
+        entry.settled = true;
+      },
+      (cause: unknown) => {
+        if (this.entries.get(key) === entry) this.entries.delete(key);
+        throw cause;
+      },
+    );
     this.entries.set(key, entry);
-    try {
-      await entry.promise;
-      entry.settled = true;
-    } catch (cause: unknown) {
-      if (this.entries.get(key) === entry) this.entries.delete(key);
-      throw cause;
-    }
+    await entry.promise;
   }
 }
 

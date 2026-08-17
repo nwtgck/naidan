@@ -160,6 +160,8 @@ async function readSuperblockCopy({ backend, copy, diagnostics, fileSystemId, ro
       return { kind: "invalid", structurallyObservedPublicationSequence };
     }
     throw cause;
+  } finally {
+    plaintextBytes.fill(0);
   }
 }
 

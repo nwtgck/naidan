@@ -37,6 +37,15 @@ function namespace({ includeSubvolume = false }: {
         targetType: "subvolume" as const,
       }] : []),
     ]),
+    listAfterBounded: vi.fn(async ({ afterName }) => ({
+      entries: afterName === undefined ? [{
+        inodeKind: "file" as const,
+        inodeNumber: createInodeNumber({ value: 2n }),
+        name: "file",
+        targetType: "inode" as const,
+      }] : [],
+      truncated: false,
+    })),
     listBounded: vi.fn(async () => ({ entries: [], truncated: false })),
     readFile: vi.fn(async ({ length = 4n, offset = 0n }) => {
       const source = new Uint8Array([1, 2, 3, 4]);
@@ -225,6 +234,12 @@ describe("runtime-bound HizoFS application session port", () => {
     const { port, runtimeState } = createPort();
 
     await expect(port.listDirectory({ path: [] })).resolves.toEqual([{ kind: "file", name: "file" }]);
+    if (port.listDirectoryPage === undefined) throw new Error("expected paged directory capability");
+    await expect(port.listDirectoryPage({
+      afterName: undefined,
+      maximumEntries: 128,
+      path: [],
+    })).resolves.toEqual({ entries: [{ kind: "file", name: "file" }], truncated: false });
     await expect(port.stat({ path: ["file"] })).resolves.toEqual({
       createdAt: 10n,
       kind: "file",
@@ -241,9 +256,42 @@ describe("runtime-bound HizoFS application session port", () => {
     await expect(readable.read({ length: 2n, offset: 1n, signal: undefined }))
       .resolves.toEqual(new Uint8Array([2, 3]));
 
-    expect(runtimeState.calls.filter(value => value === "read-operation")).toHaveLength(5);
+    expect(runtimeState.calls.filter(value => value === "read-operation")).toHaveLength(6);
     await port.close();
     await expect(port.stat({ path: [] })).rejects.toMatchObject({ code: "session_closed" });
+  });
+
+
+  it("binds readable size and bytes to one captured working namespace", async () => {
+    const runtimeState = runtime();
+    const mutations = mutationPort();
+    const liveNamespace = namespace();
+    const stableNamespace: ReadOnlyNamespace = {
+      ...namespace(),
+      readFile: vi.fn(async ({ length = 4n, offset = 0n }) => {
+        const source = new Uint8Array([9, 8, 7, 6]);
+        return source.slice(Number(offset), Number(offset + length));
+      }),
+    };
+    const release = vi.fn();
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      captureStableReadNamespace: () => ({ namespace: stableNamespace, release }),
+      mutationPort: mutations.port,
+      namespace: liveNamespace,
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+
+    const readable = await port.openReadable({ path: ["file"] });
+    await expect(readable.read({ length: 4n, offset: 0n, signal: undefined }))
+      .resolves.toEqual(new Uint8Array([9, 8, 7, 6]));
+    expect(readable.size).toBe(4n);
+    expect(stableNamespace.stat).toHaveBeenCalledTimes(1);
+    expect(liveNamespace.stat).not.toHaveBeenCalled();
+
+    await readable.close();
+    await readable.close();
+    expect(release).toHaveBeenCalledTimes(1);
   });
 
   it("projects private missing-entry failures into the shared storage boundary", async () => {
@@ -483,13 +531,64 @@ describe("runtime-bound HizoFS application session port", () => {
     await expect(builder.abort({ reason: "late" })).rejects.toMatchObject({ code: "session_closed" });
   });
 
-  it("fails closed when an explicit bulk publisher omits its commit point", async () => {
-    const { port, runtimeState } = createPort({ markCommitPoint: false });
+  it("fails closed and aborts the prepared bulk authority when commit resolution fails", async () => {
+    const { mutations, port, runtimeState } = createPort({ markCommitPoint: false });
     const openExplicitBulk = port.openExplicitBulk;
     if (openExplicitBulk === undefined) throw new Error("test mutation port omitted explicit bulk support");
     const builder = await openExplicitBulk({ path: [] });
 
     await expect(builder.commit()).rejects.toMatchObject({ code: "commit_point_not_crossed" });
+    expect(mutations.calls.map(([name]) => name)).toContain("abort-explicit-bulk");
+    expect(runtimeState.calls.at(-1)).toBe("close-writer");
+  });
+
+  it("fails closed and aborts the prepared writable authority when commit resolution fails", async () => {
+    const { mutations, port, runtimeState } = createPort({ markCommitPoint: false });
+    const writable = await port.openWritable({ keepExistingData: true, path: ["file"] });
+
+    await expect(writable.commit()).rejects.toMatchObject({ code: "commit_point_not_crossed" });
+    expect(mutations.calls.map(([name]) => name)).toContain("abort");
+    expect(runtimeState.calls.at(-1)).toBe("close-writer");
+  });
+
+  it("preserves writable commit and prepared-abort failures in order", async () => {
+    const runtimeState = runtime();
+    const mutations = mutationPort();
+    const commitFailure = new Error("prepared writable commit failed");
+    const abortFailure = new Error("prepared writable abort failed");
+    mutations.port.openWritable = async request => {
+      mutations.calls.push(["open-writable-failing-cleanup", request]);
+      return {
+        async abort() {
+          throw abortFailure;
+        },
+        async commit() {
+          throw commitFailure;
+        },
+        async truncate() {
+          throw new Error("unused truncate");
+        },
+        async write() {
+          throw new Error("unused write");
+        },
+      };
+    };
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutations.port,
+      namespace: namespace(),
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+    const writable = await port.openWritable({ keepExistingData: true, path: ["file"] });
+
+    let thrown: unknown;
+    try {
+      await writable.commit();
+    } catch (cause: unknown) {
+      thrown = cause;
+    }
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors).toEqual([commitFailure, abortFailure]);
     expect(runtimeState.calls.at(-1)).toBe("close-writer");
   });
 

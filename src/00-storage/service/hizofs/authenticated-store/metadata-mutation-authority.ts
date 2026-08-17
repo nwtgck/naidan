@@ -675,6 +675,17 @@ export class AuthenticatedMetadataMutationAuthority {
     }
   }
 
+  private async flushProvisionalReferenceBeforeRead({ reference }: {
+    reference: HomeRecordReference;
+  }): Promise<void> {
+    if (this.pendingAppendBatch?.hasPlannedHomeReference({ reference }) !== true) return;
+    // A provisional Home Reference predicts the exact durable append location,
+    // but it is not physically readable until that bounded batch is flushed.
+    // Mutation-local caches may accelerate read-your-writes, but cache
+    // retention must never decide whether a valid reference is readable.
+    await this.flushPendingAppendBatch();
+  }
+
   private async appendMetadataRecordWithRollover<Result>({ append }: {
     append: ({ writer }: { writer: AuthenticatedSegmentWriter }) => Promise<Result>;
   }): Promise<Result> {
@@ -699,6 +710,7 @@ export class AuthenticatedMetadataMutationAuthority {
     this.requireActive({ operation: "read a File Extent page" });
     this.operationInProgress = true;
     try {
+      await this.flushProvisionalReferenceBeforeRead({ reference });
       return await readAuthenticatedFileExtentPage({
         backend: this.backend,
         diagnostics: this.diagnostics,
@@ -722,6 +734,7 @@ export class AuthenticatedMetadataMutationAuthority {
     this.requireActive({ operation: "read a File Extent page for update" });
     this.operationInProgress = true;
     try {
+      await this.flushProvisionalReferenceBeforeRead({ reference });
       return await readAuthenticatedFileExtentPageForUpdate({
         backend: this.backend,
         diagnostics: this.diagnostics,
@@ -769,6 +782,7 @@ export class AuthenticatedMetadataMutationAuthority {
       if (pending !== undefined) {
         return { ...cloneInodeBranchPage({ page: pending.page }), type: "branch" };
       }
+      await this.flushProvisionalReferenceBeforeRead({ reference });
       return await readAuthenticatedInodeTablePage({
         backend: this.backend,
         decodedBranchPageCache: this.decodedInodeBranchPageCache,
@@ -795,6 +809,7 @@ export class AuthenticatedMetadataMutationAuthority {
     try {
       const pending = this.pendingInodeBranchPages.get(inodeBranchIdentity({ isRoot, reference }));
       if (pending !== undefined) return undefined;
+      await this.flushProvisionalReferenceBeforeRead({ reference });
       return await readAuthenticatedInodeTablePageForUpdate({
         backend: this.backend,
         decodedBranchPageCache: this.decodedInodeBranchPageCache,
@@ -851,6 +866,7 @@ export class AuthenticatedMetadataMutationAuthority {
     this.requireActive({ operation: "read a Directory page" });
     this.operationInProgress = true;
     try {
+      await this.flushProvisionalReferenceBeforeRead({ reference });
       return await readAuthenticatedDirectoryPage({
         backend: this.backend,
         decodedPageCache: this.decodedDirectoryPageCache,
@@ -875,6 +891,7 @@ export class AuthenticatedMetadataMutationAuthority {
     this.requireActive({ operation: "read a Directory page for update" });
     this.operationInProgress = true;
     try {
+      await this.flushProvisionalReferenceBeforeRead({ reference });
       return await readAuthenticatedDirectoryPageForUpdate({
         backend: this.backend,
         decodedPageCache: this.decodedDirectoryPageCache,

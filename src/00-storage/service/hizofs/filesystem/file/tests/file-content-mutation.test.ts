@@ -14,6 +14,7 @@ import {
 } from "@/00-storage/service/hizofs/00-format";
 import type { ImmutableBTreeDiagnosticsObservation } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import {
+  PreparedFileExtentTailAppendBatch,
   prepareFileTruncateMutation,
   prepareFileWriteMutation,
   prepareFileWriteMutationWithAppendTailWitness,
@@ -53,7 +54,9 @@ class MemoryPagePort {
     },
   };
   readonly pages = new Map<string, FileExtentPage>();
+  failNextWrite = false;
   readCount = 0;
+  writeCount = 0;
   private nextOffset = 10_000n;
 
   async readPage({ reference: value }: {
@@ -70,6 +73,11 @@ class MemoryPagePort {
     isRoot: boolean;
     page: FileExtentPage;
   }): Promise<HomeRecordReference> {
+    this.writeCount += 1;
+    if (this.failNextWrite) {
+      this.failNextWrite = false;
+      throw new Error("injected File Extent page write failure");
+    }
     const value = reference({
       kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
       offset: this.nextOffset,
@@ -346,6 +354,207 @@ describe("file content mutation", () => {
     expect(memory.pagePort.readCount).toBe(1);
     expect(second.appendTailWitness).toBeDefined();
     expect(second.inode.fileSize).toBe(first.inode.fileSize + 7n);
+  });
+
+  it("re-establishes the append-tail witness after an overlap-checked tail append", async () => {
+    const memory = new MemoryContentPort();
+    const inlineLimit = HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes;
+    const source = fileInode({ content: { bytes: new Uint8Array(), type: "inline" } });
+    const firstPlan = prepareFileWritePlan({
+      bytes: new Uint8Array(inlineLimit + 1).fill(3),
+      operationTimestamp,
+      position: createFileOffset({ value: 0n }),
+      source,
+    });
+    if (firstPlan === null) throw new Error("expected first write plan");
+    const first = await prepareFileWriteMutationWithAppendTailWitness({
+      appendTailWitness: undefined,
+      limits: { maximumExtentMutationsPerBatch: 128 },
+      plan: firstPlan,
+      port: memory.port,
+      source,
+    });
+
+    const secondPlan = prepareFileWritePlan({
+      bytes: Uint8Array.of(9),
+      operationTimestamp,
+      position: first.inode.fileSize,
+      source: first.inode,
+    });
+    if (secondPlan === null) throw new Error("expected second write plan");
+    const second = await prepareFileWriteMutationWithAppendTailWitness({
+      appendTailWitness: undefined,
+      limits: { maximumExtentMutationsPerBatch: 128 },
+      plan: secondPlan,
+      port: memory.port,
+      source: first.inode,
+    });
+
+    expect(second.appendTailWitness).toBeDefined();
+  });
+
+  it("materializes repeated proven tail appends through one bounded extent-tree update", async () => {
+    const memory = new MemoryContentPort();
+    const inlineLimit = HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes;
+    const source = fileInode({ content: { bytes: new Uint8Array(), type: "inline" } });
+    const firstPlan = prepareFileWritePlan({
+      bytes: new Uint8Array(inlineLimit + 1).fill(3),
+      operationTimestamp,
+      position: createFileOffset({ value: 0n }),
+      source,
+    });
+    if (firstPlan === null) throw new Error("expected first write plan");
+    const first = await prepareFileWriteMutationWithAppendTailWitness({
+      appendTailWitness: undefined,
+      limits: { maximumExtentMutationsPerBatch: 64 },
+      plan: firstPlan,
+      port: memory.port,
+      source,
+    });
+    if (first.appendTailWitness === undefined) throw new Error("expected append-tail witness");
+    const writesBeforeBatch = memory.pagePort.writeCount;
+    const batch = PreparedFileExtentTailAppendBatch.create({
+      source: first.inode,
+      witness: first.appendTailWitness,
+    });
+    let staged = first.inode;
+    for (let index = 0; index < 3; index += 1) {
+      const plan = prepareFileWritePlan({
+        bytes: new Uint8Array(7).fill(index + 4),
+        operationTimestamp,
+        position: staged.fileSize,
+        source: staged,
+      });
+      if (plan === null || plan.action !== "copy_on_write_extent_range") throw new Error("expected tail extent write plan");
+      expect(batch.canStage({
+        byteLength: plan.writeBytes.byteLength,
+        limits: { maximumExtentMutationsPerBatch: 64 },
+        source: staged,
+        writeOffset: plan.writeOffset,
+      })).toBe(true);
+      staged = await batch.stage({ plan, port: memory.port, source: staged });
+    }
+
+    expect(memory.pagePort.writeCount).toBe(writesBeforeBatch);
+    const flushed = await batch.flush({
+      limits: { maximumExtentMutationsPerBatch: 64 },
+      pageStore: memory.extentPageStore,
+      source: staged,
+    });
+    expect(memory.pagePort.writeCount).toBe(writesBeforeBatch + 1);
+    if (flushed.inode.content.type !== "tree") throw new Error("expected extent-backed inode");
+    const result = await entries({ port: memory, root: flushed.inode.content.extentTreeRootHomeRef });
+    expect(result).toHaveLength(4);
+    expect(result.map(entry => entry.fileOffset)).toEqual([
+      0n,
+      BigInt(inlineLimit + 1),
+      BigInt(inlineLimit + 8),
+      BigInt(inlineLimit + 15),
+    ]);
+  });
+
+  it("bounds and consumes the prepared tail-append capability", async () => {
+    const memory = new MemoryContentPort();
+    const inlineLimit = HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes;
+    const source = fileInode({ content: { bytes: new Uint8Array(), type: "inline" } });
+    const firstPlan = prepareFileWritePlan({
+      bytes: new Uint8Array(inlineLimit + 1).fill(1),
+      operationTimestamp,
+      position: createFileOffset({ value: 0n }),
+      source,
+    });
+    if (firstPlan === null) throw new Error("expected first write plan");
+    const first = await prepareFileWriteMutationWithAppendTailWitness({
+      appendTailWitness: undefined,
+      limits: { maximumExtentMutationsPerBatch: 2 },
+      plan: firstPlan,
+      port: memory.port,
+      source,
+    });
+    if (first.appendTailWitness === undefined) throw new Error("expected append-tail witness");
+    const batch = PreparedFileExtentTailAppendBatch.create({
+      source: first.inode,
+      witness: first.appendTailWitness,
+    });
+    let staged = first.inode;
+    for (let index = 0; index < 2; index += 1) {
+      const plan = prepareFileWritePlan({
+        bytes: Uint8Array.of(index + 2),
+        operationTimestamp,
+        position: staged.fileSize,
+        source: staged,
+      });
+      if (plan === null || plan.action !== "copy_on_write_extent_range") throw new Error("expected tail extent write plan");
+      staged = await batch.stage({ plan, port: memory.port, source: staged });
+    }
+    expect(batch.canStage({
+      byteLength: 1,
+      limits: { maximumExtentMutationsPerBatch: 2 },
+      source: staged,
+      writeOffset: staged.fileSize,
+    })).toBe(false);
+
+    await batch.flush({
+      limits: { maximumExtentMutationsPerBatch: 2 },
+      pageStore: memory.extentPageStore,
+      source: staged,
+    });
+    expect(batch.canStage({
+      byteLength: 1,
+      limits: { maximumExtentMutationsPerBatch: 2 },
+      source: staged,
+      writeOffset: staged.fileSize,
+    })).toBe(false);
+    await expect(batch.flush({
+      limits: { maximumExtentMutationsPerBatch: 2 },
+      pageStore: memory.extentPageStore,
+      source: staged,
+    })).rejects.toThrow("batch is closed");
+  });
+
+  it("consumes the prepared tail-append capability when materialization fails", async () => {
+    const memory = new MemoryContentPort();
+    const inlineLimit = HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes;
+    const source = fileInode({ content: { bytes: new Uint8Array(), type: "inline" } });
+    const firstPlan = prepareFileWritePlan({
+      bytes: new Uint8Array(inlineLimit + 1).fill(1),
+      operationTimestamp,
+      position: createFileOffset({ value: 0n }),
+      source,
+    });
+    if (firstPlan === null) throw new Error("expected first write plan");
+    const first = await prepareFileWriteMutationWithAppendTailWitness({
+      appendTailWitness: undefined,
+      limits: { maximumExtentMutationsPerBatch: 2 },
+      plan: firstPlan,
+      port: memory.port,
+      source,
+    });
+    if (first.appendTailWitness === undefined) throw new Error("expected append-tail witness");
+    const batch = PreparedFileExtentTailAppendBatch.create({
+      source: first.inode,
+      witness: first.appendTailWitness,
+    });
+    const plan = prepareFileWritePlan({
+      bytes: Uint8Array.of(2),
+      operationTimestamp,
+      position: first.inode.fileSize,
+      source: first.inode,
+    });
+    if (plan === null || plan.action !== "copy_on_write_extent_range") throw new Error("expected tail extent write plan");
+    const staged = await batch.stage({ plan, port: memory.port, source: first.inode });
+
+    memory.pagePort.failNextWrite = true;
+    await expect(batch.flush({
+      limits: { maximumExtentMutationsPerBatch: 2 },
+      pageStore: memory.extentPageStore,
+      source: staged,
+    })).rejects.toThrow("injected File Extent page write failure");
+    await expect(batch.flush({
+      limits: { maximumExtentMutationsPerBatch: 2 },
+      pageStore: memory.extentPageStore,
+      source: staged,
+    })).rejects.toThrow("batch is closed");
   });
 
   it("drops the append-tail witness before a non-tail overwrite", async () => {

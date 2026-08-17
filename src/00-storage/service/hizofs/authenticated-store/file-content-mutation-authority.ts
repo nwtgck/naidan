@@ -12,6 +12,10 @@ import type { AuthenticatedSegmentWriter } from "./record-appender";
 import { createAuthenticatedSegmentWriter } from "./record-appender";
 import { appendAuthenticatedFileData } from "./file-data-store";
 import {
+  AuthenticatedFileDataAppendBatch,
+  AuthenticatedFileDataAppendBatchFlushRequiredError,
+} from "./file-data-append-batch";
+import {
   AuthenticatedMetadataMutationAuthority,
   type AuthenticatedMutationResourceUsage,
   type AuthenticatedPreparedMutationPublicationAuthority,
@@ -73,6 +77,7 @@ export class AuthenticatedFileContentMutationAuthority {
   private dataFrameCount = 0;
   private dataRecordAreaBytes = 0;
   private dataWriter: AuthenticatedSegmentWriter | undefined;
+  private pendingDataAppendBatch: AuthenticatedFileDataAppendBatch | undefined;
   private dataWriterLease: AuthenticatedSegmentWriterLease | undefined;
   private operationInProgress = false;
   private stateValue: AuthenticatedFileContentMutationAuthorityState = "active";
@@ -189,7 +194,73 @@ export class AuthenticatedFileContentMutationAuthority {
     return this.dataWriterLease;
   }
 
+  private discardPendingDataAppendBatch(): void {
+    this.pendingDataAppendBatch?.discard();
+    this.pendingDataAppendBatch = undefined;
+  }
+
+  private async flushPendingDataAppendBatch(): Promise<void> {
+    const batch = this.pendingDataAppendBatch;
+    if (batch === undefined) return;
+    this.pendingDataAppendBatch = undefined;
+    if (!batch.hasRecords()) {
+      batch.discard();
+      return;
+    }
+    await this.sharedDataWriterLease().append({
+      append: async ({ writer }) => {
+        if (!batch.isBoundTo({ writer })) {
+          batch.discard();
+          throw new Error("File Data append batch writer ownership changed before flush");
+        }
+        await batch.flush();
+      },
+    });
+  }
+
+  private async appendSharedFileDataWithBatch({ bytes }: { bytes: Uint8Array }): Promise<HomeRecordReference> {
+    while (true) {
+      const outcome = await this.sharedDataWriterLease().append({
+        append: async ({ writer }) => {
+          const existing = this.pendingDataAppendBatch;
+          if (existing !== undefined && !existing.isBoundTo({ writer })) {
+            if (existing.hasRecords()) {
+              throw new Error("File Data append batch writer changed while Records were pending");
+            }
+            existing.discard();
+            this.pendingDataAppendBatch = undefined;
+          }
+          const batch = this.pendingDataAppendBatch ?? new AuthenticatedFileDataAppendBatch({ writer });
+          this.pendingDataAppendBatch = batch;
+          try {
+            return Object.freeze({
+              reference: batch.stage({ bytes }),
+              type: "result" as const,
+            });
+          } catch (cause: unknown) {
+            if (cause instanceof AuthenticatedFileDataAppendBatchFlushRequiredError) {
+              return Object.freeze({ type: "flush_required" as const });
+            }
+            throw cause;
+          }
+        },
+      });
+      switch (outcome.type) {
+      case "result": return outcome.reference;
+      case "flush_required":
+        await this.flushPendingDataAppendBatch();
+        break;
+      default: return outcome satisfies never;
+      }
+    }
+  }
+
   private releaseDataWriterCapability(): void {
+    if (this.pendingDataAppendBatch?.hasRecords() === true) {
+      throw new Error("cannot release data writer capability while provisional File Data Records are pending");
+    }
+    this.pendingDataAppendBatch?.discard();
+    this.pendingDataAppendBatch = undefined;
     this.dataWriter?.abandon();
     this.dataWriter = undefined;
     const lease = this.dataWriterLease;
@@ -207,9 +278,7 @@ export class AuthenticatedFileContentMutationAuthority {
           bytes,
           writer: await this.writerFor({ frameLength }),
         })
-        : await this.sharedDataWriterLease().append({
-          append: async ({ writer }) => await appendAuthenticatedFileData({ bytes, writer }),
-        });
+        : await this.appendSharedFileDataWithBatch({ bytes });
       this.appendedDataFrameBytes += frameLength;
       if (!Number.isSafeInteger(this.appendedDataFrameBytes)) {
         throw new Error("File Data frame byte count exceeds the safe integer bound");
@@ -326,6 +395,37 @@ export class AuthenticatedFileContentMutationAuthority {
     }
   }
 
+  async flushPendingFileDataRecords(): Promise<void> {
+    this.requireActive({ operation: "flush provisional File Data Records" });
+    this.operationInProgress = true;
+    try {
+      if (this.dataWriterOwner !== undefined) await this.flushPendingDataAppendBatch();
+    } catch (cause: unknown) {
+      const cleanupFailures: unknown[] = [];
+      this.discardPendingDataAppendBatch();
+      try {
+        this.releaseDataWriterCapability();
+      } catch (cleanupCause: unknown) {
+        cleanupFailures.push(cleanupCause);
+      }
+      try {
+        this.metadata.abandon();
+      } catch (cleanupCause: unknown) {
+        cleanupFailures.push(cleanupCause);
+      }
+      this.stateValue = "closed";
+      if (cleanupFailures.length !== 0) {
+        throw new AggregateError(
+          [cause, ...cleanupFailures],
+          "File Data batch flush and mutation cleanup both failed",
+        );
+      }
+      throw cause;
+    } finally {
+      this.operationInProgress = false;
+    }
+  }
+
   async flushPendingMetadataRecords(): Promise<void> {
     this.requireActive({ operation: "flush provisional metadata Records" });
     this.operationInProgress = true;
@@ -397,8 +497,9 @@ export class AuthenticatedFileContentMutationAuthority {
   }: Parameters<AuthenticatedMetadataMutationAuthority["appendCandidate"]>[0]): Promise<Awaited<ReturnType<AuthenticatedMetadataMutationAuthority["appendCandidate"]>>> {
     this.requireActive({ operation: "append file content Commit candidate" });
     this.operationInProgress = true;
-    this.releaseDataWriterCapability();
     try {
+      if (this.dataWriterOwner !== undefined) await this.flushPendingDataAppendBatch();
+      this.releaseDataWriterCapability();
       const candidate = await this.metadata.appendCandidate({ commitPayload });
       this.stateValue = "candidate_prepared";
       return candidate;
@@ -467,8 +568,9 @@ export class AuthenticatedFileContentMutationAuthority {
     this.requireActive({ operation: "publish file content" });
     this.operationInProgress = true;
     this.stateValue = "publishing";
-    this.releaseDataWriterCapability();
     try {
+      if (this.dataWriterOwner !== undefined) await this.flushPendingDataAppendBatch();
+      this.releaseDataWriterCapability();
       return await this.metadata.publish({
         base,
         beforeFirstAuthorityWrite,
@@ -502,6 +604,7 @@ export class AuthenticatedFileContentMutationAuthority {
       if (this.operationInProgress) {
         throw new Error("cannot abandon file content mutation authority while an operation is in progress");
       }
+      this.discardPendingDataAppendBatch();
       this.releaseDataWriterCapability();
       this.metadata.abandon();
       this.stateValue = "closed";

@@ -16,15 +16,19 @@ function resolvedMaintenanceRecord({ item, read }: {
   item: MaintenanceTraversalItem;
   read: AuthenticatedMaintenanceRecordRead;
 }): ResolvedMaintenanceRecord {
-  if (item.kind === "physical_relocation_page"
-    && !samePhysicalReference({ left: item.reference, right: read.record.physicalReference })) {
-    throw new TypeError("authenticated maintenance reader returned a different physical record");
+  try {
+    if (item.kind === "physical_relocation_page"
+      && !samePhysicalReference({ left: item.reference, right: read.record.physicalReference })) {
+      throw new TypeError("authenticated maintenance reader returned a different physical record");
+    }
+    return Object.freeze({
+      bytesRead: read.physicalBytesRead,
+      childItems: projectMaintenanceRecordChildren({ item, plaintext: read.record.plaintext }),
+      physicalReference: read.record.physicalReference,
+    });
+  } finally {
+    read.record.plaintext.fill(0);
   }
-  return Object.freeze({
-    bytesRead: read.physicalBytesRead,
-    childItems: projectMaintenanceRecordChildren({ item, plaintext: read.record.plaintext }),
-    physicalReference: read.record.physicalReference,
-  });
 }
 
 export function createMaintenanceRecordReaderFromAuthenticatedPort({ port }: {

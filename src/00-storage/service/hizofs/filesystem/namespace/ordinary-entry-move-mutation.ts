@@ -1,9 +1,8 @@
 import {
+  compareFilenameComponentsByUtf8,
   UINT64_MAXIMUM,
-  compareUnsignedBytes,
   createInodeRevision,
   encodeDirectoryEntry,
-  encodeFilenameComponent,
   assertInodeLeafEntryFitsMetadataPage,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
@@ -61,10 +60,7 @@ function compareDirectoryEntries({ left, right }: {
   left: DirectoryLeafEntry;
   right: DirectoryLeafEntry;
 }): number {
-  return compareUnsignedBytes({
-    left: encodeFilenameComponent({ value: left.name }),
-    right: encodeFilenameComponent({ value: right.name }),
-  });
+  return compareFilenameComponentsByUtf8({ left: left.name, right: right.name });
 }
 
 function expectedSourceBinding({ plan }: { plan: OrdinaryEntryMovePlan }): DirectoryLeafEntry {

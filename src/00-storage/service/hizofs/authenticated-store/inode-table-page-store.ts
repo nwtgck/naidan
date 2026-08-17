@@ -13,9 +13,8 @@ import {
   type PhysicalRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
 import type { FileSystemRootKey } from "@/00-storage/service/hizofs/01-crypto";
-import type { HizoFSWritableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
+import type { HizoFSReadableBackend } from "@/00-storage/service/hizofs/physical-store/backend";
 import { authenticatedStoreError } from "./errors";
-import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import type { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
 import { readAuthenticatedNamespaceHomeRecord } from "./namespace-record-source";
 import { measureAuthenticatedCodecOperation, type AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
@@ -53,7 +52,7 @@ export async function readAuthenticatedInodeTablePageForUpdate({
   relocationIndexRootPhysicalRef,
   rootKey,
 }: {
-  backend: HizoFSWritableBackend<AuthenticatedHizoFSPhysicalBytes>;
+  backend: HizoFSReadableBackend;
   diagnostics?: AuthenticatedStoreDiagnosticsPort;
   decodedBranchPageCache?: AuthenticatedInodeBranchPageCache;
   fileSystemId: FileSystemId;

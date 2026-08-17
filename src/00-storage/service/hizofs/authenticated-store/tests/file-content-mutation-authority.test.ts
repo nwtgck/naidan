@@ -10,6 +10,7 @@ import {
 } from "@/00-storage/service/hizofs/authenticated-store/file-content-mutation-authority";
 import { AuthenticatedSegmentWriterOwner } from "@/00-storage/service/hizofs/authenticated-store/active-segment-writer-owner";
 import { readAuthenticatedDirectoryPage } from "@/00-storage/service/hizofs/authenticated-store/directory-page-store";
+import { TEST_ONLY as FILE_DATA_APPEND_BATCH_TEST_ONLY } from "@/00-storage/service/hizofs/authenticated-store/file-data-append-batch";
 import { readAuthenticatedFileData } from "@/00-storage/service/hizofs/authenticated-store/file-data-store";
 import {
   appendAuthenticatedFileExtentPage,
@@ -27,7 +28,9 @@ import { describe, expect, it } from "vitest";
 class CountingInMemoryBackend
   extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
   public closeFileOperations = 0;
+  public failNextSyncFileData: Error | undefined;
   public openFileForUpdateOperations = 0;
+  public writeAtOperations = 0;
 
   public override async closeFile(
     input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["closeFile"]>[0],
@@ -41,6 +44,24 @@ class CountingInMemoryBackend
   ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["openFileForUpdate"]> {
     this.openFileForUpdateOperations += 1;
     return await super.openFileForUpdate(input);
+  }
+
+  public override async writeAt(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["writeAt"]>[0],
+  ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["writeAt"]> {
+    this.writeAtOperations += 1;
+    return await super.writeAt(input);
+  }
+
+  public override async syncFileData(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["syncFileData"]>[0],
+  ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["syncFileData"]> {
+    const failure = this.failNextSyncFileData;
+    if (failure !== undefined) {
+      this.failNextSyncFileData = undefined;
+      throw failure;
+    }
+    return await super.syncFileData(input);
   }
 }
 
@@ -98,9 +119,8 @@ describe("authenticated file content mutation authority", () => {
     authority.abandon();
 
     expect(authority.state()).toBe("closed");
-    // Metadata pages are provisional until the mutation is flushed for
-    // acceptance. Abandonment drops those pages instead of leaving physical
-    // orphan Records behind. File Data remains operation-scoped and durable.
+    // Reading a provisional metadata reference above flushes its bounded batch,
+    // so that exact Directory page remains physically readable after abandon.
     await expect(readAuthenticatedDirectoryPage({
       backend,
       fileSystemId,
@@ -108,7 +128,7 @@ describe("authenticated file content mutation authority", () => {
       isRoot: true,
       relocationIndexRootPhysicalRef: null,
       rootKey,
-    })).rejects.toThrow();
+    })).resolves.toEqual({ entries: [], level: 0, type: "leaf" });
     await expect(readAuthenticatedFileData({
       backend,
       fileSystemId,
@@ -163,6 +183,10 @@ describe("authenticated file content mutation authority", () => {
     beforeDataAppendLease.release({ disposition: "reuse" });
     await authority.writeFileData({ bytes: Uint8Array.of(5, 4, 3) });
     expect(() => dataWriterOwner.acquire()).toThrow("already has a lease");
+    expect(() => authority.prepareWorkingAcceptanceWithoutCandidate()).toThrow(
+      "provisional File Data Records are pending",
+    );
+    await authority.flushPendingFileDataRecords();
     authority.prepareWorkingAcceptanceWithoutCandidate();
 
     const publicationLease = writerOwner.acquire();
@@ -176,6 +200,229 @@ describe("authenticated file content mutation authority", () => {
     await expect(dataWriterOwner.close()).resolves.toBeUndefined();
     rootKey.destroy();
   });
+
+  it("keeps shared File Data writes provisional until the mutation is flushed or accepted", async () => {
+    const backend = new CountingInMemoryBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const dataWriterOwner = new AuthenticatedSegmentWriterOwner({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "data",
+    });
+    const authority = await createAuthenticatedFileContentMutationAuthority({
+      backend,
+      dataWriterOwner,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+
+    const firstBytes = Uint8Array.of(1, 2, 3);
+    const firstReference = await authority.writeFileData({ bytes: firstBytes });
+    firstBytes.fill(99);
+    const writesAfterFirstStage = backend.writeAtOperations;
+    const secondReference = await authority.writeFileData({ bytes: Uint8Array.of(4, 5, 6) });
+    const thirdReference = await authority.writeFileData({ bytes: Uint8Array.of(7, 8, 9) });
+
+    expect(backend.writeAtOperations).toBe(writesAfterFirstStage);
+    await authority.flushPendingFileDataRecords();
+    expect(backend.writeAtOperations).toBe(writesAfterFirstStage + 1);
+    for (const [reference, bytes] of [
+      [firstReference, Uint8Array.of(1, 2, 3)],
+      [secondReference, Uint8Array.of(4, 5, 6)],
+      [thirdReference, Uint8Array.of(7, 8, 9)],
+    ] as const) {
+      await expect(readAuthenticatedFileData({
+        backend,
+        fileSystemId,
+        homeReference: reference,
+        relocationIndexRootPhysicalRef: null,
+        rootKey,
+      })).resolves.toEqual(bytes);
+    }
+    authority.abandon();
+    await expect(dataWriterOwner.close()).resolves.toBeUndefined();
+    rootKey.destroy();
+  });
+
+  it("discards unflushed shared File Data when a prepared mutation is abandoned", async () => {
+    const backend = new CountingInMemoryBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const dataWriterOwner = new AuthenticatedSegmentWriterOwner({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "data",
+    });
+    const authority = await createAuthenticatedFileContentMutationAuthority({
+      backend,
+      dataWriterOwner,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+
+    const reference = await authority.writeFileData({ bytes: Uint8Array.of(1, 3, 5, 7) });
+    const writesBeforeAbandon = backend.writeAtOperations;
+    authority.abandon();
+    expect(backend.writeAtOperations).toBe(writesBeforeAbandon);
+    await expect(readAuthenticatedFileData({
+      backend,
+      fileSystemId,
+      homeReference: reference,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+    })).rejects.toThrow();
+
+    await expect(dataWriterOwner.close()).resolves.toBeUndefined();
+    rootKey.destroy();
+  });
+
+  it("closes the mutation and releases its shared writer lease when File Data flush fails", async () => {
+    const backend = new CountingInMemoryBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const dataWriterOwner = new AuthenticatedSegmentWriterOwner({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "data",
+    });
+    const authority = await createAuthenticatedFileContentMutationAuthority({
+      backend,
+      dataWriterOwner,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+
+    const reference = await authority.writeFileData({ bytes: Uint8Array.of(2, 4, 6, 8) });
+    backend.failNextSyncFileData = new Error("injected File Data sync failure");
+    await expect(authority.flushPendingFileDataRecords()).rejects.toThrow("injected File Data sync failure");
+    expect(authority.state()).toBe("closed");
+    const recoveredLease = dataWriterOwner.acquire();
+    recoveredLease.release({ disposition: "reuse" });
+    // The failed sync occurs after writeAt, so unreachable physical residue is
+    // allowed to remain. Closing the mutation and releasing its lease prevents
+    // those uncertain bytes from becoming an accepted working-generation root.
+    await expect(readAuthenticatedFileData({
+      backend,
+      fileSystemId,
+      homeReference: reference,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+    })).resolves.toEqual(Uint8Array.of(2, 4, 6, 8));
+
+    await expect(dataWriterOwner.close()).resolves.toBeUndefined();
+    rootKey.destroy();
+  });
+
+  it("flushes a shared File Data batch before its bounded frame-byte budget can grow", async () => {
+    const backend = new CountingInMemoryBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const dataWriterOwner = new AuthenticatedSegmentWriterOwner({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "data",
+    });
+    const authority = await createAuthenticatedFileContentMutationAuthority({
+      backend,
+      dataWriterOwner,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const payload = new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes);
+    payload.fill(7);
+    const frameLength = TEST_ONLY.fileDataFrameLength({ plaintextLength: payload.byteLength });
+    const recordsPerBatch = Math.floor(
+      FILE_DATA_APPEND_BATCH_TEST_ONLY.MAXIMUM_PENDING_FRAME_BYTES / frameLength,
+    );
+    expect(recordsPerBatch).toBeGreaterThan(0);
+
+    await authority.writeFileData({ bytes: payload });
+    const writesAfterFirstStage = backend.writeAtOperations;
+    for (let index = 1; index < recordsPerBatch; index += 1) {
+      await authority.writeFileData({ bytes: payload });
+    }
+    expect(backend.writeAtOperations).toBe(writesAfterFirstStage);
+
+    await authority.writeFileData({ bytes: payload });
+    expect(backend.writeAtOperations).toBe(writesAfterFirstStage + 1);
+    await authority.flushPendingFileDataRecords();
+    expect(backend.writeAtOperations).toBe(writesAfterFirstStage + 2);
+
+    authority.abandon();
+    await expect(dataWriterOwner.close()).resolves.toBeUndefined();
+    rootKey.destroy();
+  });
+
+  it("rolls a bounded shared File Data batch across the Data Segment record-area limit", async () => {
+    const backend = new CountingInMemoryBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const dataWriterOwner = new AuthenticatedSegmentWriterOwner({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "data",
+    });
+    const authority = await createAuthenticatedFileContentMutationAuthority({
+      backend,
+      dataWriterOwner,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const payload = new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes).fill(11);
+    const frameLength = TEST_ONLY.fileDataFrameLength({ plaintextLength: payload.byteLength });
+    const recordCount = Math.floor(
+      HIZOFS_V1_FORMAT_CONSTANTS.limits.dataSegmentDataBytes / frameLength,
+    ) + 2;
+    const references = [];
+    for (let index = 0; index < recordCount; index += 1) {
+      references.push(await authority.writeFileData({ bytes: payload }));
+    }
+    await authority.flushPendingFileDataRecords();
+
+    expect(new Set(references.map(reference => reference.segmentId)).size).toBeGreaterThan(1);
+    await expect(readAuthenticatedFileData({
+      backend,
+      fileSystemId,
+      homeReference: references.at(-1)!,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+    })).resolves.toEqual(payload);
+
+    authority.abandon();
+    await expect(dataWriterOwner.close()).resolves.toBeUndefined();
+    rootKey.destroy();
+  }, 15_000);
 
   it("reuses one shared data Segment writer across accepted and abandoned file mutations", async () => {
     const backend = new CountingInMemoryBackend({});
@@ -201,6 +448,7 @@ describe("authenticated file content mutation authority", () => {
     });
     const firstAuthority = await createAuthority();
     const firstReference = await firstAuthority.writeFileData({ bytes: Uint8Array.of(1, 2, 3) });
+    await firstAuthority.flushPendingFileDataRecords();
     firstAuthority.completeWorkingAcceptanceWithoutCandidate();
     await expect(readAuthenticatedFileData({
       backend,
@@ -216,6 +464,7 @@ describe("authenticated file content mutation authority", () => {
 
     const thirdAuthority = await createAuthority();
     const thirdReference = await thirdAuthority.writeFileData({ bytes: Uint8Array.of(7, 8, 9) });
+    await thirdAuthority.flushPendingFileDataRecords();
     thirdAuthority.completeWorkingAcceptanceWithoutCandidate();
 
     expect(secondReference.segmentId).toEqual(firstReference.segmentId);

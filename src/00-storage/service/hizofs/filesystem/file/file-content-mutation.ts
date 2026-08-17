@@ -20,6 +20,10 @@ export type FileContentMutationLimits = Readonly<{
   maximumExtentMutationsPerBatch: number;
 }>;
 
+export const DEFAULT_FILE_CONTENT_MUTATION_LIMITS: FileContentMutationLimits = Object.freeze({
+  maximumExtentMutationsPerBatch: 64,
+});
+
 export type FileContentMutationPort = Readonly<{
   extentPageStore: FileExtentTreePageStore;
   writeFileData: ({ bytes }: { bytes: Uint8Array }) => Promise<HomeRecordReference>;
@@ -43,6 +47,145 @@ export type FileWriteMutationWithAppendTailWitnessResult = Readonly<{
   appendTailWitness: FileExtentAppendTailWitness | undefined;
   inode: FileInodeEntry;
 }>;
+
+type FileExtentTreeContent = Extract<FileInodeEntry["content"], { type: "tree" }>;
+
+function fileExtentTreeContentOrUndefined({ source }: { source: FileInodeEntry }): FileExtentTreeContent | undefined {
+  switch (source.content.type) {
+  case "tree": return source.content;
+  case "inline": return undefined;
+  default: return source.content satisfies never;
+  }
+}
+
+function requireFileExtentTreeContent({ message, source }: {
+  message: string;
+  source: FileInodeEntry;
+}): FileExtentTreeContent {
+  const content = fileExtentTreeContentOrUndefined({ source });
+  if (content === undefined) throw new TypeError(message);
+  return content;
+}
+
+/**
+ * Bounded mutation-local overlay for repeated tail appends from one prepared
+ * writable. It deliberately keeps the last persisted File Extent root in the
+ * staged inode until materialization; callers must flush the overlay before a
+ * non-tail operation or publication.
+ *
+ * WHY: rewriting one immutable File Extent root for every small sequential
+ * write turns a single logical stream into O(write-count) metadata COW work.
+ * The overlay owns only mutation-local File Data references and at most
+ * `maximumExtentMutationsPerBatch` entries. File Data plaintext remains owned
+ * by the separately bounded append batch, so this removes repeated tree work
+ * without adding another plaintext copy or changing the persisted tree format.
+ */
+export class PreparedFileExtentTailAppendBatch {
+  private readonly entries: FileExtentLeafEntry[] = [];
+  private closed = false;
+  private fileSize: FileOffset;
+  private rootReference: HomeRecordReference;
+
+  private constructor({ fileSize, rootReference }: {
+    fileSize: FileOffset;
+    rootReference: HomeRecordReference;
+  }) {
+    this.fileSize = fileSize;
+    this.rootReference = rootReference;
+  }
+
+  static create({ source, witness }: {
+    source: FileInodeEntry;
+    witness: FileExtentAppendTailWitness;
+  }): PreparedFileExtentTailAppendBatch {
+    if (!matchesFileExtentAppendTailWitness({ source, witness })) {
+      throw new TypeError("File Extent append-tail batch requires the matching mutation-owned witness");
+    }
+    const content = requireFileExtentTreeContent({
+      message: "File Extent append-tail batch requires an extent-backed file",
+      source,
+    });
+    return new PreparedFileExtentTailAppendBatch({
+      fileSize: source.fileSize,
+      rootReference: content.extentTreeRootHomeRef,
+    });
+  }
+
+  canStage({ byteLength, limits, source, writeOffset }: {
+    byteLength: number;
+    limits: FileContentMutationLimits;
+    source: FileInodeEntry;
+    writeOffset: FileOffset;
+  }): boolean {
+    if (this.closed) return false;
+    const content = fileExtentTreeContentOrUndefined({ source });
+    if (content === undefined) return false;
+    if (source.fileSize !== this.fileSize || writeOffset !== this.fileSize) return false;
+    if (!sameRecordReferenceFields({ left: content.extentTreeRootHomeRef, right: this.rootReference })) return false;
+    if (!Number.isSafeInteger(byteLength) || byteLength <= 0) return false;
+    const maximumPayload = HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes;
+    const addedEntries = Math.ceil(byteLength / maximumPayload);
+    return addedEntries <= requirePositiveBatchSize({ limits }) - this.entries.length;
+  }
+
+  async stage({ plan, port, source }: {
+    plan: Extract<FileWritePlan, { action: "copy_on_write_extent_range" }>;
+    port: FileContentMutationPort;
+    source: FileInodeEntry;
+  }): Promise<FileInodeEntry> {
+    if (this.closed) throw new Error("File Extent tail append batch is closed");
+    const content = requireFileExtentTreeContent({
+      message: "File Extent tail append source must be extent-backed",
+      source,
+    });
+    if (source.fileSize !== this.fileSize || plan.writeOffset !== this.fileSize) {
+      throw new TypeError("File Extent tail append batch accepts only the next logical tail write");
+    }
+    if (!sameRecordReferenceFields({ left: content.extentTreeRootHomeRef, right: this.rootReference })) {
+      throw new TypeError("File Extent tail append batch source root changed before materialization");
+    }
+    const written = await appendExtentBytes({ bytes: plan.writeBytes, fileOffset: plan.writeOffset, port });
+    this.entries.push(...written);
+    this.fileSize = plan.targetFileSize;
+    return updatedFileInode({ content: source.content, plan, source });
+  }
+
+  async flush({ limits, pageStore, source }: {
+    limits: FileContentMutationLimits;
+    pageStore: FileExtentTreePageStore;
+    source: FileInodeEntry;
+  }): Promise<FileWriteMutationWithAppendTailWitnessResult> {
+    if (this.closed) throw new Error("File Extent tail append batch is closed");
+    const content = requireFileExtentTreeContent({
+      message: "File Extent tail append source must be extent-backed",
+      source,
+    });
+    if (source.fileSize !== this.fileSize) throw new TypeError("File Extent tail append batch file size changed before materialization");
+    if (!sameRecordReferenceFields({ left: content.extentTreeRootHomeRef, right: this.rootReference })) {
+      throw new TypeError("File Extent tail append batch source root changed before materialization");
+    }
+    // Consume the capability before the first metadata write. A failed COW
+    // may have emitted unreachable provisional pages, so retrying the same
+    // overlay could no longer prove that it owns one pristine base state.
+    this.closed = true;
+    const entries = this.entries.splice(0);
+    const root = await applyMutationBatches({
+      changes: entries.map(entry => ({ entry, type: "set" as const })),
+      limits,
+      pageStore,
+      rootReference: this.rootReference,
+    });
+    this.rootReference = root;
+    const inode: FileInodeEntry = {
+      ...source,
+      content: { extentTreeRootHomeRef: root, type: "tree" },
+    };
+    return Object.freeze({
+      appendTailWitness: createFileExtentAppendTailWitness({ fileSize: inode.fileSize, rootReference: root }),
+      inode,
+    });
+  }
+}
 
 function createFileExtentAppendTailWitness({ fileSize, rootReference }: {
   fileSize: FileOffset;
@@ -333,8 +476,9 @@ export async function prepareFileWriteMutationWithAppendTailWitness({
   }
   case "copy_on_write_extent_range": {
     const written = await appendExtentBytes({ bytes: plan.writeBytes, fileOffset: plan.writeOffset, port });
-    const extendsProvenAppendTail = plan.writeOffset === source.fileSize
-      && plan.targetFileSize > source.fileSize
+    const isLogicalTailAppend = plan.writeOffset === source.fileSize
+      && plan.targetFileSize > source.fileSize;
+    const extendsProvenAppendTail = isLogicalTailAppend
       && matchesFileExtentAppendTailWitness({ source, witness: appendTailWitness });
     const root = extendsProvenAppendTail
       ? await applyMutationBatches({
@@ -352,7 +496,10 @@ export async function prepareFileWriteMutationWithAppendTailWitness({
         start: plan.writeOffset,
       });
     return Object.freeze({
-      appendTailWitness: extendsProvenAppendTail
+      // A general overlap-checked tail append is slower than the witness fast
+      // path, but once it succeeds this mutation owns the resulting root and
+      // can re-establish the same append-only proof for the next operation.
+      appendTailWitness: isLogicalTailAppend
         ? createFileExtentAppendTailWitness({ fileSize: plan.targetFileSize, rootReference: root })
         : undefined,
       inode: updatedFileInode({

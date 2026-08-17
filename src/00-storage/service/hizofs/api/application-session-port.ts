@@ -10,6 +10,7 @@ import {
 import { createStorageEntryNotFoundError } from "@/00-storage/service/storage-file-system/errors";
 import type {
   HizoFSApplicationDirectoryEntry,
+  HizoFSApplicationDirectoryPage,
   HizoFSApplicationExplicitBulkBuilder,
   HizoFSApplicationReadableFile,
   HizoFSApplicationSessionPort,
@@ -110,6 +111,11 @@ export interface HizoFSApplicationMutationPort {
 
 export type HizoFSApplicationSessionNamespace = ReadOnlyNamespace;
 
+export type HizoFSApplicationStableReadNamespaceCapture = Readonly<{
+  namespace: HizoFSApplicationSessionNamespace;
+  release: () => void;
+}>;
+
 export type HizoFSApplicationMutationSuccessCondition =
   | "durable_publication"
   | "working_candidate_acceptance";
@@ -128,6 +134,7 @@ export type HizoFSApplicationRuntimeWriter = Pick<
 export type HizoFSApplicationSessionComposition = Readonly<{
   assertOperationAllowed?: () => void;
   createReadSnapshot?: () => Promise<HizoFSApplicationSessionPort>;
+  captureStableReadNamespace?: () => HizoFSApplicationStableReadNamespaceCapture;
   mutationPort: HizoFSApplicationMutationPort;
   mutationSuccessCondition?: HizoFSApplicationMutationSuccessCondition;
   namespace: HizoFSApplicationSessionNamespace;
@@ -149,6 +156,19 @@ export class HizoFSApplicationSessionPortError extends Error {
     super(message);
     this.name = "HizoFSApplicationSessionPortError";
     this.code = code;
+  }
+}
+
+function projectApplicationDirectoryEntry({ entry }: {
+  entry: Awaited<ReturnType<ReadOnlyNamespace["list"]>>[number];
+}): HizoFSApplicationDirectoryEntry {
+  switch (entry.targetType) {
+  case "inode": return { kind: entry.inodeKind, name: entry.name };
+  case "subvolume": throw new HizoFSApplicationSessionPortError({
+    code: "subvolume_boundary",
+    message: `subvolume mount ${entry.name} requires a topology-aware session resolver`,
+  });
+  default: return entry satisfies never;
   }
 }
 
@@ -274,6 +294,38 @@ async function closeWithPrimaryFailure({ close, primary }: {
   if (primary !== undefined) throw primary;
 }
 
+function throwAfterStableReadCleanup({ capture, cause, message }: {
+  capture: HizoFSApplicationStableReadNamespaceCapture | undefined;
+  cause: unknown;
+  message: string;
+}): never {
+  try {
+    capture?.release();
+  } catch (cleanupCause: unknown) {
+    throw new AggregateError([cause, cleanupCause], message);
+  }
+  throw cause;
+}
+
+async function commitPreparedWithAbortOnFailure({ abort, operation }: {
+  abort: ({ reason }: { reason: unknown }) => Promise<void>;
+  operation: () => Promise<void>;
+}): Promise<void> {
+  try {
+    await operation();
+  } catch (cause: unknown) {
+    try {
+      await abort({ reason: cause });
+    } catch (abortCause: unknown) {
+      throw new AggregateError(
+        [cause, abortCause],
+        "prepared mutation commit and abort cleanup both failed",
+      );
+    }
+    throw cause;
+  }
+}
+
 class RuntimeBoundExplicitBulk implements HizoFSApplicationExplicitBulkBuilder {
   private active = true;
   private assertOperationAllowed: () => void;
@@ -326,18 +378,21 @@ class RuntimeBoundExplicitBulk implements HizoFSApplicationExplicitBulkBuilder {
 
   async commit(): Promise<void> {
     this.assertOperationAllowed();
-    await this.finish({ operation: async () => {
-      await this.writer.runPublication({ operation: async ({ authority }) => {
-        this.assertOperationAllowed();
-        const mutationAuthority = applicationAuthority({ authority });
-        await this.prepared.commit({ authority: mutationAuthority });
-        requireMutationResolution({
-          authority: mutationAuthority,
-          condition: this.mutationSuccessCondition,
-          operation: "explicit bulk commit",
-        });
-      } });
-    } });
+    await this.finish({ operation: async () => await commitPreparedWithAbortOnFailure({
+      abort: async ({ reason }) => await this.prepared.abort({ reason }),
+      operation: async () => {
+        await this.writer.runPublication({ operation: async ({ authority }) => {
+          this.assertOperationAllowed();
+          const mutationAuthority = applicationAuthority({ authority });
+          await this.prepared.commit({ authority: mutationAuthority });
+          requireMutationResolution({
+            authority: mutationAuthority,
+            condition: this.mutationSuccessCondition,
+            operation: "explicit bulk commit",
+          });
+        } });
+      },
+    }) });
   }
 
   async createEmptyFile({ name }: { name: string }): Promise<void> {
@@ -401,18 +456,21 @@ class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
 
   async commit(): Promise<void> {
     this.assertOperationAllowed();
-    await this.finish({ operation: async () => {
-      await this.writer.runPublication({ operation: async ({ authority }) => {
-        this.assertOperationAllowed();
-        const mutationAuthority = applicationAuthority({ authority });
-        await this.prepared.commit({ authority: mutationAuthority });
-        requireMutationResolution({
-          authority: mutationAuthority,
-          condition: this.mutationSuccessCondition,
-          operation: "file commit",
-        });
-      } });
-    } });
+    await this.finish({ operation: async () => await commitPreparedWithAbortOnFailure({
+      abort: async ({ reason }) => await this.prepared.abort({ reason }),
+      operation: async () => {
+        await this.writer.runPublication({ operation: async ({ authority }) => {
+          this.assertOperationAllowed();
+          const mutationAuthority = applicationAuthority({ authority });
+          await this.prepared.commit({ authority: mutationAuthority });
+          requireMutationResolution({
+            authority: mutationAuthority,
+            condition: this.mutationSuccessCondition,
+            operation: "file commit",
+          });
+        } });
+      },
+    }) });
   }
 
   async truncate({ size }: { size: bigint }): Promise<void> {
@@ -434,6 +492,7 @@ class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
 
 class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort {
   readonly createReadSnapshot?: () => Promise<HizoFSApplicationSessionPort>;
+  private captureStableReadNamespace: (() => HizoFSApplicationStableReadNamespaceCapture) | undefined;
   readonly openExplicitBulk?: ({ path }: { path: readonly string[] }) => Promise<HizoFSApplicationExplicitBulkBuilder>;
   private closePromise: Promise<void> | undefined;
   private assertOperationAllowed: () => void;
@@ -447,6 +506,7 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
 
   constructor({
     assertOperationAllowed = () => undefined,
+    captureStableReadNamespace,
     createReadSnapshot,
     mutationPort,
     mutationSuccessCondition = "durable_publication",
@@ -455,6 +515,7 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     sync,
   }: HizoFSApplicationSessionComposition) {
     this.assertOperationAllowed = assertOperationAllowed;
+    this.captureStableReadNamespace = captureStableReadNamespace;
     this.mutationPort = mutationPort;
     this.mutationSuccessCondition = mutationSuccessCondition;
     this.namespace = namespace;
@@ -646,16 +707,34 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     const capturedPath = [...path];
     return await this.read({ operation: async () => {
       const entries = await this.namespace.list({ pathComponents: capturedPath });
-      return entries.map(entry => {
-        switch (entry.targetType) {
-        case "inode": return { kind: entry.inodeKind, name: entry.name };
-        case "subvolume": throw new HizoFSApplicationSessionPortError({
-          code: "subvolume_boundary",
-          message: `subvolume mount ${entry.name} requires a topology-aware session resolver`,
-        });
-        default: return entry satisfies never;
-        }
-      });
+      return entries.map(entry => projectApplicationDirectoryEntry({ entry }));
+    } });
+  }
+
+  async listDirectoryPage({ afterName, maximumEntries, path }: {
+    afterName: string | undefined;
+    maximumEntries: number;
+    path: readonly string[];
+  }): Promise<HizoFSApplicationDirectoryPage> {
+    const capturedPath = [...path];
+    return await this.read({ operation: async () => {
+      const listAfterBounded = this.namespace.listAfterBounded;
+      if (listAfterBounded === undefined) {
+        const entries = await this.namespace.list({ pathComponents: capturedPath });
+        const startIndex = afterName === undefined
+          ? 0
+          : Math.max(0, entries.findIndex(entry => entry.name === afterName) + 1);
+        const pageEntries = entries.slice(startIndex, startIndex + maximumEntries);
+        return {
+          entries: pageEntries.map(entry => projectApplicationDirectoryEntry({ entry })),
+          truncated: startIndex + pageEntries.length < entries.length,
+        };
+      }
+      const listing = await listAfterBounded({ afterName, maximumEntries, pathComponents: capturedPath });
+      return {
+        entries: listing.entries.map(entry => projectApplicationDirectoryEntry({ entry })),
+        truncated: listing.truncated,
+      };
     } });
   }
 
@@ -681,29 +760,52 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
 
   async openReadable({ path }: { path: readonly string[] }): Promise<HizoFSApplicationReadableFile> {
     const capturedPath = [...path];
-    const stat = await this.read({ operation: async () => await this.namespace.stat({
-      pathComponents: capturedPath,
-    }) });
+    let stableCapture: HizoFSApplicationStableReadNamespaceCapture | undefined;
+    let namespace = this.namespace;
+    let stat: Awaited<ReturnType<ReadOnlyNamespace["stat"]>>;
+    try {
+      stat = await this.read({ operation: async () => {
+        stableCapture = this.captureStableReadNamespace?.();
+        namespace = stableCapture?.namespace ?? this.namespace;
+        return await namespace.stat({ pathComponents: capturedPath });
+      } });
+    } catch (cause: unknown) {
+      throwAfterStableReadCleanup({
+        capture: stableCapture,
+        cause,
+        message: "HizoFS readable open and stable namespace cleanup both failed",
+      });
+    }
     switch (stat.kind) {
     case "file": break;
     case "directory":
-    case "symlink": throw new HizoFSApplicationSessionPortError({
-      code: "not_file",
-      message: `read target is not a file: ${capturedPath.join("/") || "/"}`,
+    case "symlink": return throwAfterStableReadCleanup({
+      capture: stableCapture,
+      cause: new HizoFSApplicationSessionPortError({
+        code: "not_file",
+        message: `read target is not a file: ${capturedPath.join("/") || "/"}`,
+      }),
+      message: "HizoFS readable kind rejection and stable namespace cleanup both failed",
     });
     default: return stat.kind satisfies never;
     }
     if (stat.fileSize === undefined) {
-      throw new HizoFSApplicationSessionPortError({
-        code: "missing_file_size",
-        message: "filesystem file stat omitted its lossless logical size",
+      return throwAfterStableReadCleanup({
+        capture: stableCapture,
+        cause: new HizoFSApplicationSessionPortError({
+          code: "missing_file_size",
+          message: "filesystem file stat omitted its lossless logical size",
+        }),
+        message: "HizoFS readable stat rejection and stable namespace cleanup both failed",
       });
     }
     let closed = false;
     return {
       size: stat.fileSize,
       close: async () => {
+        if (closed) return;
         closed = true;
+        stableCapture?.release();
       },
       read: async ({ length, offset, signal }) => {
         if (closed) throw new HizoFSApplicationSessionPortError({
@@ -712,7 +814,7 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
         });
         signal?.throwIfAborted();
         return await this.read({ operation: async () => (
-          await this.namespace.readFile({
+          await namespace.readFile({
             length,
             offset,
             pathComponents: capturedPath,

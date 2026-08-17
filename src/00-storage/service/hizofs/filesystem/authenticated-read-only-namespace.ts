@@ -226,10 +226,11 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
       };
 
       const extentRootReference = inode.content.extentTreeRootHomeRef;
-      const floorExtent = await extentReader.seekFloor({
+      const extentScan = await extentReader.seekFloorWithEntries({
         key: createFileOffset({ value: offset }),
         rootReference: extentRootReference,
       });
+      const floorExtent = extentScan.floor;
       if (floorExtent !== undefined) {
         const floorExtentEnd = floorExtent.fileOffset + BigInt(floorExtent.byteLength);
         if (floorExtent.fileOffset <= offset && floorExtentEnd >= requestedEnd) {
@@ -243,10 +244,7 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
       }
 
       let copiedUntil = offset;
-      for await (const extent of extentReader.entriesFromFloor({
-        key: createFileOffset({ value: offset }),
-        rootReference: extentRootReference,
-      })) {
+      for await (const extent of extentScan.entries) {
         const extentEnd = extent.fileOffset + BigInt(extent.byteLength);
         if (extentEnd <= copiedUntil) continue;
         if (extent.fileOffset >= requestedEnd) return output;
@@ -350,6 +348,7 @@ export function createAuthenticatedReadOnlyNamespace({
   const {
     maximumKnownInodeNumber: _maximumKnownInodeNumber,
     list,
+    listAfterBounded,
     listBounded,
     listDirectoryEntries: _listDirectoryEntries,
     listDirectoryEntriesAfterBounded: _listDirectoryEntriesAfterBounded,
@@ -364,7 +363,7 @@ export function createAuthenticatedReadOnlyNamespace({
     ...unhandledResolver
   } = resolver;
   unhandledResolver satisfies Record<PropertyKey, never>;
-  return { list, listBounded, readFile, readlink, stat };
+  return { list, listAfterBounded, listBounded, readFile, readlink, stat };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

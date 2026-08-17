@@ -752,18 +752,21 @@ export class AuthenticatedSegmentWriter {
   /**
    * Consumes plaintext snapshots whose ownership has already been established
    * by a bounded mutation-local owner. The caller must not mutate these bytes
-   * until the returned Promise settles.
+   * until the returned Promise settles. When clearPlaintextBeforePhysicalIo is
+   * true, the writer may zeroize them after encryption and before backend I/O;
+   * that mode transfers erase authority to this call as well.
    *
    * WHY: metadata batching already takes its synchronous TOCTOU snapshot at
    * stage time and retains that same private snapshot through durable flush.
    * Copying it again here adds no isolation. Raw/public append entry points do
    * not use this path and keep their existing defensive snapshot.
    */
-  public async appendTransferredPlaintextRecords({ records }: {
+  public async appendTransferredPlaintextRecords({ clearPlaintextBeforePhysicalIo = false, records }: {
+    clearPlaintextBeforePhysicalIo?: boolean;
     records: readonly TransferredPlaintextRecord[];
   }): Promise<readonly AppendedRecord[]> {
     return await this.appendPreparedRecords({
-      clearPreparedPlaintextBeforePhysicalIo: false,
+      clearPreparedPlaintextBeforePhysicalIo: clearPlaintextBeforePhysicalIo,
       records,
     });
   }

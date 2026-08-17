@@ -30,6 +30,11 @@ export type HizoFSApplicationDirectoryEntry = Readonly<{
   name: string;
 }>;
 
+export type HizoFSApplicationDirectoryPage = Readonly<{
+  entries: readonly HizoFSApplicationDirectoryEntry[];
+  truncated: boolean;
+}>;
+
 export interface HizoFSApplicationReadableFile {
   readonly size: bigint;
   close(): Promise<void>;
@@ -86,6 +91,11 @@ export interface HizoFSApplicationSessionPort {
   ensureDirectory({ name, path }: { name: string; path: readonly string[] }): Promise<void>;
   ensureFile({ name, path }: { name: string; path: readonly string[] }): Promise<void>;
   listDirectory({ path }: { path: readonly string[] }): Promise<readonly HizoFSApplicationDirectoryEntry[]>;
+  listDirectoryPage?: ({ afterName, maximumEntries, path }: {
+    afterName: string | undefined;
+    maximumEntries: number;
+    path: readonly string[];
+  }) => Promise<HizoFSApplicationDirectoryPage>;
   moveEntry({ destinationPath, name, newName, path, replace }: {
     destinationPath: readonly string[];
     name: string;
@@ -117,6 +127,7 @@ export type HizoFSWorkerMountGrantIssuer = ({ accessMode, path }: {
   path: readonly string[];
 }) => Promise<StorageDirectoryWorkerMountGrant>;
 
+const DIRECTORY_ITERATOR_PAGE_ENTRIES = 128;
 const READ_STREAM_CHUNK_BYTES = 1024 * 1024;
 
 function safeNumber({ label, value }: { label: string; value: bigint }): number {
@@ -426,6 +437,56 @@ class HizoFSStorageDirectoryHandle implements StorageDirectoryHandle {
   }
 
   async *entries(): AsyncIterable<readonly [name: string, handle: StorageEntryHandle]> {
+    const pagedSnapshot = await this.owner.runOperation({ operation: async () => {
+      const createReadSnapshot = this.owner.port.createReadSnapshot;
+      if (createReadSnapshot === undefined) return undefined;
+      const port = await createReadSnapshot();
+      if (port.listDirectoryPage === undefined) {
+        await port.close();
+        return undefined;
+      }
+      const unregister = this.owner.registerAdmittedResource({
+        dispose: async () => await port.close(),
+      });
+      return { port, unregister };
+    }});
+    if (pagedSnapshot !== undefined) {
+      try {
+        let afterName: string | undefined;
+        for (;;) {
+          const page = await this.owner.runOperation({ operation: async () => {
+            if (pagedSnapshot.port.listDirectoryPage === undefined) {
+              throw new Error("HizoFS snapshot lost paged directory capability");
+            }
+            return await pagedSnapshot.port.listDirectoryPage({
+              afterName,
+              maximumEntries: DIRECTORY_ITERATOR_PAGE_ENTRIES,
+              path: [...this.path],
+            });
+          }});
+          for (const entry of page.entries) {
+            this.owner.assertOpen();
+            const { kind, name, ...unhandled } = entry;
+            unhandled satisfies Record<PropertyKey, never>;
+            yield [name, await this.owner.entryHandle({
+              expectedKind: kind,
+              name,
+              path: childPath({ name, path: this.path }),
+            })] as const;
+          }
+          if (!page.truncated) return;
+          const last = page.entries.at(-1);
+          if (last === undefined || last.name === afterName) {
+            throw new Error("HizoFS paged directory listing did not advance its cursor");
+          }
+          afterName = last.name;
+        }
+      } finally {
+        pagedSnapshot.unregister();
+        await pagedSnapshot.port.close();
+      }
+    }
+
     const entries = await this.owner.runOperation({ operation: async () => {
       return await this.owner.port.listDirectory({ path: [...this.path] });
     }});

@@ -576,6 +576,50 @@ describe("HizoFS worker runtime host", () => {
     expect(releaseResources).toHaveBeenCalledOnce();
   });
 
+  it("keeps maintenance behind read-snapshot capture until the captured generation is pinned", async () => {
+    const value = host();
+    const captureStarted = Promise.withResolvers<void>();
+    const continueCapture = Promise.withResolvers<void>();
+    const session = await value.openApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      createApplicationSessionResources: () => ({
+        ...minimalApplicationResources(),
+        createReadSnapshotResources: async () => {
+          captureStarted.resolve();
+          await continueCapture.promise;
+          return {
+            commitReference: createTestingHomeRecordReference(),
+            mutationPort: {} as HizoFSApplicationMutationPort,
+            namespace: minimalApplicationResources().namespace,
+          };
+        },
+      }),
+      recheckAuthority: async () => undefined,
+      verifyCapturedAuthority: async () => "verified",
+    });
+
+    const snapshotPromise = session.createReadSnapshot?.();
+    if (snapshotPromise === undefined) throw new Error("read snapshot is unavailable");
+    await captureStarted.promise;
+    let maintenanceResolved = false;
+    const maintenancePromise = value.beginMaintenanceRootCapture().then(capture => {
+      maintenanceResolved = true;
+      return capture;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(maintenanceResolved).toBe(false);
+
+    continueCapture.resolve();
+    const snapshot = await snapshotPromise;
+    const maintenance = await maintenancePromise;
+    expect(maintenance.readerPinnedRoots).toHaveLength(1);
+    maintenance.release();
+    await maintenance.released;
+    await snapshot.close();
+    await session.close();
+  });
+
   it("keeps snapshot preparation active until the reader pin is acquired", async () => {
     const crossRealmLockPort = new ObservedReaderPinPort();
     const releasePreparation = vi.fn(() => {
@@ -665,7 +709,7 @@ describe("HizoFS worker runtime host", () => {
     expect(capture.inspectorPinnedRoots).toEqual([]);
     expect(capture.sourceSegmentPinnedRoots).toEqual([]);
     expect(capture.unknownFeatureRoots).toEqual([]);
-    expect(capture.writerDependencyRoots).toEqual([]);
+    expect(capture.workingGenerationDependencyRoots).toEqual([]);
     capture.release();
     await capture.released;
   });

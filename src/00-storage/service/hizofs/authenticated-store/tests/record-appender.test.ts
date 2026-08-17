@@ -99,6 +99,17 @@ class SealReadCountingBackend extends InMemoryCrashDurabilityBackend<Authenticat
   }
 }
 
+class WriteObservationBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
+  public beforeWrite: (() => void) | undefined;
+
+  public override async writeAt(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["writeAt"]>[0],
+  ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["writeAt"]> {
+    this.beforeWrite?.();
+    return await super.writeAt(input);
+  }
+}
+
 class PhysicalAccessRecordingBackend extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
   readonly events: string[] = [];
 
@@ -210,6 +221,37 @@ describe("authenticated record appender", () => {
     misaligned[7] = (misaligned[7] ?? 0) ^ 0xff;
     expect(RECORD_APPENDER_TEST_ONLY.bytesEqual({ left: misaligned, right: aligned })).toBe(false);
   });
+  it("can consume transferred plaintext before physical append I/O", async () => {
+    const backend = new WriteObservationBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const writer = await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "data",
+    });
+    const record = writer.snapshotRecordForTransferredAppend({
+      plaintext: Uint8Array.of(1, 2, 3, 4),
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data,
+    });
+    backend.beforeWrite = () => {
+      expect([...record.plaintext]).toEqual([0, 0, 0, 0]);
+    };
+
+    await writer.appendTransferredPlaintextRecords({
+      clearPlaintextBeforePhysicalIo: true,
+      records: [record],
+    });
+    expect([...record.plaintext]).toEqual([0, 0, 0, 0]);
+
+    writer.abandon();
+    await writer.settleAbandonment();
+    rootKey.destroy();
+  });
+
   it("subtracts the same-class preflight probe and lets exclusive creation claim the target path", async () => {
     const backend = new PhysicalAccessRecordingBackend({});
     const randomSource = deterministicRandomSource();

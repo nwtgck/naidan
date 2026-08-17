@@ -142,26 +142,26 @@ export type WorkingCandidatePublication<Candidate extends object> = Readonly<{
  * not coupled to a later sync or background flush.
  */
 export class WorkingCandidateCoordinator {
-  private readonly acquireWriterDependencyRoot: ({ commitReference }: {
+  private readonly acquireWorkingGenerationDependencyRoot: ({ commitReference }: {
     commitReference: HomeRecordReference;
   }) => RuntimeMaintenanceRootRegistration;
-  private readonly acquireWriterWorkingPageRoot: ({ pageReference }: {
+  private readonly acquireWorkingGenerationPageRoot: ({ pageReference }: {
     pageReference: HomeRecordReference;
   }) => RuntimeMaintenancePageRootRegistration;
   private poison: unknown | undefined;
   private reservation: WorkingCandidateReservation | undefined;
   private slot: WorkingCandidateSlot | undefined;
 
-  constructor({ acquireWriterDependencyRoot, acquireWriterWorkingPageRoot }: {
-    acquireWriterDependencyRoot: ({ commitReference }: {
+  constructor({ acquireWorkingGenerationDependencyRoot, acquireWorkingGenerationPageRoot }: {
+    acquireWorkingGenerationDependencyRoot: ({ commitReference }: {
       commitReference: HomeRecordReference;
     }) => RuntimeMaintenanceRootRegistration;
-    acquireWriterWorkingPageRoot: ({ pageReference }: {
+    acquireWorkingGenerationPageRoot: ({ pageReference }: {
       pageReference: HomeRecordReference;
     }) => RuntimeMaintenancePageRootRegistration;
   }) {
-    this.acquireWriterDependencyRoot = acquireWriterDependencyRoot;
-    this.acquireWriterWorkingPageRoot = acquireWriterWorkingPageRoot;
+    this.acquireWorkingGenerationDependencyRoot = acquireWorkingGenerationDependencyRoot;
+    this.acquireWorkingGenerationPageRoot = acquireWorkingGenerationPageRoot;
   }
 
   publicationState(): WorkingCandidateCoordinatorPublicationState {
@@ -465,7 +465,7 @@ export class WorkingCandidateCoordinator {
           operationLabel,
           workingIdentity,
         });
-        const rootRegistration = this.acquireWriterDependencyRoot({
+        const rootRegistration = this.acquireWorkingGenerationDependencyRoot({
           commitReference: candidateDurableIdentity.commitReference,
         });
         if (current !== undefined && (
@@ -515,7 +515,7 @@ export class WorkingCandidateCoordinator {
         const rootRegistrations: RuntimeMaintenancePageRootRegistration[] = [];
         try {
           for (const pageReference of workingPageReferences) {
-            rootRegistrations.push(this.acquireWriterWorkingPageRoot({ pageReference }));
+            rootRegistrations.push(this.acquireWorkingGenerationPageRoot({ pageReference }));
           }
         } catch (cause: unknown) {
           const failures: unknown[] = [cause];
@@ -722,7 +722,7 @@ export class WorkingCandidateCoordinator {
           return;
         }
         case "staged_working_pages": {
-          const commitRootRegistration = this.acquireWriterDependencyRoot({
+          const commitRootRegistration = this.acquireWorkingGenerationDependencyRoot({
             commitReference: candidateDurableIdentity.commitReference,
           });
           current.rootAuthority = Object.freeze({

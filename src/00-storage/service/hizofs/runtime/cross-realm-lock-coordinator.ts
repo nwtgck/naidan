@@ -233,15 +233,21 @@ export class CrossRealmLockCoordinator {
     });
   }
 
-  async acquireReaderPin({ commitReference }: {
-    commitReference: HomeRecordReference;
-  }): Promise<CrossRealmReaderPin> {
+  async captureAndAcquireReaderPin<Value>({ capture }: {
+    capture: () => Promise<Readonly<{ commitReference: HomeRecordReference; value: Value }>>;
+  }): Promise<Readonly<{ pin: CrossRealmReaderPin; value: Value }>> {
     const registration = await this.lockPort.acquire({
       mode: "shared",
       name: readerRegistrationLockName({ scopeToken: this.scopeToken }),
     });
+    let captured: Readonly<{ commitReference: HomeRecordReference; value: Value }>;
+    let commitReference: HomeRecordReference;
     let pin: CrossRealmLockLease;
     try {
+      captured = await capture();
+      commitReference = decodeRequiredHomeRecordReference({
+        bytes: encodeHomeRecordReference({ reference: captured.commitReference }),
+      });
       pin = await this.lockPort.acquire({
         mode: "shared",
         name: readerPinLockName({ commitReference, scopeToken: this.scopeToken }),
@@ -252,7 +258,7 @@ export class CrossRealmLockCoordinator {
       } catch (registrationCleanupFailure: unknown) {
         throw new AggregateError(
           [acquisitionFailure, registrationCleanupFailure],
-          "reader pin acquisition and registration cleanup both failed",
+          "reader capture or pin acquisition and registration cleanup both failed",
         );
       }
       throw acquisitionFailure;
@@ -272,16 +278,26 @@ export class CrossRealmLockCoordinator {
     }
     let active = true;
     return {
-      commitReference: decodeRequiredHomeRecordReference({
-        bytes: encodeHomeRecordReference({ reference: commitReference }),
-      }),
-      release: () => {
-        if (!active) return;
-        active = false;
-        pin.release();
+      pin: {
+        commitReference,
+        release: () => {
+          if (!active) return;
+          active = false;
+          pin.release();
+        },
+        released: pin.released,
       },
-      released: pin.released,
+      value: captured.value,
     };
+  }
+
+  async acquireReaderPin({ commitReference }: {
+    commitReference: HomeRecordReference;
+  }): Promise<CrossRealmReaderPin> {
+    const captured = await this.captureAndAcquireReaderPin({
+      capture: async () => ({ commitReference, value: undefined }),
+    });
+    return captured.pin;
   }
 
   async acquireRuntimeOwner(): Promise<CrossRealmRuntimeOwnerLease> {
@@ -378,15 +394,20 @@ export class CrossRealmLockCoordinator {
   }
 
   async beginMaintenance(): Promise<CrossRealmMaintenanceLease> {
-    const authority = await this.lockPort.acquire({
+    const registration = await this.lockPort.acquire({
       mode: "exclusive",
-      name: authorityLockName({ scopeToken: this.scopeToken }),
+      name: readerRegistrationLockName({ scopeToken: this.scopeToken }),
     });
-    let registration: CrossRealmLockLease | undefined;
+    let authority: CrossRealmLockLease | undefined;
     try {
-      registration = await this.lockPort.acquire({
+      // WHY: reader snapshot capture may need ordinary writer authority to
+      // materialize a staged generation while holding the shared registration
+      // gate. Taking registration before authority gives both paths one lock
+      // order and prevents capture/pin registration from racing final GC root
+      // validation without introducing a writer/read deadlock.
+      authority = await this.lockPort.acquire({
         mode: "exclusive",
-        name: readerRegistrationLockName({ scopeToken: this.scopeToken }),
+        name: authorityLockName({ scopeToken: this.scopeToken }),
       });
       const heldNames = await this.lockPort.queryHeldLockNames();
       if (heldNames.length > this.maxHeldLockNames) {
@@ -403,18 +424,19 @@ export class CrossRealmLockCoordinator {
       }
       let active = true;
       const heldRegistration = registration;
-      const released = Promise.all([heldRegistration.released, authority.released]).then(() => undefined);
+      const heldAuthority = authority;
+      const released = Promise.all([heldRegistration.released, heldAuthority.released]).then(() => undefined);
       return {
         pinnedCommitReferences: [...uniqueReferences.values()],
         release: () => {
           if (!active) return;
           active = false;
-          releaseLeasesNow({ leases: [heldRegistration, authority] });
+          releaseLeasesNow({ leases: [heldAuthority, heldRegistration] });
         },
         released,
       };
     } catch (cause: unknown) {
-      const leases = registration === undefined ? [authority] : [registration, authority];
+      const leases = authority === undefined ? [registration] : [authority, registration];
       try {
         await releaseLeasesAndWait({ leases });
       } catch (cleanupCause: unknown) {

@@ -363,8 +363,46 @@ describe("authenticated metadata mutation authority", () => {
     rootKey.destroy();
   });
 
+  it("flushes a provisional Inode leaf before the same mutation reads its Home Reference", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const diagnostics = new AuthenticatedStoreDiagnosticsProbe();
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const authority = await createAuthenticatedMetadataMutationAuthority({
+      backend,
+      diagnostics,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const page = {
+      entries: [{
+        content: { entries: [], type: "inline" as const },
+        inodeKind: "directory" as const,
+        inodeNumber: createInodeNumber({ value: 1n }),
+        inodeRevision: createInodeRevision({ value: 1n }),
+        timestamps: { createdAt: null, modifiedAt: null },
+      }],
+      level: 0 as const,
+      type: "leaf" as const,
+    };
+
+    const reference = await authority.writeInodeTablePage({ isRoot: true, page });
+    expect(diagnostics.snapshot().segmentWriters.metadata.appendOperations).toBe(0);
+
+    await expect(authority.readInodeTablePage({ isRoot: true, reference })).resolves.toEqual(page);
+    expect(diagnostics.snapshot().segmentWriters.metadata.appendOperations).toBe(1);
+
+    authority.abandon();
+    rootKey.destroy();
+  });
+
   it("keeps provisional Inode branch routing mutation-local until the metadata batch is durable", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const diagnostics = new AuthenticatedStoreDiagnosticsProbe();
     const randomSource = deterministicRandomSource();
     const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
     const rootKey = generateFileSystemRootKey({ randomSource });
@@ -373,6 +411,7 @@ describe("authenticated metadata mutation authority", () => {
     const authority = await createAuthenticatedMetadataMutationAuthority({
       backend,
       decodedInodeBranchPageCache: { getBranchPage, setBranchPage },
+      diagnostics,
       fileSystemId,
       randomSource,
       relocationIndexRootPhysicalRef: null,
@@ -395,8 +434,10 @@ describe("authenticated metadata mutation authority", () => {
     expect(setBranchPage).not.toHaveBeenCalled();
     await expect(authority.readInodeTablePage({ isRoot: true, reference })).resolves.toEqual(page);
     expect(getBranchPage).not.toHaveBeenCalled();
+    expect(diagnostics.snapshot().segmentWriters.metadata.appendOperations).toBe(0);
 
     await authority.flushPendingMetadataRecords();
+    expect(diagnostics.snapshot().segmentWriters.metadata.appendOperations).toBe(1);
     expect(setBranchPage).toHaveBeenCalledTimes(1);
     expect(setBranchPage).toHaveBeenCalledWith({
       isRoot: true,

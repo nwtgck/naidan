@@ -8,6 +8,7 @@ import {
   type HizoFSApplicationRuntimeWriter,
   type HizoFSApplicationSessionNamespace,
   type HizoFSApplicationSessionPort,
+  type HizoFSApplicationStableReadNamespaceCapture,
   type HizoFSReadApi,
   type HizoFSReadApiNamespace,
   type HizoFSWorkerMountGrantIssuer,
@@ -174,13 +175,22 @@ async function createPinnedReadSnapshotPort({
   syncDurability: StorageFileSystemSyncDurability;
 }): Promise<HizoFSApplicationSessionPort> {
   assertOperationAllowed?.();
-  const resources = await createResources();
-  let pin: Awaited<ReturnType<ContainerRuntimeSession["acquireReaderPin"]>>;
+  let preparedResources: PreparedReadSnapshotResources | undefined;
+  let captured: Readonly<{
+    pin: Awaited<ReturnType<ContainerRuntimeSession["acquireReaderPin"]>>;
+    value: PreparedReadSnapshotResources;
+  }>;
   try {
-    pin = await parent.acquireReaderPin({ commitReference: resources.commitReference });
+    captured = await parent.captureAndAcquireReaderPin({
+      capture: async () => {
+        const resources = await createResources();
+        preparedResources = resources;
+        return { commitReference: resources.commitReference, value: resources };
+      },
+    });
   } catch (cause: unknown) {
     try {
-      resources.releasePreparation?.();
+      preparedResources?.releasePreparation?.();
     } catch (cleanupCause: unknown) {
       throw new AggregateError(
         [cause, cleanupCause],
@@ -189,6 +199,8 @@ async function createPinnedReadSnapshotPort({
     }
     throw cause;
   }
+  const resources = captured.value;
+  const pin = captured.pin;
   try {
     resources.releasePreparation?.();
     assertOperationAllowed?.();
@@ -355,6 +367,7 @@ export class HizoFSWorkerRuntimeHost {
       }) => WorkingCandidateAdmission<Candidate>;
       verified: Verified;
     }) => Readonly<{
+      captureStableReadNamespace?: () => HizoFSApplicationStableReadNamespaceCapture;
       createReadSnapshotResources?: ReadSnapshotResourceFactory;
       mutationPort: HizoFSApplicationMutationPort;
       namespace: HizoFSApplicationSessionNamespace;
@@ -382,6 +395,7 @@ export class HizoFSWorkerRuntimeHost {
   }): Promise<StorageFileSystemSession> {
     let applicationResources: Readonly<{
       authenticatedGeneration: ContainerRuntimeAuthenticatedApplicationGeneration | undefined;
+      captureStableReadNamespace: (() => HizoFSApplicationStableReadNamespaceCapture) | undefined;
       createReadSnapshotResources: ReadSnapshotResourceFactory | undefined;
       mutationPort: HizoFSApplicationMutationPort;
       namespace: HizoFSApplicationSessionNamespace;
@@ -463,6 +477,7 @@ export class HizoFSWorkerRuntimeHost {
           throw cause;
         }
         const {
+          captureStableReadNamespace,
           createReadSnapshotResources,
           mutationPort,
           namespace,
@@ -474,6 +489,7 @@ export class HizoFSWorkerRuntimeHost {
         unhandledResources satisfies Record<PropertyKey, never>;
         applicationResources = {
           authenticatedGeneration,
+          captureStableReadNamespace,
           createReadSnapshotResources,
           mutationPort,
           namespace,
@@ -512,6 +528,7 @@ export class HizoFSWorkerRuntimeHost {
       });
     }
     const resolvedApplicationResources = applicationResources;
+    const captureStableReadNamespace = resolvedApplicationResources.captureStableReadNamespace;
     const createReadSnapshotResources = resolvedApplicationResources.createReadSnapshotResources;
     const sync = async (): Promise<void> => {
       const target = resolvedApplicationResources.authenticatedGeneration?.captureSyncTarget();
@@ -556,6 +573,7 @@ export class HizoFSWorkerRuntimeHost {
       return createHizoFSStorageFileSystemSession({
         port: createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
           ...(assertOperationAllowed === undefined ? {} : { assertOperationAllowed }),
+          ...(captureStableReadNamespace === undefined ? {} : { captureStableReadNamespace }),
           ...(createReadSnapshotResources === undefined ? {} : {
             createReadSnapshot: async () => await createPinnedReadSnapshotPort({
               ...(assertOperationAllowed === undefined ? {} : { assertOperationAllowed }),
@@ -677,16 +695,16 @@ export class HizoFSWorkerRuntimeHost {
     return this.runtime.acquireUnknownFeatureRoot({ commitReference });
   }
 
-  acquireWriterDependencyRoot({ commitReference }:
-  Parameters<ContainerRuntime["acquireWriterDependencyRoot"]>[0]):
-  ReturnType<ContainerRuntime["acquireWriterDependencyRoot"]> {
-    return this.runtime.acquireWriterDependencyRoot({ commitReference });
+  acquireWorkingGenerationDependencyRoot({ commitReference }:
+  Parameters<ContainerRuntime["acquireWorkingGenerationDependencyRoot"]>[0]):
+  ReturnType<ContainerRuntime["acquireWorkingGenerationDependencyRoot"]> {
+    return this.runtime.acquireWorkingGenerationDependencyRoot({ commitReference });
   }
 
-  acquireWriterWorkingPageRoot({ pageReference }:
-  Parameters<ContainerRuntime["acquireWriterWorkingPageRoot"]>[0]):
-  ReturnType<ContainerRuntime["acquireWriterWorkingPageRoot"]> {
-    return this.runtime.acquireWriterWorkingPageRoot({ pageReference });
+  acquireWorkingGenerationPageRoot({ pageReference }:
+  Parameters<ContainerRuntime["acquireWorkingGenerationPageRoot"]>[0]):
+  ReturnType<ContainerRuntime["acquireWorkingGenerationPageRoot"]> {
+    return this.runtime.acquireWorkingGenerationPageRoot({ pageReference });
   }
 
   async beginSegmentDeletion({ segmentId }: Parameters<ContainerRuntime["beginSegmentDeletion"]>[0]):

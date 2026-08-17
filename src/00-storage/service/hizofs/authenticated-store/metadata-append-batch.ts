@@ -1,5 +1,6 @@
 import {
   sameRecordReferenceFields,
+  type HomeRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
 import { AuthenticatedMetadataRecordCache } from "./metadata-record-cache";
 import {
@@ -101,6 +102,16 @@ export class AuthenticatedMetadataAppendBatch {
 
   isBoundTo({ writer }: { writer: AuthenticatedSegmentWriter }): boolean {
     return this.writer === writer;
+  }
+
+  hasPlannedHomeReference({ reference }: { reference: HomeRecordReference }): boolean {
+    return this.plannedResults.some(result => {
+      switch (result.type) {
+      case "home": return sameRecordReferenceFields({ left: result.homeReference, right: reference });
+      case "physical_only": return false;
+      default: return result satisfies never;
+      }
+    });
   }
 
   pendingFrameBytes(): number {

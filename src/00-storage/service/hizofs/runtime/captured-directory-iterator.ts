@@ -1,8 +1,9 @@
 import {
-  compareUnsignedBytes,
+  compareFilenameComponentsByUtf8,
   decodeRequiredHomeRecordReference,
-  encodeFilenameComponent,
+  encodedFilenameComponentByteLength,
   encodeHomeRecordReference,
+  sameRecordReferenceFields,
   type DirectoryLeafEntry,
   type HomeRecordReference,
   type InodeNumber,
@@ -94,33 +95,34 @@ export class CapturedDirectoryIterator implements AsyncIterableIterator<Director
     let stableEntries: readonly DirectoryLeafEntry[];
     let stableGeneration: CapturedDirectoryGeneration;
     try {
-      const generationReferenceBytes = encodeHomeRecordReference({ reference: generation.commitReference });
-      const pinReferenceBytes = encodeHomeRecordReference({ reference: pin.commitReference });
-      if (compareUnsignedBytes({ left: generationReferenceBytes, right: pinReferenceBytes }) !== 0) {
+      if (!sameRecordReferenceFields({ left: generation.commitReference, right: pin.commitReference })) {
         throw new CapturedDirectoryIteratorError({
           code: "pin_generation_mismatch",
           message: "directory iterator pin does not protect its captured Commit generation",
         });
       }
-      const encodedEntries = entries.map(entry => ({
-        entry: cloneEntry({ entry }),
-        nameBytes: encodeFilenameComponent({ value: entry.name }),
-      })).sort((left, right) => compareUnsignedBytes({
-        left: left.nameBytes,
-        right: right.nameBytes,
+      const sortedEntries = entries.map(entry => {
+        // Validate the V1 filename contract without retaining an encoded copy
+        // for every captured entry. The canonical UTF-8 comparator is
+        // allocation-free and preserves the persisted directory order.
+        encodedFilenameComponentByteLength({ value: entry.name });
+        return cloneEntry({ entry });
+      }).sort((left, right) => compareFilenameComponentsByUtf8({
+        left: left.name,
+        right: right.name,
       }));
-      for (let index = 1; index < encodedEntries.length; index += 1) {
-        const previous = encodedEntries[index - 1];
-        const current = encodedEntries[index];
+      for (let index = 1; index < sortedEntries.length; index += 1) {
+        const previous = sortedEntries[index - 1];
+        const current = sortedEntries[index];
         if (previous === undefined || current === undefined) throw new Error("directory iterator sorting became inconsistent");
-        if (compareUnsignedBytes({ left: previous.nameBytes, right: current.nameBytes }) === 0) {
+        if (compareFilenameComponentsByUtf8({ left: previous.name, right: current.name }) === 0) {
           throw new CapturedDirectoryIteratorError({
             code: "duplicate_entry",
             message: "captured directory contains a duplicate canonical filename",
           });
         }
       }
-      stableEntries = encodedEntries.map(({ entry }) => entry);
+      stableEntries = sortedEntries;
       stableGeneration = cloneGeneration({ generation });
     } catch (cause: unknown) {
       pin.release();

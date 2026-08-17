@@ -1,8 +1,7 @@
 import {
-  compareUnsignedBytes,
+  compareFilenameComponentsByUtf8,
   createInodeRevision,
   encodedDirectoryLeafEntryByteLength,
-  encodeFilenameComponent,
   assertInodeLeafEntryFitsMetadataPage,
   HIZOFS_V1_FORMAT_CONSTANTS,
   UINT64_MAXIMUM,
@@ -43,10 +42,7 @@ function compareDirectoryEntries({ left, right }: {
   left: DirectoryLeafEntry;
   right: DirectoryLeafEntry;
 }): number {
-  return compareUnsignedBytes({
-    left: encodeFilenameComponent({ value: left.name }),
-    right: encodeFilenameComponent({ value: right.name }),
-  });
+  return compareFilenameComponentsByUtf8({ left: left.name, right: right.name });
 }
 
 export function prepareInlineDirectoryCreateCandidateParent({

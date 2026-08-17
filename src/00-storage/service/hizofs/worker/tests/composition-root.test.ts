@@ -173,8 +173,8 @@ function maintenanceRuntimeCapture({
       released: released.promise,
       sourceSegmentPinnedRoots: sourcePinned,
       unknownFeatureRoots: [],
-      writerDependencyRoots: [],
-      writerWorkingPageRoots: [],
+      workingGenerationDependencyRoots: [],
+      workingGenerationPageRoots: [],
     },
     release,
   };
@@ -208,6 +208,18 @@ function maintenanceRemovalPlan({ seed = 7 }: { seed?: number } = {}) {
     segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(seed) }),
     totalFrameBytes: 256,
   });
+}
+
+class DataSegmentWriteCountingBackend
+  extends InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes> {
+  public dataSegmentWriteAtOperations = 0;
+
+  public override async writeAt(
+    input: Parameters<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["writeAt"]>[0],
+  ): ReturnType<InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>["writeAt"]> {
+    if (input.file.path.startsWith("segments/data/")) this.dataSegmentWriteAtOperations += 1;
+    return await super.writeAt(input);
+  }
 }
 
 function deterministicRandomSource(): RandomByteSource {
@@ -604,7 +616,7 @@ describe("HizoFS worker composition root", () => {
     await mutation;
     expect(host.workingCandidatePublicationState()).toBe("empty");
     const cleared = await host.beginMaintenanceRootCapture();
-    expect(cleared.writerDependencyRoots).toEqual([]);
+    expect(cleared.workingGenerationDependencyRoots).toEqual([]);
     cleared.release();
     await cleared.released;
 
@@ -727,10 +739,10 @@ describe("HizoFS worker composition root", () => {
       supportedFeatureBits,
     });
     const host = runtimeHost();
-    const acquireWriterDependencyRoot = host.acquireWriterDependencyRoot.bind(host);
+    const acquireWorkingGenerationDependencyRoot = host.acquireWorkingGenerationDependencyRoot.bind(host);
     const releaseFailure = new Error("writer dependency release failed");
-    vi.spyOn(host, "acquireWriterDependencyRoot").mockImplementation(({ commitReference }) => {
-      const registration = acquireWriterDependencyRoot({ commitReference });
+    vi.spyOn(host, "acquireWorkingGenerationDependencyRoot").mockImplementation(({ commitReference }) => {
+      const registration = acquireWorkingGenerationDependencyRoot({ commitReference });
       return {
         ...registration,
         release: () => {
@@ -768,7 +780,7 @@ describe("HizoFS worker composition root", () => {
       errors: [operationFailure, releaseFailure],
     });
     const capture = await host.beginMaintenanceRootCapture();
-    expect(capture.writerDependencyRoots).toEqual([]);
+    expect(capture.workingGenerationDependencyRoots).toEqual([]);
     capture.release();
     await capture.released;
 
@@ -806,13 +818,13 @@ describe("HizoFS worker composition root", () => {
       }),
     });
     const file = await session.root.getFileHandle({ create: true, name: "prepared.bin" });
-    const acquireWriterDependencyRoot = host.acquireWriterDependencyRoot.bind(host);
-    const observedRoots: Parameters<typeof acquireWriterDependencyRoot>[0]["commitReference"][] = [];
+    const acquireWorkingGenerationDependencyRoot = host.acquireWorkingGenerationDependencyRoot.bind(host);
+    const observedRoots: Parameters<typeof acquireWorkingGenerationDependencyRoot>[0]["commitReference"][] = [];
     const deferredReleases: (() => void)[] = [];
     let delegatedReleaseCalls = 0;
-    const acquisition = vi.spyOn(host, "acquireWriterDependencyRoot").mockImplementation(({ commitReference }) => {
+    const acquisition = vi.spyOn(host, "acquireWorkingGenerationDependencyRoot").mockImplementation(({ commitReference }) => {
       observedRoots.push(commitReference);
-      const registration = acquireWriterDependencyRoot({ commitReference });
+      const registration = acquireWorkingGenerationDependencyRoot({ commitReference });
       return {
         ...registration,
         release: () => {
@@ -828,12 +840,12 @@ describe("HizoFS worker composition root", () => {
     await committed.close();
     expect(delegatedReleaseCalls).toBe(1);
     const retainedAfterCommit = await host.beginMaintenanceRootCapture();
-    expect(retainedAfterCommit.writerDependencyRoots).toEqual([observedRoots[0]]);
+    expect(retainedAfterCommit.workingGenerationDependencyRoots).toEqual([observedRoots[0]]);
     retainedAfterCommit.release();
     await retainedAfterCommit.released;
     deferredReleases.shift()?.();
     const clearedAfterCommit = await host.beginMaintenanceRootCapture();
-    expect(clearedAfterCommit.writerDependencyRoots).toEqual([]);
+    expect(clearedAfterCommit.workingGenerationDependencyRoots).toEqual([]);
     clearedAfterCommit.release();
     await clearedAfterCommit.released;
 
@@ -843,12 +855,12 @@ describe("HizoFS worker composition root", () => {
     await aborted.abort({ reason: "test abort" });
     expect(delegatedReleaseCalls).toBe(2);
     const retainedAfterAbort = await host.beginMaintenanceRootCapture();
-    expect(retainedAfterAbort.writerDependencyRoots).toEqual([observedRoots[1]]);
+    expect(retainedAfterAbort.workingGenerationDependencyRoots).toEqual([observedRoots[1]]);
     retainedAfterAbort.release();
     await retainedAfterAbort.released;
     deferredReleases.shift()?.();
     const clearedAfterAbort = await host.beginMaintenanceRootCapture();
-    expect(clearedAfterAbort.writerDependencyRoots).toEqual([]);
+    expect(clearedAfterAbort.workingGenerationDependencyRoots).toEqual([]);
     clearedAfterAbort.release();
     await clearedAfterAbort.released;
 
@@ -912,7 +924,7 @@ describe("HizoFS worker composition root", () => {
     await close;
     expect(host.workingCandidatePublicationState()).toBe("empty");
     const cleared = await host.beginMaintenanceRootCapture();
-    expect(cleared.writerDependencyRoots).toEqual([]);
+    expect(cleared.workingGenerationDependencyRoots).toEqual([]);
     cleared.release();
     await cleared.released;
 
@@ -955,10 +967,10 @@ describe("HizoFS worker composition root", () => {
       }),
     });
     const file = await session.root.getFileHandle({ create: true, name: "poisoned.bin" });
-    const acquireWriterDependencyRoot = host.acquireWriterDependencyRoot.bind(host);
+    const acquireWorkingGenerationDependencyRoot = host.acquireWorkingGenerationDependencyRoot.bind(host);
     const releaseFailure = new Error("prepared writable root release failed");
-    vi.spyOn(host, "acquireWriterDependencyRoot").mockImplementation(({ commitReference }) => {
-      const registration = acquireWriterDependencyRoot({ commitReference });
+    vi.spyOn(host, "acquireWorkingGenerationDependencyRoot").mockImplementation(({ commitReference }) => {
+      const registration = acquireWorkingGenerationDependencyRoot({ commitReference });
       return {
         ...registration,
         release: () => {
@@ -984,7 +996,7 @@ describe("HizoFS worker composition root", () => {
       ],
     });
     const capture = await host.beginMaintenanceRootCapture();
-    expect(capture.writerDependencyRoots).toEqual([]);
+    expect(capture.workingGenerationDependencyRoots).toEqual([]);
     capture.release();
     await capture.released;
 
@@ -1709,6 +1721,79 @@ describe("HizoFS worker composition root", () => {
     expect(secondOpened.rootKey.isDestroyed()).toBe(true);
   });
 
+  it("batches sequential prepared-writable File Data across public write calls", async () => {
+    const backend = new DataSegmentWriteCountingBackend({});
+    const indexOperations: string[] = [];
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase: "correct horse battery staple",
+      randomSource,
+      supportedFeatureBits,
+    });
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: runtimeHost(),
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://prepared-writable-batch.hizofs",
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 64 },
+        indexDiagnostics: {
+          recordIndexOperation: ({ operation }) => indexOperations.push(operation),
+        },
+        opened,
+        operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+        randomSource,
+        removalLimits: { deleteBatchSize: 64, maxVisitedInodes: 128 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+    const file = await session.root.getFileHandle({ create: true, name: "sequential.bin" });
+    const writable = await file.createWritable({ keepExistingData: false });
+    const block = new Uint8Array(256 * 1024);
+    block.fill(0x5a);
+
+    await writable.write({ data: block, position: 0 });
+    const writesAfterFirstStage = backend.dataSegmentWriteAtOperations;
+    const indexOperationsAfterFirstStage = indexOperations.length;
+    for (let index = 1; index < 4; index += 1) {
+      await writable.write({ data: block, position: index * block.byteLength });
+    }
+    expect(backend.dataSegmentWriteAtOperations).toBe(writesAfterFirstStage);
+    expect(indexOperations).toHaveLength(indexOperationsAfterFirstStage);
+
+    // A non-tail overwrite cannot consume the append-only overlay. Materialize
+    // it first so the general overlap-checked write observes the exact root.
+    await writable.write({ data: Uint8Array.of(0x33), position: 3 });
+    expect(indexOperations.length).toBeGreaterThan(indexOperationsAfterFirstStage);
+
+    await writable.close();
+    expect(backend.dataSegmentWriteAtOperations).toBe(writesAfterFirstStage + 1);
+    expect(await file.stat()).toMatchObject({ size: block.byteLength * 4 });
+    const readable = await file.openReadable({ mimeType: "application/octet-stream" });
+    const persisted = new Uint8Array(block.byteLength * 4);
+    expect(await readable.read({
+      buffer: persisted,
+      length: persisted.byteLength,
+      offset: 0,
+      position: 0,
+      signal: undefined,
+    })).toEqual({ bytesRead: persisted.byteLength });
+    await readable.close();
+    expect(persisted[3]).toBe(0x33);
+    persisted[3] = 0x5a;
+    expect(persisted.every(byte => byte === 0x5a)).toBe(true);
+
+    await session.close();
+    expect(opened.rootKey.isDestroyed()).toBe(true);
+  });
+
   it("publishes sparse file writes and truncation through a prepared writable", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
@@ -1751,12 +1836,17 @@ describe("HizoFS worker composition root", () => {
     await writable.write({ data: new TextEncoder().encode("abcdef"), position: 0 });
     await writable.write({ data: new TextEncoder().encode("XY"), position: sparseOffset });
     await writable.write({ data: new TextEncoder().encode("ZZ"), position: 2 });
-    await writable.truncate({ size: sparseOffset + 1 });
+    // The first exact-tail append re-establishes the proof after the non-tail
+    // writes; the second is held by the mutation-local extent overlay. Truncate
+    // must materialize that overlay before preserving the first tail byte.
+    await writable.write({ data: Uint8Array.of("T".charCodeAt(0)), position: sparseOffset + 2 });
+    await writable.write({ data: Uint8Array.of("U".charCodeAt(0)), position: sparseOffset + 3 });
+    await writable.truncate({ size: sparseOffset + 3 });
     await writable.close();
 
-    expect(await file.stat()).toMatchObject({ size: sparseOffset + 1 });
+    expect(await file.stat()).toMatchObject({ size: sparseOffset + 3 });
     const readable = await file.openReadable({ mimeType: "application/octet-stream" });
-    const bytes = new Uint8Array(sparseOffset + 1);
+    const bytes = new Uint8Array(sparseOffset + 3);
     expect(await readable.read({
       buffer: bytes,
       length: bytes.byteLength,
@@ -1768,11 +1858,13 @@ describe("HizoFS worker composition root", () => {
     expect(new TextDecoder().decode(bytes.subarray(0, 6))).toBe("abZZef");
     expect(bytes.subarray(6, sparseOffset).every(byte => byte === 0)).toBe(true);
     expect(bytes[sparseOffset]).toBe("X".charCodeAt(0));
+    expect(bytes[sparseOffset + 1]).toBe("Y".charCodeAt(0));
+    expect(bytes[sparseOffset + 2]).toBe("T".charCodeAt(0));
 
     const aborted = await file.createWritable({ keepExistingData: true });
     await aborted.write({ data: Uint8Array.of(255), position: 0 });
     await aborted.abort({ reason: "test abort" });
-    expect(await file.stat()).toMatchObject({ size: sparseOffset + 1 });
+    expect(await file.stat()).toMatchObject({ size: sparseOffset + 3 });
 
     await session.sync();
     await session.close();
@@ -1789,13 +1881,15 @@ describe("HizoFS worker composition root", () => {
       const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
       try {
         const persisted = await resources.namespace.readFile({
-          length: BigInt(sparseOffset + 1),
+          length: BigInt(sparseOffset + 3),
           offset: 0n,
           pathComponents: ["sparse.bin"],
         });
         expect(new TextDecoder().decode(persisted.subarray(0, 6))).toBe("abZZef");
         expect(persisted.subarray(6, sparseOffset).every(byte => byte === 0)).toBe(true);
         expect(persisted[sparseOffset]).toBe("X".charCodeAt(0));
+        expect(persisted[sparseOffset + 1]).toBe("Y".charCodeAt(0));
+        expect(persisted[sparseOffset + 2]).toBe("T".charCodeAt(0));
       } finally {
         await resources.releaseResources();
       }
@@ -2526,7 +2620,7 @@ describe("HizoFS worker composition root", () => {
     });
 
     const retained = await host.beginMaintenanceRootCapture();
-    expect(retained.writerDependencyRoots).toHaveLength(1);
+    expect(retained.workingGenerationDependencyRoots).toHaveLength(1);
     retained.release();
     await retained.released;
     expect(host.workingCandidatePublicationState()).toBe("outcome_unknown");
@@ -2536,7 +2630,7 @@ describe("HizoFS worker composition root", () => {
     failResolutionReads = false;
     await session.close();
     const retainedAfterSessionClose = await host.beginMaintenanceRootCapture();
-    expect(retainedAfterSessionClose.writerDependencyRoots).toHaveLength(1);
+    expect(retainedAfterSessionClose.workingGenerationDependencyRoots).toHaveLength(1);
     retainedAfterSessionClose.release();
     await retainedAfterSessionClose.released;
     expect(host.workingCandidatePublicationState()).toBe("outcome_unknown");
@@ -2596,7 +2690,7 @@ describe("HizoFS worker composition root", () => {
     await expect(mutation).rejects.toThrow("HizoFS application session is closed");
     await expect(closing).resolves.toBeUndefined();
     const capture = await host.beginMaintenanceRootCapture();
-    expect(capture.writerDependencyRoots).toEqual([]);
+    expect(capture.workingGenerationDependencyRoots).toEqual([]);
     capture.release();
     await capture.released;
 
@@ -2755,6 +2849,14 @@ describe("HizoFS worker composition root", () => {
     await expect(session.root.getFileHandle({ create: false, name: "accepted.txt" }))
       .resolves.toMatchObject({ name: "accepted.txt" });
     const sameRuntimeReadable = await acceptedFile.openReadable({ mimeType: "application/octet-stream" });
+    expect(sameRuntimeReadable.size).toBe(4);
+
+    const replacementText = "newer!";
+    const replacementBytes = new TextEncoder().encode(replacementText);
+    const replacementWritable = await acceptedFile.createWritable({ keepExistingData: false });
+    await replacementWritable.write({ data: replacementBytes, position: 0 });
+    await replacementWritable.close();
+
     const sameRuntimeBytes = new Uint8Array(4);
     expect(await sameRuntimeReadable.read({
       buffer: sameRuntimeBytes,
@@ -2765,6 +2867,19 @@ describe("HizoFS worker composition root", () => {
     })).toEqual({ bytesRead: 4 });
     await sameRuntimeReadable.close();
     expect(new TextDecoder().decode(sameRuntimeBytes)).toBe("lazy");
+
+    const replacementReadable = await acceptedFile.openReadable({ mimeType: "application/octet-stream" });
+    const replacementReadBytes = new Uint8Array(replacementBytes.byteLength);
+    expect(replacementReadable.size).toBe(replacementBytes.byteLength);
+    expect(await replacementReadable.read({
+      buffer: replacementReadBytes,
+      length: replacementReadBytes.byteLength,
+      offset: 0,
+      position: 0,
+      signal: undefined,
+    })).toEqual({ bytesRead: replacementBytes.byteLength });
+    await replacementReadable.close();
+    expect(new TextDecoder().decode(replacementReadBytes)).toBe(replacementText);
 
     const beforeSync = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
     try {
@@ -2786,14 +2901,14 @@ describe("HizoFS worker composition root", () => {
       const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: afterSync });
       try {
         expect(await resources.namespace.stat({ pathComponents: ["accepted.txt"] })).toMatchObject({
-          fileSize: 4n,
+          fileSize: BigInt(replacementBytes.byteLength),
           kind: "file",
         });
         const persisted = await resources.namespace.readFile({
           offset: 0n,
           pathComponents: ["accepted.txt"],
         });
-        expect(new TextDecoder().decode(persisted)).toBe("lazy");
+        expect(new TextDecoder().decode(persisted)).toBe(replacementText);
       } finally {
         await resources.releaseResources();
       }
@@ -2930,7 +3045,7 @@ describe("HizoFS worker composition root", () => {
       runtimeHost: host,
     });
     expect(captured.counts.activeCommit).toBeGreaterThan(0);
-    expect(captured.counts.writerDependency).toBe(0);
+    expect(captured.counts.workingGenerationDependency).toBe(0);
 
     const afterCapture = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
     try {
@@ -4419,8 +4534,8 @@ describe("HizoFS worker composition root", () => {
           released: Promise.reject(completionFailure),
           sourceSegmentPinnedRoots: [],
           unknownFeatureRoots: [],
-          writerDependencyRoots: [],
-          writerWorkingPageRoots: [],
+          workingGenerationDependencyRoots: [],
+          workingGenerationPageRoots: [],
         },
         operation: async () => {
           throw primary;

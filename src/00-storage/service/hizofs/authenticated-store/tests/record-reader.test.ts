@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
+  createHomeRecordReference,
   decodeFileSystemCommitPayload,
   parseFileSystemId,
+  recordFrameLayoutForPlaintextLength,
   segmentIdToRelativePath,
 } from "@/00-storage/service/hizofs/00-format";
 import { createInitialBootstrapSegment } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
@@ -162,6 +164,41 @@ describe("authenticated Record Frame reader", () => {
     expect(physicalAccessObservations.filter(({ operation, reason }) => (
       operation === "read_exact" && reason === "authenticated_record_resolution"
     ))).toHaveLength(1);
+    rootKey.destroy();
+  });
+
+  it("rejects an oversized Physical Record Reference before paired backend I/O", async () => {
+    const physicalBackend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const created = await createInitialBootstrapSegment({
+      backend: physicalBackend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+    });
+    const paired = pairedReadableBackend({ backend: physicalBackend });
+    const maximumMetadataFrameLength = recordFrameLayoutForPlaintextLength({
+      plaintextLength: HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes,
+    }).frameLength;
+    const oversizedReference = createHomeRecordReference({ fields: {
+      ...created.activeCommitHomeRef,
+      frameLength: maximumMetadataFrameLength + 8,
+    } });
+
+    await expect(readAuthenticatedHomeRecord({
+      backend: paired.backend,
+      fileSystemId,
+      homeReference: oversizedReference,
+      rootKey,
+    })).rejects.toMatchObject({
+      code: "control_plane_corrupt",
+      message: "Physical Record Reference frame length exceeds its V1 bound",
+    });
+    expect(paired.readPair).not.toHaveBeenCalled();
+    expect(paired.legacyReadExact).not.toHaveBeenCalled();
+    expect(paired.legacyReadExactWithFileSize).not.toHaveBeenCalled();
     rootKey.destroy();
   });
 

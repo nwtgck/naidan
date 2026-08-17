@@ -230,6 +230,8 @@ async function readAuthenticatedRelocationPage({
       code: "control_plane_corrupt",
       message: "Relocation Index page decode failed",
     });
+  } finally {
+    record.plaintext.fill(0);
   }
 }
 

@@ -670,6 +670,18 @@ describe('production HizoFS benchmark runtime port', () => {
     // One candidate-owned materialization writer provisions its immutable
     // metadata Segment independently of the originating session writer.
     expect(smallFileWriteRuntime.phases.physical_provision_directory_hierarchy.operationCount).toBe(1);
+    const sequentialWriteRuntime = report.results.find(result => result.caseId === 'sequential_write')
+      ?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime;
+    expect(sequentialWriteRuntime?.type).toBe('measured');
+    if (sequentialWriteRuntime?.type !== 'measured') {
+      throw new Error('sequential-write structural diagnostics are unavailable');
+    }
+    const sequentialWriteOperationCount = Math.ceil(
+      configuration.sequentialIo.fileSizeBytes / configuration.sequentialIo.blockSizeBytes,
+    );
+    expect(sequentialWriteRuntime.segmentWriters.data.appendOperations).toBeGreaterThan(0);
+    expect(sequentialWriteRuntime.segmentWriters.data.appendOperations)
+      .toBeLessThan(sequentialWriteOperationCount);
     const randomWriteSample = report.results.find(result => result.caseId === 'random_write')
       ?.backends.hizofs?.samples[0];
     const randomWriteRuntime = randomWriteSample?.hizoFSDiagnostics?.runtime;
@@ -681,10 +693,12 @@ describe('production HizoFS benchmark runtime port', () => {
       .toBe(configuration.randomAccess.operationCount + 1);
     expect(randomWriteRuntime.indexes.update.inputMutations)
       .toBe(configuration.randomAccess.operationCount + 1);
+    expect(randomWriteRuntime.segmentWriters.data.appendOperations).toBeGreaterThan(0);
     expect(randomWriteRuntime.segmentWriters.data.appendOperations)
-      .toBe(configuration.randomAccess.operationCount);
-    // One prepared writable owns one shared data Segment writer lease. Its
-    // per-block durable appends must not reopen the physical Segment file.
+      .toBeLessThan(configuration.randomAccess.operationCount);
+    // One prepared writable owns one shared data Segment writer lease and
+    // batches bounded File Data records across public write calls. Each
+    // resulting append still uses the canonical sync + exact-readback path.
     expect(randomWriteRuntime.phases.physical_open_file_for_update.operationCount)
       .toBeLessThan(configuration.randomAccess.operationCount / 2);
     expect(randomWriteRuntime.phases.physical_close_file.operationCount)

@@ -1100,8 +1100,8 @@ describe("container runtime", () => {
     expect(value.workingCandidatePublicationState()).toBe("outcome_unknown");
     const capture = await value.beginMaintenanceRootCapture();
     try {
-      expect(capture.writerDependencyRoots).toEqual([materializedCommitReference]);
-      expect(capture.writerWorkingPageRoots).toEqual([
+      expect(capture.workingGenerationDependencyRoots).toEqual([materializedCommitReference]);
+      expect(capture.workingGenerationPageRoots).toEqual([
         staged.workingRootAuthority.rootInodeTableRootHomeRef,
       ]);
     } finally {
@@ -1311,7 +1311,7 @@ describe("container runtime", () => {
     const capture = await value.beginCleanHeadMaintenanceRootCapture();
     expect(publicationAttempts).toBe(1);
     expect(authority.capture().durableAuthority.commitReference).toEqual(working.commitReference);
-    expect(capture.writerDependencyRoots).toEqual([]);
+    expect(capture.workingGenerationDependencyRoots).toEqual([]);
     expect(() => authority.openAcceptedMutationAdmission({
       dirtyMetadataBytes: 1,
       expectedBase: requireMaterializedApplicationGenerationDescriptor({ descriptor: authority.capture() }),
@@ -1461,7 +1461,7 @@ describe("container runtime", () => {
       }),
       successor: working,
     });
-    const unrelatedRoot = value.acquireWriterDependencyRoot({
+    const unrelatedRoot = value.acquireWorkingGenerationDependencyRoot({
       commitReference: commitReference({ offset: 61_504n }),
     });
 
@@ -1597,14 +1597,14 @@ describe("container runtime", () => {
     const inspector = value.acquireInspectorPinnedRoot({ commitReference: commitReference({ offset: 64n }) });
     const source = value.acquireSourceSegmentPinnedRoot({ commitReference: commitReference({ offset: 96n }) });
     const unknown = value.acquireUnknownFeatureRoot({ commitReference: commitReference({ offset: 128n }) });
-    const writer = value.acquireWriterDependencyRoot({ commitReference: commitReference({ offset: 160n }) });
+    const writer = value.acquireWorkingGenerationDependencyRoot({ commitReference: commitReference({ offset: 160n }) });
 
     const capture = await value.beginMaintenanceRootCapture();
     expect(capture.maintenanceRootEpoch).toBe(4);
     expect(capture.inspectorPinnedRoots).toHaveLength(1);
     expect(capture.sourceSegmentPinnedRoots).toHaveLength(1);
     expect(capture.unknownFeatureRoots).toHaveLength(1);
-    expect(capture.writerDependencyRoots).toHaveLength(1);
+    expect(capture.workingGenerationDependencyRoots).toHaveLength(1);
     expect(capture.readerPinnedRoots).toEqual([]);
     expect(() => value.acquireUnknownFeatureRoot({ commitReference: commitReference({ offset: 192n }) }))
       .toThrowError(expect.objectContaining({ code: "registration_blocked" }));
@@ -1799,7 +1799,7 @@ describe("container runtime", () => {
     });
     expect(value.workingCandidatePublicationState()).toBe("installed");
     const installed = await value.beginMaintenanceRootCapture();
-    expect(installed.writerDependencyRoots).toEqual([candidateDurable.commitReference]);
+    expect(installed.workingGenerationDependencyRoots).toEqual([candidateDurable.commitReference]);
     installed.release();
     await installed.released;
     expect(() => value.openWorkingCandidateAdmission({
@@ -1810,7 +1810,7 @@ describe("container runtime", () => {
     expect(admission.selectCandidateForPublication()).toBe(candidate);
     admission.resolve({ outcome: "published" });
     const cleared = await value.beginMaintenanceRootCapture();
-    expect(cleared.writerDependencyRoots).toEqual([]);
+    expect(cleared.workingGenerationDependencyRoots).toEqual([]);
     cleared.release();
     await cleared.released;
     expect(value.workingCandidatePublicationState()).toBe("empty");

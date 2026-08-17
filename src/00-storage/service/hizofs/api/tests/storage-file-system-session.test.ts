@@ -183,6 +183,51 @@ describe("HizoFS StorageFileSystemSession adapter", () => {
     await expect((await session.root.getEntryHandle({ name: "link" })).kind).toBe("symlink");
   });
 
+  it("pages directory iteration through one stable read snapshot", async () => {
+    const livePort = createPort();
+    const snapshotBase = createPort();
+    const pageCalls: Array<readonly [string | undefined, number]> = [];
+    let snapshotCloseCount = 0;
+    const snapshotPort: HizoFSApplicationSessionPort = {
+      ...snapshotBase,
+      close: async () => {
+        snapshotCloseCount += 1;
+      },
+      listDirectoryPage: async ({ afterName, maximumEntries }) => {
+        pageCalls.push([afterName, maximumEntries]);
+        if (afterName === undefined) {
+          return {
+            entries: [
+              { kind: "directory", name: "directory" },
+              { kind: "file", name: "file" },
+            ],
+            truncated: true,
+          };
+        }
+        return { entries: [{ kind: "symlink", name: "link" }], truncated: false };
+      },
+    };
+    const port: HizoFSApplicationSessionPort = {
+      ...livePort,
+      createReadSnapshot: async () => snapshotPort,
+      listDirectory: async () => {
+        throw new Error("live directory must not be materialized");
+      },
+    };
+    const session = createHizoFSStorageFileSystemSession({ port });
+    const entries: Array<readonly [string, string]> = [];
+
+    for await (const [name, handle] of session.root.entries()) entries.push([name, handle.kind]);
+
+    expect(entries).toEqual([
+      ["directory", "directory"],
+      ["file", "file"],
+      ["link", "symlink"],
+    ]);
+    expect(pageCalls).toEqual([[undefined, 128], ["file", 128]]);
+    expect(snapshotCloseCount).toBe(1);
+  });
+
   it("returns existing entries for create-if-missing requests without mutating", async () => {
     const port = createPort();
     const session = createHizoFSStorageFileSystemSession({ port });
@@ -246,6 +291,24 @@ describe("HizoFS StorageFileSystemSession adapter", () => {
     expect(readable.backing).toEqual({ type: "reader_only" });
     expect([...new Uint8Array(await new Response(readable.stream({ start: 1, end: 3, signal: undefined })).arrayBuffer())])
       .toEqual([2, 3]);
+    await readable.close();
+  });
+
+  it("does not materialize an explicit read snapshot for an ordinary readable", async () => {
+    const port = createPort();
+    port.createReadSnapshot = async () => {
+      port.calls.push(["unexpectedCreateReadSnapshotForReadable", undefined]);
+      throw new Error("ordinary readable must not request an explicit read snapshot");
+    };
+    const session = createHizoFSStorageFileSystemSession({ port });
+    const file = await session.root.getFileHandle({ create: false, name: "file" });
+    const readable = await file.openReadable({ mimeType: "application/octet-stream" });
+    const buffer = new Uint8Array(4);
+
+    await expect(readable.read({ buffer, length: 4, offset: 0, position: 0, signal: undefined }))
+      .resolves.toEqual({ bytesRead: 4 });
+    expect([...buffer]).toEqual([1, 2, 3, 4]);
+    expect(port.calls).not.toContainEqual(["unexpectedCreateReadSnapshotForReadable", undefined]);
     await readable.close();
   });
 
@@ -315,6 +378,7 @@ describe("HizoFS StorageFileSystemSession adapter", () => {
 
   it("revokes stale handles and disposes open resources before closing the port", async () => {
     const port = createPort();
+    port.createReadSnapshot = undefined;
     const session = createHizoFSStorageFileSystemSession({ port });
     const file = await session.root.getFileHandle({ create: false, name: "file" });
     const readable = await file.openReadable({ mimeType: "application/octet-stream" });

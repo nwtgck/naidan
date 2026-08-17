@@ -239,8 +239,9 @@ export async function scanAuthenticatedSegmentPrefix({ backend, diagnostics, fil
     if (!segmentFramePaddingIsZero({ body, sealedLength: header.sealedLength })) {
       return { frames, nextOffset: offset, state: "abandoned_unsealed" };
     }
+    let plaintext: Uint8Array | undefined;
     try {
-      await measureAuthenticatedCryptoOperation({
+      plaintext = await measureAuthenticatedCryptoOperation({
         diagnostics,
         operation: "decrypt",
         run: async () => await decryptAuthenticatedRecord({
@@ -257,6 +258,8 @@ export async function scanAuthenticatedSegmentPrefix({ backend, diagnostics, fil
         return { frames, nextOffset: offset, state: "abandoned_unsealed" };
       }
       throw cause;
+    } finally {
+      plaintext?.fill(0);
     }
     frames.push({ header, physicalOffset: offset });
     offset += BigInt(header.frameLength);

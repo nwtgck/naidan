@@ -63,11 +63,11 @@ function identities() {
 function coordinator() {
   const releases: string[] = [];
   const value = new WorkingCandidateCoordinator({
-    acquireWriterDependencyRoot: ({ commitReference }) => ({
+    acquireWorkingGenerationDependencyRoot: ({ commitReference }) => ({
       commitReference,
       release: () => releases.push("released"),
     }),
-    acquireWriterWorkingPageRoot: ({ pageReference }) => ({
+    acquireWorkingGenerationPageRoot: ({ pageReference }) => ({
       pageReference,
       release: () => releases.push("page-released"),
     }),
@@ -182,7 +182,7 @@ describe("working candidate coordinator", () => {
     let registrationIndex = 0;
     const failure = new Error("replaced candidate root release failed");
     const value = new WorkingCandidateCoordinator({
-      acquireWriterDependencyRoot: ({ commitReference }) => {
+      acquireWorkingGenerationDependencyRoot: ({ commitReference }) => {
         const index = registrationIndex;
         registrationIndex += 1;
         return {
@@ -193,7 +193,7 @@ describe("working candidate coordinator", () => {
           },
         };
       },
-      acquireWriterWorkingPageRoot: ({ pageReference }) => ({
+      acquireWorkingGenerationPageRoot: ({ pageReference }) => ({
         pageReference,
         release: () => undefined,
       }),
@@ -419,11 +419,11 @@ describe("working candidate coordinator", () => {
     const releases: string[] = [];
     const commitAcquisitions = vi.fn();
     const value = new WorkingCandidateCoordinator({
-      acquireWriterDependencyRoot: ({ commitReference }) => {
+      acquireWorkingGenerationDependencyRoot: ({ commitReference }) => {
         commitAcquisitions(commitReference);
         return { commitReference, release: () => releases.push("commit") };
       },
-      acquireWriterWorkingPageRoot: ({ pageReference }) => ({
+      acquireWorkingGenerationPageRoot: ({ pageReference }) => ({
         pageReference,
         release: () => releases.push("page"),
       }),
@@ -472,11 +472,11 @@ describe("working candidate coordinator", () => {
   it("acquires replacement staged roots before releasing the previous staged authority", () => {
     const events: string[] = [];
     const value = new WorkingCandidateCoordinator({
-      acquireWriterDependencyRoot: ({ commitReference }) => ({
+      acquireWorkingGenerationDependencyRoot: ({ commitReference }) => ({
         commitReference,
         release: () => events.push("release:commit"),
       }),
-      acquireWriterWorkingPageRoot: ({ pageReference }) => {
+      acquireWorkingGenerationPageRoot: ({ pageReference }) => {
         const offset = pageReference.byteOffset.toString();
         events.push(`acquire:page:${offset}`);
         return {
@@ -579,11 +579,11 @@ describe("working candidate coordinator", () => {
     const rootFailure = new Error("replacement staged root unavailable");
     const releases: string[] = [];
     const value = new WorkingCandidateCoordinator({
-      acquireWriterDependencyRoot: ({ commitReference }) => ({
+      acquireWorkingGenerationDependencyRoot: ({ commitReference }) => ({
         commitReference,
         release: () => releases.push("commit"),
       }),
-      acquireWriterWorkingPageRoot: ({ pageReference }) => {
+      acquireWorkingGenerationPageRoot: ({ pageReference }) => {
         if (pageReference.byteOffset === secondPage.byteOffset) throw rootFailure;
         return { pageReference, release: () => releases.push("first-page") };
       },
@@ -628,11 +628,11 @@ describe("working candidate coordinator", () => {
   it("binds a staged candidate to its exact materialized Commit before publication can complete", () => {
     const releases: string[] = [];
     const value = new WorkingCandidateCoordinator({
-      acquireWriterDependencyRoot: ({ commitReference }) => ({
+      acquireWorkingGenerationDependencyRoot: ({ commitReference }) => ({
         commitReference,
         release: () => releases.push("commit"),
       }),
-      acquireWriterWorkingPageRoot: ({ pageReference }) => ({
+      acquireWorkingGenerationPageRoot: ({ pageReference }) => ({
         pageReference,
         release: () => releases.push("page"),
       }),
@@ -671,11 +671,11 @@ describe("working candidate coordinator", () => {
     const releases: string[] = [];
     const commitAcquisitions = vi.fn();
     const value = new WorkingCandidateCoordinator({
-      acquireWriterDependencyRoot: ({ commitReference }) => {
+      acquireWorkingGenerationDependencyRoot: ({ commitReference }) => {
         commitAcquisitions(commitReference);
         return { commitReference, release: () => releases.push("commit") };
       },
-      acquireWriterWorkingPageRoot: ({ pageReference }) => ({
+      acquireWorkingGenerationPageRoot: ({ pageReference }) => ({
         pageReference,
         release: () => releases.push("page"),
       }),

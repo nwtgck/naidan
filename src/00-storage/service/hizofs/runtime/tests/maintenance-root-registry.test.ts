@@ -37,17 +37,17 @@ describe("maintenance root registry", () => {
     registry.acquireReaderPinnedRoot({ commitReference: commitReference(1), coordinationKey: key });
     registry.acquireSourceSegmentPinnedRoot({ commitReference: commitReference(2), coordinationKey: key });
     registry.acquireInspectorPinnedRoot({ commitReference: commitReference(3), coordinationKey: key });
-    registry.acquireWriterDependencyRoot({ commitReference: commitReference(4), coordinationKey: key });
+    registry.acquireWorkingGenerationDependencyRoot({ commitReference: commitReference(4), coordinationKey: key });
     registry.acquireUnknownFeatureRoot({ commitReference: commitReference(5), coordinationKey: key });
-    registry.acquireWriterWorkingPageRoot({ pageReference: pageReference(6), coordinationKey: key });
+    registry.acquireWorkingGenerationPageRoot({ pageReference: pageReference(6), coordinationKey: key });
 
     const capture = registry.captureRoots({ coordinationKey: key });
     expect(capture.maintenanceRootEpoch).toBe(6);
     expect(capture.rootSets.readerPinnedRoots).toHaveLength(1);
     expect(capture.rootSets.sourceSegmentPinnedRoots).toHaveLength(1);
     expect(capture.rootSets.inspectorPinnedRoots).toHaveLength(1);
-    expect(capture.rootSets.writerDependencyRoots).toHaveLength(1);
-    expect(capture.rootSets.writerWorkingPageRoots).toEqual([pageReference(6)]);
+    expect(capture.rootSets.workingGenerationDependencyRoots).toHaveLength(1);
+    expect(capture.rootSets.workingGenerationPageRoots).toEqual([pageReference(6)]);
     expect(capture.rootSets.unknownFeatureRoots).toHaveLength(1);
     capture.release();
   });
@@ -74,14 +74,14 @@ describe("maintenance root registry", () => {
   it("retains a monotonic epoch after a transient root is released", () => {
     const key = coordinationKey();
     const registry = new MaintenanceRootRegistry({ maxRegistrationsPerContainer: 2 });
-    const registration = registry.acquireWriterDependencyRoot({
+    const registration = registry.acquireWorkingGenerationDependencyRoot({
       commitReference: commitReference(1),
       coordinationKey: key,
     });
     registration.release();
     const capture = registry.captureRoots({ coordinationKey: key });
     expect(capture.maintenanceRootEpoch).toBe(1);
-    expect(capture.rootSets.writerDependencyRoots).toEqual([]);
+    expect(capture.rootSets.workingGenerationDependencyRoots).toEqual([]);
     capture.release();
   });
 
@@ -93,7 +93,7 @@ describe("maintenance root registry", () => {
       commitReference: commitReference(1),
       coordinationKey: key,
     })).toThrowError(expect.objectContaining({ code: "registration_blocked" }));
-    expect(() => registry.acquireWriterWorkingPageRoot({
+    expect(() => registry.acquireWorkingGenerationPageRoot({
       pageReference: pageReference(2),
       coordinationKey: key,
     })).toThrowError(expect.objectContaining({ code: "registration_blocked" }));

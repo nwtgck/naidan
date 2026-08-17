@@ -77,6 +77,41 @@ describe("in-memory cross-realm lock model", () => {
     newPin.release();
   });
 
+  it("blocks maintenance final capture until a concurrently captured reader is pinned", async () => {
+    const port = new InMemoryCrossRealmLockPort();
+    const firstRealm = new CrossRealmLockCoordinator({ lockPort: port, maxHeldLockNames: 64, scopeToken: scopeToken(1) });
+    const secondRealm = new CrossRealmLockCoordinator({ lockPort: port, maxHeldLockNames: 64, scopeToken: scopeToken(1) });
+    const captureStarted = Promise.withResolvers<void>();
+    const continueCapture = Promise.withResolvers<void>();
+    const reference = commitReference(3);
+    const readerPromise = firstRealm.captureAndAcquireReaderPin({
+      capture: async () => {
+        captureStarted.resolve();
+        await continueCapture.promise;
+        return { commitReference: reference, value: "captured" as const };
+      },
+    });
+    await captureStarted.promise;
+
+    let maintenanceResolved = false;
+    const maintenancePromise = secondRealm.beginMaintenance().then(value => {
+      maintenanceResolved = true;
+      return value;
+    });
+    await flushMicrotasks();
+    expect(maintenanceResolved).toBe(false);
+
+    continueCapture.resolve();
+    const reader = await readerPromise;
+    const maintenance = await maintenancePromise;
+    expect(reader.value).toBe("captured");
+    expect(maintenance.pinnedCommitReferences).toEqual([reference]);
+    maintenance.release();
+    await maintenance.released;
+    reader.pin.release();
+    await reader.pin.released;
+  });
+
   it("reports a busy exclusive lock without enqueuing a non-blocking request", async () => {
     const port = new InMemoryCrossRealmLockPort();
     const held = await port.acquire({ mode: "exclusive", name: "runtime-owner" });

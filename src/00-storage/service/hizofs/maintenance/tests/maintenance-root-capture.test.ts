@@ -78,8 +78,8 @@ describe("complete maintenance root capture", () => {
         readerPinnedRoots: [roots[2]!],
         relocationIndexRoots: [relocationRoot({ offset: 704n, seed: 8 })],
         unknownFeatureRoots: [roots[5]!],
-        writerDependencyRoots: [roots[4]!],
-        writerWorkingPageRoots: [pageRoot({ offset: 896n, seed: 9 })],
+        workingGenerationDependencyRoots: [roots[4]!],
+        workingGenerationPageRoots: [pageRoot({ offset: 896n, seed: 9 })],
       },
     });
     expect(captured.snapshot.roots).toHaveLength(8);
@@ -99,8 +99,8 @@ describe("complete maintenance root capture", () => {
       readerPinned: 1,
       relocationIndex: 1,
       unknownFeature: 1,
-      writerDependency: 1,
-      writerWorkingPage: 1,
+      workingGenerationDependency: 1,
+      workingGenerationPage: 1,
     });
   });
 
@@ -111,8 +111,8 @@ describe("complete maintenance root capture", () => {
       readerPinnedRoots: [],
       relocationIndexRoots: [],
       unknownFeatureRoots: [],
-      writerDependencyRoots: [],
-      writerWorkingPageRoots: [],
+      workingGenerationDependencyRoots: [],
+      workingGenerationPageRoots: [],
     };
     const oversizedCandidateSnapshot = prepareMaintenanceCandidateSnapshot({
       candidateSegments: [candidate({ seed: 8 }), candidate({ seed: 9 })],

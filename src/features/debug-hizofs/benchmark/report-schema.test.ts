@@ -199,8 +199,8 @@ function createBackingStoreDiagnostics(): HizoFSBenchmarkDiagnostics['backingSto
 
 function createReport(): HizoFSBenchmarkReport {
   return {
-    schemaVersion: 33,
-    benchmarkImplementationVersion: 75,
+    schemaVersion: 35,
+    benchmarkImplementationVersion: 85,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',
@@ -240,6 +240,9 @@ function createReport(): HizoFSBenchmarkReport {
         backingFileHandleCacheEntryLimitPerRuntime: 1024,
         backingFileSnapshotCacheEntryLimitPerRuntime: 128,
         maximumPlaintextChunkWriteBytesInFlightPerWriter: 2 * 1024 * 1024,
+        fileDataAppendBatchFrameByteLimitPerWriter: 4 * 1024 * 1024,
+        fileDataAppendBatchRecordLimitPerWriter: 128,
+        fileExtentMutationBatchEntryLimitPerWriter: 64,
         maximumPlaintextChunkReadBytesInFlightPerReader: 4 * 1024 * 1024,
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,

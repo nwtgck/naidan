@@ -9,7 +9,6 @@ import {
   createSubvolumeId,
   createUInt64,
   decodeFileSystemCommitPayload,
-  decodeInodeLeafPage,
   encodeFileSystemCommitPayload,
   encodeInodeLeafPage,
   encodeRecordFrameHeader,
@@ -22,6 +21,8 @@ import {
   type FileSystemCommitPayload,
   type FileSystemId,
   type HomeRecordReference,
+  type InodeLeafEntry,
+  type InodeNumber,
   type MutationId,
   type PhysicalRecordReference,
   type RecordFrameHeaderV1,
@@ -56,6 +57,8 @@ import {
   type AuthenticatedStoreDiagnosticsPort,
 } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import { authenticatedSegmentPath, segmentIdIsUsedAcrossClasses } from "./segment-location";
+import { readAuthenticatedInodeTablePage } from "./inode-table-page-store";
+import { runtimeHomeRecordReferenceIdentity } from "./runtime-home-record-reference-identity";
 import { createAuthenticatedWholeFile } from "./whole-file";
 
 export type InitialBootstrapAuthority = Readonly<{
@@ -381,31 +384,88 @@ export async function readBootstrapRoot({
       code: "control_plane_corrupt",
       message: "Commit payload or authority validation failed",
     });
+  } finally {
+    commitRecord.plaintext.fill(0);
   }
-  const inodeRecord = await resolveAuthenticatedHomeRecord({
-    backend,
-    diagnostics,
-    fileSystemId,
-    homeReference: commit.rootInodeTableRootHomeRef,
-    relocationIndexRootPhysicalRef,
-    rootKey,
-  });
-  let inodePage: ReturnType<typeof decodeInodeLeafPage>;
+  let rootEntry: InodeLeafEntry | undefined;
   try {
-    inodePage = measureAuthenticatedCodecOperation({
-      diagnostics,
-      format: "record",
-      operation: "decode",
-      run: () => decodeInodeLeafPage({ bytes: inodeRecord.plaintext, isRoot: true }),
-    });
+    const visited = new Set<string>();
+    let reference = commit.rootInodeTableRootHomeRef;
+    let isRoot = true;
+    let expectedLevel: number | undefined;
+    let expectedUpperBound: InodeNumber | undefined;
+    for (;;) {
+      const identity = runtimeHomeRecordReferenceIdentity({ reference });
+      if (visited.has(identity)) throw new TypeError("root Inode Table contains a cycle");
+      visited.add(identity);
+      const page = await readAuthenticatedInodeTablePage({
+        backend,
+        diagnostics,
+        fileSystemId,
+        homeReference: reference,
+        isRoot,
+        relocationIndexRootPhysicalRef,
+        rootKey,
+      });
+      if (expectedLevel !== undefined && page.level !== expectedLevel) {
+        throw new TypeError("root Inode Table child level does not equal parent level minus one");
+      }
+      let pageMaximum: InodeNumber | undefined;
+      switch (page.type) {
+      case "leaf": pageMaximum = page.entries.at(-1)?.inodeNumber; break;
+      case "branch": pageMaximum = page.entries.at(-1)?.upperBound; break;
+      default: page satisfies never;
+      }
+      if (expectedUpperBound !== undefined && pageMaximum !== expectedUpperBound) {
+        throw new TypeError("root Inode Table child upper bound does not match its subtree maximum");
+      }
+      switch (page.type) {
+      case "leaf": {
+        let low = 0;
+        let high = page.entries.length;
+        while (low < high) {
+          const middle = low + Math.floor((high - low) / 2);
+          const middleEntry = page.entries[middle];
+          if (middleEntry === undefined) throw new Error("Inode Table leaf binary-search invariant failed");
+          if (middleEntry.inodeNumber < commit.rootDirectoryInodeNumber) low = middle + 1;
+          else high = middle;
+        }
+        const candidate = page.entries[low];
+        rootEntry = candidate?.inodeNumber === commit.rootDirectoryInodeNumber ? candidate : undefined;
+        break;
+      }
+      case "branch": {
+        let low = 0;
+        let high = page.entries.length;
+        while (low < high) {
+          const middle = low + Math.floor((high - low) / 2);
+          const middleEntry = page.entries[middle];
+          if (middleEntry === undefined) throw new Error("Inode Table branch binary-search invariant failed");
+          if (middleEntry.upperBound < commit.rootDirectoryInodeNumber) low = middle + 1;
+          else high = middle;
+        }
+        const child = page.entries[low];
+        if (child === undefined) {
+          rootEntry = undefined;
+          break;
+        }
+        reference = child.childPageHomeRef;
+        isRoot = false;
+        expectedLevel = page.level - 1;
+        expectedUpperBound = child.upperBound;
+        continue;
+      }
+      default: page satisfies never;
+      }
+      break;
+    }
   } catch (cause: unknown) {
     throw authenticatedStoreError({
       cause,
       code: "control_plane_corrupt",
-      message: "root Inode Table decode failed",
+      message: "root Inode Table traversal failed",
     });
   }
-  const rootEntry = inodePage.entries.find(entry => entry.inodeNumber === commit.rootDirectoryInodeNumber);
   if (rootEntry === undefined || rootEntry.inodeKind !== "directory") {
     throw authenticatedStoreError({
       code: "control_plane_corrupt",

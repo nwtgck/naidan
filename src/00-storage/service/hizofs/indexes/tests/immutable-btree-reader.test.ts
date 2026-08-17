@@ -92,6 +92,30 @@ describe("immutable B-tree reader", () => {
     ]);
   });
 
+  it("continues a floor seek without repeating the located path", async () => {
+    const observations: ImmutableBTreeDiagnosticsObservation[] = [];
+    const index = reader({
+      operationDiagnostics: {
+        recordIndexOperation: observation => observations.push(observation),
+      },
+      pages: twoLeafTree(),
+    });
+
+    const located = await index.seekFloorWithEntries({ key: 25, rootReference: "root" });
+    expect(located.floor).toEqual({ key: 20, value: "twenty" });
+    const entries: Entry[] = [];
+    for await (const entry of located.entries) entries.push(entry);
+    expect(entries).toEqual([
+      { key: 20, value: "twenty" },
+      { key: 30, value: "thirty" },
+      { key: 50, value: "fifty" },
+    ]);
+    expect(observations.map(observation => [observation.operation, observation.structural.pageReads])).toEqual([
+      ["seek_floor", 3],
+      ["entries_from_floor", 0],
+    ]);
+  });
+
   it("validates levels, exact upper bounds, disjoint ranges, and duplicate page references", async () => {
     const valid = reader({ pages: twoLeafTree() });
     await expect(valid.validateStructure({ rootReference: "root" })).resolves.toEqual({

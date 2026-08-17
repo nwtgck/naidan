@@ -17,8 +17,8 @@ export type CompleteMaintenanceRootSets = Readonly<{
   readerPinnedRoots: readonly HomeRecordReference[];
   relocationIndexRoots: readonly PhysicalRecordReference[];
   unknownFeatureRoots: readonly HomeRecordReference[];
-  writerDependencyRoots: readonly HomeRecordReference[];
-  writerWorkingPageRoots: readonly HomeRecordReference[];
+  workingGenerationDependencyRoots: readonly HomeRecordReference[];
+  workingGenerationPageRoots: readonly HomeRecordReference[];
 }>;
 
 export type MaintenanceRootCategoryCounts = Readonly<{
@@ -28,8 +28,8 @@ export type MaintenanceRootCategoryCounts = Readonly<{
   readerPinned: number;
   relocationIndex: number;
   unknownFeature: number;
-  writerDependency: number;
-  writerWorkingPage: number;
+  workingGenerationDependency: number;
+  workingGenerationPage: number;
 }>;
 
 export type CompleteMaintenanceRootCapture = Readonly<{
@@ -59,8 +59,8 @@ function rootCount({ rootSets }: { rootSets: CompleteMaintenanceRootSets }): num
     + rootSets.readerPinnedRoots.length
     + rootSets.relocationIndexRoots.length
     + rootSets.unknownFeatureRoots.length
-    + rootSets.writerDependencyRoots.length
-    + rootSets.writerWorkingPageRoots.length;
+    + rootSets.workingGenerationDependencyRoots.length
+    + rootSets.workingGenerationPageRoots.length;
 }
 
 function logicalItems({ references }: { references: readonly HomeRecordReference[] }) {
@@ -108,8 +108,8 @@ export function captureCompleteMaintenanceRoots({
     readerPinned: rootSets.readerPinnedRoots.length,
     relocationIndex: rootSets.relocationIndexRoots.length,
     unknownFeature: rootSets.unknownFeatureRoots.length,
-    writerDependency: rootSets.writerDependencyRoots.length,
-    writerWorkingPage: rootSets.writerWorkingPageRoots.length,
+    workingGenerationDependency: rootSets.workingGenerationDependencyRoots.length,
+    workingGenerationPage: rootSets.workingGenerationPageRoots.length,
   });
   return Object.freeze({
     counts,
@@ -121,8 +121,8 @@ export function captureCompleteMaintenanceRoots({
         ...logicalItems({ references: rootSets.fallbackCommitRoots }),
         ...logicalItems({ references: rootSets.readerPinnedRoots }),
         ...logicalItems({ references: rootSets.inspectorPinnedRoots }),
-        ...logicalItems({ references: rootSets.writerDependencyRoots }),
-        ...logicalRootPageItems({ references: rootSets.writerWorkingPageRoots }),
+        ...logicalItems({ references: rootSets.workingGenerationDependencyRoots }),
+        ...logicalRootPageItems({ references: rootSets.workingGenerationPageRoots }),
         ...logicalItems({ references: rootSets.unknownFeatureRoots }),
         ...rootSets.relocationIndexRoots.map(reference => createPhysicalRelocationMaintenanceTraversalItem({
           pageRole: "root",

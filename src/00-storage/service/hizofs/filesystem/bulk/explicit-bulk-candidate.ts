@@ -1,5 +1,5 @@
 import {
-  compareUnsignedBytes,
+  compareFilenameComponentsByUtf8,
   createFileOffset,
   createInodeNumber,
   createInodeRevision,
@@ -67,10 +67,7 @@ function compareDirectoryEntries({ left, right }: {
   left: DirectoryLeafEntry;
   right: DirectoryLeafEntry;
 }): number {
-  return compareUnsignedBytes({
-    left: encodeFilenameComponent({ value: left.name }),
-    right: encodeFilenameComponent({ value: right.name }),
-  });
+  return compareFilenameComponentsByUtf8({ left: left.name, right: right.name });
 }
 
 function cloneFile({ file }: { file: FileInodeEntry }): FileInodeEntry {

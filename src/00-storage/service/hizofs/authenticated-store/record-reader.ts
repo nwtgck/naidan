@@ -2,6 +2,7 @@ import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   createPhysicalRecordReference,
   decodeRecordFrameHeader,
+  recordFrameLayoutForPlaintextLength,
   segmentClassForRecordKind,
   validatePhysicalOnlyRecordIdentity,
   validateRelocationMapping,
@@ -50,6 +51,20 @@ function plaintextMaximumBytes({ recordKind }: { recordKind: number }): number {
   return recordKind === HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data
     ? HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes
     : HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes;
+}
+
+function validatePhysicalReferenceFrameBound({ physicalReference }: {
+  physicalReference: PhysicalRecordReference;
+}): void {
+  const maximumFrameLength = recordFrameLayoutForPlaintextLength({
+    plaintextLength: plaintextMaximumBytes({ recordKind: physicalReference.recordKind }),
+  }).frameLength;
+  if (physicalReference.frameLength > maximumFrameLength) {
+    throw authenticatedStoreError({
+      code: "control_plane_corrupt",
+      message: "Physical Record Reference frame length exceeds its V1 bound",
+    });
+  }
 }
 
 function validateReferenceAndHeader({ expectedIdentity, header, physicalReference }: {
@@ -176,6 +191,7 @@ export async function readAuthenticatedPhysicalRecord({
   physicalReference: PhysicalRecordReference;
   rootKey: FileSystemRootKey;
 }): Promise<AuthenticatedRecordRead> {
+  validatePhysicalReferenceFrameBound({ physicalReference });
   const pairedRead = await readDescriptorAndFrameFromSingleSnapshot({
     backend,
     diagnostics,

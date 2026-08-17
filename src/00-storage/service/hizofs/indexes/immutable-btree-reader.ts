@@ -27,6 +27,11 @@ export type ImmutableBTreePageReader<TKey, TEntry, TReference> = ({ isRoot, refe
   reference: TReference;
 }>) => Promise<ImmutableBTreePage<TKey, TEntry, TReference>>;
 
+export type ImmutableBTreeFloorScan<TEntry> = Readonly<{
+  entries: AsyncIterable<TEntry>;
+  floor: TEntry | undefined;
+}>;
+
 type BranchCursorFrame<TKey, TReference> = Readonly<{
   page: ImmutableBTreeBranchPage<TKey, TReference>;
   pageReferenceIdentity: string;
@@ -271,6 +276,25 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     });
   }
 
+  async seekFloorWithEntries({ key, rootReference }: {
+    key: TKey;
+    rootReference: TReference;
+  }): Promise<ImmutableBTreeFloorScan<TEntry>> {
+    const located = await measureImmutableBTreeOperation({
+      diagnostics: this.operationDiagnostics,
+      operation: "seek_floor",
+      run: async ({ structural }) => await this.locateFloorCursor({ key, rootReference, structural }),
+    });
+    return Object.freeze({
+      entries: measureImmutableBTreeIteration({
+        diagnostics: this.operationDiagnostics,
+        operation: "entries_from_floor",
+        run: ({ structural }) => this.entriesFromLocatedFloorInternal({ located, structural }),
+      }),
+      floor: located.cursor?.leaf.entries[located.cursor.entryIndex],
+    });
+  }
+
   private async nextLeaf({ cursor, structural, visited }: {
     cursor: LeafCursor<TKey, TEntry, TReference>;
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
@@ -331,12 +355,25 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
     structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
   }): AsyncIterable<TEntry> {
     const located = await this.locateFloorCursor({ key, rootReference, structural });
+    yield* this.entriesFromLocatedFloorInternal({ located, structural });
+  }
+
+  private async *entriesFromLocatedFloorInternal({ located, structural }: {
+    located: Readonly<{
+      cursor?: LeafCursor<TKey, TEntry, TReference>;
+      firstCandidate?: LeafCursor<TKey, TEntry, TReference>;
+    }>;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
+  }): AsyncIterable<TEntry> {
     let cursor = located.cursor ?? located.firstCandidate;
     if (cursor === undefined) return;
-    const visited = new Set<string>([
-      ...cursor.stack.map((frame) => frame.pageReferenceIdentity),
-      cursor.leafReferenceIdentity,
-    ]);
+    let firstCandidate = located.cursor === undefined ? undefined : located.firstCandidate;
+    const visited = new Set<string>();
+    for (const alreadyRead of [located.cursor, located.firstCandidate]) {
+      if (alreadyRead === undefined) continue;
+      for (const frame of alreadyRead.stack) visited.add(frame.pageReferenceIdentity);
+      visited.add(alreadyRead.leafReferenceIdentity);
+    }
     let previousKey: TKey | undefined;
     while (cursor !== undefined) {
       for (let index = cursor.entryIndex; index < cursor.leaf.entries.length; index += 1) {
@@ -348,6 +385,14 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
         }
         previousKey = entryKey;
         yield entry;
+      }
+      if (firstCandidate !== undefined) {
+        // WHY: locateFloorCursor already authenticated this candidate while
+        // proving that the previous leaf contains the floor entry. Reuse that
+        // exact page instead of issuing the same immutable read a second time.
+        cursor = firstCandidate;
+        firstCandidate = undefined;
+        continue;
       }
       cursor = await this.nextLeaf({ cursor, structural, visited });
     }

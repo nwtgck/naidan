@@ -219,7 +219,13 @@ describe("authenticated read-only HizoFS namespace", () => {
       offset: 1n,
       pathComponents: ["data.bin"],
     })).toEqual(new Uint8Array([2, 3, 4, 5, 6, 7]));
-    expect(recordIndexOperation.mock.calls.some(([observation]) => observation.operation === "entries_from_floor")).toBe(true);
+    const multiExtentTraversal = recordIndexOperation.mock.calls
+      .map(([observation]) => observation)
+      .filter(observation => observation.operation === "seek_floor" || observation.operation === "entries_from_floor");
+    expect(multiExtentTraversal.map(observation => [observation.operation, observation.structural.pageReads])).toEqual([
+      ["seek_floor", 1],
+      ["entries_from_floor", 0],
+    ]);
 
     recordIndexOperation.mockClear();
     expect(await namespace.readFile({

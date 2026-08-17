@@ -34,6 +34,77 @@ describe("read-only namespace validation cache", () => {
     await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined]);
   });
 
+  it("bounds distinct pending validations by cache capacity", async () => {
+    const cache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 1 });
+    const first = reference({ offset: 128n });
+    const second = reference({ offset: 192n });
+    let releaseFirst: (() => void) | undefined;
+    const firstValidation = vi.fn(async () => await new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    }));
+    const secondValidation = vi.fn(async () => undefined);
+
+    const firstPending = cache.validate({ kind: "inode_table", reference: first, validate: firstValidation });
+    await vi.waitFor(() => expect(firstValidation).toHaveBeenCalledTimes(1));
+    const secondPending = cache.validate({ kind: "inode_table", reference: second, validate: secondValidation });
+    await Promise.resolve();
+    expect(secondValidation).not.toHaveBeenCalled();
+
+    releaseFirst?.();
+    await expect(firstPending).resolves.toBeUndefined();
+    await expect(secondPending).resolves.toBeUndefined();
+    expect(secondValidation).toHaveBeenCalledTimes(1);
+  });
+
+  it("coalesces the same root after waiting for saturated capacity", async () => {
+    const cache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 1 });
+    const blocker = reference({ offset: 256n });
+    const waiting = reference({ offset: 320n });
+    let releaseBlocker: (() => void) | undefined;
+    const blockerValidation = vi.fn(async () => await new Promise<void>((resolve) => {
+      releaseBlocker = resolve;
+    }));
+    const waitingValidation = vi.fn(async () => undefined);
+
+    const blockerPending = cache.validate({ kind: "inode_table", reference: blocker, validate: blockerValidation });
+    await vi.waitFor(() => expect(blockerValidation).toHaveBeenCalledTimes(1));
+    const firstWaiting = cache.validate({ kind: "inode_table", reference: waiting, validate: waitingValidation });
+    const secondWaiting = cache.validate({ kind: "inode_table", reference: waiting, validate: waitingValidation });
+    await Promise.resolve();
+    expect(waitingValidation).not.toHaveBeenCalled();
+
+    releaseBlocker?.();
+    await expect(Promise.all([blockerPending, firstWaiting, secondWaiting])).resolves.toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(waitingValidation).toHaveBeenCalledTimes(1);
+  });
+
+  it("admits a waiting root after saturated validation fails without sharing that failure", async () => {
+    const cache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 1 });
+    const first = reference({ offset: 256n });
+    const second = reference({ offset: 320n });
+    const failure = new Error("invalid first tree");
+    let rejectFirst: (() => void) | undefined;
+    const firstValidation = vi.fn(async () => await new Promise<void>((_resolve, reject) => {
+      rejectFirst = () => reject(failure);
+    }));
+    const secondValidation = vi.fn(async () => undefined);
+
+    const firstPending = cache.validate({ kind: "inode_table", reference: first, validate: firstValidation });
+    await vi.waitFor(() => expect(firstValidation).toHaveBeenCalledTimes(1));
+    const secondPending = cache.validate({ kind: "inode_table", reference: second, validate: secondValidation });
+    await Promise.resolve();
+    expect(secondValidation).not.toHaveBeenCalled();
+
+    rejectFirst?.();
+    await expect(firstPending).rejects.toBe(failure);
+    await expect(secondPending).resolves.toBeUndefined();
+    expect(secondValidation).toHaveBeenCalledTimes(1);
+  });
+
   it("does not retain failed validation", async () => {
     const cache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 2 });
     const root = reference({ offset: 128n });

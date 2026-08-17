@@ -80,7 +80,8 @@ describe("authenticated maintenance record reader", () => {
   it("returns the current authenticated physical mapping for a logical record", async () => {
     const home = homeReference({ kind: KINDS.file_data });
     const current = physicalReference({ kind: KINDS.file_data, seed: 9 });
-    const readPort = port({ logical: authenticatedRead({ physicalReference: current, plaintext: new Uint8Array([1, 2]) }) });
+    const plaintext = new Uint8Array([1, 2]);
+    const readPort = port({ logical: authenticatedRead({ physicalReference: current, plaintext }) });
     const reader = createMaintenanceRecordReaderFromAuthenticatedPort({ port: readPort });
 
     await expect(reader.readRecord({
@@ -92,6 +93,7 @@ describe("authenticated maintenance record reader", () => {
     });
     expect(readPort.readLogicalRecord).toHaveBeenCalledWith({ reference: home });
     expect(readPort.readPhysicalRecord).not.toHaveBeenCalled();
+    expect(plaintext).toEqual(new Uint8Array(2));
   });
 
   it("marks the current relocated physical frame for a reachable logical record", async () => {
@@ -162,15 +164,17 @@ describe("authenticated maintenance record reader", () => {
     ]);
     expect(readPort.readPhysicalRecord).toHaveBeenCalledWith({ reference: root });
     expect(readPort.readLogicalRecord).not.toHaveBeenCalled();
+    expect(plaintext.every(byte => byte === 0)).toBe(true);
   });
 
   it("rejects a physical reader result for a different frame", async () => {
     const requested = physicalReference({ kind: KINDS.relocation_index_page, seed: 5 });
     const returned = physicalReference({ kind: KINDS.relocation_index_page, seed: 6 });
+    const plaintext = encodeRelocationIndexPage({ isRoot: true, page: { entries: [], level: 0, type: "leaf" } });
     const readPort = port({
       physical: authenticatedRead({
         physicalReference: returned,
-        plaintext: encodeRelocationIndexPage({ isRoot: true, page: { entries: [], level: 0, type: "leaf" } }),
+        plaintext,
       }),
     });
     const reader = createMaintenanceRecordReaderFromAuthenticatedPort({ port: readPort });
@@ -178,5 +182,6 @@ describe("authenticated maintenance record reader", () => {
     await expect(reader.readRecord({
       item: createPhysicalRelocationMaintenanceTraversalItem({ pageRole: "root", reference: requested }),
     })).rejects.toThrowError("different physical record");
+    expect(plaintext.every(byte => byte === 0)).toBe(true);
   });
 });

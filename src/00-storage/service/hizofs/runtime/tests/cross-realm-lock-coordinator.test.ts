@@ -235,6 +235,10 @@ describe("cross-realm lock coordinator", () => {
     const coordinator = new CrossRealmLockCoordinator({ lockPort: port, maxHeldLockNames: 64, scopeToken: token });
     const maintenance = await coordinator.beginMaintenance();
     expect(maintenance.pinnedCommitReferences).toHaveLength(1);
+    expect(port.acquisitions.slice(0, 2)).toEqual([
+      expect.objectContaining({ mode: "exclusive", name: expect.stringContaining("reader-registration") }),
+      expect.objectContaining({ mode: "exclusive", name: expect.stringContaining("authority") }),
+    ]);
     expect([...port.held.keys()].some(name => name.includes("reader-registration"))).toBe(true);
     maintenance.release();
     maintenance.release();

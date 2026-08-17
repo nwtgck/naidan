@@ -8,6 +8,8 @@ import {
   segmentIdToRelativePath,
   type SegmentClass,
 } from '@/00-storage/service/hizofs/00-format';
+import { HIZOFS_FILE_DATA_APPEND_BATCH_RESOURCE_LIMITS } from '@/00-storage/service/hizofs/authenticated-store/file-data-append-batch';
+import { DEFAULT_FILE_CONTENT_MUTATION_LIMITS } from '@/00-storage/service/hizofs/filesystem/file/file-content-mutation';
 import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics';
 import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics';
 import {
@@ -45,7 +47,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 75 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 85 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -377,7 +379,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 33,
+    schemaVersion: 35,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -424,6 +426,12 @@ async function runHizoFSBenchmarkWithLockHeld({
         maximumPlaintextChunkWriteBytesInFlightPerWriter:
           hizoFSPolicy.fileChunkSize
           * hizoFSPolicy.fileChunkWriteConcurrency,
+        fileDataAppendBatchFrameByteLimitPerWriter:
+          HIZOFS_FILE_DATA_APPEND_BATCH_RESOURCE_LIMITS.maximumPendingFrameBytes,
+        fileDataAppendBatchRecordLimitPerWriter:
+          HIZOFS_FILE_DATA_APPEND_BATCH_RESOURCE_LIMITS.maximumPendingRecords,
+        fileExtentMutationBatchEntryLimitPerWriter:
+          DEFAULT_FILE_CONTENT_MUTATION_LIMITS.maximumExtentMutationsPerBatch,
         maximumPlaintextChunkReadBytesInFlightPerReader:
           hizoFSPolicy.fileChunkSize
           * hizoFSPolicy.fileChunkReadPrefetchConcurrency,
