@@ -4,7 +4,6 @@ import {
   createFileOffset,
   decodeCommonPageHeader,
   decodeDirectoryPage,
-  decodeFileDataPayload,
   decodeFileExtentPage,
   decodeIndexedInodeLeafEntry,
   decodeInodeBranchPage,
@@ -218,30 +217,21 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
         copyStart: bigint;
         extent: FileExtentLeafEntry;
       }): Promise<void> => {
-        const record = await recordSource.readHomeRecord({ reference: extent.fileDataHomeRef });
-        try {
-          if (record.recordKind !== HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_data) {
-            throw new TypeError("file extent references a non-File-Data Record");
-          }
-          const payload = recordSource.decodeRecordPayload({
-            decode: () => decodeFileDataPayload({ bytes: record.plaintext }),
-          });
-          try {
-            validateExtentAgainstReferencedData({
-              entry: extent,
-              fileDataPlaintextLength: payload.bytes.byteLength,
-              inodeFileSize: inode.fileSize,
-            });
-            const sourceStart = extent.dataOffset + Number(copyStart - extent.fileOffset);
-            const sourceEnd = sourceStart + Number(copyEnd - copyStart);
-            const destinationStart = Number(copyStart - offset);
-            output.set(payload.bytes.subarray(sourceStart, sourceEnd), destinationStart);
-          } finally {
-            payload.bytes.fill(0);
-          }
-        } finally {
-          record.plaintext.fill(0);
-        }
+        const sourceStart = extent.dataOffset + Number(copyStart - extent.fileOffset);
+        const sourceLength = Number(copyEnd - copyStart);
+        const destinationStart = Number(copyStart - offset);
+        await recordSource.copyFileDataRange({
+          destination: output,
+          destinationOffset: destinationStart,
+          reference: extent.fileDataHomeRef,
+          sourceLength,
+          sourceOffset: sourceStart,
+          validatePlaintextLength: ({ plaintextLength }) => validateExtentAgainstReferencedData({
+            entry: extent,
+            fileDataPlaintextLength: plaintextLength,
+            inodeFileSize: inode.fileSize,
+          }),
+        });
       };
 
       const extentScan = await extentReader.seekFloorWithEntries({
@@ -374,6 +364,7 @@ export function createAuthenticatedReadOnlyNamespace({
     lookupDirectoryEntry: _lookupDirectoryEntry,
     readFile,
     readlink,
+    resolveDirectoryWithAncestors: _resolveDirectoryWithAncestors,
     resolveInode: _resolveInode,
     resolveInodeByNumber: _resolveInodeByNumber,
     stat,

@@ -189,6 +189,65 @@ describe('production HizoFS benchmark runtime port', () => {
   }, 15_000);
 
 
+  it('reuses authenticated File Data plaintext across small reads of one physical Record', async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
+    const configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });
+    const runtime = await createProductionHizoFSBenchmarkRuntimePort().createRuntime({
+      backingDirectory: root as unknown as FileSystemDirectoryHandle,
+      policy: createBenchmarkRuntimePolicy({ configuration }),
+    });
+    try {
+      const file = await runtime.session.root.getFileHandle({ name: 'cached-file-data.bin', create: true });
+      const writable = await file.createWritable({ keepExistingData: false });
+      const payload = new Uint8Array(1024 * 1024);
+      for (let index = 0; index < payload.byteLength; index += 1) payload[index] = index % 251;
+      await writable.write({ position: 0, data: payload });
+      await writable.close();
+
+      const before = runtime.diagnostics.snapshot();
+      expect(before.type).toBe('measured');
+      if (before.type !== 'measured') throw new Error('production diagnostics are unavailable');
+
+      const readRange = async ({ end, start }: { end: number; start: number }): Promise<Uint8Array> => {
+        const readable = await file.openReadable({ mimeType: 'application/octet-stream' });
+        try {
+          return new Uint8Array(await new Response(readable.stream({
+            start,
+            end,
+            signal: undefined,
+          })).arrayBuffer());
+        } finally {
+          await readable.close();
+        }
+      };
+      const first = await readRange({ start: 0, end: 64 * 1024 });
+      const afterFirst = runtime.diagnostics.snapshot();
+      expect(afterFirst.type).toBe('measured');
+      if (afterFirst.type !== 'measured') throw new Error('production diagnostics are unavailable');
+      const second = await readRange({ start: 128 * 1024, end: 192 * 1024 });
+      expect(first).toEqual(payload.subarray(0, 64 * 1024));
+      expect(second).toEqual(payload.subarray(128 * 1024, 192 * 1024));
+
+      const after = runtime.diagnostics.snapshot();
+      expect(after.type).toBe('measured');
+      if (after.type !== 'measured') throw new Error('production diagnostics are unavailable');
+      expect(afterFirst.records.file_data.readOperations - before.records.file_data.readOperations).toBe(1);
+      expect(after.records.file_data.readOperations - afterFirst.records.file_data.readOperations).toBe(0);
+      expect(afterFirst.caches.fileChunk.misses - before.caches.fileChunk.misses).toBe(1);
+      expect(after.caches.fileChunk.misses - afterFirst.caches.fileChunk.misses).toBe(0);
+      expect(after.caches.fileChunk.hits - afterFirst.caches.fileChunk.hits).toBeGreaterThanOrEqual(1);
+      expect(after.caches.fileChunk.currentBytes).toBe(1024 * 1024);
+      expect(after.caches.fileChunk.currentEntries).toBe(1);
+    } finally {
+      await runtime.close();
+    }
+    const afterClose = runtime.diagnostics.snapshot();
+    expect(afterClose.type).toBe('measured');
+    if (afterClose.type !== 'measured') throw new Error('production diagnostics are unavailable');
+    expect(afterClose.caches.fileChunk).toMatchObject({ currentBytes: 0, currentEntries: 0 });
+  }, 15_000);
+
+
   it('reads the staged working file without forcing Commit materialization', async () => {
     const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
     const configuration = createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' });

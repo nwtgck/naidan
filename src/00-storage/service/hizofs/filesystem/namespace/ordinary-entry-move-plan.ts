@@ -28,7 +28,6 @@ export class OrdinaryEntryMovePlanError extends Error {
 }
 
 export type OrdinaryEntryMoveSource = Readonly<{
-  directoryDescendantInodeNumbers: readonly InodeNumber[];
   entry: DirectoryLeafEntry | null;
   parentAccess: SubvolumeAccess;
   parentDirectoryInodeNumber: InodeNumber;
@@ -36,6 +35,7 @@ export type OrdinaryEntryMoveSource = Readonly<{
 }>;
 
 export type OrdinaryEntryMoveDestination = Readonly<{
+  ancestorDirectoryInodeNumbers: readonly InodeNumber[];
   directoryContainsSubvolumeMount: boolean;
   directoryEmpty: boolean;
   entry: DirectoryLeafEntry | null;
@@ -115,10 +115,7 @@ export function prepareOrdinaryEntryMovePlan({ destination, destinationName, rep
   }
 
   const sourceIsDirectory = isDirectoryEntry({ entry: sourceEntry });
-  if (sourceIsDirectory && (
-    sourceEntry.inodeNumber === destination.parentDirectoryInodeNumber
-    || source.directoryDescendantInodeNumbers.includes(destination.parentDirectoryInodeNumber)
-  )) {
+  if (sourceIsDirectory && destination.ancestorDirectoryInodeNumbers.includes(sourceEntry.inodeNumber)) {
     throw new OrdinaryEntryMovePlanError({
       code: "directory_cycle",
       message: "ordinary directory move would create a namespace cycle",

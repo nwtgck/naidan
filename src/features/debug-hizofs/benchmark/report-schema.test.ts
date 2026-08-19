@@ -200,7 +200,7 @@ function createBackingStoreDiagnostics(): HizoFSBenchmarkDiagnostics['backingSto
 function createReport(): HizoFSBenchmarkReport {
   return {
     schemaVersion: 37,
-    benchmarkImplementationVersion: 94,
+    benchmarkImplementationVersion: 97,
     hizofsFormatVersion: 1,
     reportType: 'hizofs_benchmark',
     runId: 'run-id',

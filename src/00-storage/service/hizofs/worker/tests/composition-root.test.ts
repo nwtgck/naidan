@@ -2200,6 +2200,52 @@ describe("HizoFS worker composition root", () => {
     }
   });
 
+  it("does not apply recursive-removal inode budgets to unrelated directory moves", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase: "correct horse battery staple",
+      randomSource,
+      supportedFeatureBits,
+    });
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: runtimeHost(),
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://move-budget-test.hizofs",
+        opened,
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+        randomSource,
+        removalLimits: { deleteBatchSize: 1, maxVisitedInodes: 1 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+
+    const source = await session.root.getDirectoryHandle({ create: true, name: "source" });
+    await source.getFileHandle({ create: true, name: "child.txt" });
+    const destination = await session.root.getDirectoryHandle({ create: true, name: "destination" });
+
+    await expect(session.root.moveEntry({
+      destination,
+      name: "source",
+      newName: "moved",
+      replace: false,
+    })).resolves.toBeUndefined();
+    await expect(destination.getDirectoryHandle({ create: false, name: "moved" })).resolves.toBeDefined();
+
+    await session.close();
+    expect(opened.rootKey.isDestroyed()).toBe(true);
+  });
+
   it("publishes whole-file reflinks and preserves Copy-on-Write isolation across reopen", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();

@@ -61,6 +61,15 @@ export type AuthenticatedMetadataCacheUsageObservation = Readonly<{
   entries: number;
 }>;
 
+export type AuthenticatedFileDataCacheEventObservation = Readonly<{
+  event: "eviction" | "hit" | "miss";
+}>;
+
+export type AuthenticatedFileDataCacheUsageObservation = Readonly<{
+  bytes: number;
+  entries: number;
+}>;
+
 export const AUTHENTICATED_PHYSICAL_ACCESS_REASONS = Object.freeze([
   "append_read_back",
   "authenticated_record_resolution",
@@ -103,6 +112,9 @@ export type AuthenticatedStoreDiagnosticsPort = Readonly<{
     event,
     recordKind,
   }: AuthenticatedMetadataCacheEventObservation) => void;
+  recordFileDataCacheEvent?: ({
+    event,
+  }: AuthenticatedFileDataCacheEventObservation) => void;
   recordPhysicalAccessReason?: ({
     identity,
     operation,
@@ -126,6 +138,10 @@ export type AuthenticatedStoreDiagnosticsPort = Readonly<{
   recordPublicationOperation: ({
     durationMs,
   }: AuthenticatedPublicationDiagnosticsObservation) => void;
+  setFileDataCacheUsage?: ({
+    bytes,
+    entries,
+  }: AuthenticatedFileDataCacheUsageObservation) => void;
   setMetadataCacheUsage?: ({
     scope,
     bytes,

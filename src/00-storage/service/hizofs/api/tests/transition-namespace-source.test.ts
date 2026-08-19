@@ -119,6 +119,11 @@ function fixture(): Readonly<{
       return file.content.bytes.slice(Number(offset), Number(offset + length));
     },
     readlink: async () => symlink.target,
+    resolveDirectoryWithAncestors: async ({ pathComponents }) => {
+      const inode = await resolveInode({ pathComponents });
+      if (inode.inodeKind !== "directory") throw new Error("test path is not a directory");
+      return { ancestorDirectoryInodeNumbers: [rootNumber, inode.inodeNumber], directory: inode };
+    },
     resolveInode,
     resolveInodeByNumber,
     stat: async ({ pathComponents }) => stat({ inode: await resolveInode({ pathComponents }) }),

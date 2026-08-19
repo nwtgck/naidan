@@ -45,6 +45,7 @@ function request({
 }: MoveRequestOptions = {}): MoveRequest {
   return {
     destination: {
+      ancestorDirectoryInodeNumbers: [destinationParentDirectoryInodeNumber],
       directoryContainsSubvolumeMount: false,
       directoryEmpty: true,
       entry: destinationEntry,
@@ -55,7 +56,6 @@ function request({
     destinationName: "destination",
     replace: true,
     source: {
-      directoryDescendantInodeNumbers: [],
       entry: sourceEntry,
       parentAccess: "read_write",
       parentDirectoryInodeNumber: sourceParentDirectoryInodeNumber,
@@ -161,12 +161,12 @@ describe("ordinary entry move planning", () => {
     }))).toThrowError(expect.objectContaining({ code: "directory_cycle" }));
     expect(() => prepareOrdinaryEntryMovePlan({
       ...request({ sourceEntry }),
-      destination: { ...request().destination, parentDirectoryInodeNumber: createInodeNumber({ value: 40n }) },
-      source: {
-        ...request().source,
-        directoryDescendantInodeNumbers: [createInodeNumber({ value: 40n })],
-        entry: sourceEntry,
+      destination: {
+        ...request().destination,
+        ancestorDirectoryInodeNumbers: [sourceEntry.inodeNumber, createInodeNumber({ value: 40n })],
+        parentDirectoryInodeNumber: createInodeNumber({ value: 40n }),
       },
+      source: { ...request().source, entry: sourceEntry },
     })).toThrowError(expect.objectContaining({ code: "directory_cycle" }));
   });
 });

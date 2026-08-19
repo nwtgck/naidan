@@ -16,6 +16,8 @@ import type {
   AuthenticatedPhysicalAccessReason,
   AuthenticatedCodecDiagnosticsObservation,
   AuthenticatedCryptoDiagnosticsObservation,
+  AuthenticatedFileDataCacheEventObservation,
+  AuthenticatedFileDataCacheUsageObservation,
   AuthenticatedMetadataCacheEventObservation,
   AuthenticatedMutationScopeEventObservation,
   AuthenticatedPublicationDiagnosticsObservation,
@@ -641,6 +643,10 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     );
   }
 
+  recordFileDataCacheEvent({ event }: AuthenticatedFileDataCacheEventObservation): void {
+    this.recordCacheEvent({ cache: "fileChunk", event });
+  }
+
   recordMetadataCacheEvent({ event, recordKind, scope = "session" }: AuthenticatedMetadataCacheEventObservation): void {
     this.recordCacheEvent({ cache: metadataCacheDiagnosticName({ scope }), event });
     switch (event) {
@@ -1032,6 +1038,10 @@ class StrictHizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDia
     counter.maximumEntries = Math.max(counter.maximumEntries, currentEntries);
   }
 
+  setFileDataCacheUsage({ bytes, entries }: AuthenticatedFileDataCacheUsageObservation): void {
+    this.setCacheUsage({ bytes, cache: "fileChunk", entries });
+  }
+
   setMetadataCacheUsage({ bytes, entries, scope = "session" }: {
     bytes: number;
     entries: number;
@@ -1165,6 +1175,10 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
     this.record({ operation: () => this.strict.recordIndexOperation({ durationMs, operation, structural }) });
   }
 
+  recordFileDataCacheEvent({ event }: AuthenticatedFileDataCacheEventObservation): void {
+    this.record({ operation: () => this.strict.recordFileDataCacheEvent({ event }) });
+  }
+
   recordMetadataCacheEvent({ event, recordKind, scope }: AuthenticatedMetadataCacheEventObservation): void {
     this.record({ operation: () => this.strict.recordMetadataCacheEvent({ event, recordKind, scope }) });
   }
@@ -1209,6 +1223,10 @@ export class HizoFSRuntimeDiagnosticsAccumulator implements AuthenticatedStoreDi
 
   setCacheUsage({ bytes, cache, entries }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["setCacheUsage"]>[0]): void {
     this.record({ operation: () => this.strict.setCacheUsage({ bytes, cache, entries }) });
+  }
+
+  setFileDataCacheUsage({ bytes, entries }: AuthenticatedFileDataCacheUsageObservation): void {
+    this.record({ operation: () => this.strict.setFileDataCacheUsage({ bytes, entries }) });
   }
 
   setMetadataCacheUsage({ bytes, entries, scope }: Parameters<StrictHizoFSRuntimeDiagnosticsAccumulator["setMetadataCacheUsage"]>[0]): void {

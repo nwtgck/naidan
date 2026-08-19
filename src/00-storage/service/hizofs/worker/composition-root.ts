@@ -78,6 +78,7 @@ import {
   type OpenedEmptyEncryptedContainer,
 } from "@/00-storage/service/hizofs/authenticated-store/empty-container-store";
 import { AuthenticatedStoreError } from "@/00-storage/service/hizofs/authenticated-store/errors";
+import { AuthenticatedFileDataRecordCache } from "@/00-storage/service/hizofs/authenticated-store/file-data-record-cache";
 import { AuthenticatedSegmentWriterOwner } from "@/00-storage/service/hizofs/authenticated-store/active-segment-writer-owner";
 import {
   openAuthenticatedUnlockEnvelopeAuthority,
@@ -286,6 +287,11 @@ const browserWorkerMountRuntimeHostRegistry = new HizoFSRuntimeHostRegistry<
   LockManager,
   HizoFSWorkerRuntimeHost
 >();
+
+const APPLICATION_FILE_DATA_RECORD_CACHE_POLICY = Object.freeze({
+  maximumBytes: 16 * 1024 * 1024 + 64 * 1024,
+  maximumEntries: 2_048,
+});
 
 const APPLICATION_METADATA_RECORD_CACHE_POLICY = Object.freeze({
   maximumBytes: 8 * 1024 * 1024,
@@ -1177,12 +1183,17 @@ export function createAuthenticatedApplicationReadSessionResources({
   recordDiagnostics,
 }: AuthenticatedOpenedApplicationAuthority): AuthenticatedApplicationReadSessionResources {
   let released = false;
+  const fileDataRecordCache = new AuthenticatedFileDataRecordCache({
+    diagnostics: recordDiagnostics,
+    policy: APPLICATION_FILE_DATA_RECORD_CACHE_POLICY,
+  });
   const namespace = createAuthenticatedReadOnlyNamespace({
     commit: opened.commit,
     indexDiagnostics,
     recordSource: createAuthenticatedNamespaceRecordSource({
       backend,
       diagnostics: recordDiagnostics,
+      fileDataRecordCache,
       fileSystemId: opened.fileSystemId,
       relocationIndexRootPhysicalRef: opened.superblockLogicalState.relocationIndexRootPhysicalRef,
       rootKey: opened.rootKey,
@@ -1193,7 +1204,21 @@ export function createAuthenticatedApplicationReadSessionResources({
     releaseResources: async () => {
       if (released) return;
       released = true;
-      opened.rootKey.destroy();
+      const failures: unknown[] = [];
+      try {
+        fileDataRecordCache.dispose();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      try {
+        opened.rootKey.destroy();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) {
+        throw new AggregateError(failures, "HizoFS read-only application session resource release failed");
+      }
     },
     syncDurability: "not-demonstrated",
   };
@@ -2826,6 +2851,7 @@ function writableGeneration({
   decodedDirectoryPageIndexCache,
   decodedInodeIndexPageCache,
   durableAuthority,
+  fileDataRecordCache,
   fileSystemId,
   indexDiagnostics,
   metadataRecordCache,
@@ -2840,6 +2866,7 @@ function writableGeneration({
   decodedDirectoryPageIndexCache: DecodedDirectoryPageIndexCache;
   decodedInodeIndexPageCache: DecodedInodeIndexPageCache;
   durableAuthority: AuthenticatedDurableApplicationGenerationAuthority;
+  fileDataRecordCache: AuthenticatedFileDataRecordCache;
   fileSystemId: OpenedEmptyEncryptedContainer["fileSystemId"];
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   metadataRecordCache: AuthenticatedMetadataRecordCache;
@@ -2864,6 +2891,7 @@ function writableGeneration({
       recordSource: createAuthenticatedNamespaceRecordSource({
         backend,
         diagnostics: recordDiagnostics,
+        fileDataRecordCache,
         fileSystemId,
         metadataRecordCache,
         relocationIndexRootPhysicalRef: descriptor.superblock.logicalState.relocationIndexRootPhysicalRef,
@@ -2879,6 +2907,7 @@ function writableGenerationFromDescriptor({
   decodedDirectoryPageIndexCache,
   decodedInodeIndexPageCache,
   descriptor,
+  fileDataRecordCache,
   fileSystemId,
   indexDiagnostics,
   metadataRecordCache,
@@ -2890,6 +2919,7 @@ function writableGenerationFromDescriptor({
   decodedDirectoryPageIndexCache: DecodedDirectoryPageIndexCache;
   decodedInodeIndexPageCache: DecodedInodeIndexPageCache;
   descriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
+  fileDataRecordCache: AuthenticatedFileDataRecordCache;
   fileSystemId: OpenedEmptyEncryptedContainer["fileSystemId"];
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   metadataRecordCache: AuthenticatedMetadataRecordCache;
@@ -2907,6 +2937,7 @@ function writableGenerationFromDescriptor({
       recordSource: createAuthenticatedNamespaceRecordSource({
         backend,
         diagnostics: recordDiagnostics,
+        fileDataRecordCache,
         fileSystemId,
         metadataRecordCache,
         relocationIndexRootPhysicalRef: descriptor.superblock.logicalState.relocationIndexRootPhysicalRef,
@@ -3116,6 +3147,10 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
 
   let released = false;
   let mutationPoison: unknown | undefined;
+  const fileDataRecordCache = new AuthenticatedFileDataRecordCache({
+    diagnostics: recordDiagnostics,
+    policy: APPLICATION_FILE_DATA_RECORD_CACHE_POLICY,
+  });
   const metadataRecordCache = new AuthenticatedMetadataRecordCache({
     diagnostics: recordDiagnostics,
     policy: metadataRecordCachePolicy ?? APPLICATION_METADATA_RECORD_CACHE_POLICY,
@@ -3211,6 +3246,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     decodedDirectoryPageIndexCache,
     decodedInodeIndexPageCache,
     durableAuthority,
+    fileDataRecordCache,
     fileSystemId: opened.fileSystemId,
     indexDiagnostics,
     metadataRecordCache,
@@ -3226,6 +3262,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     decodedDirectoryPageIndexCache,
     decodedInodeIndexPageCache,
     descriptor,
+    fileDataRecordCache,
     fileSystemId: opened.fileSystemId,
     indexDiagnostics,
     metadataRecordCache,
@@ -4375,24 +4412,17 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       const sourceParent = requireWritableParentDirectory({
         inode: await base.resolver.resolveInode({ pathComponents: [...path] }),
       });
-      const destinationParent = requireWritableParentDirectory({
-        inode: await base.resolver.resolveInode({ pathComponents: [...destinationPath] }),
+      const destinationResolution = await base.resolver.resolveDirectoryWithAncestors({
+        pathComponents: [...destinationPath],
       });
+      const destinationParent = requireWritableParentDirectory({ inode: destinationResolution.directory });
       const sourceEntry = await base.resolver.lookupDirectoryEntry({ directory: sourceParent, name });
       const destinationEntry = await base.resolver.lookupDirectoryEntry({ directory: destinationParent, name: newName });
-      const subtree = await collectOrdinarySubtree({ resolver: base.resolver, sourceEntry });
       const destinationState = await inspectMoveDestination({ entry: destinationEntry, resolver: base.resolver });
-      const sourceInodeNumber = (() => {
-        if (sourceEntry === undefined) return undefined;
-        switch (sourceEntry.targetType) {
-        case "inode": return sourceEntry.inodeNumber;
-        case "subvolume": return undefined;
-        default: return sourceEntry satisfies never;
-        }
-      })();
       const plan = prepareOrdinaryEntryMovePlan({
         destination: {
           ...destinationState,
+          ancestorDirectoryInodeNumbers: destinationResolution.ancestorDirectoryInodeNumbers,
           entry: destinationEntry ?? null,
           parentAccess: "read_write",
           parentDirectoryInodeNumber: destinationParent.inodeNumber,
@@ -4401,9 +4431,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         destinationName: newName,
         replace,
         source: {
-          directoryDescendantInodeNumbers: subtree.visitedInodeNumbers.filter(
-            inodeNumber => inodeNumber !== sourceInodeNumber,
-          ),
           entry: sourceEntry ?? null,
           parentAccess: "read_write",
           parentDirectoryInodeNumber: sourceParent.inodeNumber,
@@ -5430,6 +5457,11 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       }
       try {
         decodedInodeIndexPageCache.dispose();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      try {
+        fileDataRecordCache.dispose();
       } catch (cause: unknown) {
         failures.push(cause);
       }

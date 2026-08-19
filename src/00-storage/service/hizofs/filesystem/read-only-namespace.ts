@@ -133,6 +133,10 @@ export type ReadOnlyNamespaceResolver = ReadOnlyNamespace & Readonly<{
     directory: DirectoryInodeEntry;
     name: string;
   }) => Promise<DirectoryLeafEntry | undefined>;
+  resolveDirectoryWithAncestors: ({ pathComponents }: { pathComponents: readonly string[] }) => Promise<Readonly<{
+    ancestorDirectoryInodeNumbers: readonly InodeNumber[];
+    directory: DirectoryInodeEntry;
+  }>>;
   resolveInode: ({ pathComponents }: { pathComponents: readonly string[] }) => Promise<InodeLeafEntry>;
   resolveInodeByNumber: ({ inodeNumber }: { inodeNumber: InodeNumber }) => Promise<InodeLeafEntry>;
   validateDirectoryStructure: ({ directory }: { directory: DirectoryInodeEntry }) => Promise<void>;
@@ -641,6 +645,47 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
     return await resolveInodeUnchecked({ pathComponents });
   };
 
+  const resolveDirectoryWithAncestors = async ({ pathComponents }: {
+    pathComponents: readonly string[];
+  }): Promise<Readonly<{
+    ancestorDirectoryInodeNumbers: readonly InodeNumber[];
+    directory: DirectoryInodeEntry;
+  }>> => {
+    await validateNamespaceGraph();
+    let directory = requireRootDirectory({
+      inode: await getInode({ inodeNumber: rootDirectoryInodeNumber }),
+    });
+    const ancestorDirectoryInodeNumbers: InodeNumber[] = [directory.inodeNumber];
+    for (const name of pathComponents) {
+      encodeFilenameComponent({ value: name });
+      const entry = await lookupDirectoryEntry({ directory, name });
+      if (entry === undefined) {
+        throw new ReadOnlyNamespaceError({ code: "not_found", message: "path component does not exist" });
+      }
+      switch (entry.targetType) {
+      case "subvolume":
+        throw new ReadOnlyNamespaceError({
+          code: "subvolume_boundary",
+          message: "nested Subvolume traversal belongs to the Subvolume slice",
+        });
+      case "inode": {
+        const inode = await getInode({ inodeNumber: entry.inodeNumber });
+        if (inode.inodeKind !== entry.inodeKind) {
+          throw new ReadOnlyNamespaceError({
+            code: "corrupt_namespace",
+            message: "directory entry inode kind disagrees with the Inode Table",
+          });
+        }
+        directory = requireDirectory({ inode, message: "directory path traverses through a non-directory inode" });
+        ancestorDirectoryInodeNumbers.push(directory.inodeNumber);
+        break;
+      }
+      default: entry satisfies never;
+      }
+    }
+    return { ancestorDirectoryInodeNumbers, directory };
+  };
+
   return {
     maximumKnownInodeNumber: async () => {
       await validateNamespaceGraph();
@@ -714,6 +759,7 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
     readlink: async ({ pathComponents }) => {
       return requireSymlink({ inode: await resolveInode({ pathComponents }) }).target;
     },
+    resolveDirectoryWithAncestors,
     resolveInode,
     resolveInodeByNumber: async ({ inodeNumber }) => {
       await validateNamespaceGraph();
@@ -750,6 +796,7 @@ export function createReadOnlyNamespace({ inodeTableRootHomeRef, rootDirectoryIn
     lookupDirectoryEntry: _lookupDirectoryEntry,
     readFile,
     readlink,
+    resolveDirectoryWithAncestors: _resolveDirectoryWithAncestors,
     resolveInode: _resolveInode,
     resolveInodeByNumber: _resolveInodeByNumber,
     stat,

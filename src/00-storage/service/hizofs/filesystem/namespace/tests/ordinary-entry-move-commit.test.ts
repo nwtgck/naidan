@@ -183,6 +183,7 @@ async function prepare({
 }) {
   const plan = prepareOrdinaryEntryMovePlan({
     destination: {
+      ancestorDirectoryInodeNumbers: [destinationParent.inodeNumber],
       directoryContainsSubvolumeMount: false,
       directoryEmpty: true,
       entry: destinationEntry,
@@ -193,7 +194,6 @@ async function prepare({
     destinationName,
     replace,
     source: {
-      directoryDescendantInodeNumbers: [],
       entry: sourceEntry,
       parentAccess: "read_write",
       parentDirectoryInodeNumber: sourceParent.inodeNumber,

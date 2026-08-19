@@ -11,6 +11,8 @@ export { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from "@/00-storage/service/hizo
 export type {
   AuthenticatedCodecDiagnosticsObservation,
   AuthenticatedCryptoDiagnosticsObservation,
+  AuthenticatedFileDataCacheEventObservation,
+  AuthenticatedFileDataCacheUsageObservation,
   AuthenticatedMetadataCacheEventObservation,
   AuthenticatedMetadataCacheUsageObservation,
   AuthenticatedMutationScopeEventObservation,

@@ -46,6 +46,35 @@ function referenceIdentity({ reference: value }: { reference: HomeRecordReferenc
     .join("");
 }
 
+function recordSourceFromReadHomeRecord({ readHomeRecord }: {
+  readHomeRecord: AuthenticatedNamespaceRecordSource["readHomeRecord"];
+}): AuthenticatedNamespaceRecordSource {
+  return {
+    copyFileDataRange: async ({
+      destination,
+      destinationOffset,
+      reference,
+      sourceLength,
+      sourceOffset,
+      validatePlaintextLength,
+    }) => {
+      const record = await readHomeRecord({ reference });
+      try {
+        validatePlaintextLength({ plaintextLength: record.plaintext.byteLength });
+        const sourceEnd = sourceOffset + sourceLength;
+        if (sourceEnd > record.plaintext.byteLength) {
+          throw new RangeError("test File Data range exceeds fixture plaintext");
+        }
+        destination.set(record.plaintext.subarray(sourceOffset, sourceEnd), destinationOffset);
+      } finally {
+        record.plaintext.fill(0);
+      }
+    },
+    decodeRecordPayload: ({ decode }) => decode(),
+    readHomeRecord,
+  };
+}
+
 describe("authenticated read-only HizoFS namespace", () => {
   it("reuses validated zeroizable Directory routing for repeated point lookup", async () => {
     const inodeRoot = reference({ kind: KINDS.inode_table_page, offset: 64n });
@@ -105,10 +134,7 @@ describe("authenticated read-only HizoFS namespace", () => {
         rootInodeTableRootHomeRef: inodeRoot,
       } }),
       decodedDirectoryPageIndexCache: directoryCache,
-      recordSource: {
-        decodeRecordPayload: ({ decode }) => decode(),
-        readHomeRecord,
-      },
+      recordSource: recordSourceFromReadHomeRecord({ readHomeRecord }),
     });
 
     expect((await resolver.stat({ pathComponents: ["data.bin"] })).inodeNumber).toBe(fileNumber);
@@ -191,14 +217,13 @@ describe("authenticated read-only HizoFS namespace", () => {
         recordKind: KINDS.file_data,
       }],
     ]);
-    const recordSource: AuthenticatedNamespaceRecordSource = {
-      decodeRecordPayload: ({ decode }) => decode(),
+    const recordSource = recordSourceFromReadHomeRecord({
       readHomeRecord: async ({ reference: value }) => {
         const record = records.get(referenceIdentity({ reference: value }));
         if (record === undefined) throw new Error("missing record fixture");
         return { plaintext: Uint8Array.from(record.plaintext), recordKind: record.recordKind };
       },
-    };
+    });
     const recordIndexOperation = vi.fn();
     const namespace = createAuthenticatedReadOnlyNamespace({
       commit: createFileSystemCommitPayload({ payload: {
@@ -311,14 +336,13 @@ describe("authenticated read-only HizoFS namespace", () => {
         rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
         rootInodeTableRootHomeRef: inodeRoot,
       } }),
-      recordSource: {
-        decodeRecordPayload: ({ decode }) => decode(),
+      recordSource: recordSourceFromReadHomeRecord({
         readHomeRecord: async ({ reference: value }) => {
           const record = records.get(referenceIdentity({ reference: value }));
           if (record === undefined) throw new Error("missing record fixture");
           return { plaintext: Uint8Array.from(record.plaintext), recordKind: record.recordKind };
         },
-      },
+      }),
     });
 
     await expect(namespace.readFile({ length: 10n, offset: 60n, pathComponents: ["misordered.bin"] }))
@@ -402,10 +426,7 @@ describe("authenticated read-only HizoFS namespace", () => {
         rootInodeTableRootHomeRef: inodeRoot,
       } }),
       decodedInodeIndexPageCache: cache,
-      recordSource: {
-        decodeRecordPayload: ({ decode }) => decode(),
-        readHomeRecord,
-      },
+      recordSource: recordSourceFromReadHomeRecord({ readHomeRecord }),
     });
 
     expect((await resolver.resolveInodeByNumber({ inodeNumber: fileNumber })).inodeNumber).toBe(fileNumber);
@@ -481,14 +502,13 @@ describe("authenticated read-only HizoFS namespace", () => {
         rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
         rootInodeTableRootHomeRef: inodeRoot,
       } }),
-      recordSource: {
-        decodeRecordPayload: ({ decode }) => decode(),
+      recordSource: recordSourceFromReadHomeRecord({
         readHomeRecord: async ({ reference: value }) => {
           const record = records.get(referenceIdentity({ reference: value }));
           if (record === undefined) throw new Error("missing record fixture");
           return { plaintext: Uint8Array.from(record.plaintext), recordKind: record.recordKind };
         },
-      },
+      }),
     });
 
     expect(await namespace.readFile({ length: 10n, offset: 0n, pathComponents: ["hole.bin"] }))
