@@ -144,6 +144,124 @@ describe("read-only namespace validation cache", () => {
     expect(ordinaryValidation).toHaveBeenCalledTimes(1);
   });
 
+  it("coalesces one exact namespace-graph proof and binds it to the root inode", async () => {
+    const cache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 4 });
+    const root = reference({ offset: 512n });
+    const rootDirectoryInodeNumber = createInodeNumber({ value: 1n });
+    const differentRootDirectoryInodeNumber = createInodeNumber({ value: 2n });
+    const validate = vi.fn(async () => undefined);
+
+    await cache.validateNamespaceGraph({
+      inodeTableRootReference: root,
+      rootDirectoryInodeNumber,
+      validate,
+    });
+    await cache.validateNamespaceGraph({
+      inodeTableRootReference: root,
+      rootDirectoryInodeNumber,
+      validate,
+    });
+    expect(validate).toHaveBeenCalledTimes(1);
+
+    const differentRootValidation = vi.fn(async () => undefined);
+    await cache.validateNamespaceGraph({
+      inodeTableRootReference: root,
+      rootDirectoryInodeNumber: differentRootDirectoryInodeNumber,
+      validate: differentRootValidation,
+    });
+    expect(differentRootValidation).toHaveBeenCalledTimes(1);
+  });
+
+  it("inherits a namespace-graph proof only from a completed exact base proof", async () => {
+    const cache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 6 });
+    const base = reference({ offset: 576n });
+    const successor = reference({ offset: 640n });
+    const unrelatedSuccessor = reference({ offset: 704n });
+    const rootDirectoryInodeNumber = createInodeNumber({ value: 1n });
+    const differentRootDirectoryInodeNumber = createInodeNumber({ value: 2n });
+    await cache.validateNamespaceGraph({
+      inodeTableRootReference: base,
+      rootDirectoryInodeNumber,
+      validate: async () => undefined,
+    });
+
+    cache.inheritValidatedNamespaceGraphSuccessor({
+      baseInodeTableRootReference: base,
+      baseRootDirectoryInodeNumber: rootDirectoryInodeNumber,
+      successorInodeTableRootReference: successor,
+      successorRootDirectoryInodeNumber: rootDirectoryInodeNumber,
+    });
+    const inheritedValidation = vi.fn(async () => undefined);
+    await cache.validateNamespaceGraph({
+      inodeTableRootReference: successor,
+      rootDirectoryInodeNumber,
+      validate: inheritedValidation,
+    });
+    expect(inheritedValidation).not.toHaveBeenCalled();
+
+    cache.inheritValidatedNamespaceGraphSuccessor({
+      baseInodeTableRootReference: base,
+      baseRootDirectoryInodeNumber: differentRootDirectoryInodeNumber,
+      successorInodeTableRootReference: unrelatedSuccessor,
+      successorRootDirectoryInodeNumber: rootDirectoryInodeNumber,
+    });
+    const ordinaryValidation = vi.fn(async () => undefined);
+    await cache.validateNamespaceGraph({
+      inodeTableRootReference: unrelatedSuccessor,
+      rootDirectoryInodeNumber,
+      validate: ordinaryValidation,
+    });
+    expect(ordinaryValidation).toHaveBeenCalledTimes(1);
+
+    const changedRootSuccessor = reference({ offset: 768n });
+    cache.inheritValidatedNamespaceGraphSuccessor({
+      baseInodeTableRootReference: base,
+      baseRootDirectoryInodeNumber: rootDirectoryInodeNumber,
+      successorInodeTableRootReference: changedRootSuccessor,
+      successorRootDirectoryInodeNumber: differentRootDirectoryInodeNumber,
+    });
+    const changedRootValidation = vi.fn(async () => undefined);
+    await cache.validateNamespaceGraph({
+      inodeTableRootReference: changedRootSuccessor,
+      rootDirectoryInodeNumber: differentRootDirectoryInodeNumber,
+      validate: changedRootValidation,
+    });
+    expect(changedRootValidation).toHaveBeenCalledTimes(1);
+  });
+
+  it("inherits a File Extent proof only from an exact validated root and file size", async () => {
+    const cache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 6 });
+    const base = reference({ offset: 592n });
+    const successor = reference({ offset: 656n });
+    await cache.validateFileExtentTree({
+      fileSize: 10n,
+      rootReference: base,
+      validate: async () => undefined,
+    });
+
+    cache.inheritValidatedFileExtentTreeSuccessor({
+      baseFileSize: 10n,
+      baseRootReference: base,
+      successorFileSize: 12n,
+      successorRootReference: successor,
+    });
+    const inheritedValidation = vi.fn(async () => undefined);
+    await cache.validateFileExtentTree({
+      fileSize: 12n,
+      rootReference: successor,
+      validate: inheritedValidation,
+    });
+    expect(inheritedValidation).not.toHaveBeenCalled();
+
+    const differentSizeValidation = vi.fn(async () => undefined);
+    await cache.validateFileExtentTree({
+      fileSize: 11n,
+      rootReference: successor,
+      validate: differentSizeValidation,
+    });
+    expect(differentSizeValidation).toHaveBeenCalledTimes(1);
+  });
+
   it("binds allocator high-water proof to a completed exact Inode Table root only", async () => {
     const cache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 4 });
     const root = reference({ offset: 640n });

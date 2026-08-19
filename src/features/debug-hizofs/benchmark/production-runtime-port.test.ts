@@ -682,6 +682,9 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(sequentialWriteRuntime.segmentWriters.data.appendOperations).toBeGreaterThan(0);
     expect(sequentialWriteRuntime.segmentWriters.data.appendOperations)
       .toBeLessThan(sequentialWriteOperationCount);
+    expect(sequentialWriteRuntime.records.file_data.writeOperations).toBeGreaterThan(0);
+    expect(sequentialWriteRuntime.records.file_data.writeOperations)
+      .toBeLessThan(sequentialWriteOperationCount);
     const randomWriteSample = report.results.find(result => result.caseId === 'random_write')
       ?.backends.hizofs?.samples[0];
     const randomWriteRuntime = randomWriteSample?.hizoFSDiagnostics?.runtime;
@@ -689,12 +692,18 @@ describe('production HizoFS benchmark runtime port', () => {
     if (randomWriteRuntime?.type !== 'measured') {
       throw new Error('random-write structural diagnostics are unavailable');
     }
+    // One bounded sparse File Extent mutation stream replaces the per-write
+    // immutable-root materialization while preserving the same logical input
+    // mutation accounting, plus the final Root Inode Table update.
     expect(randomWriteRuntime.indexes.update.operations)
-      .toBe(configuration.randomAccess.operationCount + 1);
+      .toBeLessThan(configuration.randomAccess.operationCount / 2);
     expect(randomWriteRuntime.indexes.update.inputMutations)
       .toBe(configuration.randomAccess.operationCount + 1);
     expect(randomWriteRuntime.segmentWriters.data.appendOperations).toBeGreaterThan(0);
     expect(randomWriteRuntime.segmentWriters.data.appendOperations)
+      .toBeLessThan(configuration.randomAccess.operationCount);
+    expect(randomWriteRuntime.records.file_data.writeOperations).toBeGreaterThan(0);
+    expect(randomWriteRuntime.records.file_data.writeOperations)
       .toBeLessThan(configuration.randomAccess.operationCount);
     // One prepared writable owns one shared data Segment writer lease and
     // batches bounded File Data records across public write calls. Each

@@ -106,6 +106,15 @@ export class SyncWaiterRegistry {
     return this.waiters.size;
   }
 
+  isTargetSatisfied({ target }: { target: WorkingGenerationIdentity }): boolean {
+    assertSameAuthorityEpoch({
+      authorityEpoch: this.authorityEpoch,
+      identity: target,
+      operation: "sync target",
+    });
+    return targetSatisfiedByDurableGeneration({ durable: this.durable, target });
+  }
+
   waitFor({ target }: { target: WorkingGenerationIdentity }): Promise<void> {
     assertSameAuthorityEpoch({
       authorityEpoch: this.authorityEpoch,

@@ -54,6 +54,7 @@ function driver({
     openProfile === "normal_read" ? "fully_verified" as const : readiness
   ));
   const importStatePort: HizoFSTransitionImportStatePort = {
+    discardStagedCandidate: async () => undefined,
     loadCandidate: async () => undefined,
     stageCandidate: async () => undefined,
   };

@@ -663,6 +663,7 @@ describe("HizoFS worker composition root", () => {
 
     expect(indexOperations.filter(operation => operation === "seek_floor")).toHaveLength(1);
     expect(indexOperations.filter(operation => operation === "get")).toHaveLength(1);
+    expect(indexOperations.filter(operation => operation === "entries")).toHaveLength(1);
 
     const writable = await first.createWritable({ keepExistingData: false });
     await writable.write({ data: Uint8Array.of(1), position: 0 });
@@ -670,6 +671,7 @@ describe("HizoFS worker composition root", () => {
     indexOperations.length = 0;
     await session.root.getFileHandle({ create: true, name: "after-file-mutation.txt" });
     expect(indexOperations.filter(operation => operation === "get")).toHaveLength(1);
+    expect(indexOperations.filter(operation => operation === "entries")).toHaveLength(0);
     await session.close();
   });
 
@@ -1096,6 +1098,63 @@ describe("HizoFS worker composition root", () => {
       if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
     }
   });
+
+  it("syncs an already durable target while an unrelated prepared writable owns the writer", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const passphrase = "correct horse battery staple";
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase,
+      randomSource,
+      supportedFeatureBits,
+    });
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: runtimeHost(),
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://durable-sync-prepared-writable.hizofs",
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        opened,
+        operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+        randomSource,
+        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+
+    const file = await session.root.getFileHandle({ create: true, name: "prepared.bin" });
+    await session.sync();
+    const writable = await file.createWritable({ keepExistingData: false });
+    await writable.write({ data: Uint8Array.of(1, 2, 3, 4), position: 0 });
+
+    // The prepared writable is not part of this already-durable sync target,
+    // so sync must not wait for the writer that only the later close needs.
+    await session.sync();
+    await writable.close();
+    await session.sync();
+    await session.close();
+
+    const reopened = await openEmptyEncryptedContainer({ backend, passphrase, supportedFeatureBits });
+    try {
+      const resources = createAuthenticatedApplicationReadSessionResources({ backend, opened: reopened });
+      try {
+        await expect(resources.namespace.readFile({ pathComponents: ["prepared.bin"] }))
+          .resolves.toEqual(Uint8Array.of(1, 2, 3, 4));
+      } finally {
+        await resources.releaseResources();
+      }
+    } finally {
+      if (!reopened.rootKey.isDestroyed()) reopened.rootKey.destroy();
+    }
+  }, 2_000);
 
   it("lets a prepared writable finish while a dirty-age publication waits for its writer", async () => {
     vi.useFakeTimers();
@@ -1789,6 +1848,68 @@ describe("HizoFS worker composition root", () => {
     expect(persisted[3]).toBe(0x33);
     persisted[3] = 0x5a;
     expect(persisted.every(byte => byte === 0x5a)).toBe(true);
+
+    await session.close();
+    expect(opened.rootKey.isDestroyed()).toBe(true);
+  });
+
+  it("batches non-tail prepared-writable File Data without materializing each public write", async () => {
+    const backend = new DataSegmentWriteCountingBackend({});
+    const indexOperations: string[] = [];
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase: "correct horse battery staple",
+      randomSource,
+      supportedFeatureBits,
+    });
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: runtimeHost(),
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://prepared-range-write-batch.hizofs",
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 64 },
+        indexDiagnostics: {
+          recordIndexOperation: ({ operation }) => indexOperations.push(operation),
+        },
+        opened,
+        operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+        randomSource,
+        removalLimits: { deleteBatchSize: 64, maxVisitedInodes: 128 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+    const file = await session.root.getFileHandle({ create: true, name: "random.bin" });
+    const initial = await file.createWritable({ keepExistingData: false });
+    const initialBytes = new Uint8Array(512 * 1024).fill(0x5a);
+    await initial.write({ data: initialBytes, position: 0 });
+    await initial.close();
+
+    const writable = await file.createWritable({ keepExistingData: true });
+    const indexOperationsBeforeWrites = indexOperations.length;
+    await writable.write({ data: Uint8Array.of(0x31, 0x32, 0x33, 0x34), position: 10 });
+    await writable.write({ data: Uint8Array.of(0x41, 0x42, 0x43, 0x44), position: 300_000 });
+    expect(indexOperations).toHaveLength(indexOperationsBeforeWrites);
+    await writable.close();
+    expect(indexOperations.length).toBeGreaterThan(indexOperationsBeforeWrites);
+
+    const readable = await file.openReadable({ mimeType: "application/octet-stream" });
+    const first = new Uint8Array(4);
+    const second = new Uint8Array(4);
+    expect(await readable.read({ buffer: first, length: 4, offset: 0, position: 10, signal: undefined }))
+      .toEqual({ bytesRead: 4 });
+    expect(await readable.read({ buffer: second, length: 4, offset: 0, position: 300_000, signal: undefined }))
+      .toEqual({ bytesRead: 4 });
+    await readable.close();
+    expect(first).toEqual(Uint8Array.of(0x31, 0x32, 0x33, 0x34));
+    expect(second).toEqual(Uint8Array.of(0x41, 0x42, 0x43, 0x44));
 
     await session.close();
     expect(opened.rootKey.isDestroyed()).toBe(true);
@@ -4014,6 +4135,10 @@ describe("HizoFS worker composition root", () => {
     const operationIdentity = "transition-operation";
     let candidate: HizoFSTransitionImportCandidate | undefined;
     const runtimeStatePort: HizoFSTransitionImportStatePort = {
+      discardStagedCandidate: async ({ operationIdentity: requestedOperation }) => {
+        if (requestedOperation !== operationIdentity) throw new TypeError("runtime state operation mismatch");
+        candidate = undefined;
+      },
       loadCandidate: async ({ operationIdentity: requestedOperation }) => {
         if (requestedOperation !== operationIdentity) throw new TypeError("runtime state operation mismatch");
         return structuredClone(candidate);
@@ -4047,6 +4172,7 @@ describe("HizoFS worker composition root", () => {
       size: 3n,
     });
     await first.target.completeNamespace();
+    await first.stageSliceState();
     await expect(first.source.readRootMetadata()).resolves.toEqual({ createdAt: 10n, modifiedAt: undefined });
     await expect(first.source.listDirectory({ afterName: undefined, maximumEntries: 4, path: [] })).resolves.toEqual({
       entries: [{
@@ -4088,6 +4214,10 @@ describe("HizoFS worker composition root", () => {
     const operationIdentity = "transition-publication-operation";
     let candidate: HizoFSTransitionImportCandidate | undefined;
     const runtimeStatePort: HizoFSTransitionImportStatePort = {
+      discardStagedCandidate: async ({ operationIdentity: requestedOperation }) => {
+        if (requestedOperation !== operationIdentity) throw new TypeError("runtime state operation mismatch");
+        candidate = undefined;
+      },
       loadCandidate: async ({ operationIdentity: requestedOperation }) => {
         if (requestedOperation !== operationIdentity) throw new TypeError("runtime state operation mismatch");
         return structuredClone(candidate);
@@ -4119,6 +4249,7 @@ describe("HizoFS worker composition root", () => {
       size: 3n,
     });
     await target.target.completeNamespace();
+    await target.stageSliceState();
     await target.close();
 
     const publish = async () => await publishBrowserHizoFSTransitionTargetCandidate({
@@ -4775,6 +4906,71 @@ describe("HizoFS worker composition root", () => {
     });
     return { base, commit, commitReference, intendedLogicalState, successor, superblock };
   }
+
+  it("rolls back a partial direct working-page root dependency acquisition", () => {
+    const values = selectedCandidatePublisherFixture();
+    const nestedSubvolumeTableRootHomeRef = createHomeRecordReference({ fields: {
+      byteOffset: createUInt64({ value: 12_288n }),
+      frameLength: 160,
+      recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.nested_subvolume_table_page,
+      segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(14) }),
+    } });
+    const commit = createFileSystemCommitPayload({ payload: {
+      ...values.commit,
+      nestedSubvolumeTableRootHomeRef,
+    } });
+    const staged = createAuthenticatedStagedApplicationGenerationDescriptor({
+      commit,
+      durableAuthority: values.base.durableAuthority,
+      workingIdentity: values.successor.workingIdentity,
+    });
+    const firstRelease = vi.fn();
+    const secondAcquisitionFailure = new Error("second working-page root acquisition failed");
+    let acquisitionCount = 0;
+
+    expect(() => COMPOSITION_TEST_ONLY.acquireWorkingGenerationRootDependency({
+      generation: staged,
+      runtimeHost: {
+        acquireWorkingGenerationDependencyRoot: vi.fn(() => {
+          throw new Error("materialized dependency acquisition is not expected");
+        }),
+        acquireWorkingGenerationPageRoot: vi.fn(({ pageReference }) => {
+          acquisitionCount += 1;
+          if (acquisitionCount === 2) throw secondAcquisitionFailure;
+          return { pageReference, release: firstRelease };
+        }),
+      },
+    })).toThrow(secondAcquisitionFailure);
+    expect(firstRelease).toHaveBeenCalledOnce();
+
+    const rollbackFailure = new Error("partial working-page root rollback failed");
+    let cleanupAcquisitionCount = 0;
+    let thrown: unknown;
+    try {
+      COMPOSITION_TEST_ONLY.acquireWorkingGenerationRootDependency({
+        generation: staged,
+        runtimeHost: {
+          acquireWorkingGenerationDependencyRoot: vi.fn(() => {
+            throw new Error("materialized dependency acquisition is not expected");
+          }),
+          acquireWorkingGenerationPageRoot: vi.fn(({ pageReference }) => {
+            cleanupAcquisitionCount += 1;
+            if (cleanupAcquisitionCount === 2) throw secondAcquisitionFailure;
+            return {
+              pageReference,
+              release: () => {
+                throw rollbackFailure;
+              },
+            };
+          }),
+        },
+      });
+    } catch (cause: unknown) {
+      thrown = cause;
+    }
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors).toEqual([secondAcquisitionFailure, rollbackFailure]);
+  });
 
   function selectedCandidatePublisherDeferred({
     publishCandidate,

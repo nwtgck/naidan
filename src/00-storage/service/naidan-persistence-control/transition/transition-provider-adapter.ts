@@ -29,7 +29,9 @@ export type TransitionSourceEndpointSession = TransitionEndpointSessionBase & Re
 }>;
 
 export type TransitionTargetEndpointSession = TransitionEndpointSessionBase & Readonly<{
+  discardStagedSliceState(): Promise<void>;
   source: TransitionNamespaceSourcePort;
+  stageSliceState(): Promise<void>;
   target: TransitionNamespaceTargetPort;
 }>;
 

@@ -199,6 +199,7 @@ function mutationPort({ markCommitPoint = true }: {
         },
         async write({ data, position }) {
           calls.push(["write", { data: [...data], position }]);
+          return "returned_to_caller";
         },
       };
     },
@@ -601,6 +602,78 @@ describe("runtime-bound HizoFS application session port", () => {
 
     expect(mutations.calls.map(([name]) => name)).toContain("abort-explicit-bulk");
     expect(runtimeState.calls.slice(-2)).toEqual(["close-writer", "close-session"]);
+  });
+
+  it("preserves captured write bytes when the prepared writable consumes ownership", async () => {
+    const { mutations, port } = createPort();
+    let retained: Uint8Array | undefined;
+    mutations.port.openWritable = async () => ({
+      async abort() {
+        retained?.fill(0);
+      },
+      async commit({ authority }) {
+        authority.markCandidateAccepted();
+        authority.markCommitPointCrossed();
+        retained?.fill(0);
+      },
+      async truncate() {
+        return;
+      },
+      async write({ data }) {
+        retained = data;
+        return "consumed";
+      },
+    });
+    const writable = await port.openWritable({ keepExistingData: true, path: ["file"] });
+    const captured = captureFileWriteBytes({ bytes: Uint8Array.of(7, 8, 9) });
+
+    await writable.write({ data: captured, position: 0n });
+    expect(retained).toBe(captured);
+    expect([...captured]).toEqual([7, 8, 9]);
+
+    await writable.abort({ reason: "test cleanup" });
+    expect([...captured]).toEqual([0, 0, 0]);
+  });
+
+  it("rejects same-session writer operations while a prepared writable owns the writer", async () => {
+    const { port, runtimeState } = createPort();
+    const writable = await port.openWritable({ keepExistingData: true, path: ["file"] });
+
+    await expect(port.createDirectory({ name: "blocked", path: [] })).rejects.toMatchObject({
+      code: "operation_in_progress",
+    });
+    await expect(port.openWritable({ keepExistingData: true, path: ["other"] })).rejects.toMatchObject({
+      code: "operation_in_progress",
+    });
+    expect(runtimeState.calls).toEqual(["acquire-writer"]);
+
+    await writable.abort({ reason: "release same-session writer" });
+    await expect(port.createDirectory({ name: "after-release", path: [] })).resolves.toBeUndefined();
+    expect(runtimeState.calls).toEqual([
+      "acquire-writer",
+      "close-writer",
+      "acquire-writer",
+      "run-publication",
+      "commit-point",
+      "close-writer",
+    ]);
+  });
+
+  it("rejects same-session writer operations while an explicit bulk builder owns the writer", async () => {
+    const { port, runtimeState } = createPort();
+    const openExplicitBulk = port.openExplicitBulk;
+    if (openExplicitBulk === undefined) throw new Error("test mutation port omitted explicit bulk support");
+    const builder = await openExplicitBulk({ path: ["target"] });
+
+    await expect(port.createFile({ name: "blocked", path: [] })).rejects.toMatchObject({
+      code: "operation_in_progress",
+    });
+    await expect(openExplicitBulk({ path: ["other"] })).rejects.toMatchObject({
+      code: "operation_in_progress",
+    });
+    expect(runtimeState.calls).toEqual(["acquire-writer"]);
+
+    await builder.abort({ reason: "release same-session writer" });
   });
 
   it("holds the cross-realm writer until writable commit or abort", async () => {

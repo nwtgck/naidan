@@ -378,6 +378,44 @@ describe("authenticated file content mutation authority", () => {
     rootKey.destroy();
   });
 
+  it("keeps one standard sequential-write payload inside one bounded File Data append batch", async () => {
+    const backend = new CountingInMemoryBackend({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const dataWriterOwner = new AuthenticatedSegmentWriterOwner({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "data",
+    });
+    const authority = await createAuthenticatedFileContentMutationAuthority({
+      backend,
+      dataWriterOwner,
+      fileSystemId,
+      randomSource,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const payload = new Uint8Array(256 * 1024).fill(13);
+
+    await authority.writeFileData({ bytes: payload });
+    const writesAfterWriterProvision = backend.writeAtOperations;
+    for (let index = 1; index < 64; index += 1) {
+      await authority.writeFileData({ bytes: payload });
+    }
+    expect(backend.writeAtOperations).toBe(writesAfterWriterProvision);
+
+    await authority.flushPendingFileDataRecords();
+    expect(backend.writeAtOperations).toBe(writesAfterWriterProvision + 1);
+
+    authority.abandon();
+    await expect(dataWriterOwner.close()).resolves.toBeUndefined();
+    rootKey.destroy();
+  });
+
   it("rolls a bounded shared File Data batch across the Data Segment record-area limit", async () => {
     const backend = new CountingInMemoryBackend({});
     const randomSource = deterministicRandomSource();

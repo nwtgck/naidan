@@ -95,16 +95,16 @@ class PinnedReadSnapshotRuntimeSession implements HizoFSApplicationRuntimeSessio
   private closePromise: Promise<void> | undefined;
   private idleWaiters = new Set<() => void>();
   private inFlightOperations = 0;
-  private parent: ContainerRuntimeSession;
   private pin: Awaited<ReturnType<ContainerRuntimeSession["acquireReaderPin"]>>;
+  private resources: Awaited<ReturnType<ContainerRuntimeSession["captureAndAcquireDetachedReaderSnapshot"]>>["resources"];
   private state: "closed" | "closing" | "open" = "open";
 
-  constructor({ parent, pin }: {
-    parent: ContainerRuntimeSession;
+  constructor({ pin, resources }: {
     pin: Awaited<ReturnType<ContainerRuntimeSession["acquireReaderPin"]>>;
+    resources: Awaited<ReturnType<ContainerRuntimeSession["captureAndAcquireDetachedReaderSnapshot"]>>["resources"];
   }) {
-    this.parent = parent;
     this.pin = pin;
+    this.resources = resources;
   }
 
   async acquireWriter(): Promise<HizoFSApplicationRuntimeWriter> {
@@ -127,7 +127,7 @@ class PinnedReadSnapshotRuntimeSession implements HizoFSApplicationRuntimeSessio
     }
     this.inFlightOperations += 1;
     try {
-      return await this.parent.runReadOperation({ operation });
+      return await operation();
     } finally {
       this.inFlightOperations -= 1;
       if (this.inFlightOperations === 0) {
@@ -148,9 +148,23 @@ class PinnedReadSnapshotRuntimeSession implements HizoFSApplicationRuntimeSessio
     if (this.inFlightOperations > 0) {
       await new Promise<void>(resolve => this.idleWaiters.add(resolve));
     }
-    this.pin.release();
-    await this.pin.released;
+    const failures: unknown[] = [];
+    try {
+      this.pin.release();
+      await this.pin.released;
+    } catch (cause: unknown) {
+      failures.push(cause);
+    }
+    try {
+      await this.resources.release();
+    } catch (cause: unknown) {
+      failures.push(cause);
+    }
     this.state = "closed";
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "HizoFS read snapshot cleanup failed");
+    }
   }
 }
 
@@ -178,10 +192,11 @@ async function createPinnedReadSnapshotPort({
   let preparedResources: PreparedReadSnapshotResources | undefined;
   let captured: Readonly<{
     pin: Awaited<ReturnType<ContainerRuntimeSession["acquireReaderPin"]>>;
+    resources: Awaited<ReturnType<ContainerRuntimeSession["captureAndAcquireDetachedReaderSnapshot"]>>["resources"];
     value: PreparedReadSnapshotResources;
   }>;
   try {
-    captured = await parent.captureAndAcquireReaderPin({
+    captured = await parent.captureAndAcquireDetachedReaderSnapshot({
       capture: async () => {
         const resources = await createResources();
         preparedResources = resources;
@@ -208,23 +223,30 @@ async function createPinnedReadSnapshotPort({
       ...(assertOperationAllowed === undefined ? {} : { assertOperationAllowed }),
       mutationPort: resources.mutationPort,
       namespace: resources.namespace,
-      runtimeSession: new PinnedReadSnapshotRuntimeSession({ parent, pin }),
+      runtimeSession: new PinnedReadSnapshotRuntimeSession({ pin, resources: captured.resources }),
       sync: async () => requireStorageFileSystemSyncDurability({
         durability: syncDurability,
         implementation: "hizofs",
       }),
     } });
   } catch (cause: unknown) {
+    const failures: unknown[] = [cause];
     try {
       pin.release();
       await pin.released;
     } catch (cleanupCause: unknown) {
-      throw new AggregateError(
-        [cause, cleanupCause],
-        "HizoFS read snapshot construction and reader-pin cleanup both failed",
-      );
+      failures.push(cleanupCause);
     }
-    throw cause;
+    try {
+      await captured.resources.release();
+    } catch (cleanupCause: unknown) {
+      failures.push(cleanupCause);
+    }
+    if (failures.length === 1) throw failures[0];
+    throw new AggregateError(
+      failures,
+      "HizoFS read snapshot construction and detached resource cleanup failed",
+    );
   }
 }
 
@@ -531,16 +553,20 @@ export class HizoFSWorkerRuntimeHost {
     const captureStableReadNamespace = resolvedApplicationResources.captureStableReadNamespace;
     const createReadSnapshotResources = resolvedApplicationResources.createReadSnapshotResources;
     const sync = async (): Promise<void> => {
-      const target = resolvedApplicationResources.authenticatedGeneration?.captureSyncTarget();
+      const authenticatedGeneration = resolvedApplicationResources.authenticatedGeneration;
+      const target = authenticatedGeneration?.captureSyncTarget();
+      const targetWasAlreadyDurable = target !== undefined
+        && authenticatedGeneration?.isSyncTargetDurable({ target }) === true;
       await session.syncDurableState({
         assertDurabilityDemonstrated: () => requireStorageFileSystemSyncDurability({
           durability: resolvedApplicationResources.syncDurability,
           implementation: "hizofs",
         }),
         recheckAuthority: resolvedApplicationResources.recheckSyncAuthority,
+        writerBarrierRequired: !targetWasAlreadyDurable,
       });
       try {
-        await resolvedApplicationResources.authenticatedGeneration?.requestExplicitFlush();
+        if (!targetWasAlreadyDurable) await authenticatedGeneration?.requestExplicitFlush();
       } catch (cause: unknown) {
         const publicationState = this.runtime.workingCandidatePublicationState();
         switch (publicationState) {

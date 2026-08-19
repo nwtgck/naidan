@@ -80,7 +80,7 @@ function rootMetadataFromCheckpoint({ checkpoint }: {
  * timestamps, so no target can synthesize or silently discard root metadata.
  */
 export class StreamingNamespaceImportTargetSession {
-  private readonly beforeSealedCandidateSave: (() => Promise<void>) | undefined;
+  private readonly beforeCandidateStage: (() => Promise<void>) | undefined;
   private readonly createImport: ({ rootMetadata }: {
     rootMetadata: TransitionNamespaceMetadata;
   }) => StreamingNamespaceImportActor;
@@ -91,9 +91,9 @@ export class StreamingNamespaceImportTargetSession {
   private sealed: SealedStreamingNamespaceImport | undefined;
   private state: StreamingNamespaceImportTargetSessionState;
 
-  private constructor({ actor, beforeSealedCandidateSave, createImport, operationIdentity, rootMetadata, runtimeStatePort, sealed }: {
+  private constructor({ actor, beforeCandidateStage, createImport, operationIdentity, rootMetadata, runtimeStatePort, sealed }: {
     actor: StreamingNamespaceImportActor | undefined;
-    beforeSealedCandidateSave: (() => Promise<void>) | undefined;
+    beforeCandidateStage: (() => Promise<void>) | undefined;
     createImport: ({ rootMetadata }: {
       rootMetadata: TransitionNamespaceMetadata;
     }) => StreamingNamespaceImportActor;
@@ -103,7 +103,7 @@ export class StreamingNamespaceImportTargetSession {
     sealed: SealedStreamingNamespaceImport | undefined;
   }) {
     this.actor = actor;
-    this.beforeSealedCandidateSave = beforeSealedCandidateSave;
+    this.beforeCandidateStage = beforeCandidateStage;
     this.createImport = createImport;
     this.operationIdentity = operationIdentity;
     this.rootMetadata = rootMetadata === undefined ? undefined : cloneMetadata({ metadata: rootMetadata });
@@ -112,8 +112,8 @@ export class StreamingNamespaceImportTargetSession {
     this.state = sealed !== undefined ? "sealed" : actor === undefined ? "awaiting_root" : "active";
   }
 
-  static async open({ beforeSealedCandidateSave, createImport, operationIdentity, restoreImport, runtimeStatePort }: {
-    beforeSealedCandidateSave?: () => Promise<void>;
+  static async open({ beforeCandidateStage, createImport, operationIdentity, restoreImport, runtimeStatePort }: {
+    beforeCandidateStage?: () => Promise<void>;
     createImport: ({ rootMetadata }: {
       rootMetadata: TransitionNamespaceMetadata;
     }) => StreamingNamespaceImportActor;
@@ -128,7 +128,7 @@ export class StreamingNamespaceImportTargetSession {
     case undefined:
       return new StreamingNamespaceImportTargetSession({
         actor: undefined,
-        beforeSealedCandidateSave,
+        beforeCandidateStage,
         createImport,
         operationIdentity,
         rootMetadata: undefined,
@@ -138,7 +138,7 @@ export class StreamingNamespaceImportTargetSession {
     case "active":
       return new StreamingNamespaceImportTargetSession({
         actor: restoreImport({ checkpoint: candidate.checkpoint }),
-        beforeSealedCandidateSave,
+        beforeCandidateStage,
         createImport,
         operationIdentity,
         rootMetadata: rootMetadataFromCheckpoint({ checkpoint: candidate.checkpoint }),
@@ -149,7 +149,7 @@ export class StreamingNamespaceImportTargetSession {
       validateSealedStreamingNamespaceImport({ sealed: candidate.sealed });
       return new StreamingNamespaceImportTargetSession({
         actor: undefined,
-        beforeSealedCandidateSave,
+        beforeCandidateStage,
         createImport,
         operationIdentity,
         rootMetadata: undefined,
@@ -245,12 +245,7 @@ export class StreamingNamespaceImportTargetSession {
       case "sealing": break;
       default: return this.state satisfies never;
       }
-      // The import actor may return a sealed logical root while its backing
-      // implementation still has bounded provisional writes. Give that owner
-      // one final durability gate before the runtime candidate can be persisted.
-      await this.beforeSealedCandidateSave?.();
-      await this.saveSealedCandidate();
-      this.state = "sealed";
+      return;
     },
     ensureDirectory: async ({ metadata, path }) => {
       await this.requireActiveActor().ensureDirectory({
@@ -290,33 +285,62 @@ export class StreamingNamespaceImportTargetSession {
     });
   }
 
-  async close(): Promise<void> {
+  async stageSliceState(): Promise<void> {
     switch (this.state) {
-    case "closed": return;
-    case "awaiting_root":
-      this.state = "closed";
-      return;
-    case "sealed":
-      this.state = "closed";
-      return;
-    case "sealing":
-      await this.saveSealedCandidate();
-      this.state = "closed";
-      return;
     case "active": {
       const actor = this.requireActiveActor();
       const candidate: StreamingNamespaceImportRuntimeCandidate = {
         checkpoint: await actor.checkpoint(),
         type: "active",
       };
+      // A runtime checkpoint may contain predicted Home References from the
+      // bounded metadata batch. Flush them before exposing the checkpoint to
+      // the progress transaction that can make it resumable.
+      await this.beforeCandidateStage?.();
       await this.runtimeStatePort.stageCandidate({
         candidate,
         operationIdentity: this.operationIdentity,
       });
+      return;
+    }
+    case "sealing":
+      // Finalization determines the logical root before its backing metadata
+      // is necessarily durable. The same slice-state staging boundary used by
+      // active checkpoints owns this final durability proof.
+      await this.beforeCandidateStage?.();
+      await this.saveSealedCandidate();
+      this.state = "sealed";
+      return;
+    case "sealed":
+      return;
+    case "awaiting_root":
+      throw new StreamingNamespaceImportTargetSessionError({
+        code: "root_metadata_required",
+        message: "transition import target cannot checkpoint before receiving root directory metadata",
+      });
+    case "closed":
+      throw new StreamingNamespaceImportTargetSessionError({
+        code: "already_closed",
+        message: "transition import target session is already closed",
+      });
+    default: return this.state satisfies never;
+    }
+  }
+
+  async discardStagedSliceState(): Promise<void> {
+    await this.runtimeStatePort.discardStagedCandidate({ operationIdentity: this.operationIdentity });
+  }
+
+  async close(): Promise<void> {
+    switch (this.state) {
+    case "closed": return;
+    case "awaiting_root":
+    case "sealed":
+    case "sealing":
+    case "active":
       this.actor = undefined;
       this.state = "closed";
       return;
-    }
     default: return this.state satisfies never;
     }
   }

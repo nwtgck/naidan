@@ -103,6 +103,10 @@ export class RuntimeHizoFSTransitionImportState {
   };
 
   readonly importStatePort: HizoFSTransitionImportStatePort = {
+    discardStagedCandidate: async ({ operationIdentity }) => {
+      this.requireOperation({ operationId: operationIdentity });
+      this.stagedCandidate = undefined;
+    },
     loadCandidate: async ({ operationIdentity }) => {
       this.requireOperation({ operationId: operationIdentity });
       return structuredClone(this.committed?.candidate);

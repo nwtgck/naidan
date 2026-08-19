@@ -47,6 +47,20 @@ export class ReadOnlyNamespaceValidationCache {
     return `${kind}:${referenceIdentity({ reference })}`;
   }
 
+  private fileExtentTreeKey({ fileSize, rootReference }: {
+    fileSize: bigint;
+    rootReference: HomeRecordReference;
+  }): string {
+    return `file_extent_tree:${referenceIdentity({ reference: rootReference })}:${fileSize}`;
+  }
+
+  private namespaceGraphKey({ inodeTableRootReference, rootDirectoryInodeNumber }: {
+    inodeTableRootReference: HomeRecordReference;
+    rootDirectoryInodeNumber: InodeNumber;
+  }): string {
+    return `namespace_graph:${referenceIdentity({ reference: inodeTableRootReference })}:${rootDirectoryInodeNumber}`;
+  }
+
   private evictSettledEntry(): boolean {
     for (const [key, entry] of this.entries) {
       if (!entry.settled) continue;
@@ -81,6 +95,122 @@ export class ReadOnlyNamespaceValidationCache {
     }
     if (this.entries.size >= this.maximumEntries) return;
     this.entries.set(successorKey, {
+      inodeTableHighWaterProof: undefined,
+      promise: Promise.resolve(),
+      settled: true,
+    });
+  }
+
+  /**
+   * Carries the cross-record namespace proof only across a trusted canonical
+   * mutation that preserved ordinary one-parent reachability. The root inode is
+   * part of the identity because one Inode Table root must not validate a
+   * different namespace interpretation accidentally.
+   */
+  inheritValidatedNamespaceGraphSuccessor({
+    baseInodeTableRootReference,
+    baseRootDirectoryInodeNumber,
+    successorInodeTableRootReference,
+    successorRootDirectoryInodeNumber,
+  }: {
+    baseInodeTableRootReference: HomeRecordReference;
+    baseRootDirectoryInodeNumber: InodeNumber;
+    successorInodeTableRootReference: HomeRecordReference;
+    successorRootDirectoryInodeNumber: InodeNumber;
+  }): void {
+    // Ordinary canonical mutation does not replace the Subvolume root inode.
+    // A root-identity change changes the graph interpretation even when the
+    // Inode Table bytes happen to be related, so require a fresh full proof.
+    if (baseRootDirectoryInodeNumber !== successorRootDirectoryInodeNumber) return;
+    const baseKey = this.namespaceGraphKey({
+      inodeTableRootReference: baseInodeTableRootReference,
+      rootDirectoryInodeNumber: baseRootDirectoryInodeNumber,
+    });
+    const base = this.entries.get(baseKey);
+    if (base?.settled !== true) return;
+    const successorKey = this.namespaceGraphKey({
+      inodeTableRootReference: successorInodeTableRootReference,
+      rootDirectoryInodeNumber: successorRootDirectoryInodeNumber,
+    });
+    const existing = this.entries.get(successorKey);
+    if (existing !== undefined) {
+      this.entries.delete(successorKey);
+      this.entries.set(successorKey, existing);
+      return;
+    }
+    while (this.entries.size >= this.maximumEntries && this.evictSettledEntry()) {
+      // Evict completed proof entries only. Pending validation is never cancelled.
+    }
+    if (this.entries.size >= this.maximumEntries) return;
+    this.entries.set(successorKey, {
+      inodeTableHighWaterProof: undefined,
+      promise: Promise.resolve(),
+      settled: true,
+    });
+  }
+
+  /**
+   * Carries a complete File Extent structural/semantic proof only across a
+   * trusted canonical mutation whose exact source root was already proven.
+   * File size is part of the proof identity because out-of-range extents are
+   * invalid even when the immutable tree bytes are otherwise identical.
+   */
+  inheritValidatedFileExtentTreeSuccessor({
+    baseFileSize,
+    baseRootReference,
+    successorFileSize,
+    successorRootReference,
+  }: {
+    baseFileSize: bigint;
+    baseRootReference: HomeRecordReference;
+    successorFileSize: bigint;
+    successorRootReference: HomeRecordReference;
+  }): void {
+    const baseKey = this.fileExtentTreeKey({ fileSize: baseFileSize, rootReference: baseRootReference });
+    const base = this.entries.get(baseKey);
+    if (base?.settled !== true) return;
+    const successorKey = this.fileExtentTreeKey({
+      fileSize: successorFileSize,
+      rootReference: successorRootReference,
+    });
+    const existing = this.entries.get(successorKey);
+    if (existing !== undefined) {
+      this.entries.delete(successorKey);
+      this.entries.set(successorKey, existing);
+      return;
+    }
+    while (this.entries.size >= this.maximumEntries && this.evictSettledEntry()) {
+      // Evict completed proof entries only. Pending validation is never cancelled.
+    }
+    if (this.entries.size >= this.maximumEntries) return;
+    this.entries.set(successorKey, {
+      inodeTableHighWaterProof: undefined,
+      promise: Promise.resolve(),
+      settled: true,
+    });
+  }
+
+  /**
+   * Records a structural proof produced by a complete immutable-tree traversal.
+   * Callers must invoke this only after consuming the traversal to completion;
+   * partial pagination must continue to use validate() instead.
+   */
+  rememberValidatedFullTraversal({ kind, reference }: {
+    kind: ReadOnlyNamespaceValidationKind;
+    reference: HomeRecordReference;
+  }): void {
+    const key = this.key({ kind, reference });
+    const existing = this.entries.get(key);
+    if (existing !== undefined) {
+      this.entries.delete(key);
+      this.entries.set(key, existing);
+      return;
+    }
+    while (this.entries.size >= this.maximumEntries && this.evictSettledEntry()) {
+      // Evict completed proof entries only. Pending validation is never cancelled.
+    }
+    if (this.entries.size >= this.maximumEntries) return;
+    this.entries.set(key, {
       inodeTableHighWaterProof: undefined,
       promise: Promise.resolve(),
       settled: true,
@@ -123,12 +253,10 @@ export class ReadOnlyNamespaceValidationCache {
     this.entries.set(key, entry);
   }
 
-  async validate({ kind, reference, validate }: {
-    kind: ReadOnlyNamespaceValidationKind;
-    reference: HomeRecordReference;
+  private async validateKey({ key, validate }: {
+    key: string;
     validate: () => Promise<void>;
   }): Promise<void> {
-    const key = this.key({ kind, reference });
     while (true) {
       const existing = this.entries.get(key);
       if (existing !== undefined) {
@@ -140,12 +268,9 @@ export class ReadOnlyNamespaceValidationCache {
       if (this.evictSettledEntry()) continue;
       const pending = this.entries.values().next().value as ValidationEntry | undefined;
       if (pending === undefined) throw new Error("namespace validation cache capacity invariant failed");
-      // Saturation must apply backpressure rather than bypassing the cache.
-      // Otherwise many distinct roots can start unbounded full-tree validation
-      // even though the cache itself remains nominally bounded. A failed older
-      // validation does not fail this unrelated request; its own caller still
-      // observes that failure and the entry removes itself below. Re-check the
-      // requested key after every wait so concurrent waiters still coalesce.
+      // Saturation applies backpressure rather than bypassing the cache. A
+      // failed unrelated proof does not poison this request; its own caller
+      // observes that failure and removes the failed entry below.
       await pending.promise.catch(() => undefined);
     }
 
@@ -166,6 +291,37 @@ export class ReadOnlyNamespaceValidationCache {
     this.entries.set(key, entry);
     await entry.promise;
   }
+
+  async validate({ kind, reference, validate }: {
+    kind: ReadOnlyNamespaceValidationKind;
+    reference: HomeRecordReference;
+    validate: () => Promise<void>;
+  }): Promise<void> {
+    await this.validateKey({ key: this.key({ kind, reference }), validate });
+  }
+
+  async validateFileExtentTree({ fileSize, rootReference, validate }: {
+    fileSize: bigint;
+    rootReference: HomeRecordReference;
+    validate: () => Promise<void>;
+  }): Promise<void> {
+    await this.validateKey({
+      key: this.fileExtentTreeKey({ fileSize, rootReference }),
+      validate,
+    });
+  }
+
+  async validateNamespaceGraph({ inodeTableRootReference, rootDirectoryInodeNumber, validate }: {
+    inodeTableRootReference: HomeRecordReference;
+    rootDirectoryInodeNumber: InodeNumber;
+    validate: () => Promise<void>;
+  }): Promise<void> {
+    await this.validateKey({
+      key: this.namespaceGraphKey({ inodeTableRootReference, rootDirectoryInodeNumber }),
+      validate,
+    });
+  }
+
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

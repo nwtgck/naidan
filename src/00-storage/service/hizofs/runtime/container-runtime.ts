@@ -93,6 +93,7 @@ import {
 } from "@/00-storage/service/hizofs/runtime/session-open-handshake";
 import {
   SessionLifecycle,
+  SessionLifecycleError,
   type SessionChildRegistration,
   type SessionLifecycleState,
   type SessionOperationAuthority,
@@ -185,6 +186,7 @@ export type ContainerRuntimeAuthenticatedApplicationGeneration = Readonly<{
   capture: () => AuthenticatedWorkingApplicationGenerationDescriptor;
   publicationModeApplied: () => HizoFSPublicationModeApplied;
   captureSyncTarget: () => WorkingGenerationIdentity;
+  isSyncTargetDurable: ({ target }: { target: WorkingGenerationIdentity }) => boolean;
   openAcceptedMutationAdmission: ({
     dirtyMetadataBytes,
     expectedBase,
@@ -513,6 +515,57 @@ export class ContainerRuntimeWriter {
   }
 }
 
+type RetainedSessionResources = Readonly<{
+  release: () => Promise<void>;
+}>;
+
+class SharedSessionResourceLifetime {
+  private activeReferences = 1;
+  private ownerReleased = false;
+  private releaseResources: () => Promise<void>;
+  private releaseCompletion: Promise<void> | undefined;
+
+  constructor({ releaseResources }: {
+    releaseResources: () => Promise<void>;
+  }) {
+    this.releaseResources = releaseResources;
+  }
+
+  retain(): RetainedSessionResources {
+    if (this.activeReferences === 0) {
+      throw new SessionLifecycleError({
+        code: "capability_closed",
+        message: "session resources are already released",
+      });
+    }
+    this.activeReferences += 1;
+    let active = true;
+    return Object.freeze({
+      release: async () => {
+        if (!active) return;
+        active = false;
+        await this.releaseReference();
+      },
+    });
+  }
+
+  async releaseOwner(): Promise<void> {
+    if (this.ownerReleased) return;
+    this.ownerReleased = true;
+    await this.releaseReference();
+  }
+
+  private async releaseReference(): Promise<void> {
+    if (this.activeReferences <= 0) {
+      throw new TypeError("session resource reference count underflow");
+    }
+    this.activeReferences -= 1;
+    if (this.activeReferences !== 0) return;
+    this.releaseCompletion ??= this.releaseResources();
+    await this.releaseCompletion;
+  }
+}
+
 export class ContainerRuntimeSession {
   private activeSegments: ActiveSegmentRegistry;
   private captureInFlightPublication: () => Promise<void> | undefined;
@@ -521,6 +574,7 @@ export class ContainerRuntimeSession {
   private lifecycle: SessionLifecycle;
   private limits: HizoFSRuntimePolicy;
   private readerPins: ReaderPinRegistry;
+  private resources: SharedSessionResourceLifetime;
   private runtimeCoordination: RuntimeCoordinationRegistry;
 
   constructor({
@@ -548,8 +602,11 @@ export class ContainerRuntimeSession {
     this.crossRealm = crossRealm;
     this.limits = limits;
     this.readerPins = readerPins;
+    this.resources = new SharedSessionResourceLifetime({ releaseResources });
     this.runtimeCoordination = runtimeCoordination;
-    this.lifecycle = new SessionLifecycle({ releaseResources });
+    this.lifecycle = new SessionLifecycle({
+      releaseResources: async () => await this.resources.releaseOwner(),
+    });
   }
 
   state(): SessionLifecycleState {
@@ -626,6 +683,54 @@ export class ContainerRuntimeSession {
     capture: () => Promise<Readonly<{ commitReference: HomeRecordReference; value: Value }>>;
   }): Promise<Readonly<{ pin: ContainerRuntimeReaderPin; value: Value }>> {
     return await this.captureAndAcquireReaderPinInternal({ capture, ownedBySession: true });
+  }
+
+  async captureAndAcquireDetachedReaderSnapshot<Value>({ capture }: {
+    capture: () => Promise<Readonly<{ commitReference: HomeRecordReference; value: Value }>>;
+  }): Promise<Readonly<{
+    pin: ContainerRuntimeReaderPin;
+    resources: RetainedSessionResources;
+    value: Value;
+  }>> {
+    const captured = await this.captureAndAcquireReaderPinInternal({ capture, ownedBySession: false });
+    let resources: RetainedSessionResources | undefined;
+    try {
+      resources = await this.lifecycle.runOperation({ operation: async ({ authority }) => {
+        const retained = this.resources.retain();
+        try {
+          authority.assertCapabilityReturnAllowed();
+          return retained;
+        } catch (cause: unknown) {
+          try {
+            await retained.release();
+          } catch (cleanupCause: unknown) {
+            throw new AggregateError(
+              [cause, cleanupCause],
+              "snapshot resource retention and rollback both failed",
+            );
+          }
+          throw cause;
+        }
+      } });
+      return Object.freeze({ pin: captured.pin, resources, value: captured.value });
+    } catch (cause: unknown) {
+      const failures: unknown[] = [cause];
+      try {
+        captured.pin.release();
+        await captured.pin.released;
+      } catch (cleanupCause: unknown) {
+        failures.push(cleanupCause);
+      }
+      if (resources !== undefined) {
+        try {
+          await resources.release();
+        } catch (cleanupCause: unknown) {
+          failures.push(cleanupCause);
+        }
+      }
+      if (failures.length === 1) throw failures[0];
+      throw new AggregateError(failures, "detached reader snapshot acquisition cleanup failed");
+    }
   }
 
   async createDirectoryIterator({ entries, generation }: {
@@ -718,10 +823,24 @@ export class ContainerRuntimeSession {
     } });
   }
 
-  async syncDurableState({ assertDurabilityDemonstrated, recheckAuthority }: {
+  async syncDurableState({ assertDurabilityDemonstrated, recheckAuthority, writerBarrierRequired = true }: {
     assertDurabilityDemonstrated: () => void;
     recheckAuthority: () => Promise<void>;
+    writerBarrierRequired?: boolean;
   }): Promise<void> {
+    if (!writerBarrierRequired) {
+      await this.lifecycle.runOperation({ operation: async ({ authority }) => {
+        // WHY: a sync target that was already durable when captured does not
+        // include any unaccepted prepared mutation. Re-acquiring the container
+        // writer would let that unrelated prepared mutation self-deadlock sync.
+        authority.assertCapabilityReturnAllowed();
+        assertDurabilityDemonstrated();
+        await recheckAuthority();
+        authority.assertCapabilityReturnAllowed();
+        assertDurabilityDemonstrated();
+      } });
+      return;
+    }
     const writer = await this.acquireWriter();
     let primary: unknown | undefined;
     try {
@@ -951,6 +1070,7 @@ export class ContainerRuntime {
     return Object.freeze({
       capture: () => this.requireAuthenticatedApplicationGeneration(),
       captureSyncTarget: () => this.requireWorkingGenerations().captureSyncTarget(),
+      isSyncTargetDurable: ({ target }) => this.requireWorkingGenerations().isSyncTargetDurable({ target }),
       publicationModeApplied: () => this.appliedPublicationMode,
       openAcceptedMutationAdmission: ({
         dirtyMetadataBytes,
@@ -1109,6 +1229,24 @@ export class ContainerRuntime {
     });
   }
 
+  private failBackgroundDurability({ cause }: { cause: unknown }): void {
+    this.requireWorkingGenerations().markDurabilityStalled({ cause });
+    this.backgroundFlushScheduler.markStalled();
+  }
+
+  private notifyBackgroundFlushForegroundIdle(): void {
+    try {
+      this.backgroundFlushScheduler.notifyForegroundIdle();
+    } catch (cause: unknown) {
+      // WHY: a deferred background publication owns a previously accepted
+      // dirty generation. If rearming its timer fails as foreground authority
+      // becomes idle, losing the trigger would leave that generation dirty
+      // but apparently healthy. Fail-stop the durability state instead.
+      this.failBackgroundDurability({ cause });
+      throw cause;
+    }
+  }
+
   private async requestBackgroundFlush({ trigger }: {
     trigger: HizoFSBackgroundFlushTrigger;
   }): Promise<void> {
@@ -1120,10 +1258,16 @@ export class ContainerRuntime {
         if ((this.workingGenerationSnapshot()?.dirtyResources.pendingAdmissionCount ?? 0) === 0) {
           // The foreground admission may have closed before this async catch ran.
           // Rechecking after registering the deferral prevents a lost wake-up.
-          this.backgroundFlushScheduler.notifyForegroundIdle();
+          this.notifyBackgroundFlushForegroundIdle();
         }
         return;
       }
+      // WHY: background publication is fire-and-forget, so a failure before
+      // runFlush() opens a generation flush capability has no foreground
+      // caller that can own it. Move that failure into the same fail-stopped
+      // durability state used by publication failures. Existing reads remain
+      // valid, while new mutations fail closed until explicit sync retries.
+      this.failBackgroundDurability({ cause });
       throw cause;
     }
   }
@@ -1384,9 +1528,13 @@ export class ContainerRuntime {
           });
           generationAdmission.accept({ workingGeneration: successor.workingIdentity });
           generationAccepted = true;
-          this.backgroundFlushScheduler.notifyForegroundIdle();
+          // WHY: once the coordinator accepts this successor it is the working
+          // authority. Bind the matching runtime descriptor and candidate
+          // ownership before a fallible scheduler side effect so timer re-arm
+          // failure cannot split the coordinator from the accepted runtime.
           this.authenticatedApplicationGeneration = successor;
           candidateAdmission.retainInstalled();
+          this.notifyBackgroundFlushForegroundIdle();
           const dirtyResources = coordinator.snapshot().dirtyResources;
           const policy = this.limits.lazyDurability;
           this.backgroundFlushScheduler.markDirty({
@@ -1467,9 +1615,13 @@ export class ContainerRuntime {
           });
           generationAdmission.accept({ workingGeneration: successor.workingIdentity });
           generationAccepted = true;
-          this.backgroundFlushScheduler.notifyForegroundIdle();
+          // WHY: once the coordinator accepts this successor it is the working
+          // authority. Bind the matching runtime descriptor and candidate
+          // ownership before a fallible scheduler side effect so timer re-arm
+          // failure cannot split the coordinator from the accepted runtime.
           this.authenticatedApplicationGeneration = successor;
           candidateAdmission.retainInstalled();
+          this.notifyBackgroundFlushForegroundIdle();
           const dirtyResources = coordinator.snapshot().dirtyResources;
           const policy = this.limits.lazyDurability;
           this.backgroundFlushScheduler.markDirty({
@@ -1534,7 +1686,7 @@ export class ContainerRuntime {
         }
         try {
           generationAdmission.rollback();
-          this.backgroundFlushScheduler.notifyForegroundIdle();
+          this.notifyBackgroundFlushForegroundIdle();
         } catch (cause: unknown) {
           failures.push(cause);
         }
@@ -1614,7 +1766,11 @@ export class ContainerRuntime {
           throw new TypeError("durable successor does not match the selected runtime candidate");
         }
         generationAdmission.accept({ workingGeneration: successor.workingIdentity });
-        this.backgroundFlushScheduler.notifyForegroundIdle();
+        // WHY: this successor is already durably published. Any deferred
+        // background trigger became obsolete at that authority gate; rearming
+        // it here adds a fallible timer side effect between generation accept
+        // and durable-state convergence. markDurable() clears that deferred
+        // scheduler state after the coordinator advances.
         const flush = coordinator.openFlush();
         flush.complete({ durableGeneration: successor.workingIdentity });
         this.authenticatedApplicationGeneration = successor;
@@ -1678,7 +1834,7 @@ export class ContainerRuntime {
         active = false;
         try {
           generationAdmission.rollback();
-          this.backgroundFlushScheduler.notifyForegroundIdle();
+          this.notifyBackgroundFlushForegroundIdle();
         } catch (cleanupCause: unknown) {
           throw new AggregateError(
             [cause, cleanupCause],
@@ -1697,7 +1853,7 @@ export class ContainerRuntime {
         if (!durableCommitted) {
           try {
             generationAdmission.rollback();
-            this.backgroundFlushScheduler.notifyForegroundIdle();
+            this.notifyBackgroundFlushForegroundIdle();
           } catch (cause: unknown) {
             failures.push(cause);
           }

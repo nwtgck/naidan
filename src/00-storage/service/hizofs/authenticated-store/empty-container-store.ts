@@ -15,6 +15,7 @@ import {
   type OpenedInitialBootstrapRoot,
 } from "./bootstrap-segment-store";
 import { AuthenticatedStoreError, authenticatedStoreError } from "./errors";
+import { validateAuthenticatedRelocationIndexTree } from "./relocation-index-reader";
 import type { AuthenticatedHizoFSPhysicalBytes } from "./physical-bytes";
 import type { AuthenticatedStoreDiagnosticsPort } from "@/00-storage/service/hizofs/authenticated-store/diagnostics-hooks";
 import {
@@ -77,6 +78,16 @@ export async function openEmptyEncryptedContainer({
       throw authenticatedStoreError({
         code: "control_plane_corrupt",
         message: "authoritative Superblock requires a newer Unlock Envelope sequence",
+      });
+    }
+    const relocationIndexRootPhysicalRef = superblock.logicalState.relocationIndexRootPhysicalRef;
+    if (relocationIndexRootPhysicalRef !== null) {
+      await validateAuthenticatedRelocationIndexTree({
+        backend,
+        diagnostics,
+        fileSystemId: unlocked.fileSystemId,
+        rootKey: unlocked.rootKey,
+        rootPhysicalReference: relocationIndexRootPhysicalRef,
       });
     }
     let bootstrap: OpenedInitialBootstrapRoot;
@@ -176,6 +187,16 @@ export async function openEmptyEncryptedContainerWithRootKey({
       throw authenticatedStoreError({
         code: "credential_rejected",
         message: "Worker mount grant credential slot is no longer authoritative",
+      });
+    }
+    const relocationIndexRootPhysicalRef = superblock.logicalState.relocationIndexRootPhysicalRef;
+    if (relocationIndexRootPhysicalRef !== null) {
+      await validateAuthenticatedRelocationIndexTree({
+        backend,
+        diagnostics,
+        fileSystemId,
+        rootKey,
+        rootPhysicalReference: relocationIndexRootPhysicalRef,
       });
     }
     let bootstrap: OpenedInitialBootstrapRoot;

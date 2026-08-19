@@ -67,23 +67,45 @@ function requireFileExtentTreeContent({ message, source }: {
   return content;
 }
 
+const MAXIMUM_PREPARED_EXTENT_PLAINTEXT_BYTES = 16 * 1024 * 1024;
+
+export const HIZOFS_FILE_EXTENT_TAIL_APPEND_BATCH_RESOURCE_LIMITS = Object.freeze({
+  maximumPendingPlaintextBytes: MAXIMUM_PREPARED_EXTENT_PLAINTEXT_BYTES,
+});
+
 /**
  * Bounded mutation-local overlay for repeated tail appends from one prepared
  * writable. It deliberately keeps the last persisted File Extent root in the
  * staged inode until materialization; callers must flush the overlay before a
  * non-tail operation or publication.
  *
- * WHY: rewriting one immutable File Extent root for every small sequential
- * write turns a single logical stream into O(write-count) metadata COW work.
- * The overlay owns only mutation-local File Data references and at most
- * `maximumExtentMutationsPerBatch` entries. File Data plaintext remains owned
- * by the separately bounded append batch, so this removes repeated tree work
- * without adding another plaintext copy or changing the persisted tree format.
+ * WHY: rewriting one immutable File Extent root and encrypting one File Data
+ * Record for every small sequential write turns a logical stream into
+ * O(write-count) metadata and crypto work. The overlay takes ownership of the
+ * already-captured write bytes, keeps at most 16 MiB, then packs the contiguous
+ * tail into canonical <=1 MiB File Data Records at flush. No second retained
+ * plaintext copy is introduced and the persisted File Extent format is
+ * unchanged.
  */
+function tailAppendExtentFragmentsForBytes({ byteLength, pendingPlaintextBytes }: {
+  byteLength: number;
+  pendingPlaintextBytes: number;
+}): number {
+  if (!Number.isSafeInteger(byteLength) || byteLength <= 0) return 0;
+  const maximumPayload = HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes;
+  const offsetInPayload = pendingPlaintextBytes % maximumPayload;
+  const firstCapacity = maximumPayload - offsetInPayload;
+  if (byteLength <= firstCapacity) return 1;
+  return 1 + Math.ceil((byteLength - firstCapacity) / maximumPayload);
+}
+
 export class PreparedFileExtentTailAppendBatch {
-  private readonly entries: FileExtentLeafEntry[] = [];
+  private chunks: Uint8Array[] = [];
   private closed = false;
   private fileSize: FileOffset;
+  private pendingExtentEntries = 0;
+  private pendingPlaintextBytes = 0;
+  private readonly startFileOffset: FileOffset;
   private rootReference: HomeRecordReference;
 
   private constructor({ fileSize, rootReference }: {
@@ -91,6 +113,7 @@ export class PreparedFileExtentTailAppendBatch {
     rootReference: HomeRecordReference;
   }) {
     this.fileSize = fileSize;
+    this.startFileOffset = fileSize;
     this.rootReference = rootReference;
   }
 
@@ -123,16 +146,26 @@ export class PreparedFileExtentTailAppendBatch {
     if (source.fileSize !== this.fileSize || writeOffset !== this.fileSize) return false;
     if (!sameRecordReferenceFields({ left: content.extentTreeRootHomeRef, right: this.rootReference })) return false;
     if (!Number.isSafeInteger(byteLength) || byteLength <= 0) return false;
-    const maximumPayload = HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes;
-    const addedEntries = Math.ceil(byteLength / maximumPayload);
-    return addedEntries <= requirePositiveBatchSize({ limits }) - this.entries.length;
+    const nextPlaintextBytes = this.pendingPlaintextBytes + byteLength;
+    if (!Number.isSafeInteger(nextPlaintextBytes) || nextPlaintextBytes > MAXIMUM_PREPARED_EXTENT_PLAINTEXT_BYTES) {
+      return false;
+    }
+    const addedExtentEntries = tailAppendExtentFragmentsForBytes({
+      byteLength,
+      pendingPlaintextBytes: this.pendingPlaintextBytes,
+    });
+    return this.pendingExtentEntries + addedExtentEntries <= requirePositiveBatchSize({ limits });
   }
 
-  async stage({ plan, port, source }: {
+  /**
+   * Transfers ownership of plan.writeBytes on success. The caller must zeroize
+   * them only when this method rejects; flush/discard owns erasure afterward.
+   */
+  stage({ limits, plan, source }: {
+    limits: FileContentMutationLimits;
     plan: Extract<FileWritePlan, { action: "copy_on_write_extent_range" }>;
-    port: FileContentMutationPort;
     source: FileInodeEntry;
-  }): Promise<FileInodeEntry> {
+  }): FileInodeEntry {
     if (this.closed) throw new Error("File Extent tail append batch is closed");
     const content = requireFileExtentTreeContent({
       message: "File Extent tail append source must be extent-backed",
@@ -144,15 +177,36 @@ export class PreparedFileExtentTailAppendBatch {
     if (!sameRecordReferenceFields({ left: content.extentTreeRootHomeRef, right: this.rootReference })) {
       throw new TypeError("File Extent tail append batch source root changed before materialization");
     }
-    const written = await appendExtentBytes({ bytes: plan.writeBytes, fileOffset: plan.writeOffset, port });
-    this.entries.push(...written);
+    const nextPlaintextBytes = this.pendingPlaintextBytes + plan.writeBytes.byteLength;
+    if (!Number.isSafeInteger(nextPlaintextBytes) || nextPlaintextBytes > MAXIMUM_PREPARED_EXTENT_PLAINTEXT_BYTES) {
+      throw new RangeError("File Extent tail append batch plaintext exceeds its resource bound");
+    }
+    const addedExtentEntries = tailAppendExtentFragmentsForBytes({
+      byteLength: plan.writeBytes.byteLength,
+      pendingPlaintextBytes: this.pendingPlaintextBytes,
+    });
+    if (this.pendingExtentEntries + addedExtentEntries > requirePositiveBatchSize({ limits })) {
+      throw new RangeError("File Extent tail append batch exceeds its mutation-entry bound");
+    }
+    this.chunks.push(plan.writeBytes);
+    this.pendingExtentEntries += addedExtentEntries;
+    this.pendingPlaintextBytes = nextPlaintextBytes;
     this.fileSize = plan.targetFileSize;
     return updatedFileInode({ content: source.content, plan, source });
   }
 
-  async flush({ limits, pageStore, source }: {
+  discard(): void {
+    if (this.closed) return;
+    this.closed = true;
+    for (const chunk of this.chunks) chunk.fill(0);
+    this.chunks = [];
+    this.pendingExtentEntries = 0;
+    this.pendingPlaintextBytes = 0;
+  }
+
+  async flush({ limits, port, source }: {
     limits: FileContentMutationLimits;
-    pageStore: FileExtentTreePageStore;
+    port: FileContentMutationPort;
     source: FileInodeEntry;
   }): Promise<FileWriteMutationWithAppendTailWitnessResult> {
     if (this.closed) throw new Error("File Extent tail append batch is closed");
@@ -164,26 +218,321 @@ export class PreparedFileExtentTailAppendBatch {
     if (!sameRecordReferenceFields({ left: content.extentTreeRootHomeRef, right: this.rootReference })) {
       throw new TypeError("File Extent tail append batch source root changed before materialization");
     }
-    // Consume the capability before the first metadata write. A failed COW
-    // may have emitted unreachable provisional pages, so retrying the same
-    // overlay could no longer prove that it owns one pristine base state.
+    const maximumPayload = HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes;
+    if (this.pendingExtentEntries > requirePositiveBatchSize({ limits })) {
+      throw new RangeError("File Extent tail append batch exceeds its mutation-entry bound");
+    }
+    // Consume the capability before the first data or metadata write. A failed
+    // flush may emit unreachable provisional Records, so retrying the same
+    // plaintext stream could no longer prove pristine ownership.
     this.closed = true;
-    const entries = this.entries.splice(0);
-    const root = await applyMutationBatches({
-      changes: entries.map(entry => ({ entry, type: "set" as const })),
-      limits,
-      pageStore,
-      rootReference: this.rootReference,
+    const chunks = this.chunks;
+    this.chunks = [];
+    const pendingExtentEntries = this.pendingExtentEntries;
+    this.pendingExtentEntries = 0;
+    const pendingPlaintextBytes = this.pendingPlaintextBytes;
+    this.pendingPlaintextBytes = 0;
+    const newEntries: FileExtentLeafEntry[] = [];
+    let chunkIndex = 0;
+    let chunkOffset = 0;
+    let emittedBytes = 0;
+    try {
+      while (emittedBytes < pendingPlaintextBytes) {
+        const payloadLength = Math.min(maximumPayload, pendingPlaintextBytes - emittedBytes);
+        const payload = new Uint8Array(payloadLength);
+        const fragments: Array<Readonly<{
+          byteLength: number;
+          dataOffset: number;
+          fileOffset: FileOffset;
+        }>> = [];
+        let payloadOffset = 0;
+        try {
+          while (payloadOffset < payloadLength) {
+            const chunk = chunks[chunkIndex];
+            if (chunk === undefined) throw new Error("File Extent tail append plaintext stream ended early");
+            const copyLength = Math.min(payloadLength - payloadOffset, chunk.byteLength - chunkOffset);
+            const dataOffset = payloadOffset;
+            payload.set(chunk.subarray(chunkOffset, chunkOffset + copyLength), payloadOffset);
+            fragments.push({
+              byteLength: copyLength,
+              dataOffset,
+              fileOffset: createFileOffset({
+                value: this.startFileOffset + BigInt(emittedBytes + payloadOffset),
+              }),
+            });
+            payloadOffset += copyLength;
+            chunkOffset += copyLength;
+            if (chunkOffset === chunk.byteLength) {
+              chunk.fill(0);
+              chunkIndex += 1;
+              chunkOffset = 0;
+            }
+          }
+          const fileDataHomeRef = await port.writeFileData({ bytes: payload });
+          newEntries.push(...fragments.map(fragment => ({
+            ...fragment,
+            fileDataHomeRef,
+          })));
+        } finally {
+          payload.fill(0);
+        }
+        emittedBytes += payloadLength;
+      }
+      if (emittedBytes !== pendingPlaintextBytes || this.startFileOffset + BigInt(emittedBytes) !== this.fileSize) {
+        throw new Error("File Extent tail append plaintext length invariant failed");
+      }
+      if (newEntries.length !== pendingExtentEntries) {
+        throw new Error("File Extent tail append fragment-count invariant failed");
+      }
+      const root = await applyMutationBatches({
+        changes: newEntries.map(entry => ({ entry, type: "set" as const })),
+        limits,
+        pageStore: port.extentPageStore,
+        rootReference: this.rootReference,
+      });
+      this.rootReference = root;
+      const inode: FileInodeEntry = {
+        ...source,
+        content: { extentTreeRootHomeRef: root, type: "tree" },
+      };
+      return Object.freeze({
+        appendTailWitness: createFileExtentAppendTailWitness({ fileSize: inode.fileSize, rootReference: root }),
+        inode,
+      });
+    } finally {
+      for (const chunk of chunks) chunk.fill(0);
+    }
+  }
+}
+
+/**
+ * Bounded mutation-local overlay for non-tail extent writes. It keeps the
+ * persisted File Extent root unchanged while public write calls are staged,
+ * then packs their owned plaintext into canonical <=1 MiB File Data Records.
+ * Metadata replacements are still applied in original write order so overlap
+ * semantics and last-write-wins behavior remain identical to individual
+ * writes.
+ *
+ * WHY: random writes otherwise encrypt one tiny File Data Record per public
+ * write even though the prepared writable already owns all plaintext until
+ * commit. Coalescing only the data records removes that crypto/record
+ * amplification without widening the harder File Extent transaction boundary.
+ */
+export class PreparedFileExtentRangeWriteBatch {
+  private closed = false;
+  private fileSize: FileOffset;
+  private pendingPlaintextBytes = 0;
+  private readonly rootReference: HomeRecordReference;
+  private writes: Array<{
+    bytes: Uint8Array;
+    end: FileOffset;
+    start: FileOffset;
+  }> = [];
+
+  private constructor({ fileSize, rootReference }: {
+    fileSize: FileOffset;
+    rootReference: HomeRecordReference;
+  }) {
+    this.fileSize = fileSize;
+    this.rootReference = rootReference;
+  }
+
+  static create({ source }: { source: FileInodeEntry }): PreparedFileExtentRangeWriteBatch {
+    const content = requireFileExtentTreeContent({
+      message: "File Extent range-write batch requires an extent-backed file",
+      source,
     });
-    this.rootReference = root;
-    const inode: FileInodeEntry = {
-      ...source,
-      content: { extentTreeRootHomeRef: root, type: "tree" },
-    };
-    return Object.freeze({
-      appendTailWitness: createFileExtentAppendTailWitness({ fileSize: inode.fileSize, rootReference: root }),
-      inode,
+    return new PreparedFileExtentRangeWriteBatch({
+      fileSize: source.fileSize,
+      rootReference: content.extentTreeRootHomeRef,
     });
+  }
+
+  canStage({ byteLength, limits, source, writeOffset }: {
+    byteLength: number;
+    limits: FileContentMutationLimits;
+    source: FileInodeEntry;
+    writeOffset: FileOffset;
+  }): boolean {
+    if (this.closed) return false;
+    const content = fileExtentTreeContentOrUndefined({ source });
+    if (content === undefined) return false;
+    if (source.fileSize !== this.fileSize) return false;
+    if (!sameRecordReferenceFields({ left: content.extentTreeRootHomeRef, right: this.rootReference })) return false;
+    if (!Number.isSafeInteger(byteLength) || byteLength <= 0) return false;
+    // Pure tail appends have a stronger overlay that also coalesces File Extent
+    // tree updates; do not absorb them into this data-record-only batch.
+    if (writeOffset >= source.fileSize) return false;
+    if (this.writes.length >= requirePositiveBatchSize({ limits })) return false;
+    const nextPlaintextBytes = this.pendingPlaintextBytes + byteLength;
+    return Number.isSafeInteger(nextPlaintextBytes)
+      && nextPlaintextBytes <= MAXIMUM_PREPARED_EXTENT_PLAINTEXT_BYTES;
+  }
+
+  /** Transfers ownership of plan.writeBytes on success. */
+  stage({ limits, plan, source }: {
+    limits: FileContentMutationLimits;
+    plan: Extract<FileWritePlan, { action: "copy_on_write_extent_range" }>;
+    source: FileInodeEntry;
+  }): FileInodeEntry {
+    if (this.closed) throw new Error("File Extent range-write batch is closed");
+    sameInodePlan({
+      inode: source,
+      plannedInodeNumber: plan.inodeNumber,
+      plannedRevision: plan.nextInodeRevision,
+    });
+    const content = requireFileExtentTreeContent({
+      message: "File Extent range-write batch requires an extent-backed source",
+      source,
+    });
+    if (source.fileSize !== this.fileSize) {
+      throw new TypeError("File Extent range-write batch file size changed before materialization");
+    }
+    if (!sameRecordReferenceFields({ left: content.extentTreeRootHomeRef, right: this.rootReference })) {
+      throw new TypeError("File Extent range-write batch source root changed before materialization");
+    }
+    if (plan.writeOffset >= source.fileSize) {
+      throw new TypeError("File Extent range-write batch accepts only writes beginning before the logical tail");
+    }
+    if (this.writes.length >= requirePositiveBatchSize({ limits })) {
+      throw new RangeError("File Extent range-write batch exceeds its write-count bound");
+    }
+    const nextPlaintextBytes = this.pendingPlaintextBytes + plan.writeBytes.byteLength;
+    if (!Number.isSafeInteger(nextPlaintextBytes) || nextPlaintextBytes > MAXIMUM_PREPARED_EXTENT_PLAINTEXT_BYTES) {
+      throw new RangeError("File Extent range-write batch plaintext exceeds its resource bound");
+    }
+    this.writes.push({
+      bytes: plan.writeBytes,
+      end: createFileOffset({ value: plan.writeOffset + BigInt(plan.writeBytes.byteLength) }),
+      start: plan.writeOffset,
+    });
+    this.pendingPlaintextBytes = nextPlaintextBytes;
+    this.fileSize = plan.targetFileSize;
+    return updatedFileInode({ content: source.content, plan, source });
+  }
+
+  discard(): void {
+    if (this.closed) return;
+    this.closed = true;
+    for (const write of this.writes) write.bytes.fill(0);
+    this.writes = [];
+    this.pendingPlaintextBytes = 0;
+  }
+
+  async flush({ limits, port, source }: {
+    limits: FileContentMutationLimits;
+    port: FileContentMutationPort;
+    source: FileInodeEntry;
+  }): Promise<FileInodeEntry> {
+    if (this.closed) throw new Error("File Extent range-write batch is closed");
+    const content = requireFileExtentTreeContent({
+      message: "File Extent range-write batch requires an extent-backed source",
+      source,
+    });
+    if (source.fileSize !== this.fileSize) {
+      throw new TypeError("File Extent range-write batch file size changed before materialization");
+    }
+    if (!sameRecordReferenceFields({ left: content.extentTreeRootHomeRef, right: this.rootReference })) {
+      throw new TypeError("File Extent range-write batch source root changed before materialization");
+    }
+
+    this.closed = true;
+    const writes = this.writes;
+    this.writes = [];
+    const pendingPlaintextBytes = this.pendingPlaintextBytes;
+    this.pendingPlaintextBytes = 0;
+    const entriesByWrite = writes.map((): FileExtentLeafEntry[] => []);
+    const maximumPayload = HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes;
+    let writeIndex = 0;
+    let writeByteOffset = 0;
+    let emittedBytes = 0;
+    try {
+      while (emittedBytes < pendingPlaintextBytes) {
+        const payloadLength = Math.min(maximumPayload, pendingPlaintextBytes - emittedBytes);
+        const payload = new Uint8Array(payloadLength);
+        const fragments: Array<{
+          byteLength: number;
+          dataOffset: number;
+          fileOffset: FileOffset;
+          writeIndex: number;
+        }> = [];
+        let payloadOffset = 0;
+        try {
+          while (payloadOffset < payloadLength) {
+            const write = writes[writeIndex];
+            if (write === undefined) throw new Error("File Extent range-write plaintext stream ended early");
+            const copyLength = Math.min(payloadLength - payloadOffset, write.bytes.byteLength - writeByteOffset);
+            const dataOffset = payloadOffset;
+            payload.set(write.bytes.subarray(writeByteOffset, writeByteOffset + copyLength), payloadOffset);
+            fragments.push({
+              byteLength: copyLength,
+              dataOffset,
+              fileOffset: createFileOffset({ value: write.start + BigInt(writeByteOffset) }),
+              writeIndex,
+            });
+            payloadOffset += copyLength;
+            writeByteOffset += copyLength;
+            if (writeByteOffset === write.bytes.byteLength) {
+              write.bytes.fill(0);
+              writeIndex += 1;
+              writeByteOffset = 0;
+            }
+          }
+          const fileDataHomeRef = await port.writeFileData({ bytes: payload });
+          for (const fragment of fragments) {
+            entriesByWrite[fragment.writeIndex]?.push({
+              byteLength: fragment.byteLength,
+              dataOffset: fragment.dataOffset,
+              fileDataHomeRef,
+              fileOffset: fragment.fileOffset,
+            });
+          }
+        } finally {
+          payload.fill(0);
+        }
+        emittedBytes += payloadLength;
+      }
+      if (emittedBytes !== pendingPlaintextBytes || writeIndex !== writes.length || writeByteOffset !== 0) {
+        throw new Error("File Extent range-write plaintext length invariant failed");
+      }
+
+      const combinedRootReference = await tryReplaceExtentRangesTogether({
+        limits,
+        pageStore: port.extentPageStore,
+        replacements: writes.map((write, index) => ({
+          end: write.end,
+          newEntries: entriesByWrite[index] ?? [],
+          start: write.start,
+        })),
+        rootReference: this.rootReference,
+      });
+      if (combinedRootReference !== undefined) {
+        return {
+          ...source,
+          content: { extentTreeRootHomeRef: combinedRootReference, type: "tree" },
+        };
+      }
+
+      let rootReference = this.rootReference;
+      for (let index = 0; index < writes.length; index += 1) {
+        const write = writes[index];
+        if (write === undefined) throw new Error("File Extent range-write metadata stream ended early");
+        rootReference = await replaceExtentRange({
+          end: write.end,
+          limits,
+          newEntries: entriesByWrite[index] ?? [],
+          pageStore: port.extentPageStore,
+          rootReference,
+          start: write.start,
+        });
+      }
+      return {
+        ...source,
+        content: { extentTreeRootHomeRef: rootReference, type: "tree" },
+      };
+    } finally {
+      for (const write of writes) write.bytes.fill(0);
+    }
   }
 }
 
@@ -372,12 +721,137 @@ async function replaceExtentRange({ end, limits, newEntries, pageStore, rootRefe
   });
 }
 
+type FileExtentRangeReplacement = Readonly<{
+  end: FileOffset;
+  newEntries: readonly FileExtentLeafEntry[];
+  start: FileOffset;
+}>;
+
+function replaceCapturedExtentRange({ end, entries, newEntries, start }: {
+  end: FileOffset;
+  entries: readonly FileExtentLeafEntry[];
+  newEntries: readonly FileExtentLeafEntry[];
+  start: FileOffset;
+}): FileExtentLeafEntry[] {
+  const next: FileExtentLeafEntry[] = [];
+  for (const entry of entries) {
+    const entryEnd = entry.fileOffset + BigInt(entry.byteLength);
+    if (entryEnd <= start || entry.fileOffset >= end) {
+      next.push(entry);
+      continue;
+    }
+    if (entry.fileOffset < start) {
+      next.push({
+        ...entry,
+        byteLength: Number(start - entry.fileOffset),
+      });
+    }
+    if (entryEnd > end) {
+      next.push({
+        ...entry,
+        byteLength: Number(entryEnd - end),
+        dataOffset: entry.dataOffset + Number(end - entry.fileOffset),
+        fileOffset: end,
+      });
+    }
+  }
+  next.push(...newEntries);
+  next.sort((left, right) => left.fileOffset < right.fileOffset ? -1 : left.fileOffset > right.fileOffset ? 1 : 0);
+  return next;
+}
+
+async function tryReplaceExtentRangesTogether({ limits, pageStore, replacements, rootReference }: {
+  limits: FileContentMutationLimits;
+  pageStore: FileExtentTreePageStore;
+  replacements: readonly FileExtentRangeReplacement[];
+  rootReference: HomeRecordReference;
+}): Promise<HomeRecordReference | undefined> {
+  if (replacements.length < 2) return undefined;
+  const maximumBatchSize = requirePositiveBatchSize({ limits });
+  if (replacements.length > maximumBatchSize) return undefined;
+  const doubledCaptureBound = maximumBatchSize * 2;
+  const maximumCapturedEntries = Number.isSafeInteger(doubledCaptureBound)
+    ? doubledCaptureBound
+    : maximumBatchSize;
+  const capturedByOffset = new Map<FileOffset, FileExtentLeafEntry>();
+
+  // Capture only extents actually touched by pending writes. A min/max span
+  // scan would turn two far-apart random writes into an unbounded traversal of
+  // every extent between them. Independent floor scans keep memory proportional
+  // to the bounded write batch while still sharing one immutable-root update.
+  for (const replacement of replacements) {
+    for await (const entry of fileExtentEntriesFromFloor({
+      fileOffset: replacement.start,
+      pageStore,
+      rootReference,
+    })) {
+      const entryEnd = entry.fileOffset + BigInt(entry.byteLength);
+      if (entryEnd <= replacement.start) continue;
+      if (entry.fileOffset >= replacement.end) break;
+      capturedByOffset.set(entry.fileOffset, entry);
+      if (capturedByOffset.size > maximumCapturedEntries) return undefined;
+    }
+  }
+
+  let merged = [...capturedByOffset.values()]
+    .sort((left, right) => left.fileOffset < right.fileOffset ? -1 : left.fileOffset > right.fileOffset ? 1 : 0);
+  const maximumPayload = HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes;
+  const maximumPackedFragments = Math.ceil(MAXIMUM_PREPARED_EXTENT_PLAINTEXT_BYTES / maximumPayload);
+  const maximumMergedEntries = maximumCapturedEntries + replacements.length * 3 + maximumPackedFragments;
+  if (!Number.isSafeInteger(maximumMergedEntries)) return undefined;
+  for (const replacement of replacements) {
+    merged = replaceCapturedExtentRange({
+      end: replacement.end,
+      entries: merged,
+      newEntries: replacement.newEntries,
+      start: replacement.start,
+    });
+    if (merged.length > maximumMergedEntries) return undefined;
+  }
+
+  const finalByOffset = new Map(merged.map(entry => [entry.fileOffset, entry] as const));
+  const sameEntry = ({ left, right }: {
+    left: FileExtentLeafEntry;
+    right: FileExtentLeafEntry;
+  }): boolean => left.byteLength === right.byteLength
+    && left.dataOffset === right.dataOffset
+    && left.fileOffset === right.fileOffset
+    && sameRecordReferenceFields({ left: left.fileDataHomeRef, right: right.fileDataHomeRef });
+  function* combinedChanges(): Iterable<FileExtentTreeMutation> {
+    for (const original of capturedByOffset.values()) {
+      if (!finalByOffset.has(original.fileOffset)) yield { key: original.fileOffset, type: "delete" };
+    }
+    for (const entry of merged) {
+      const original = capturedByOffset.get(entry.fileOffset);
+      if (original === undefined || !sameEntry({ left: original, right: entry })) {
+        yield { entry, type: "set" };
+      }
+    }
+  }
+
+  // Multiple disjoint/overlapping writes now share one bounded B+tree mutation
+  // stream. If any capture/output bound is exceeded, the caller uses the proven
+  // sequential range replacement path instead of widening memory or traversal.
+  return await applyMutationBatches({
+    changes: combinedChanges(),
+    limits,
+    pageStore,
+    rootReference,
+  });
+}
+
 async function trimExtentTree({ limits, pageStore, rootReference, targetFileSize }: {
   limits: FileContentMutationLimits;
   pageStore: FileExtentTreePageStore;
   rootReference: HomeRecordReference;
   targetFileSize: FileOffset;
 }): Promise<HomeRecordReference> {
+  // Truncating to zero does not need any old extent content. Publishing one
+  // fresh empty root preserves immutable old generations/snapshots while
+  // avoiding an O(extent-count) read/delete COW walk whose final state is
+  // always the same canonical empty File Extent tree.
+  if (targetFileSize === 0n) return await emptyExtentRoot({ pageStore });
+
   async function* changes(): AsyncIterable<FileExtentTreeMutation> {
     for await (const entry of fileExtentEntriesFromFloor({
       fileOffset: targetFileSize,

@@ -28,7 +28,7 @@ import {
 } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
 import type { DecodedInodeIndexPageCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-index-page-cache";
 import type { DecodedDirectoryPageIndexCache } from "@/00-storage/service/hizofs/filesystem/decoded-directory-page-index-cache";
-import type { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
+import { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 import {
   ImmutableBTreeReader,
   type ImmutableBTreePage,
@@ -82,6 +82,7 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
   recordSource: AuthenticatedNamespaceRecordSource;
   validationCache?: ReadOnlyNamespaceValidationCache;
 }): ReadOnlyNamespaceResolver {
+  const validations = validationCache ?? new ReadOnlyNamespaceValidationCache({ maximumEntries: 1_024 });
   const readPlaintext = async ({ expectedRecordKind, reference }: {
     expectedRecordKind: number;
     reference: HomeRecordReference;
@@ -193,6 +194,24 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
         },
         referenceIdentity,
       });
+      const extentRootReference = inode.content.extentTreeRootHomeRef;
+      await validations.validateFileExtentTree({
+        fileSize: inode.fileSize,
+        rootReference: extentRootReference,
+        validate: async () => {
+          let previousExtentEnd: bigint | undefined;
+          for await (const extent of extentReader.entries({ rootReference: extentRootReference })) {
+            const extentEnd = extent.fileOffset + BigInt(extent.byteLength);
+            if (previousExtentEnd !== undefined && extent.fileOffset < previousExtentEnd) {
+              throw new TypeError("File Extent tree contains overlapping logical extents");
+            }
+            if (extentEnd > inode.fileSize) {
+              throw new TypeError("File Extent tree contains an extent beyond the inode file size");
+            }
+            previousExtentEnd = extentEnd;
+          }
+        },
+      });
       const requestedEnd = offset + length;
       const copyAuthenticatedExtentRange = async ({ copyEnd, copyStart, extent }: {
         copyEnd: bigint;
@@ -225,7 +244,6 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
         }
       };
 
-      const extentRootReference = inode.content.extentTreeRootHomeRef;
       const extentScan = await extentReader.seekFloorWithEntries({
         key: createFileOffset({ value: offset }),
         rootReference: extentRootReference,
@@ -331,7 +349,7 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
     inodeTableRootHomeRef: commit.rootInodeTableRootHomeRef,
     rootDirectoryInodeNumber: commit.rootDirectoryInodeNumber,
     source,
-    validationCache,
+    validationCache: validations,
   });
 }
 

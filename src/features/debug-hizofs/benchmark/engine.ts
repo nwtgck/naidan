@@ -9,7 +9,10 @@ import {
   type SegmentClass,
 } from '@/00-storage/service/hizofs/00-format';
 import { HIZOFS_FILE_DATA_APPEND_BATCH_RESOURCE_LIMITS } from '@/00-storage/service/hizofs/authenticated-store/file-data-append-batch';
-import { DEFAULT_FILE_CONTENT_MUTATION_LIMITS } from '@/00-storage/service/hizofs/filesystem/file/file-content-mutation';
+import {
+  DEFAULT_FILE_CONTENT_MUTATION_LIMITS,
+  HIZOFS_FILE_EXTENT_TAIL_APPEND_BATCH_RESOURCE_LIMITS,
+} from '@/00-storage/service/hizofs/filesystem/file/file-content-mutation';
 import { AUTHENTICATED_PHYSICAL_ACCESS_REASONS } from '@/00-storage/service/hizofs/diagnostics/authenticated-store-diagnostics';
 import { IMMUTABLE_BTREE_DIAGNOSTIC_OPERATIONS } from '@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics';
 import {
@@ -47,7 +50,7 @@ import {
 const BENCHMARK_ROOT_DIRECTORY_NAME = 'naidan-debug-benchmark';
 const BENCHMARK_LOCK_NAME = 'naidan-debug-hizofs-benchmark-v1';
 const HIZOFS_FORMAT_VERSION = 1 as const;
-const BENCHMARK_IMPLEMENTATION_VERSION = 85 as const;
+const BENCHMARK_IMPLEMENTATION_VERSION = 94 as const;
 
 type BackendKind = 'raw_opfs' | 'hizofs';
 type BenchmarkPhase = 'warmup' | 'measured';
@@ -379,7 +382,7 @@ async function runHizoFSBenchmarkWithLockHeld({
   });
 
   return {
-    schemaVersion: 35,
+    schemaVersion: 37,
     benchmarkImplementationVersion: BENCHMARK_IMPLEMENTATION_VERSION,
     hizofsFormatVersion: HIZOFS_FORMAT_VERSION,
     reportType: 'hizofs_benchmark',
@@ -428,10 +431,14 @@ async function runHizoFSBenchmarkWithLockHeld({
           * hizoFSPolicy.fileChunkWriteConcurrency,
         fileDataAppendBatchFrameByteLimitPerWriter:
           HIZOFS_FILE_DATA_APPEND_BATCH_RESOURCE_LIMITS.maximumPendingFrameBytes,
+        fileDataAppendBatchPlaintextByteLimitPerWriter:
+          HIZOFS_FILE_DATA_APPEND_BATCH_RESOURCE_LIMITS.maximumPendingPlaintextBytes,
         fileDataAppendBatchRecordLimitPerWriter:
           HIZOFS_FILE_DATA_APPEND_BATCH_RESOURCE_LIMITS.maximumPendingRecords,
         fileExtentMutationBatchEntryLimitPerWriter:
           DEFAULT_FILE_CONTENT_MUTATION_LIMITS.maximumExtentMutationsPerBatch,
+        fileExtentTailAppendBatchPlaintextByteLimitPerWriter:
+          HIZOFS_FILE_EXTENT_TAIL_APPEND_BATCH_RESOURCE_LIMITS.maximumPendingPlaintextBytes,
         maximumPlaintextChunkReadBytesInFlightPerReader:
           hizoFSPolicy.fileChunkSize
           * hizoFSPolicy.fileChunkReadPrefetchConcurrency,

@@ -412,9 +412,14 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
     switch (inode.content.type) {
     case "inline": return [...inode.content.entries];
     case "tree": {
-      await validateDirectoryTree({ rootReference: inode.content.directoryTreeRootHomeRef });
+      const rootReference = inode.content.directoryTreeRootHomeRef;
       const entries: DirectoryLeafEntry[] = [];
-      for await (const entry of directoryReader.entries({ rootReference: inode.content.directoryTreeRootHomeRef })) entries.push(entry);
+      for await (const entry of directoryReader.entries({ rootReference })) entries.push(entry);
+      // WHY: entries() consumed to completion already proves the exact immutable
+      // tree structurally, including sibling ordering. Publish that proof only
+      // after successful completion so namespace graph validation does not read
+      // every Directory page twice before the first point lookup.
+      validations.rememberValidatedFullTraversal({ kind: "directory_tree", reference: rootReference });
       return entries;
     }
     default: return inode.content satisfies never;
@@ -519,7 +524,93 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
     }
   };
 
-  const resolveInode = async ({ pathComponents }: { pathComponents: readonly string[] }): Promise<InodeLeafEntry> => {
+  const validateNamespaceGraph = async (): Promise<void> => {
+    await validations.validateNamespaceGraph({
+      inodeTableRootReference: inodeTableRootHomeRef,
+      rootDirectoryInodeNumber,
+      validate: async () => {
+        // WHY: record authentication and individual B+tree structural proofs do
+        // not prove filesystem topology. One immutable Inode Table root owns
+        // the complete ordinary namespace, so prove one-parent reachability
+        // once for that exact root before exposing any namespace-dependent
+        // result. The cache shares only the completed proof, never partial
+        // traversal state.
+        await validateInodeTable();
+        // Keep only the not-yet-reached ordinary inode kinds. Removing each
+        // inode on first reach proves uniqueness while avoiding a second
+        // namespace-sized Set. Duplicate/cycle corruption takes the slower
+        // point-read path below only to distinguish it from a dangling target.
+        const remainingInodeKinds = new Map<InodeNumber, InodeLeafEntry["inodeKind"]>();
+        let rootDirectoryInode: InodeLeafEntry | undefined;
+        for await (const inode of inodeReader.entries({ rootReference: inodeTableRootHomeRef })) {
+          remainingInodeKinds.set(inode.inodeNumber, inode.inodeKind);
+          if (inode.inodeNumber === rootDirectoryInodeNumber) rootDirectoryInode = inode;
+        }
+        if (rootDirectoryInode === undefined) {
+          throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "root inode is missing or is not a directory" });
+        }
+        switch (rootDirectoryInode.inodeKind) {
+        case "directory": break;
+        case "file":
+        case "symlink":
+          throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "root inode is missing or is not a directory" });
+        default: rootDirectoryInode satisfies never;
+        }
+        remainingInodeKinds.delete(rootDirectoryInodeNumber);
+
+        const pendingDirectoryInodeNumbers: InodeNumber[] = [rootDirectoryInodeNumber];
+        while (pendingDirectoryInodeNumbers.length > 0) {
+          const directoryInodeNumber = pendingDirectoryInodeNumbers.pop();
+          if (directoryInodeNumber === undefined) throw new Error("namespace validation directory stack invariant failed");
+          const inode = directoryInodeNumber === rootDirectoryInodeNumber
+            ? rootDirectoryInode
+            : await getValidatedInodePoint({ inodeNumber: directoryInodeNumber });
+          if (inode === undefined || inode.inodeKind !== "directory") {
+            throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "reachable directory inode is missing or changed kind" });
+          }
+          for (const entry of await listDirectoryEntries({ inode })) {
+            switch (entry.targetType) {
+            case "subvolume":
+              // Mounted Subvolume topology has a separate cross-record proof.
+              // Its root inode belongs to the child Subvolume Inode Table, not
+              // this ordinary namespace graph.
+              break;
+            case "inode": {
+              const inodeKind = remainingInodeKinds.get(entry.inodeNumber);
+              if (inodeKind === undefined) {
+                const existing = await getValidatedInodePoint({ inodeNumber: entry.inodeNumber });
+                if (existing === undefined) {
+                  throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "directory entry references a missing inode" });
+                }
+                throw new ReadOnlyNamespaceError({
+                  code: "corrupt_namespace",
+                  message: "ordinary inode has more than one parent or the directory graph contains a cycle",
+                });
+              }
+              if (inodeKind !== entry.inodeKind) {
+                throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "directory entry inode kind disagrees with the Inode Table" });
+              }
+              remainingInodeKinds.delete(entry.inodeNumber);
+              switch (inodeKind) {
+              case "directory": pendingDirectoryInodeNumbers.push(entry.inodeNumber); break;
+              case "file":
+              case "symlink": break;
+              default: inodeKind satisfies never;
+              }
+              break;
+            }
+            default: entry satisfies never;
+            }
+          }
+        }
+        if (remainingInodeKinds.size !== 0) {
+          throw new ReadOnlyNamespaceError({ code: "corrupt_namespace", message: "Inode Table contains an orphan ordinary inode" });
+        }
+      },
+    });
+  };
+
+  const resolveInodeUnchecked = async ({ pathComponents }: { pathComponents: readonly string[] }): Promise<InodeLeafEntry> => {
     let current: InodeLeafEntry = requireRootDirectory({
       inode: await getInode({ inodeNumber: rootDirectoryInodeNumber }),
     });
@@ -545,8 +636,14 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
     return current;
   };
 
+  const resolveInode = async ({ pathComponents }: { pathComponents: readonly string[] }): Promise<InodeLeafEntry> => {
+    await validateNamespaceGraph();
+    return await resolveInodeUnchecked({ pathComponents });
+  };
+
   return {
     maximumKnownInodeNumber: async () => {
+      await validateNamespaceGraph();
       // Allocator regression detection needs only the highest persisted identity.
       // Keep the full immutable-tree validation proof, but avoid repeating its
       // high-water seek for this exact immutable root while that proof is retained.
@@ -584,10 +681,22 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
       });
       return await listDirectoryEntriesBounded({ inode, maximumEntries });
     },
-    listDirectoryEntries,
-    listDirectoryEntriesAfterBounded,
-    listDirectoryEntriesBounded,
-    lookupDirectoryEntry,
+    listDirectoryEntries: async ({ inode }) => {
+      await validateNamespaceGraph();
+      return await listDirectoryEntries({ inode });
+    },
+    listDirectoryEntriesAfterBounded: async ({ afterName, inode, maximumEntries }) => {
+      await validateNamespaceGraph();
+      return await listDirectoryEntriesAfterBounded({ afterName, inode, maximumEntries });
+    },
+    listDirectoryEntriesBounded: async ({ inode, maximumEntries }) => {
+      await validateNamespaceGraph();
+      return await listDirectoryEntriesBounded({ inode, maximumEntries });
+    },
+    lookupDirectoryEntry: async ({ directory, name }) => {
+      await validateNamespaceGraph();
+      return await lookupDirectoryEntry({ directory, name });
+    },
     readFile: async ({ length, offset = 0n, pathComponents }) => {
       const inode = requireFile({ inode: await resolveInode({ pathComponents }) });
       const requestedLength = length ?? inode.fileSize - offset;
@@ -606,9 +715,13 @@ export function createReadOnlyNamespaceResolver({ inodeTableRootHomeRef, rootDir
       return requireSymlink({ inode: await resolveInode({ pathComponents }) }).target;
     },
     resolveInode,
-    resolveInodeByNumber: getInode,
+    resolveInodeByNumber: async ({ inodeNumber }) => {
+      await validateNamespaceGraph();
+      return await getInode({ inodeNumber });
+    },
     stat: async ({ pathComponents }) => projectStat({ inode: await resolveInode({ pathComponents }) }),
     validateDirectoryStructure: async ({ directory }) => {
+      await validateNamespaceGraph();
       switch (directory.content.type) {
       case "inline": return;
       case "tree": await validateDirectoryTree({ rootReference: directory.content.directoryTreeRootHomeRef }); return;

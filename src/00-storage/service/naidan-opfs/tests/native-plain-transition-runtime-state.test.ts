@@ -49,6 +49,22 @@ describe('native plain transition runtime state', () => {
     await expect(state.progressPort.load({ operationId })).resolves.toEqual(progress);
   });
 
+  it('discards only an uncommitted lifecycle update after a failed slice', async () => {
+    const state = runtime();
+    await state.prepareTarget();
+    await state.stageLifecycle({ lifecycle: 'active' });
+    await state.progressPort.save({ progress: verifyingProgress() });
+
+    await state.stageLifecycle({ lifecycle: 'sealed' });
+    await expect(state.currentLifecycle()).resolves.toBe('sealed');
+    await state.discardStagedLifecycle();
+
+    await expect(state.currentLifecycle()).resolves.toBe('active');
+    await state.stageLifecycle({ lifecycle: 'sealed' });
+    await state.progressPort.save({ progress: verifyingProgress() });
+    await expect(state.currentLifecycle()).resolves.toBe('sealed');
+  });
+
   it('starts empty after process loss instead of restoring a target marker', async () => {
     const first = runtime();
     await first.prepareTarget();

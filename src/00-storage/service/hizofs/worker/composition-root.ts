@@ -61,6 +61,7 @@ import {
   type FileInodeEntry,
   type FileSystemId,
   type HomeRecordReference,
+  type InodeLeafEntry,
   type InodeNumber,
   type MutationId,
   type OpenedSuperblockCopies,
@@ -124,6 +125,7 @@ import { prepareTransitionImportCommit } from "@/00-storage/service/hizofs/files
 import { StreamingNamespaceImportTargetSession } from "@/00-storage/service/hizofs/filesystem/bulk/streaming-namespace-import-target-session";
 import {
   DEFAULT_FILE_CONTENT_MUTATION_LIMITS,
+  PreparedFileExtentRangeWriteBatch,
   PreparedFileExtentTailAppendBatch,
   prepareFileTruncateMutation,
   prepareFileWriteMutationWithAppendTailWitness,
@@ -2122,6 +2124,7 @@ async function prepareAuthenticatedOrdinaryEntryEnsure({
   operationTimestamp,
   parent,
   request,
+  resolveExistingInode,
   resolveMaximumKnownInodeNumber,
   target,
   targetPath,
@@ -2135,6 +2138,7 @@ async function prepareAuthenticatedOrdinaryEntryEnsure({
   operationTimestamp: TimestampMilliseconds;
   parent: DirectoryInodeEntry;
   request: OrdinaryEntryEnsureRequest;
+  resolveExistingInode: ({ inodeNumber }: { inodeNumber: InodeNumber }) => Promise<InodeLeafEntry>;
   resolveMaximumKnownInodeNumber: () => Promise<InodeNumber | undefined>;
   target: OrdinaryEntryCreateTargetDescriptor;
   targetPath: readonly string[];
@@ -2157,10 +2161,17 @@ async function prepareAuthenticatedOrdinaryEntryEnsure({
         destination.release();
         switch (existingEntry.targetType) {
         case "inode": {
+          // WHY: the Directory leaf is authenticated, but create-if-missing must not treat its
+          // duplicated kind as proof that the referenced Inode Table entry exists and agrees.
+          // Resolve from the same captured generation before returning the no-change result.
+          const inode = await resolveExistingInode({ inodeNumber: existingEntry.inodeNumber });
+          if (inode.inodeNumber !== existingEntry.inodeNumber || inode.inodeKind !== existingEntry.inodeKind) {
+            throw new TypeError("ordinary ensure directory entry disagrees with the Inode Table");
+          }
           const expectedKind = request.type;
-          if (existingEntry.inodeKind === expectedKind) return null;
+          if (inode.inodeKind === expectedKind) return null;
           throw new TypeError(
-            `Expected ${expectedKind} at ${targetPath.join("/") || "/"}, found ${existingEntry.inodeKind}`,
+            `Expected ${expectedKind} at ${targetPath.join("/") || "/"}, found ${inode.inodeKind}`,
           );
         }
         case "subvolume": throw new ReadOnlyNamespaceError({
@@ -2988,23 +2999,44 @@ function acquireWorkingGenerationRootDependency({ generation, runtimeHost }: {
       commitReference: generation.workingRootAuthority.commitReference,
     });
   case "direct_working_pages": {
-    const registrations = [
-      runtimeHost.acquireWorkingGenerationPageRoot({
-        pageReference: generation.workingRootAuthority.rootInodeTableRootHomeRef,
-      }),
+    const pageReferences = [
+      generation.workingRootAuthority.rootInodeTableRootHomeRef,
       ...(generation.workingRootAuthority.nestedSubvolumeTableRootHomeRef === null
         ? []
-        : [runtimeHost.acquireWorkingGenerationPageRoot({
-          pageReference: generation.workingRootAuthority.nestedSubvolumeTableRootHomeRef,
-        })]),
+        : [generation.workingRootAuthority.nestedSubvolumeTableRootHomeRef]),
     ];
+    const registrations: Readonly<{ release: () => void }>[] = [];
+    try {
+      for (const pageReference of pageReferences) {
+        registrations.push(runtimeHost.acquireWorkingGenerationPageRoot({ pageReference }));
+      }
+    } catch (cause: unknown) {
+      // WHY: these page roots form one logical dependency. A later bounded
+      // registration failure must not orphan earlier roots and permanently
+      // consume maintenance-root capacity.
+      const cleanupFailures: unknown[] = [];
+      for (const registration of [...registrations].reverse()) {
+        try {
+          registration.release();
+        } catch (cleanupCause: unknown) {
+          cleanupFailures.push(cleanupCause);
+        }
+      }
+      if (cleanupFailures.length > 0) {
+        throw new AggregateError(
+          [cause, ...cleanupFailures],
+          "working generation root dependency acquisition and rollback both failed",
+        );
+      }
+      throw cause;
+    }
     let active = true;
     return Object.freeze({
       release: () => {
         if (!active) return;
         active = false;
         const failures: unknown[] = [];
-        for (const registration of registrations) {
+        for (const registration of [...registrations].reverse()) {
           try {
             registration.release();
           } catch (cause: unknown) {
@@ -3124,6 +3156,30 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       baseReference: base.rootInodeTableRootHomeRef,
       kind: "inode_table",
       successorReference: successor.rootInodeTableRootHomeRef,
+    });
+    // WHY: these successors come only from the canonical mutation writers
+    // below. Once the exact immutable base graph has passed the cross-record
+    // one-parent/reachability proof, those writers preserve the ordinary
+    // namespace invariant locally. Carry that completed proof to the exact
+    // successor instead of rescanning the whole namespace after every commit.
+    // Root-identity changes are rejected by the cache and force revalidation.
+    namespaceValidationCache.inheritValidatedNamespaceGraphSuccessor({
+      baseInodeTableRootReference: base.rootInodeTableRootHomeRef,
+      baseRootDirectoryInodeNumber: base.rootDirectoryInodeNumber,
+      successorInodeTableRootReference: successor.rootInodeTableRootHomeRef,
+      successorRootDirectoryInodeNumber: successor.rootDirectoryInodeNumber,
+    });
+  };
+  const inheritValidatedFileExtentTreeSuccessor = ({ base, successor }: {
+    base: FileInodeEntry;
+    successor: FileInodeEntry;
+  }): void => {
+    if (base.content.type !== "tree" || successor.content.type !== "tree") return;
+    namespaceValidationCache.inheritValidatedFileExtentTreeSuccessor({
+      baseFileSize: base.fileSize,
+      baseRootReference: base.content.extentTreeRootHomeRef,
+      successorFileSize: successor.fileSize,
+      successorRootReference: successor.content.extentTreeRootHomeRef,
     });
   };
   const inheritValidatedDirectoryTreeSuccessor = ({ base, successor }: {
@@ -4245,6 +4301,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           operationTimestamp: timestamp,
           parent,
           request,
+          resolveExistingInode: async ({ inodeNumber }) => await base.resolver.resolveInodeByNumber({ inodeNumber }),
           resolveMaximumKnownInodeNumber: async () => await base.resolver.maximumKnownInodeNumber(),
           target: {
             entryName: name,
@@ -4594,6 +4651,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     let activeOperation: Promise<void> | undefined;
     let staged = source;
     let extentAppendTailWitness: FileExtentAppendTailWitness | undefined;
+    let extentRangeWriteBatch: PreparedFileExtentRangeWriteBatch | undefined;
     let extentTailAppendBatch: PreparedFileExtentTailAppendBatch | undefined;
     let state: "closed" | "open" = "open";
     const requireOpen = (): void => {
@@ -4631,7 +4689,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       if (batch === undefined) return;
       const prepared = await batch.flush({
         limits: fileMutationLimits,
-        pageStore: contentPort.extentPageStore,
+        port: contentPort,
         source: staged,
       });
       staged = prepared.inode;
@@ -4639,8 +4697,31 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       extentTailAppendBatch = undefined;
     };
 
+    const discardExtentTailAppendBatch = (): void => {
+      extentTailAppendBatch?.discard();
+      extentTailAppendBatch = undefined;
+    };
+
+    const flushExtentRangeWriteBatch = async (): Promise<void> => {
+      const batch = extentRangeWriteBatch;
+      if (batch === undefined) return;
+      staged = await batch.flush({
+        limits: fileMutationLimits,
+        port: contentPort,
+        source: staged,
+      });
+      extentAppendTailWitness = undefined;
+      extentRangeWriteBatch = undefined;
+    };
+
+    const discardExtentRangeWriteBatch = (): void => {
+      extentRangeWriteBatch?.discard();
+      extentRangeWriteBatch = undefined;
+    };
+
     const stageTruncate = async ({ size }: { size: bigint }): Promise<void> => await stage({
       operation: async () => {
+        await flushExtentRangeWriteBatch();
         await flushExtentTailAppendBatch();
         const plan = prepareFileTruncatePlan({
           operationTimestamp: operationTimestamp(),
@@ -4691,6 +4772,8 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         switch (state) {
         case "closed": return;
         case "open":
+          discardExtentRangeWriteBatch();
+          discardExtentTailAppendBatch();
           fileAuthority.abandon();
           state = "closed";
           return;
@@ -4711,11 +4794,15 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         default: state satisfies never;
         }
         if (operationFailure !== undefined) {
+          discardExtentRangeWriteBatch();
+          discardExtentTailAppendBatch();
           fileAuthority.abandon();
           state = "closed";
           throw new HizoFSApplicationMutationSessionPoisonedError({ cause: operationFailure });
         }
         if (!changed) {
+          discardExtentRangeWriteBatch();
+          discardExtentTailAppendBatch();
           fileAuthority.abandon();
           state = "closed";
           applicationAuthority.markNoChangeResolved();
@@ -4752,12 +4839,13 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         };
 
         try {
-          // File Data references staged by this prepared writable may still be
-          // provisional. Persist the bounded data batch before final metadata
-          // preparation so no accepted working generation can outlive the
+          // Materialize pending tail plaintext into File Data references first,
+          // then durably flush the bounded Data batch before final metadata
+          // preparation. No accepted working generation may outlive the
           // physical bytes referenced by its File Extent tree.
-          await fileAuthority.flushPendingFileDataRecords();
+          await flushExtentRangeWriteBatch();
           await flushExtentTailAppendBatch();
+          await fileAuthority.flushPendingFileDataRecords();
         } catch (cause: unknown) {
           fileAuthority.abandon();
           state = "closed";
@@ -4813,6 +4901,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
               throw new TypeError("published file mutation does not match its installed working candidate");
             }
             inheritValidatedInodeTableSuccessor({ base: base.commit, successor: commitPayload });
+            inheritValidatedFileExtentTreeSuccessor({ base: source, successor: staged });
             try {
               commitRuntimeDurableSuccessor({
                 admission: runtimeAdmission,
@@ -4943,6 +5032,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
             accepted = true;
             fileAuthority.completeWorkingAcceptanceWithoutCandidate();
             inheritValidatedInodeTableSuccessor({ base: base.commit, successor: commitPayload });
+            inheritValidatedFileExtentTreeSuccessor({ base: source, successor: staged });
             const captured = authenticatedGeneration.capture();
             if (!sameWorkingGenerationIdentity({
               left: captured.workingIdentity,
@@ -4986,82 +5076,147 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         }
       },
       truncate: stageTruncate,
-      write: async ({ data, position }) => await stage({
-        operation: async () => {
-          const writeOffset = createFileOffset({ value: position });
-          if (
-            extentTailAppendBatch !== undefined
+      write: async ({ data, position }) => {
+        await stage({
+          operation: async () => {
+            const writeOffset = createFileOffset({ value: position });
+            if (
+              extentTailAppendBatch !== undefined
             && !extentTailAppendBatch.canStage({
               byteLength: data.byteLength,
               limits: fileMutationLimits,
               source: staged,
               writeOffset,
             })
-          ) {
-            await flushExtentTailAppendBatch();
-          }
-          const plan = prepareCapturedFileWritePlan({
-            bytes: data,
-            operationTimestamp: operationTimestamp(),
-            position: writeOffset,
-            source: staged,
-          });
-          if (plan === null) return;
-          try {
-            if (extentTailAppendBatch !== undefined) {
-              switch (plan.action) {
-              case "copy_on_write_extent_range": break;
-              case "promote_inline_to_extent":
-              case "write_inline": throw new TypeError("File Extent tail append batch produced a non-extent write plan");
-              default: return plan satisfies never;
-              }
-              staged = await extentTailAppendBatch.stage({ plan, port: contentPort, source: staged });
-              extentAppendTailWitness = undefined;
-              changed = true;
-              return;
+            ) {
+              await flushExtentTailAppendBatch();
             }
             if (
-              extentAppendTailWitness !== undefined
-              && plan.action === "copy_on_write_extent_range"
+              extentRangeWriteBatch !== undefined
+            && !extentRangeWriteBatch.canStage({
+              byteLength: data.byteLength,
+              limits: fileMutationLimits,
+              source: staged,
+              writeOffset,
+            })
             ) {
-              const batch = PreparedFileExtentTailAppendBatch.create({
-                source: staged,
-                witness: extentAppendTailWitness,
-              });
-              if (batch.canStage({
-                byteLength: plan.writeBytes.byteLength,
-                limits: fileMutationLimits,
-                source: staged,
-                writeOffset: plan.writeOffset,
-              })) {
-                staged = await batch.stage({ plan, port: contentPort, source: staged });
-                extentTailAppendBatch = batch;
+              await flushExtentRangeWriteBatch();
+            }
+            const plan = prepareCapturedFileWritePlan({
+              bytes: data,
+              operationTimestamp: operationTimestamp(),
+              position: writeOffset,
+              source: staged,
+            });
+            if (plan === null) return;
+            let writeBytesTransferredToBatch = false;
+            try {
+              if (extentTailAppendBatch !== undefined) {
+                switch (plan.action) {
+                case "copy_on_write_extent_range": break;
+                case "promote_inline_to_extent":
+                case "write_inline": throw new TypeError("File Extent tail append batch produced a non-extent write plan");
+                default: return plan satisfies never;
+                }
+                staged = extentTailAppendBatch.stage({
+                  limits: fileMutationLimits,
+                  plan,
+                  source: staged,
+                });
+                writeBytesTransferredToBatch = true;
                 extentAppendTailWitness = undefined;
                 changed = true;
                 return;
               }
+              if (extentRangeWriteBatch !== undefined) {
+                switch (plan.action) {
+                case "copy_on_write_extent_range": break;
+                case "promote_inline_to_extent":
+                case "write_inline": throw new TypeError("File Extent range-write batch produced a non-extent write plan");
+                default: return plan satisfies never;
+                }
+                staged = extentRangeWriteBatch.stage({
+                  limits: fileMutationLimits,
+                  plan,
+                  source: staged,
+                });
+                writeBytesTransferredToBatch = true;
+                extentAppendTailWitness = undefined;
+                changed = true;
+                return;
+              }
+              if (
+                extentAppendTailWitness !== undefined
+              && plan.action === "copy_on_write_extent_range"
+              ) {
+                const batch = PreparedFileExtentTailAppendBatch.create({
+                  source: staged,
+                  witness: extentAppendTailWitness,
+                });
+                if (batch.canStage({
+                  byteLength: plan.writeBytes.byteLength,
+                  limits: fileMutationLimits,
+                  source: staged,
+                  writeOffset: plan.writeOffset,
+                })) {
+                  staged = batch.stage({
+                    limits: fileMutationLimits,
+                    plan,
+                    source: staged,
+                  });
+                  writeBytesTransferredToBatch = true;
+                  extentTailAppendBatch = batch;
+                  extentAppendTailWitness = undefined;
+                  changed = true;
+                  return;
+                }
+              }
+              if (
+                plan.action === "copy_on_write_extent_range"
+              && plan.writeOffset < staged.fileSize
+              ) {
+                const batch = PreparedFileExtentRangeWriteBatch.create({ source: staged });
+                if (batch.canStage({
+                  byteLength: plan.writeBytes.byteLength,
+                  limits: fileMutationLimits,
+                  source: staged,
+                  writeOffset: plan.writeOffset,
+                })) {
+                  staged = batch.stage({
+                    limits: fileMutationLimits,
+                    plan,
+                    source: staged,
+                  });
+                  writeBytesTransferredToBatch = true;
+                  extentRangeWriteBatch = batch;
+                  extentAppendTailWitness = undefined;
+                  changed = true;
+                  return;
+                }
+              }
+              const prepared = await prepareFileWriteMutationWithAppendTailWitness({
+                appendTailWitness: extentAppendTailWitness,
+                limits: fileMutationLimits,
+                plan,
+                port: contentPort,
+                source: staged,
+              });
+              staged = prepared.inode;
+              extentAppendTailWitness = prepared.appendTailWitness;
+              changed = true;
+            } finally {
+              if (!writeBytesTransferredToBatch) plan.writeBytes.fill(0);
+              switch (plan.action) {
+              case "promote_inline_to_extent": plan.sourceInlineBytes.fill(0); break;
+              case "write_inline": plan.bytes.fill(0); break;
+              case "copy_on_write_extent_range": break;
+              default: plan satisfies never;
+              }
             }
-            const prepared = await prepareFileWriteMutationWithAppendTailWitness({
-              appendTailWitness: extentAppendTailWitness,
-              limits: fileMutationLimits,
-              plan,
-              port: contentPort,
-              source: staged,
-            });
-            staged = prepared.inode;
-            extentAppendTailWitness = prepared.appendTailWitness;
-            changed = true;
-          } finally {
-            plan.writeBytes.fill(0);
-            switch (plan.action) {
-            case "promote_inline_to_extent": plan.sourceInlineBytes.fill(0); break;
-            case "write_inline": plan.bytes.fill(0); break;
-            case "copy_on_write_extent_range": break;
-            default: plan satisfies never;
-            }
-          }
-        },
-      }),
+          },
+        });
+        return "consumed";
+      },
     };
     let workingGenerationDependency: Readonly<{ release: () => void }>;
     try {
@@ -6116,7 +6271,7 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
       } }),
     };
     const targetSession = await StreamingNamespaceImportTargetSession.open({
-      beforeSealedCandidateSave: async () => await authority.flushPendingMetadataRecords(),
+      beforeCandidateStage: async () => await authority.flushPendingMetadataRecords(),
       createImport: ({ rootMetadata }) => new StreamingNamespaceImport({
         limits,
         nextInodeNumber: opened.commit.nextInodeNumber,
@@ -6164,6 +6319,7 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
     let closed = false;
     return {
       authorityIdentity,
+      discardStagedSliceState: async () => await targetSession.discardStagedSliceState(),
       close: async () => {
         if (closed) return;
         closed = true;
@@ -6173,6 +6329,7 @@ export async function openBrowserHizoFSTransitionTargetEndpointSession({
           destroyRootKey: () => opened.rootKey.destroy(),
         });
       },
+      stageSliceState: async () => await targetSession.stageSliceState(),
       source: {
         listDirectory: async ({ afterName, maximumEntries, path }) => await source().listDirectory({
           afterName,
@@ -7022,6 +7179,7 @@ export async function captureAuthenticatedMaintenanceRoots({
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
   abandonTransitionEndpointAfterOpenFailure,
+  acquireWorkingGenerationRootDependency,
   captureAuthenticatedMaintenanceRootsWithReader,
   createMutationCandidatePlanningBaseCommit,
   createPreparedMutationSelectedCandidatePublisher,

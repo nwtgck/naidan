@@ -22,6 +22,34 @@ type CacheEntry = Readonly<{
   recordKind: number;
 }>;
 
+type PendingReadLoadOutcome =
+  | Readonly<{ type: "failure"; cause: unknown }>
+  | Readonly<{ type: "retry" }>
+  | Readonly<{ type: "success" }>;
+
+type PendingReadLoad = {
+  followers: number;
+  readonly settled: Promise<PendingReadLoadOutcome>;
+  readonly settle: ({ outcome }: { outcome: PendingReadLoadOutcome }) => void;
+};
+
+function createPendingReadLoad(): PendingReadLoad {
+  let settlePromise: (({ outcome }: { outcome: PendingReadLoadOutcome }) => void) | undefined;
+  const settled = new Promise<PendingReadLoadOutcome>(resolve => {
+    settlePromise = ({ outcome }) => resolve(outcome);
+  });
+  return {
+    followers: 0,
+    settled,
+    settle: ({ outcome }) => {
+      const settle = settlePromise;
+      if (settle === undefined) throw new Error("metadata cache pending load settled more than once");
+      settlePromise = undefined;
+      settle({ outcome });
+    },
+  };
+}
+
 function validateBound({ name, value }: { name: string; value: number }): void {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new RangeError(`${name} must be a non-negative safe integer`);
@@ -59,6 +87,8 @@ export class AuthenticatedMetadataRecordCache {
   private readonly diagnostics: AuthenticatedStoreDiagnosticsPort | undefined;
   private readonly entries = new Map<string, CacheEntry>();
   private readonly pendingReadAdmissions = new Set<string>();
+  private readonly pendingReadLoads = new Map<string, PendingReadLoad>();
+  private pendingReadLoadFrameBytes = 0;
   private readonly policy: AuthenticatedMetadataRecordCachePolicy;
   private currentBytes = 0;
   private disposed = false;
@@ -197,65 +227,129 @@ export class AuthenticatedMetadataRecordCache {
       recordKind: reference.recordKind,
       scope: this.diagnosticScope,
     });
-    const loaded = await load();
-    if (this.disposed) {
-      loaded.plaintext.fill(0);
-      throw new TypeError("authenticated metadata cache was disposed while loading a record");
-    }
-    if (loaded.recordKind !== reference.recordKind) {
-      loaded.plaintext.fill(0);
-      throw new TypeError("authenticated metadata cache load returned the wrong Record Kind");
-    }
 
-    const concurrentlyCached = this.entries.get(identity);
-    if (concurrentlyCached !== undefined) {
+    const sharedLoad = this.pendingReadLoads.get(identity);
+    if (sharedLoad !== undefined) {
+      sharedLoad.followers += 1;
+      const outcome = await sharedLoad.settled;
+      switch (outcome.type) {
+      case "failure": throw outcome.cause;
+      case "retry": return await this.read({ load, reference });
+      case "success": break;
+      default: return outcome satisfies never;
+      }
+      if (this.disposed) throw new TypeError("authenticated metadata cache is disposed");
+      const coalesced = this.entries.get(identity);
+      if (coalesced === undefined) {
+        throw new Error("coalesced authenticated metadata load completed without a retained entry");
+      }
       this.pendingReadAdmissions.delete(identity);
-      loaded.plaintext.fill(0);
       this.entries.delete(identity);
-      this.entries.set(identity, concurrentlyCached);
+      this.entries.set(identity, coalesced);
       this.diagnostics?.recordMetadataCacheEvent?.({
         event: "hit",
-        recordKind: concurrentlyCached.recordKind,
+        recordKind: coalesced.recordKind,
         scope: this.diagnosticScope,
       });
       return {
-        plaintext: concurrentlyCached.plaintext.slice(),
-        recordKind: concurrentlyCached.recordKind,
+        plaintext: coalesced.plaintext.slice(),
+        recordKind: coalesced.recordKind,
       };
     }
-    if (
-      this.policy.maximumBytes === 0
-      || this.policy.maximumEntries === 0
-      || loaded.plaintext.byteLength > this.policy.maximumBytes
-    ) {
-      return loaded;
-    }
-    if (!this.shouldRetainLoadedIdentity({ identity })) return loaded;
 
-    const retained = loaded.plaintext.slice();
-    while (
-      this.entries.size >= this.policy.maximumEntries
-      || this.currentBytes + retained.byteLength > this.policy.maximumBytes
-    ) {
-      const oldest = this.entries.entries().next().value as [string, CacheEntry] | undefined;
-      if (oldest === undefined) break;
-      const [oldestIdentity, oldestEntry] = oldest;
-      this.entries.delete(oldestIdentity);
-      this.currentBytes -= oldestEntry.plaintext.byteLength;
-      oldestEntry.plaintext.fill(0);
-      this.diagnostics?.recordMetadataCacheEvent?.({
-        event: "eviction",
-        recordKind: oldestEntry.recordKind,
-        scope: this.diagnosticScope,
-      });
+    // WHY: only references whose complete frame fits the cache byte budget may
+    // single-flight. That lets concurrent callers rendezvous through a retained
+    // authenticated copy without creating an unbounded transient plaintext pool.
+    const pendingLoad = (
+      this.policy.maximumBytes > 0
+      && this.policy.maximumEntries > 0
+      && reference.frameLength <= this.policy.maximumBytes
+      && this.pendingReadLoadFrameBytes + reference.frameLength <= this.policy.maximumBytes
+      && this.pendingReadLoads.size < this.policy.maximumEntries
+    ) ? createPendingReadLoad() : undefined;
+    if (pendingLoad !== undefined) {
+      this.pendingReadLoads.set(identity, pendingLoad);
+      this.pendingReadLoadFrameBytes += reference.frameLength;
     }
-    this.entries.set(identity, {
-      plaintext: retained,
-      recordKind: loaded.recordKind,
-    });
-    this.currentBytes += retained.byteLength;
-    this.reportUsage();
-    return loaded;
+
+    let pendingOutcome: PendingReadLoadOutcome = { type: "retry" };
+    try {
+      const loaded = await load();
+      if (this.disposed) {
+        loaded.plaintext.fill(0);
+        throw new TypeError("authenticated metadata cache was disposed while loading a record");
+      }
+      if (loaded.recordKind !== reference.recordKind) {
+        loaded.plaintext.fill(0);
+        throw new TypeError("authenticated metadata cache load returned the wrong Record Kind");
+      }
+
+      const concurrentlyCached = this.entries.get(identity);
+      if (concurrentlyCached !== undefined) {
+        this.pendingReadAdmissions.delete(identity);
+        loaded.plaintext.fill(0);
+        this.entries.delete(identity);
+        this.entries.set(identity, concurrentlyCached);
+        this.diagnostics?.recordMetadataCacheEvent?.({
+          event: "hit",
+          recordKind: concurrentlyCached.recordKind,
+          scope: this.diagnosticScope,
+        });
+        pendingOutcome = { type: "success" };
+        return {
+          plaintext: concurrentlyCached.plaintext.slice(),
+          recordKind: concurrentlyCached.recordKind,
+        };
+      }
+      if (
+        this.policy.maximumBytes === 0
+        || this.policy.maximumEntries === 0
+        || loaded.plaintext.byteLength > this.policy.maximumBytes
+      ) {
+        return loaded;
+      }
+
+      const hasConcurrentFollower = (pendingLoad?.followers ?? 0) > 0;
+      if (!hasConcurrentFollower && !this.shouldRetainLoadedIdentity({ identity })) return loaded;
+      if (hasConcurrentFollower) this.pendingReadAdmissions.delete(identity);
+
+      const retained = loaded.plaintext.slice();
+      while (
+        this.entries.size >= this.policy.maximumEntries
+        || this.currentBytes + retained.byteLength > this.policy.maximumBytes
+      ) {
+        const oldest = this.entries.entries().next().value as [string, CacheEntry] | undefined;
+        if (oldest === undefined) break;
+        const [oldestIdentity, oldestEntry] = oldest;
+        this.entries.delete(oldestIdentity);
+        this.currentBytes -= oldestEntry.plaintext.byteLength;
+        oldestEntry.plaintext.fill(0);
+        this.diagnostics?.recordMetadataCacheEvent?.({
+          event: "eviction",
+          recordKind: oldestEntry.recordKind,
+          scope: this.diagnosticScope,
+        });
+      }
+      this.entries.set(identity, {
+        plaintext: retained,
+        recordKind: loaded.recordKind,
+      });
+      this.currentBytes += retained.byteLength;
+      this.reportUsage();
+      pendingOutcome = { type: "success" };
+      return loaded;
+    } catch (cause: unknown) {
+      pendingOutcome = { type: "failure", cause };
+      throw cause;
+    } finally {
+      if (pendingLoad !== undefined) {
+        if (this.pendingReadLoads.get(identity) === pendingLoad) {
+          this.pendingReadLoads.delete(identity);
+          this.pendingReadLoadFrameBytes -= reference.frameLength;
+        }
+        pendingLoad.settle({ outcome: pendingOutcome });
+      }
+    }
   }
 
   private reportUsage(): void {

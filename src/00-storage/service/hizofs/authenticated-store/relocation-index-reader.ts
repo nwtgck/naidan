@@ -120,6 +120,126 @@ function findBranchChild({ key, page }: {
   return page.entries[lower];
 }
 
+type RelocationSubtreeBounds = Readonly<{
+  maximum: RelocationKey;
+  minimum: RelocationKey;
+}>;
+
+export async function validateRelocationIndexTree({ readPage, rootPhysicalReference }: {
+  readPage: AuthenticatedRelocationPageReader;
+  rootPhysicalReference: PhysicalRecordReference;
+}): Promise<void> {
+  if (rootPhysicalReference.recordKind !== HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page) {
+    throw authenticatedStoreError({
+      code: "control_plane_corrupt",
+      message: "Relocation Index root has the wrong record kind",
+    });
+  }
+  const visited = new Set<string>();
+
+  const visit = async ({ depth, expectedLevel, isRoot, physicalReference }: {
+    depth: number;
+    expectedLevel: number | undefined;
+    isRoot: boolean;
+    physicalReference: PhysicalRecordReference;
+  }): Promise<RelocationSubtreeBounds | undefined> => {
+    if (depth > HIZOFS_V1_FORMAT_CONSTANTS.limits.treeLevel) {
+      throw authenticatedStoreError({
+        code: "control_plane_corrupt",
+        message: "Relocation Index exceeds the V1 depth bound",
+      });
+    }
+    const identity = physicalReferenceIdentity({ reference: physicalReference });
+    if (visited.has(identity)) {
+      throw authenticatedStoreError({
+        code: "control_plane_corrupt",
+        message: "Relocation Index contains a cycle or duplicate page reference",
+      });
+    }
+    visited.add(identity);
+
+    const page = await readPage({ isRoot, physicalReference });
+    if (expectedLevel !== undefined && page.level !== expectedLevel) {
+      throw authenticatedStoreError({
+        code: "control_plane_corrupt",
+        message: "Relocation Index child level does not match its parent",
+      });
+    }
+    switch (page.type) {
+    case "leaf": {
+      const first = page.entries[0];
+      const last = page.entries.at(-1);
+      if (first === undefined || last === undefined) {
+        if (isRoot) return undefined;
+        throw authenticatedStoreError({
+          code: "control_plane_corrupt",
+          message: "Relocation Index non-root leaf must not be empty",
+        });
+      }
+      return { maximum: last, minimum: first };
+    }
+    case "branch": {
+      if (page.level < 1 || page.entries.length === 0) {
+        throw authenticatedStoreError({
+          code: "control_plane_corrupt",
+          message: "Relocation Index branch level or entry count is invalid",
+        });
+      }
+      let minimum: RelocationKey | undefined;
+      let previousMaximum: RelocationKey | undefined;
+      for (const entry of page.entries) {
+        if (entry.childPagePhysicalRef.recordKind !== HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.relocation_index_page) {
+          throw authenticatedStoreError({
+            code: "control_plane_corrupt",
+            message: "Relocation Index child has the wrong record kind",
+          });
+        }
+        const childBounds = await visit({
+          depth: depth + 1,
+          expectedLevel: page.level - 1,
+          isRoot: false,
+          physicalReference: entry.childPagePhysicalRef,
+        });
+        if (childBounds === undefined) {
+          throw authenticatedStoreError({
+            code: "control_plane_corrupt",
+            message: "Relocation Index branch references an empty child",
+          });
+        }
+        if (compareRelocationKeys({ left: childBounds.maximum, right: entry.upperBound }) !== 0) {
+          throw authenticatedStoreError({
+            code: "control_plane_corrupt",
+            message: "Relocation Index branch upper bound does not match its child",
+          });
+        }
+        if (previousMaximum !== undefined
+          && compareRelocationKeys({ left: childBounds.minimum, right: previousMaximum }) <= 0) {
+          throw authenticatedStoreError({
+            code: "control_plane_corrupt",
+            message: "Relocation Index contains overlapping sibling ranges",
+          });
+        }
+        minimum ??= childBounds.minimum;
+        previousMaximum = childBounds.maximum;
+      }
+      if (minimum === undefined || previousMaximum === undefined) {
+        throw new Error("Relocation Index branch validation invariant failed");
+      }
+      return { maximum: previousMaximum, minimum };
+    }
+    default:
+      return page satisfies never;
+    }
+  };
+
+  await visit({
+    depth: 0,
+    expectedLevel: undefined,
+    isRoot: true,
+    physicalReference: rootPhysicalReference,
+  });
+}
+
 export async function lookupRelocationMapping({ homeReference, readPage, rootPhysicalReference }: {
   homeReference: HomeRecordReference;
   readPage: AuthenticatedRelocationPageReader;
@@ -233,6 +353,32 @@ async function readAuthenticatedRelocationPage({
   } finally {
     record.plaintext.fill(0);
   }
+}
+
+export async function validateAuthenticatedRelocationIndexTree({
+  backend,
+  diagnostics,
+  fileSystemId,
+  rootKey,
+  rootPhysicalReference,
+}: {
+  backend: HizoFSReadableBackend;
+  diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  fileSystemId: FileSystemId;
+  rootKey: FileSystemRootKey;
+  rootPhysicalReference: PhysicalRecordReference;
+}): Promise<void> {
+  await validateRelocationIndexTree({
+    readPage: async ({ isRoot, physicalReference }) => await readAuthenticatedRelocationPage({
+      backend,
+      diagnostics,
+      fileSystemId,
+      isRoot,
+      physicalReference,
+      rootKey,
+    }),
+    rootPhysicalReference,
+  });
 }
 
 export async function resolveAuthenticatedHomeRecord({

@@ -25,6 +25,20 @@ function generations() {
 }
 
 describe("SyncWaiterRegistry", () => {
+  it("reports whether a captured target is already covered by durable authority", () => {
+    const { initial, second } = generations();
+    const registry = new SyncWaiterRegistry({
+      initialDurableGeneration: initial,
+      maximumWaiters: 2,
+    });
+
+    expect(registry.isTargetSatisfied({ target: initial })).toBe(true);
+    expect(registry.isTargetSatisfied({ target: second })).toBe(false);
+    registry.advanceDurableGeneration({ durable: second });
+    expect(registry.isTargetSatisfied({ target: initial })).toBe(true);
+    expect(registry.isTargetSatisfied({ target: second })).toBe(true);
+  });
+
   it("resolves an already durable exact generation without retaining a waiter", async () => {
     const { initial } = generations();
     const registry = new SyncWaiterRegistry({

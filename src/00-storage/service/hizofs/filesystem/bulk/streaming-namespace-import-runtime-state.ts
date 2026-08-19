@@ -21,6 +21,9 @@ export type StreamingNamespaceImportRuntimeCandidate =
  * recover this state after the owning runtime is lost.
  */
 export interface StreamingNamespaceImportRuntimeStatePort {
+  discardStagedCandidate({ operationIdentity }: {
+    operationIdentity: string;
+  }): Promise<void>;
   loadCandidate({ operationIdentity }: {
     operationIdentity: string;
   }): Promise<StreamingNamespaceImportRuntimeCandidate | undefined>;

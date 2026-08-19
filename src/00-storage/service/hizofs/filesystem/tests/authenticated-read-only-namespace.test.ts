@@ -239,6 +239,93 @@ describe("authenticated read-only HizoFS namespace", () => {
   });
 
 
+  it("rejects a globally misordered File Extent tree before returning sparse bytes", async () => {
+    const inodeRoot = reference({ kind: KINDS.inode_table_page, offset: 64n });
+    const extentRoot = reference({ kind: KINDS.file_extent_page, offset: 320n });
+    const extentLeafA = reference({ kind: KINDS.file_extent_page, offset: 576n });
+    const extentLeafB = reference({ kind: KINDS.file_extent_page, offset: 832n });
+    const data = reference({ kind: KINDS.file_data, offset: 1088n });
+    const fileNumber = createInodeNumber({ value: 2n });
+    const records = new Map<string, Readonly<{ plaintext: Uint8Array; recordKind: number }>>([
+      [referenceIdentity({ reference: inodeRoot }), {
+        plaintext: encodeInodeLeafPage({ isRoot: true, entries: [
+          {
+            content: { entries: [{ inodeKind: "file", inodeNumber: fileNumber, name: "misordered.bin", targetType: "inode" }], type: "inline" },
+            inodeKind: "directory",
+            inodeNumber: createInodeNumber({ value: 1n }),
+            inodeRevision: createInodeRevision({ value: 1n }),
+            timestamps: { createdAt: null, modifiedAt: null },
+          },
+          {
+            content: { extentTreeRootHomeRef: extentRoot, type: "tree" },
+            fileSize: createFileOffset({ value: 160n }),
+            inodeKind: "file",
+            inodeNumber: fileNumber,
+            inodeRevision: createInodeRevision({ value: 1n }),
+            timestamps: { createdAt: null, modifiedAt: null },
+          },
+        ] }),
+        recordKind: KINDS.inode_table_page,
+      }],
+      [referenceIdentity({ reference: extentRoot }), {
+        plaintext: encodeFileExtentPage({ isRoot: true, page: {
+          entries: [
+            { childPageHomeRef: extentLeafA, upperBound: createFileOffset({ value: 100n }) },
+            { childPageHomeRef: extentLeafB, upperBound: createFileOffset({ value: 150n }) },
+          ],
+          level: 1,
+          type: "branch",
+        } }),
+        recordKind: KINDS.file_extent_page,
+      }],
+      [referenceIdentity({ reference: extentLeafA }), {
+        plaintext: encodeFileExtentPage({ isRoot: false, page: {
+          entries: [
+            { byteLength: 10, dataOffset: 0, fileDataHomeRef: data, fileOffset: createFileOffset({ value: 0n }) },
+            { byteLength: 10, dataOffset: 0, fileDataHomeRef: data, fileOffset: createFileOffset({ value: 100n }) },
+          ],
+          level: 0,
+          type: "leaf",
+        } }),
+        recordKind: KINDS.file_extent_page,
+      }],
+      [referenceIdentity({ reference: extentLeafB }), {
+        plaintext: encodeFileExtentPage({ isRoot: false, page: {
+          entries: [
+            { byteLength: 50, dataOffset: 0, fileDataHomeRef: data, fileOffset: createFileOffset({ value: 50n }) },
+            { byteLength: 10, dataOffset: 0, fileDataHomeRef: data, fileOffset: createFileOffset({ value: 150n }) },
+          ],
+          level: 0,
+          type: "leaf",
+        } }),
+        recordKind: KINDS.file_extent_page,
+      }],
+    ]);
+    const namespace = createAuthenticatedReadOnlyNamespace({
+      commit: createFileSystemCommitPayload({ payload: {
+        commitSequence: createCommitSequence({ value: 1n }),
+        mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(17) }),
+        nestedSubvolumeTableRootHomeRef: null,
+        nextInodeNumber: createInodeNumber({ value: 3n }),
+        nextSubvolumeId: createSubvolumeId({ value: 2n }),
+        rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+        rootInodeTableRootHomeRef: inodeRoot,
+      } }),
+      recordSource: {
+        decodeRecordPayload: ({ decode }) => decode(),
+        readHomeRecord: async ({ reference: value }) => {
+          const record = records.get(referenceIdentity({ reference: value }));
+          if (record === undefined) throw new Error("missing record fixture");
+          return { plaintext: Uint8Array.from(record.plaintext), recordKind: record.recordKind };
+        },
+      },
+    });
+
+    await expect(namespace.readFile({ length: 10n, offset: 60n, pathComponents: ["misordered.bin"] }))
+      .rejects.toThrow("overlapping sibling keys");
+  });
+
+
   it("selectively decodes a non-root authenticated Inode leaf after branch routing", async () => {
     const inodeRoot = reference({ kind: KINDS.inode_table_page, offset: 64n });
     const inodeLeafA = reference({ kind: KINDS.inode_table_page, offset: 320n });

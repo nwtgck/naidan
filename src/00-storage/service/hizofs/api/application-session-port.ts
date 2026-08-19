@@ -30,11 +30,16 @@ export type HizoFSApplicationPublicationAuthority = Readonly<{
   noChangeResolved: () => boolean;
 }>;
 
+export type HizoFSApplicationPreparedWriteBytesDisposition = "consumed" | "returned_to_caller";
+
 export interface HizoFSApplicationPreparedWritable {
   abort({ reason }: { reason: unknown }): Promise<void>;
   commit({ authority }: { authority: HizoFSApplicationPublicationAuthority }): Promise<void>;
   truncate({ size }: { size: bigint }): Promise<void>;
-  write({ data, position }: { data: CapturedFileWriteBytes; position: bigint }): Promise<void>;
+  write({ data, position }: {
+    data: CapturedFileWriteBytes;
+    position: bigint;
+  }): Promise<HizoFSApplicationPreparedWriteBytesDisposition>;
 }
 
 export interface HizoFSApplicationPreparedExplicitBulk {
@@ -144,6 +149,7 @@ export type HizoFSApplicationSessionComposition = Readonly<{
 
 export type HizoFSApplicationSessionPortErrorCode =
   | "commit_point_not_crossed"
+  | "operation_in_progress"
   | "missing_file_size"
   | "not_file"
   | "session_closed"
@@ -480,12 +486,17 @@ class RuntimeBoundWritable implements HizoFSApplicationWritableFile {
   }
 
   async write({ data, position }: { data: CapturedFileWriteBytes; position: bigint }): Promise<void> {
+    let disposition: HizoFSApplicationPreparedWriteBytesDisposition = "returned_to_caller";
     try {
       this.assertOpen();
       this.assertOperationAllowed();
-      await this.prepared.write({ data, position });
+      disposition = await this.prepared.write({ data, position });
     } finally {
-      data.fill(0);
+      switch (disposition) {
+      case "consumed": break;
+      case "returned_to_caller": data.fill(0); break;
+      default: disposition satisfies never;
+      }
     }
   }
 }
@@ -546,6 +557,14 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
     }
   }
 
+  private assertNoPreparedMutationWriterWait({ operation }: { operation: string }): void {
+    if (this.openPreparedMutations.size === 0) return;
+    throw new HizoFSApplicationSessionPortError({
+      code: "operation_in_progress",
+      message: `cannot ${operation} while this HizoFS application session owns a prepared mutation`,
+    });
+  }
+
   private async read<Value>({ operation }: { operation: () => Promise<Value> }): Promise<Value> {
     this.assertOpen();
     this.assertOperationAllowed();
@@ -565,6 +584,7 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
   }): Promise<void> {
     this.assertOpen();
     this.assertOperationAllowed();
+    this.assertNoPreparedMutationWriterWait({ operation });
     const writer = await this.runtimeSession.acquireWriter();
     let primary: unknown | undefined;
     try {
@@ -830,6 +850,7 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
   }): Promise<HizoFSApplicationExplicitBulkBuilder> {
     this.assertOpen();
     this.assertOperationAllowed();
+    this.assertNoPreparedMutationWriterWait({ operation: "open explicit bulk mutation" });
     const capturedPath = [...path];
     const writer = await this.runtimeSession.acquireWriter();
     let prepared: HizoFSApplicationPreparedExplicitBulk | undefined;
@@ -872,6 +893,7 @@ class RuntimeBoundApplicationSessionPort implements HizoFSApplicationSessionPort
   }): Promise<HizoFSApplicationWritableFile> {
     this.assertOpen();
     this.assertOperationAllowed();
+    this.assertNoPreparedMutationWriterWait({ operation: "open writable" });
     const capturedPath = [...path];
     const writer = await this.runtimeSession.acquireWriter();
     let prepared: HizoFSApplicationPreparedWritable | undefined;

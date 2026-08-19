@@ -14,6 +14,7 @@ import {
 } from "@/00-storage/service/hizofs/00-format";
 import type { ImmutableBTreeDiagnosticsObservation } from "@/00-storage/service/hizofs/diagnostics/immutable-btree-diagnostics";
 import {
+  PreparedFileExtentRangeWriteBatch,
   PreparedFileExtentTailAppendBatch,
   prepareFileTruncateMutation,
   prepareFileWriteMutation,
@@ -432,25 +433,250 @@ describe("file content mutation", () => {
         source: staged,
         writeOffset: plan.writeOffset,
       })).toBe(true);
-      staged = await batch.stage({ plan, port: memory.port, source: staged });
+      staged = batch.stage({
+        limits: { maximumExtentMutationsPerBatch: 64 },
+        plan,
+        source: staged,
+      });
     }
 
     expect(memory.pagePort.writeCount).toBe(writesBeforeBatch);
+    expect(memory.data.size).toBe(1);
     const flushed = await batch.flush({
       limits: { maximumExtentMutationsPerBatch: 64 },
-      pageStore: memory.extentPageStore,
+      port: memory.port,
       source: staged,
     });
     expect(memory.pagePort.writeCount).toBe(writesBeforeBatch + 1);
+    expect(memory.data.size).toBe(2);
     if (flushed.inode.content.type !== "tree") throw new Error("expected extent-backed inode");
     const result = await entries({ port: memory, root: flushed.inode.content.extentTreeRootHomeRef });
     expect(result).toHaveLength(4);
-    expect(result.map(entry => entry.fileOffset)).toEqual([
-      0n,
-      BigInt(inlineLimit + 1),
-      BigInt(inlineLimit + 8),
-      BigInt(inlineLimit + 15),
+    expect(result.map(entry => ({
+      byteLength: entry.byteLength,
+      dataOffset: entry.dataOffset,
+      fileOffset: entry.fileOffset,
+    }))).toEqual([
+      { byteLength: inlineLimit + 1, dataOffset: 0, fileOffset: 0n },
+      { byteLength: 7, dataOffset: 0, fileOffset: BigInt(inlineLimit + 1) },
+      { byteLength: 7, dataOffset: 7, fileOffset: BigInt(inlineLimit + 8) },
+      { byteLength: 7, dataOffset: 14, fileOffset: BigInt(inlineLimit + 15) },
     ]);
+  });
+
+  it("coalesces bounded non-tail writes into shared File Data Records while preserving write order", async () => {
+    const memory = new MemoryContentPort();
+    const root = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
+      offset: 1_704n,
+    });
+    memory.pagePort.pages.set(identity({ value: root }), {
+      entries: [extent({ byteLength: 100, fileOffset: 0n, seed: 2_704n })],
+      level: 0,
+      type: "leaf",
+    });
+    let staged = fileInode({
+      content: { extentTreeRootHomeRef: root, type: "tree" },
+      fileSize: 100n,
+    });
+    const batch = PreparedFileExtentRangeWriteBatch.create({ source: staged });
+    for (const [position, value] of [[10n, 0x31], [30n, 0x42]] as const) {
+      const plan = prepareFileWritePlan({
+        bytes: new Uint8Array(4).fill(value),
+        operationTimestamp,
+        position: createFileOffset({ value: position }),
+        source: staged,
+      });
+      if (plan === null || plan.action !== "copy_on_write_extent_range") throw new Error("expected extent range plan");
+      expect(batch.canStage({
+        byteLength: plan.writeBytes.byteLength,
+        limits: { maximumExtentMutationsPerBatch: 64 },
+        source: staged,
+        writeOffset: plan.writeOffset,
+      })).toBe(true);
+      staged = batch.stage({
+        limits: { maximumExtentMutationsPerBatch: 64 },
+        plan,
+        source: staged,
+      });
+    }
+
+    expect(memory.data.size).toBe(0);
+    const flushed = await batch.flush({
+      limits: { maximumExtentMutationsPerBatch: 64 },
+      port: memory.port,
+      source: staged,
+    });
+    expect(memory.data.size).toBe(1);
+    expect(memory.pagePort.writeCount).toBe(1);
+    if (flushed.content.type !== "tree") throw new Error("expected extent-backed inode");
+    const result = await entries({ port: memory, root: flushed.content.extentTreeRootHomeRef });
+    const written = result.filter(entry => entry.fileDataHomeRef.byteOffset >= 50_000n);
+    expect(written).toHaveLength(2);
+    expect(written.map(entry => ({
+      byteLength: entry.byteLength,
+      dataOffset: entry.dataOffset,
+      fileOffset: entry.fileOffset,
+    }))).toEqual([
+      { byteLength: 4, dataOffset: 0, fileOffset: 10n },
+      { byteLength: 4, dataOffset: 4, fileOffset: 30n },
+    ]);
+    expect(written[0]?.fileDataHomeRef).toEqual(written[1]?.fileDataHomeRef);
+  });
+
+  it("falls back to bounded sequential extent updates when sparse capture exceeds its limit", async () => {
+    const memory = new MemoryContentPort();
+    const root = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
+      offset: 1_720n,
+    });
+    memory.pagePort.pages.set(identity({ value: root }), {
+      entries: [
+        extent({ byteLength: 4, fileOffset: 0n, seed: 2_720n }),
+        extent({ byteLength: 4, fileOffset: 4n, seed: 2_848n }),
+        extent({ byteLength: 4, fileOffset: 8n, seed: 2_976n }),
+        extent({ byteLength: 4, fileOffset: 20n, seed: 3_104n }),
+        extent({ byteLength: 4, fileOffset: 24n, seed: 3_232n }),
+        extent({ byteLength: 4, fileOffset: 28n, seed: 3_360n }),
+      ],
+      level: 0,
+      type: "leaf",
+    });
+    let staged = fileInode({
+      content: { extentTreeRootHomeRef: root, type: "tree" },
+      fileSize: 40n,
+    });
+    const batch = PreparedFileExtentRangeWriteBatch.create({ source: staged });
+    for (const [position, value] of [[0n, 0x31], [20n, 0x42]] as const) {
+      const plan = prepareFileWritePlan({
+        bytes: new Uint8Array(12).fill(value),
+        operationTimestamp,
+        position: createFileOffset({ value: position }),
+        source: staged,
+      });
+      if (plan === null || plan.action !== "copy_on_write_extent_range") throw new Error("expected extent range plan");
+      staged = batch.stage({ limits: { maximumExtentMutationsPerBatch: 2 }, plan, source: staged });
+    }
+
+    const flushed = await batch.flush({
+      limits: { maximumExtentMutationsPerBatch: 2 },
+      port: memory.port,
+      source: staged,
+    });
+    expect(memory.pagePort.writeCount).toBeGreaterThan(1);
+    if (flushed.content.type !== "tree") throw new Error("expected extent-backed inode");
+    const result = await entries({ port: memory, root: flushed.content.extentTreeRootHomeRef });
+    const written = result.filter(entry => entry.fileDataHomeRef.byteOffset >= 50_000n);
+    expect(written.map(entry => [entry.fileOffset, entry.byteLength])).toEqual([[0n, 12], [20n, 12]]);
+  });
+
+  it("preserves last-write-wins for overlapping writes in one range-write batch", async () => {
+    const memory = new MemoryContentPort();
+    const root = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
+      offset: 1_720n,
+    });
+    memory.pagePort.pages.set(identity({ value: root }), {
+      entries: [extent({ byteLength: 20, fileOffset: 0n, seed: 2_720n })],
+      level: 0,
+      type: "leaf",
+    });
+    let staged = fileInode({
+      content: { extentTreeRootHomeRef: root, type: "tree" },
+      fileSize: 20n,
+    });
+    const batch = PreparedFileExtentRangeWriteBatch.create({ source: staged });
+    for (const [position, value] of [[4n, 0x31], [6n, 0x42]] as const) {
+      const plan = prepareFileWritePlan({
+        bytes: new Uint8Array(4).fill(value),
+        operationTimestamp,
+        position: createFileOffset({ value: position }),
+        source: staged,
+      });
+      if (plan === null || plan.action !== "copy_on_write_extent_range") throw new Error("expected extent range plan");
+      staged = batch.stage({ limits: { maximumExtentMutationsPerBatch: 64 }, plan, source: staged });
+    }
+    const flushed = await batch.flush({
+      limits: { maximumExtentMutationsPerBatch: 64 },
+      port: memory.port,
+      source: staged,
+    });
+    expect(memory.pagePort.writeCount).toBe(1);
+    if (flushed.content.type !== "tree") throw new Error("expected extent-backed inode");
+    const result = await entries({ port: memory, root: flushed.content.extentTreeRootHomeRef });
+    const written = result.filter(entry => entry.fileDataHomeRef.byteOffset >= 50_000n);
+    expect(written.map(entry => ({
+      byteLength: entry.byteLength,
+      dataOffset: entry.dataOffset,
+      fileOffset: entry.fileOffset,
+    }))).toEqual([
+      { byteLength: 2, dataOffset: 0, fileOffset: 4n },
+      { byteLength: 4, dataOffset: 4, fileOffset: 6n },
+    ]);
+  });
+
+  it("bounds and zeroizes owned non-tail plaintext when a range-write batch is discarded", async () => {
+    const memory = new MemoryContentPort();
+    const root = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
+      offset: 1_728n,
+    });
+    memory.pagePort.pages.set(identity({ value: root }), {
+      entries: [extent({ byteLength: 20, fileOffset: 0n, seed: 2_728n })],
+      level: 0,
+      type: "leaf",
+    });
+    let staged = fileInode({
+      content: { extentTreeRootHomeRef: root, type: "tree" },
+      fileSize: 20n,
+    });
+    const batch = PreparedFileExtentRangeWriteBatch.create({ source: staged });
+    const firstPlan = prepareFileWritePlan({
+      bytes: new Uint8Array(4).fill(0x5a),
+      operationTimestamp,
+      position: createFileOffset({ value: 2n }),
+      source: staged,
+    });
+    if (firstPlan === null || firstPlan.action !== "copy_on_write_extent_range") throw new Error("expected extent range plan");
+    const owned = firstPlan.writeBytes;
+    staged = batch.stage({ limits: { maximumExtentMutationsPerBatch: 1 }, plan: firstPlan, source: staged });
+    expect(batch.canStage({
+      byteLength: 1,
+      limits: { maximumExtentMutationsPerBatch: 1 },
+      source: staged,
+      writeOffset: createFileOffset({ value: 3n }),
+    })).toBe(false);
+    batch.discard();
+    expect(owned.every(byte => byte === 0)).toBe(true);
+    await expect(batch.flush({
+      limits: { maximumExtentMutationsPerBatch: 1 },
+      port: memory.port,
+      source: staged,
+    })).rejects.toThrow("batch is closed");
+  });
+
+  it("does not absorb pure tail appends into the non-tail range-write batch", async () => {
+    const memory = new MemoryContentPort();
+    const root = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
+      offset: 1_712n,
+    });
+    memory.pagePort.pages.set(identity({ value: root }), {
+      entries: [extent({ byteLength: 100, fileOffset: 0n, seed: 2_712n })],
+      level: 0,
+      type: "leaf",
+    });
+    const source = fileInode({
+      content: { extentTreeRootHomeRef: root, type: "tree" },
+      fileSize: 100n,
+    });
+    const batch = PreparedFileExtentRangeWriteBatch.create({ source });
+    expect(batch.canStage({
+      byteLength: 4,
+      limits: { maximumExtentMutationsPerBatch: 64 },
+      source,
+      writeOffset: source.fileSize,
+    })).toBe(false);
   });
 
   it("bounds and consumes the prepared tail-append capability", async () => {
@@ -477,15 +703,20 @@ describe("file content mutation", () => {
       witness: first.appendTailWitness,
     });
     let staged = first.inode;
+    const maximumPayload = HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes;
     for (let index = 0; index < 2; index += 1) {
       const plan = prepareFileWritePlan({
-        bytes: Uint8Array.of(index + 2),
+        bytes: new Uint8Array(maximumPayload).fill(index + 2),
         operationTimestamp,
         position: staged.fileSize,
         source: staged,
       });
       if (plan === null || plan.action !== "copy_on_write_extent_range") throw new Error("expected tail extent write plan");
-      staged = await batch.stage({ plan, port: memory.port, source: staged });
+      staged = batch.stage({
+        limits: { maximumExtentMutationsPerBatch: 2 },
+        plan,
+        source: staged,
+      });
     }
     expect(batch.canStage({
       byteLength: 1,
@@ -496,7 +727,7 @@ describe("file content mutation", () => {
 
     await batch.flush({
       limits: { maximumExtentMutationsPerBatch: 2 },
-      pageStore: memory.extentPageStore,
+      port: memory.port,
       source: staged,
     });
     expect(batch.canStage({
@@ -507,9 +738,54 @@ describe("file content mutation", () => {
     })).toBe(false);
     await expect(batch.flush({
       limits: { maximumExtentMutationsPerBatch: 2 },
-      pageStore: memory.extentPageStore,
+      port: memory.port,
       source: staged,
     })).rejects.toThrow("batch is closed");
+  });
+
+  it("zeroizes owned tail plaintext when the prepared batch is discarded", async () => {
+    const memory = new MemoryContentPort();
+    const inlineLimit = HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes;
+    const source = fileInode({ content: { bytes: new Uint8Array(), type: "inline" } });
+    const firstPlan = prepareFileWritePlan({
+      bytes: new Uint8Array(inlineLimit + 1).fill(1),
+      operationTimestamp,
+      position: createFileOffset({ value: 0n }),
+      source,
+    });
+    if (firstPlan === null) throw new Error("expected first write plan");
+    const first = await prepareFileWriteMutationWithAppendTailWitness({
+      appendTailWitness: undefined,
+      limits: { maximumExtentMutationsPerBatch: 64 },
+      plan: firstPlan,
+      port: memory.port,
+      source,
+    });
+    if (first.appendTailWitness === undefined) throw new Error("expected append-tail witness");
+    const batch = PreparedFileExtentTailAppendBatch.create({ source: first.inode, witness: first.appendTailWitness });
+    const plan = prepareFileWritePlan({
+      bytes: new Uint8Array(32).fill(0x5a),
+      operationTimestamp,
+      position: first.inode.fileSize,
+      source: first.inode,
+    });
+    if (plan === null || plan.action !== "copy_on_write_extent_range") throw new Error("expected tail extent write plan");
+    const ownedWriteBytes = plan.writeBytes;
+    batch.stage({
+      limits: { maximumExtentMutationsPerBatch: 64 },
+      plan,
+      source: first.inode,
+    });
+
+    expect(ownedWriteBytes.some(byte => byte !== 0)).toBe(true);
+    batch.discard();
+    expect(ownedWriteBytes.every(byte => byte === 0)).toBe(true);
+    expect(batch.canStage({
+      byteLength: 1,
+      limits: { maximumExtentMutationsPerBatch: 64 },
+      source: first.inode,
+      writeOffset: first.inode.fileSize,
+    })).toBe(false);
   });
 
   it("consumes the prepared tail-append capability when materialization fails", async () => {
@@ -542,17 +818,21 @@ describe("file content mutation", () => {
       source: first.inode,
     });
     if (plan === null || plan.action !== "copy_on_write_extent_range") throw new Error("expected tail extent write plan");
-    const staged = await batch.stage({ plan, port: memory.port, source: first.inode });
+    const staged = batch.stage({
+      limits: { maximumExtentMutationsPerBatch: 2 },
+      plan,
+      source: first.inode,
+    });
 
     memory.pagePort.failNextWrite = true;
     await expect(batch.flush({
       limits: { maximumExtentMutationsPerBatch: 2 },
-      pageStore: memory.extentPageStore,
+      port: memory.port,
       source: staged,
     })).rejects.toThrow("injected File Extent page write failure");
     await expect(batch.flush({
       limits: { maximumExtentMutationsPerBatch: 2 },
-      pageStore: memory.extentPageStore,
+      port: memory.port,
       source: staged,
     })).rejects.toThrow("batch is closed");
   });
@@ -590,6 +870,40 @@ describe("file content mutation", () => {
       source: first.inode,
     });
     expect(overwritten.appendTailWitness).toBeUndefined();
+  });
+
+  it("truncates an extent-backed file to zero without traversing the old extent tree", async () => {
+    const memory = new MemoryContentPort();
+    const root = reference({
+      kind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.file_extent_page,
+      offset: 3_872n,
+    });
+    memory.pagePort.pages.set(identity({ value: root }), {
+      entries: [
+        extent({ byteLength: 10, fileOffset: 0n, seed: 4_000n }),
+        extent({ byteLength: 10, fileOffset: 20n, seed: 4_128n }),
+        extent({ byteLength: 5, fileOffset: 40n, seed: 4_256n }),
+      ],
+      level: 0,
+      type: "leaf",
+    });
+    const source = fileInode({
+      content: { extentTreeRootHomeRef: root, type: "tree" },
+      fileSize: 45n,
+    });
+    const plan = prepareFileTruncatePlan({
+      operationTimestamp,
+      source,
+      targetFileSize: createFileOffset({ value: 0n }),
+    });
+    if (plan === null) throw new Error("expected truncate plan");
+
+    const inode = await prepareFileTruncateMutation({ limits, plan, port: memory.port, source });
+    expect(memory.pagePort.readCount).toBe(0);
+    expect(memory.pagePort.writeCount).toBe(1);
+    if (inode.content.type !== "tree") throw new Error("expected extent-backed inode");
+    expect(await entries({ port: memory, root: inode.content.extentTreeRootHomeRef })).toEqual([]);
+    expect(inode.fileSize).toBe(0n);
   });
 
   it("trims all extents after the new size in bounded batches", async () => {

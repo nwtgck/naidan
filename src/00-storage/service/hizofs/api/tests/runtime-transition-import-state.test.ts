@@ -120,6 +120,31 @@ describe('HizoFS transition invocation runtime state', () => {
       .resolves.toMatchObject({ checkpoint: { directories: [{ path: [] }] }, type: 'active' });
   });
 
+  it('discards only the uncommitted target candidate after a failed slice', async () => {
+    const state = runtime();
+    await state.importStatePort.stageCandidate({
+      candidate: activeCandidate(),
+      operationIdentity: operationId,
+    });
+    await state.progressPort.save({ progress: copyingProgress({ completedEntries: 0n }) });
+    await state.importStatePort.stageCandidate({
+      candidate: activeCandidate({ nextInodeNumber: 3n }),
+      operationIdentity: operationId,
+    });
+
+    await state.importStatePort.discardStagedCandidate({ operationIdentity: operationId });
+
+    await expect(state.importStatePort.loadCandidate({ operationIdentity: operationId }))
+      .resolves.toMatchObject({ checkpoint: { nextInodeNumber: 2n }, type: 'active' });
+    await state.importStatePort.stageCandidate({
+      candidate: activeCandidate({ nextInodeNumber: 4n }),
+      operationIdentity: operationId,
+    });
+    await state.progressPort.save({ progress: copyingProgress({ completedEntries: 4n }) });
+    await expect(state.importStatePort.loadCandidate({ operationIdentity: operationId }))
+      .resolves.toMatchObject({ checkpoint: { nextInodeNumber: 4n }, type: 'active' });
+  });
+
   it('continues active slices and retains one sealed private root through verification', async () => {
     const state = runtime();
     await state.importStatePort.stageCandidate({

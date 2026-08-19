@@ -103,7 +103,9 @@ function provider() {
   let sourceIdentity = 'source-v1';
   const ports = namespacePorts();
   const cleanup = vi.fn(async () => undefined);
+  const discardStagedSliceState = vi.fn(async () => undefined);
   const finalized = vi.fn(async () => undefined);
+  const stageSliceState = vi.fn(async () => undefined);
   const driver = ({ isTarget }: { isTarget: boolean }): TransitionEndpointDriver => ({
     cleanupEndpoint: cleanup,
     finalizeTarget: finalized,
@@ -116,15 +118,25 @@ function provider() {
     openTargetEndpoint: async (): Promise<TransitionTargetEndpointSession> => ({
       authorityIdentity: 'target-v1',
       close: async () => undefined,
+      discardStagedSliceState,
       source: ports.targetRead,
+      stageSliceState,
       target: isTarget ? ports.targetWrite : ports.targetWrite,
     }),
     prepareTarget: async () => undefined,
     verifyNormalOpen: async () => undefined,
   });
-  return { adapter: new TransitionProviderAdapter({ hizofs: driver({ isTarget: true }), plain: driver({ isTarget: false }) }), cleanup, finalized, ports, setSourceIdentity: (value: string) => {
-    sourceIdentity = value;
-  } };
+  return {
+    adapter: new TransitionProviderAdapter({ hizofs: driver({ isTarget: true }), plain: driver({ isTarget: false }) }),
+    cleanup,
+    discardStagedSliceState,
+    finalized,
+    ports,
+    setSourceIdentity: (value: string) => {
+      sourceIdentity = value;
+    },
+    stageSliceState,
+  };
 }
 
 async function runUntil({ controlPort, progress, providerAdapter, stop }: {
@@ -196,6 +208,30 @@ describe('persisted transition coordinator', () => {
     expect(state.get()).toEqual({ mode: { activeFileSystemId: TARGET_ID, type: 'hizofs' }, retiredFileSystemIds: [] });
     expect(endpoints.cleanup).toHaveBeenCalledWith({ endpoint: sourceEndpoint });
     expect(p.get()).toBeUndefined();
+  });
+
+  it('discards staged target state when portable progress publication fails', async () => {
+    const state = control({ initial: { mode: { activeFileSystemId: SOURCE_ID, type: 'hizofs' }, retiredFileSystemIds: [] } });
+    const endpoints = provider();
+    const progress: TransitionProgressPort = {
+      clear: async () => undefined,
+      load: async () => undefined,
+      save: async () => {
+        throw new Error('simulated progress publication failure');
+      },
+    };
+    await startPersistenceTransition({ control: state.port, operationId: OPERATION, source: sourceEndpoint, target: targetEndpoint });
+
+    await expect(advancePersistenceTransition({
+      control: state.port,
+      policy,
+      progressPort: progress,
+      provider: endpoints.adapter,
+      signal: undefined,
+    })).rejects.toThrow('simulated progress publication failure');
+
+    expect(endpoints.stageSliceState).toHaveBeenCalledTimes(1);
+    expect(endpoints.discardStagedSliceState).toHaveBeenCalledTimes(1);
   });
 
   it('continues bounded copy slices with invocation-local progress', async () => {

@@ -456,6 +456,7 @@ describe("HizoFS worker runtime host", () => {
           },
           async write() {
             mutations.push("write");
+            return "returned_to_caller";
           },
         };
       },
@@ -559,6 +560,9 @@ describe("HizoFS worker runtime host", () => {
     expect(whilePinned.readerPinnedRoots).toHaveLength(1);
     whilePinned.release();
     await whilePinned.released;
+
+    await session.close();
+    expect(releaseResources).not.toHaveBeenCalled();
     await expect(snapshot.root.stat()).resolves.toEqual({
       createdAt: undefined,
       modifiedAt: undefined,
@@ -566,14 +570,17 @@ describe("HizoFS worker runtime host", () => {
     });
     await expect(snapshot.root.removeEntry({ name: "blocked", recursive: false }))
       .rejects.toThrow("HizoFS read snapshot cannot acquire a writer");
+    const afterParentClose = await value.beginMaintenanceRootCapture();
+    expect(afterParentClose.readerPinnedRoots).toHaveLength(1);
+    afterParentClose.release();
+    await afterParentClose.released;
 
     await snapshot.close();
+    expect(releaseResources).toHaveBeenCalledOnce();
     const afterSnapshotClose = await value.beginMaintenanceRootCapture();
     expect(afterSnapshotClose.readerPinnedRoots).toEqual([]);
     afterSnapshotClose.release();
     await afterSnapshotClose.released;
-    await session.close();
-    expect(releaseResources).toHaveBeenCalledOnce();
   });
 
   it("keeps maintenance behind read-snapshot capture until the captured generation is pinned", async () => {

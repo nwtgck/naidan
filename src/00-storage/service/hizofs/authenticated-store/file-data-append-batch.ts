@@ -13,10 +13,19 @@ import {
 } from "./record-appender";
 
 const MAXIMUM_PENDING_RECORDS = 128;
-const MAXIMUM_PENDING_FRAME_BYTES = 4 * 1024 * 1024;
+const MAXIMUM_PENDING_PLAINTEXT_BYTES = 16 * 1024 * 1024;
+// V1 Record Frames are 8-byte aligned, so at most seven bytes of padding
+// accompany the fixed Header and authentication tag for each pending Record.
+const MAXIMUM_FRAME_ALIGNMENT_PADDING_BYTES = 7;
+const MAXIMUM_FRAME_OVERHEAD_BYTES = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader
+  + HIZOFS_V1_FORMAT_CONSTANTS.crypto.tagBytes
+  + MAXIMUM_FRAME_ALIGNMENT_PADDING_BYTES;
+const MAXIMUM_PENDING_FRAME_BYTES = MAXIMUM_PENDING_PLAINTEXT_BYTES
+  + MAXIMUM_PENDING_RECORDS * MAXIMUM_FRAME_OVERHEAD_BYTES;
 
 export const HIZOFS_FILE_DATA_APPEND_BATCH_RESOURCE_LIMITS = Object.freeze({
   maximumPendingFrameBytes: MAXIMUM_PENDING_FRAME_BYTES,
+  maximumPendingPlaintextBytes: MAXIMUM_PENDING_PLAINTEXT_BYTES,
   maximumPendingRecords: MAXIMUM_PENDING_RECORDS,
 });
 
@@ -53,6 +62,7 @@ export class AuthenticatedFileDataAppendBatch {
   private readonly writer: AuthenticatedSegmentWriter;
   private closed = false;
   private pendingFrameBytesValue = 0;
+  private pendingPlaintextBytesValue = 0;
   private plannedResults: AppendedRecord[] = [];
   private records: TransferredPlaintextRecord[] = [];
 
@@ -83,6 +93,13 @@ export class AuthenticatedFileDataAppendBatch {
     assertFileDataPayloadBytesValid({ bytes });
     if (this.records.length >= MAXIMUM_PENDING_RECORDS) {
       throw new AuthenticatedFileDataAppendBatchFlushRequiredError();
+    }
+    const nextPlaintextBytes = this.pendingPlaintextBytesValue + bytes.byteLength;
+    if (nextPlaintextBytes > MAXIMUM_PENDING_PLAINTEXT_BYTES) {
+      if (this.records.length !== 0) {
+        throw new AuthenticatedFileDataAppendBatchFlushRequiredError();
+      }
+      throw new RangeError("File Data append batch plaintext exceeds its resource bound");
     }
     const plaintext = this.writer.encodeRecordPayload({ encode: () => bytes });
     const snapshot = this.writer.snapshotRecordForTransferredAppend({
@@ -120,6 +137,7 @@ export class AuthenticatedFileDataAppendBatch {
       this.records.push(snapshot);
       this.plannedResults.push(result);
       this.pendingFrameBytesValue = nextFrameBytes;
+      this.pendingPlaintextBytesValue = nextPlaintextBytes;
       return result.homeReference;
     } catch (cause: unknown) {
       snapshot.plaintext.fill(0);
@@ -138,6 +156,7 @@ export class AuthenticatedFileDataAppendBatch {
     this.records = [];
     this.plannedResults = [];
     this.pendingFrameBytesValue = 0;
+    this.pendingPlaintextBytesValue = 0;
     this.closed = true;
     try {
       let actual: readonly AppendedRecord[];
@@ -178,11 +197,13 @@ export class AuthenticatedFileDataAppendBatch {
     this.records = [];
     this.plannedResults = [];
     this.pendingFrameBytesValue = 0;
+    this.pendingPlaintextBytesValue = 0;
   }
 }
 
 // Export internal bounds used only for focused resource-bound tests.
 export const TEST_ONLY = {
   MAXIMUM_PENDING_FRAME_BYTES,
+  MAXIMUM_PENDING_PLAINTEXT_BYTES,
   MAXIMUM_PENDING_RECORDS,
 };

@@ -106,6 +106,10 @@ export class WorkingGenerationCoordinator {
     return this.workingGeneration;
   }
 
+  isSyncTargetDurable({ target }: { target: WorkingGenerationIdentity }): boolean {
+    return this.syncWaiters.isTargetSatisfied({ target });
+  }
+
   openMutationAdmission({ dirtyMetadataBytes, unpublishedPhysicalBytes }: {
     dirtyMetadataBytes: number;
     unpublishedPhysicalBytes: number;
@@ -195,6 +199,11 @@ export class WorkingGenerationCoordinator {
     this.dirtyResources.resetAfterDurablePublication();
   }
 
+  markDurabilityStalled({ cause }: { cause: unknown }): void {
+    this.durabilityStalled = true;
+    this.syncWaiters.rejectAll({ cause });
+  }
+
   private openFlushInternal({ managementBarrierOwned }: { managementBarrierOwned: boolean }): WorkingGenerationFlush {
     if (this.managementBarrierActive !== managementBarrierOwned) {
       throw new WorkingGenerationCoordinatorError({
@@ -239,8 +248,7 @@ export class WorkingGenerationCoordinator {
       },
       fail: ({ cause }) => {
         close();
-        this.durabilityStalled = true;
-        this.syncWaiters.rejectAll({ cause });
+        this.markDurabilityStalled({ cause });
       },
       target,
     });

@@ -291,6 +291,39 @@ function publishedDescriptorFromWorking({ working }: {
   });
 }
 
+class RejectNextAuthorityAcquirePort implements CrossRealmLockPort {
+  private readonly inner = new InMemoryCrossRealmLockPort();
+  private rejection: unknown | undefined;
+
+  async acquire({ mode, name }: {
+    mode: CrossRealmLockMode;
+    name: string;
+  }) {
+    if (this.rejection !== undefined && name.includes("/authority/")) {
+      const rejection = this.rejection;
+      this.rejection = undefined;
+      throw rejection;
+    }
+    return await this.inner.acquire({ mode, name });
+  }
+
+  rejectNextAuthorityAcquire({ cause }: { cause: unknown }): void {
+    if (this.rejection !== undefined) throw new TypeError("authority acquisition rejection is already armed");
+    this.rejection = cause;
+  }
+
+  async queryHeldLockNames(): Promise<readonly string[]> {
+    return await this.inner.queryHeldLockNames();
+  }
+
+  async tryAcquire({ mode, name }: {
+    mode: CrossRealmLockMode;
+    name: string;
+  }) {
+    return await this.inner.tryAcquire({ mode, name });
+  }
+}
+
 class DelayedReaderPinReleasePort implements CrossRealmLockPort {
   private completion = Promise.withResolvers<void>();
   private inner = new InMemoryCrossRealmLockPort();
@@ -955,6 +988,298 @@ describe("container runtime", () => {
     scheduled[1]!.callback();
     await durable;
     expect(publicationCount).toBe(1);
+  });
+
+  it("fail-stops a dirty generation when background writer acquisition fails before flush authority opens", async () => {
+    const { port: timerPort, scheduled } = controlledBackgroundFlushTimers();
+    const lockPort = new RejectNextAuthorityAcquirePort();
+    const value = runtime({ backgroundFlushTimerPort: timerPort, crossRealmLockPort: lockPort });
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const working = unpublishedSuccessorDescriptor({ base, mutationByte: 44, offset: 44_032n });
+    let publicationCount = 0;
+    const admission = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    admission.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => {
+          publicationCount += 1;
+          return { durableSuccessor: publishedDescriptorFromWorking({ working }), type: "published" as const };
+        },
+      }),
+      successor: working,
+    });
+
+    const backgroundFailure = new Error("cross-realm writer authority acquisition failed");
+    const waiter = authority.waitForSyncTarget({ target: working.workingIdentity });
+    lockPort.rejectNextAuthorityAcquire({ cause: backgroundFailure });
+    scheduled[0]!.callback();
+
+    await expect(waiter).rejects.toBe(backgroundFailure);
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(publicationCount).toBe(0);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: {
+        automaticRetryBlocked: true,
+        backgroundFlushInFlight: false,
+        backgroundFlushScheduled: false,
+        dirty: true,
+      },
+      flushState: "stalled",
+    });
+    expect(() => authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: working,
+      unpublishedPhysicalBytes: 1,
+    })).toThrowError(expect.objectContaining({ code: "durability_stalled" }));
+
+    await expect(authority.requestExplicitFlush()).resolves.toBeUndefined();
+    expect(publicationCount).toBe(1);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: {
+        automaticRetryBlocked: false,
+        dirty: false,
+      },
+      flushState: "idle",
+    });
+  });
+
+  it("fail-stops a deferred dirty generation when foreground-idle timer rearming fails", async () => {
+    const schedulingFailure = new Error("deferred background timer scheduling failed");
+    const scheduled: Array<{
+      callback: () => void;
+      cancelled: boolean;
+      delayMilliseconds: number;
+    }> = [];
+    let scheduleCount = 0;
+    const timerPort: HizoFSBackgroundFlushTimerPort = {
+      schedule: ({ callback, delayMilliseconds }) => {
+        scheduleCount += 1;
+        if (scheduleCount === 2) throw schedulingFailure;
+        const entry = { callback, cancelled: false, delayMilliseconds };
+        scheduled.push(entry);
+        return { cancel: () => {
+          entry.cancelled = true;
+        } };
+      },
+    };
+    const value = runtime({ backgroundFlushTimerPort: timerPort });
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const working = unpublishedSuccessorDescriptor({ base, mutationByte: 45, offset: 45_056n });
+    let publicationCount = 0;
+    const first = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    first.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => {
+          publicationCount += 1;
+          return { durableSuccessor: publishedDescriptorFromWorking({ working }), type: "published" as const };
+        },
+      }),
+      successor: working,
+    });
+    const foreground = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: working,
+      unpublishedPhysicalBytes: 1,
+    });
+
+    scheduled[0]!.callback();
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: { backgroundFlushDeferred: true },
+    });
+
+    expect(() => foreground.rollback()).toThrow(schedulingFailure);
+    expect(publicationCount).toBe(0);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: {
+        automaticRetryBlocked: true,
+        backgroundFlushDeferred: false,
+        backgroundFlushScheduled: false,
+        dirty: true,
+      },
+      flushState: "stalled",
+    });
+    expect(() => authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: working,
+      unpublishedPhysicalBytes: 1,
+    })).toThrowError(expect.objectContaining({ code: "durability_stalled" }));
+
+    await expect(authority.requestExplicitFlush()).resolves.toBeUndefined();
+    expect(publicationCount).toBe(1);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: { automaticRetryBlocked: false, dirty: false },
+      flushState: "idle",
+    });
+  });
+
+  it("retains an accepted successor when deferred background timer rearming fails", async () => {
+    const schedulingFailure = new Error("accepted successor background timer scheduling failed");
+    const scheduled: Array<{ callback: () => void; cancelled: boolean }> = [];
+    let scheduleCount = 0;
+    const timerPort: HizoFSBackgroundFlushTimerPort = {
+      schedule: ({ callback }) => {
+        scheduleCount += 1;
+        if (scheduleCount === 2) throw schedulingFailure;
+        const entry = { callback, cancelled: false };
+        scheduled.push(entry);
+        return {
+          cancel: () => {
+            entry.cancelled = true;
+          },
+        };
+      },
+    };
+    const value = runtime({ backgroundFlushTimerPort: timerPort });
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const firstWorking = unpublishedSuccessorDescriptor({ base, mutationByte: 46, offset: 46_080n });
+    const secondWorking = unpublishedSuccessorDescriptor({
+      base: firstWorking,
+      mutationByte: 47,
+      offset: 47_104n,
+    });
+    let firstPublicationCount = 0;
+    let secondPublicationCount = 0;
+    const first = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    first.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => {
+          firstPublicationCount += 1;
+          return { durableSuccessor: publishedDescriptorFromWorking({ working: firstWorking }), type: "published" as const };
+        },
+      }),
+      successor: firstWorking,
+    });
+    const second = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: firstWorking,
+      unpublishedPhysicalBytes: 1,
+    });
+
+    scheduled[0]!.callback();
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: { backgroundFlushDeferred: true },
+    });
+
+    expect(() => second.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => {
+          secondPublicationCount += 1;
+          return { durableSuccessor: publishedDescriptorFromWorking({ working: secondWorking }), type: "published" as const };
+        },
+      }),
+      successor: secondWorking,
+    })).toThrow(schedulingFailure);
+
+    expect(authority.capture().workingIdentity).toEqual(secondWorking.workingIdentity);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: { automaticRetryBlocked: true, dirty: true },
+      flushState: "stalled",
+    });
+    await expect(authority.requestExplicitFlush()).resolves.toBeUndefined();
+    expect(firstPublicationCount).toBe(0);
+    expect(secondPublicationCount).toBe(1);
+    expect(authority.capture().workingIdentity).toEqual(secondWorking.workingIdentity);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: { automaticRetryBlocked: false, dirty: false },
+      flushState: "idle",
+    });
+  });
+
+  it("does not rearm a deferred background timer after an immediate durable successor publishes", async () => {
+    const schedulingFailure = new Error("obsolete deferred timer must not be rearmed");
+    const scheduled: Array<{ callback: () => void }> = [];
+    let scheduleCount = 0;
+    const value = runtime({
+      backgroundFlushTimerPort: {
+        schedule: ({ callback }) => {
+          scheduleCount += 1;
+          if (scheduleCount === 2) throw schedulingFailure;
+          scheduled.push({ callback });
+          return { cancel: () => undefined };
+        },
+      },
+    });
+    const authority = value.attachAuthenticatedApplicationGeneration({
+      durableAuthority: authenticatedGenerationFixture(),
+    });
+    const base = authority.capture();
+    const firstWorking = unpublishedSuccessorDescriptor({ base, mutationByte: 48, offset: 48_128n });
+    const first = authority.openAcceptedMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: base,
+      unpublishedPhysicalBytes: 1,
+    });
+    first.commitAcceptedSuccessor({
+      publisher: Object.freeze({
+        abandon: () => undefined,
+        completeOutcomeUnknownResolution: () => undefined,
+        publish: async () => ({
+          durableSuccessor: publishedDescriptorFromWorking({ working: firstWorking }),
+          type: "published" as const,
+        }),
+      }),
+      successor: firstWorking,
+    });
+
+    const immediate = authority.openImmediateMutationAdmission({
+      dirtyMetadataBytes: 1,
+      expectedBase: firstWorking,
+      unpublishedPhysicalBytes: 1,
+    });
+    scheduled[0]!.callback();
+    await new Promise(resolve => globalThis.setTimeout(resolve, 0));
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: { backgroundFlushDeferred: true },
+    });
+
+    const secondWorking = unpublishedSuccessorDescriptor({
+      base: firstWorking,
+      mutationByte: 49,
+      offset: 49_152n,
+    });
+    const candidate = Object.freeze({ label: "immediate durable candidate" });
+    immediate.installSelectedCandidate({ candidate, successor: secondWorking });
+    expect(immediate.selectCandidateForPublication()).toBe(candidate);
+    const published = publishedDescriptorFromWorking({ working: secondWorking });
+    expect(() => immediate.commitDurableSuccessor({ successor: published })).not.toThrow();
+    immediate.releasePublishedCandidate();
+
+    expect(scheduleCount).toBe(1);
+    expect(authority.capture()).toBe(published);
+    expect(value.lazyDurabilityDiagnostics()).toMatchObject({
+      backgroundFlush: { automaticRetryBlocked: false, dirty: false },
+      flushState: "idle",
+    });
   });
 
   it("keeps an accepted candidate and stalls durability when background timer scheduling fails", async () => {
@@ -1757,6 +2082,27 @@ describe("container runtime", () => {
     await writer.close();
     await syncing;
     expect(syncResolved).toBe(true);
+    await session.close();
+  });
+
+  it("checks an already-durable sync target without waiting for an unrelated prepared writer", async () => {
+    const value = runtime();
+    const session = await openSession({ value });
+    const writer = await session.acquireWriter();
+    const events: string[] = [];
+
+    await session.syncDurableState({
+      assertDurabilityDemonstrated: () => {
+        events.push("profile");
+      },
+      recheckAuthority: async () => {
+        events.push("recheck");
+      },
+      writerBarrierRequired: false,
+    });
+
+    expect(events).toEqual(["profile", "recheck", "profile"]);
+    await writer.close();
     await session.close();
   });
 

@@ -59,6 +59,13 @@ const sealed = (): SealedStreamingNamespaceImport => ({
 class MemoryPort implements StreamingNamespaceImportRuntimeStatePort {
   candidate: StreamingNamespaceImportRuntimeCandidate | undefined;
 
+  async discardStagedCandidate({ operationIdentity: requestedOperation }: {
+    operationIdentity: string;
+  }): Promise<void> {
+    if (requestedOperation !== operationIdentity) throw new Error("runtime state belongs to another operation");
+    this.candidate = undefined;
+  }
+
   async loadCandidate({ operationIdentity: requestedOperation }: {
     operationIdentity: string;
   }): Promise<StreamingNamespaceImportRuntimeCandidate | undefined> {
@@ -117,6 +124,7 @@ describe("StreamingNamespaceImportTargetSession", () => {
       path: ["link"],
       target: "file",
     });
+    await session.stageSliceState();
     await session.close();
 
     expect(firstActor.ensureDirectory).toHaveBeenCalledWith({
@@ -171,6 +179,8 @@ describe("StreamingNamespaceImportTargetSession", () => {
     expect(firstSealed.nextInodeNumber).toBe(sealed().nextInodeNumber);
     expect(encodeHomeRecordReference({ reference: firstSealed.rootInodeTableRootHomeRef }))
       .toEqual(encodeHomeRecordReference({ reference: sealed().rootInodeTableRootHomeRef }));
+    expect(port.candidate).toBeUndefined();
+    await session.stageSliceState();
     expect(port.candidate?.type).toBe("sealed");
     await session.close();
 
@@ -223,8 +233,9 @@ describe("StreamingNamespaceImportTargetSession", () => {
     });
     await session.target.setRootMetadata({ metadata: { createdAt: undefined, modifiedAt: undefined } });
 
-    await expect(session.target.completeNamespace()).rejects.toThrow("injected runtime staging failure");
     await session.target.completeNamespace();
+    await expect(session.stageSliceState()).rejects.toThrow("injected runtime staging failure");
+    await session.stageSliceState();
 
     expect(firstActor.finalize).toHaveBeenCalledTimes(1);
     expect(port.candidate?.type).toBe("sealed");
@@ -235,7 +246,7 @@ describe("StreamingNamespaceImportTargetSession", () => {
     const firstActor = actor();
     let gateCalls = 0;
     const session = await StreamingNamespaceImportTargetSession.open({
-      beforeSealedCandidateSave: async () => {
+      beforeCandidateStage: async () => {
         gateCalls += 1;
         if (gateCalls === 1) throw new Error("injected durability gate failure");
       },
@@ -248,13 +259,64 @@ describe("StreamingNamespaceImportTargetSession", () => {
     });
     await session.target.setRootMetadata({ metadata: { createdAt: undefined, modifiedAt: undefined } });
 
-    await expect(session.target.completeNamespace()).rejects.toThrow("injected durability gate failure");
-    expect(port.candidate).toBeUndefined();
     await session.target.completeNamespace();
+    await expect(session.stageSliceState()).rejects.toThrow("injected durability gate failure");
+    expect(port.candidate).toBeUndefined();
+    await session.stageSliceState();
 
     expect(gateCalls).toBe(2);
     expect(firstActor.finalize).toHaveBeenCalledTimes(1);
     expect(port.candidate?.type).toBe("sealed");
+  });
+
+  it("does not stage a sealed candidate while closing after the durability gate failed", async () => {
+    const port = new MemoryPort();
+    const firstActor = actor();
+    const session = await StreamingNamespaceImportTargetSession.open({
+      beforeCandidateStage: async () => {
+        throw new Error("injected durability gate failure");
+      },
+      createImport: () => firstActor,
+      operationIdentity,
+      restoreImport: () => {
+        throw new Error("unexpected restore");
+      },
+      runtimeStatePort: port,
+    });
+    await session.target.setRootMetadata({ metadata: { createdAt: undefined, modifiedAt: undefined } });
+
+    await session.target.completeNamespace();
+    await expect(session.stageSliceState()).rejects.toThrow("injected durability gate failure");
+    await session.close();
+
+    expect(port.candidate).toBeUndefined();
+  });
+
+  it("gates active checkpoint staging on backing metadata durability and retries without losing the actor", async () => {
+    const port = new MemoryPort();
+    const firstActor = actor();
+    let gateCalls = 0;
+    const session = await StreamingNamespaceImportTargetSession.open({
+      beforeCandidateStage: async () => {
+        gateCalls += 1;
+        if (gateCalls === 1) throw new Error("injected active checkpoint durability failure");
+      },
+      createImport: () => firstActor,
+      operationIdentity,
+      restoreImport: () => {
+        throw new Error("unexpected restore");
+      },
+      runtimeStatePort: port,
+    });
+    await session.target.setRootMetadata({ metadata: { createdAt: undefined, modifiedAt: undefined } });
+
+    await expect(session.stageSliceState()).rejects.toThrow("injected active checkpoint durability failure");
+    expect(port.candidate).toBeUndefined();
+    await session.stageSliceState();
+
+    expect(gateCalls).toBe(2);
+    expect(firstActor.checkpoint).toHaveBeenCalledTimes(2);
+    expect(port.candidate?.type).toBe("active");
   });
 
   it("requires one exact root metadata handshake and rejects changes after initialization", async () => {
@@ -297,6 +359,7 @@ describe("StreamingNamespaceImportTargetSession", () => {
       runtimeStatePort: port,
     });
     await session.target.setRootMetadata({ metadata: { createdAt: undefined, modifiedAt: undefined } });
+    await session.stageSliceState();
     await session.close();
     await session.close();
     await expect(session.target.writeFileChunk({

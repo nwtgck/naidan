@@ -349,15 +349,17 @@ class HizoFSStorageFileHandle implements StorageFileHandle {
       async write({ data, position }) {
         requireOpen();
         const captured = captureFileWriteBytes({ bytes: data });
+        let ownershipTransferred = false;
         try {
           await owner.runOperation({ operation: async () => {
+            ownershipTransferred = true;
             await writable.write({
               data: captured,
               position: safeBigInt({ label: "write position", value: position }),
             });
           }});
         } finally {
-          captured.fill(0);
+          if (!ownershipTransferred) captured.fill(0);
         }
       },
     };

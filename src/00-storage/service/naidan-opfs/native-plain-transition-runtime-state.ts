@@ -18,6 +18,7 @@ export type NativePlainTransitionTargetLifecycle =
 export interface NativePlainTransitionRuntime {
   readonly progressPort: TransitionProgressPort;
   currentLifecycle(): Promise<NativePlainTransitionTargetLifecycle | undefined>;
+  discardStagedLifecycle(): Promise<void>;
   prepareTarget(): Promise<NativePlainTransitionTargetLifecycle>;
   stageLifecycle({ lifecycle }: {
     lifecycle: NativePlainTransitionTargetLifecycle;
@@ -93,6 +94,10 @@ export class NativePlainTransitionRuntimeState implements NativePlainTransitionR
 
   public async currentLifecycle(): Promise<NativePlainTransitionTargetLifecycle | undefined> {
     return this.stagedLifecycle ?? this.lifecycle;
+  }
+
+  public async discardStagedLifecycle(): Promise<void> {
+    this.stagedLifecycle = undefined;
   }
 
   public async abandonTarget({ operationId }: {

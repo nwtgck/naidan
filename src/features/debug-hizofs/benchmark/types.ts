@@ -557,8 +557,8 @@ const hizoFSBenchmarkLifecycleEventSchema = z.object({
 }).strict();
 
 export const hizoFSBenchmarkReportSchema = z.object({
-  schemaVersion: z.literal(35),
-  benchmarkImplementationVersion: z.literal(85),
+  schemaVersion: z.literal(37),
+  benchmarkImplementationVersion: z.literal(94),
   hizofsFormatVersion: z.literal(1),
   reportType: z.literal('hizofs_benchmark'),
   runId: z.string(),
@@ -603,8 +603,10 @@ export const hizoFSBenchmarkReportSchema = z.object({
       backingFileSnapshotCacheEntryLimitPerRuntime: z.number().int().nonnegative(),
       maximumPlaintextChunkWriteBytesInFlightPerWriter: z.number().int().positive(),
       fileDataAppendBatchFrameByteLimitPerWriter: z.number().int().positive(),
+      fileDataAppendBatchPlaintextByteLimitPerWriter: z.number().int().positive(),
       fileDataAppendBatchRecordLimitPerWriter: z.number().int().positive(),
       fileExtentMutationBatchEntryLimitPerWriter: z.number().int().positive(),
+      fileExtentTailAppendBatchPlaintextByteLimitPerWriter: z.number().int().positive(),
       maximumPlaintextChunkReadBytesInFlightPerReader: z.number().int().positive(),
       metadataObjectCacheByteLimitPerRuntime: z.number().int().nonnegative(),
       metadataObjectCacheEntryLimitPerRuntime: z.number().int().nonnegative(),

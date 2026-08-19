@@ -121,7 +121,26 @@ async function closeTransitionSessions({ operationFailure, sourceSession, target
   sourceSession: TransitionSourceEndpointSession;
   targetSession: TransitionTargetEndpointSession;
 }): Promise<void> {
-  const results = await Promise.allSettled([sourceSession.close(), targetSession.close()]);
+  const closeTarget = async (): Promise<void> => {
+    const failures: unknown[] = [];
+    if (operationFailure !== undefined) {
+      try {
+        await targetSession.discardStagedSliceState();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+    }
+    try {
+      await targetSession.close();
+    } catch (cause: unknown) {
+      failures.push(cause);
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(failures, 'failed to discard and close transition target session');
+    }
+  };
+  const results = await Promise.allSettled([sourceSession.close(), closeTarget()]);
   const failures: unknown[] = [];
   for (const result of results) {
     switch (result.status) {
@@ -321,11 +340,15 @@ export async function advancePersistenceTransition({ control, policy, progressPo
             target: targetSession.target,
           });
           switch (copyCursor.state) {
-          case 'copying': return {
-            progress: { ...progress, copyCursor },
-            result: { cursor: copyCursor, state: 'copying' } as const,
-            type: 'checkpoint' as const,
-          };
+          case 'copying': {
+            const nextProgress = { ...progress, copyCursor };
+            await targetSession.stageSliceState();
+            await progressPort.save({ progress: nextProgress });
+            return {
+              result: { cursor: copyCursor, state: 'copying' } as const,
+              type: 'checkpoint' as const,
+            };
+          }
           case 'complete': {
             const verifyingProgress: TransitionRuntimeProgress = {
               operationId: mode.operationId,
@@ -335,8 +358,9 @@ export async function advancePersistenceTransition({ control, policy, progressPo
               target: mode.phase.target,
               verificationCursor: createTransitionNamespaceVerificationCursor(),
             };
+            await targetSession.stageSliceState();
+            await progressPort.save({ progress: verifyingProgress });
             return {
-              progress: verifyingProgress,
               result: { cursor: verifyingProgress.verificationCursor, state: 'verifying' } as const,
               type: 'checkpoint' as const,
             };
@@ -353,11 +377,15 @@ export async function advancePersistenceTransition({ control, policy, progressPo
             target: targetSession.source,
           });
           switch (verificationCursor.state) {
-          case 'verifying': return {
-            progress: { ...progress, verificationCursor },
-            result: { cursor: verificationCursor, state: 'verifying' } as const,
-            type: 'checkpoint' as const,
-          };
+          case 'verifying': {
+            const nextProgress = { ...progress, verificationCursor };
+            await targetSession.stageSliceState();
+            await progressPort.save({ progress: nextProgress });
+            return {
+              result: { cursor: verificationCursor, state: 'verifying' } as const,
+              type: 'checkpoint' as const,
+            };
+          }
           case 'complete': return { type: 'verified' as const };
           default: return verificationCursor.state satisfies never;
           }
@@ -371,7 +399,6 @@ export async function advancePersistenceTransition({ control, policy, progressPo
 
     switch (outcome.type) {
     case 'checkpoint':
-      await progressPort.save({ progress: outcome.progress });
       return outcome.result;
     case 'verified': {
       // Endpoint sessions are closed before publication or normal-open proof.

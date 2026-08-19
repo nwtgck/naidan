@@ -20,7 +20,9 @@ const sourceSession: TransitionSourceEndpointSession = {
 const targetSession: TransitionTargetEndpointSession = {
   authorityIdentity: 'target-identity-v1',
   close: async () => undefined,
+  discardStagedSliceState: async () => undefined,
   source: {} as TransitionTargetEndpointSession['source'],
+  stageSliceState: async () => undefined,
   target: {} as TransitionTargetEndpointSession['target'],
 };
 

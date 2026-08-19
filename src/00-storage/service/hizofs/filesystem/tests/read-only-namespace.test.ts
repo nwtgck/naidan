@@ -53,7 +53,32 @@ function inode(entry: InodeFixtureEntry): InodeLeafEntry {
   } as InodeLeafEntry;
 }
 
+function standaloneTreeDirectoryInodePage({ root }: { root: HomeRecordReference }): Readonly<{
+  entries: readonly InodeLeafEntry[];
+  level: 0;
+  type: "leaf";
+}> {
+  return {
+    entries: [
+      inode({
+        content: { bytes: new Uint8Array(), type: "inline" },
+        fileSize: createFileOffset({ value: 0n }),
+        inodeKind: "file",
+        inodeNumber: createInodeNumber({ value: 2n }),
+      }),
+      inode({
+        content: { directoryTreeRootHomeRef: root, type: "tree" },
+        inodeKind: "directory",
+        inodeNumber: createInodeNumber({ value: 7n }),
+      }),
+    ],
+    level: 0,
+    type: "leaf",
+  };
+}
+
 function fixture(): Readonly<{
+  directoryPages: Map<HomeRecordReference, DirectoryPage>;
   inodePages: Map<HomeRecordReference, Readonly<{ entries: readonly InodeLeafEntry[]; level: 0; type: "leaf" }> | InodeBranchPage>;
   namespace: ReturnType<typeof createReadOnlyNamespace>;
   pointReads: ReturnType<typeof vi.fn>;
@@ -140,6 +165,7 @@ function fixture(): Readonly<{
     readInodePage,
   };
   return {
+    directoryPages,
     inodePages,
     namespace: createReadOnlyNamespace({
       inodeTableRootHomeRef: inodeRoot,
@@ -186,7 +212,7 @@ describe("read-only HizoFS namespace", () => {
     ]);
     const resolver = createReadOnlyNamespaceResolver({
       inodeTableRootHomeRef: inodeRoot,
-      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      rootDirectoryInodeNumber: createInodeNumber({ value: 7n }),
       source: {
         readDirectoryPage: async ({ reference: value }) => {
           const page = pages.get(value);
@@ -195,7 +221,7 @@ describe("read-only HizoFS namespace", () => {
         },
         readDirectoryPointPage: pointReads,
         readExtentFile: async () => new Uint8Array(),
-        readInodePage: async () => ({ entries: [], level: 0, type: "leaf" }),
+        readInodePage: async () => standaloneTreeDirectoryInodePage({ root }),
       },
     });
     const directory = inode({
@@ -227,7 +253,7 @@ describe("read-only HizoFS namespace", () => {
     const pointReads = vi.fn(async () => ({ level: 1, type: "absent" as const }));
     const resolver = createReadOnlyNamespaceResolver({
       inodeTableRootHomeRef: inodeRoot,
-      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      rootDirectoryInodeNumber: createInodeNumber({ value: 7n }),
       source: {
         readDirectoryPage: async ({ reference: value }) => {
           const page = pages.get(value);
@@ -236,7 +262,7 @@ describe("read-only HizoFS namespace", () => {
         },
         readDirectoryPointPage: pointReads,
         readExtentFile: async () => new Uint8Array(),
-        readInodePage: async () => ({ entries: [], level: 0, type: "leaf" }),
+        readInodePage: async () => standaloneTreeDirectoryInodePage({ root }),
       },
     });
     const directory = inode({
@@ -362,5 +388,69 @@ describe("read-only HizoFS namespace", () => {
     });
 
     await expect(namespace.stat({ pathComponents: ["inline.txt"] })).rejects.toThrow("upper bound");
+  });
+
+  it("rejects an ordinary inode that is reachable from more than one directory entry", async () => {
+    const { directoryPages, namespace } = fixture();
+    directoryPages.set(directoryRoot, {
+      entries: [
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 2n }), name: "duplicate.txt", targetType: "inode" },
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 5n }), name: "huge.bin", targetType: "inode" },
+      ],
+      level: 0,
+      type: "leaf",
+    });
+
+    await expect(namespace.stat({ pathComponents: ["inline.txt"] }))
+      .rejects.toMatchObject({ code: "corrupt_namespace" });
+  });
+
+  it("rejects an unrelated dangling ordinary-inode target", async () => {
+    const { directoryPages, namespace } = fixture();
+    directoryPages.set(directoryRoot, {
+      entries: [
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 6n }), name: "dangling.bin", targetType: "inode" },
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 5n }), name: "huge.bin", targetType: "inode" },
+      ],
+      level: 0,
+      type: "leaf",
+    });
+
+    await expect(namespace.stat({ pathComponents: ["inline.txt"] }))
+      .rejects.toMatchObject({ code: "corrupt_namespace" });
+  });
+
+  it("rejects an unrelated ordinary-directory cycle", async () => {
+    const { directoryPages, namespace } = fixture();
+    directoryPages.set(directoryRoot, {
+      entries: [
+        { inodeKind: "directory", inodeNumber: createInodeNumber({ value: 1n }), name: "cycle", targetType: "inode" },
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 5n }), name: "huge.bin", targetType: "inode" },
+      ],
+      level: 0,
+      type: "leaf",
+    });
+
+    await expect(namespace.stat({ pathComponents: ["inline.txt"] }))
+      .rejects.toMatchObject({ code: "corrupt_namespace" });
+  });
+
+  it("rejects an orphan inode even when the requested path does not reference it", async () => {
+    const { inodePages, namespace } = fixture();
+    const firstLeaf = inodePages.get(inodeLeafA);
+    if (firstLeaf === undefined || !("type" in firstLeaf)) throw new Error("expected first Inode leaf fixture");
+    const root = firstLeaf.entries.find(entry => entry.inodeNumber === 1n);
+    if (root?.inodeKind !== "directory" || root.content.type !== "inline") throw new Error("expected inline root Directory fixture");
+    const rootContent = root.content;
+    inodePages.set(inodeLeafA, {
+      entries: firstLeaf.entries.map(entry => entry.inodeNumber === 1n
+        ? { ...root, content: { ...rootContent, entries: rootContent.entries.filter(entry => entry.targetType !== "inode" || entry.inodeNumber !== 2n) } }
+        : entry),
+      level: 0,
+      type: "leaf",
+    });
+
+    await expect(namespace.stat({ pathComponents: ["tree", "huge.bin"] }))
+      .rejects.toMatchObject({ code: "corrupt_namespace" });
   });
 });

@@ -113,7 +113,9 @@ export function createNativePlainDisableTransitionDriver({ binding, nativeNamesp
       return {
         authorityIdentity: NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY,
         close: namespace.close,
+        discardStagedSliceState: async () => await runtime.discardStagedLifecycle(),
         source: namespace.source,
+        stageSliceState: async () => undefined,
         target: namespace.target,
       };
     },

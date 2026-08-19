@@ -21,6 +21,7 @@ import {
 } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import {
   lookupRelocationMapping,
+  validateRelocationIndexTree,
   resolveAuthenticatedHomeRecord,
 } from "@/00-storage/service/hizofs/authenticated-store/relocation-index-reader";
 import {
@@ -159,6 +160,67 @@ describe("Relocation Index lookup", () => {
       ]) }),
       rootPhysicalReference: rootReference,
     })).rejects.toThrow("upper bound");
+  });
+
+  it("rejects an overlapping key range in an unrelated sibling subtree", async () => {
+    const childAReference = physicalRef({ kind: KINDS.relocation_index_page, seed: 11 });
+    const childBReference = physicalRef({ kind: KINDS.relocation_index_page, seed: 12 });
+    const keySegmentId = segmentId({ seed: 20 });
+    const childA: RelocationIndexPage = {
+      entries: [{
+        currentPhysicalRecordRef: physicalRef({ kind: KINDS.file_system_commit, seed: 30 }),
+        homeOffset: createUInt64({ value: 100n }),
+        homeSegmentId: keySegmentId,
+      }],
+      level: 0,
+      type: "leaf",
+    };
+    const childB: RelocationIndexPage = {
+      entries: [
+        {
+          currentPhysicalRecordRef: physicalRef({ kind: KINDS.file_system_commit, seed: 31 }),
+          homeOffset: createUInt64({ value: 90n }),
+          homeSegmentId: keySegmentId,
+        },
+        {
+          currentPhysicalRecordRef: physicalRef({ kind: KINDS.file_system_commit, seed: 32 }),
+          homeOffset: createUInt64({ value: 200n }),
+          homeSegmentId: keySegmentId,
+        },
+      ],
+      level: 0,
+      type: "leaf",
+    };
+    const root: RelocationIndexPage = {
+      entries: [
+        {
+          childPagePhysicalRef: childAReference,
+          upperBound: { homeOffset: createUInt64({ value: 100n }), homeSegmentId: keySegmentId },
+        },
+        {
+          childPagePhysicalRef: childBReference,
+          upperBound: { homeOffset: createUInt64({ value: 200n }), homeSegmentId: keySegmentId },
+        },
+      ],
+      level: 1,
+      type: "branch",
+    };
+
+    await expect(validateRelocationIndexTree({
+      readPage: pageReader({ pages: new Map<PhysicalRecordReference, RelocationIndexPage>([
+        [rootReference, root],
+        [childAReference, childA],
+        [childBReference, childB],
+      ]) }),
+      rootPhysicalReference: rootReference,
+    })).rejects.toThrow("overlapping sibling ranges");
+  });
+
+  it("accepts an empty leaf root as a canonical empty mapping", async () => {
+    await expect(validateRelocationIndexTree({
+      readPage: pageReader({ pages: new Map([[rootReference, { entries: [], level: 0, type: "leaf" }]]) }),
+      rootPhysicalReference: rootReference,
+    })).resolves.toBeUndefined();
   });
 
   it("rejects a mapping that changes record kind or frame length", async () => {

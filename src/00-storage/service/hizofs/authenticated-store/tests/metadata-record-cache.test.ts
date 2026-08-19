@@ -333,11 +333,11 @@ describe("AuthenticatedMetadataRecordCache", () => {
     });
   });
 
-  it("coalesces concurrent insertion accounting without sharing caller buffers", async () => {
+  it("coalesces concurrent authenticated loads without sharing caller buffers", async () => {
     const { diagnostics, state } = createMetadataDiagnostics();
     const cache = new AuthenticatedMetadataRecordCache({
       diagnostics,
-      policy: { maximumBytes: 32, maximumEntries: 4 },
+      policy: { maximumBytes: 128, maximumEntries: 4 },
     });
     const reference = metadataReference();
     const resolvers: Array<(record: AuthenticatedMetadataRecord) => void> = [];
@@ -346,15 +346,11 @@ describe("AuthenticatedMetadataRecordCache", () => {
     const firstPromise = cache.read({ load, reference });
     const secondPromise = cache.read({ load, reference });
     await Promise.resolve();
-    expect(resolvers).toHaveLength(2);
-    const [resolveFirst, resolveSecond] = resolvers;
-    if (resolveFirst === undefined || resolveSecond === undefined) {
-      throw new Error("expected two concurrent metadata loaders");
-    }
-    resolveFirst(loadedRecord({ bytes: [4, 5], reference }));
-    const first = await firstPromise;
-    resolveSecond(loadedRecord({ bytes: [8, 9], reference }));
-    const second = await secondPromise;
+    expect(resolvers).toHaveLength(1);
+    const [resolveLoad] = resolvers;
+    if (resolveLoad === undefined) throw new Error("expected one shared metadata loader");
+    resolveLoad(loadedRecord({ bytes: [4, 5], reference }));
+    const [first, second] = await Promise.all([firstPromise, secondPromise]);
 
     expect([...first.plaintext]).toEqual([4, 5]);
     expect([...second.plaintext]).toEqual([4, 5]);
@@ -362,31 +358,117 @@ describe("AuthenticatedMetadataRecordCache", () => {
     expect(state).toMatchObject({
       currentBytes: 2,
       currentEntries: 1,
+      hits: 1,
       misses: 2,
     });
+  });
+
+  it("does not single-flight a frame outside the cache byte budget", async () => {
+    const cache = new AuthenticatedMetadataRecordCache({
+      diagnostics: undefined,
+      policy: { maximumBytes: 32, maximumEntries: 4 },
+    });
+    const reference = metadataReference();
+    const resolvers: Array<(record: AuthenticatedMetadataRecord) => void> = [];
+    const load = async (): Promise<AuthenticatedMetadataRecord> => await new Promise(resolve => {
+      resolvers.push(resolve);
+    });
+
+    const first = cache.read({ load, reference });
+    const second = cache.read({ load, reference });
+    await Promise.resolve();
+    expect(resolvers).toHaveLength(2);
+    resolvers[0]?.(loadedRecord({ bytes: [1, 2], reference }));
+    resolvers[1]?.(loadedRecord({ bytes: [3, 4], reference }));
+    await Promise.all([first, second]);
+  });
+
+  it("promotes a concurrent mutation-scope miss so later readers reuse one authenticated load", async () => {
+    const cache = new AuthenticatedMetadataRecordCache({
+      diagnosticScope: "mutation",
+      diagnostics: undefined,
+      policy: { maximumBytes: 128, maximumEntries: 4 },
+    });
+    const reference = metadataReference();
+    let loads = 0;
+    let resolveLoad: ((record: AuthenticatedMetadataRecord) => void) | undefined;
+    const load = async (): Promise<AuthenticatedMetadataRecord> => {
+      loads += 1;
+      return await new Promise(resolve => {
+        resolveLoad = resolve;
+      });
+    };
+
+    const first = cache.read({ load, reference });
+    const second = cache.read({ load, reference });
+    await Promise.resolve();
+    expect(loads).toBe(1);
+    resolveLoad?.(loadedRecord({ bytes: [2, 4], reference }));
+    await Promise.all([first, second]);
+    await cache.read({ load, reference });
+
+    expect(loads).toBe(1);
+  });
+
+  it("shares one load failure with concurrent readers and permits a clean retry", async () => {
+    const cache = new AuthenticatedMetadataRecordCache({
+      diagnostics: undefined,
+      policy: { maximumBytes: 128, maximumEntries: 4 },
+    });
+    const reference = metadataReference();
+    let loads = 0;
+    let rejectLoad: ((cause: unknown) => void) | undefined;
+    const failingLoad = async (): Promise<AuthenticatedMetadataRecord> => {
+      loads += 1;
+      return await new Promise((_, reject) => {
+        rejectLoad = reject;
+      });
+    };
+
+    const first = cache.read({ load: failingLoad, reference });
+    const second = cache.read({ load: failingLoad, reference });
+    const firstFailure = expect(first).rejects.toThrow("shared load failed");
+    const secondFailure = expect(second).rejects.toThrow("shared load failed");
+    await Promise.resolve();
+    expect(loads).toBe(1);
+    rejectLoad?.(new Error("shared load failed"));
+    await firstFailure;
+    await secondFailure;
+
+    await expect(cache.read({
+      load: async () => loadedRecord({ bytes: [7, 8], reference }),
+      reference,
+    })).resolves.toMatchObject({ recordKind: reference.recordKind });
   });
 
   it("zeroes a pending load and rejects future reads after disposal", async () => {
     const { diagnostics, state } = createMetadataDiagnostics();
     const cache = new AuthenticatedMetadataRecordCache({
       diagnostics,
-      policy: { maximumBytes: 32, maximumEntries: 4 },
+      policy: { maximumBytes: 128, maximumEntries: 4 },
     });
     const reference = metadataReference();
+    let loads = 0;
     let resolveLoad: ((record: AuthenticatedMetadataRecord) => void) | undefined;
     const plaintext = new Uint8Array([6, 7, 8]);
-    const pending = cache.read({
-      load: async () => await new Promise(resolve => {
+    const load = async (): Promise<AuthenticatedMetadataRecord> => {
+      loads += 1;
+      return await new Promise(resolve => {
         resolveLoad = resolve;
-      }),
-      reference,
-    });
+      });
+    };
+    const pending = cache.read({ load, reference });
+    const follower = cache.read({ load, reference });
+    const pendingFailure = expect(pending).rejects.toThrow("disposed while loading");
+    const followerFailure = expect(follower).rejects.toThrow("disposed while loading");
     await Promise.resolve();
+    expect(loads).toBe(1);
 
     cache.dispose();
     resolveLoad?.({ plaintext, recordKind: reference.recordKind });
 
-    await expect(pending).rejects.toThrow("disposed while loading");
+    await pendingFailure;
+    await followerFailure;
     expect([...plaintext]).toEqual([0, 0, 0]);
     await expect(cache.read({
       load: async () => loadedRecord({ bytes: [1], reference }),
