@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  HIZOFS_V1_FORMAT_CONSTANTS,
+  createHomeRecordReference,
   createInodeNumber,
   createInodeRevision,
+  createUInt64,
   encodeInodeLeafPage,
   parseFileSystemId,
+  parseSegmentId,
 } from "@/00-storage/service/hizofs/00-format";
 import {
   appendAuthenticatedInodeTablePage,
@@ -78,6 +82,55 @@ describe("authenticated Inode Table page store", () => {
       localStructureValidated: true,
       page: { entries: [rootEntry()], level: 0, type: "leaf" },
     });
+    rootKey.destroy();
+  });
+
+
+  it("authenticates an existing Inode branch before reusing decoded routing", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const writer = await createAuthenticatedSegmentWriter({
+      backend,
+      fileSystemId,
+      randomSource,
+      rootKey,
+      segmentClass: "metadata",
+    });
+    const branchPage = {
+      entries: [{
+        childPageHomeRef: createHomeRecordReference({ fields: {
+          byteOffset: createUInt64({ value: 64n }),
+          frameLength: 128,
+          recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+          segmentId: parseSegmentId({ bytes: new Uint8Array(16).fill(7) }),
+        } }),
+        upperBound: createInodeNumber({ value: 9n }),
+      }],
+      level: 1,
+      type: "branch" as const,
+    };
+    const homeReference = await appendAuthenticatedInodeTablePage({
+      isRoot: true,
+      page: branchPage,
+      writer,
+    });
+    writer.abandon();
+    const getBranchPage = vi.fn(() => ({ entries: branchPage.entries, level: branchPage.level }));
+    const failure = new Error("injected mutation-time authenticated Inode reread failure");
+    vi.spyOn(backend, "readExact").mockRejectedValueOnce(failure);
+
+    await expect(readAuthenticatedInodeTablePageForUpdate({
+      backend,
+      decodedBranchPageCache: { getBranchPage, setBranchPage: vi.fn() },
+      fileSystemId,
+      homeReference,
+      isRoot: true,
+      relocationIndexRootPhysicalRef: null,
+      rootKey,
+    })).rejects.toBe(failure);
+    expect(getBranchPage).not.toHaveBeenCalled();
     rootKey.destroy();
   });
 

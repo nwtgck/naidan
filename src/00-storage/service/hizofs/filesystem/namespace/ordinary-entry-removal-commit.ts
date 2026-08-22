@@ -2,6 +2,7 @@ import {
   createFileSystemCommitPayload,
   type DirectoryInodeEntry,
   type FileSystemCommitPayload,
+  type InodeNumber,
   type MutationId,
   type TimestampMilliseconds,
 } from "@/00-storage/service/hizofs/00-format";
@@ -16,88 +17,105 @@ import {
   prepareOrdinaryEntryRemovalMutation,
   type OrdinaryEntryRemovalMutation,
 } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-mutation";
-import type { OrdinaryEntryRemovalPlan } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-plan";
+import {
+  streamOrdinaryEntryRemovalInodeBatches,
+  type OpenOrdinaryRemovalDirectory,
+  type OrdinaryEntryRemovalSource,
+  type OrdinaryEntryRemovalTarget,
+} from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-plan";
 
 export type PreparedOrdinaryEntryRemovalCommit = Readonly<{
   commitPayload: FileSystemCommitPayload;
   mutation: OrdinaryEntryRemovalMutation;
-  plan: OrdinaryEntryRemovalPlan;
+  target: OrdinaryEntryRemovalTarget;
 }>;
 
 function deletionChanges({ inodeNumbers }: {
-  inodeNumbers: OrdinaryEntryRemovalPlan["removedInodeNumbersPostOrder"];
+  inodeNumbers: readonly InodeNumber[];
 }): readonly RootInodeTableMutation[] {
   return inodeNumbers.map(inodeNumber => ({ key: inodeNumber, type: "delete" }));
 }
 
 /**
- * Applies recursive inode removal in bounded unpublished B-tree batches. Only
- * the final root is placed in one new Commit, so crash visibility remains
- * atomic while large recursive removals avoid one unbounded mutation array.
+ * Builds one recursive-removal candidate without retaining a subtree-sized
+ * inode list. Directory traversal yields bounded deletion batches and each
+ * batch advances one unpublished candidate Inode Table root. Only the final
+ * root is returned for publication.
  */
 export async function prepareOrdinaryEntryRemovalCommit({
   baseCommit,
   directoryPageStore,
   inodeTablePageStore,
   mutationId,
+  openDirectory,
   operationTimestamp,
   parent,
-  plan,
+  recursive,
+  source,
+  target,
 }: {
   baseCommit: FileSystemCommitPayload;
   directoryPageStore: DirectoryPageTreePageStore;
   inodeTablePageStore: RootInodeTablePageStore;
   mutationId: MutationId;
+  openDirectory: OpenOrdinaryRemovalDirectory;
   operationTimestamp: TimestampMilliseconds;
   parent: DirectoryInodeEntry;
-  plan: OrdinaryEntryRemovalPlan;
+  recursive: boolean;
+  source: OrdinaryEntryRemovalSource;
+  target: OrdinaryEntryRemovalTarget;
 }): Promise<PreparedOrdinaryEntryRemovalCommit> {
-  const firstBatch = plan.deleteBatches[0];
-  if (firstBatch === undefined || firstBatch.length === 0) {
-    throw new TypeError("ordinary removal plan must contain one non-empty delete batch");
-  }
   const mutation = await prepareOrdinaryEntryRemovalMutation({
     directoryPageStore,
     operationTimestamp,
     parent,
-    plan,
+    plan: target,
   });
-  const firstPrepared = await prepareRootInodeTableMutation({
-    baseCommit,
-    changes: [mutation.parentChange, ...deletionChanges({ inodeNumbers: firstBatch })],
-    mutationId,
-    pageStore: inodeTablePageStore,
-  });
-  const firstCommitPayload = (() => {
-    switch (firstPrepared.type) {
-    case "prepared": return firstPrepared.commitPayload;
-    case "unchanged":
-      throw new Error("ordinary removal unexpectedly produced no initial Inode Table change");
-    default: {
-      const _exhaustive: never = firstPrepared;
-      throw new Error(`Unhandled root Inode Table mutation type: ${
-        ((_exhaustive satisfies never) as { readonly type: string }).type
-      }`);
+  let preparedCommitPayload: FileSystemCommitPayload | undefined;
+  let candidateRootReference = baseCommit.rootInodeTableRootHomeRef;
+  let batchCount = 0;
+  for await (const inodeNumbers of streamOrdinaryEntryRemovalInodeBatches({
+    deleteBatchSize: target.deleteBatchSize,
+    openDirectory,
+    recursive,
+    source,
+  })) {
+    if (inodeNumbers.length === 0) throw new Error("ordinary removal streamed an empty inode batch");
+    if (batchCount === 0) {
+      const prepared = await prepareRootInodeTableMutation({
+        baseCommit,
+        changes: [mutation.parentChange, ...deletionChanges({ inodeNumbers })],
+        mutationId,
+        pageStore: inodeTablePageStore,
+      });
+      switch (prepared.type) {
+      case "prepared":
+        preparedCommitPayload = prepared.commitPayload;
+        candidateRootReference = prepared.commitPayload.rootInodeTableRootHomeRef;
+        break;
+      case "unchanged":
+        throw new Error("ordinary removal unexpectedly produced no initial Inode Table change");
+      default: prepared satisfies never;
+      }
+    } else {
+      candidateRootReference = await applyRootInodeTableMutations({
+        changes: deletionChanges({ inodeNumbers }),
+        pageStore: inodeTablePageStore,
+        rootReference: candidateRootReference,
+      });
     }
-    }
-  })();
-
-  let rootReference = firstCommitPayload.rootInodeTableRootHomeRef;
-  for (const batch of plan.deleteBatches.slice(1)) {
-    if (batch.length === 0) throw new TypeError("ordinary removal delete batch cannot be empty");
-    rootReference = await applyRootInodeTableMutations({
-      changes: deletionChanges({ inodeNumbers: batch }),
-      pageStore: inodeTablePageStore,
-      rootReference,
-    });
+    batchCount += 1;
+  }
+  if (preparedCommitPayload === undefined || batchCount === 0) {
+    throw new Error("ordinary removal traversal produced no inode deletion batch");
   }
   return {
     commitPayload: createFileSystemCommitPayload({ payload: {
-      ...firstCommitPayload,
-      rootInodeTableRootHomeRef: rootReference,
+      ...preparedCommitPayload,
+      rootInodeTableRootHomeRef: candidateRootReference,
     } }),
     mutation,
-    plan,
+    target,
   };
 }
 

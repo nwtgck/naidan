@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import {
   createFileOffset,
   createHomeRecordReference,
@@ -18,6 +18,7 @@ import {
   createReadOnlyNamespaceResolver,
   type ReadOnlyNamespacePageSource,
 } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
+import { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 
 const KINDS = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds;
 
@@ -81,9 +82,10 @@ function fixture(): Readonly<{
   directoryPages: Map<HomeRecordReference, DirectoryPage>;
   inodePages: Map<HomeRecordReference, Readonly<{ entries: readonly InodeLeafEntry[]; level: 0; type: "leaf" }> | InodeBranchPage>;
   namespace: ReturnType<typeof createReadOnlyNamespace>;
-  pointReads: ReturnType<typeof vi.fn>;
-  readExtentFile: ReturnType<typeof vi.fn>;
-  readInodePage: ReturnType<typeof vi.fn>;
+  pointReads: Mock<NonNullable<ReadOnlyNamespacePageSource["readInodePointPage"]>>;
+  readDirectoryPage: Mock<ReadOnlyNamespacePageSource["readDirectoryPage"]>;
+  readExtentFile: Mock<ReadOnlyNamespacePageSource["readExtentFile"]>;
+  readInodePage: Mock<ReadOnlyNamespacePageSource["readInodePage"]>;
   resolver: ReturnType<typeof createReadOnlyNamespaceResolver>;
 }> {
   const entries = new Map<bigint, InodeLeafEntry>([
@@ -134,32 +136,31 @@ function fixture(): Readonly<{
       { inodeKind: "file", inodeNumber: createInodeNumber({ value: 5n }), name: "huge.bin", targetType: "inode" },
     ], level: 0, type: "leaf" }],
   ]);
-  const readExtentFile = vi.fn(async () => new Uint8Array([7, 8, 9]));
-  const pointReads = vi.fn(async ({ inodeNumber, reference: value }: {
-    inodeNumber: bigint;
-    reference: HomeRecordReference;
-  }) => {
-    const page = inodePages.get(value);
-    if (page === undefined) throw new Error("missing inode point page");
-    if ("type" in page) {
-      return {
-        entry: page.entries.find(entry => entry.inodeNumber === inodeNumber),
-        type: "leaf" as const,
-      };
-    }
-    return { page, type: "branch" as const };
-  });
-  const readInodePage = vi.fn(async ({ reference: value }: { reference: HomeRecordReference }) => {
+  const readExtentFile = vi.fn<ReadOnlyNamespacePageSource["readExtentFile"]>(async () => new Uint8Array([7, 8, 9]));
+  const pointReads = vi.fn<NonNullable<ReadOnlyNamespacePageSource["readInodePointPage"]>>(
+    async ({ inodeNumber, reference: value }) => {
+      const page = inodePages.get(value);
+      if (page === undefined) throw new Error("missing inode point page");
+      if ("type" in page) {
+        return {
+          entry: page.entries.find(entry => entry.inodeNumber === inodeNumber),
+          type: "leaf" as const,
+        };
+      }
+      return { page, type: "branch" as const };
+    });
+  const readInodePage = vi.fn<ReadOnlyNamespacePageSource["readInodePage"]>(async ({ reference: value }) => {
     const page = inodePages.get(value);
     if (page === undefined) throw new Error("missing inode page");
     return page;
   });
+  const readDirectoryPage = vi.fn<ReadOnlyNamespacePageSource["readDirectoryPage"]>(async ({ reference: value }) => {
+    const page = directoryPages.get(value);
+    if (page === undefined) throw new Error("missing directory page");
+    return page;
+  });
   const source: ReadOnlyNamespacePageSource = {
-    readDirectoryPage: async ({ reference: value }) => {
-      const page = directoryPages.get(value);
-      if (page === undefined) throw new Error("missing directory page");
-      return page;
-    },
+    readDirectoryPage,
     readExtentFile,
     readInodePointPage: pointReads,
     readInodePage,
@@ -173,6 +174,7 @@ function fixture(): Readonly<{
       source,
     }),
     pointReads,
+    readDirectoryPage,
     readExtentFile,
     readInodePage,
     resolver: createReadOnlyNamespaceResolver({
@@ -184,6 +186,29 @@ function fixture(): Readonly<{
 }
 
 describe("read-only HizoFS namespace", () => {
+  it("builds the global namespace proof without nested validation-cache admission", async () => {
+    const { pointReads, readDirectoryPage, readExtentFile, readInodePage } = fixture();
+    const resolver = createReadOnlyNamespaceResolver({
+      inodeTableRootHomeRef: inodeRoot,
+      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      source: {
+        readDirectoryPage: async args => await readDirectoryPage(args),
+        readExtentFile: async args => await readExtentFile(args),
+        readInodePointPage: async args => await pointReads(args),
+        readInodePage: async args => await readInodePage(args),
+      },
+      validationCache: new ReadOnlyNamespaceValidationCache({ maximumEntries: 1 }),
+    });
+
+    await expect(resolver.resolveInode({ pathComponents: [] })).resolves.toMatchObject({
+      inodeKind: "directory",
+      inodeNumber: createInodeNumber({ value: 1n }),
+    });
+    expect(readInodePage).toHaveBeenCalledTimes(3);
+    await expect(resolver.maximumKnownInodeNumber()).resolves.toBe(createInodeNumber({ value: 5n }));
+    expect(readInodePage).toHaveBeenCalledTimes(5);
+  }, 1_000);
+
   it("validates the complete Directory tree before using a selective point reader", async () => {
     const root = reference({ kind: KINDS.directory_page, offset: 704n });
     const first = reference({ kind: KINDS.directory_page, offset: 832n });
@@ -336,6 +361,145 @@ describe("read-only HizoFS namespace", () => {
       ],
       truncated: false,
     });
+  });
+
+
+
+  it("reuses the resolved directory inode across adjacent bounded listing pages", async () => {
+    const { pointReads, resolver } = fixture();
+    if (resolver.listAfterBounded === undefined) throw new Error("expected paged listing capability");
+    const first = await resolver.listAfterBounded({
+      afterName: undefined,
+      maximumEntries: 1,
+      pathComponents: [],
+    });
+    expect(first.entries.map(entry => entry.name)).toEqual(["inline.txt"]);
+    expect(first.truncated).toBe(true);
+    const pointReadsAfterFirstPage = pointReads.mock.calls.length;
+    const second = await resolver.listAfterBounded({
+      afterName: "inline.txt",
+      maximumEntries: 1,
+      pathComponents: [],
+    });
+    expect(second.entries.map(entry => entry.name)).toEqual(["link"]);
+    expect(second.truncated).toBe(true);
+    expect(pointReads.mock.calls.length).toBe(pointReadsAfterFirstPage);
+  });
+
+  it("continues adjacent tree-directory pages without restarting the immutable B-tree scan", async () => {
+    const { directoryPages, inodePages, readDirectoryPage, resolver } = fixture();
+    const inodeRootPage = inodePages.get(inodeRoot);
+    const inodeLeafBPage = inodePages.get(inodeLeafB);
+    if (inodeRootPage === undefined || "type" in inodeRootPage) throw new Error("expected Inode root branch");
+    if (inodeLeafBPage === undefined || !("type" in inodeLeafBPage)) throw new Error("expected Inode leaf B");
+    const addedFiles = [6n, 7n, 8n].map(value => inode({
+      content: { bytes: new Uint8Array(), type: "inline" },
+      fileSize: createFileOffset({ value: 0n }),
+      inodeKind: "file",
+      inodeNumber: createInodeNumber({ value }),
+    }));
+    inodePages.set(inodeRoot, {
+      entries: [
+        inodeRootPage.entries[0]!,
+        { childPageHomeRef: inodeLeafB, upperBound: createInodeNumber({ value: 8n }) },
+      ],
+      level: 1,
+    });
+    inodePages.set(inodeLeafB, {
+      entries: [...inodeLeafBPage.entries, ...addedFiles],
+      level: 0,
+      type: "leaf",
+    });
+    directoryPages.set(directoryRoot, {
+      entries: [
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 5n }), name: "a.bin", targetType: "inode" },
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 6n }), name: "b.bin", targetType: "inode" },
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 7n }), name: "c.bin", targetType: "inode" },
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 8n }), name: "d.bin", targetType: "inode" },
+      ],
+      level: 0,
+      type: "leaf",
+    });
+    if (resolver.listAfterBounded === undefined) throw new Error("expected paged listing capability");
+
+    const first = await resolver.listAfterBounded({
+      afterName: undefined,
+      maximumEntries: 1,
+      pathComponents: ["tree"],
+    });
+    expect(first.entries.map(entry => entry.name)).toEqual(["a.bin"]);
+    expect(first.truncated).toBe(true);
+    const readsAfterFirstPage = readDirectoryPage.mock.calls.length;
+
+    const second = await resolver.listAfterBounded({
+      afterName: "a.bin",
+      maximumEntries: 1,
+      pathComponents: ["tree"],
+    });
+    expect(second.entries.map(entry => entry.name)).toEqual(["b.bin"]);
+    expect(second.truncated).toBe(true);
+    expect(readDirectoryPage.mock.calls.length).toBe(readsAfterFirstPage);
+  });
+
+  it("keeps a validated paged cursor authoritative after the shared validation proof is evicted", async () => {
+    const { directoryPages, inodePages, pointReads, readDirectoryPage, readExtentFile, readInodePage } = fixture();
+    const inodeRootPage = inodePages.get(inodeRoot);
+    const inodeLeafBPage = inodePages.get(inodeLeafB);
+    if (inodeRootPage === undefined || "type" in inodeRootPage) throw new Error("expected Inode root branch");
+    if (inodeLeafBPage === undefined || !("type" in inodeLeafBPage)) throw new Error("expected Inode leaf B");
+    const added = inode({
+      content: { bytes: new Uint8Array(), type: "inline" },
+      fileSize: createFileOffset({ value: 0n }),
+      inodeKind: "file",
+      inodeNumber: createInodeNumber({ value: 6n }),
+    });
+    inodePages.set(inodeRoot, {
+      entries: [
+        inodeRootPage.entries[0]!,
+        { childPageHomeRef: inodeLeafB, upperBound: createInodeNumber({ value: 6n }) },
+      ],
+      level: 1,
+    });
+    inodePages.set(inodeLeafB, { entries: [...inodeLeafBPage.entries, added], level: 0, type: "leaf" });
+    directoryPages.set(directoryRoot, {
+      entries: [
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 5n }), name: "a.bin", targetType: "inode" },
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 6n }), name: "b.bin", targetType: "inode" },
+      ],
+      level: 0,
+      type: "leaf",
+    });
+    const validationCache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 1_024 });
+    const resolver = createReadOnlyNamespaceResolver({
+      inodeTableRootHomeRef: inodeRoot,
+      rootDirectoryInodeNumber: createInodeNumber({ value: 1n }),
+      source: {
+        readDirectoryPage: async args => await readDirectoryPage(args),
+        readExtentFile: async args => await readExtentFile(args),
+        readInodePointPage: async args => await pointReads(args),
+        readInodePage: async args => await readInodePage(args),
+      },
+      validationCache,
+    });
+    if (resolver.listAfterBounded === undefined) throw new Error("expected paged listing capability");
+
+    const first = await resolver.listAfterBounded({
+      afterName: undefined,
+      maximumEntries: 1,
+      pathComponents: ["tree"],
+    });
+    expect(first.entries.map(entry => entry.name)).toEqual(["a.bin"]);
+    expect(first.truncated).toBe(true);
+    validationCache.clear();
+    const readsAfterEviction = readDirectoryPage.mock.calls.length;
+
+    const second = await resolver.listAfterBounded({
+      afterName: "a.bin",
+      maximumEntries: 1,
+      pathComponents: ["tree"],
+    });
+    expect(second.entries.map(entry => entry.name)).toEqual(["b.bin"]);
+    expect(readDirectoryPage.mock.calls.length).toBe(readsAfterEviction);
   });
 
   it("projects lossless bigint stat fields without reading file content", async () => {

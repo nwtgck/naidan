@@ -4,7 +4,6 @@ import {
   assertInodeLeafEntryFitsMetadataPage,
   type DirectoryInodeEntry,
   type DirectoryLeafEntry,
-  type InodeNumber,
   type TimestampMilliseconds,
 } from "@/00-storage/service/hizofs/00-format";
 import {
@@ -13,7 +12,7 @@ import {
   type DirectoryPageTreePageStore,
 } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
 import type { RootInodeTableMutation } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
-import type { OrdinaryEntryRemovalPlan } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-plan";
+import type { OrdinaryEntryRemovalTarget } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-plan";
 
 export type OrdinaryEntryRemovalMutationErrorCode =
   | "parent_identity_mismatch"
@@ -36,15 +35,9 @@ export type OrdinaryEntryRemovalMutation = Readonly<{
   updatedParent: DirectoryInodeEntry;
 }>;
 
-function sourceInodeNumber({ plan }: { plan: OrdinaryEntryRemovalPlan }): InodeNumber {
-  const source = plan.removedInodeNumbersPostOrder.at(-1);
-  if (source === undefined) throw new TypeError("ordinary removal plan must contain the source inode");
-  return source;
-}
-
 function requireCapturedSource({ entry, plan }: {
   entry: DirectoryLeafEntry | undefined;
-  plan: OrdinaryEntryRemovalPlan;
+  plan: OrdinaryEntryRemovalTarget;
 }): void {
   if (entry === undefined) {
     throw new OrdinaryEntryRemovalMutationError({
@@ -54,7 +47,7 @@ function requireCapturedSource({ entry, plan }: {
   }
   switch (entry.targetType) {
   case "inode":
-    if (entry.inodeNumber === sourceInodeNumber({ plan })) return;
+    if (entry.inodeNumber === plan.sourceInodeNumber) return;
     throw new OrdinaryEntryRemovalMutationError({
       code: "source_identity_mismatch",
       message: "ordinary removal source inode changed after planning",
@@ -82,7 +75,7 @@ export async function prepareOrdinaryEntryRemovalMutation({
   directoryPageStore: DirectoryPageTreePageStore;
   operationTimestamp: TimestampMilliseconds;
   parent: DirectoryInodeEntry;
-  plan: OrdinaryEntryRemovalPlan;
+  plan: OrdinaryEntryRemovalTarget;
 }): Promise<OrdinaryEntryRemovalMutation> {
   if (parent.inodeNumber !== plan.parentDirectoryInodeNumber) {
     throw new OrdinaryEntryRemovalMutationError({

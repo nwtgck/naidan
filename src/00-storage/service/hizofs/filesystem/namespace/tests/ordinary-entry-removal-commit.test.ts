@@ -24,7 +24,7 @@ import {
 } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
 import type { RootInodeTablePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
 import { prepareOrdinaryEntryRemovalCommit } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-commit";
-import { prepareOrdinaryEntryRemovalPlan } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-plan";
+import { prepareOrdinaryEntryRemovalTarget } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-plan";
 import type { ImmutableBTreePage } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
 import { describe, expect, it } from "vitest";
 
@@ -115,7 +115,7 @@ function binding({ inodeKind, inodeNumber, name }: {
   inodeKind: "directory" | "file";
   inodeNumber: bigint;
   name: string;
-}): DirectoryLeafEntry {
+}): Extract<DirectoryLeafEntry, { targetType: "inode" }> {
   return {
     inodeKind,
     inodeNumber: createInodeNumber({ value: inodeNumber }),
@@ -169,13 +169,11 @@ async function prepare({ directoryEntries, parent, recursive, sourceEntry, fixtu
   recursive: boolean;
   sourceEntry: DirectoryLeafEntry;
 }) {
-  const plan = prepareOrdinaryEntryRemovalPlan({
-    directoryEntries,
-    limits: { deleteBatchSize: 2, maxVisitedInodes: 16 },
+  const { source, target } = prepareOrdinaryEntryRemovalTarget({
+    deleteBatchSize: 2,
     parentAccess: "read_write",
     parentDirectoryInodeNumber: parent.inodeNumber,
     parentSubvolumeId: createSubvolumeId({ value: 1n }),
-    recursive,
     sourceEntry,
   });
   return await prepareOrdinaryEntryRemovalCommit({
@@ -185,7 +183,19 @@ async function prepare({ directoryEntries, parent, recursive, sourceEntry, fixtu
     mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(9) }),
     operationTimestamp,
     parent,
-    plan,
+    openDirectory: async ({ directoryEntry }) => ({
+      readPage: async ({ afterName, maximumEntries }) => {
+        const entries = directoryEntries.get(directoryEntry.inodeNumber) ?? [];
+        const start = afterName === undefined
+          ? 0
+          : entries.findIndex(candidate => candidate.name === afterName) + 1;
+        const page = entries.slice(start, start + maximumEntries);
+        return { entries: page, truncated: start + page.length < entries.length };
+      },
+    }),
+    recursive,
+    source,
+    target,
   });
 }
 
@@ -252,6 +262,107 @@ describe("ordinary entry removal Commit", () => {
     }).map(entry => entry.inodeNumber)).toEqual([1n, 3n]);
   });
 
+  it("carries one unpublished Inode Table root across streamed recursive delete batches", async () => {
+    const source = binding({ inodeKind: "directory", inodeNumber: 2n, name: "tree" });
+    const first = binding({ inodeKind: "file", inodeNumber: 3n, name: "a" });
+    const nested = binding({ inodeKind: "directory", inodeNumber: 4n, name: "nested" });
+    const nestedFile = binding({ inodeKind: "file", inodeNumber: 5n, name: "child" });
+    const last = binding({ inodeKind: "file", inodeNumber: 6n, name: "z" });
+    const parent = directoryInode({ entries: [source], inodeNumber: 1n });
+    const sourceDirectory = directoryInode({ entries: [first, nested, last], inodeNumber: 2n });
+    const nestedDirectory = directoryInode({ entries: [nestedFile], inodeNumber: 4n });
+    const fixture = baseFixture({
+      inodes: [
+        parent,
+        sourceDirectory,
+        fileInode({ inodeNumber: 3n }),
+        nestedDirectory,
+        fileInode({ inodeNumber: 5n }),
+        fileInode({ inodeNumber: 6n }),
+      ],
+      parent,
+    });
+    const byDirectory = new Map<InodeNumber, readonly DirectoryLeafEntry[]>([
+      [sourceDirectory.inodeNumber, sourceDirectory.content.type === "inline" ? sourceDirectory.content.entries : []],
+      [nestedDirectory.inodeNumber, nestedDirectory.content.type === "inline" ? nestedDirectory.content.entries : []],
+    ]);
+    const { source: capturedSource, target } = prepareOrdinaryEntryRemovalTarget({
+      deleteBatchSize: 2,
+      parentAccess: "read_write",
+      parentDirectoryInodeNumber: parent.inodeNumber,
+      parentSubvolumeId: createSubvolumeId({ value: 1n }),
+      sourceEntry: source,
+    });
+    const result = await prepareOrdinaryEntryRemovalCommit({
+      baseCommit: fixture.baseCommit,
+      directoryPageStore: fixture.directoryPageStore,
+      inodeTablePageStore: fixture.inodePageStore,
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(9) }),
+      operationTimestamp,
+      parent,
+      openDirectory: async ({ directoryEntry }) => ({
+        readPage: async ({ afterName, maximumEntries }) => {
+          const entries = byDirectory.get(directoryEntry.inodeNumber) ?? [];
+          const start = afterName === undefined
+            ? 0
+            : entries.findIndex(candidate => candidate.name === afterName) + 1;
+          const page = entries.slice(start, start + maximumEntries);
+          return { entries: page, truncated: start + page.length < entries.length };
+        },
+      }),
+      recursive: true,
+      source: capturedSource,
+      target,
+    });
+
+    expect(result.target).toEqual(target);
+    expect(writtenRootEntries({
+      commitRoot: result.commitPayload.rootInodeTableRootHomeRef,
+      pageStore: fixture.inodePageStore,
+    }).map(entry => entry.inodeNumber)).toEqual([1n]);
+  });
+
+  it("abandons streamed candidate roots when a later page discovers a mounted Subvolume", async () => {
+    const source = binding({ inodeKind: "directory", inodeNumber: 2n, name: "tree" });
+    const first = binding({ inodeKind: "file", inodeNumber: 3n, name: "a" });
+    const mount: DirectoryLeafEntry = {
+      name: "mounted",
+      subvolumeId: createSubvolumeId({ value: 2n }),
+      targetType: "subvolume",
+    };
+    const parent = directoryInode({ entries: [source], inodeNumber: 1n });
+    const sourceDirectory = directoryInode({ entries: [first, mount], inodeNumber: 2n });
+    const fixture = baseFixture({
+      inodes: [parent, sourceDirectory, fileInode({ inodeNumber: 3n })],
+      parent,
+    });
+    const { source: capturedSource, target } = prepareOrdinaryEntryRemovalTarget({
+      deleteBatchSize: 1,
+      parentAccess: "read_write",
+      parentDirectoryInodeNumber: parent.inodeNumber,
+      parentSubvolumeId: createSubvolumeId({ value: 1n }),
+      sourceEntry: source,
+    });
+    const writesBefore = fixture.inodePageStore.pages.size;
+    await expect(prepareOrdinaryEntryRemovalCommit({
+      baseCommit: fixture.baseCommit,
+      directoryPageStore: fixture.directoryPageStore,
+      inodeTablePageStore: fixture.inodePageStore,
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(9) }),
+      operationTimestamp,
+      openDirectory: async () => ({
+        readPage: async ({ afterName }) => afterName === undefined
+          ? { entries: [first], truncated: true }
+          : { entries: [mount], truncated: false },
+      }),
+      parent,
+      recursive: true,
+      source: capturedSource,
+      target,
+    })).rejects.toMatchObject({ code: "mounted_subvolume" });
+    expect(fixture.inodePageStore.pages.size).toBeGreaterThan(writesBefore);
+  });
+
   it("applies recursive inode deletion in bounded unpublished batches", async () => {
     const source = binding({ inodeKind: "directory", inodeNumber: 2n, name: "tree" });
     const childFile = binding({ inodeKind: "file", inodeNumber: 3n, name: "a" });
@@ -281,7 +392,8 @@ describe("ordinary entry removal Commit", () => {
       sourceEntry: source,
     });
 
-    expect(result.plan.deleteBatches.map(batch => [...batch])).toEqual([[3n, 5n], [4n, 2n]]);
+    expect(result.target.deleteBatchSize).toBe(2);
+    expect(result.target.sourceInodeNumber).toBe(source.inodeNumber);
     expect(writtenRootEntries({
       commitRoot: result.commitPayload.rootInodeTableRootHomeRef,
       pageStore: fixture.inodePageStore,

@@ -1,7 +1,7 @@
 {
-  // TODO(hizofs-v1): Remove this temporary HizoFS-scoped TypeScript
-  // configuration before final integration. Do not promote it to a permanent
-  // project reference without an explicit user decision and a Design update.
+  // TODO(hizofs-v1): Keep this temporary HizoFS-scoped TypeScript configuration
+  // only for bounded validation. Do not promote it to a permanent project
+  // reference; remove it when this temporary validation scope is retired.
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
     "composite": false,

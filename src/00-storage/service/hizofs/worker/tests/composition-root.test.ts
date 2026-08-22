@@ -406,7 +406,7 @@ async function createNonemptyPortableFixtureBackend(): Promise<
         return value;
       },
       randomSource,
-      removalLimits: { deleteBatchSize: 16, maxVisitedInodes: 128 },
+      removalLimits: { deleteBatchSize: 16 },
       recheckDurableGenerationAuthority: async () => undefined,
       rootSubvolumeId: createSubvolumeId({ value: 1n }),
       supportedFeatureBits,
@@ -599,7 +599,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -649,7 +649,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -698,7 +698,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -768,7 +768,7 @@ describe("HizoFS worker composition root", () => {
           throw operationFailure;
         },
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -812,7 +812,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -905,7 +905,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -961,7 +961,7 @@ describe("HizoFS worker composition root", () => {
           return createTimestampMilliseconds({ value: 1_700_000_000_000n });
         },
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -1018,6 +1018,7 @@ describe("HizoFS worker composition root", () => {
       supportedFeatureBits,
     });
     let authorityRechecks = 0;
+    const indexOperations: string[] = [];
     let nextTimestamp = 1_700_000_000_000n;
     const session = await openAuthenticatedReadWriteApplicationSession({
       captureAuthority: async () => ({ revision: 1 }),
@@ -1030,13 +1031,16 @@ describe("HizoFS worker composition root", () => {
         opened,
         explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
         fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        indexDiagnostics: {
+          recordIndexOperation: ({ operation }) => indexOperations.push(operation),
+        },
         operationTimestamp: () => {
           const timestamp = createTimestampMilliseconds({ value: nextTimestamp });
           nextTimestamp += 1n;
           return timestamp;
         },
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async ({ commit, superblock }) => {
           authorityRechecks += 1;
           const current = await openSuperblockCopies({
@@ -1057,12 +1061,16 @@ describe("HizoFS worker composition root", () => {
 
     const docs = await session.root.getDirectoryHandle({ create: true, name: "docs" });
     const nested = await docs.getFileHandle({ create: true, name: "nested.txt" });
+    await docs.getFileHandle({ create: true, name: "second.txt" });
+    await docs.getFileHandle({ create: true, name: "third.txt" });
     expect(await nested.stat()).toMatchObject({ size: 0 });
     expect(await session.root.getEntryHandle({ name: "docs" })).toMatchObject({ kind: "directory" });
     expect(await docs.getEntryHandle({ name: "nested.txt" })).toMatchObject({ kind: "file" });
     await expect(session.root.removeEntry({ name: "docs", recursive: false })).rejects.toThrow();
     expect(await docs.getEntryHandle({ name: "nested.txt" })).toMatchObject({ kind: "file" });
+    indexOperations.length = 0;
     await session.root.removeEntry({ name: "docs", recursive: true });
+    expect(indexOperations.filter(operation => operation === "get")).toHaveLength(2);
     await expect(session.root.getEntryHandle({ name: "docs" })).rejects.toThrow();
     // One runtime-owner-fenced durable head needs one physical authority
     // recheck regardless of how many ordinary mutations reuse it.
@@ -1122,7 +1130,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -1187,7 +1195,7 @@ describe("HizoFS worker composition root", () => {
           opened,
           operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
           randomSource,
-          removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+          removalLimits: { deleteBatchSize: 2 },
           recheckDurableGenerationAuthority: async () => undefined,
           rootSubvolumeId: createSubvolumeId({ value: 1n }),
           supportedFeatureBits,
@@ -1257,7 +1265,7 @@ describe("HizoFS worker composition root", () => {
           opened,
           operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
           randomSource,
-          removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+          removalLimits: { deleteBatchSize: 2 },
           recheckDurableGenerationAuthority: async () => undefined,
           rootSubvolumeId: createSubvolumeId({ value: 1n }),
           supportedFeatureBits,
@@ -1332,7 +1340,7 @@ describe("HizoFS worker composition root", () => {
             return timestamp;
           },
           randomSource,
-          removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+          removalLimits: { deleteBatchSize: 2 },
           recheckDurableGenerationAuthority: async () => undefined,
           rootSubvolumeId: createSubvolumeId({ value: 1n }),
           supportedFeatureBits,
@@ -1405,7 +1413,7 @@ describe("HizoFS worker composition root", () => {
           opened,
           operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
           randomSource,
-          removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+          removalLimits: { deleteBatchSize: 2 },
           recheckDurableGenerationAuthority: async () => undefined,
           rootSubvolumeId: createSubvolumeId({ value: 1n }),
           supportedFeatureBits,
@@ -1478,7 +1486,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -1547,7 +1555,7 @@ describe("HizoFS worker composition root", () => {
           return timestamp;
         },
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -1614,7 +1622,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -1675,7 +1683,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -1747,7 +1755,7 @@ describe("HizoFS worker composition root", () => {
             return timestamp;
           },
           randomSource,
-          removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+          removalLimits: { deleteBatchSize: 2 },
           recheckDurableGenerationAuthority: async ({ commit, superblock }) => {
             const current = await openSuperblockCopies({
               backend,
@@ -1806,7 +1814,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 64, maxVisitedInodes: 128 },
+        removalLimits: { deleteBatchSize: 64 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -1879,7 +1887,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 64, maxVisitedInodes: 128 },
+        removalLimits: { deleteBatchSize: 64 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -1943,7 +1951,7 @@ describe("HizoFS worker composition root", () => {
           return timestamp;
         },
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -2057,7 +2065,7 @@ describe("HizoFS worker composition root", () => {
           return timestamp;
         },
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -2133,7 +2141,7 @@ describe("HizoFS worker composition root", () => {
           return timestamp;
         },
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -2200,6 +2208,50 @@ describe("HizoFS worker composition root", () => {
     }
   });
 
+  it("streams recursive removal without a subtree-wide inode budget", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const supportedFeatureBits = createFeatureBits({ value: 0n });
+    const opened = await createEmptyEncryptedContainer({
+      backend,
+      passphrase: "correct horse battery staple",
+      randomSource,
+      supportedFeatureBits,
+    });
+    const session = await openAuthenticatedReadWriteApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      recheckAuthority: async () => undefined,
+      runtimeHost: runtimeHost(),
+      verifyCapturedAuthority: async () => ({
+        backend,
+        canonicalBackingLocation: "memory://recursive-removal-streaming-test.hizofs",
+        opened,
+        explicitBulkLimits: DEFAULT_EXPLICIT_BULK_TEST_LIMITS,
+        fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
+        operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
+        randomSource,
+        // Recursive traversal is cursor-bounded; this fixture only needs the per-batch deletion limit.
+        removalLimits: { deleteBatchSize: 2 },
+        recheckDurableGenerationAuthority: async () => undefined,
+        rootSubvolumeId: createSubvolumeId({ value: 1n }),
+        supportedFeatureBits,
+        writableProfile: "release-qualified",
+      }),
+    });
+
+    const source = await session.root.getDirectoryHandle({ create: true, name: "source" });
+    await source.getFileHandle({ create: true, name: "a.txt" });
+    await source.getFileHandle({ create: true, name: "b.txt" });
+    const nested = await source.getDirectoryHandle({ create: true, name: "nested" });
+    await nested.getFileHandle({ create: true, name: "c.txt" });
+
+    await expect(session.root.removeEntry({ name: "source", recursive: true })).resolves.toBeUndefined();
+    await expect(session.root.getEntryHandle({ name: "source" })).rejects.toThrow();
+
+    await session.close();
+    expect(opened.rootKey.isDestroyed()).toBe(true);
+  });
+
   it("does not apply recursive-removal inode budgets to unrelated directory moves", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
@@ -2222,7 +2274,7 @@ describe("HizoFS worker composition root", () => {
         fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 1, maxVisitedInodes: 1 },
+        removalLimits: { deleteBatchSize: 1 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -2274,7 +2326,7 @@ describe("HizoFS worker composition root", () => {
           return timestamp;
         },
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -2408,7 +2460,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -2495,7 +2547,7 @@ describe("HizoFS worker composition root", () => {
         opened: openedContainer,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -2573,7 +2625,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -2628,7 +2680,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => {
           durableAuthorityRechecks += 1;
         },
@@ -2701,7 +2753,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -2771,7 +2823,7 @@ describe("HizoFS worker composition root", () => {
         fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -2840,7 +2892,7 @@ describe("HizoFS worker composition root", () => {
         fileMutationLimits: { maximumExtentMutationsPerBatch: 2 },
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -2914,7 +2966,7 @@ describe("HizoFS worker composition root", () => {
           return timestamp;
         },
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -3001,7 +3053,7 @@ describe("HizoFS worker composition root", () => {
           return timestamp;
         },
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -3114,7 +3166,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -3183,7 +3235,7 @@ describe("HizoFS worker composition root", () => {
         opened,
         operationTimestamp: () => createTimestampMilliseconds({ value: 1_700_000_000_000n }),
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,
@@ -3260,7 +3312,7 @@ describe("HizoFS worker composition root", () => {
           return timestamp;
         },
         randomSource,
-        removalLimits: { deleteBatchSize: 2, maxVisitedInodes: 64 },
+        removalLimits: { deleteBatchSize: 2 },
         recheckDurableGenerationAuthority: async () => undefined,
         rootSubvolumeId: createSubvolumeId({ value: 1n }),
         supportedFeatureBits,

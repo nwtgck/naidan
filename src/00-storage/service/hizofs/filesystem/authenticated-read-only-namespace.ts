@@ -105,6 +105,13 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
         reference,
       });
       try {
+        // WHY: another caller can populate the exact immutable Directory page
+        // cache while this caller awaits authenticated plaintext. Reuse that
+        // already-validated bounded routing state instead of decoding the same
+        // page twice; the authenticated read above still preserves corruption
+        // detection and the cache restores a detached Directory page.
+        const populated = decodedDirectoryPageIndexCache?.getPageForUpdate({ isRoot, reference });
+        if (populated !== undefined) return populated.page;
         return recordSource.decodeRecordPayload({ decode: () => {
           const page = decodeDirectoryPage({ bytes, isRoot });
           decodedDirectoryPageIndexCache?.setPage({ encodedByteLength: bytes.byteLength, isRoot, page, reference });
@@ -281,6 +288,13 @@ export function createAuthenticatedReadOnlyNamespaceResolver({
         reference,
       });
       try {
+        // WHY: another caller can populate the decoded branch cache while this
+        // caller awaits the authenticated plaintext. Recheck after that await
+        // so concurrent misses do not redundantly decode identical immutable
+        // branch routing. Leaf-index lookup already performs its cache check
+        // below after the same await.
+        const populatedBranch = decodedInodeIndexPageCache?.getBranchPage({ isRoot, reference });
+        if (populatedBranch !== undefined) return { page: populatedBranch, type: "branch" as const };
         return recordSource.decodeRecordPayload({ decode: () => {
           const header = decodeCommonPageHeader({ bytes, family: "inode", isRoot });
           if (header.level !== 0) {

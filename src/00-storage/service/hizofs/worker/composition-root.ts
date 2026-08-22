@@ -102,6 +102,7 @@ import {
   type AuthenticatedMetadataRecordCachePolicy,
 } from "@/00-storage/service/hizofs/authenticated-store/metadata-record-cache";
 import { createAuthenticatedNamespaceRecordSource } from "@/00-storage/service/hizofs/authenticated-store/namespace-record-source";
+import { AuthenticatedRelocationPageRecordCache } from "@/00-storage/service/hizofs/authenticated-store/relocation-index-reader";
 import { openSuperblockCopies } from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
 import { readBootstrapRoot } from "@/00-storage/service/hizofs/authenticated-store/bootstrap-segment-store";
 import { PreparedMutationCommitPublicationError } from "@/00-storage/service/hizofs/authenticated-store/prepared-mutation-commit-store";
@@ -181,8 +182,10 @@ import {
   type PreparedOrdinaryEntryRemovalCommit,
 } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-commit";
 import {
-  prepareOrdinaryEntryRemovalPlan,
-  type OrdinaryEntryRemovalPlan,
+  prepareOrdinaryEntryRemovalTarget,
+  type OrdinaryEntryRemovalSource,
+  type OrdinaryEntryRemovalTarget,
+  type OpenOrdinaryRemovalDirectory,
 } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-plan";
 import {
   prepareWholeFileReflinkCommit,
@@ -296,6 +299,15 @@ const APPLICATION_FILE_DATA_RECORD_CACHE_POLICY = Object.freeze({
 const APPLICATION_METADATA_RECORD_CACHE_POLICY = Object.freeze({
   maximumBytes: 8 * 1024 * 1024,
   maximumEntries: 16 * 1024,
+});
+
+const APPLICATION_RELOCATION_PAGE_RECORD_CACHE_POLICY = Object.freeze({
+  // WHY: Relocation Index pages are immutable under an exact Superblock root.
+  // Keep a small session-local authenticated-page working set so repeated Home
+  // Record resolution does not re-read/decrypt common root/branch pages, while
+  // bounding retained control-plane plaintext to sixteen V1 metadata pages.
+  maximumBytes: 16 * HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes,
+  maximumEntries: 16,
 });
 
 export const DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT = 1_024;
@@ -1187,6 +1199,9 @@ export function createAuthenticatedApplicationReadSessionResources({
     diagnostics: recordDiagnostics,
     policy: APPLICATION_FILE_DATA_RECORD_CACHE_POLICY,
   });
+  const relocationPageRecordCache = new AuthenticatedRelocationPageRecordCache({
+    policy: APPLICATION_RELOCATION_PAGE_RECORD_CACHE_POLICY,
+  });
   const namespace = createAuthenticatedReadOnlyNamespace({
     commit: opened.commit,
     indexDiagnostics,
@@ -1196,6 +1211,7 @@ export function createAuthenticatedApplicationReadSessionResources({
       fileDataRecordCache,
       fileSystemId: opened.fileSystemId,
       relocationIndexRootPhysicalRef: opened.superblockLogicalState.relocationIndexRootPhysicalRef,
+      relocationPageRecordCache,
       rootKey: opened.rootKey,
     }),
   });
@@ -1207,6 +1223,11 @@ export function createAuthenticatedApplicationReadSessionResources({
       const failures: unknown[] = [];
       try {
         fileDataRecordCache.dispose();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      try {
+        relocationPageRecordCache.dispose();
       } catch (cause: unknown) {
         failures.push(cause);
       }
@@ -2322,7 +2343,10 @@ async function prepareAuthenticatedOrdinaryEntryRemoval({
   mutationId,
   operationTimestamp,
   parent,
-  plan,
+  openDirectory,
+  recursive,
+  source,
+  target,
 }: Readonly<{
   assertPublicationAllowed: () => void;
   authority: AuthenticatedMetadataMutationAuthority;
@@ -2332,7 +2356,10 @@ async function prepareAuthenticatedOrdinaryEntryRemoval({
   mutationId: MutationId;
   operationTimestamp: TimestampMilliseconds;
   parent: DirectoryInodeEntry;
-  plan: OrdinaryEntryRemovalPlan;
+  openDirectory: OpenOrdinaryRemovalDirectory;
+  recursive: boolean;
+  source: OrdinaryEntryRemovalSource;
+  target: OrdinaryEntryRemovalTarget;
 }>): Promise<PreparedOrdinaryEntryRemovalCommit> {
   return await withAuthenticatedMetadataMutationPreparation({
     assertPublicationAllowed,
@@ -2348,10 +2375,14 @@ async function prepareAuthenticatedOrdinaryEntryRemoval({
       mutationId,
       operationTimestamp,
       parent,
-      plan,
+      openDirectory,
+      recursive,
+      source,
+      target,
     }),
   });
 }
+
 
 /**
  * Joins one already validated private explicit-bulk candidate to authenticated
@@ -2603,7 +2634,10 @@ export async function publishAuthenticatedOrdinaryEntryRemoval({
   onCandidatePrepared,
   operationTimestamp,
   parent,
-  plan,
+  openDirectory,
+  recursive,
+  source,
+  target,
 }: Readonly<{
   assertPublicationAllowed: () => void;
   authority: AuthenticatedMetadataMutationAuthority;
@@ -2614,7 +2648,10 @@ export async function publishAuthenticatedOrdinaryEntryRemoval({
   onCandidatePrepared: MutationCandidatePreparedObserver | undefined;
   operationTimestamp: TimestampMilliseconds;
   parent: DirectoryInodeEntry;
-  plan: OrdinaryEntryRemovalPlan;
+  openDirectory: OpenOrdinaryRemovalDirectory;
+  recursive: boolean;
+  source: OrdinaryEntryRemovalSource;
+  target: OrdinaryEntryRemovalTarget;
 }>): Promise<PublishedOrdinaryEntryRemoval> {
   try {
     const prepared = await prepareAuthenticatedOrdinaryEntryRemoval({
@@ -2626,7 +2663,10 @@ export async function publishAuthenticatedOrdinaryEntryRemoval({
       mutationId,
       operationTimestamp,
       parent,
-      plan,
+      openDirectory,
+      recursive,
+      source,
+      target,
     });
     const publication = await publishPreparedMutationCommit({
       assertPublicationAllowed,
@@ -2725,7 +2765,7 @@ type AuthenticatedOpenedWritableApplicationAuthorityCommon = Readonly<{
   indexDiagnostics?: ImmutableBTreeDiagnosticsPort;
   randomSource?: RandomByteSource;
   recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
-  removalLimits: Readonly<{ deleteBatchSize: number; maxVisitedInodes: number }>;
+  removalLimits: Readonly<{ deleteBatchSize: number }>;
   recheckDurableGenerationAuthority: ({ commit, superblock }: {
     commit: FileSystemCommitPayload;
     superblock: OpenedSuperblockCopies;
@@ -2857,6 +2897,7 @@ function writableGeneration({
   metadataRecordCache,
   namespaceValidationCache,
   recordDiagnostics,
+  relocationPageRecordCache,
   rootKey,
   workingIdentity,
 }: {
@@ -2872,6 +2913,7 @@ function writableGeneration({
   metadataRecordCache: AuthenticatedMetadataRecordCache;
   namespaceValidationCache: ReadOnlyNamespaceValidationCache;
   recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
+  relocationPageRecordCache: AuthenticatedRelocationPageRecordCache;
   rootKey: OpenedEmptyEncryptedContainer["rootKey"];
   workingIdentity: WorkingGenerationIdentity;
 }): AuthenticatedWritableApplicationGeneration {
@@ -2895,6 +2937,7 @@ function writableGeneration({
         fileSystemId,
         metadataRecordCache,
         relocationIndexRootPhysicalRef: descriptor.superblock.logicalState.relocationIndexRootPhysicalRef,
+        relocationPageRecordCache,
         rootKey,
       }),
       validationCache: namespaceValidationCache,
@@ -2913,6 +2956,7 @@ function writableGenerationFromDescriptor({
   metadataRecordCache,
   namespaceValidationCache,
   recordDiagnostics,
+  relocationPageRecordCache,
   rootKey,
 }: {
   backend: HizoFSReadableBackend;
@@ -2925,6 +2969,7 @@ function writableGenerationFromDescriptor({
   metadataRecordCache: AuthenticatedMetadataRecordCache;
   namespaceValidationCache: ReadOnlyNamespaceValidationCache;
   recordDiagnostics?: AuthenticatedStoreDiagnosticsPort;
+  relocationPageRecordCache: AuthenticatedRelocationPageRecordCache;
   rootKey: OpenedEmptyEncryptedContainer["rootKey"];
 }): AuthenticatedWritableApplicationGeneration {
   return Object.freeze({
@@ -2941,6 +2986,7 @@ function writableGenerationFromDescriptor({
         fileSystemId,
         metadataRecordCache,
         relocationIndexRootPhysicalRef: descriptor.superblock.logicalState.relocationIndexRootPhysicalRef,
+        relocationPageRecordCache,
         rootKey,
       }),
       validationCache: namespaceValidationCache,
@@ -3151,6 +3197,9 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     diagnostics: recordDiagnostics,
     policy: APPLICATION_FILE_DATA_RECORD_CACHE_POLICY,
   });
+  const relocationPageRecordCache = new AuthenticatedRelocationPageRecordCache({
+    policy: APPLICATION_RELOCATION_PAGE_RECORD_CACHE_POLICY,
+  });
   const metadataRecordCache = new AuthenticatedMetadataRecordCache({
     diagnostics: recordDiagnostics,
     policy: metadataRecordCachePolicy ?? APPLICATION_METADATA_RECORD_CACHE_POLICY,
@@ -3252,6 +3301,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     metadataRecordCache,
     namespaceValidationCache,
     recordDiagnostics,
+    relocationPageRecordCache,
     rootKey: opened.rootKey,
     workingIdentity,
   });
@@ -3268,6 +3318,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     metadataRecordCache,
     namespaceValidationCache,
     recordDiagnostics,
+    relocationPageRecordCache,
     rootKey: opened.rootKey,
   });
   let generationDescriptor = authenticatedGeneration.capture();
@@ -3775,65 +3826,6 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
     }
     default: return resolution satisfies never;
     }
-  };
-
-  const collectOrdinarySubtree = async ({ resolver, sourceEntry }: {
-    resolver: ReadOnlyNamespaceResolver;
-    sourceEntry: DirectoryLeafEntry | undefined;
-  }): Promise<Readonly<{
-    directoryEntries: ReadonlyMap<InodeNumber, readonly DirectoryLeafEntry[]>;
-    visitedInodeNumbers: readonly InodeNumber[];
-  }>> => {
-    const directoryEntries = new Map<InodeNumber, readonly DirectoryLeafEntry[]>();
-    if (sourceEntry === undefined) return { directoryEntries, visitedInodeNumbers: [] };
-
-    const visited = new Set<InodeNumber>();
-    const pending: DirectoryLeafEntry[] = [sourceEntry];
-    while (pending.length > 0) {
-      const entry = pending.pop();
-      if (entry === undefined) throw new Error("ordinary subtree traversal stack became inconsistent");
-      switch (entry.targetType) {
-      case "subvolume": continue;
-      case "inode": break;
-      default: entry satisfies never;
-      }
-      if (visited.has(entry.inodeNumber)) continue;
-      if (visited.size >= removalLimits.maxVisitedInodes) {
-        throw new RangeError("ordinary subtree traversal exceeded its configured inode budget");
-      }
-      visited.add(entry.inodeNumber);
-
-      const inode = await resolver.resolveInodeByNumber({ inodeNumber: entry.inodeNumber });
-      if (inode.inodeKind !== entry.inodeKind) {
-        throw new TypeError("ordinary subtree directory entry disagrees with the Inode Table");
-      }
-      switch (inode.inodeKind) {
-      case "file":
-      case "symlink": break;
-      case "directory": {
-        const remainingBudget = removalLimits.maxVisitedInodes - visited.size - pending.length;
-        if (remainingBudget < 0) {
-          throw new RangeError("ordinary subtree traversal exceeded its configured inode budget");
-        }
-        const listing = await resolver.listDirectoryEntriesBounded({
-          inode,
-          maximumEntries: remainingBudget + 1,
-        });
-        if (listing.truncated || listing.entries.length > remainingBudget) {
-          throw new RangeError("ordinary subtree traversal exceeded its configured inode budget");
-        }
-        directoryEntries.set(inode.inodeNumber, listing.entries);
-        for (let index = listing.entries.length - 1; index >= 0; index -= 1) {
-          const child = listing.entries[index];
-          if (child === undefined) throw new Error("ordinary subtree directory index became inconsistent");
-          pending.push(child);
-        }
-        break;
-      }
-      default: inode satisfies never;
-      }
-    }
-    return { directoryEntries, visitedInodeNumbers: [...visited] };
   };
 
   const inspectMoveDestination = async ({ entry, resolver }: {
@@ -4476,17 +4468,14 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         inode: await base.resolver.resolveInode({ pathComponents: [...path] }),
       });
       const sourceEntry = await base.resolver.lookupDirectoryEntry({ directory: parent, name });
-      const subtree = await collectOrdinarySubtree({
-        resolver: base.resolver,
-        sourceEntry,
-      });
-      const plan = prepareOrdinaryEntryRemovalPlan({
-        directoryEntries: subtree.directoryEntries,
-        limits: removalLimits,
+      // The resolver globally validated this immutable ordinary namespace before
+      // exposing mutation-planning capabilities. That proof lets recursive
+      // deletion stream keys without retaining another subtree-sized identity Set.
+      const { source, target } = prepareOrdinaryEntryRemovalTarget({
+        deleteBatchSize: removalLimits.deleteBatchSize,
         parentAccess: "read_write",
         parentDirectoryInodeNumber: parent.inodeNumber,
         parentSubvolumeId: rootSubvolumeId,
-        recursive,
         sourceEntry: sourceEntry ?? null,
       });
       const prepared = await prepareAuthenticatedOrdinaryEntryRemoval({
@@ -4498,7 +4487,26 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         mutationId,
         operationTimestamp: timestamp,
         parent,
-        plan,
+        openDirectory: async ({ directoryEntry }) => {
+          const inode = await base.resolver.resolveInodeByNumber({ inodeNumber: directoryEntry.inodeNumber });
+          switch (inode.inodeKind) {
+          case "directory": break;
+          case "file":
+          case "symlink":
+            throw new TypeError("ordinary subtree directory entry disagrees with the Inode Table");
+          default: inode satisfies never;
+          }
+          return {
+            readPage: async ({ afterName, maximumEntries }) => await base.resolver.listDirectoryEntriesAfterBounded({
+              afterName,
+              inode,
+              maximumEntries,
+            }),
+          };
+        },
+        recursive,
+        source,
+        target,
       });
       inheritValidatedDirectoryTreeSuccessor({ base: parent, successor: prepared.mutation.updatedParent });
       return prepared;
@@ -5471,6 +5479,11 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         failures.push(cause);
       }
       try {
+        relocationPageRecordCache.dispose();
+      } catch (cause: unknown) {
+        failures.push(cause);
+      }
+      try {
         namespaceValidationCache.clear();
       } catch (cause: unknown) {
         failures.push(cause);
@@ -5734,7 +5747,7 @@ export async function openAuthenticatedDevelopmentWritableApplicationSessionFrom
           operationTimestamp: () => createTimestampMilliseconds({ value: BigInt(Date.now()) }),
           randomSource: undefined,
           recordDiagnostics: openedAuthority.recordDiagnostics,
-          removalLimits: { deleteBatchSize: 64, maxVisitedInodes: 100_000 },
+          removalLimits: { deleteBatchSize: 64 },
           recheckDurableGenerationAuthority: async ({ commit, superblock }) => {
             const current = await openSuperblockCopies({
               backend,
@@ -6011,7 +6024,7 @@ export async function openHizoFSWorkerMountGrant({
           opened,
           operationTimestamp: () => createTimestampMilliseconds({ value: BigInt(Date.now()) }),
           randomSource: undefined,
-          removalLimits: { deleteBatchSize: 64, maxVisitedInodes: 100_000 },
+          removalLimits: { deleteBatchSize: 64 },
           recheckDurableGenerationAuthority: async ({ commit, superblock }) => {
             const current = await openSuperblockCopies({
               backend,

@@ -116,6 +116,75 @@ describe("immutable B-tree reader", () => {
     ]);
   });
 
+  it("continues bounded forward batches without rereading the located path", async () => {
+    const observations: ImmutableBTreeDiagnosticsObservation[] = [];
+    const index = reader({
+      operationDiagnostics: {
+        recordIndexOperation: observation => observations.push(observation),
+      },
+      pages: twoLeafTree(),
+    });
+    const cursor = index.createForwardCursor({ rootReference: "root" });
+
+    await expect(cursor.nextBounded({ maximumEntries: 1 })).resolves.toEqual({
+      entries: [{ key: 10, value: "ten" }],
+      truncated: true,
+    });
+    await expect(cursor.nextBounded({ maximumEntries: 1 })).resolves.toEqual({
+      entries: [{ key: 20, value: "twenty" }],
+      truncated: true,
+    });
+    await expect(cursor.nextBounded({ maximumEntries: 1 })).resolves.toEqual({
+      entries: [{ key: 30, value: "thirty" }],
+      truncated: true,
+    });
+    await expect(cursor.nextBounded({ maximumEntries: 1 })).resolves.toEqual({
+      entries: [{ key: 50, value: "fifty" }],
+      truncated: false,
+    });
+
+    expect(observations.map(observation => [observation.operation, observation.structural.pageReads])).toEqual([
+      ["entries", 2],
+      ["entries", 1],
+      ["entries", 0],
+      ["entries", 0],
+    ]);
+  });
+
+  it("keeps sibling-order validation across bounded forward cursor batches", async () => {
+    const pages = new Map(twoLeafTree());
+    pages.set("right", {
+      entries: [
+        { key: 15, value: "overlap" },
+        { key: 50, value: "fifty" },
+      ],
+      level: 0,
+      type: "leaf",
+    });
+    const cursor = reader({ pages }).createForwardCursor({ rootReference: "root" });
+
+    await expect(cursor.nextBounded({ maximumEntries: 2 })).resolves.toEqual({
+      entries: [
+        { key: 10, value: "ten" },
+        { key: 20, value: "twenty" },
+      ],
+      truncated: true,
+    });
+    await expect(cursor.nextBounded({ maximumEntries: 1 }))
+      .rejects.toThrow("overlapping sibling keys");
+  });
+
+  it("does not advance a bounded forward cursor when maximumEntries is zero", async () => {
+    const index = reader({ pages: twoLeafTree() });
+    const cursor = index.createForwardCursor({ rootReference: "root" });
+
+    await expect(cursor.nextBounded({ maximumEntries: 0 })).resolves.toEqual({ entries: [], truncated: true });
+    await expect(cursor.nextBounded({ maximumEntries: 1 })).resolves.toEqual({
+      entries: [{ key: 10, value: "ten" }],
+      truncated: true,
+    });
+  });
+
   it("validates levels, exact upper bounds, disjoint ranges, and duplicate page references", async () => {
     const valid = reader({ pages: twoLeafTree() });
     await expect(valid.validateStructure({ rootReference: "root" })).resolves.toEqual({

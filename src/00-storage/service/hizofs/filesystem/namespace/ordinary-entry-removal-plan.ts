@@ -8,12 +8,10 @@ import type {
 export type OrdinaryEntryRemovalPlanErrorCode =
   | "directory_not_empty"
   | "directory_state_missing"
-  | "invalid_directory_graph"
   | "invalid_limits"
   | "mounted_subvolume"
   | "read_only_parent"
-  | "source_missing"
-  | "traversal_limit_exceeded";
+  | "source_missing";
 
 export class OrdinaryEntryRemovalPlanError extends Error {
   readonly code: OrdinaryEntryRemovalPlanErrorCode;
@@ -25,37 +23,15 @@ export class OrdinaryEntryRemovalPlanError extends Error {
   }
 }
 
-export type OrdinaryEntryRemovalPlan = Readonly<{
-  deleteBatches: readonly (readonly InodeNumber[])[];
+export type OrdinaryEntryRemovalTarget = Readonly<{
+  deleteBatchSize: number;
   parentDirectoryInodeNumber: InodeNumber;
   parentRemovalName: string;
-  removedInodeNumbersPostOrder: readonly InodeNumber[];
+  sourceInodeNumber: InodeNumber;
   subvolumeId: SubvolumeId;
 }>;
 
-type OrdinaryInodeEntry = Extract<DirectoryLeafEntry, { targetType: "inode" }>;
-
-type TraversalFrame = Readonly<{
-  entry: OrdinaryInodeEntry;
-  expanded: boolean;
-}>;
-
-function validateLimits({ deleteBatchSize, maxVisitedInodes }: {
-  deleteBatchSize: number;
-  maxVisitedInodes: number;
-}): void {
-  if (
-    !Number.isSafeInteger(deleteBatchSize)
-    || deleteBatchSize < 1
-    || !Number.isSafeInteger(maxVisitedInodes)
-    || maxVisitedInodes < 1
-  ) {
-    throw new OrdinaryEntryRemovalPlanError({
-      code: "invalid_limits",
-      message: "ordinary removal requires positive safe-integer traversal limits",
-    });
-  }
-}
+export type OrdinaryEntryRemovalSource = Extract<DirectoryLeafEntry, { targetType: "inode" }>;
 
 function assertMutable({ access }: { access: SubvolumeAccess }): void {
   switch (access) {
@@ -69,7 +45,7 @@ function assertMutable({ access }: { access: SubvolumeAccess }): void {
   }
 }
 
-function asOrdinaryEntry({ entry }: { entry: DirectoryLeafEntry }): OrdinaryInodeEntry {
+function asOrdinaryEntry({ entry }: { entry: DirectoryLeafEntry }): OrdinaryEntryRemovalSource {
   switch (entry.targetType) {
   case "inode": return entry;
   case "subvolume":
@@ -81,49 +57,42 @@ function asOrdinaryEntry({ entry }: { entry: DirectoryLeafEntry }): OrdinaryInod
   }
 }
 
-function directoryEntriesFor({ directoryEntries, inodeNumber }: {
-  directoryEntries: ReadonlyMap<InodeNumber, readonly DirectoryLeafEntry[]>;
-  inodeNumber: InodeNumber;
-}): readonly DirectoryLeafEntry[] {
-  const entries = directoryEntries.get(inodeNumber);
-  if (entries === undefined) {
-    throw new OrdinaryEntryRemovalPlanError({
-      code: "directory_state_missing",
-      message: "ordinary removal cannot resolve an authoritative directory state",
-    });
-  }
-  return entries;
-}
+export type OrdinaryRemovalDirectoryReader = Readonly<{
+  readPage: ({ afterName, maximumEntries }: {
+    afterName: string | undefined;
+    maximumEntries: number;
+  }) => Promise<Readonly<{
+    entries: readonly DirectoryLeafEntry[];
+    truncated: boolean;
+  }>>;
+}>;
 
-function createDeleteBatches({ batchSize, inodeNumbers }: {
-  batchSize: number;
-  inodeNumbers: readonly InodeNumber[];
-}): readonly (readonly InodeNumber[])[] {
-  const batches: InodeNumber[][] = [];
-  for (let offset = 0; offset < inodeNumbers.length; offset += batchSize) {
-    batches.push(inodeNumbers.slice(offset, offset + batchSize));
-  }
-  return batches;
-}
+export type OpenOrdinaryRemovalDirectory = ({ directoryEntry }: {
+  directoryEntry: OrdinaryEntryRemovalSource;
+}) => Promise<OrdinaryRemovalDirectoryReader>;
 
-export function prepareOrdinaryEntryRemovalPlan({
-  directoryEntries,
-  limits,
+export function prepareOrdinaryEntryRemovalTarget({
+  deleteBatchSize,
   parentAccess,
   parentDirectoryInodeNumber,
   parentSubvolumeId,
-  recursive,
   sourceEntry,
 }: {
-  directoryEntries: ReadonlyMap<InodeNumber, readonly DirectoryLeafEntry[]>;
-  limits: Readonly<{ deleteBatchSize: number; maxVisitedInodes: number }>;
+  deleteBatchSize: number;
   parentAccess: SubvolumeAccess;
   parentDirectoryInodeNumber: InodeNumber;
   parentSubvolumeId: SubvolumeId;
-  recursive: boolean;
   sourceEntry: DirectoryLeafEntry | null;
-}): OrdinaryEntryRemovalPlan {
-  validateLimits(limits);
+}): Readonly<{
+  source: OrdinaryEntryRemovalSource;
+  target: OrdinaryEntryRemovalTarget;
+}> {
+  if (!Number.isSafeInteger(deleteBatchSize) || deleteBatchSize < 1) {
+    throw new OrdinaryEntryRemovalPlanError({
+      code: "invalid_limits",
+      message: "ordinary removal requires a positive safe-integer delete batch size",
+    });
+  }
   assertMutable({ access: parentAccess });
   if (sourceEntry === null) {
     throw new OrdinaryEntryRemovalPlanError({
@@ -132,96 +101,147 @@ export function prepareOrdinaryEntryRemovalPlan({
     });
   }
   const source = asOrdinaryEntry({ entry: sourceEntry });
-
-  switch (source.inodeKind) {
-  case "file":
-  case "symlink": {
-    const removedInodeNumbersPostOrder = [source.inodeNumber];
-    return {
-      deleteBatches: createDeleteBatches({ batchSize: limits.deleteBatchSize, inodeNumbers: removedInodeNumbersPostOrder }),
+  return {
+    source,
+    target: {
+      deleteBatchSize,
       parentDirectoryInodeNumber,
       parentRemovalName: source.name,
-      removedInodeNumbersPostOrder,
+      sourceInodeNumber: source.inodeNumber,
       subvolumeId: parentSubvolumeId,
-    };
+    },
+  };
+}
+
+type StreamingRemovalTraversalTask =
+  | Readonly<{
+      afterName: string | undefined;
+      directoryEntry: OrdinaryEntryRemovalSource;
+      reader: OrdinaryRemovalDirectoryReader | undefined;
+      type: "directory_page";
+    }>
+  | Readonly<{
+      entry: OrdinaryEntryRemovalSource;
+      type: "entry";
+    }>;
+
+/**
+ * Streams inode deletion keys from one already globally validated immutable
+ * ordinary namespace. The caller owns that global proof; this traversal does
+ * not retain another subtree-sized identity Set. Each active directory keeps
+ * at most one bounded page reader on the depth-bounded traversal stack.
+ */
+export async function* streamOrdinaryEntryRemovalInodeBatches({
+  deleteBatchSize,
+  openDirectory,
+  recursive,
+  source,
+}: {
+  deleteBatchSize: number;
+  openDirectory: OpenOrdinaryRemovalDirectory;
+  recursive: boolean;
+  source: OrdinaryEntryRemovalSource;
+}): AsyncGenerator<readonly InodeNumber[]> {
+  if (!Number.isSafeInteger(deleteBatchSize) || deleteBatchSize < 1) {
+    throw new OrdinaryEntryRemovalPlanError({
+      code: "invalid_limits",
+      message: "ordinary removal requires a positive safe-integer delete batch size",
+    });
   }
+
+  const pendingBatch: InodeNumber[] = [source.inodeNumber];
+  switch (source.inodeKind) {
+  case "file":
+  case "symlink":
+    yield pendingBatch.splice(0, pendingBatch.length);
+    return;
   case "directory": break;
   default: source.inodeKind satisfies never;
   }
 
-  const sourceDirectoryEntries = directoryEntriesFor({
-    directoryEntries,
-    inodeNumber: source.inodeNumber,
-  });
   if (!recursive) {
-    for (const entry of sourceDirectoryEntries) asOrdinaryEntry({ entry });
-    if (sourceDirectoryEntries.length > 0) {
+    const directory = await openDirectory({ directoryEntry: source });
+    const listing = await directory.readPage({
+      afterName: undefined,
+      maximumEntries: 1,
+    });
+    for (const entry of listing.entries) asOrdinaryEntry({ entry });
+    if (listing.truncated || listing.entries.length > 0) {
       throw new OrdinaryEntryRemovalPlanError({
         code: "directory_not_empty",
         message: "ordinary non-recursive removal requires an empty directory",
       });
     }
-    const removedInodeNumbersPostOrder = [source.inodeNumber];
-    return {
-      deleteBatches: createDeleteBatches({ batchSize: limits.deleteBatchSize, inodeNumbers: removedInodeNumbersPostOrder }),
-      parentDirectoryInodeNumber,
-      parentRemovalName: source.name,
-      removedInodeNumbersPostOrder,
-      subvolumeId: parentSubvolumeId,
-    };
+    yield pendingBatch.splice(0, pendingBatch.length);
+    return;
   }
 
-  const visited = new Set<InodeNumber>();
-  const removedInodeNumbersPostOrder: InodeNumber[] = [];
-  const stack: TraversalFrame[] = [{ entry: source, expanded: false }];
+  if (pendingBatch.length === deleteBatchSize) {
+    yield pendingBatch.splice(0, pendingBatch.length);
+  }
+  const stack: StreamingRemovalTraversalTask[] = [{
+    afterName: undefined,
+    directoryEntry: source,
+    reader: undefined,
+    type: "directory_page",
+  }];
   while (stack.length > 0) {
-    const frame = stack.pop();
-    if (frame === undefined) throw new Error("ordinary removal traversal stack became inconsistent");
-    if (frame.expanded) {
-      removedInodeNumbersPostOrder.push(frame.entry.inodeNumber);
-      continue;
-    }
-    if (visited.has(frame.entry.inodeNumber)) {
-      throw new OrdinaryEntryRemovalPlanError({
-        code: "invalid_directory_graph",
-        message: "ordinary removal found a cycle or reused inode identity",
-      });
-    }
-    if (visited.size >= limits.maxVisitedInodes) {
-      throw new OrdinaryEntryRemovalPlanError({
-        code: "traversal_limit_exceeded",
-        message: "ordinary removal traversal exceeded its explicit inode budget",
-      });
-    }
-    visited.add(frame.entry.inodeNumber);
-    stack.push({ entry: frame.entry, expanded: true });
-
-    switch (frame.entry.inodeKind) {
-    case "file":
-    case "symlink": break;
-    case "directory": {
-      const children = directoryEntriesFor({
-        directoryEntries,
-        inodeNumber: frame.entry.inodeNumber,
-      });
-      for (let index = children.length - 1; index >= 0; index -= 1) {
-        const child = children[index];
-        if (child === undefined) throw new Error("ordinary removal directory index became inconsistent");
-        stack.push({ entry: asOrdinaryEntry({ entry: child }), expanded: false });
+    const task = stack.pop();
+    if (task === undefined) throw new Error("ordinary removal traversal stack became inconsistent");
+    switch (task.type) {
+    case "entry": {
+      pendingBatch.push(task.entry.inodeNumber);
+      if (pendingBatch.length === deleteBatchSize) {
+        yield pendingBatch.splice(0, pendingBatch.length);
+      }
+      switch (task.entry.inodeKind) {
+      case "file":
+      case "symlink": break;
+      case "directory":
+        stack.push({
+          afterName: undefined,
+          directoryEntry: task.entry,
+          reader: undefined,
+          type: "directory_page",
+        });
+        break;
+      default: task.entry.inodeKind satisfies never;
       }
       break;
     }
-    default: frame.entry.inodeKind satisfies never;
+    case "directory_page": {
+      const reader = task.reader ?? await openDirectory({ directoryEntry: task.directoryEntry });
+      const listing = await reader.readPage({
+        afterName: task.afterName,
+        maximumEntries: deleteBatchSize,
+      });
+      const ordinaryEntries = listing.entries.map(entry => asOrdinaryEntry({ entry }));
+      if (listing.truncated) {
+        const lastEntry = ordinaryEntries.at(-1);
+        if (lastEntry === undefined) {
+          throw new OrdinaryEntryRemovalPlanError({
+            code: "directory_state_missing",
+            message: "bounded directory continuation cannot advance without an entry",
+          });
+        }
+        stack.push({
+          afterName: lastEntry.name,
+          directoryEntry: task.directoryEntry,
+          reader,
+          type: "directory_page",
+        });
+      }
+      for (let index = ordinaryEntries.length - 1; index >= 0; index -= 1) {
+        const entry = ordinaryEntries[index];
+        if (entry === undefined) throw new Error("ordinary removal directory index became inconsistent");
+        stack.push({ entry, type: "entry" });
+      }
+      break;
+    }
+    default: task satisfies never;
     }
   }
-
-  return {
-    deleteBatches: createDeleteBatches({ batchSize: limits.deleteBatchSize, inodeNumbers: removedInodeNumbersPostOrder }),
-    parentDirectoryInodeNumber,
-    parentRemovalName: source.name,
-    removedInodeNumbersPostOrder,
-    subvolumeId: parentSubvolumeId,
-  };
+  if (pendingBatch.length > 0) yield pendingBatch.splice(0, pendingBatch.length);
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

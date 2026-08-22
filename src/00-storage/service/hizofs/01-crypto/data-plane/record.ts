@@ -55,10 +55,10 @@ export async function createRecordEncryptionBatchCapability({ fileSystemId, home
       const activeKey = key;
       if (activeKey === undefined) throw new TypeError('Record encryption batch capability has expired');
       if (rootKey.isDestroyed()) throw new TypeError('File System Root Key has been destroyed');
-      // D0077 restored the production Record schedule to serial execution. Reuse
-      // one batch-owned non-secret AAD buffer on that hot path, but preserve the
-      // capability's existing concurrent-call behavior by falling back to a
-      // fresh AAD buffer if an overlapping caller ever appears.
+      // WHY: The production Record writer serializes encryption on its hot path,
+      // so reusing one batch-owned non-secret AAD buffer avoids a per-Record
+      // allocation. Preserve overlapping-call safety by falling back to a fresh
+      // AAD buffer if a concurrent caller ever appears.
       const reuseSerialScratch = !serialAadScratchInUse;
       if (reuseSerialScratch) serialAadScratchInUse = true;
       try {

@@ -180,9 +180,8 @@ export class DecodedInodeIndexPageCache implements AuthenticatedInodeBranchPageC
     switch (entry.type) {
     case "branch":
       this.touch({ entry, key });
-      // Existing cache hit/miss diagnostics intentionally remain leaf-index
-      // metrics so this optimization does not make the historical leaf-cache series
-      // incomparable. Branch effectiveness is measured by branchPageDecodes.
+      // Keep cache hit/miss diagnostics scoped to leaf indexes so their meaning
+      // stays stable. Branch reuse is measured separately by branchPageDecodes.
       return cloneBranchPage({ routing: entry.routing });
     case "leaf_index": return undefined;
     default: return entry satisfies never;

@@ -126,7 +126,7 @@ describe("authenticated Record Frame reader", () => {
     rootKey.destroy();
   });
 
-  it("uses the optional paired snapshot read instead of the legacy two-read path", async () => {
+  it("uses one paired snapshot read so both ranges come from the same file image", async () => {
     const physicalBackend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();
     const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });

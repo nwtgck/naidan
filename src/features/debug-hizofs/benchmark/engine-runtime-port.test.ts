@@ -67,14 +67,14 @@ describe('HizoFS benchmark engine', () => {
       shard: '02',
     });
     expect(TEST_ONLY.parseCanonicalTrackedSegmentPath({
-      relativePath: metadataPath.replace(/[^/]+$/u, 'legacy.seg').split('/'),
+      relativePath: metadataPath.replace(/[^/]+$/u, 'noncanonical.seg').split('/'),
     })).toBeUndefined();
     expect(TEST_ONLY.parseCanonicalTrackedSegmentPath({
-      relativePath: ['segments', 'relocation', '01', 'legacy.seg'],
+      relativePath: ['segments', 'relocation', '01', 'noncanonical.seg'],
     })).toBeUndefined();
 
     expect(TEST_ONLY.snapshotPhysicalStoreShape({
-      objectPaths: new Set([metadataPath, dataPath, 'segments/metadata/01/legacy.seg']),
+      objectPaths: new Set([metadataPath, dataPath, 'segments/metadata/01/noncanonical.seg']),
     })).toEqual({
       segmentFiles: { metadata: 1, data: 1, total: 2 },
       segmentShards: { metadata: 1, data: 1, total: 2 },

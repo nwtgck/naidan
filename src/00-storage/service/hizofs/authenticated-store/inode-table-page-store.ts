@@ -1,5 +1,4 @@
 import {
-  COMMON_PAGE_HEADER_SIZE,
   HIZOFS_V1_FORMAT_CONSTANTS,
   decodeCommonPageHeader,
   decodeInodeBranchPage,
@@ -66,15 +65,6 @@ export async function readAuthenticatedInodeTablePageForUpdate({
   if (homeReference.recordKind !== HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page) {
     throw new TypeError("Inode Table page reference has the wrong record kind");
   }
-  const cachedBranch = decodedBranchPageCache?.getBranchPage({ isRoot, reference: homeReference });
-  if (cachedBranch !== undefined) {
-    return Object.freeze({
-      encodedByteLength: COMMON_PAGE_HEADER_SIZE
-        + cachedBranch.entries.length * HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.inodeBranchChild,
-      localStructureValidated: true,
-      page: { ...cachedBranch, type: "branch" as const },
-    });
-  }
   const record = await readAuthenticatedNamespaceHomeRecord({
     backend,
     diagnostics,
@@ -87,6 +77,18 @@ export async function readAuthenticatedInodeTablePageForUpdate({
   });
   try {
     const encodedByteLength = record.plaintext.byteLength;
+    // WHY: Reuse decoded branch routing only after the immutable Record has
+    // traversed authenticated resolution. Returning cached decoded state earlier
+    // could hide an authentication or storage failure that this mutation must
+    // observe, while reuse here still avoids repeated branch decode/allocation.
+    const cachedBranch = decodedBranchPageCache?.getBranchPage({ isRoot, reference: homeReference });
+    if (cachedBranch !== undefined) {
+      return Object.freeze({
+        encodedByteLength,
+        localStructureValidated: true,
+        page: { ...cachedBranch, type: "branch" as const },
+      });
+    }
     const page = measureAuthenticatedCodecOperation({
       diagnostics,
       format: "record",

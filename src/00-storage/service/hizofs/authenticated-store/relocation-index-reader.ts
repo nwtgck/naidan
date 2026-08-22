@@ -26,6 +26,182 @@ export type AuthenticatedRelocationPageReader = ({ isRoot, physicalReference }: 
   physicalReference: PhysicalRecordReference;
 }>) => Promise<RelocationIndexPage>;
 
+export type AuthenticatedRelocationPageRecordCachePolicy = Readonly<{
+  maximumBytes: number;
+  maximumEntries: number;
+}>;
+
+type AuthenticatedRelocationPageRecordCacheEntry = Readonly<{
+  plaintext: Uint8Array;
+}>;
+
+function validateRelocationPageCacheBound({ name, value }: { name: string; value: number }): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative safe integer`);
+  }
+}
+
+/**
+ * Retains authenticated physical-only Relocation Index page plaintext for one
+ * application session. Cache identity includes the exact immutable Relocation
+ * Index root plus the page reference and root-role bit, so a later authority
+ * cannot reuse a page under a different tree root.
+ *
+ * Returned plaintext is caller-owned. Retained plaintext stays private and is
+ * zeroized on eviction/disposal. Pending loads are bounded by the same policy.
+ */
+export class AuthenticatedRelocationPageRecordCache {
+  private currentBytes = 0;
+  private disposed = false;
+  private readonly entries = new Map<string, AuthenticatedRelocationPageRecordCacheEntry>();
+  private pendingLoadFrameBytes = 0;
+  private readonly pendingLoads = new Map<string, Promise<void>>();
+  private readonly policy: AuthenticatedRelocationPageRecordCachePolicy;
+
+  constructor({ policy }: { policy: AuthenticatedRelocationPageRecordCachePolicy }) {
+    validateRelocationPageCacheBound({ name: "Relocation page cache maximum bytes", value: policy.maximumBytes });
+    validateRelocationPageCacheBound({ name: "Relocation page cache maximum entries", value: policy.maximumEntries });
+    this.policy = Object.freeze({ ...policy });
+  }
+
+  clear(): void {
+    for (const entry of this.entries.values()) entry.plaintext.fill(0);
+    this.entries.clear();
+    this.currentBytes = 0;
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.clear();
+  }
+
+  discard({ identity }: { identity: string }): void {
+    const entry = this.entries.get(identity);
+    if (entry === undefined) return;
+    this.entries.delete(identity);
+    this.currentBytes -= entry.plaintext.byteLength;
+    entry.plaintext.fill(0);
+  }
+
+  async read({ frameLength, identity, load }: {
+    frameLength: number;
+    identity: string;
+    load: () => Promise<Uint8Array>;
+  }): Promise<Uint8Array> {
+    if (this.disposed) throw new TypeError("authenticated Relocation page cache is disposed");
+    validateRelocationPageCacheBound({ name: "Relocation page cache frame length", value: frameLength });
+
+    const cached = this.entries.get(identity);
+    if (cached !== undefined) {
+      this.promote({ identity, entry: cached });
+      return cached.plaintext.slice();
+    }
+
+    const sharedLoad = this.pendingLoads.get(identity);
+    if (sharedLoad !== undefined) {
+      await sharedLoad;
+      if (this.disposed) throw new TypeError("authenticated Relocation page cache is disposed");
+      const coalesced = this.entries.get(identity);
+      if (coalesced !== undefined) {
+        this.promote({ identity, entry: coalesced });
+        return coalesced.plaintext.slice();
+      }
+      return await this.read({ frameLength, identity, load });
+    }
+
+    const canSingleFlight = this.policy.maximumBytes > 0
+      && this.policy.maximumEntries > 0
+      && frameLength <= this.policy.maximumBytes
+      && this.pendingLoadFrameBytes + frameLength <= this.policy.maximumBytes
+      && this.pendingLoads.size < this.policy.maximumEntries;
+    if (canSingleFlight) {
+      const pending = this.loadAndRetain({ identity, load });
+      this.pendingLoads.set(identity, pending);
+      this.pendingLoadFrameBytes += frameLength;
+      try {
+        await pending;
+      } finally {
+        if (this.pendingLoads.get(identity) === pending) {
+          this.pendingLoads.delete(identity);
+          this.pendingLoadFrameBytes -= frameLength;
+        }
+      }
+      if (this.disposed) throw new TypeError("authenticated Relocation page cache is disposed");
+      const admitted = this.entries.get(identity);
+      if (admitted !== undefined) {
+        this.promote({ identity, entry: admitted });
+        return admitted.plaintext.slice();
+      }
+      return await this.read({ frameLength, identity, load });
+    }
+
+    const plaintext = await load();
+    if (this.disposed) {
+      plaintext.fill(0);
+      throw new TypeError("authenticated Relocation page cache was disposed while loading a page");
+    }
+    const concurrentlyCached = this.entries.get(identity);
+    if (concurrentlyCached !== undefined) {
+      plaintext.fill(0);
+      this.promote({ identity, entry: concurrentlyCached });
+      return concurrentlyCached.plaintext.slice();
+    }
+    if (!this.canRetain({ plaintextBytes: plaintext.byteLength })) return plaintext;
+    this.admitOwnedPlaintext({ identity, plaintext });
+    return plaintext.slice();
+  }
+
+  private async loadAndRetain({ identity, load }: {
+    identity: string;
+    load: () => Promise<Uint8Array>;
+  }): Promise<void> {
+    const plaintext = await load();
+    if (this.disposed) {
+      plaintext.fill(0);
+      throw new TypeError("authenticated Relocation page cache was disposed while loading a page");
+    }
+    const concurrentlyCached = this.entries.get(identity);
+    if (concurrentlyCached !== undefined) {
+      plaintext.fill(0);
+      this.promote({ identity, entry: concurrentlyCached });
+      return;
+    }
+    if (!this.canRetain({ plaintextBytes: plaintext.byteLength })) {
+      plaintext.fill(0);
+      return;
+    }
+    this.admitOwnedPlaintext({ identity, plaintext });
+  }
+
+  private canRetain({ plaintextBytes }: { plaintextBytes: number }): boolean {
+    return this.policy.maximumBytes > 0
+      && this.policy.maximumEntries > 0
+      && plaintextBytes <= this.policy.maximumBytes;
+  }
+
+  private admitOwnedPlaintext({ identity, plaintext }: { identity: string; plaintext: Uint8Array }): void {
+    while (
+      this.entries.size >= this.policy.maximumEntries
+      || this.currentBytes + plaintext.byteLength > this.policy.maximumBytes
+    ) {
+      const oldest = this.entries.entries().next().value as [string, AuthenticatedRelocationPageRecordCacheEntry] | undefined;
+      if (oldest === undefined) break;
+      const [oldestIdentity, oldestEntry] = oldest;
+      this.entries.delete(oldestIdentity);
+      this.currentBytes -= oldestEntry.plaintext.byteLength;
+      oldestEntry.plaintext.fill(0);
+    }
+    this.entries.set(identity, { plaintext });
+    this.currentBytes += plaintext.byteLength;
+  }
+
+  private promote({ identity, entry }: { identity: string; entry: AuthenticatedRelocationPageRecordCacheEntry }): void {
+    this.entries.delete(identity);
+    this.entries.set(identity, entry);
+  }
+}
+
 function compareUnsignedBytes({ left, right }: { left: Uint8Array; right: Uint8Array }): number {
   for (let index = 0; index < left.byteLength; index += 1) {
     const difference = (left[index] ?? 0) - (right[index] ?? 0);
@@ -69,6 +245,14 @@ function lastPageKey({ page }: { page: RelocationIndexPage }): RelocationKey {
 
 function physicalReferenceIdentity({ reference }: { reference: PhysicalRecordReference }): string {
   return `${segmentIdToLowercaseHex({ id: reference.segmentId })}:${reference.byteOffset.toString()}:${reference.frameLength}`;
+}
+
+function relocationPageCacheIdentity({ isRoot, physicalReference, rootPhysicalReference }: {
+  isRoot: boolean;
+  physicalReference: PhysicalRecordReference;
+  rootPhysicalReference: PhysicalRecordReference;
+}): string {
+  return `${physicalReferenceIdentity({ reference: rootPhysicalReference })}|${isRoot ? "root" : "non_root"}|${physicalReferenceIdentity({ reference: physicalReference })}`;
 }
 
 function validateMappedReference({ homeReference, mappedReference }: {
@@ -319,39 +503,55 @@ async function readAuthenticatedRelocationPage({
   diagnostics,
   fileSystemId,
   isRoot,
+  pageRecordCache,
   physicalReference,
   rootKey,
+  rootPhysicalReference,
 }: {
   backend: HizoFSReadableBackend;
   diagnostics?: AuthenticatedStoreDiagnosticsPort;
   fileSystemId: FileSystemId;
   isRoot: boolean;
+  pageRecordCache?: AuthenticatedRelocationPageRecordCache;
   physicalReference: PhysicalRecordReference;
   rootKey: FileSystemRootKey;
+  rootPhysicalReference: PhysicalRecordReference;
 }): Promise<RelocationIndexPage> {
-  const record = await readAuthenticatedPhysicalRecord({
-    backend,
-    diagnostics,
-    expectedIdentity: { type: "physical_only" },
-    fileSystemId,
-    physicalReference,
-    rootKey,
-  });
+  const loadPlaintext = async (): Promise<Uint8Array> => {
+    const record = await readAuthenticatedPhysicalRecord({
+      backend,
+      diagnostics,
+      expectedIdentity: { type: "physical_only" },
+      fileSystemId,
+      physicalReference,
+      rootKey,
+    });
+    return record.plaintext;
+  };
+  const cacheIdentity = relocationPageCacheIdentity({ isRoot, physicalReference, rootPhysicalReference });
+  const plaintext = pageRecordCache === undefined
+    ? await loadPlaintext()
+    : await pageRecordCache.read({
+      frameLength: physicalReference.frameLength,
+      identity: cacheIdentity,
+      load: loadPlaintext,
+    });
   try {
     return measureAuthenticatedCodecOperation({
       diagnostics,
       format: "record",
       operation: "decode",
-      run: () => decodeRelocationIndexPage({ bytes: record.plaintext, isRoot }),
+      run: () => decodeRelocationIndexPage({ bytes: plaintext, isRoot }),
     });
   } catch (cause: unknown) {
+    pageRecordCache?.discard({ identity: cacheIdentity });
     throw authenticatedStoreError({
       cause,
       code: "control_plane_corrupt",
       message: "Relocation Index page decode failed",
     });
   } finally {
-    record.plaintext.fill(0);
+    plaintext.fill(0);
   }
 }
 
@@ -376,6 +576,7 @@ export async function validateAuthenticatedRelocationIndexTree({
       isRoot,
       physicalReference,
       rootKey,
+      rootPhysicalReference,
     }),
     rootPhysicalReference,
   });
@@ -387,6 +588,7 @@ export async function resolveAuthenticatedHomeRecord({
   fileSystemId,
   homeReference,
   relocationIndexRootPhysicalRef,
+  relocationPageRecordCache,
   rootKey,
 }: {
   backend: HizoFSReadableBackend;
@@ -394,6 +596,7 @@ export async function resolveAuthenticatedHomeRecord({
   fileSystemId: FileSystemId;
   homeReference: HomeRecordReference;
   relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
+  relocationPageRecordCache?: AuthenticatedRelocationPageRecordCache;
   rootKey: FileSystemRootKey;
 }): Promise<AuthenticatedRecordRead> {
   const mappedReference = relocationIndexRootPhysicalRef === null
@@ -405,8 +608,10 @@ export async function resolveAuthenticatedHomeRecord({
         diagnostics,
         fileSystemId,
         isRoot,
+        pageRecordCache: relocationPageRecordCache,
         physicalReference,
         rootKey,
+        rootPhysicalReference: relocationIndexRootPhysicalRef,
       }),
       rootPhysicalReference: relocationIndexRootPhysicalRef,
     });

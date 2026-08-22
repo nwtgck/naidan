@@ -32,6 +32,15 @@ export type ImmutableBTreeFloorScan<TEntry> = Readonly<{
   floor: TEntry | undefined;
 }>;
 
+export type ImmutableBTreeForwardBatch<TEntry> = Readonly<{
+  entries: readonly TEntry[];
+  truncated: boolean;
+}>;
+
+export type ImmutableBTreeForwardCursor<TEntry> = Readonly<{
+  nextBounded: ({ maximumEntries }: { maximumEntries: number }) => Promise<ImmutableBTreeForwardBatch<TEntry>>;
+}>;
+
 type BranchCursorFrame<TKey, TReference> = Readonly<{
   page: ImmutableBTreeBranchPage<TKey, TReference>;
   pageReferenceIdentity: string;
@@ -336,6 +345,98 @@ export class ImmutableBTreeReader<TKey, TEntry, TReference> {
       }
     }
     return undefined;
+  }
+
+
+  private async locateFirstCursor({ rootReference, structural }: {
+    rootReference: TReference;
+    structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
+  }): Promise<LeafCursor<TKey, TEntry, TReference> | undefined> {
+    const stack: BranchCursorFrame<TKey, TReference>[] = [];
+    const visited = new Set<string>();
+    let expectation: PageReadExpectation<TKey> = { isRoot: true };
+    let reference = rootReference;
+    while (true) {
+      const pageReferenceIdentity = this.referenceIdentity({ reference });
+      const page = await this.readPage({ expectation, reference, structural, visited });
+      switch (page.type) {
+      case "leaf":
+        return page.entries.length === 0
+          ? undefined
+          : { entryIndex: 0, leaf: page, leafReferenceIdentity: pageReferenceIdentity, stack };
+      case "branch": {
+        const child = page.children[0];
+        if (child === undefined) throw new Error("non-empty B-tree branch has no leftmost child");
+        stack.push({ page, pageReferenceIdentity, selectedChildIndex: 0 });
+        reference = child.childPageReference;
+        expectation = {
+          expectedLevel: page.level - 1,
+          expectedUpperBound: child.upperBound,
+          isRoot: false,
+        };
+        break;
+      }
+      default: return page satisfies never;
+      }
+    }
+  }
+
+  createForwardCursor({ rootReference }: {
+    rootReference: TReference;
+  }): ImmutableBTreeForwardCursor<TEntry> {
+    let cursor: LeafCursor<TKey, TEntry, TReference> | undefined;
+    let initialized = false;
+    let previousKey: TKey | undefined;
+
+    const ensureCurrent = async ({ structural }: {
+      structural: MutableImmutableBTreeStructuralDiagnostics | undefined;
+    }): Promise<LeafCursor<TKey, TEntry, TReference> | undefined> => {
+      if (!initialized) {
+        cursor = await this.locateFirstCursor({ rootReference, structural });
+        initialized = true;
+      }
+      while (cursor !== undefined && cursor.entryIndex >= cursor.leaf.entries.length) {
+        // WHY: a long-lived paged cursor must not retain every page identity in
+        // a large directory. The immutable successor walk only needs the
+        // current root-to-leaf path for cycle/duplicate detection; strict page
+        // levels, exact child upper bounds, and previousKey preserve the
+        // cross-batch global ordering checks.
+        const visited = new Set(cursor.stack.map(frame => frame.pageReferenceIdentity));
+        visited.add(cursor.leafReferenceIdentity);
+        cursor = await this.nextLeaf({ cursor, structural, visited });
+      }
+      return cursor;
+    };
+
+    return Object.freeze({
+      nextBounded: async ({ maximumEntries }: { maximumEntries: number }): Promise<ImmutableBTreeForwardBatch<TEntry>> => {
+        if (!Number.isSafeInteger(maximumEntries) || maximumEntries < 0) {
+          throw new RangeError("maximumEntries must be a nonnegative safe integer");
+        }
+        return await measureImmutableBTreeOperation({
+          diagnostics: this.operationDiagnostics,
+          operation: "entries",
+          run: async ({ structural }) => {
+            const entries: TEntry[] = [];
+            while (entries.length < maximumEntries) {
+              const current = await ensureCurrent({ structural });
+              if (current === undefined) return Object.freeze({ entries: Object.freeze(entries), truncated: false });
+              const entry = current.leaf.entries[current.entryIndex];
+              if (entry === undefined) throw new Error("B-tree forward cursor leaf invariant failed");
+              const entryKey = this.getEntryKey({ entry });
+              if (previousKey !== undefined && this.compareKeys({ left: previousKey, right: entryKey }) >= 0) {
+                throw new TypeError("B-tree forward cursor encountered overlapping sibling keys");
+              }
+              previousKey = entryKey;
+              entries.push(entry);
+              cursor = { ...current, entryIndex: current.entryIndex + 1 };
+            }
+            const truncated = await ensureCurrent({ structural }) !== undefined;
+            return Object.freeze({ entries: Object.freeze(entries), truncated });
+          },
+        });
+      },
+    });
   }
 
   async *entriesFromFloor({ key, rootReference }: {

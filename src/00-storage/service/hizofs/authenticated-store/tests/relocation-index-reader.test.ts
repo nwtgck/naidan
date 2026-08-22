@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   createHomeRecordReference,
@@ -20,6 +20,7 @@ import {
   type AuthenticatedHizoFSPhysicalBytes,
 } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
 import {
+  AuthenticatedRelocationPageRecordCache,
   lookupRelocationMapping,
   validateRelocationIndexTree,
   resolveAuthenticatedHomeRecord,
@@ -81,6 +82,54 @@ function pageReader({ pages }: { pages: ReadonlyMap<PhysicalRecordReference, Rel
     return page;
   };
 }
+
+
+describe("Authenticated Relocation page record cache", () => {
+  it("single-flights one identity and returns detached plaintext while retaining one bounded owner", async () => {
+    const cache = new AuthenticatedRelocationPageRecordCache({
+      policy: { maximumBytes: 256, maximumEntries: 2 },
+    });
+    const retained = new Uint8Array([1, 2, 3, 4]);
+    const load = vi.fn(async () => retained);
+
+    const [first, second] = await Promise.all([
+      cache.read({ frameLength: 32, identity: "root|page", load }),
+      cache.read({ frameLength: 32, identity: "root|page", load }),
+    ]);
+
+    expect(load).toHaveBeenCalledTimes(1);
+    expect([...first]).toEqual([1, 2, 3, 4]);
+    expect([...second]).toEqual([1, 2, 3, 4]);
+    first[0] = 9;
+    const third = await cache.read({ frameLength: 32, identity: "root|page", load });
+    expect([...third]).toEqual([1, 2, 3, 4]);
+    expect(load).toHaveBeenCalledTimes(1);
+
+    cache.dispose();
+    expect([...retained]).toEqual([0, 0, 0, 0]);
+    await expect(cache.read({ frameLength: 32, identity: "root|page", load })).rejects.toThrow("disposed");
+  });
+
+  it("evicts and zeroizes the least-recently-used retained page within both bounds", async () => {
+    const cache = new AuthenticatedRelocationPageRecordCache({
+      policy: { maximumBytes: 8, maximumEntries: 2 },
+    });
+    const firstOwned = new Uint8Array([1, 1, 1, 1]);
+    const secondOwned = new Uint8Array([2, 2, 2, 2]);
+    const thirdOwned = new Uint8Array([3, 3, 3, 3]);
+
+    await cache.read({ frameLength: 4, identity: "root|first", load: async () => firstOwned });
+    await cache.read({ frameLength: 4, identity: "root|second", load: async () => secondOwned });
+    await cache.read({ frameLength: 4, identity: "root|third", load: async () => thirdOwned });
+
+    expect([...firstOwned]).toEqual([0, 0, 0, 0]);
+    expect([...secondOwned]).toEqual([2, 2, 2, 2]);
+    expect([...thirdOwned]).toEqual([3, 3, 3, 3]);
+    cache.dispose();
+    expect([...secondOwned]).toEqual([0, 0, 0, 0]);
+    expect([...thirdOwned]).toEqual([0, 0, 0, 0]);
+  });
+});
 
 describe("Relocation Index lookup", () => {
   it("returns one chain-free physical mapping from a leaf root", async () => {
@@ -337,17 +386,40 @@ describe("Relocation Index lookup", () => {
       await backend.closeFile({ file: corruptingFile });
     }
 
-    const resolved = await resolveAuthenticatedHomeRecord({
+    const relocationPageRecordCache = new AuthenticatedRelocationPageRecordCache({
+      policy: {
+        maximumBytes: 2 * HIZOFS_V1_FORMAT_CONSTANTS.limits.metadataPlaintextBytes,
+        maximumEntries: 2,
+      },
+    });
+    const readExact = vi.spyOn(backend, "readExact");
+    const resolveMappedCommit = async () => await resolveAuthenticatedHomeRecord({
       backend,
       fileSystemId,
       homeReference: created.activeCommitHomeRef,
       relocationIndexRootPhysicalRef: rootPhysicalReference,
+      relocationPageRecordCache,
       rootKey,
     });
-    expect(resolved.physicalReference).toEqual(mappedCommitReference);
-    expect(decodeFileSystemCommitPayload({ bytes: resolved.plaintext }).commitSequence).toBe(1n);
-    expect(backend.openHandleCount()).toBe(0);
-    rootKey.destroy();
+    const firstResolved = await resolveMappedCommit();
+    const secondResolved = await resolveMappedCommit();
+    try {
+      expect(firstResolved.physicalReference).toEqual(mappedCommitReference);
+      expect(secondResolved.physicalReference).toEqual(mappedCommitReference);
+      expect(decodeFileSystemCommitPayload({ bytes: firstResolved.plaintext }).commitSequence).toBe(1n);
+      expect(decodeFileSystemCommitPayload({ bytes: secondResolved.plaintext }).commitSequence).toBe(1n);
+      const relocationPagePhysicalReads = readExact.mock.calls.filter(([request]) => (
+        request.offset === rootPhysicalReference.byteOffset
+        && request.length === rootPhysicalReference.frameLength
+      ));
+      expect(relocationPagePhysicalReads).toHaveLength(1);
+      expect(backend.openHandleCount()).toBe(0);
+    } finally {
+      firstResolved.plaintext.fill(0);
+      secondResolved.plaintext.fill(0);
+      relocationPageRecordCache.dispose();
+      rootKey.destroy();
+    }
   });
 
 });

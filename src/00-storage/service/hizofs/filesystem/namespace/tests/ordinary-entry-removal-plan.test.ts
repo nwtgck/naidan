@@ -5,9 +5,14 @@ import {
   type DirectoryLeafEntry,
   type InodeNumber,
 } from "@/00-storage/service/hizofs/00-format";
-import { prepareOrdinaryEntryRemovalPlan } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-plan";
+import {
+  prepareOrdinaryEntryRemovalTarget,
+  streamOrdinaryEntryRemovalInodeBatches,
+  type OpenOrdinaryRemovalDirectory,
+} from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-removal-plan";
 
 const parentDirectoryInodeNumber = createInodeNumber({ value: 1n });
+const parentSubvolumeId = createSubvolumeId({ value: 1n });
 
 function entry({ inodeKind, inodeNumber, name }: {
   inodeKind: "directory" | "file" | "symlink";
@@ -22,143 +27,174 @@ function entry({ inodeKind, inodeNumber, name }: {
   };
 }
 
-function directories(entries: readonly [InodeNumber, readonly DirectoryLeafEntry[]][]): ReadonlyMap<InodeNumber, readonly DirectoryLeafEntry[]> {
-  return new Map(entries);
+function directoryReader({ byDirectory, reads }: {
+  byDirectory: ReadonlyMap<InodeNumber, readonly DirectoryLeafEntry[]>;
+  reads?: Array<readonly [InodeNumber, string | undefined, number]>;
+}): OpenOrdinaryRemovalDirectory {
+  return async ({ directoryEntry }) => ({
+    readPage: async ({ afterName, maximumEntries }) => {
+      reads?.push([directoryEntry.inodeNumber, afterName, maximumEntries]);
+      const entries = byDirectory.get(directoryEntry.inodeNumber) ?? [];
+      const start = afterName === undefined
+        ? 0
+        : entries.findIndex(candidate => candidate.name === afterName) + 1;
+      const page = entries.slice(start, start + maximumEntries);
+      return { entries: page, truncated: start + page.length < entries.length };
+    },
+  });
 }
 
-function request({
-  directoryEntries = directories([]),
-  recursive = false,
-  sourceEntry = entry({ inodeKind: "file", inodeNumber: 2n, name: "source" }),
-}: {
-  directoryEntries?: ReadonlyMap<InodeNumber, readonly DirectoryLeafEntry[]>;
-  recursive?: boolean;
-  sourceEntry?: DirectoryLeafEntry | null;
-} = {}): Parameters<typeof prepareOrdinaryEntryRemovalPlan>[0] {
-  return {
-    directoryEntries,
-    limits: { deleteBatchSize: 2, maxVisitedInodes: 8 },
-    parentAccess: "read_write",
-    parentDirectoryInodeNumber,
-    parentSubvolumeId: createSubvolumeId({ value: 1n }),
+async function collectBatches({
+  deleteBatchSize,
+  openDirectory,
+  recursive,
+  source,
+}: Parameters<typeof streamOrdinaryEntryRemovalInodeBatches>[0]): Promise<readonly (readonly InodeNumber[])[]> {
+  const batches: Array<readonly InodeNumber[]> = [];
+  for await (const batch of streamOrdinaryEntryRemovalInodeBatches({
+    deleteBatchSize,
+    openDirectory,
     recursive,
-    sourceEntry,
-  };
+    source,
+  })) batches.push(batch);
+  return batches;
 }
 
 describe("ordinary entry removal planning", () => {
-  it("rejects missing entries and read-only parents", () => {
-    expect(() => prepareOrdinaryEntryRemovalPlan(request({ sourceEntry: null })))
-      .toThrowError(expect.objectContaining({ code: "source_missing" }));
-    expect(() => prepareOrdinaryEntryRemovalPlan({
-      ...request(),
-      parentAccess: "read",
-    })).toThrowError(expect.objectContaining({ code: "read_only_parent" }));
-  });
-
-  it("removes files and symlinks without following their targets", () => {
-    const symlink = entry({ inodeKind: "symlink", inodeNumber: 3n, name: "link" });
-    expect(prepareOrdinaryEntryRemovalPlan(request({ recursive: true, sourceEntry: symlink }))).toEqual({
-      deleteBatches: [[symlink.inodeNumber]],
+  it("rejects invalid target admission before traversal", () => {
+    const source = entry({ inodeKind: "file", inodeNumber: 2n, name: "source" });
+    expect(() => prepareOrdinaryEntryRemovalTarget({
+      deleteBatchSize: 2,
+      parentAccess: "read_write",
       parentDirectoryInodeNumber,
-      parentRemovalName: "link",
-      removedInodeNumbersPostOrder: [symlink.inodeNumber],
-      subvolumeId: createSubvolumeId({ value: 1n }),
-    });
+      parentSubvolumeId,
+      sourceEntry: null,
+    })).toThrowError(expect.objectContaining({ code: "source_missing" }));
+    expect(() => prepareOrdinaryEntryRemovalTarget({
+      deleteBatchSize: 2,
+      parentAccess: "read",
+      parentDirectoryInodeNumber,
+      parentSubvolumeId,
+      sourceEntry: source,
+    })).toThrowError(expect.objectContaining({ code: "read_only_parent" }));
+    expect(() => prepareOrdinaryEntryRemovalTarget({
+      deleteBatchSize: 0,
+      parentAccess: "read_write",
+      parentDirectoryInodeNumber,
+      parentSubvolumeId,
+      sourceEntry: source,
+    })).toThrowError(expect.objectContaining({ code: "invalid_limits" }));
+    expect(() => prepareOrdinaryEntryRemovalTarget({
+      deleteBatchSize: 2,
+      parentAccess: "read_write",
+      parentDirectoryInodeNumber,
+      parentSubvolumeId,
+      sourceEntry: {
+        name: "mounted",
+        subvolumeId: createSubvolumeId({ value: 2n }),
+        targetType: "subvolume",
+      },
+    })).toThrowError(expect.objectContaining({ code: "mounted_subvolume" }));
   });
 
-  it("allows only empty directories without recursive mode", () => {
+  it("streams files and symlinks as one bounded deletion batch", async () => {
+    for (const source of [
+      entry({ inodeKind: "file", inodeNumber: 2n, name: "file" }),
+      entry({ inodeKind: "symlink", inodeNumber: 3n, name: "link" }),
+    ]) {
+      expect(await collectBatches({
+        deleteBatchSize: 2,
+        openDirectory: async () => {
+          throw new Error("non-directory traversal must not open a directory");
+        },
+        recursive: true,
+        source,
+      })).toEqual([[source.inodeNumber]]);
+    }
+  });
+
+  it("allows only empty directories without recursive mode", async () => {
     const root = entry({ inodeKind: "directory", inodeNumber: 10n, name: "dir" });
-    expect(prepareOrdinaryEntryRemovalPlan(request({
-      directoryEntries: directories([[root.inodeNumber, []]]),
-      sourceEntry: root,
-    })).removedInodeNumbersPostOrder).toEqual([root.inodeNumber]);
-    expect(() => prepareOrdinaryEntryRemovalPlan(request({
-      directoryEntries: directories([[
+    expect(await collectBatches({
+      deleteBatchSize: 2,
+      openDirectory: directoryReader({ byDirectory: new Map([[root.inodeNumber, []]]) }),
+      recursive: false,
+      source: root,
+    })).toEqual([[root.inodeNumber]]);
+
+    await expect(collectBatches({
+      deleteBatchSize: 2,
+      openDirectory: directoryReader({ byDirectory: new Map([[
         root.inodeNumber,
         [entry({ inodeKind: "file", inodeNumber: 11n, name: "child" })],
-      ]]),
-      sourceEntry: root,
-    }))).toThrowError(expect.objectContaining({ code: "directory_not_empty" }));
+      ]]) }),
+      recursive: false,
+      source: root,
+    })).rejects.toMatchObject({ code: "directory_not_empty" });
   });
 
-  it("builds deterministic descendant-first batches and does not follow symlinks", () => {
+  it("streams recursive removal through bounded pages and delete-key batches", async () => {
     const root = entry({ inodeKind: "directory", inodeNumber: 10n, name: "root" });
-    const nested = entry({ inodeKind: "directory", inodeNumber: 11n, name: "nested" });
-    const file = entry({ inodeKind: "file", inodeNumber: 12n, name: "file" });
-    const link = entry({ inodeKind: "symlink", inodeNumber: 13n, name: "link" });
-    const result = prepareOrdinaryEntryRemovalPlan(request({
-      directoryEntries: directories([
-        [root.inodeNumber, [nested, link]],
-        [nested.inodeNumber, [file]],
-      ]),
+    const first = entry({ inodeKind: "file", inodeNumber: 11n, name: "a" });
+    const second = entry({ inodeKind: "file", inodeNumber: 12n, name: "b" });
+    const nested = entry({ inodeKind: "directory", inodeNumber: 13n, name: "nested" });
+    const last = entry({ inodeKind: "file", inodeNumber: 14n, name: "z" });
+    const nestedFile = entry({ inodeKind: "file", inodeNumber: 15n, name: "nested-file" });
+    const byDirectory = new Map<InodeNumber, readonly DirectoryLeafEntry[]>([
+      [root.inodeNumber, [first, second, nested, last]],
+      [nested.inodeNumber, [nestedFile]],
+    ]);
+    const reads: Array<readonly [InodeNumber, string | undefined, number]> = [];
+
+    const batches = await collectBatches({
+      deleteBatchSize: 2,
+      openDirectory: directoryReader({ byDirectory, reads }),
       recursive: true,
-      sourceEntry: root,
-    }));
-    expect(result.removedInodeNumbersPostOrder).toEqual([
-      file.inodeNumber,
-      nested.inodeNumber,
-      link.inodeNumber,
-      root.inodeNumber,
+      source: root,
+    });
+
+    expect(batches).toEqual([
+      [root.inodeNumber, first.inodeNumber],
+      [second.inodeNumber, nested.inodeNumber],
+      [nestedFile.inodeNumber, last.inodeNumber],
     ]);
-    expect(result.deleteBatches).toEqual([
-      [file.inodeNumber, nested.inodeNumber],
-      [link.inodeNumber, root.inodeNumber],
+    expect(batches.every(batch => batch.length <= 2)).toBe(true);
+    expect(reads).toEqual([
+      [root.inodeNumber, undefined, 2],
+      [root.inodeNumber, "b", 2],
+      [nested.inodeNumber, undefined, 2],
     ]);
   });
 
-  it("rejects mounted Subvolumes anywhere in the subtree", () => {
+  it("rejects mounted Subvolumes discovered on later recursive pages", async () => {
     const root = entry({ inodeKind: "directory", inodeNumber: 10n, name: "root" });
+    const first = entry({ inodeKind: "file", inodeNumber: 11n, name: "a" });
     const mount: DirectoryLeafEntry = {
       name: "mounted",
       subvolumeId: createSubvolumeId({ value: 2n }),
       targetType: "subvolume",
     };
-    expect(() => prepareOrdinaryEntryRemovalPlan(request({
-      directoryEntries: directories([[root.inodeNumber, [mount]]]),
-      recursive: true,
-      sourceEntry: root,
-    }))).toThrowError(expect.objectContaining({ code: "mounted_subvolume" }));
-    expect(() => prepareOrdinaryEntryRemovalPlan(request({ sourceEntry: mount })))
-      .toThrowError(expect.objectContaining({ code: "mounted_subvolume" }));
-  });
-
-  it("fails closed on missing directory state, duplicate inode identity, and cycles", () => {
-    const root = entry({ inodeKind: "directory", inodeNumber: 10n, name: "root" });
-    const nested = entry({ inodeKind: "directory", inodeNumber: 11n, name: "nested" });
-    expect(() => prepareOrdinaryEntryRemovalPlan(request({ recursive: true, sourceEntry: root })))
-      .toThrowError(expect.objectContaining({ code: "directory_state_missing" }));
-    expect(() => prepareOrdinaryEntryRemovalPlan(request({
-      directoryEntries: directories([
-        [root.inodeNumber, [nested]],
-        [nested.inodeNumber, [root]],
-      ]),
-      recursive: true,
-      sourceEntry: root,
-    }))).toThrowError(expect.objectContaining({ code: "invalid_directory_graph" }));
-    const duplicate = entry({ inodeKind: "file", inodeNumber: 12n, name: "duplicate" });
-    expect(() => prepareOrdinaryEntryRemovalPlan(request({
-      directoryEntries: directories([[root.inodeNumber, [duplicate, { ...duplicate, name: "again" }]]]),
-      recursive: true,
-      sourceEntry: root,
-    }))).toThrowError(expect.objectContaining({ code: "invalid_directory_graph" }));
-  });
-
-  it("enforces explicit traversal and delete-batch bounds", () => {
-    const root = entry({ inodeKind: "directory", inodeNumber: 10n, name: "root" });
-    const first = entry({ inodeKind: "file", inodeNumber: 11n, name: "a" });
-    const second = entry({ inodeKind: "file", inodeNumber: 12n, name: "b" });
-    expect(() => prepareOrdinaryEntryRemovalPlan({
-      ...request({
-        directoryEntries: directories([[root.inodeNumber, [first, second]]]),
-        recursive: true,
-        sourceEntry: root,
+    await expect(collectBatches({
+      deleteBatchSize: 1,
+      openDirectory: async () => ({
+        readPage: async ({ afterName }) => afterName === undefined
+          ? { entries: [first], truncated: true }
+          : { entries: [mount], truncated: false },
       }),
-      limits: { deleteBatchSize: 1, maxVisitedInodes: 2 },
-    })).toThrowError(expect.objectContaining({ code: "traversal_limit_exceeded" }));
-    expect(() => prepareOrdinaryEntryRemovalPlan({
-      ...request(),
-      limits: { deleteBatchSize: 0, maxVisitedInodes: 2 },
-    })).toThrowError(expect.objectContaining({ code: "invalid_limits" }));
+      recursive: true,
+      source: root,
+    })).rejects.toMatchObject({ code: "mounted_subvolume" });
+  });
+
+  it("fails closed when a truncated page cannot advance", async () => {
+    const root = entry({ inodeKind: "directory", inodeNumber: 10n, name: "root" });
+    await expect(collectBatches({
+      deleteBatchSize: 1,
+      openDirectory: async () => ({
+        readPage: async () => ({ entries: [], truncated: true }),
+      }),
+      recursive: true,
+      source: root,
+    })).rejects.toMatchObject({ code: "directory_state_missing" });
   });
 });

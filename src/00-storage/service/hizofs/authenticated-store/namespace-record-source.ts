@@ -4,7 +4,10 @@ import {
   type HomeRecordReference,
   type PhysicalRecordReference,
 } from "@/00-storage/service/hizofs/00-format";
-import { resolveAuthenticatedHomeRecord } from "@/00-storage/service/hizofs/authenticated-store/relocation-index-reader";
+import {
+  resolveAuthenticatedHomeRecord,
+  type AuthenticatedRelocationPageRecordCache,
+} from "@/00-storage/service/hizofs/authenticated-store/relocation-index-reader";
 import {
   AuthenticatedFileDataRecordCache,
   type AuthenticatedFileDataRecord,
@@ -50,6 +53,7 @@ export async function readAuthenticatedNamespaceHomeRecord({
   sharedMetadataRecordCache,
   reference,
   relocationIndexRootPhysicalRef,
+  relocationPageRecordCache,
   rootKey,
 }: {
   backend: HizoFSReadableBackend;
@@ -59,6 +63,7 @@ export async function readAuthenticatedNamespaceHomeRecord({
   sharedMetadataRecordCache?: AuthenticatedMetadataRecordCache;
   reference: HomeRecordReference;
   relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
+  relocationPageRecordCache?: AuthenticatedRelocationPageRecordCache;
   rootKey: FileSystemRootKey;
 }): Promise<AuthenticatedNamespaceRecord> {
   const loadRecord = async (): Promise<AuthenticatedNamespaceRecord> => {
@@ -68,6 +73,7 @@ export async function readAuthenticatedNamespaceHomeRecord({
       fileSystemId,
       homeReference: reference,
       relocationIndexRootPhysicalRef,
+      relocationPageRecordCache,
       rootKey,
     });
     return {
@@ -98,6 +104,7 @@ export function createAuthenticatedNamespaceRecordSource({
   fileSystemId,
   metadataRecordCache,
   relocationIndexRootPhysicalRef,
+  relocationPageRecordCache,
   rootKey,
 }: {
   backend: HizoFSReadableBackend;
@@ -106,6 +113,7 @@ export function createAuthenticatedNamespaceRecordSource({
   fileSystemId: FileSystemId;
   metadataRecordCache?: AuthenticatedMetadataRecordCache;
   relocationIndexRootPhysicalRef: PhysicalRecordReference | null;
+  relocationPageRecordCache?: AuthenticatedRelocationPageRecordCache;
   rootKey: FileSystemRootKey;
 }): AuthenticatedNamespaceRecordSource {
   const effectiveFileDataRecordCache = fileDataRecordCache ?? new AuthenticatedFileDataRecordCache({
@@ -120,6 +128,7 @@ export function createAuthenticatedNamespaceRecordSource({
       metadataRecordCache,
       reference,
       relocationIndexRootPhysicalRef,
+      relocationPageRecordCache,
       rootKey,
     })
   );

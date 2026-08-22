@@ -28,6 +28,7 @@ import {
 } from "@/00-storage/service/hizofs/filesystem/authenticated-read-only-namespace";
 import { DecodedDirectoryPageIndexCache } from "@/00-storage/service/hizofs/filesystem/decoded-directory-page-index-cache";
 import { DecodedInodeIndexPageCache } from "@/00-storage/service/hizofs/filesystem/decoded-inode-index-page-cache";
+import { ReadOnlyNamespaceValidationCache } from "@/00-storage/service/hizofs/filesystem/namespace-validation-cache";
 
 const KINDS = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds;
 
@@ -147,6 +148,88 @@ describe("authenticated read-only HizoFS namespace", () => {
       referenceIdentity({ reference: argument.reference }) === referenceIdentity({ reference: directoryRoot })
     ).length;
     expect(directoryReadsAfterSecond).toBe(directoryReadsAfterFirst);
+    directoryCache.dispose();
+  });
+
+  it("does not duplicate Directory page decode after concurrent authenticated point reads", async () => {
+    const inodeRoot = reference({ kind: KINDS.inode_table_page, offset: 64n });
+    const directoryRoot = reference({ kind: KINDS.directory_page, offset: 320n });
+    const rootDirectoryNumber = createInodeNumber({ value: 1n });
+    const fileNumber = createInodeNumber({ value: 2n });
+    const directoryBytes = encodeDirectoryPage({
+      isRoot: true,
+      page: {
+        entries: [{ inodeKind: "file", inodeNumber: fileNumber, name: "data.bin", targetType: "inode" }],
+        level: 0,
+        type: "leaf",
+      },
+    });
+    let releaseRead: (() => void) | undefined;
+    const readGate = new Promise<void>(resolve => {
+      releaseRead = resolve;
+    });
+    if (releaseRead === undefined) throw new Error("Directory read gate release invariant failed");
+    const releaseReadNow = releaseRead;
+    let startedReads = 0;
+    const readHomeRecord = vi.fn(async ({ reference: value }: { reference: HomeRecordReference }) => {
+      if (referenceIdentity({ reference: value }) !== referenceIdentity({ reference: directoryRoot })) {
+        throw new Error("unexpected record fixture read");
+      }
+      startedReads += 1;
+      if (startedReads === 2) releaseReadNow();
+      await readGate;
+      return { plaintext: Uint8Array.from(directoryBytes), recordKind: KINDS.directory_page };
+    });
+    let decodeCalls = 0;
+    const baseRecordSource = recordSourceFromReadHomeRecord({ readHomeRecord });
+    const recordSource: AuthenticatedNamespaceRecordSource = {
+      ...baseRecordSource,
+      decodeRecordPayload: ({ decode }) => {
+        decodeCalls += 1;
+        return decode();
+      },
+    };
+    const directoryCache = new DecodedDirectoryPageIndexCache({ maximumBytes: 4096, maximumEntries: 8 });
+    const validationCache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 8 });
+    await validationCache.validateNamespaceGraph({
+      inodeTableRootReference: inodeRoot,
+      rootDirectoryInodeNumber: rootDirectoryNumber,
+      validate: async () => undefined,
+    });
+    await validationCache.validate({
+      kind: "directory_tree",
+      reference: directoryRoot,
+      validate: async () => undefined,
+    });
+    const resolver = createAuthenticatedReadOnlyNamespaceResolver({
+      commit: createFileSystemCommitPayload({ payload: {
+        commitSequence: createCommitSequence({ value: 1n }),
+        mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(12) }),
+        nestedSubvolumeTableRootHomeRef: null,
+        nextInodeNumber: createInodeNumber({ value: 3n }),
+        nextSubvolumeId: createSubvolumeId({ value: 2n }),
+        rootDirectoryInodeNumber: rootDirectoryNumber,
+        rootInodeTableRootHomeRef: inodeRoot,
+      } }),
+      decodedDirectoryPageIndexCache: directoryCache,
+      recordSource,
+      validationCache,
+    });
+    const directory = {
+      content: { directoryTreeRootHomeRef: directoryRoot, type: "tree" as const },
+      inodeKind: "directory" as const,
+      inodeNumber: rootDirectoryNumber,
+      inodeRevision: createInodeRevision({ value: 1n }),
+      timestamps: { createdAt: null, modifiedAt: null },
+    };
+
+    const firstLookup = resolver.lookupDirectoryEntry({ directory, name: "data.bin" });
+    const secondLookup = resolver.lookupDirectoryEntry({ directory, name: "data.bin" });
+    await expect(firstLookup).resolves.toMatchObject({ inodeNumber: fileNumber, targetType: "inode" });
+    await expect(secondLookup).resolves.toMatchObject({ inodeNumber: fileNumber, targetType: "inode" });
+
+    expect(startedReads).toBe(2);
+    expect(decodeCalls).toBe(1);
     directoryCache.dispose();
   });
 
@@ -448,6 +531,108 @@ describe("authenticated read-only HizoFS namespace", () => {
     expect(recordInodeLeafLookup).toHaveBeenCalledWith({ observation: expect.objectContaining({
       event: "selective_entry_hit",
     }) });
+    cache.dispose();
+  });
+
+  it("does not duplicate Inode branch decode or leaf indexing after concurrent authenticated reads", async () => {
+    const inodeRoot = reference({ kind: KINDS.inode_table_page, offset: 64n });
+    const inodeLeafA = reference({ kind: KINDS.inode_table_page, offset: 320n });
+    const inodeLeafB = reference({ kind: KINDS.inode_table_page, offset: 576n });
+    const rootDirectoryNumber = createInodeNumber({ value: 1n });
+    const fileNumber = createInodeNumber({ value: 3n });
+    const records = new Map<string, Readonly<{ plaintext: Uint8Array; recordKind: number }>>([
+      [referenceIdentity({ reference: inodeRoot }), {
+        plaintext: encodeInodeBranchPage({
+          isRoot: true,
+          page: {
+            entries: [
+              { childPageHomeRef: inodeLeafA, upperBound: rootDirectoryNumber },
+              { childPageHomeRef: inodeLeafB, upperBound: fileNumber },
+            ],
+            level: 1,
+          },
+        }),
+        recordKind: KINDS.inode_table_page,
+      }],
+      [referenceIdentity({ reference: inodeLeafB }), {
+        plaintext: encodeInodeLeafPage({
+          isRoot: false,
+          entries: [{
+            content: { bytes: new Uint8Array([1, 2, 3]), type: "inline" },
+            fileSize: createFileOffset({ value: 3n }),
+            inodeKind: "file",
+            inodeNumber: fileNumber,
+            inodeRevision: createInodeRevision({ value: 1n }),
+            timestamps: { createdAt: null, modifiedAt: null },
+          }],
+        }),
+        recordKind: KINDS.inode_table_page,
+      }],
+    ]);
+    const readGates = new Map<string, {
+      promise: Promise<void>;
+      release: () => void;
+      started: number;
+    }>();
+    const recordInodeLeafLookup = vi.fn();
+    const cache = new DecodedInodeIndexPageCache({
+      diagnostics: {
+        recordDecodedInodeIndexPageCacheEvent: vi.fn(),
+        recordInodeLeafLookup,
+        setDecodedInodeIndexPageCacheUsage: vi.fn(),
+      },
+      maximumEntries: 8,
+    });
+    const readHomeRecord = vi.fn(async ({ reference: value }: { reference: HomeRecordReference }) => {
+      const key = referenceIdentity({ reference: value });
+      const record = records.get(key);
+      if (record === undefined) throw new Error("missing record fixture");
+      let gate = readGates.get(key);
+      if (gate === undefined) {
+        let release: (() => void) | undefined;
+        const promise = new Promise<void>(resolve => {
+          release = resolve;
+        });
+        if (release === undefined) throw new Error("read gate release invariant failed");
+        gate = { promise, release, started: 0 };
+        readGates.set(key, gate);
+      }
+      gate.started += 1;
+      if (gate.started === 2) gate.release();
+      await gate.promise;
+      return { plaintext: Uint8Array.from(record.plaintext), recordKind: record.recordKind };
+    });
+    const validationCache = new ReadOnlyNamespaceValidationCache({ maximumEntries: 8 });
+    await validationCache.validateNamespaceGraph({
+      inodeTableRootReference: inodeRoot,
+      rootDirectoryInodeNumber: rootDirectoryNumber,
+      validate: async () => undefined,
+    });
+    const resolver = createAuthenticatedReadOnlyNamespaceResolver({
+      commit: createFileSystemCommitPayload({ payload: {
+        commitSequence: createCommitSequence({ value: 1n }),
+        mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(11) }),
+        nestedSubvolumeTableRootHomeRef: null,
+        nextInodeNumber: createInodeNumber({ value: 4n }),
+        nextSubvolumeId: createSubvolumeId({ value: 2n }),
+        rootDirectoryInodeNumber: rootDirectoryNumber,
+        rootInodeTableRootHomeRef: inodeRoot,
+      } }),
+      decodedInodeIndexPageCache: cache,
+      recordSource: recordSourceFromReadHomeRecord({ readHomeRecord }),
+      validationCache,
+    });
+
+    const firstLookup = resolver.resolveInodeByNumber({ inodeNumber: fileNumber });
+    const secondLookup = resolver.resolveInodeByNumber({ inodeNumber: fileNumber });
+    expect((await firstLookup).inodeNumber).toBe(fileNumber);
+    expect((await secondLookup).inodeNumber).toBe(fileNumber);
+
+    const observations = recordInodeLeafLookup.mock.calls.map(([argument]) => argument.observation);
+    expect(observations.filter(observation => observation.event === "branch_page_decode")).toHaveLength(1);
+    expect(observations.filter(observation => observation.event === "index_build")).toHaveLength(1);
+    expect(readGates.get(referenceIdentity({ reference: inodeRoot }))?.started).toBe(2);
+    expect(readGates.get(referenceIdentity({ reference: inodeLeafB }))?.started).toBe(2);
     cache.dispose();
   });
 

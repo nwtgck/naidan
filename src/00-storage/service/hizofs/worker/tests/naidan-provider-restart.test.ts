@@ -134,7 +134,7 @@ async function openApplicationSession({
       opened,
       operationTimestamp: () => createTimestampMilliseconds({ value: operationTimestamp() }),
       randomSource,
-      removalLimits: { deleteBatchSize: 64, maxVisitedInodes: 100_000 },
+      removalLimits: { deleteBatchSize: 64 },
       recheckDurableGenerationAuthority: async () => undefined,
       rootSubvolumeId: createSubvolumeId({ value: 1n }),
       supportedFeatureBits: SUPPORTED_FEATURE_BITS,

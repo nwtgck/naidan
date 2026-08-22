@@ -660,6 +660,40 @@ describe('production HizoFS benchmark runtime port', () => {
     expect(sample?.hizoFSDiagnostics?.commits.superblockPublications).toBe(1);
   });
 
+  it('continues multi-page directory-list benchmarks without floor reseeks', async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
+    const configuration: HizoFSBenchmarkConfiguration = {
+      ...createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),
+      backendMode: 'hizofs_only' as const,
+      warmupIterations: 0,
+      measuredIterations: 1,
+      workloads: ['directory_operations'],
+      directoryOperations: { entryCount: 300 },
+    };
+
+    const report = await runHizoFSBenchmark({
+      configuration,
+      onProgress: () => undefined,
+      assertActive: () => undefined,
+      nativeOpfsRoot: root as unknown as FileSystemDirectoryHandle,
+      runtimePort: createProductionHizoFSBenchmarkRuntimePort(),
+    });
+
+    expect(report.failure).toBeUndefined();
+    expect(report.status).toBe('completed');
+    const runtime = report.results.find(result => result.caseId === 'directory_list')
+      ?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime;
+    expect(runtime?.type).toBe('measured');
+    if (runtime?.type !== 'measured') {
+      throw new Error('directory-list structural diagnostics are unavailable');
+    }
+    // The public iterator reads a bounded page at a time. Once the immutable
+    // Directory tree cursor is established, continuation pages must advance
+    // that cursor rather than restarting an entriesFromFloor root search.
+    expect(runtime.phases.index_entries.operationCount).toBeGreaterThan(1);
+    expect(runtime.phases.index_entries_from_floor.operationCount).toBe(0);
+  }, 30_000);
+
   it('runs every public benchmark case through the production HizoFS runtime', async () => {
     const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
     const configuration: HizoFSBenchmarkConfiguration = {
@@ -716,6 +750,17 @@ describe('production HizoFS benchmark runtime port', () => {
     }
     expect(directoryCreateRuntime.phases.index_get.operationCount)
       .toBeLessThanOrEqual(configuration.directoryOperations.entryCount * 2 + 1);
+    const recursiveDeleteRuntime = report.results.find(result => result.caseId === 'directory_recursive_delete')
+      ?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime;
+    expect(recursiveDeleteRuntime?.type).toBe('measured');
+    if (recursiveDeleteRuntime?.type !== 'measured') {
+      throw new Error('recursive-delete structural diagnostics are unavailable');
+    }
+    // The exact immutable namespace graph already proved every file/symlink
+    // Directory-leaf binding. Recursive deletion only needs point reads for
+    // directories whose payload is required to discover children, so a flat
+    // directory must not re-read every leaf inode from the Inode Table.
+    expect(recursiveDeleteRuntime.phases.index_get.operationCount).toBeLessThanOrEqual(2);
     const smallFileWriteRuntime = report.results.find(result => result.caseId === 'small_files_write_existing')
       ?.backends.hizofs?.samples[0]?.hizoFSDiagnostics?.runtime;
     expect(smallFileWriteRuntime?.type).toBe('measured');
