@@ -163,6 +163,7 @@ export async function applyRootInodeTableMutations({
     }),
     getEntryKey: ({ entry }) => entry.inodeNumber,
     maximumLeafEntryCount: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.rootInodeTable,
+    maximumRootLeafEntryCount: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.rootInodeTableRootLeaf,
     pageStore,
   });
   return await writer.applyChanges({ changes, rootReference });

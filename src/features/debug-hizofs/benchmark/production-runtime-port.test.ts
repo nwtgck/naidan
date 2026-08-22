@@ -625,6 +625,41 @@ describe('production HizoFS benchmark runtime port', () => {
     }
   }, 30_000);
 
+  it('bounds existing-small-file Inode copy-on-write byte amplification', async () => {
+    const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
+    const fileCount = 160;
+    const fileSizeBytes = 4096;
+    const configuration: HizoFSBenchmarkConfiguration = {
+      ...createHizoFSBenchmarkPresetConfiguration({ preset: 'quick' }),
+      backendMode: 'hizofs_only' as const,
+      warmupIterations: 0,
+      measuredIterations: 1,
+      workloads: ['small_files'],
+      smallFiles: { count: fileCount, sizeBytes: fileSizeBytes },
+    };
+
+    const report = await runHizoFSBenchmark({
+      configuration,
+      onProgress: () => undefined,
+      assertActive: () => undefined,
+      nativeOpfsRoot: root as unknown as FileSystemDirectoryHandle,
+      runtimePort: createProductionHizoFSBenchmarkRuntimePort(),
+    });
+
+    expect(report.status).toBe('completed');
+    expect(report.failure).toBeUndefined();
+    const sample = report.results.find(result => result.caseId === 'small_files_write_existing')
+      ?.backends.hizofs?.samples[0];
+    expect(sample?.hizoFSDiagnostics?.amplification.backingWriteBytesPerLogicalByte).toBeLessThan(4);
+    const runtime = sample?.hizoFSDiagnostics?.runtime;
+    expect(runtime?.type).toBe('measured');
+    if (runtime?.type !== 'measured') throw new Error('small-file write structural diagnostics are unavailable');
+    // WHY: one immutable Inode update still rewrites its leaf and root branch,
+    // but bounded leaf packing must keep those Copy-on-Write pages small enough
+    // that a 4 KiB existing-file write does not regress toward whole-table rewrites.
+    expect(runtime.indexes.update.pageWrites).toBeLessThanOrEqual(fileCount * 2);
+  }, 30_000);
+
   it('runs the explicit bulk benchmark as one measured publication', async () => {
     const root = new InMemoryOpfsDirectoryHandle({ capabilityProfile: 'worker', name: 'opfs-root' });
     const entryCount = 3;

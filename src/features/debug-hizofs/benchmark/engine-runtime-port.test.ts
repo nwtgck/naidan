@@ -333,7 +333,7 @@ describe('HizoFS benchmark engine', () => {
         metadataObjectCacheByteLimitPerRuntime: 8 * 1024 * 1024,
         metadataObjectCacheEntryLimitPerRuntime: 16 * 1024,
         decodedInodeIndexPageCacheEntryLimitPerRuntime: 128,
-        inodeIndexLeafEntryLimitPerRuntime: 32,
+        inodeIndexLeafEntryLimitPerRuntime: 10,
         directoryIndexLeafEntryLimitPerRuntime: 64,
         fileExtentIndexLeafEntryLimitPerRuntime: 32,
         fileChunkCacheByteLimitPerRuntime: 16 * 1024 * 1024 + 64 * 1024,

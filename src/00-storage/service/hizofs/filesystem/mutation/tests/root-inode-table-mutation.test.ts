@@ -20,6 +20,7 @@ import {
   type RootInodeTablePageStore,
 } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
 import type { ImmutableBTreePage } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
+import { DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS } from "@/00-storage/service/hizofs/filesystem/mutation/index-leaf-packing-policy";
 
 function reference({ offset }: { offset: bigint }): HomeRecordReference {
   return createHomeRecordReference({ fields: {
@@ -112,16 +113,43 @@ describe("root Inode Table mutation preparation", () => {
     expect(store.writes[0]).toMatchObject({ isRoot: true, page: { type: "leaf" } });
   });
 
-  it("splits the root Inode Table at the 32-entry runtime packing limit", async () => {
+  it("keeps the root leaf larger than child leaves until the explicit root limit", async () => {
     const { baseCommit, store } = fixture();
+    const childLeafEntryLimit = DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.rootInodeTable;
+    const rootLeafEntryLimit = DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.rootInodeTableRootLeaf;
+    expect(rootLeafEntryLimit).toBeGreaterThan(childLeafEntryLimit);
     store.pages.set(baseCommit.rootInodeTableRootHomeRef, {
-      entries: Array.from({ length: 32 }, (_, index) => directoryInode({ inodeNumber: BigInt(index + 1) })),
+      entries: Array.from({ length: childLeafEntryLimit }, (_, index) => directoryInode({ inodeNumber: BigInt(index + 1) })),
       level: 0,
       type: "leaf",
     });
     const result = await prepareRootInodeTableMutation({
       baseCommit,
-      changes: [{ entry: fileInode({ inodeNumber: 33n }), type: "set" }],
+      changes: [{ entry: fileInode({ inodeNumber: BigInt(childLeafEntryLimit + 1) }), type: "set" }],
+      mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
+      pageStore: store,
+    });
+
+    expect(result.type).toBe("prepared");
+    if (result.type !== "prepared") throw new Error("expected prepared mutation");
+    const root = store.pages.get(result.commitPayload.rootInodeTableRootHomeRef);
+    expect(root).toMatchObject({ level: 0, type: "leaf" });
+    if (root?.type !== "leaf") throw new Error("expected unsplit Inode Table root leaf");
+    expect(root.entries).toHaveLength(childLeafEntryLimit + 1);
+  });
+
+  it("splits the root Inode Table at the runtime packing limit", async () => {
+    const { baseCommit, store } = fixture();
+    const childLeafEntryLimit = DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.rootInodeTable;
+    const rootLeafEntryLimit = DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.rootInodeTableRootLeaf;
+    store.pages.set(baseCommit.rootInodeTableRootHomeRef, {
+      entries: Array.from({ length: rootLeafEntryLimit }, (_, index) => directoryInode({ inodeNumber: BigInt(index + 1) })),
+      level: 0,
+      type: "leaf",
+    });
+    const result = await prepareRootInodeTableMutation({
+      baseCommit,
+      changes: [{ entry: fileInode({ inodeNumber: BigInt(rootLeafEntryLimit + 1) }), type: "set" }],
       mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
       pageStore: store,
     });
@@ -131,13 +159,16 @@ describe("root Inode Table mutation preparation", () => {
     const root = store.pages.get(result.commitPayload.rootInodeTableRootHomeRef);
     expect(root).toMatchObject({ level: 1, type: "branch" });
     if (root?.type !== "branch") throw new Error("expected split Inode Table branch root");
-    expect(root.children).toHaveLength(2);
+    expect(root.children.length).toBeGreaterThanOrEqual(Math.ceil((rootLeafEntryLimit + 1) / childLeafEntryLimit));
+    let totalEntries = 0;
     for (const child of root.children) {
       const childPage = store.pages.get(child.childPageReference);
       expect(childPage?.type).toBe("leaf");
       if (childPage?.type !== "leaf") throw new Error("expected Inode Table leaf child");
-      expect(childPage.entries.length).toBeLessThanOrEqual(32);
+      expect(childPage.entries.length).toBeLessThanOrEqual(childLeafEntryLimit);
+      totalEntries += childPage.entries.length;
     }
+    expect(totalEntries).toBe(rootLeafEntryLimit + 1);
   });
 
   it("does not prepare a Commit for a byte-identical inode set", async () => {
