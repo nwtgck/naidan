@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createInodeNumber, createInodeRevision } from "@/00-storage/service/hizofs/00-format";
 import type {
   HizoFSHomeRecordInspectionRequest,
   HizoFSNamespacePathInspection,
@@ -54,10 +55,27 @@ const namespaceInspection = {
     modifiedAt: undefined,
     symlinkTarget: undefined,
   },
+  nestedSubvolumeTableRoot: undefined,
   pageReads: [],
   pageReadsTruncated: false,
   pagesRead: 2,
   pathComponents: [],
+  selectedInodeEvidence: {
+    containingInodeTablePage: {
+      frameLength: 160,
+      homeOffset: "128",
+      homeSegmentId: "00000000000000000000000000000003",
+      pageIsRoot: true,
+      recordKind: 5,
+    },
+    entry: {
+      content: { entries: [], type: "inline" },
+      inodeKind: "directory",
+      inodeNumber: createInodeNumber({ value: 1n }),
+      inodeRevision: createInodeRevision({ value: 1n }),
+      timestamps: { createdAt: null, modifiedAt: null },
+    },
+  },
 } satisfies HizoFSNamespacePathInspection;
 
 

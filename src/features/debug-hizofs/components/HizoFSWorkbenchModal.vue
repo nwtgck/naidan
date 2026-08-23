@@ -108,6 +108,13 @@ const standaloneInspector = ref<HizoFSPhysicalInspectionWorker>();
 const standaloneContainerName = ref<string>();
 const standaloneErrorMessage = ref<string>();
 const openingStandaloneContainer = ref(false);
+type PendingNamespacePathJump = Readonly<{
+  generation: number;
+  path: string;
+  sourceKind: WorkbenchInspectionSourceKind;
+}>;
+let namespacePathJumpGeneration = 0;
+let pendingNamespacePathJump: PendingNamespacePathJump | undefined;
 let openGeneration = 0;
 let standaloneOpenGeneration = 0;
 let unmounted = false;
@@ -320,6 +327,34 @@ async function focusWorkbenchSurface({ selector }: { selector: string }): Promis
   scroll.scrollLeft = target.offsetLeft;
 }
 
+async function settlePendingNamespacePathJump({ jump }: {
+  jump: PendingNamespacePathJump;
+}): Promise<void> {
+  await nextTick();
+  if (
+    unmounted
+    || pendingNamespacePathJump?.generation !== jump.generation
+    || selectedInspectionSourceKind.value !== jump.sourceKind
+  ) return;
+  const scroll = workbenchColumnScroll.value;
+  if (scroll === undefined) return;
+  const target = [...scroll.querySelectorAll<HTMLElement>('[data-namespace-column-path]')]
+    .find(candidate => candidate.dataset.namespaceColumnPath === jump.path);
+  if (target === undefined) return;
+  const scrollBounds = scroll.getBoundingClientRect();
+  const targetBounds = target.getBoundingClientRect();
+  let horizontalDelta = 0;
+  if (targetBounds.left < scrollBounds.left && targetBounds.right > scrollBounds.right) {
+    horizontalDelta = 0;
+  } else if (targetBounds.left < scrollBounds.left) {
+    horizontalDelta = targetBounds.left - scrollBounds.left;
+  } else if (targetBounds.right > scrollBounds.right) {
+    horizontalDelta = targetBounds.right - scrollBounds.right;
+  }
+  scroll.scrollLeft += horizontalDelta;
+  pendingNamespacePathJump = undefined;
+}
+
 async function focusPhysicalTraversalBreadcrumb({ breadcrumb }: {
   breadcrumb: HizoFSPhysicalInspectorTraversalBreadcrumb;
 }): Promise<void> {
@@ -395,6 +430,8 @@ function resetTemporaryFixtureState(): void {
 }
 
 function resetInspectionNavigation(): void {
+  namespacePathJumpGeneration += 1;
+  pendingNamespacePathJump = undefined;
   inspectedNamespacePath.value = undefined;
   inspectedNamespaceAuthority.value = undefined;
   requestedNamespacePath.value = undefined;
@@ -512,6 +549,10 @@ function recordInspectedNamespacePath({ authorityMode, commitSequence, path }: {
   inspectedNamespacePath.value = path;
   inspectedNamespaceAuthority.value = { authorityMode, commitSequence };
   requestedNamespacePath.value = path;
+  const jump = pendingNamespacePathJump;
+  if (jump?.path === path && jump.sourceKind === selectedInspectionSourceKind.value) {
+    void settlePendingNamespacePathJump({ jump });
+  }
 }
 
 function recordPhysicalTraversalBreadcrumbs({ breadcrumbs }: {
@@ -537,7 +578,14 @@ function requestNamespaceInspectionPathFromFileExplorer({ entry }: { entry: File
     ...unhandledEntry
   } = entry;
   unhandledEntry satisfies Record<PropertyKey, never>;
+  const jump = {
+    generation: ++namespacePathJumpGeneration,
+    path,
+    sourceKind: selectedInspectionSourceKind.value,
+  } satisfies PendingNamespacePathJump;
+  pendingNamespacePathJump = jump;
   requestedNamespacePath.value = path;
+  if (inspectedNamespacePath.value === path) void settlePendingNamespacePathJump({ jump });
 }
 
 function isActiveInspectionSourceKind({ kind }: { kind: WorkbenchInspectionSourceKind }): boolean {
@@ -660,6 +708,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   unmounted = true;
+  namespacePathJumpGeneration += 1;
+  pendingNamespacePathJump = undefined;
   openGeneration += 1;
   standaloneOpenGeneration += 1;
   openedInspector.value = undefined;

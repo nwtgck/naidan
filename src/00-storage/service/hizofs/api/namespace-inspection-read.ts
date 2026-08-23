@@ -1,11 +1,11 @@
 import type {
   DirectoryLeafEntry,
   HomeRecordReference,
+  InodeLeafEntry,
   InodeNumber,
 } from "@/00-storage/service/hizofs/00-format";
 import {
-  createReadOnlyNamespace,
-  type ReadOnlyInodeStat,
+  createReadOnlyNamespaceResolver,
   type ReadOnlyNamespacePageSource,
 } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
 
@@ -16,7 +16,7 @@ export type HizoFSNamespacePathRead = Readonly<{
     entries: readonly DirectoryLeafEntry[];
     truncated: boolean;
   }> | undefined;
-  stat: ReadOnlyInodeStat;
+  inode: InodeLeafEntry;
   symlinkTarget: string | undefined;
 }>;
 
@@ -37,31 +37,31 @@ export async function readHizoFSNamespacePathForInspection({
   rootDirectoryInodeNumber: InodeNumber;
   source: HizoFSNamespaceInspectionPageSource;
 }): Promise<HizoFSNamespacePathRead> {
-  const namespace = createReadOnlyNamespace({
+  const namespace = createReadOnlyNamespaceResolver({
     inodeTableRootHomeRef,
     rootDirectoryInodeNumber,
     source,
   });
-  const stat = await namespace.stat({ pathComponents });
-  switch (stat.kind) {
+  const inode = await namespace.resolveInode({ pathComponents });
+  switch (inode.inodeKind) {
   case "directory":
     return {
-      directory: await namespace.listBounded({
+      directory: await namespace.listDirectoryEntriesBounded({
+        inode,
         maximumEntries: maximumDirectoryEntries,
-        pathComponents,
       }),
-      stat,
+      inode,
       symlinkTarget: undefined,
     };
   case "file":
-    return { directory: undefined, stat, symlinkTarget: undefined };
+    return { directory: undefined, inode, symlinkTarget: undefined };
   case "symlink":
     return {
       directory: undefined,
-      stat,
-      symlinkTarget: await namespace.readlink({ pathComponents }),
+      inode,
+      symlinkTarget: inode.target,
     };
-  default: return stat.kind satisfies never;
+  default: return inode satisfies never;
   }
 }
 

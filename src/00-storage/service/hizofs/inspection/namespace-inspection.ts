@@ -10,7 +10,9 @@ import {
   type DirectoryPage,
   type HomeRecordReference,
   type InodeBranchPage,
+  type InodeLeafEntry,
   type InodeLeafPage,
+  type InodeNumber,
 } from "@/00-storage/service/hizofs/00-format";
 import type { AuthenticatedHizoFSInspectionPort } from "@/00-storage/service/hizofs/authenticated-store/inspection-port";
 import {
@@ -71,10 +73,15 @@ export type HizoFSNamespacePathInspection = Readonly<{
     truncated: boolean;
   }> | undefined;
   inode: HizoFSNamespaceInodeInspection;
+  nestedSubvolumeTableRoot: HizoFSNamespacePageReadInspection["request"] | undefined;
   pageReads: readonly HizoFSNamespacePageReadInspection[];
   pageReadsTruncated: boolean;
   pagesRead: number;
   pathComponents: readonly string[];
+  selectedInodeEvidence: Readonly<{
+    containingInodeTablePage: HizoFSNamespacePageReadInspection["request"];
+    entry: InodeLeafEntry;
+  }>;
 }>;
 
 export type HizoFSNamespaceInspectionErrorCode =
@@ -129,10 +136,28 @@ function createPageSource({ authority, maximumPages, physical }: {
   pageReads: () => readonly HizoFSNamespacePageReadInspection[];
   pageReadsTruncated: () => boolean;
   pagesRead: () => number;
+  selectedInodeLookup: ({ inodeNumber }: { inodeNumber: InodeNumber }) => Readonly<{
+    containingInodeTablePage: HizoFSNamespacePageReadInspection["request"];
+    entry: InodeLeafEntry;
+  }> | undefined;
   source: HizoFSNamespaceInspectionPageSource;
 }> {
   let count = 0;
   const pageReads: HizoFSNamespacePageReadInspection[] = [];
+  const selectedInodeLookups = new Map<InodeNumber, Readonly<{
+    containingInodeTablePage: HizoFSNamespacePageReadInspection["request"];
+    entry: InodeLeafEntry;
+  }>>();
+  const pageRequest = ({ isRoot, reference }: {
+    isRoot: boolean;
+    reference: HomeRecordReference;
+  }): HizoFSNamespacePageReadInspection["request"] => ({
+    frameLength: reference.frameLength,
+    homeOffset: String(reference.byteOffset),
+    homeSegmentId: segmentIdToLowercaseHex({ id: reference.segmentId }),
+    pageIsRoot: isRoot,
+    recordKind: reference.recordKind,
+  });
   const readPagePlaintext = async ({ expectedRecordKind, isRoot, reference, role }: {
     expectedRecordKind: number;
     isRoot: boolean;
@@ -160,13 +185,7 @@ function createPageSource({ authority, maximumPages, physical }: {
     });
     if (pageReads.length < MAXIMUM_REPORTED_PAGE_READS) {
       pageReads.push({
-        request: {
-          frameLength: reference.frameLength,
-          homeOffset: String(reference.byteOffset),
-          homeSegmentId: segmentIdToLowercaseHex({ id: reference.segmentId }),
-          pageIsRoot: isRoot,
-          recordKind: reference.recordKind,
-        },
+        request: pageRequest({ isRoot, reference }),
         role,
       });
     }
@@ -177,6 +196,7 @@ function createPageSource({ authority, maximumPages, physical }: {
     pageReads: () => [...pageReads],
     pageReadsTruncated: () => count > pageReads.length,
     pagesRead: () => count,
+    selectedInodeLookup: ({ inodeNumber }) => selectedInodeLookups.get(inodeNumber),
     source: {
       readDirectoryPage: async ({ isRoot, reference }): Promise<DirectoryPage> => {
         const bytes = await readPagePlaintext({
@@ -206,6 +226,34 @@ function createPageSource({ authority, maximumPages, physical }: {
           return header.level === 0
             ? decodeInodeLeafPage({ bytes, isRoot })
             : decodeInodeBranchPage({ bytes, isRoot });
+        } finally {
+          bytes.fill(0);
+        }
+      },
+      readInodePointPage: async ({ inodeNumber, isRoot, reference }) => {
+        const bytes = await readPagePlaintext({
+          expectedRecordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+          isRoot,
+          reference,
+          role: "inode_table",
+        });
+        try {
+          const header = decodeCommonPageHeader({ bytes, family: "inode", isRoot });
+          if (header.level !== 0) {
+            return {
+              page: decodeInodeBranchPage({ bytes, isRoot }),
+              type: "branch" as const,
+            };
+          }
+          const page = decodeInodeLeafPage({ bytes, isRoot });
+          const entry = page.entries.find(candidate => candidate.inodeNumber === inodeNumber);
+          if (entry !== undefined) {
+            selectedInodeLookups.set(inodeNumber, {
+              containingInodeTablePage: pageRequest({ isRoot, reference }),
+              entry,
+            });
+          }
+          return { entry, type: "leaf" as const };
         } finally {
           bytes.fill(0);
         }
@@ -273,13 +321,25 @@ export async function inspectHizoFSNamespacePathWithAuthority({
     return component;
   });
   const pageSource = createPageSource({ authority, maximumPages, physical });
-  const { directory, stat, symlinkTarget } = await readHizoFSNamespacePathForInspection({
+  const { directory, inode, symlinkTarget } = await readHizoFSNamespacePathForInspection({
     inodeTableRootHomeRef: authority.commit.rootInodeTableRootHomeRef,
     maximumDirectoryEntries,
     pathComponents: capturedPath,
     rootDirectoryInodeNumber: authority.commit.rootDirectoryInodeNumber,
     source: pageSource.source,
   });
+  const selectedInodeEvidence = pageSource.selectedInodeLookup({ inodeNumber: inode.inodeNumber });
+  if (selectedInodeEvidence === undefined || selectedInodeEvidence.entry.inodeRevision !== inode.inodeRevision) {
+    throw new Error("selected Inode point lookup did not retain its authenticated containing page evidence");
+  }
+  const fileSize = (() => {
+    switch (inode.inodeKind) {
+    case "file": return String(inode.fileSize);
+    case "directory":
+    case "symlink": return undefined;
+    default: return inode satisfies never;
+    }
+  })();
   return {
     authorityMode: authority.mode,
     commitSequence: String(authority.commit.commitSequence),
@@ -290,18 +350,28 @@ export async function inspectHizoFSNamespacePathWithAuthority({
         truncated: directory.truncated,
       },
     inode: {
-      createdAt: stat.createdAt === null ? undefined : String(stat.createdAt),
-      fileSize: stat.fileSize === undefined ? undefined : String(stat.fileSize),
-      inodeKind: stat.kind,
-      inodeNumber: String(stat.inodeNumber),
-      inodeRevision: String(stat.inodeRevision),
-      modifiedAt: stat.modifiedAt === null ? undefined : String(stat.modifiedAt),
+      createdAt: inode.timestamps.createdAt === null ? undefined : String(inode.timestamps.createdAt),
+      fileSize,
+      inodeKind: inode.inodeKind,
+      inodeNumber: String(inode.inodeNumber),
+      inodeRevision: String(inode.inodeRevision),
+      modifiedAt: inode.timestamps.modifiedAt === null ? undefined : String(inode.timestamps.modifiedAt),
       symlinkTarget,
     },
+    nestedSubvolumeTableRoot: authority.commit.nestedSubvolumeTableRootHomeRef === null
+      ? undefined
+      : {
+        frameLength: authority.commit.nestedSubvolumeTableRootHomeRef.frameLength,
+        homeOffset: String(authority.commit.nestedSubvolumeTableRootHomeRef.byteOffset),
+        homeSegmentId: segmentIdToLowercaseHex({ id: authority.commit.nestedSubvolumeTableRootHomeRef.segmentId }),
+        pageIsRoot: true,
+        recordKind: authority.commit.nestedSubvolumeTableRootHomeRef.recordKind,
+      },
     pageReads: pageSource.pageReads(),
     pageReadsTruncated: pageSource.pageReadsTruncated(),
     pagesRead: pageSource.pagesRead(),
     pathComponents: capturedPath,
+    selectedInodeEvidence,
   };
 }
 

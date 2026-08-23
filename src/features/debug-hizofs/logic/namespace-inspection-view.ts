@@ -2,7 +2,10 @@ import type {
   HizoFSHomeRecordInspectionRequest,
   HizoFSNamespacePathInspection,
 } from "@/00-storage/service/hizofs/inspection";
+import { segmentIdToLowercaseHex, type HomeRecordReference } from "@/00-storage/service/hizofs/00-format";
 import { exactObject } from "@/utils/exact-object";
+import { stringifyPersistedAuditValue } from "./persisted-audit-json";
+import type { HizoFSPhysicalRecordNavigationTarget } from "./physical-record-inspection-view";
 
 /**
  * Namespace navigation is a convenience overlay on the persisted Inspector.
@@ -39,6 +42,16 @@ export type HizoFSNamespaceValidationEvidence = Readonly<{
   uniqueHomeRecordReferences: readonly HizoFSNamespaceValidationHomeReference[];
 }>;
 
+export type HizoFSSelectedInodeEvidenceView = Readonly<{
+  containingInodeTablePage: HizoFSHomeRecordInspectionRequest;
+  contentSummary: string;
+  entry: HizoFSNamespacePathInspection["selectedInodeEvidence"]["entry"];
+  entryJson: string;
+  navigationTargets: readonly (HizoFSPhysicalRecordNavigationTarget & Readonly<{
+    relationship: "containing_inode_table_page" | "inode_content_reference";
+  }>)[];
+}>;
+
 export type HizoFSNamespaceInspectionView = Readonly<{
   authorityMode: HizoFSNamespacePathInspection["authorityMode"];
   authoritySummary: string;
@@ -52,13 +65,82 @@ export type HizoFSNamespaceInspectionView = Readonly<{
   inodeRevision: string;
   inodeSummary: string;
   modifiedAt: string | undefined;
+  nestedSubvolumeTableRoot: HizoFSPhysicalRecordNavigationTarget | undefined;
   parentPath: string | undefined;
   parentPathComponents: readonly string[] | undefined;
   path: string;
   pathComponents: readonly string[];
+  selectedInodeEvidence: HizoFSSelectedInodeEvidenceView;
   symlinkTarget: string | undefined;
   validationEvidence: HizoFSNamespaceValidationEvidence;
 }>;
+
+function homeRecordRequest({ pageIsRoot, reference }: {
+  pageIsRoot: boolean;
+  reference: HomeRecordReference;
+}): HizoFSHomeRecordInspectionRequest {
+  return exactObject<HizoFSHomeRecordInspectionRequest>()({
+    frameLength: reference.frameLength,
+    homeOffset: String(reference.byteOffset),
+    homeSegmentId: segmentIdToLowercaseHex({ id: reference.segmentId }),
+    pageIsRoot,
+    recordKind: reference.recordKind,
+  });
+}
+
+function selectedInodeEvidenceView({ evidence }: {
+  evidence: HizoFSNamespacePathInspection["selectedInodeEvidence"];
+}): HizoFSSelectedInodeEvidenceView {
+  const { containingInodeTablePage, entry, ...unhandledEvidence } = evidence;
+  unhandledEvidence satisfies Record<PropertyKey, never>;
+  const navigationTargets: (HizoFSPhysicalRecordNavigationTarget & Readonly<{
+    relationship: "containing_inode_table_page" | "inode_content_reference";
+  }>)[] = [{
+    label: "Containing Inode Table Page",
+    relationship: "containing_inode_table_page",
+    request: containingInodeTablePage,
+    targetType: "home_record",
+  }];
+  const contentSummary = (() => {
+    switch (entry.inodeKind) {
+    case "directory":
+      switch (entry.content.type) {
+      case "inline": return `content.type inline · ${String(entry.content.entries.length)} Directory entries`;
+      case "tree":
+        navigationTargets.push({
+          label: "directoryTreeRootHomeRef",
+          relationship: "inode_content_reference",
+          request: homeRecordRequest({ pageIsRoot: true, reference: entry.content.directoryTreeRootHomeRef }),
+          targetType: "home_record",
+        });
+        return "content.type tree · directoryTreeRootHomeRef";
+      default: throw new Error(`Unhandled Directory content: ${((entry.content satisfies never) as { readonly type: string }).type}`);
+      }
+    case "file":
+      switch (entry.content.type) {
+      case "inline": return `content.type inline · fileSize ${String(entry.fileSize)} · bytes.byteLength ${String(entry.content.bytes.byteLength)}`;
+      case "tree":
+        navigationTargets.push({
+          label: "extentTreeRootHomeRef",
+          relationship: "inode_content_reference",
+          request: homeRecordRequest({ pageIsRoot: true, reference: entry.content.extentTreeRootHomeRef }),
+          targetType: "home_record",
+        });
+        return `content.type tree · fileSize ${String(entry.fileSize)} · extentTreeRootHomeRef`;
+      default: throw new Error(`Unhandled File content: ${((entry.content satisfies never) as { readonly type: string }).type}`);
+      }
+    case "symlink": return `target ${entry.target}`;
+    default: throw new Error(`Unhandled Inode kind: ${((entry satisfies never) as { readonly inodeKind: string }).inodeKind}`);
+    }
+  })();
+  return exactObject<HizoFSSelectedInodeEvidenceView>()({
+    containingInodeTablePage,
+    contentSummary,
+    entry,
+    entryJson: stringifyPersistedAuditValue({ value: entry }),
+    navigationTargets,
+  });
+}
 
 function formatPath({ pathComponents }: { pathComponents: readonly string[] }): string {
   return pathComponents.length === 0 ? "/" : `/${pathComponents.join("/")}`;
@@ -176,10 +258,12 @@ export function createHizoFSNamespaceInspectionView({ inspection }: {
     commitSequence,
     directory,
     inode,
+    nestedSubvolumeTableRoot,
     pageReads,
     pageReadsTruncated,
     pagesRead,
     pathComponents: inspectedPathComponents,
+    selectedInodeEvidence,
     ...unhandledInspection
   } = inspection;
   unhandledInspection satisfies Record<PropertyKey, never>;
@@ -197,6 +281,26 @@ export function createHizoFSNamespaceInspectionView({ inspection }: {
   if (directory !== undefined) {
     const { entries: _entries, truncated: _truncated, ...unhandledDirectory } = directory;
     unhandledDirectory satisfies Record<PropertyKey, never>;
+  }
+  const selectedEntry = selectedInodeEvidence.entry;
+  const selectedKindFields = (() => {
+    switch (selectedEntry.inodeKind) {
+    case "directory": return { fileSize: undefined, symlinkTarget: undefined };
+    case "file": return { fileSize: String(selectedEntry.fileSize), symlinkTarget: undefined };
+    case "symlink": return { fileSize: undefined, symlinkTarget: selectedEntry.target };
+    default: return selectedEntry satisfies never;
+    }
+  })();
+  if (
+    selectedEntry.inodeKind !== inodeKind
+    || String(selectedEntry.inodeNumber) !== inodeNumber
+    || String(selectedEntry.inodeRevision) !== inodeRevision
+    || (selectedEntry.timestamps.createdAt === null ? undefined : String(selectedEntry.timestamps.createdAt)) !== createdAt
+    || (selectedEntry.timestamps.modifiedAt === null ? undefined : String(selectedEntry.timestamps.modifiedAt)) !== modifiedAt
+    || selectedKindFields.fileSize !== fileSize
+    || selectedKindFields.symlinkTarget !== symlinkTarget
+  ) {
+    throw new Error("selected Inode structural evidence disagrees with the logical target observation");
   }
 
   const pathComponents = [...inspectedPathComponents];
@@ -221,12 +325,20 @@ export function createHizoFSNamespaceInspectionView({ inspection }: {
     inodeRevision,
     inodeSummary: `${inodeKind} inode ${inodeNumber}, revision ${inodeRevision}`,
     modifiedAt,
+    nestedSubvolumeTableRoot: nestedSubvolumeTableRoot === undefined
+      ? undefined
+      : {
+        label: "nestedSubvolumeTableRootHomeRef",
+        request: nestedSubvolumeTableRoot,
+        targetType: "home_record",
+      },
     parentPath: parentPathComponents === undefined
       ? undefined
       : formatPath({ pathComponents: parentPathComponents }),
     parentPathComponents,
     path: formatPath({ pathComponents }),
     pathComponents,
+    selectedInodeEvidence: selectedInodeEvidenceView({ evidence: selectedInodeEvidence }),
     symlinkTarget,
     validationEvidence: validationEvidence({ pageReads, pageReadsTruncated, pagesRead }),
   });

@@ -6,6 +6,7 @@ import type {
   HizoFSPhysicalRecordInspectionView,
   HizoFSPhysicalRecordNavigationTarget,
 } from "./physical-record-inspection-view";
+import { stringifyPersistedAuditValue } from "./persisted-audit-json";
 
 export type HizoFSPhysicalInspectorAuthorityTraversalColumn = Readonly<{
   navigationTargets: readonly HizoFSPhysicalRecordNavigationTarget[];
@@ -43,10 +44,12 @@ export function createHizoFSPhysicalInspectorNamespaceTraversalColumn({ view }: 
     inodeRevision: _inodeRevision,
     inodeSummary,
     modifiedAt: _modifiedAt,
+    nestedSubvolumeTableRoot: _nestedSubvolumeTableRoot,
     parentPath: _parentPath,
     parentPathComponents: _parentPathComponents,
     path,
     pathComponents: _pathComponents,
+    selectedInodeEvidence: _selectedInodeEvidence,
     symlinkTarget: _symlinkTarget,
     validationEvidence: _validationEvidence,
     ...unhandledView
@@ -122,6 +125,14 @@ export type HizoFSPhysicalInspectorValidationObservation = Readonly<{
   roles: HizoFSNamespaceInspectionView["validationEvidence"]["uniqueHomeRecordReferences"][number]["roles"];
 }>;
 
+export type HizoFSPhysicalInspectorSelectedInodeObservation = Readonly<{
+  commitSequence: string;
+  entryJson: string;
+  inodeNumber: string;
+  path: string;
+  relationship: "containing_inode_table_page" | "inode_content_reference";
+}>;
+
 export type HizoFSPhysicalInspectorTraversalBreadcrumb =
   | Readonly<{ kind: "authority"; label: "Physical authority" }>
   | Readonly<{ kind: "frame"; label: "Physical frame" }>
@@ -131,6 +142,8 @@ export type HizoFSPhysicalInspectorTraversalBreadcrumb =
 export type HizoFSPhysicalInspectorRecordTraversalColumn = Readonly<{
   framedBinary?: HizoFSPhysicalRecordFrameInspection;
   namespaceObservation?: HizoFSPhysicalInspectorNamespaceObservation;
+  selectedInodeEntryIndex?: number;
+  selectedInodeObservation?: HizoFSPhysicalInspectorSelectedInodeObservation;
   title: string;
   validationObservation?: HizoFSPhysicalInspectorValidationObservation;
   view: HizoFSPhysicalRecordInspectionView;
@@ -143,8 +156,9 @@ export type HizoFSPhysicalInspectorRecordTraversalColumn = Readonly<{
  * force the Workbench projection to acknowledge it instead of silently
  * rendering an older subset.
  */
-export function createHizoFSPhysicalInspectorRecordTraversalColumn({ namespaceObservation, title, validationObservation, view }: {
+export function createHizoFSPhysicalInspectorRecordTraversalColumn({ namespaceObservation, selectedInodeObservation, title, validationObservation, view }: {
   namespaceObservation?: HizoFSPhysicalInspectorNamespaceObservation;
+  selectedInodeObservation?: HizoFSPhysicalInspectorSelectedInodeObservation;
   title: string;
   validationObservation?: HizoFSPhysicalInspectorValidationObservation;
   view: HizoFSPhysicalRecordInspectionView;
@@ -175,6 +189,27 @@ export function createHizoFSPhysicalInspectorRecordTraversalColumn({ namespaceOb
     ...unhandledView
   } = view;
   unhandledView satisfies Record<PropertyKey, never>;
+  const selectedInodeEntryIndex = (() => {
+    if (selectedInodeObservation === undefined) return undefined;
+    switch (selectedInodeObservation.relationship) {
+    case "inode_content_reference": return undefined;
+    case "containing_inode_table_page": break;
+    default: return selectedInodeObservation.relationship satisfies never;
+    }
+    const payload = view.payload;
+    if (payload.state !== "decoded" || !("family" in payload) || payload.family !== "inode_table") {
+      throw new TypeError("selected Inode containing page did not decode as an Inode Table page");
+    }
+    if (!("type" in payload.decodedPayload) || payload.decodedPayload.type !== "leaf") {
+      throw new TypeError("selected Inode containing page did not decode as an Inode Table leaf page");
+    }
+    const entryIndex = payload.decodedPayload.entries.findIndex(entry => (
+      String(entry.inodeNumber) === selectedInodeObservation.inodeNumber
+      && stringifyPersistedAuditValue({ value: entry }) === selectedInodeObservation.entryJson
+    ));
+    if (entryIndex < 0) throw new Error("selected Inode evidence no longer matches the authenticated containing page");
+    return entryIndex;
+  })();
 
   return exactObject<HizoFSPhysicalInspectorRecordTraversalColumn>()({
     framedBinary: undefined,
@@ -186,6 +221,18 @@ export function createHizoFSPhysicalInspectorRecordTraversalColumn({ namespaceOb
           commitSequence: namespaceObservation.commitSequence,
           path: namespaceObservation.path,
           pathComponents: [...namespaceObservation.pathComponents],
+        }),
+      }),
+    ...(selectedInodeEntryIndex === undefined ? {} : { selectedInodeEntryIndex }),
+    ...(selectedInodeObservation === undefined
+      ? {}
+      : {
+        selectedInodeObservation: exactObject<HizoFSPhysicalInspectorSelectedInodeObservation>()({
+          commitSequence: selectedInodeObservation.commitSequence,
+          entryJson: selectedInodeObservation.entryJson,
+          inodeNumber: selectedInodeObservation.inodeNumber,
+          path: selectedInodeObservation.path,
+          relationship: selectedInodeObservation.relationship,
         }),
       }),
     ...(validationObservation === undefined
@@ -207,7 +254,16 @@ export function attachHizoFSPhysicalInspectorRecordFrame({ column, framedBinary 
   column: HizoFSPhysicalInspectorRecordTraversalColumn;
   framedBinary: HizoFSPhysicalRecordFrameInspection;
 }): HizoFSPhysicalInspectorRecordTraversalColumn {
-  const { framedBinary: _previousFramedBinary, namespaceObservation, title, validationObservation, view, ...unhandledColumn } = column;
+  const {
+    framedBinary: _previousFramedBinary,
+    namespaceObservation,
+    selectedInodeEntryIndex,
+    selectedInodeObservation,
+    title,
+    validationObservation,
+    view,
+    ...unhandledColumn
+  } = column;
   unhandledColumn satisfies Record<PropertyKey, never>;
   const {
     frameBase64Url,
@@ -225,6 +281,8 @@ export function attachHizoFSPhysicalInspectorRecordFrame({ column, framedBinary 
       physicalSegmentId,
     }),
     ...(namespaceObservation === undefined ? {} : { namespaceObservation }),
+    ...(selectedInodeEntryIndex === undefined ? {} : { selectedInodeEntryIndex }),
+    ...(selectedInodeObservation === undefined ? {} : { selectedInodeObservation }),
     title,
     ...(validationObservation === undefined ? {} : { validationObservation }),
     view,

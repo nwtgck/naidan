@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   HIZOFS_V1_FORMAT_CONSTANTS,
   createCommitSequence,
+  createFileOffset,
   createHomeRecordReference,
   createInodeNumber,
   createPhysicalRecordReference,
@@ -10,6 +11,7 @@ import {
   parseMutationId,
   parseSegmentIdLowercaseHex,
   type FileSystemCommitPayload,
+  type FileExtentPage,
   type RelocationIndexPage,
 } from "@/00-storage/service/hizofs/00-format";
 import type { HizoFSPhysicalRecordInspection } from "@/00-storage/service/hizofs/inspection";
@@ -234,5 +236,70 @@ describe("HizoFS physical record inspection view", () => {
       targetType: "physical_record",
     }]);
     expect(view.payloadJson).toBe(stringifyPersistedAuditValue({ value: decodedPayload }));
+  });
+
+  it("preserves sparse File Extent fields and File Data references without inferred ownership", () => {
+    const kinds = HIZOFS_V1_FORMAT_CONSTANTS.recordKinds;
+    const firstData = homeReference({
+      frameLength: 192,
+      offset: 1024n,
+      recordKind: kinds.file_data,
+      segmentId: "00000000000000000000000000000031",
+    });
+    const secondData = homeReference({
+      frameLength: 208,
+      offset: 2048n,
+      recordKind: kinds.file_data,
+      segmentId: "00000000000000000000000000000032",
+    });
+    const decodedPayload: FileExtentPage = {
+      entries: [
+        {
+          byteLength: 64,
+          dataOffset: 7,
+          fileDataHomeRef: firstData,
+          fileOffset: createFileOffset({ value: 0n }),
+        },
+        {
+          byteLength: 32,
+          dataOffset: 11,
+          fileDataHomeRef: secondData,
+          fileOffset: createFileOffset({ value: 4096n }),
+        },
+      ],
+      level: 0,
+      type: "leaf",
+    };
+    const inspection: HizoFSPhysicalRecordInspection = {
+      ...commitInspection(),
+      payload: {
+        decodedPayload,
+        family: "file_extent",
+        isRoot: true,
+        itemCount: 2,
+        level: 0,
+        navigationReferences: [firstData, secondData].map(reference => ({
+          frameLength: reference.frameLength,
+          homeOffset: String(reference.byteOffset),
+          homeSegmentId: reference === firstData
+            ? "00000000000000000000000000000031"
+            : "00000000000000000000000000000032",
+          recordKind: reference.recordKind,
+          role: "file_data" as const,
+          targetType: "home_record" as const,
+        })),
+        pageType: "leaf",
+        state: "decoded",
+      },
+      recordKind: kinds.file_extent_page,
+      recordKindName: "file_extent_page",
+    };
+
+    const view = createHizoFSPhysicalRecordInspectionView({ inspection });
+    expect(view.payloadJson).toBe(stringifyPersistedAuditValue({ value: decodedPayload }));
+    expect(view.payloadJson).toContain('"fileOffset": "4096"');
+    expect(view.payloadJson).toContain('"dataOffset": 11');
+    expect(view.payloadJson).toContain('"byteLength": 32');
+    expect(view.navigationTargets.map(target => target.label)).toEqual(["File Data 1", "File Data 2"]);
   });
 });

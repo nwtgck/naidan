@@ -516,6 +516,7 @@ async function inspectSelectedHomeRecord(): Promise<void> {
       homeSegmentId: reference.segmentId,
       recordKind: reference.recordKind,
     },
+    selectedInodeObservation: undefined,
     title: "Logical Home Record",
     validationObservation: undefined,
   });
@@ -559,6 +560,7 @@ async function inspectNavigationTarget({ sourceColumnIndex, target }: {
   case "home_record":
     await inspectHomeRecord({
       request: target.request,
+      selectedInodeObservation: undefined,
       sourceColumnIndex,
       title: target.label,
       validationObservation: undefined,
@@ -615,6 +617,14 @@ async function inspectAuthorityHomeTarget({ target }: {
   await inspectAuthorityNavigationTarget({ target: { label, request, targetType: "home_record" } });
 }
 
+async function inspectNamespaceNavigationTarget({ target }: {
+  target: HizoFSPhysicalRecordNavigationTarget;
+}): Promise<void> {
+  traversalOrigin.value = "namespace";
+  clearRecordTraversal();
+  await inspectNavigationTarget({ target });
+}
+
 function selectNamespaceColumn({ columnIndex }: { columnIndex: number }): void {
   const selected = namespaceViews.value[columnIndex];
   if (selected === undefined) return;
@@ -640,6 +650,7 @@ async function inspectNamespaceValidationReference({ reference }: {
   clearRecordTraversal();
   await inspectHomeRecord({
     request,
+    selectedInodeObservation: undefined,
     title: `Validation Home Record ${request.homeSegmentId}:${request.homeOffset}`,
     validationObservation: {
       commitSequence: currentNamespaceView.commitSequence,
@@ -721,8 +732,9 @@ function navigationTargetTestId({ target }: {
   }
 }
 
-async function inspectHomeRecord({ request, sourceColumnIndex, title = "Home Record", validationObservation }: {
+async function inspectHomeRecord({ request, selectedInodeObservation, sourceColumnIndex, title = "Home Record", validationObservation }: {
   request: Parameters<HizoFSPhysicalInspectionWorker["inspectHomeRecord"]>[0]["request"];
+  selectedInodeObservation: HizoFSPhysicalInspectorRecordTraversalColumn["selectedInodeObservation"];
   sourceColumnIndex?: number;
   title?: string;
   validationObservation: HizoFSPhysicalInspectorRecordTraversalColumn["validationObservation"];
@@ -742,6 +754,7 @@ async function inspectHomeRecord({ request, sourceColumnIndex, title = "Home Rec
     recordTraversalColumns.value = appendHizoFSPhysicalInspectorRecordTraversalColumn({
       column: createHizoFSPhysicalInspectorRecordTraversalColumn({
         namespaceObservation,
+        selectedInodeObservation,
         title,
         validationObservation,
         view,
@@ -754,6 +767,36 @@ async function inspectHomeRecord({ request, sourceColumnIndex, title = "Home Rec
   } finally {
     clearOneShotPassphrase();
     loading.value = undefined;
+  }
+}
+
+async function inspectSelectedInodeNavigationTarget({ target }: {
+  target: NamespaceInspectionView["selectedInodeEvidence"]["navigationTargets"][number];
+}): Promise<void> {
+  const currentNamespaceView = namespaceView.value;
+  if (currentNamespaceView === undefined) return;
+  switch (target.targetType) {
+  case "home_record": {
+    const { label, relationship, request, targetType: _targetType, ...unhandledTarget } = target;
+    unhandledTarget satisfies Record<PropertyKey, never>;
+    traversalOrigin.value = "namespace";
+    clearRecordTraversal();
+    await inspectHomeRecord({
+      request,
+      selectedInodeObservation: {
+        commitSequence: currentNamespaceView.commitSequence,
+        entryJson: currentNamespaceView.selectedInodeEvidence.entryJson,
+        inodeNumber: currentNamespaceView.inodeNumber,
+        path: currentNamespaceView.path,
+        relationship,
+      },
+      title: label,
+      validationObservation: undefined,
+    });
+    return;
+  }
+  case "physical_record": throw new Error("selected Inode evidence exposed a Physical Record target");
+  default: return target satisfies never;
   }
 }
 
@@ -1206,6 +1249,30 @@ defineExpose({
               <dt tw-class="text-gray-400">Modified at</dt><dd>{{ namespaceColumn.modifiedAt ?? 'unavailable' }}</dd>
               <dt tw-class="text-gray-400">File size</dt><dd>{{ namespaceColumn.fileSize ?? 'unavailable' }}</dd>
             </dl>
+            <section data-testid="hizofs-physical-inspector-selected-inode-evidence" tw-class="border-b border-emerald-200 dark:border-emerald-900">
+              <div tw-class="border-b border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-950/20">
+                <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Selected Inode direct structural evidence</div>
+                <div tw-class="mt-0.5 font-mono text-[9px] text-gray-600 dark:text-gray-300">Inode {{ namespaceColumn.inodeNumber }} · {{ namespaceColumn.selectedInodeEvidence.contentSummary }}</div>
+              </div>
+              <div tw-class="space-y-1 px-3 py-2">
+                <button
+                  v-for="target in namespaceColumn.selectedInodeEvidence.navigationTargets"
+                  :key="`${target.relationship}:${navigationTargetKey({ target })}`"
+                  type="button"
+                  data-testid="hizofs-physical-inspector-selected-inode-reference"
+                  :disabled="!canInspect"
+                  tw-class="block w-full border border-emerald-300 px-2 py-1.5 text-left text-[10px] font-medium text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+                  @click="inspectSelectedInodeNavigationTarget({ target })"
+                >
+                  <span tw-class="block">{{ target.label }} →</span>
+                  <span tw-class="mt-0.5 block break-all font-mono text-[9px] font-normal text-emerald-600/80 dark:text-emerald-400/80">{{ navigationTargetDestinationSummary({ target }) }}</span>
+                </button>
+              </div>
+              <details tw-class="border-t border-emerald-100 px-3 py-2 dark:border-emerald-950/50">
+                <summary tw-class="cursor-pointer text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Exact matching Inode entry</summary>
+                <JsonCodeView :source="namespaceColumn.selectedInodeEvidence.entryJson" display-mode="raw" height-mode="content" overflow-mode="wrap" tw-class="mt-2 max-h-64 overflow-auto" />
+              </details>
+            </section>
             <div v-if="namespaceColumn.directorySummary" tw-class="border-b border-gray-100 px-3 py-2 text-xs text-gray-500 dark:border-gray-800">{{ namespaceColumn.directorySummary }}</div>
             <div v-if="namespaceColumn.symlinkTarget" tw-class="border-b border-gray-100 px-3 py-2.5 font-mono text-[10px] dark:border-gray-800">→ {{ namespaceColumn.symlinkTarget }}</div>
             <section v-if="namespaceColumn.directoryEntries.length > 0" tw-class="border-b border-gray-200 dark:border-gray-700">
@@ -1216,16 +1283,29 @@ defineExpose({
                   :key="entry.name"
                   type="button"
                   data-testid="hizofs-physical-inspector-namespace-row"
+                  :disabled="entry.kind === 'subvolume'"
                   tw-class="flex w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-blue-50 dark:hover:bg-blue-950/20"
                   @click="navigateNamespacePath({ pathComponents: entry.pathComponents })"
                 >
                   <span tw-class="min-w-0 flex-1">
                     <span data-testid="hizofs-physical-inspector-namespace-entry" tw-class="block truncate font-mono text-xs font-medium text-gray-800 dark:text-gray-200">{{ entry.name }}</span>
                     <span tw-class="mt-0.5 block break-words font-mono text-[9px] text-gray-400">{{ entry.kind }} · {{ entry.target }}</span>
+                    <span v-if="entry.kind === 'subvolume'" tw-class="mt-0.5 block text-[9px] text-amber-700 dark:text-amber-300">Nested Subvolume traversal boundary</span>
                   </span>
-                  <ChevronRightIcon tw-class="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-400" />
+                  <ChevronRightIcon v-if="entry.kind !== 'subvolume'" tw-class="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-400" />
                 </button>
               </div>
+              <button
+                v-if="namespaceColumn.nestedSubvolumeTableRoot !== undefined && namespaceColumn.directoryEntries.some(entry => entry.kind === 'subvolume')"
+                type="button"
+                data-testid="hizofs-physical-inspector-nested-subvolume-table-root"
+                :disabled="!canInspect"
+                tw-class="block w-full border-t border-amber-200 px-3 py-2 text-left text-[10px] text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/20"
+                @click="inspectNamespaceNavigationTarget({ target: namespaceColumn.nestedSubvolumeTableRoot })"
+              >
+                <span tw-class="block font-medium">nestedSubvolumeTableRootHomeRef →</span>
+                <span tw-class="mt-0.5 block break-all font-mono text-[9px]">{{ navigationTargetDestinationSummary({ target: namespaceColumn.nestedSubvolumeTableRoot }) }}</span>
+              </button>
             </section>
           </section>
 
@@ -1327,7 +1407,22 @@ defineExpose({
                   </details>
                   <section data-testid="hizofs-physical-inspector-record-references" tw-class="border-b border-gray-200 dark:border-gray-700">
                     <div tw-class="border-b border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300">Persisted references</div>
-                    <div v-if="column.validationObservation !== undefined" data-testid="hizofs-physical-inspector-record-validation-context" tw-class="border-b border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/10">
+                    <div v-if="column.selectedInodeObservation !== undefined" data-testid="hizofs-physical-inspector-record-selected-inode-context" tw-class="border-b border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900 dark:bg-emerald-950/10">
+                      <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">Selected Inode direct structural context</div>
+                      <div tw-class="mt-1 font-mono text-[9px] text-gray-600 dark:text-gray-300">Commit {{ column.selectedInodeObservation.commitSequence }} · {{ column.selectedInodeObservation.path }} · Inode {{ column.selectedInodeObservation.inodeNumber }}</div>
+                      <p v-if="column.selectedInodeObservation.relationship === 'containing_inode_table_page'" tw-class="mt-2 text-[10px] leading-4 text-gray-700 dark:text-gray-300">This authenticated page directly contained the selected Inode at entry {{ (column.selectedInodeEntryIndex ?? 0) + 1 }}. The exact decoded representation remains the complete page, including other packed Inode entries.</p>
+                      <p v-else tw-class="mt-2 text-[10px] leading-4 text-gray-700 dark:text-gray-300">This authenticated Record is reached through a canonical content reference stored in the selected Inode entry.</p>
+                      <button
+                        v-if="column.namespaceObservation !== undefined"
+                        type="button"
+                        data-testid="hizofs-physical-inspector-return-logical-context"
+                        tw-class="mt-2 border border-blue-300 px-2 py-1.5 text-left text-[10px] font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                        @click="returnToNamespaceObservation({ observation: column.namespaceObservation })"
+                      >
+                        Return to logical {{ column.namespaceObservation.path }}
+                      </button>
+                    </div>
+                    <div v-else-if="column.validationObservation !== undefined" data-testid="hizofs-physical-inspector-record-validation-context" tw-class="border-b border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/10">
                       <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">Validation trace context</div>
                       <div tw-class="mt-1 font-mono text-[9px] text-gray-600 dark:text-gray-300">Commit {{ column.validationObservation.commitSequence }} · selected logical target {{ column.validationObservation.path }}</div>
                       <p tw-class="mt-2 text-[10px] leading-4 text-gray-700 dark:text-gray-300">This authenticated persisted Record was observed during Commit-wide inspection validation. It is not owned by or dedicated to the selected logical target.</p>

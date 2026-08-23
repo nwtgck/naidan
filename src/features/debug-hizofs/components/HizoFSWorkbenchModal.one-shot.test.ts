@@ -252,6 +252,76 @@ describe('HizoFSWorkbenchModal', () => {
     });
     await flushPromises();
     expect(wrapper.getComponent({ name: 'HizoFSPhysicalInspectorPanel' }).props('requestedNamespacePath')).toBe('/docs/notes.txt');
+
+    const selectedPathColumn = document.createElement('section');
+    selectedPathColumn.dataset.namespaceColumnPath = '/docs/notes.txt';
+    selectedPathColumn.getBoundingClientRect = () => ({
+      bottom: 500,
+      height: 500,
+      left: 700,
+      right: 1140,
+      toJSON: () => ({}),
+      top: 0,
+      width: 440,
+      x: 700,
+      y: 0,
+    });
+    workbenchScroll.getBoundingClientRect = () => ({
+      bottom: 500,
+      height: 500,
+      left: 0,
+      right: 600,
+      toJSON: () => ({}),
+      top: 0,
+      width: 600,
+      x: 0,
+      y: 0,
+    });
+    workbenchScroll.appendChild(selectedPathColumn);
+    workbenchScroll.scrollLeft = 100;
+    expect(workbenchScroll.scrollLeft).toBe(100);
+
+    inspectorPanel.vm.$emit('namespaceInspected', {
+      authorityMode: 'active',
+      commitSequence: '4',
+      path: '/docs/notes.txt',
+    });
+    await flushPromises();
+    expect(workbenchScroll.scrollLeft).toBe(640);
+
+    workbenchScroll.scrollLeft = 321;
+    inspectorPanel.vm.$emit('namespaceInspected', {
+      authorityMode: 'active',
+      commitSequence: '4',
+      path: '/docs',
+    });
+    await flushPromises();
+    expect(workbenchScroll.scrollLeft).toBe(321);
+
+    explorer.vm.$emit('entry-context-action', {
+      entry: {
+        canMutate: false,
+        canNavigate: true,
+        directory: '/docs',
+        extension: '.txt',
+        handle: undefined,
+        kind: 'file',
+        lastModified: 120,
+        mimeCategory: 'text',
+        name: 'notes.txt',
+        path: '/docs/notes.txt',
+        readOnly: true,
+        size: 12,
+      },
+    });
+    inspectorPanel.vm.$emit('namespaceInspected', {
+      authorityMode: 'active',
+      commitSequence: '4',
+      path: '/docs/notes.txt',
+    });
+    (wrapper.get('[data-testid="hizofs-workbench-source"][data-source-kind="standalone_container"]').element as HTMLElement).click();
+    await flushPromises();
+    expect(workbenchScroll.scrollLeft).toBe(321);
   });
 
   it('does not project a fallback namespace observation onto the current decrypted snapshot', async () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createFileOffset, createInodeNumber, createInodeRevision, createTimestampMilliseconds } from "@/00-storage/service/hizofs/00-format";
 import type { HizoFSNamespaceInspectionView } from "./namespace-inspection-view";
 import type { HizoFSPhysicalRecordInspectionView } from "./physical-record-inspection-view";
 import {
@@ -8,6 +9,7 @@ import {
   createHizoFSPhysicalInspectorNamespaceTraversalColumn,
   createHizoFSPhysicalInspectorRecordTraversalColumn,
 } from "./physical-inspector-record-traversal";
+import { stringifyPersistedAuditValue } from "./persisted-audit-json";
 
 function recordView({ identitySummary, payloadSummary }: {
   identitySummary: string;
@@ -55,10 +57,33 @@ describe("HizoFS physical Inspector record traversal", () => {
       inodeRevision: "3",
       inodeSummary: "directory inode 1, revision 3",
       modifiedAt: "20",
+      nestedSubvolumeTableRoot: undefined,
       parentPath: undefined,
       parentPathComponents: undefined,
       path: "/",
       pathComponents: [],
+      selectedInodeEvidence: {
+        containingInodeTablePage: {
+          frameLength: 160,
+          homeOffset: "128",
+          homeSegmentId: "03",
+          pageIsRoot: true,
+          recordKind: 5,
+        },
+        contentSummary: "content.type inline · 0 Directory entries",
+        entry: {
+          content: { entries: [], type: "inline" },
+          inodeKind: "directory",
+          inodeNumber: createInodeNumber({ value: 1n }),
+          inodeRevision: createInodeRevision({ value: 3n }),
+          timestamps: {
+            createdAt: createTimestampMilliseconds({ value: 10n }),
+            modifiedAt: createTimestampMilliseconds({ value: 20n }),
+          },
+        },
+        entryJson: "{}",
+        navigationTargets: [],
+      },
       symlinkTarget: undefined,
       validationEvidence: {
         rawPageReadEvents: [{
@@ -208,6 +233,65 @@ describe("HizoFS physical Inspector record traversal", () => {
         physicalSegmentId: "02",
       },
     }).validationObservation).toEqual(expectedObservation);
+  });
+
+  it("focuses the exact selected Inode entry without filtering the containing page", () => {
+    const rootEntry = {
+      content: { entries: [], type: "inline" as const },
+      inodeKind: "directory" as const,
+      inodeNumber: createInodeNumber({ value: 1n }),
+      inodeRevision: createInodeRevision({ value: 1n }),
+      timestamps: { createdAt: null, modifiedAt: null },
+    };
+    const selectedEntry = {
+      content: { bytes: Uint8Array.from([1, 2, 3]), type: "inline" as const },
+      fileSize: createFileOffset({ value: 3n }),
+      inodeKind: "file" as const,
+      inodeNumber: createInodeNumber({ value: 7n }),
+      inodeRevision: createInodeRevision({ value: 2n }),
+      timestamps: { createdAt: null, modifiedAt: null },
+    };
+    const view: HizoFSPhysicalRecordInspectionView = {
+      ...recordView({ identitySummary: "inode page", payloadSummary: "inode_table leaf" }),
+      payload: {
+        decodedPayload: { entries: [rootEntry, selectedEntry], level: 0, type: "leaf" },
+        family: "inode_table",
+        isRoot: true,
+        itemCount: 2,
+        level: 0,
+        navigationReferences: [],
+        pageType: "leaf",
+        state: "decoded",
+      },
+      recordKind: 5,
+      recordKindName: "inode_table_page",
+    };
+    const entryJson = stringifyPersistedAuditValue({ value: selectedEntry });
+    const column = createHizoFSPhysicalInspectorRecordTraversalColumn({
+      selectedInodeObservation: {
+        commitSequence: "4",
+        entryJson,
+        inodeNumber: "7",
+        path: "/docs/report.bin",
+        relationship: "containing_inode_table_page",
+      },
+      title: "Containing Inode Table Page",
+      view,
+    });
+
+    expect(column.selectedInodeEntryIndex).toBe(1);
+    expect(column.view.payload).toBe(view.payload);
+    expect(() => createHizoFSPhysicalInspectorRecordTraversalColumn({
+      selectedInodeObservation: {
+        commitSequence: "4",
+        entryJson: "{}",
+        inodeNumber: "7",
+        path: "/docs/report.bin",
+        relationship: "containing_inode_table_page",
+      },
+      title: "Stale containing page",
+      view,
+    })).toThrow("no longer matches");
   });
 
   it("keeps the reference chain as columns and replaces descendants when branching from an earlier column", () => {

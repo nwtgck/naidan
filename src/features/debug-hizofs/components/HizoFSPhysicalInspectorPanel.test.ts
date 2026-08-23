@@ -231,12 +231,41 @@ describe("HizoFSPhysicalInspectorPanel", () => {
         inodeRevision: "3",
         inodeSummary: `${child === undefined ? "file" : "directory"} inode ${child === undefined ? "7" : "1"}, revision 3`,
         modifiedAt: "120",
+        nestedSubvolumeTableRoot: undefined,
         parentPath: pathComponents.length === 0
           ? undefined
           : pathComponents.length === 1 ? "/" : `/${pathComponents.slice(0, -1).join("/")}`,
         parentPathComponents: pathComponents.length === 0 ? undefined : pathComponents.slice(0, -1),
         path,
         pathComponents,
+        selectedInodeEvidence: {
+          containingInodeTablePage: {
+            frameLength: 160,
+            homeOffset: "128",
+            homeSegmentId: "00000000000000000000000000000003",
+            pageIsRoot: true,
+            recordKind: 5,
+          },
+          contentSummary: child === undefined
+            ? "content.type inline · fileSize 12 · bytes.byteLength 12"
+            : "content.type inline · 0 Directory entries",
+          entry: {},
+          entryJson: child === undefined
+            ? '{"inodeKind":"file","inodeNumber":"7"}'
+            : '{"inodeKind":"directory","inodeNumber":"1"}',
+          navigationTargets: [{
+            label: "Containing Inode Table Page",
+            relationship: "containing_inode_table_page" as const,
+            request: {
+              frameLength: 160,
+              homeOffset: "128",
+              homeSegmentId: "00000000000000000000000000000003",
+              pageIsRoot: true,
+              recordKind: 5,
+            },
+            targetType: "home_record" as const,
+          }],
+        },
         symlinkTarget: undefined,
         validationEvidence: {
           rawPageReadEvents: [1, 2, 3].map(index => ({
@@ -974,6 +1003,68 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     const exactPayload = wrapper.get('[data-testid="hizofs-physical-inspector-record-payload"]');
     expect(exactPayload.text()).toContain('"inodeNumber": "1"');
     expect(exactPayload.text()).toContain('"inodeNumber": "16"');
+  });
+
+  it("keeps selected Inode structural evidence separate from validation activity", async () => {
+    const authenticatedSession = createAuthenticatedSession();
+    const wrapper = mount(HizoFSPhysicalInspectorPanel, { props: { authenticatedSession } });
+
+    await wrapper.get('[data-testid="hizofs-physical-inspector-read-namespace"]').trigger("click");
+    await flushPromises();
+
+    const evidence = wrapper.get('[data-testid="hizofs-physical-inspector-selected-inode-evidence"]');
+    expect(evidence.text()).toContain("Selected Inode direct structural evidence");
+    expect(evidence.text()).toContain("Inode 1 · content.type inline");
+    expect(wrapper.findAll('[data-testid="hizofs-physical-inspector-selected-inode-reference"]')).toHaveLength(1);
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-validation-evidence"]').text())
+      .toContain("not a direct lineage or ownership view");
+  });
+
+  it("shows a nested Subvolume as a traversal boundary with a canonical table-root route", async () => {
+    const base = mocks.createNamespaceView({ inspection: { pathComponents: [] } });
+    mocks.createNamespaceView.mockReturnValueOnce({
+      ...base,
+      directoryEntries: [{
+        kind: "subvolume",
+        name: "snapshot",
+        path: "/snapshot",
+        pathComponents: ["snapshot"],
+        target: "Subvolume 7",
+      }],
+      directorySummary: "1 entries",
+      nestedSubvolumeTableRoot: {
+        label: "nestedSubvolumeTableRootHomeRef",
+        request: {
+          frameLength: 192,
+          homeOffset: "512",
+          homeSegmentId: "00000000000000000000000000000008",
+          pageIsRoot: true,
+          recordKind: 17,
+        },
+        targetType: "home_record",
+      },
+    });
+    const authenticatedSession = createAuthenticatedSession();
+    const wrapper = mount(HizoFSPhysicalInspectorPanel, { props: { authenticatedSession } });
+
+    await wrapper.get('[data-testid="hizofs-physical-inspector-read-namespace"]').trigger("click");
+    await flushPromises();
+
+    const row = wrapper.get('[data-testid="hizofs-physical-inspector-namespace-row"]');
+    expect(row.attributes("disabled")).toBeDefined();
+    expect(row.text()).toContain("Nested Subvolume traversal boundary");
+    await wrapper.get('[data-testid="hizofs-physical-inspector-nested-subvolume-table-root"]').trigger("click");
+    await flushPromises();
+    expect(authenticatedSession.inspectHomeRecord).toHaveBeenCalledWith({
+      maximumPreviewBytes: 4096,
+      request: {
+        frameLength: 192,
+        homeOffset: "512",
+        homeSegmentId: "00000000000000000000000000000008",
+        pageIsRoot: true,
+        recordKind: 17,
+      },
+    });
   });
 
   it("keeps an evidence-only logical observation on namespace-derived records and returns to it", async () => {

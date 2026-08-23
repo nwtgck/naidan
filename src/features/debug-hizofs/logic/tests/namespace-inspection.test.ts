@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createFeatureBits } from "@/00-storage/service/hizofs/00-format";
+import { HIZOFS_V1_FORMAT_CONSTANTS, createFeatureBits } from "@/00-storage/service/hizofs/00-format";
 import { createEmptyEncryptedContainer } from "@/00-storage/service/hizofs/authenticated-store/empty-container-store";
 import { createAuthenticatedHizoFSInspectionPort } from "@/00-storage/service/hizofs/authenticated-store/inspection-port";
 import type { AuthenticatedHizoFSPhysicalBytes } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
@@ -61,8 +61,23 @@ describe("HizoFS namespace inspection", () => {
       }),
     ]));
     expect(inspection.pageReadsTruncated).toBe(false);
-    expect(JSON.stringify(inspection)).not.toContain("passphrase");
-    expect(JSON.stringify(inspection)).not.toContain("rootKey");
+    expect(inspection.selectedInodeEvidence).toMatchObject({
+      containingInodeTablePage: {
+        pageIsRoot: true,
+        recordKind: HIZOFS_V1_FORMAT_CONSTANTS.recordKinds.inode_table_page,
+      },
+      entry: {
+        content: { entries: [], type: "inline" },
+        inodeKind: "directory",
+        inodeNumber: 1n,
+        inodeRevision: 1n,
+      },
+    });
+    const serializedInspection = JSON.stringify(inspection, (_key, value: unknown) => (
+      typeof value === "bigint" ? value.toString() : value
+    ));
+    expect(serializedInspection).not.toContain("passphrase");
+    expect(serializedInspection).not.toContain("rootKey");
   });
 
   it("fails closed when complete inode validation exceeds the page budget", async () => {
