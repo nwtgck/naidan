@@ -3,7 +3,7 @@ import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
 import { createInMemoryStorageRoot } from '@/00-storage/service/storage-file-system/test-support/in-memory-storage-file-system';
 import type { HizoFSAuthenticatedInspectionSession } from '@/00-storage/service/hizofs/inspection';
-import type { HizoFSDebugWorkspaceAuthority } from './debug-workspace';
+import { TEST_ONLY, type HizoFSDebugWorkspaceAuthority } from './debug-workspace';
 import {
   createHizoFSWorkbenchSourceRegistry,
   type ActiveHizoFSWorkbenchSource,
@@ -37,6 +37,11 @@ function debugAuthority(): HizoFSDebugWorkspaceAuthority {
         authenticatedInspectionSession: authenticatedInspectionSession(),
         fileSystemId: 'debug-file-system',
         fileSystemSession,
+        generateComprehensiveFixture: vi.fn(async () => ({
+          coverage: [],
+          manifestPath: '/__hizofs_fixture__/manifest.json',
+          rootPath: '/__hizofs_fixture__',
+        })),
         dispose: async () => await fileSystemSession.close(),
       };
     },
@@ -77,5 +82,28 @@ describe('HizoFS Workbench source registry', () => {
       nativeOpfsRoot: new MockFileSystemDirectoryHandle({ name: 'opfs-root' }),
     });
     expect(await registry.listSources()).toEqual([]);
+  });
+
+  it('deletes an unavailable workspace as stale raw OPFS residue', async () => {
+    const nativeOpfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    const parent = await nativeOpfsRoot.getDirectoryHandle(
+      TEST_ONLY.DEBUG_WORKSPACE_DIRECTORY_NAME,
+      { create: true },
+    );
+    const workspaceId = 'stale-workspace';
+    const physicalDirectoryName = TEST_ONLY.getPhysicalDirectoryName({ workspaceId });
+    await parent.getDirectoryHandle(physicalDirectoryName, { create: true });
+    const registry = createHizoFSWorkbenchSourceRegistry({
+      activeSources: async () => [],
+      debugWorkspaceAuthority: debugAuthority(),
+      nativeOpfsRoot,
+    });
+    const source = (await registry.listSources()).find(candidate => candidate.type === 'stale_debug_workspace');
+    if (source?.type !== 'stale_debug_workspace') throw new Error('stale source was not listed');
+
+    await registry.destroyWorkspace({ source });
+
+    await expect(parent.getDirectoryHandle(physicalDirectoryName))
+      .rejects.toMatchObject({ name: 'NotFoundError' });
   });
 });

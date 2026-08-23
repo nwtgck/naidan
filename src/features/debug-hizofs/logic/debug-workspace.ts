@@ -4,6 +4,10 @@ import type {
 } from '@/00-storage/service/storage-file-system/types';
 import { NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME } from '@/00-storage/service/opfs/naidan-opfs-root-directory-registry';
 import type { HizoFSAuthenticatedInspectionSession } from '@/features/debug-hizofs/worker/authenticated-inspection-session';
+import type {
+  HizoFSComprehensiveFixtureProgress,
+  HizoFSComprehensiveFixtureResult,
+} from '@/features/debug-hizofs/benchmark/comprehensive-workload';
 import { exactObject } from '@/utils/exact-object';
 
 const DEBUG_WORKSPACE_DIRECTORY_SUFFIX = '.hizofs';
@@ -13,6 +17,10 @@ export type HizoFSDebugWorkspaceProduct = {
   readonly authenticatedInspectionSession: HizoFSAuthenticatedInspectionSession;
   readonly fileSystemId: string;
   readonly fileSystemSession: StorageFileSystemSession;
+
+  generateComprehensiveFixture({ onProgress }: {
+    onProgress: ({ progress }: { progress: HizoFSComprehensiveFixtureProgress }) => void;
+  }): Promise<HizoFSComprehensiveFixtureResult>;
 
   dispose(): Promise<void>;
 };
@@ -38,6 +46,7 @@ type LiveHizoFSDebugWorkspace = {
   readonly createdAt: number;
   readonly fileSystemId: string;
   readonly fileSystemSession: StorageFileSystemSession;
+  readonly generateComprehensiveFixture: HizoFSDebugWorkspaceProduct['generateComprehensiveFixture'];
   readonly disposeProduct: () => Promise<void>;
 };
 
@@ -83,6 +92,7 @@ export async function createHizoFSDebugWorkspace({ authority, nativeOpfsRoot }: 
       authenticatedInspectionSession,
       fileSystemId,
       fileSystemSession,
+      generateComprehensiveFixture,
       dispose,
       ...unhandledProduct
     } = product;
@@ -94,6 +104,7 @@ export async function createHizoFSDebugWorkspace({ authority, nativeOpfsRoot }: 
       createdAt,
       fileSystemId,
       fileSystemSession,
+      generateComprehensiveFixture,
       disposeProduct: dispose,
     }));
     return createLiveSummary({
@@ -166,6 +177,7 @@ export async function openHizoFSDebugWorkspace({ workspaceId }: {
     createdAt,
     fileSystemId,
     fileSystemSession,
+    generateComprehensiveFixture: _generateComprehensiveFixture,
     disposeProduct: _disposeProduct,
     ...unhandledWorkspace
   } = workspace;
@@ -182,6 +194,20 @@ export async function openHizoFSDebugWorkspace({ workspaceId }: {
     decryptedRoot: fileSystemSession.root,
     async dispose() {},
   });
+}
+
+export async function generateHizoFSDebugWorkspaceComprehensiveFixture({
+  onProgress,
+  workspaceId,
+}: {
+  onProgress: ({ progress }: { progress: HizoFSComprehensiveFixtureProgress }) => void;
+  workspaceId: string;
+}): Promise<HizoFSComprehensiveFixtureResult> {
+  const workspace = liveWorkspaces.get(workspaceId);
+  if (workspace === undefined || workspaceDestroyAttempts.has(workspaceId)) {
+    throw new Error(`HizoFS debug workspace is not live: ${workspaceId}`);
+  }
+  return await workspace.generateComprehensiveFixture({ onProgress });
 }
 
 export async function destroyHizoFSDebugWorkspace({ workspaceId, nativeOpfsRoot }: {
@@ -216,6 +242,29 @@ async function destroyHizoFSDebugWorkspaceOnce({ workspaceId, nativeOpfsRoot }: 
     liveWorkspaces.delete(workspaceId);
   }
 
+  await removePhysicalWorkspaceDirectories({ workspaceId, nativeOpfsRoot });
+}
+
+/**
+ * Deletes an unusable Temporary HizoFS residue as raw OPFS data.
+ *
+ * This is intentionally not a HizoFS mutation or reopen path. A live runtime
+ * identity must be destroyed through destroyHizoFSDebugWorkspace instead.
+ */
+export async function deleteStaleHizoFSDebugWorkspaceResidue({ workspaceId, nativeOpfsRoot }: {
+  workspaceId: string;
+  nativeOpfsRoot: FileSystemDirectoryHandle | undefined;
+}): Promise<void> {
+  if (liveWorkspaces.has(workspaceId) || workspaceDestroyAttempts.has(workspaceId)) {
+    throw new Error(`HizoFS debug workspace is still live: ${workspaceId}`);
+  }
+  await removePhysicalWorkspaceDirectories({ workspaceId, nativeOpfsRoot });
+}
+
+async function removePhysicalWorkspaceDirectories({ workspaceId, nativeOpfsRoot }: {
+  workspaceId: string;
+  nativeOpfsRoot: FileSystemDirectoryHandle | undefined;
+}): Promise<void> {
   const opfsRoot = nativeOpfsRoot ?? await navigator.storage.getDirectory();
   try {
     const parent = await opfsRoot.getDirectoryHandle(NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME);
@@ -254,6 +303,7 @@ function createLiveSummaryFromLiveWorkspace({ workspace }: {
     createdAt,
     fileSystemId,
     fileSystemSession: _fileSystemSession,
+    generateComprehensiveFixture: _generateComprehensiveFixture,
     disposeProduct: _disposeProduct,
     ...unhandledWorkspace
   } = workspace;

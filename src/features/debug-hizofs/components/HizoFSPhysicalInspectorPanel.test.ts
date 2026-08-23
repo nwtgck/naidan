@@ -5,6 +5,7 @@ import type { HizoFSPhysicalInspectionWorker } from "@/features/debug-hizofs/wor
 import HizoFSPhysicalInspectorPanel from "./HizoFSPhysicalInspectorPanel.vue";
 
 const mocks = vi.hoisted(() => ({
+  clipboardWriteText: vi.fn(),
   createContainerView: vi.fn(),
   createNamespaceView: vi.fn(),
   createRecordView: vi.fn(),
@@ -44,7 +45,7 @@ function createAuthenticatedSession(): HizoFSAuthenticatedInspectionSession {
   return {
     inspectContainer: vi.fn(async () => ({}) as never),
     inspectHomeRecord: vi.fn(async () => ({}) as never),
-    inspectNamespacePath: vi.fn(async () => ({}) as never),
+    inspectNamespacePath: vi.fn(async request => request as never),
     inspectRecord: vi.fn(async () => ({}) as never),
     inspectRecordFrame: vi.fn(async () => ({
       frameBase64Url: "AQIDBA",
@@ -59,7 +60,7 @@ function createWorker(): HizoFSPhysicalInspectionWorker {
   return {
     inspectContainer: vi.fn(async () => ({}) as never),
     inspectHomeRecord: vi.fn(async () => ({}) as never),
-    inspectNamespacePath: vi.fn(async () => ({}) as never),
+    inspectNamespacePath: vi.fn(async request => request as never),
     inspectRecord: vi.fn(async () => ({}) as never),
     inspectRecordFrame: vi.fn(async () => ({
       frameBase64Url: "AQIDBA",
@@ -73,6 +74,11 @@ function createWorker(): HizoFSPhysicalInspectionWorker {
 describe("HizoFSPhysicalInspectorPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.clipboardWriteText.mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: mocks.clipboardWriteText },
+    });
     mocks.createContainerView.mockReturnValue({
       authorityNavigationTargets: [{
         label: "Relocation Index",
@@ -202,45 +208,65 @@ describe("HizoFSPhysicalInspectorPanel", () => {
       recordKindName: "file_data",
       sealedLength: 64,
     });
-    mocks.createNamespaceView.mockReturnValue({
-      authorityMode: "active",
-      authoritySummary: "active, Commit 4",
-      commitSequence: "4",
-      createdAt: "100",
-      directoryEntries: [{
-        kind: "file",
-        name: "notes.txt",
-        path: "/docs/notes.txt",
-        pathComponents: ["docs", "notes.txt"],
-        target: "inode 7",
-      }],
-      directorySummary: "1 entries",
-      fileSize: undefined,
-      inodeKind: "directory",
-      inodeNumber: "1",
-      inodeRevision: "3",
-      inodeSummary: "directory inode 1, revision 3",
-      modifiedAt: "120",
-      pageNavigationSummary: "1 page references",
-      pageNavigationTargets: [{
-        label: "Inode Table page 1",
-        request: {
-          frameLength: 160,
-          homeOffset: "128",
-          homeSegmentId: "00000000000000000000000000000003",
-          pageIsRoot: true,
-          recordKind: 5,
+    mocks.createNamespaceView.mockImplementation(({ inspection }: {
+      inspection: { readonly pathComponents?: readonly string[] };
+    }) => {
+      const pathComponents = inspection.pathComponents ?? [];
+      const path = pathComponents.length === 0 ? "/" : `/${pathComponents.join("/")}`;
+      const child = pathComponents.length === 0
+        ? { kind: "directory", name: "docs", path: "/docs", pathComponents: ["docs"], target: "inode 1" }
+        : pathComponents.length === 1
+          ? { kind: "file", name: "notes.txt", path: "/docs/notes.txt", pathComponents: ["docs", "notes.txt"], target: "inode 7" }
+          : undefined;
+      return {
+        authorityMode: "active",
+        authoritySummary: "active, Commit 4",
+        commitSequence: "4",
+        createdAt: "100",
+        directoryEntries: child === undefined ? [] : [child],
+        directorySummary: child === undefined ? undefined : "1 entries",
+        fileSize: child === undefined ? "12" : undefined,
+        inodeKind: child === undefined ? "file" : "directory",
+        inodeNumber: child === undefined ? "7" : "1",
+        inodeRevision: "3",
+        inodeSummary: `${child === undefined ? "file" : "directory"} inode ${child === undefined ? "7" : "1"}, revision 3`,
+        modifiedAt: "120",
+        parentPath: pathComponents.length === 0
+          ? undefined
+          : pathComponents.length === 1 ? "/" : `/${pathComponents.slice(0, -1).join("/")}`,
+        parentPathComponents: pathComponents.length === 0 ? undefined : pathComponents.slice(0, -1),
+        path,
+        pathComponents,
+        symlinkTarget: undefined,
+        validationEvidence: {
+          rawPageReadEvents: [1, 2, 3].map(index => ({
+            label: `Page-read event ${String(index)}`,
+            request: {
+              frameLength: 160,
+              homeOffset: "128",
+              homeSegmentId: "00000000000000000000000000000003",
+              pageIsRoot: true,
+              recordKind: 5,
+            },
+            role: "inode_table" as const,
+          })),
+          recordedPageReadEventCount: 3,
+          repeatedPageReadEventCount: 2,
+          totalPageReadEventCount: 3,
+          traceTruncated: false,
+          uniqueHomeRecordReferences: [{
+            occurrenceCount: 3,
+            request: {
+              frameLength: 160,
+              homeOffset: "128",
+              homeSegmentId: "00000000000000000000000000000003",
+              pageIsRoot: true,
+              recordKind: 5,
+            },
+            roles: ["inode_table"],
+          }],
         },
-        role: "inode_table",
-      }],
-      pageReadsTruncated: false,
-      pagesRead: 3,
-      parentPath: "/",
-      parentPathComponents: [],
-      path: "/docs",
-      pathComponents: ["docs"],
-      resourceSummary: "3 authenticated pages read",
-      symlinkTarget: undefined,
+      };
     });
   });
 
@@ -250,12 +276,19 @@ describe("HizoFSPhysicalInspectorPanel", () => {
 
     expect(wrapper.find('[data-testid="hizofs-physical-inspector-passphrase"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="hizofs-physical-inspector-read-container"]').attributes("disabled")).toBeUndefined();
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-read-container"]').text()).toContain("Read physical state");
+    expect(wrapper.get('[data-workbench-inspector-surface="physical-authority"]').text()).toContain("Persisted structure");
+    expect(wrapper.get('[data-workbench-inspector-surface="physical-authority"]').text()).toContain("Not loaded");
     expect(wrapper.text()).toContain("already supplies authenticated read-only inspection authority");
 
     await wrapper.get('[data-testid="hizofs-physical-inspector-read-container"]').trigger("click");
     await flushPromises();
 
     expect(authenticatedSession.inspectContainer).toHaveBeenCalledOnce();
+    expect(wrapper.findAll('[data-workbench-inspector-surface="physical-authority"]')).toHaveLength(1);
+    expect(wrapper.get('[data-workbench-inspector-surface="physical-authority"]').text()).toContain("Persisted structure");
+    expect(wrapper.get('[data-workbench-inspector-surface="physical-authority"]').text()).toContain("Loaded · authenticated physical observation");
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-read-container"]').text()).toContain("Refresh physical state");
     expect(wrapper.get('[data-testid="hizofs-physical-inspector-container"]').text()).toContain("Authority copies");
     expect(wrapper.get('[data-testid="hizofs-physical-inspector-container"]').text()).toContain("Segments / frames");
     expect(wrapper.get('[data-testid="hizofs-physical-inspector-segment-structure"]').text()).toContain("Persisted Segment structure");
@@ -412,6 +445,39 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     expect(wrapper.get('[data-testid="hizofs-physical-inspector-record-binary-shell"]').text()).toContain("4 bytes");
   });
 
+  it("highlights and copies the exact decoded payload string with accessible feedback", async () => {
+    const authenticatedSession = createAuthenticatedSession();
+    const wrapper = mount(HizoFSPhysicalInspectorPanel, { props: { authenticatedSession } });
+
+    await wrapper.get('[data-testid="hizofs-physical-inspector-read-container"]').trigger("click");
+    await flushPromises();
+    await wrapper.get('[data-testid="hizofs-physical-inspector-root-navigation"]').trigger("click");
+    await flushPromises();
+
+    const payloadJson = JSON.stringify({ byteLength: 48, kind: "file_data", state: "decoded" }, undefined, 2);
+    const payload = wrapper.get('[data-testid="hizofs-physical-inspector-record-payload"]');
+    payload.get("pre.json-code-view");
+    expect(payload.findAll(".json-syntax-property").map(token => token.text()))
+      .toEqual(expect.arrayContaining(['"byteLength"', '"kind"', '"state"']));
+    expect(payload.text()).toBe(payloadJson);
+
+    const copyButton = wrapper.get('[data-testid="hizofs-physical-inspector-copy-record-payload"]');
+    expect(copyButton.attributes("aria-label")).toBe("Copy exact decoded payload JSON");
+    expect(copyButton.attributes("title")).toBe("Copy exact decoded payload JSON");
+    await copyButton.trigger("click");
+    await flushPromises();
+    expect(mocks.clipboardWriteText).toHaveBeenCalledWith(payloadJson);
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-record-payload-copy-status"]').text())
+      .toBe("Copied");
+
+    mocks.clipboardWriteText.mockRejectedValueOnce(new Error("clipboard denied"));
+    await copyButton.trigger("click");
+    await flushPromises();
+    const failure = wrapper.get('[data-testid="hizofs-physical-inspector-record-payload-copy-status"]');
+    expect(failure.text()).toBe("Copy failed");
+    expect(failure.attributes("title")).toContain("clipboard denied");
+  });
+
   it("does not surface a framed-binary failure after its record column is closed", async () => {
     let rejectFrame: ((reason?: unknown) => void) | undefined;
     const authenticatedSession = createAuthenticatedSession();
@@ -531,6 +597,7 @@ describe("HizoFSPhysicalInspectorPanel", () => {
           },
         }],
         payloadDocumentLabel: "Exact decoded structural payload DTO",
+        payloadJson: '{"kind":"file_system_commit"}',
         payloadSummary: "Commit 4, root inode 1",
         plaintextSummary: "48/48 bytes previewed",
         recordKindName: "file_system_commit",
@@ -539,6 +606,7 @@ describe("HizoFSPhysicalInspectorPanel", () => {
         identitySummary: "home 03:128; physical 04:192",
         navigationTargets: [],
         payloadDocumentLabel: "Exact decoded structural payload DTO",
+        payloadJson: '{"kind":"inode_table_page"}',
         payloadSummary: "inode_table leaf, level 0, 1 items, root",
         plaintextSummary: "96/96 bytes previewed",
         recordKindName: "inode_table_page",
@@ -602,6 +670,7 @@ describe("HizoFSPhysicalInspectorPanel", () => {
           targetType: "physical_record",
         }],
         payloadDocumentLabel: "Exact decoded structural payload DTO",
+        payloadJson: '{"kind":"relocation_index_page"}',
         payloadSummary: "relocation_index branch, level 1, 1 items, root",
         plaintextSummary: "48/48 bytes previewed",
         recordKindName: "relocation_index_page",
@@ -610,6 +679,7 @@ describe("HizoFSPhysicalInspectorPanel", () => {
         identitySummary: "home 41:640; physical 41:640",
         navigationTargets: [],
         payloadDocumentLabel: "Exact decoded structural payload DTO",
+        payloadJson: '{"kind":"relocation_index_page"}',
         payloadSummary: "relocation_index leaf, level 0, 0 items, non-root",
         plaintextSummary: "16/16 bytes previewed",
         recordKindName: "relocation_index_page",
@@ -674,11 +744,18 @@ describe("HizoFSPhysicalInspectorPanel", () => {
       passphrase: "second passphrase",
       pathComponents: ["docs", "notes.txt"],
     });
-    expect(wrapper.get('[data-testid="hizofs-physical-inspector-namespace"]').text()).toContain("/docs");
-    expect(wrapper.get('[data-testid="hizofs-physical-inspector-namespace-row"]').text()).toContain("notes.txt");
+    expect(wrapper.findAll('[data-testid="hizofs-physical-inspector-namespace-ancestor"]')).toHaveLength(2);
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-namespace"]').text()).toContain("/docs/notes.txt");
     expect(wrapper.get('[data-testid="hizofs-physical-inspector-inode-fields"]').text()).toContain("Created at100");
     expect(wrapper.get('[data-testid="hizofs-physical-inspector-inode-fields"]').text()).toContain("Modified at120");
-    expect(wrapper.get('[data-testid="hizofs-physical-inspector-namespace-page"]').text()).toContain("inode_table");
+    expect(wrapper.find('[data-testid="hizofs-physical-inspector-namespace-page"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-validation-summary"]').text()).toContain("Total authenticated page-read events3");
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-validation-summary"]').text()).toContain("Unique Home Record References1");
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-validation-summary"]').text()).toContain("Repeated events in recorded trace2");
+    expect(wrapper.findAll('[data-testid="hizofs-physical-inspector-validation-reference"]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-testid="hizofs-physical-inspector-validation-event"]')).toHaveLength(3);
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-validation-references"]').attributes("open")).toBeUndefined();
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-validation-raw-trace"]').attributes("open")).toBeUndefined();
   });
 
   it("shows persisted and reference column shells before any authenticated read", () => {
@@ -686,10 +763,11 @@ describe("HizoFSPhysicalInspectorPanel", () => {
 
     const shell = wrapper.get('[data-testid="hizofs-physical-inspector-empty-columns"]');
     expect(shell.text()).toContain("Persisted structure");
+    expect(shell.text()).toContain("Not loaded");
     expect(shell.text()).toContain("Unlock authority");
     expect(shell.text()).toContain("Superblock authority");
-    expect(shell.text()).toContain("Reference traversal");
-    expect(shell.text()).toContain("Namespace bridge");
+    expect(shell.text()).toContain("Logical traversal");
+    expect(shell.text()).toContain("No logical path inspected");
   });
 
   it("accepts a namespace path selected by the Workbench decrypted companion", async () => {
@@ -734,7 +812,7 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     resolveFirst?.({} as never);
     await flushPromises();
 
-    expect(authenticatedSession.inspectNamespacePath).toHaveBeenCalledTimes(2);
+    expect(authenticatedSession.inspectNamespacePath).toHaveBeenCalledTimes(4);
     expect(authenticatedSession.inspectNamespacePath).toHaveBeenLastCalledWith({
       maximumDirectoryEntries: 256,
       maximumPages: 4096,
@@ -785,7 +863,7 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     await flushPromises();
 
     expect(firstSession.inspectNamespacePath).toHaveBeenCalledOnce();
-    expect(secondSession.inspectNamespacePath).toHaveBeenCalledOnce();
+    expect(secondSession.inspectNamespacePath).toHaveBeenCalledTimes(2);
     expect(secondSession.inspectNamespacePath).toHaveBeenCalledWith({
       maximumDirectoryEntries: 256,
       maximumPages: 4096,
@@ -830,7 +908,7 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     resolveContainer?.({} as never);
     await flushPromises();
 
-    expect(authenticatedSession.inspectNamespacePath).toHaveBeenCalledOnce();
+    expect(authenticatedSession.inspectNamespacePath).toHaveBeenCalledTimes(3);
     expect(authenticatedSession.inspectNamespacePath).toHaveBeenCalledWith({
       maximumDirectoryEntries: 256,
       maximumPages: 4096,
@@ -842,6 +920,8 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     mocks.createRecordView.mockReturnValueOnce({
       identitySummary: "home 03:128; physical 03:128",
       navigationTargets: [],
+      payloadDocumentLabel: "Exact decoded structural payload DTO",
+      payloadJson: '{"kind":"inode_table_page"}',
       payloadSummary: "inode_table leaf, level 0, 1 items, root",
       plaintextSummary: "80/80 bytes previewed",
       recordKindName: "inode_table_page",
@@ -855,7 +935,7 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     expect(wrapper.find('[data-testid="hizofs-physical-inspector-namespace"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="hizofs-physical-inspector-namespace-column"]').exists()).toBe(false);
     await wrapper.get('[data-testid="hizofs-physical-inspector-passphrase"]').setValue("page passphrase");
-    await wrapper.get('[data-testid="hizofs-physical-inspector-namespace-page"]').trigger("click");
+    await wrapper.get('[data-testid="hizofs-physical-inspector-validation-reference"]').trigger("click");
     await flushPromises();
 
     expect(inspector.inspectHomeRecord).toHaveBeenCalledWith({
@@ -879,11 +959,11 @@ describe("HizoFSPhysicalInspectorPanel", () => {
 
     await wrapper.get('[data-testid="hizofs-physical-inspector-read-namespace"]').trigger("click");
     await flushPromises();
-    await wrapper.get('[data-testid="hizofs-physical-inspector-namespace-page"]').trigger("click");
+    await wrapper.get('[data-testid="hizofs-physical-inspector-validation-reference"]').trigger("click");
     await flushPromises();
 
     const context = wrapper.get('[data-testid="hizofs-physical-inspector-record-logical-context"]');
-    expect(context.text()).toContain("Observed while resolving active logical /docs at Commit 4");
+    expect(context.text()).toContain("Observed while resolving active logical / at Commit 4");
     expect(context.text()).toContain("observation context, not ownership");
     expect(wrapper.find('[data-testid="hizofs-physical-inspector-record-traversal"]').exists()).toBe(true);
 
@@ -891,8 +971,8 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="hizofs-physical-inspector-record-traversal"]').exists()).toBe(false);
-    expect(wrapper.get('[data-testid="hizofs-physical-inspector-namespace"]').text()).toContain("Decrypted namespace /docs");
-    expect((wrapper.get('[data-testid="hizofs-physical-inspector-path"]').element as HTMLInputElement).value).toBe("/docs");
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-namespace"]').text()).toContain("Decrypted namespace /");
+    expect((wrapper.get('[data-testid="hizofs-physical-inspector-path"]').element as HTMLInputElement).value).toBe("/");
   });
 
   it("selects child and parent namespace paths without retaining a credential", async () => {
@@ -905,10 +985,10 @@ describe("HizoFSPhysicalInspectorPanel", () => {
 
     const pathInput = wrapper.get('[data-testid="hizofs-physical-inspector-path"]');
     await wrapper.get('[data-testid="hizofs-physical-inspector-namespace-entry"]').trigger("click");
-    expect((pathInput.element as HTMLInputElement).value).toBe("/docs/notes.txt");
+    expect((pathInput.element as HTMLInputElement).value).toBe("/docs");
     expect(inspector.inspectNamespacePath).toHaveBeenCalledTimes(1);
 
-    await wrapper.get('[data-testid="hizofs-physical-inspector-parent-path"]').trigger("click");
+    await wrapper.get('[data-testid="hizofs-physical-inspector-select-namespace-column"]').trigger("click");
     expect((pathInput.element as HTMLInputElement).value).toBe("/");
     expect((wrapper.get('[data-testid="hizofs-physical-inspector-passphrase"]').element as HTMLInputElement).value).toBe("");
   });
@@ -925,16 +1005,24 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     expect(authenticatedSession.inspectNamespacePath).toHaveBeenLastCalledWith({
       maximumDirectoryEntries: 256,
       maximumPages: 4096,
-      pathComponents: ["docs", "notes.txt"],
+      pathComponents: ["docs"],
     });
 
-    await wrapper.get('[data-testid="hizofs-physical-inspector-parent-path"]').trigger("click");
+    const directoryEntries = wrapper.findAll('[data-testid="hizofs-physical-inspector-namespace-entry"]');
+    await directoryEntries.at(-1)?.trigger("click");
     await flushPromises();
     expect(authenticatedSession.inspectNamespacePath).toHaveBeenLastCalledWith({
       maximumDirectoryEntries: 256,
       maximumPages: 4096,
-      pathComponents: [],
+      pathComponents: ["docs", "notes.txt"],
     });
+    expect(wrapper.findAll('[data-testid="hizofs-physical-inspector-namespace-ancestor"]')).toHaveLength(2);
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-namespace"]').attributes("data-namespace-column-path"))
+      .toBe("/docs/notes.txt");
+
+    await wrapper.findAll('[data-testid="hizofs-physical-inspector-select-namespace-column"]')[0]?.trigger("click");
+    await flushPromises();
+    expect((wrapper.get('[data-testid="hizofs-physical-inspector-path"]').element as HTMLInputElement).value).toBe("/");
     expect(authenticatedSession.inspectNamespacePath).toHaveBeenCalledTimes(3);
   });
 
@@ -1009,7 +1097,7 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     await wrapper.get('[data-testid="hizofs-physical-inspector-read-namespace"]').trigger("click");
     await flushPromises();
     await wrapper.get('[data-testid="hizofs-physical-inspector-passphrase"]').setValue("record");
-    await wrapper.get('[data-testid="hizofs-physical-inspector-namespace-page"]').trigger("click");
+    await wrapper.get('[data-testid="hizofs-physical-inspector-validation-reference"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="hizofs-physical-inspector-record"]').exists()).toBe(true);
 
@@ -1050,13 +1138,29 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     expect(wrapper.attributes("aria-modal")).toBeUndefined();
     expect(wrapper.find('[data-testid="hizofs-physical-inspector-close"]').exists()).toBe(false);
   });
-  it("renders Workbench embedding controls as a column without owning the horizontal canvas", async () => {
+  it("places Workbench controls inside their physical and logical projection surfaces", async () => {
+    const authenticatedSession = createAuthenticatedSession();
     const wrapper = mount(HizoFSPhysicalInspectorPanel, {
-      props: { embeddedInWorkbench: true, inspector: createWorker() },
+      props: { authenticatedSession, embeddedInWorkbench: true },
     });
 
-    expect(wrapper.find('[data-testid="hizofs-physical-inspector-embedded-control-column"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="hizofs-physical-inspector-embedded-control-column"]').exists()).toBe(false);
+    expect(wrapper.find('#hizofs-physical-inspector-title').exists()).toBe(false);
+    expect(wrapper.get('[data-workbench-inspector-surface="physical-authority"]').find('[data-testid="hizofs-physical-inspector-read-container"]').exists()).toBe(true);
+    expect(wrapper.get('[data-workbench-inspector-surface="namespace"]').find('[data-testid="hizofs-physical-inspector-path-toolbar"]').exists()).toBe(true);
     expect(wrapper.get('[data-testid="hizofs-physical-inspector-column-scroll"]').attributes('data-embedded-columns')).toBe('true');
+
+    await wrapper.get('[data-testid="hizofs-physical-inspector-path"]').setValue('/docs');
+    await wrapper.get('[data-testid="hizofs-physical-inspector-path-toolbar"]').trigger('submit');
+    await flushPromises();
+
+    expect(authenticatedSession.inspectNamespacePath).toHaveBeenLastCalledWith({
+      maximumDirectoryEntries: 256,
+      maximumPages: 4096,
+      pathComponents: ['docs'],
+    });
+    expect(wrapper.findAll('[data-testid="hizofs-physical-inspector-path-toolbar"]')).toHaveLength(1);
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-namespace"]').find('[data-testid="hizofs-physical-inspector-path-toolbar"]').exists()).toBe(true);
   });
 
 });

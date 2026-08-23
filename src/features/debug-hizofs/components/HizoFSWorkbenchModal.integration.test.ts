@@ -13,22 +13,34 @@ vi.mock('@/features/file-explorer/components/FileExplorer.vue', () => ({
 }));
 
 const mocks = vi.hoisted(() => ({
+  asRef: <T>(value: T): { readonly __v_isRef: true; value: T } => ({ __v_isRef: true, value }),
   close: vi.fn(),
   createTemporary: vi.fn(),
   destroyTemporary: vi.fn(),
+  generateTemporaryFixture: vi.fn(),
+  refreshActive: vi.fn(),
+  refreshTemporary: vi.fn(),
+  selectTemporary: vi.fn(),
 }));
 
 vi.mock('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench', () => ({
   useDebugHizoFSWorkbench: () => ({
-    authenticatedInspectionSession: { value: undefined },
+    authenticatedInspectionSession: mocks.asRef(undefined),
     closeDebugHizoFSWorkbench: mocks.close,
     createTemporaryHizoFSWorkspace: mocks.createTemporary,
-    decryptedRoot: { value: undefined },
+    decryptedRoot: mocks.asRef(undefined),
     destroyTemporaryHizoFSWorkspace: mocks.destroyTemporary,
-    physicalInspectionSource: { value: undefined },
-    temporaryAuthenticatedInspectionSession: { value: undefined },
-    temporaryDecryptedRoot: { value: undefined },
-    temporaryWorkspace: { value: undefined },
+    generateTemporaryHizoFSFixture: mocks.generateTemporaryFixture,
+    physicalInspectionSource: mocks.asRef(undefined),
+    refreshActiveHizoFSReadAuthorities: mocks.refreshActive,
+    refreshTemporaryHizoFSWorkspaces: mocks.refreshTemporary,
+    selectTemporaryHizoFSWorkspace: mocks.selectTemporary,
+    selectedTemporaryWorkspaceId: mocks.asRef(undefined),
+    temporaryAuthenticatedInspectionSession: mocks.asRef(undefined),
+    temporaryDecryptedRoot: mocks.asRef(undefined),
+    temporaryInspectionRevision: mocks.asRef(0),
+    temporaryWorkspace: mocks.asRef(undefined),
+    temporaryWorkspaces: mocks.asRef([]),
   }),
 }));
 
@@ -45,6 +57,16 @@ function createInspector(): HizoFSPhysicalInspectionWorker {
 describe('HizoFSWorkbenchModal integrated tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.createTemporary.mockResolvedValue(undefined);
+    mocks.destroyTemporary.mockResolvedValue(undefined);
+    mocks.generateTemporaryFixture.mockResolvedValue({
+      coverage: [],
+      manifestPath: '/__hizofs_fixture__/manifest.json',
+      rootPath: '/__hizofs_fixture__',
+    });
+    mocks.refreshActive.mockResolvedValue(undefined);
+    mocks.refreshTemporary.mockResolvedValue(undefined);
+    mocks.selectTemporary.mockResolvedValue(undefined);
   });
 
   it('keeps Benchmark available when opening the Physical Inspector fails', async () => {
@@ -129,7 +151,8 @@ describe('HizoFSWorkbenchModal integrated tools', () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain('HizoFS Workbench');
-    expect(wrapper.text()).toContain('Physical Inspector');
+    expect(wrapper.text()).toContain('Persisted structure');
+    expect(wrapper.text()).toContain('Logical traversal');
     expect(wrapper.text()).toContain('Benchmark');
     expect(wrapper.text()).not.toContain('Portable HizoFS Inspector');
     expect(wrapper.find('[data-testid="hizofs-physical-inspector-passphrase"]').exists()).toBe(true);

@@ -1,6 +1,7 @@
 import type { HizoFSPhysicalInspectionSource } from './active-physical-inspection-source';
 import {
   createHizoFSDebugWorkspace,
+  deleteStaleHizoFSDebugWorkspaceResidue,
   destroyHizoFSDebugWorkspace,
   listHizoFSDebugWorkspaces,
   openHizoFSDebugWorkspace,
@@ -104,10 +105,21 @@ export function createHizoFSWorkbenchSourceRegistry({
     },
 
     async destroyWorkspace({ source }) {
-      await destroyHizoFSDebugWorkspace({
-        workspaceId: source.workspace.workspaceId,
-        nativeOpfsRoot,
-      });
+      switch (source.type) {
+      case 'ephemeral_debug_workspace':
+        await destroyHizoFSDebugWorkspace({
+          workspaceId: source.workspace.workspaceId,
+          nativeOpfsRoot,
+        });
+        return;
+      case 'stale_debug_workspace':
+        await deleteStaleHizoFSDebugWorkspaceResidue({
+          workspaceId: source.workspace.workspaceId,
+          nativeOpfsRoot,
+        });
+        return;
+      default: return source satisfies never;
+      }
     },
 
     async openWorkspace({ source }) {

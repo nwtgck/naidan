@@ -68,26 +68,62 @@ describe("HizoFS namespace inspection view", () => {
       inodeRevision: "4",
       inodeSummary: "directory inode 1, revision 4",
       modifiedAt: "10",
-      pageNavigationSummary: "1 page references (truncated)",
-      pageNavigationTargets: [{
-        label: "Inode Table page 1",
-        request: {
-          frameLength: 160,
-          homeOffset: "128",
-          homeSegmentId: "00000000000000000000000000000003",
-          pageIsRoot: true,
-          recordKind: 5,
-        },
-        role: "inode_table",
-      }],
-      pageReadsTruncated: true,
-      pagesRead: 12,
       parentPath: "/",
       parentPathComponents: [],
       path: "/docs",
       pathComponents: ["docs"],
-      resourceSummary: "12 authenticated pages read",
       symlinkTarget: undefined,
+      validationEvidence: {
+        rawPageReadEvents: [{
+          label: "Page-read event 1",
+          request: {
+            frameLength: 160,
+            homeOffset: "128",
+            homeSegmentId: "00000000000000000000000000000003",
+            pageIsRoot: true,
+            recordKind: 5,
+          },
+          role: "inode_table",
+        }],
+        recordedPageReadEventCount: 1,
+        repeatedPageReadEventCount: 0,
+        totalPageReadEventCount: 12,
+        traceTruncated: true,
+        uniqueHomeRecordReferences: [{
+          occurrenceCount: 1,
+          request: {
+            frameLength: 160,
+            homeOffset: "128",
+            homeSegmentId: "00000000000000000000000000000003",
+            pageIsRoot: true,
+            recordKind: 5,
+          },
+          roles: ["inode_table"],
+        }],
+      },
     });
+  });
+
+  it("separates unique Home Record References from repeated validation events", () => {
+    const source = inspection();
+    const firstEvent = source.pageReads[0];
+    if (firstEvent === undefined) throw new Error("expected a validation event fixture");
+    const view = createHizoFSNamespaceInspectionView({
+      inspection: {
+        ...source,
+        pageReads: [firstEvent, { ...firstEvent, role: "directory" }, firstEvent],
+        pageReadsTruncated: false,
+        pagesRead: 3,
+      },
+    });
+
+    expect(view.validationEvidence).toMatchObject({
+      recordedPageReadEventCount: 3,
+      repeatedPageReadEventCount: 2,
+      totalPageReadEventCount: 3,
+      traceTruncated: false,
+      uniqueHomeRecordReferences: [{ occurrenceCount: 3, roles: ["inode_table", "directory"] }],
+    });
+    expect(view.validationEvidence.rawPageReadEvents).toHaveLength(3);
   });
 });

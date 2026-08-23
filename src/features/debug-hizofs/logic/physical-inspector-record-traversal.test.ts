@@ -41,7 +41,7 @@ function recordView({ identitySummary, payloadSummary }: {
 
 describe("HizoFS physical Inspector record traversal", () => {
 
-  it("projects the decrypted namespace as a traversal root with authenticated page edges", () => {
+  it("projects the decrypted namespace without treating validation reads as structural edges", () => {
     const view: HizoFSNamespaceInspectionView = {
       authorityMode: "active",
       authoritySummary: "active, Commit 4",
@@ -55,44 +55,45 @@ describe("HizoFS physical Inspector record traversal", () => {
       inodeRevision: "3",
       inodeSummary: "directory inode 1, revision 3",
       modifiedAt: "20",
-      pageNavigationSummary: "1 page references",
-      pageNavigationTargets: [{
-        label: "Inode Table page 1",
-        request: {
-          frameLength: 160,
-          homeOffset: "128",
-          homeSegmentId: "03",
-          pageIsRoot: true,
-          recordKind: 5,
-        },
-        role: "inode_table",
-      }],
-      pageReadsTruncated: false,
-      pagesRead: 1,
       parentPath: undefined,
       parentPathComponents: undefined,
       path: "/",
       pathComponents: [],
-      resourceSummary: "1 authenticated pages read",
       symlinkTarget: undefined,
+      validationEvidence: {
+        rawPageReadEvents: [{
+          label: "Page-read event 1",
+          request: {
+            frameLength: 160,
+            homeOffset: "128",
+            homeSegmentId: "03",
+            pageIsRoot: true,
+            recordKind: 5,
+          },
+          role: "inode_table",
+        }],
+        recordedPageReadEventCount: 1,
+        repeatedPageReadEventCount: 0,
+        totalPageReadEventCount: 1,
+        traceTruncated: false,
+        uniqueHomeRecordReferences: [{
+          occurrenceCount: 1,
+          request: {
+            frameLength: 160,
+            homeOffset: "128",
+            homeSegmentId: "03",
+            pageIsRoot: true,
+            recordKind: 5,
+          },
+          roles: ["inode_table"],
+        }],
+      },
     };
 
     expect(createHizoFSPhysicalInspectorNamespaceTraversalColumn({ view })).toEqual({
       authoritySummary: "active, Commit 4",
       inodeSummary: "directory inode 1, revision 3",
-      navigationTargets: [{
-        label: "Inode Table page 1",
-        request: {
-          frameLength: 160,
-          homeOffset: "128",
-          homeSegmentId: "03",
-          pageIsRoot: true,
-          recordKind: 5,
-        },
-        targetType: "home_record",
-      }],
       path: "/",
-      resourceSummary: "1 authenticated pages read",
       title: "Decrypted namespace",
     });
   });

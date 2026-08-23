@@ -93,6 +93,7 @@ describe("HizoFS debug workspace creation authority", () => {
       inspectNamespacePath: expect.any(Function),
       inspectRecord: expect.any(Function),
     }));
+    expect(product.generateComprehensiveFixture).toEqual(expect.any(Function));
     await product.dispose();
     expect(dispose).toHaveBeenCalledOnce();
   });

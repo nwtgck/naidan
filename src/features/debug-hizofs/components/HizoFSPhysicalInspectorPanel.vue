@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { ChevronRightIcon, LoaderCircleIcon, RefreshCwIcon, SearchIcon, XIcon } from "lucide-vue-next";
+import { ChevronRightIcon, CopyIcon, LoaderCircleIcon, RefreshCwIcon, SearchIcon, XIcon } from "lucide-vue-next";
+import { JsonCodeView } from "@/features/json-viewer";
 import { createHizoFSNamespaceInspectionView } from "@/features/debug-hizofs/logic/namespace-inspection-view";
 import {
   appendHizoFSPhysicalInspectorRecordTraversalColumn,
@@ -49,12 +50,20 @@ const namespacePath = ref("/");
 const loading = ref<"container" | "frame" | "home_record" | "namespace" | "record">();
 const errorMessage = ref<string>();
 const containerView = ref<ReturnType<typeof createHizoFSPhysicalContainerInspectionView>>();
-const namespaceView = ref<ReturnType<typeof createHizoFSNamespaceInspectionView>>();
+type NamespaceInspectionView = ReturnType<typeof createHizoFSNamespaceInspectionView>;
+const namespaceViews = ref<readonly NamespaceInspectionView[]>([]);
+const namespaceView = computed(() => namespaceViews.value.at(-1));
 const recordTraversalColumns = ref<readonly HizoFSPhysicalInspectorRecordTraversalColumn[]>([]);
 const traversalOrigin = ref<"authority" | "frame" | "namespace">();
 const selectedFrame = ref<HizoFSPhysicalFrameInspectionRow>();
 const selectedPageRole = ref<"non_root" | "root" | "unspecified">("unspecified");
+const payloadCopyFeedback = ref<Readonly<{
+  columnIndex: number;
+  detail: string;
+  status: "failure" | "success";
+}>>();
 const columnScroll = ref<HTMLElement>();
+let payloadCopyFeedbackTimeout: ReturnType<typeof setTimeout> | undefined;
 let recordTraversalRevision = 0;
 let authenticatedNamespaceInspectionQueued = false;
 let inspectorPanelDisposed = false;
@@ -64,6 +73,7 @@ onBeforeUnmount(() => {
   inspectorPanelDisposed = true;
   authenticatedNamespaceInspectionQueued = false;
   invalidateRecordTraversal();
+  if (payloadCopyFeedbackTimeout !== undefined) clearTimeout(payloadCopyFeedbackTimeout);
 });
 
 const requiresPassphrase = computed(() => props.authenticatedSession === undefined);
@@ -136,6 +146,29 @@ function errorText({ error }: { error: unknown }): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+async function copyDecodedPayload({ columnIndex, payloadJson }: {
+  columnIndex: number;
+  payloadJson: string;
+}): Promise<void> {
+  if (payloadCopyFeedbackTimeout !== undefined) clearTimeout(payloadCopyFeedbackTimeout);
+  try {
+    const clipboard = navigator.clipboard;
+    if (clipboard === undefined) throw new Error("Clipboard API is unavailable");
+    await clipboard.writeText(payloadJson);
+    payloadCopyFeedback.value = { columnIndex, detail: "Copied", status: "success" };
+  } catch (error: unknown) {
+    payloadCopyFeedback.value = {
+      columnIndex,
+      detail: `Copy failed: ${errorText({ error })}`,
+      status: "failure",
+    };
+  }
+  payloadCopyFeedbackTimeout = setTimeout(() => {
+    payloadCopyFeedback.value = undefined;
+    payloadCopyFeedbackTimeout = undefined;
+  }, 2_000);
+}
+
 function currentInspectionSession(): HizoFSAuthenticatedInspectionSession {
   const authenticatedSession = props.authenticatedSession;
   if (authenticatedSession !== undefined) return authenticatedSession;
@@ -191,6 +224,10 @@ function invalidateRecordTraversal(): void {
 function clearRecordTraversal(): void {
   invalidateRecordTraversal();
   recordTraversalColumns.value = [];
+}
+
+function clearNamespaceTraversal(): void {
+  namespaceViews.value = [];
 }
 
 function namespaceObservationForRecord({ sourceColumnIndex }: {
@@ -383,6 +420,28 @@ async function navigateNamespacePath({ pathComponents }: { pathComponents: reado
   await inspectNamespace();
 }
 
+function namespacePathPrefixes({ pathComponents }: {
+  pathComponents: readonly string[];
+}): readonly (readonly string[])[] {
+  return Array.from(
+    { length: pathComponents.length + 1 },
+    (_unused, length) => pathComponents.slice(0, length),
+  );
+}
+
+function matchingNamespacePrefixCount({ pathPrefixes }: {
+  pathPrefixes: readonly (readonly string[])[];
+}): number {
+  let count = 0;
+  while (
+    count < pathPrefixes.length
+    && namespaceViews.value[count]?.path === formatHizoFSInspectorNamespacePath({
+      pathComponents: pathPrefixes[count] ?? [],
+    })
+  ) count += 1;
+  return count;
+}
+
 async function inspectContainer(): Promise<void> {
   if (!canInspect.value) return;
   const sourceRevision = inspectionSourceRevision;
@@ -558,12 +617,52 @@ async function inspectNamespaceNavigationTarget({ target }: {
   await inspectNavigationTarget({ target });
 }
 
-async function inspectNamespacePageTarget({ target }: {
-  target: NonNullable<ReturnType<typeof createHizoFSNamespaceInspectionView>>["pageNavigationTargets"][number];
+function selectNamespaceColumn({ columnIndex }: { columnIndex: number }): void {
+  const selected = namespaceViews.value[columnIndex];
+  if (selected === undefined) return;
+  namespaceViews.value = namespaceViews.value.slice(0, columnIndex + 1);
+  namespacePath.value = selected.path;
+  traversalOrigin.value = NAMESPACE_TRAVERSAL_ORIGIN;
+  clearRecordTraversal();
+  emit("namespaceInspected", {
+    authorityMode: selected.authorityMode,
+    commitSequence: selected.commitSequence,
+    path: selected.path,
+  });
+}
+
+async function inspectNamespaceValidationReference({ reference }: {
+  reference: NonNullable<ReturnType<typeof createHizoFSNamespaceInspectionView>>["validationEvidence"]["uniqueHomeRecordReferences"][number];
 }): Promise<void> {
-  const { label, request, role: _role, ...unhandledTarget } = target;
-  unhandledTarget satisfies Record<PropertyKey, never>;
-  await inspectNamespaceNavigationTarget({ target: { label, request, targetType: "home_record" } });
+  const { occurrenceCount: _occurrenceCount, request, roles: _roles, ...unhandledReference } = reference;
+  unhandledReference satisfies Record<PropertyKey, never>;
+  await inspectNamespaceNavigationTarget({
+    target: {
+      label: `Validation Home Record ${request.homeSegmentId}:${request.homeOffset}`,
+      request,
+      targetType: "home_record",
+    },
+  });
+}
+
+function namespaceValidationReferenceSummary({ reference }: {
+  reference: NonNullable<ReturnType<typeof createHizoFSNamespaceInspectionView>>["validationEvidence"]["uniqueHomeRecordReferences"][number];
+}): string {
+  const { occurrenceCount, request, roles, ...unhandledReference } = reference;
+  unhandledReference satisfies Record<PropertyKey, never>;
+  const { frameLength, homeOffset, homeSegmentId, pageIsRoot, recordKind, ...unhandledRequest } = request;
+  unhandledRequest satisfies Record<PropertyKey, never>;
+  return `home ${homeSegmentId}:${homeOffset} · frame ${String(frameLength)} · kind ${String(recordKind)} · ${pageIsRoot ? "root" : "non-root"} · roles ${roles.join(", ")} · ${String(occurrenceCount)} events`;
+}
+
+function namespaceValidationEventSummary({ event }: {
+  event: NonNullable<ReturnType<typeof createHizoFSNamespaceInspectionView>>["validationEvidence"]["rawPageReadEvents"][number];
+}): string {
+  const { label, request, role, ...unhandledEvent } = event;
+  unhandledEvent satisfies Record<PropertyKey, never>;
+  const { frameLength, homeOffset, homeSegmentId, pageIsRoot, recordKind, ...unhandledRequest } = request;
+  unhandledRequest satisfies Record<PropertyKey, never>;
+  return `${label} · ${role} · home ${homeSegmentId}:${homeOffset} · frame ${String(frameLength)} · kind ${String(recordKind)} · ${pageIsRoot ? "root" : "non-root"}`;
 }
 
 function navigationTargetKey({ target }: {
@@ -654,20 +753,37 @@ async function inspectNamespace(): Promise<void> {
   let followLatestRequestedPath = false;
   loading.value = "namespace";
   errorMessage.value = undefined;
-  namespaceView.value = undefined;
   clearRecordTraversal();
   traversalOrigin.value = "namespace";
+  let retainedCount = 0;
   try {
-    const inspection = await currentInspectionSession().inspectNamespacePath({
-      maximumDirectoryEntries: 256,
-      maximumPages: 4096,
-      pathComponents: parseHizoFSInspectorNamespacePath({ path: requestedPath }),
-    });
-    if (inspectorPanelDisposed || sourceRevision !== inspectionSourceRevision) return;
-    followLatestRequestedPath = props.authenticatedSession !== undefined && namespacePath.value !== requestedPath;
-    if (followLatestRequestedPath) return;
-    const nextNamespaceView = createHizoFSNamespaceInspectionView({ inspection });
-    namespaceView.value = nextNamespaceView;
+    const requestedPathComponents = parseHizoFSInspectorNamespacePath({ path: requestedPath });
+    const pathPrefixes = namespacePathPrefixes({ pathComponents: requestedPathComponents });
+    retainedCount = Math.min(
+      matchingNamespacePrefixCount({ pathPrefixes }),
+      pathPrefixes.length - 1,
+    );
+    const nextNamespaceViews = namespaceViews.value.slice(0, retainedCount);
+    for (const pathComponents of pathPrefixes.slice(retainedCount)) {
+      const inspection = await currentInspectionSession().inspectNamespacePath({
+        maximumDirectoryEntries: 256,
+        maximumPages: 4096,
+        pathComponents,
+      });
+      if (inspectorPanelDisposed || sourceRevision !== inspectionSourceRevision) return;
+      followLatestRequestedPath = props.authenticatedSession !== undefined && namespacePath.value !== requestedPath;
+      if (followLatestRequestedPath) return;
+      const nextView = createHizoFSNamespaceInspectionView({ inspection });
+      const expectedPath = formatHizoFSInspectorNamespacePath({ pathComponents });
+      if (nextView.path !== expectedPath) {
+        throw new Error(`HizoFS namespace inspection returned ${nextView.path} for ${expectedPath}`);
+      }
+      nextNamespaceViews.push(nextView);
+      namespaceViews.value = [...nextNamespaceViews];
+    }
+    const nextNamespaceView = nextNamespaceViews.at(-1);
+    if (nextNamespaceView === undefined) throw new Error("HizoFS namespace traversal did not produce a root observation");
+    namespaceViews.value = [...nextNamespaceViews];
     emit("namespaceInspected", {
       authorityMode: nextNamespaceView.authorityMode,
       commitSequence: nextNamespaceView.commitSequence,
@@ -676,7 +792,10 @@ async function inspectNamespace(): Promise<void> {
   } catch (error) {
     if (!inspectorPanelDisposed && sourceRevision === inspectionSourceRevision) {
       followLatestRequestedPath = props.authenticatedSession !== undefined && namespacePath.value !== requestedPath;
-      if (!followLatestRequestedPath) errorMessage.value = errorText({ error });
+      if (!followLatestRequestedPath) {
+        namespaceViews.value = namespaceViews.value.slice(0, retainedCount);
+        errorMessage.value = errorText({ error });
+      }
     }
   } finally {
     clearOneShotPassphrase();
@@ -691,7 +810,7 @@ watch(
     inspectionSourceRevision += 1;
     authenticatedNamespaceInspectionQueued = false;
     containerView.value = undefined;
-    namespaceView.value = undefined;
+    clearNamespaceTraversal();
     selectedFrame.value = undefined;
     traversalOrigin.value = undefined;
     clearRecordTraversal();
@@ -741,8 +860,8 @@ defineExpose({
   <div :tw-class="props.embeddedInWorkbench ? 'contents' : 'min-h-full'">
     <section aria-labelledby="hizofs-physical-inspector-title" :tw-class="props.embeddedInWorkbench ? 'contents' : 'flex min-h-full w-full flex-col overflow-hidden bg-white dark:bg-gray-900'">
       <div
-        :data-testid="props.embeddedInWorkbench ? 'hizofs-physical-inspector-embedded-control-column' : undefined"
-        :tw-class="props.embeddedInWorkbench ? 'flex h-full w-[440px] shrink-0 flex-col border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900' : 'contents'"
+        v-if="!props.embeddedInWorkbench"
+        tw-class="contents"
       >
         <header tw-class="flex shrink-0 items-center gap-3 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
           <SearchIcon tw-class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
@@ -752,7 +871,7 @@ defineExpose({
           </div>
         </header>
 
-        <div :tw-class="props.embeddedInWorkbench ? 'flex shrink-0 flex-col gap-2 border-b border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-700 dark:bg-gray-950' : 'grid shrink-0 gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 md:grid-cols-[minmax(180px,0.7fr)_minmax(220px,1fr)_auto_auto] dark:border-gray-700 dark:bg-gray-950'">
+        <div :tw-class="props.embeddedInWorkbench ? 'flex shrink-0 items-end gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-950' : 'grid shrink-0 gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 md:grid-cols-[minmax(180px,0.7fr)_minmax(220px,1fr)_auto_auto] dark:border-gray-700 dark:bg-gray-950'">
           <details v-if="requiresPassphrase" data-testid="hizofs-physical-inspector-credential-fallback" tw-class="border border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20">
             <summary tw-class="cursor-pointer px-2.5 py-2 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Temporary credential fallback</summary>
             <div tw-class="border-t border-amber-200 px-2.5 py-2 dark:border-amber-900">
@@ -763,14 +882,14 @@ defineExpose({
               </label>
             </div>
           </details>
-          <label tw-class="min-w-0 text-xs font-medium text-gray-700 dark:text-gray-200">
+          <label :tw-class="props.embeddedInWorkbench ? 'min-w-[180px] flex-1 text-[10px] font-medium text-gray-700 dark:text-gray-200' : 'min-w-0 text-xs font-medium text-gray-700 dark:text-gray-200'">
             Namespace path
             <input v-model="namespacePath" data-testid="hizofs-physical-inspector-path" type="text" spellcheck="false" tw-class="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 font-mono text-[10px] dark:border-gray-600 dark:bg-gray-950" />
           </label>
           <button type="button" data-testid="hizofs-physical-inspector-read-container" :disabled="!canInspect" tw-class="self-end rounded border border-gray-300 px-2.5 py-1.5 text-[10px] font-medium hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-900" @click="inspectContainer">
             <LoaderCircleIcon v-if="loading === 'container'" tw-class="mr-1 inline h-3.5 w-3.5 animate-spin" />
             <RefreshCwIcon v-else tw-class="mr-1 inline h-3.5 w-3.5" />
-            Read physical state
+            {{ containerView === undefined ? 'Read physical state' : 'Refresh physical state' }}
           </button>
           <button type="button" data-testid="hizofs-physical-inspector-read-namespace" :disabled="!canInspect" tw-class="self-end rounded bg-emerald-600 px-2.5 py-1.5 text-[10px] font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50" @click="inspectNamespace">
             <LoaderCircleIcon v-if="loading === 'namespace'" tw-class="mr-1 inline h-3.5 w-3.5 animate-spin" />
@@ -789,11 +908,13 @@ defineExpose({
         :tw-class="props.embeddedInWorkbench ? 'contents' : 'min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-gray-100 dark:bg-gray-950'"
       >
         <div v-if="containerView === undefined && namespaceView === undefined" data-testid="hizofs-physical-inspector-empty-columns" :tw-class="props.embeddedInWorkbench ? 'contents' : 'flex h-full min-w-max'">
-          <section tw-class="h-full w-[440px] shrink-0 border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-            <div tw-class="border-b border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-950/20">
-              <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Persisted structure</div>
-              <div tw-class="mt-0.5 font-mono text-[9px] text-gray-500 dark:text-gray-400">Not loaded · read physical state to resolve current authority</div>
+          <section data-workbench-inspector-surface="physical-authority" tw-class="h-full w-[440px] shrink-0 border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+            <div tw-class="flex items-center gap-3 border-b border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-950/20">
+              <div tw-class="min-w-0 flex-1"><div tw-class="text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Persisted structure</div><div tw-class="mt-0.5 font-mono text-[9px] text-gray-500 dark:text-gray-400">Not loaded</div></div>
+              <button v-if="props.embeddedInWorkbench" type="button" data-testid="hizofs-physical-inspector-read-container" title="Read physical state" :disabled="!canInspect" tw-class="shrink-0 border border-emerald-300 px-2 py-1 text-[9px] font-medium text-emerald-800 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-gray-900" @click="inspectContainer"><LoaderCircleIcon v-if="loading === 'container'" tw-class="mr-1 inline h-3 w-3 animate-spin" /><RefreshCwIcon v-else tw-class="mr-1 inline h-3 w-3" />Read physical state</button>
             </div>
+            <details v-if="props.embeddedInWorkbench && requiresPassphrase" data-testid="hizofs-physical-inspector-credential-fallback" tw-class="border-b border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20"><summary tw-class="cursor-pointer px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">One-shot inspection credential</summary><label tw-class="block border-t border-amber-200 px-3 py-2 text-[10px] font-medium text-gray-700 dark:border-amber-900 dark:text-gray-200">Passphrase<input v-model="passphrase" data-testid="hizofs-physical-inspector-passphrase" type="password" autocomplete="off" tw-class="mt-1 w-full border border-gray-300 bg-white px-2 py-1.5 font-mono text-[10px] dark:border-gray-600 dark:bg-gray-950" /></label></details>
+            <div v-if="props.embeddedInWorkbench && errorMessage" data-testid="hizofs-physical-inspector-error" tw-class="border-b border-red-200 bg-red-50 px-3 py-2 font-mono text-[10px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{{ errorMessage }}</div>
             <div tw-class="divide-y divide-gray-100 dark:divide-gray-800">
               <div v-for="label in ['Unlock authority', 'Superblock authority', 'Active Commit', 'Root directory / Inode Table']" :key="label" tw-class="flex items-center gap-3 px-3 py-3 text-xs">
                 <span tw-class="min-w-0 flex-1 text-gray-700 dark:text-gray-300">{{ label }}</span>
@@ -801,26 +922,43 @@ defineExpose({
               </div>
             </div>
           </section>
-          <section tw-class="h-full w-[440px] shrink-0 border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-            <div tw-class="border-b border-gray-200 px-3 py-2 dark:border-gray-700">
-              <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-gray-500">Reference traversal</div>
-              <div tw-class="mt-0.5 font-mono text-[9px] text-gray-400">No persisted record selected</div>
-            </div>
+          <section data-workbench-inspector-surface="namespace" tw-class="h-full w-[440px] shrink-0 border-r border-blue-200 bg-white dark:border-blue-900 dark:bg-gray-900">
             <div tw-class="border-b border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-900 dark:bg-blue-950/20">
-              <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Namespace bridge</div>
-              <div tw-class="mt-1 font-mono text-[10px] text-gray-600 dark:text-gray-300">{{ namespacePath }}</div>
+              <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Logical traversal</div>
+              <div tw-class="mt-0.5 font-mono text-[9px] text-gray-500 dark:text-gray-400">No logical path inspected</div>
             </div>
+            <form v-if="props.embeddedInWorkbench" data-testid="hizofs-physical-inspector-path-toolbar" tw-class="flex items-end gap-2 border-b border-blue-100 px-3 py-2.5 dark:border-blue-900" @submit.prevent="inspectNamespace">
+              <label tw-class="min-w-0 flex-1 text-[9px] font-medium text-gray-600 dark:text-gray-300">Jump to path<input v-model="namespacePath" data-testid="hizofs-physical-inspector-path" type="text" spellcheck="false" tw-class="mt-1 w-full min-w-0 border border-gray-300 bg-white px-2 py-1.5 font-mono text-[10px] dark:border-gray-600 dark:bg-gray-950" /></label>
+              <button type="submit" data-testid="hizofs-physical-inspector-read-namespace" title="Inspect path" aria-label="Inspect path" :disabled="!canInspect" tw-class="shrink-0 border border-blue-300 p-1.5 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/30"><LoaderCircleIcon v-if="loading === 'namespace'" tw-class="h-3.5 w-3.5 animate-spin" /><SearchIcon v-else tw-class="h-3.5 w-3.5" /></button>
+            </form>
             <div tw-class="px-3 py-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
-              {{ requiresPassphrase ? 'Enter the one-shot credential above, then load physical authority or inspect this namespace path.' : 'Load physical authority or inspect this namespace path to open authenticated record columns.' }}
+              Select a directory entry to extend the column chain, or use the path jump to construct it from root.
             </div>
           </section>
         </div>
 
         <div v-else :tw-class="props.embeddedInWorkbench ? 'contents' : 'flex h-full min-w-max'">
+          <section v-if="containerView === undefined" data-workbench-inspector-surface="physical-authority" tw-class="h-full w-[440px] shrink-0 border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+            <div tw-class="flex items-center gap-3 border-b border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-950/20">
+              <div tw-class="min-w-0 flex-1"><div tw-class="text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Persisted structure</div><div tw-class="mt-0.5 font-mono text-[9px] text-gray-500 dark:text-gray-400">Not loaded</div></div>
+              <button v-if="props.embeddedInWorkbench" type="button" data-testid="hizofs-physical-inspector-read-container" title="Read physical state" :disabled="!canInspect" tw-class="shrink-0 border border-emerald-300 px-2 py-1 text-[9px] font-medium text-emerald-800 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-gray-900" @click="inspectContainer"><LoaderCircleIcon v-if="loading === 'container'" tw-class="mr-1 inline h-3 w-3 animate-spin" /><RefreshCwIcon v-else tw-class="mr-1 inline h-3 w-3" />Read physical state</button>
+            </div>
+            <details v-if="props.embeddedInWorkbench && requiresPassphrase" data-testid="hizofs-physical-inspector-credential-fallback" tw-class="border-b border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20"><summary tw-class="cursor-pointer px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">One-shot inspection credential</summary><label tw-class="block border-t border-amber-200 px-3 py-2 text-[10px] font-medium text-gray-700 dark:border-amber-900 dark:text-gray-200">Passphrase<input v-model="passphrase" data-testid="hizofs-physical-inspector-passphrase" type="password" autocomplete="off" tw-class="mt-1 w-full border border-gray-300 bg-white px-2 py-1.5 font-mono text-[10px] dark:border-gray-600 dark:bg-gray-950" /></label></details>
+            <div v-if="props.embeddedInWorkbench && errorMessage" data-testid="hizofs-physical-inspector-error" tw-class="border-b border-red-200 bg-red-50 px-3 py-2 font-mono text-[10px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{{ errorMessage }}</div>
+            <div tw-class="divide-y divide-gray-100 dark:divide-gray-800">
+              <div v-for="label in ['Unlock authority', 'Superblock authority', 'Active Commit', 'Root directory / Inode Table']" :key="label" tw-class="flex items-center gap-3 px-3 py-3 text-xs">
+                <span tw-class="min-w-0 flex-1 text-gray-700 dark:text-gray-300">{{ label }}</span>
+                <span tw-class="font-mono text-[9px] text-gray-400">not loaded</span>
+              </div>
+            </div>
+          </section>
           <div v-if="containerView" data-testid="hizofs-physical-inspector-container" tw-class="flex h-full shrink-0">
             <section data-workbench-inspector-surface="physical-authority" tw-class="h-full w-[440px] shrink-0 overflow-y-auto border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-              <div tw-class="border-b border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-950/20"><h3 tw-class="text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Authority copies</h3><p tw-class="mt-0.5 font-mono text-[9px] text-gray-500 dark:text-gray-400">Unlock / Superblock selection and exact persisted DTOs</p></div>
+              <div tw-class="flex items-center gap-3 border-b border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-950/20"><div tw-class="min-w-0 flex-1"><h3 tw-class="text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Persisted structure</h3><p tw-class="mt-0.5 font-mono text-[9px] text-gray-500 dark:text-gray-400">Loaded · authenticated physical observation</p></div><button v-if="props.embeddedInWorkbench" type="button" data-testid="hizofs-physical-inspector-read-container" title="Refresh physical state" :disabled="!canInspect" tw-class="shrink-0 border border-emerald-300 px-2 py-1 text-[9px] font-medium text-emerald-800 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-gray-900" @click="inspectContainer"><LoaderCircleIcon v-if="loading === 'container'" tw-class="mr-1 inline h-3 w-3 animate-spin" /><RefreshCwIcon v-else tw-class="mr-1 inline h-3 w-3" />Refresh</button></div>
+              <details v-if="props.embeddedInWorkbench && requiresPassphrase" data-testid="hizofs-physical-inspector-credential-fallback" tw-class="border-b border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20"><summary tw-class="cursor-pointer px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">One-shot inspection credential</summary><label tw-class="block border-t border-amber-200 px-3 py-2 text-[10px] font-medium text-gray-700 dark:border-amber-900 dark:text-gray-200">Passphrase<input v-model="passphrase" data-testid="hizofs-physical-inspector-passphrase" type="password" autocomplete="off" tw-class="mt-1 w-full border border-gray-300 bg-white px-2 py-1.5 font-mono text-[10px] dark:border-gray-600 dark:bg-gray-950" /></label></details>
+              <div v-if="props.embeddedInWorkbench && errorMessage" data-testid="hizofs-physical-inspector-error" tw-class="border-b border-red-200 bg-red-50 px-3 py-2 font-mono text-[10px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{{ errorMessage }}</div>
               <div tw-class="divide-y divide-gray-100 border-b border-gray-200 dark:divide-gray-800 dark:border-gray-700">
+                <div tw-class="px-3 py-2.5"><div tw-class="text-[10px] font-semibold uppercase text-gray-400">Authority copies</div><div tw-class="mt-1 font-mono text-[9px] text-gray-500 dark:text-gray-400">Unlock / Superblock selection and exact persisted DTOs</div></div>
                 <div tw-class="px-3 py-2.5"><div tw-class="text-[10px] font-semibold uppercase text-gray-400">Unlock selection</div><div tw-class="mt-1 break-words font-mono text-xs">{{ containerView.unlockSelectionSummary }}</div></div>
                 <div tw-class="px-3 py-2.5">
                   <div tw-class="text-[10px] font-semibold uppercase text-gray-400">Superblock selection</div>
@@ -1026,60 +1164,44 @@ defineExpose({
             </section>
           </div>
 
-          <section v-if="namespaceView" data-testid="hizofs-physical-inspector-namespace" data-workbench-inspector-surface="namespace" tw-class="h-full w-[440px] shrink-0 overflow-y-auto border-r border-blue-200 bg-white dark:border-blue-900 dark:bg-gray-900">
-            <div tw-class="border-b border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-900 dark:bg-blue-950/20"><div tw-class="text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Derived namespace view</div><div tw-class="mt-0.5 font-mono text-[9px] text-gray-500 dark:text-gray-400">Authenticated reconstruction from persisted records</div></div>
+          <section
+            v-for="(namespaceColumn, namespaceColumnIndex) in namespaceViews"
+            :key="`${namespaceColumn.commitSequence}:${namespaceColumn.path}`"
+            :data-testid="namespaceColumnIndex === namespaceViews.length - 1 ? 'hizofs-physical-inspector-namespace' : 'hizofs-physical-inspector-namespace-ancestor'"
+            :data-workbench-inspector-surface="namespaceColumnIndex === namespaceViews.length - 1 ? 'namespace' : undefined"
+            :data-namespace-column-path="namespaceColumn.path"
+            tw-class="h-full w-[440px] shrink-0 overflow-y-auto border-r border-blue-200 bg-white dark:border-blue-900 dark:bg-gray-900"
+          >
+            <form v-if="props.embeddedInWorkbench && namespaceColumnIndex === namespaceViews.length - 1" data-testid="hizofs-physical-inspector-path-toolbar" tw-class="flex items-end gap-2 border-b border-blue-100 px-3 py-2 dark:border-blue-900" @submit.prevent="inspectNamespace">
+              <label tw-class="min-w-0 flex-1 text-[9px] font-medium text-gray-600 dark:text-gray-300">Jump to path<input v-model="namespacePath" data-testid="hizofs-physical-inspector-path" type="text" spellcheck="false" tw-class="mt-1 w-full min-w-0 border border-gray-300 bg-white px-2 py-1.5 font-mono text-[10px] dark:border-gray-600 dark:bg-gray-950" /></label>
+              <button type="submit" data-testid="hizofs-physical-inspector-read-namespace" title="Inspect path" aria-label="Inspect path" :disabled="!canInspect" tw-class="shrink-0 border border-blue-300 p-1.5 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/30"><LoaderCircleIcon v-if="loading === 'namespace'" tw-class="h-3.5 w-3.5 animate-spin" /><SearchIcon v-else tw-class="h-3.5 w-3.5" /></button>
+            </form>
+            <button type="button" data-testid="hizofs-physical-inspector-select-namespace-column" tw-class="block w-full border-b border-blue-200 bg-blue-50 px-3 py-2 text-left dark:border-blue-900 dark:bg-blue-950/20" @click="selectNamespaceColumn({ columnIndex: namespaceColumnIndex })"><span tw-class="block text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Derived namespace view</span><span tw-class="mt-0.5 block truncate font-mono text-[10px] text-gray-700 dark:text-gray-300">{{ namespaceColumn.path }}</span><span tw-class="mt-0.5 block font-mono text-[9px] text-gray-500 dark:text-gray-400">Authenticated reconstruction from persisted records</span></button>
             <div tw-class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 px-3 py-2.5 dark:border-gray-800">
               <div>
                 <div tw-class="flex flex-wrap items-center gap-2">
-                  <h3 tw-class="text-sm font-semibold text-gray-900 dark:text-gray-100">Decrypted namespace {{ namespaceView.path }}</h3>
-                  <button
-                    v-if="namespaceView.parentPathComponents !== undefined"
-                    type="button"
-                    data-testid="hizofs-physical-inspector-parent-path"
-                    tw-class="rounded border border-gray-200 px-2 py-1 font-mono text-[10px] hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
-                    @click="navigateNamespacePath({ pathComponents: namespaceView.parentPathComponents })"
-                  >
-                    parent {{ namespaceView.parentPath }}
-                  </button>
+                  <h3 tw-class="text-sm font-semibold text-gray-900 dark:text-gray-100">Decrypted namespace {{ namespaceColumn.path }}</h3>
                 </div>
-                <p tw-class="mt-1 font-mono text-xs text-gray-500">{{ namespaceView.authoritySummary }} · {{ namespaceView.resourceSummary }}</p>
+                <p tw-class="mt-1 font-mono text-xs text-gray-500">{{ namespaceColumn.authoritySummary }}</p>
               </div>
-              <div tw-class="font-mono text-xs text-gray-600 dark:text-gray-300">{{ namespaceView.inodeSummary }}</div>
+              <div tw-class="font-mono text-xs text-gray-600 dark:text-gray-300">{{ namespaceColumn.inodeSummary }}</div>
             </div>
             <dl data-testid="hizofs-physical-inspector-inode-fields" tw-class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 border-b border-gray-100 px-3 py-2.5 font-mono text-[10px] dark:border-gray-800">
-              <dt tw-class="text-gray-400">Commit sequence</dt><dd>{{ namespaceView.commitSequence }}</dd>
-              <dt tw-class="text-gray-400">Inode number</dt><dd>{{ namespaceView.inodeNumber }}</dd>
-              <dt tw-class="text-gray-400">Inode revision</dt><dd>{{ namespaceView.inodeRevision }}</dd>
-              <dt tw-class="text-gray-400">Inode kind</dt><dd>{{ namespaceView.inodeKind }}</dd>
-              <dt tw-class="text-gray-400">Created at</dt><dd>{{ namespaceView.createdAt ?? 'unavailable' }}</dd>
-              <dt tw-class="text-gray-400">Modified at</dt><dd>{{ namespaceView.modifiedAt ?? 'unavailable' }}</dd>
-              <dt tw-class="text-gray-400">File size</dt><dd>{{ namespaceView.fileSize ?? 'unavailable' }}</dd>
-              <dt tw-class="text-gray-400">Page reads</dt><dd>{{ namespaceView.pagesRead }}<span v-if="namespaceView.pageReadsTruncated"> · reported references truncated</span></dd>
+              <dt tw-class="text-gray-400">Commit sequence</dt><dd>{{ namespaceColumn.commitSequence }}</dd>
+              <dt tw-class="text-gray-400">Inode number</dt><dd>{{ namespaceColumn.inodeNumber }}</dd>
+              <dt tw-class="text-gray-400">Inode revision</dt><dd>{{ namespaceColumn.inodeRevision }}</dd>
+              <dt tw-class="text-gray-400">Inode kind</dt><dd>{{ namespaceColumn.inodeKind }}</dd>
+              <dt tw-class="text-gray-400">Created at</dt><dd>{{ namespaceColumn.createdAt ?? 'unavailable' }}</dd>
+              <dt tw-class="text-gray-400">Modified at</dt><dd>{{ namespaceColumn.modifiedAt ?? 'unavailable' }}</dd>
+              <dt tw-class="text-gray-400">File size</dt><dd>{{ namespaceColumn.fileSize ?? 'unavailable' }}</dd>
             </dl>
-            <div v-if="namespaceView.directorySummary" tw-class="text-xs text-gray-500">{{ namespaceView.directorySummary }}</div>
-            <div v-if="namespaceView.pageNavigationTargets.length > 0" tw-class="border-b border-gray-100 px-3 py-2.5 dark:border-gray-800">
-              <div tw-class="text-[10px] font-semibold uppercase text-gray-400">Authenticated page reads</div>
-              <div tw-class="mt-1 text-xs text-gray-500">{{ namespaceView.pageNavigationSummary }}</div>
-              <div tw-class="mt-2 flex flex-wrap gap-1">
-                <button
-                  v-for="target in namespaceView.pageNavigationTargets"
-                  :key="`${target.label}:${target.request.homeSegmentId}:${target.request.homeOffset}`"
-                  type="button"
-                  data-testid="hizofs-physical-inspector-namespace-page"
-                  :disabled="!canInspect"
-                  tw-class="rounded border border-emerald-300 px-2 py-1 text-[10px] font-medium text-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
-                  @click="inspectNamespacePageTarget({ target })"
-                >
-                  {{ target.label }} · {{ target.role }} · {{ target.request.homeSegmentId }}:{{ target.request.homeOffset }} · frame {{ target.request.frameLength }} · kind {{ target.request.recordKind }} · {{ target.request.pageIsRoot ? 'root' : 'non-root' }}
-                </button>
-              </div>
-            </div>
-            <div v-if="namespaceView.symlinkTarget" tw-class="border-b border-gray-100 px-3 py-2.5 font-mono text-[10px] dark:border-gray-800">→ {{ namespaceView.symlinkTarget }}</div>
-            <section v-if="namespaceView.directoryEntries.length > 0" tw-class="border-b border-gray-200 dark:border-gray-700">
+            <div v-if="namespaceColumn.directorySummary" tw-class="border-b border-gray-100 px-3 py-2 text-xs text-gray-500 dark:border-gray-800">{{ namespaceColumn.directorySummary }}</div>
+            <div v-if="namespaceColumn.symlinkTarget" tw-class="border-b border-gray-100 px-3 py-2.5 font-mono text-[10px] dark:border-gray-800">→ {{ namespaceColumn.symlinkTarget }}</div>
+            <section v-if="namespaceColumn.directoryEntries.length > 0" tw-class="border-b border-gray-200 dark:border-gray-700">
               <div tw-class="border-b border-blue-100 bg-blue-50 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-300">Derived directory entries</div>
               <div tw-class="divide-y divide-gray-100 dark:divide-gray-800">
                 <button
-                  v-for="entry in namespaceView.directoryEntries"
+                  v-for="entry in namespaceColumn.directoryEntries"
                   :key="entry.name"
                   type="button"
                   data-testid="hizofs-physical-inspector-namespace-row"
@@ -1094,6 +1216,50 @@ defineExpose({
                 </button>
               </div>
             </section>
+          </section>
+
+          <section v-if="namespaceView !== undefined" data-testid="hizofs-physical-inspector-validation-evidence" data-workbench-inspector-surface="validation-evidence" tw-class="h-full w-[440px] shrink-0 overflow-y-auto border-r border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-900">
+            <div tw-class="border-b border-gray-300 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-950">
+              <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Inspection validation evidence</div>
+              <div tw-class="mt-0.5 truncate font-mono text-[9px] text-gray-500 dark:text-gray-400">Commit {{ namespaceView.commitSequence }} · requested path {{ namespaceView.path }}</div>
+              <div tw-class="mt-0.5 font-mono text-[9px] text-amber-700 dark:text-amber-300">Runtime authenticated read activity · not persisted structure</div>
+            </div>
+            <dl data-testid="hizofs-physical-inspector-validation-summary" tw-class="grid grid-cols-[minmax(0,1fr)_max-content] gap-x-3 gap-y-1 border-b border-gray-200 px-3 py-2.5 font-mono text-[10px] dark:border-gray-700">
+              <dt tw-class="text-gray-500">Total authenticated page-read events</dt><dd>{{ namespaceView.validationEvidence.totalPageReadEventCount }}</dd>
+              <dt tw-class="text-gray-500">Recorded raw trace events</dt><dd>{{ namespaceView.validationEvidence.recordedPageReadEventCount }}</dd>
+              <dt tw-class="text-gray-500">Unique Home Record References</dt><dd>{{ namespaceView.validationEvidence.uniqueHomeRecordReferences.length }}</dd>
+              <dt tw-class="text-gray-500">Repeated events in recorded trace</dt><dd>{{ namespaceView.validationEvidence.repeatedPageReadEventCount }}</dd>
+              <dt tw-class="text-gray-500">Trace bound</dt><dd>{{ namespaceView.validationEvidence.traceTruncated ? 'truncated' : 'complete' }}</dd>
+            </dl>
+            <details data-testid="hizofs-physical-inspector-validation-references" tw-class="border-b border-gray-200 dark:border-gray-700">
+              <summary tw-class="cursor-pointer px-3 py-2 text-[10px] font-semibold text-gray-700 dark:text-gray-200">Unique Home Record References (recorded trace)</summary>
+              <div tw-class="divide-y divide-gray-100 border-t border-gray-200 dark:divide-gray-800 dark:border-gray-700">
+                <button v-for="reference in namespaceView.validationEvidence.uniqueHomeRecordReferences" :key="`${reference.request.homeSegmentId}:${reference.request.homeOffset}:${reference.request.frameLength}:${reference.request.recordKind}`" type="button" data-testid="hizofs-physical-inspector-validation-reference" :disabled="!canInspect" tw-class="block w-full px-3 py-2 text-left font-mono text-[9px] leading-4 text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800" @click="inspectNamespaceValidationReference({ reference })">{{ namespaceValidationReferenceSummary({ reference }) }}</button>
+              </div>
+            </details>
+            <details data-testid="hizofs-physical-inspector-validation-raw-trace" tw-class="border-b border-gray-200 dark:border-gray-700">
+              <summary tw-class="cursor-pointer px-3 py-2 text-[10px] font-semibold text-gray-700 dark:text-gray-200">Raw page-read event trace</summary>
+              <ol tw-class="divide-y divide-gray-100 border-t border-gray-200 dark:divide-gray-800 dark:border-gray-700">
+                <li v-for="event in namespaceView.validationEvidence.rawPageReadEvents" :key="event.label" data-testid="hizofs-physical-inspector-validation-event" tw-class="break-all px-3 py-2 font-mono text-[9px] leading-4 text-gray-600 dark:text-gray-300">{{ namespaceValidationEventSummary({ event }) }}</li>
+              </ol>
+              <div v-if="namespaceView.validationEvidence.traceTruncated" tw-class="border-t border-amber-200 bg-amber-50 px-3 py-2 font-mono text-[9px] text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-300">Raw trace is bounded: {{ namespaceView.validationEvidence.recordedPageReadEventCount }} of {{ namespaceView.validationEvidence.totalPageReadEventCount }} events are shown.</div>
+            </details>
+          </section>
+
+          <section v-if="recordTraversalColumns.length === 0" :data-workbench-inspector-surface="namespaceViews.length === 0 ? 'namespace' : 'reference-destination'" :tw-class="namespaceViews.length === 0 ? 'h-full w-[440px] shrink-0 border-r border-blue-200 bg-white dark:border-blue-900 dark:bg-gray-900' : 'h-full w-[440px] shrink-0 border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900'">
+            <div v-if="namespaceViews.length === 0" tw-class="border-b border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-900 dark:bg-blue-950/20">
+              <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">Logical traversal</div>
+              <div tw-class="mt-0.5 font-mono text-[9px] text-gray-500 dark:text-gray-400">No logical path inspected</div>
+            </div>
+            <form v-if="props.embeddedInWorkbench && namespaceViews.length === 0" data-testid="hizofs-physical-inspector-path-toolbar" tw-class="flex items-end gap-2 border-b border-blue-100 px-3 py-2.5 dark:border-blue-900" @submit.prevent="inspectNamespace">
+              <label tw-class="min-w-0 flex-1 text-[9px] font-medium text-gray-600 dark:text-gray-300">Jump to path<input v-model="namespacePath" data-testid="hizofs-physical-inspector-path" type="text" spellcheck="false" tw-class="mt-1 w-full min-w-0 border border-gray-300 bg-white px-2 py-1.5 font-mono text-[10px] dark:border-gray-600 dark:bg-gray-950" /></label>
+              <button type="submit" data-testid="hizofs-physical-inspector-read-namespace" title="Inspect path" aria-label="Inspect path" :disabled="!canInspect" tw-class="shrink-0 border border-blue-300 p-1.5 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/30"><LoaderCircleIcon v-if="loading === 'namespace'" tw-class="h-3.5 w-3.5 animate-spin" /><SearchIcon v-else tw-class="h-3.5 w-3.5" /></button>
+            </form>
+            <div v-if="namespaceViews.length > 0" tw-class="border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+              <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-gray-500">Reference traversal</div>
+              <div tw-class="mt-0.5 font-mono text-[9px] text-gray-400">No persisted record selected</div>
+            </div>
+            <div tw-class="px-3 py-3 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ namespaceViews.length === 0 ? 'Select a directory entry to extend the column chain, or use the path jump to construct it from root.' : 'Select an authenticated page or record reference from a logical or physical column. The source columns remain to the left.' }}</div>
           </section>
 
           <section v-if="recordTraversalColumns.length > 0" data-testid="hizofs-physical-inspector-record-traversal" tw-class="flex h-full shrink-0">
@@ -1175,14 +1341,34 @@ defineExpose({
                     </div>
                     <div v-else tw-class="px-3 py-3 font-mono text-[10px] text-gray-400">No outgoing persisted reference is exposed by this decoded record.</div>
                   </section><section tw-class="border-b border-gray-200 dark:border-gray-700">
-                    <div
-                      :data-testid="columnIndex === recordTraversalColumns.length - 1 ? 'hizofs-physical-inspector-record-payload-label' : undefined"
-                      tw-class="border-b border-gray-200 bg-emerald-50 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-gray-700 dark:bg-emerald-950/20 dark:text-emerald-300"
-                    >Exact decoded representation · {{ column.view.payloadDocumentLabel }}</div>
-                    <pre
+                    <div tw-class="flex min-h-8 items-center gap-2 border-b border-gray-200 bg-emerald-50 px-3 py-1.5 dark:border-gray-700 dark:bg-emerald-950/20">
+                      <div
+                        :data-testid="columnIndex === recordTraversalColumns.length - 1 ? 'hizofs-physical-inspector-record-payload-label' : undefined"
+                        tw-class="min-w-0 flex-1 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300"
+                      >Exact decoded representation · {{ column.view.payloadDocumentLabel }}</div>
+                      <span
+                        aria-live="polite"
+                        :data-testid="payloadCopyFeedback?.columnIndex === columnIndex ? 'hizofs-physical-inspector-record-payload-copy-status' : undefined"
+                        :title="payloadCopyFeedback?.columnIndex === columnIndex ? payloadCopyFeedback.detail : undefined"
+                        tw-class="w-16 shrink-0 truncate text-right font-mono text-[9px] text-gray-500 dark:text-gray-400"
+                      >{{ payloadCopyFeedback?.columnIndex === columnIndex ? payloadCopyFeedback.status === 'success' ? 'Copied' : 'Copy failed' : '' }}</span>
+                      <button
+                        type="button"
+                        aria-label="Copy exact decoded payload JSON"
+                        data-testid="hizofs-physical-inspector-copy-record-payload"
+                        title="Copy exact decoded payload JSON"
+                        tw-class="shrink-0 rounded p-1 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
+                        @click="copyDecodedPayload({ columnIndex, payloadJson: column.view.payloadJson })"
+                      ><CopyIcon tw-class="h-3.5 w-3.5" /></button>
+                    </div>
+                    <JsonCodeView
                       :data-testid="columnIndex === recordTraversalColumns.length - 1 ? 'hizofs-physical-inspector-record-payload' : undefined"
-                      tw-class="max-h-80 overflow-auto whitespace-pre-wrap break-all p-3 font-mono text-[10px]"
-                    >{{ column.view.payloadJson }}</pre>
+                      :source="column.view.payloadJson"
+                      display-mode="raw"
+                      height-mode="content"
+                      overflow-mode="wrap"
+                      tw-class="max-h-80 overflow-auto"
+                    />
                   </section>
                   <section data-testid="hizofs-physical-inspector-record-plaintext-preview" tw-class="border-b border-gray-200 dark:border-gray-700">
                     <div tw-class="border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-950">Authenticated plaintext preview</div>

@@ -15,6 +15,10 @@ import type {
   HizoFSDebugWorkspaceAuthority,
   HizoFSDebugWorkspaceProduct,
 } from "@/features/debug-hizofs/logic/debug-workspace";
+import {
+  createDefaultHizoFSComprehensiveFixtureThresholds,
+  generateHizoFSComprehensiveFixture,
+} from "@/features/debug-hizofs/benchmark/comprehensive-workload";
 
 const TEMPORARY_WORKSPACE_RUNTIME_POLICY: HizoFSRuntimePolicy = Object.freeze({
   lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
@@ -197,6 +201,11 @@ function createHizoFSDebugWorkspaceAuthorityWith({ createRuntime }: {
         dispose: runtime.dispose,
         fileSystemId: runtime.fileSystemId,
         fileSystemSession: runtime.fileSystemSession,
+        generateComprehensiveFixture: async ({ onProgress }: Parameters<HizoFSDebugWorkspaceProduct['generateComprehensiveFixture']>[0]) => await generateHizoFSComprehensiveFixture({
+          onProgress,
+          root: runtime.fileSystemSession.root,
+          thresholds: createDefaultHizoFSComprehensiveFixtureThresholds(),
+        }),
       });
     },
   });

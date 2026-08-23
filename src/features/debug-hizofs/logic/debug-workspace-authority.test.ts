@@ -5,7 +5,9 @@ import type { StorageFileSystemSession } from '@/00-storage/service/storage-file
 import type { HizoFSAuthenticatedInspectionSession } from '@/00-storage/service/hizofs/inspection';
 import {
   createHizoFSDebugWorkspace,
+  deleteStaleHizoFSDebugWorkspaceResidue,
   destroyHizoFSDebugWorkspace,
+  generateHizoFSDebugWorkspaceComprehensiveFixture,
   listHizoFSDebugWorkspaces,
   openHizoFSDebugWorkspace,
   TEST_ONLY,
@@ -49,6 +51,11 @@ function authority(): {
           authenticatedInspectionSession: authenticatedInspectionSession(),
           fileSystemId: 'debug-file-system',
           fileSystemSession,
+          generateComprehensiveFixture: vi.fn(async () => ({
+            coverage: [],
+            manifestPath: '/__hizofs_fixture__/manifest.json',
+            rootPath: '/__hizofs_fixture__',
+          })),
           dispose: async () => await fileSystemSession.close(),
         };
       },
@@ -60,10 +67,21 @@ afterEach(async () => {
   for (const root of roots.splice(0)) {
     const workspaces = await listHizoFSDebugWorkspaces({ nativeOpfsRoot: root });
     for (const workspace of workspaces) {
-      await destroyHizoFSDebugWorkspace({
-        workspaceId: workspace.workspaceId,
-        nativeOpfsRoot: root,
-      });
+      switch (workspace.status) {
+      case 'live':
+        await destroyHizoFSDebugWorkspace({
+          workspaceId: workspace.workspaceId,
+          nativeOpfsRoot: root,
+        });
+        break;
+      case 'stale':
+        await deleteStaleHizoFSDebugWorkspaceResidue({
+          workspaceId: workspace.workspaceId,
+          nativeOpfsRoot: root,
+        });
+        break;
+      default: workspace satisfies never;
+      }
     }
   }
 });
@@ -138,6 +156,11 @@ describe('HizoFS debug workspaces', () => {
           authenticatedInspectionSession: authenticatedInspectionSession(),
           fileSystemId: 'retryable-file-system',
           fileSystemSession,
+          generateComprehensiveFixture: vi.fn(async () => ({
+            coverage: [],
+            manifestPath: '/__hizofs_fixture__/manifest.json',
+            rootPath: '/__hizofs_fixture__',
+          })),
           dispose,
         };
       },
@@ -186,6 +209,11 @@ describe('HizoFS debug workspaces', () => {
           authenticatedInspectionSession: authenticatedInspectionSession(),
           fileSystemId: 'in-flight-file-system',
           fileSystemSession,
+          generateComprehensiveFixture: vi.fn(async () => ({
+            coverage: [],
+            manifestPath: '/__hizofs_fixture__/manifest.json',
+            rootPath: '/__hizofs_fixture__',
+          })),
           dispose: async () => {
             signalDisposeStarted?.();
             await new Promise<void>(resolve => {
@@ -235,12 +263,61 @@ describe('HizoFS debug workspaces', () => {
         workspaceId: testCase.workspaceId,
         fileSystemId: undefined,
       }));
-      await destroyHizoFSDebugWorkspace({
+      await deleteStaleHizoFSDebugWorkspaceResidue({
         workspaceId: testCase.workspaceId,
         nativeOpfsRoot: root,
       });
       await expect(parent.getDirectoryHandle(testCase.physicalDirectoryName))
         .rejects.toMatchObject({ name: 'NotFoundError' });
     }
+  });
+
+  it('runs the comprehensive fixture only through the live workspace purpose-specific capability', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    roots.push(root);
+    const generateComprehensiveFixture = vi.fn(async () => ({
+      coverage: [],
+      manifestPath: '/__hizofs_fixture__/manifest.json',
+      rootPath: '/__hizofs_fixture__',
+    }));
+    const configured = authority();
+    const summary = await createHizoFSDebugWorkspace({
+      authority: {
+        async create(args) {
+          return {
+            ...await configured.authority.create(args),
+            generateComprehensiveFixture,
+          };
+        },
+      },
+      nativeOpfsRoot: root,
+    });
+    const onProgress = vi.fn();
+
+    await expect(generateHizoFSDebugWorkspaceComprehensiveFixture({
+      onProgress,
+      workspaceId: summary.workspaceId,
+    })).resolves.toEqual({
+      coverage: [],
+      manifestPath: '/__hizofs_fixture__/manifest.json',
+      rootPath: '/__hizofs_fixture__',
+    });
+    expect(generateComprehensiveFixture).toHaveBeenCalledWith({ onProgress });
+    expect(await openHizoFSDebugWorkspace({ workspaceId: summary.workspaceId }))
+      .not.toHaveProperty('generateComprehensiveFixture');
+  });
+
+  it('does not permit raw residue cleanup while a workspace identity is live', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    roots.push(root);
+    const summary = await createHizoFSDebugWorkspace({
+      authority: authority().authority,
+      nativeOpfsRoot: root,
+    });
+
+    await expect(deleteStaleHizoFSDebugWorkspaceResidue({
+      workspaceId: summary.workspaceId,
+      nativeOpfsRoot: root,
+    })).rejects.toThrow('is still live');
   });
 });

@@ -1,4 +1,9 @@
-import { createInodeNumber, encodeDirectoryEntry } from '@/00-storage/service/hizofs/00-format';
+import {
+  createInodeNumber,
+  encodeDirectoryEntry,
+  HIZOFS_V1_FORMAT_CONSTANTS,
+} from '@/00-storage/service/hizofs/00-format';
+import { DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS } from '@/00-storage/service/hizofs/filesystem/mutation/index-leaf-packing-policy';
 import { writeStorageFileText } from '@/00-storage/service/storage-file-system/io';
 import type {
   StorageDirectoryHandle,
@@ -37,6 +42,17 @@ export type HizoFSComprehensiveFixtureThresholds = Readonly<{
   inlineDirectoryEncodedByteLimit: number;
   inlineFileByteLimit: number;
 }>;
+
+export function createDefaultHizoFSComprehensiveFixtureThresholds(): HizoFSComprehensiveFixtureThresholds {
+  return {
+    directoryIndexLeafEntryLimit: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.directory,
+    fileChunkSize: HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes,
+    fileExtentIndexLeafEntryLimit: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.fileExtent,
+    inodeIndexLeafEntryLimit: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.rootInodeTable,
+    inlineDirectoryEncodedByteLimit: HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes,
+    inlineFileByteLimit: HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes,
+  };
+}
 
 export const HIZOFS_COMPREHENSIVE_FIXTURE_ROOT_PATH = `/${FIXTURE_ROOT_NAME}`;
 

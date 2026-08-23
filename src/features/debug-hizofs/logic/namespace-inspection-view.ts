@@ -18,10 +18,25 @@ export type HizoFSNamespaceInspectionEntryRow = Readonly<{
   target: string;
 }>;
 
-export type HizoFSNamespacePageNavigationTarget = Readonly<{
+export type HizoFSNamespaceValidationPageReadEvent = Readonly<{
   label: string;
   request: HizoFSHomeRecordInspectionRequest;
   role: HizoFSNamespacePathInspection["pageReads"][number]["role"];
+}>;
+
+export type HizoFSNamespaceValidationHomeReference = Readonly<{
+  occurrenceCount: number;
+  request: HizoFSHomeRecordInspectionRequest;
+  roles: readonly HizoFSNamespacePathInspection["pageReads"][number]["role"][];
+}>;
+
+export type HizoFSNamespaceValidationEvidence = Readonly<{
+  rawPageReadEvents: readonly HizoFSNamespaceValidationPageReadEvent[];
+  recordedPageReadEventCount: number;
+  repeatedPageReadEventCount: number;
+  totalPageReadEventCount: number;
+  traceTruncated: boolean;
+  uniqueHomeRecordReferences: readonly HizoFSNamespaceValidationHomeReference[];
 }>;
 
 export type HizoFSNamespaceInspectionView = Readonly<{
@@ -37,31 +52,16 @@ export type HizoFSNamespaceInspectionView = Readonly<{
   inodeRevision: string;
   inodeSummary: string;
   modifiedAt: string | undefined;
-  pageNavigationSummary: string | undefined;
-  pageNavigationTargets: readonly HizoFSNamespacePageNavigationTarget[];
-  pageReadsTruncated: boolean;
-  pagesRead: number;
   parentPath: string | undefined;
   parentPathComponents: readonly string[] | undefined;
   path: string;
   pathComponents: readonly string[];
-  resourceSummary: string;
   symlinkTarget: string | undefined;
+  validationEvidence: HizoFSNamespaceValidationEvidence;
 }>;
 
 function formatPath({ pathComponents }: { pathComponents: readonly string[] }): string {
   return pathComponents.length === 0 ? "/" : `/${pathComponents.join("/")}`;
-}
-
-function pageNavigationLabel({ index, role }: {
-  index: number;
-  role: HizoFSNamespacePathInspection["pageReads"][number]["role"];
-}): string {
-  switch (role) {
-  case "directory": return `Directory page ${index + 1}`;
-  case "inode_table": return `Inode Table page ${index + 1}`;
-  default: return role satisfies never;
-  }
 }
 
 function entryRow({ entry, parentPathComponents }: {
@@ -96,10 +96,10 @@ function entryRow({ entry, parentPathComponents }: {
   }
 }
 
-function pageNavigationTarget({ index, pageRead }: {
+function validationPageReadEvent({ index, pageRead }: {
   index: number;
   pageRead: HizoFSNamespacePathInspection["pageReads"][number];
-}): HizoFSNamespacePageNavigationTarget {
+}): HizoFSNamespaceValidationPageReadEvent {
   const { request, role, ...unhandledPageRead } = pageRead;
   unhandledPageRead satisfies Record<PropertyKey, never>;
   const {
@@ -111,8 +111,8 @@ function pageNavigationTarget({ index, pageRead }: {
     ...unhandledRequest
   } = request;
   unhandledRequest satisfies Record<PropertyKey, never>;
-  return exactObject<HizoFSNamespacePageNavigationTarget>()({
-    label: pageNavigationLabel({ index, role }),
+  return exactObject<HizoFSNamespaceValidationPageReadEvent>()({
+    label: `Page-read event ${index + 1}`,
     request: exactObject<HizoFSHomeRecordInspectionRequest>()({
       frameLength,
       homeOffset,
@@ -121,6 +121,50 @@ function pageNavigationTarget({ index, pageRead }: {
       recordKind,
     }),
     role,
+  });
+}
+
+function homeReferenceKey({ request }: {
+  request: HizoFSHomeRecordInspectionRequest;
+}): string {
+  const { frameLength, homeOffset, homeSegmentId, pageIsRoot: _pageIsRoot, recordKind, ...unhandledRequest } = request;
+  unhandledRequest satisfies Record<PropertyKey, never>;
+  return `${homeSegmentId}:${homeOffset}:${String(frameLength)}:${String(recordKind)}`;
+}
+
+function validationEvidence({ pageReads, pageReadsTruncated, pagesRead }: {
+  pageReads: HizoFSNamespacePathInspection["pageReads"];
+  pageReadsTruncated: boolean;
+  pagesRead: number;
+}): HizoFSNamespaceValidationEvidence {
+  const rawPageReadEvents = pageReads.map((pageRead, index) => validationPageReadEvent({ index, pageRead }));
+  const grouped = new Map<string, {
+    occurrenceCount: number;
+    request: HizoFSHomeRecordInspectionRequest;
+    roles: HizoFSNamespacePathInspection["pageReads"][number]["role"][];
+  }>();
+  for (const event of rawPageReadEvents) {
+    const key = homeReferenceKey({ request: event.request });
+    const existing = grouped.get(key);
+    if (existing === undefined) {
+      grouped.set(key, { occurrenceCount: 1, request: event.request, roles: [event.role] });
+      continue;
+    }
+    existing.occurrenceCount += 1;
+    if (!existing.roles.includes(event.role)) existing.roles.push(event.role);
+  }
+  const uniqueHomeRecordReferences = [...grouped.values()].map(group => exactObject<HizoFSNamespaceValidationHomeReference>()({
+    occurrenceCount: group.occurrenceCount,
+    request: group.request,
+    roles: [...group.roles],
+  }));
+  return exactObject<HizoFSNamespaceValidationEvidence>()({
+    rawPageReadEvents,
+    recordedPageReadEventCount: rawPageReadEvents.length,
+    repeatedPageReadEventCount: rawPageReadEvents.length - uniqueHomeRecordReferences.length,
+    totalPageReadEventCount: pagesRead,
+    traceTruncated: pageReadsTruncated,
+    uniqueHomeRecordReferences,
   });
 }
 
@@ -177,20 +221,14 @@ export function createHizoFSNamespaceInspectionView({ inspection }: {
     inodeRevision,
     inodeSummary: `${inodeKind} inode ${inodeNumber}, revision ${inodeRevision}`,
     modifiedAt,
-    pageNavigationSummary: pageReads.length === 0
-      ? undefined
-      : `${pageReads.length} page references${pageReadsTruncated ? " (truncated)" : ""}`,
-    pageNavigationTargets: pageReads.map((pageRead, index) => pageNavigationTarget({ index, pageRead })),
-    pageReadsTruncated,
-    pagesRead,
     parentPath: parentPathComponents === undefined
       ? undefined
       : formatPath({ pathComponents: parentPathComponents }),
     parentPathComponents,
     path: formatPath({ pathComponents }),
     pathComponents,
-    resourceSummary: `${pagesRead} authenticated pages read`,
     symlinkTarget,
+    validationEvidence: validationEvidence({ pageReads, pageReadsTruncated, pagesRead }),
   });
 }
 

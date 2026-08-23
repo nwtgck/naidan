@@ -19,9 +19,7 @@ export type HizoFSPhysicalInspectorAuthorityTraversalColumn = Readonly<{
 export type HizoFSPhysicalInspectorNamespaceTraversalColumn = Readonly<{
   authoritySummary: string;
   inodeSummary: string;
-  navigationTargets: readonly HizoFSPhysicalRecordNavigationTarget[];
   path: string;
-  resourceSummary: string;
   title: "Decrypted namespace";
 }>;
 
@@ -46,36 +44,20 @@ export function createHizoFSPhysicalInspectorNamespaceTraversalColumn({ view }: 
     inodeRevision: _inodeRevision,
     inodeSummary,
     modifiedAt: _modifiedAt,
-    pageNavigationSummary: _pageNavigationSummary,
-    pageNavigationTargets,
-    pageReadsTruncated: _pageReadsTruncated,
-    pagesRead: _pagesRead,
     parentPath: _parentPath,
     parentPathComponents: _parentPathComponents,
     path,
     pathComponents: _pathComponents,
-    resourceSummary,
     symlinkTarget: _symlinkTarget,
+    validationEvidence: _validationEvidence,
     ...unhandledView
   } = view;
   unhandledView satisfies Record<PropertyKey, never>;
 
-  const navigationTargets: HizoFSPhysicalRecordNavigationTarget[] = pageNavigationTargets.map(target => {
-    const { label, request, role: _role, ...unhandledTarget } = target;
-    unhandledTarget satisfies Record<PropertyKey, never>;
-    return exactObject<HizoFSPhysicalRecordNavigationTarget>()({
-      label,
-      request,
-      targetType: "home_record",
-    });
-  });
-
   return exactObject<HizoFSPhysicalInspectorNamespaceTraversalColumn>()({
     authoritySummary,
     inodeSummary,
-    navigationTargets,
     path,
-    resourceSummary,
     title: "Decrypted namespace",
   });
 }

@@ -1,19 +1,32 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
+import { fileExplorerRootDescriptorSchema } from '@/features/file-explorer/worker/types';
 import type { HizoFSPhysicalInspectionSource } from '@/features/debug-hizofs/logic/active-physical-inspection-source';
 import type { HizoFSAuthenticatedInspectionSession } from '@/features/debug-hizofs/worker/authenticated-inspection-session';
 import type { HizoFSPhysicalInspectionWorker } from '@/features/debug-hizofs/worker/physical-inspection';
 import HizoFSWorkbenchModal from './HizoFSWorkbenchModal.vue';
 
 const mocks = vi.hoisted(() => ({
+  asRef: <T>(value: T): { readonly __v_isRef: true; value: T } => ({ __v_isRef: true, value }),
   close: vi.fn(),
   createTemporary: vi.fn(),
   destroyTemporary: vi.fn(),
+  generateTemporaryFixture: vi.fn(),
+  refreshActive: vi.fn(),
+  refreshTemporary: vi.fn(),
+  selectTemporary: vi.fn(),
   createStandaloneInspector: vi.fn(),
   temporaryAuthenticatedSession: undefined as HizoFSAuthenticatedInspectionSession | undefined,
   temporaryDecryptedRoot: undefined as StorageDirectoryHandle | undefined,
-  temporaryWorkspace: undefined as { readonly status: 'live'; readonly workspaceId: string; readonly createdAt: number; readonly fileSystemId: string; readonly physicalPath: readonly string[] } | undefined,
+  temporaryWorkspace: undefined as
+    | { readonly status: 'live'; readonly workspaceId: string; readonly createdAt: number; readonly fileSystemId: string; readonly physicalPath: readonly string[] }
+    | { readonly status: 'stale'; readonly workspaceId: string; readonly fileSystemId: undefined; readonly physicalPath: readonly string[] }
+    | undefined,
+  temporaryWorkspaces: [] as readonly (
+    | { readonly status: 'live'; readonly workspaceId: string; readonly createdAt: number; readonly fileSystemId: string; readonly physicalPath: readonly string[] }
+    | { readonly status: 'stale'; readonly workspaceId: string; readonly fileSystemId: undefined; readonly physicalPath: readonly string[] }
+  )[],
 }));
 
 vi.mock('@/features/debug-hizofs/worker/opfs-physical-inspection', () => ({
@@ -22,15 +35,22 @@ vi.mock('@/features/debug-hizofs/worker/opfs-physical-inspection', () => ({
 
 vi.mock('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench', () => ({
   useDebugHizoFSWorkbench: () => ({
-    authenticatedInspectionSession: { value: undefined },
+    authenticatedInspectionSession: mocks.asRef(undefined),
     closeDebugHizoFSWorkbench: mocks.close,
     createTemporaryHizoFSWorkspace: mocks.createTemporary,
-    decryptedRoot: { value: undefined },
+    decryptedRoot: mocks.asRef(undefined),
     destroyTemporaryHizoFSWorkspace: mocks.destroyTemporary,
-    physicalInspectionSource: { value: undefined },
-    temporaryAuthenticatedInspectionSession: { value: mocks.temporaryAuthenticatedSession },
-    temporaryDecryptedRoot: { value: mocks.temporaryDecryptedRoot },
-    temporaryWorkspace: { value: mocks.temporaryWorkspace },
+    generateTemporaryHizoFSFixture: mocks.generateTemporaryFixture,
+    physicalInspectionSource: mocks.asRef(undefined),
+    refreshActiveHizoFSReadAuthorities: mocks.refreshActive,
+    refreshTemporaryHizoFSWorkspaces: mocks.refreshTemporary,
+    selectTemporaryHizoFSWorkspace: mocks.selectTemporary,
+    selectedTemporaryWorkspaceId: mocks.asRef(mocks.temporaryWorkspace?.workspaceId),
+    temporaryAuthenticatedInspectionSession: mocks.asRef(mocks.temporaryAuthenticatedSession),
+    temporaryDecryptedRoot: mocks.asRef(mocks.temporaryDecryptedRoot),
+    temporaryInspectionRevision: mocks.asRef(0),
+    temporaryWorkspace: mocks.asRef(mocks.temporaryWorkspace),
+    temporaryWorkspaces: mocks.asRef(mocks.temporaryWorkspaces.length === 0 && mocks.temporaryWorkspace !== undefined ? [mocks.temporaryWorkspace] : mocks.temporaryWorkspaces),
   }),
 }));
 
@@ -81,9 +101,20 @@ function inspector(): HizoFSPhysicalInspectionWorker {
 describe('HizoFSWorkbenchModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.createTemporary.mockResolvedValue(undefined);
+    mocks.destroyTemporary.mockResolvedValue(undefined);
+    mocks.generateTemporaryFixture.mockResolvedValue({
+      coverage: [],
+      manifestPath: '/__hizofs_fixture__/manifest.json',
+      rootPath: '/__hizofs_fixture__',
+    });
+    mocks.refreshActive.mockResolvedValue(undefined);
+    mocks.refreshTemporary.mockResolvedValue(undefined);
+    mocks.selectTemporary.mockResolvedValue(undefined);
     mocks.temporaryAuthenticatedSession = undefined;
     mocks.temporaryDecryptedRoot = undefined;
     mocks.temporaryWorkspace = undefined;
+    mocks.temporaryWorkspaces = [];
     Reflect.deleteProperty(window, 'showDirectoryPicker');
   });
 
@@ -130,6 +161,23 @@ describe('HizoFSWorkbenchModal', () => {
       readOnly: true,
       rootName: 'HizoFS',
     });
+  });
+
+  it('adapts the unnamed active logical root to the File Explorer root contract', async () => {
+    const decryptedRoot = { kind: 'directory', name: '' } as StorageDirectoryHandle;
+    const wrapper = mount(HizoFSWorkbenchModal, {
+      props: { decryptedRoot, physicalInspector: inspector() },
+    });
+    await flushPromises();
+
+    const rootDescriptor = wrapper.getComponent({ name: 'FileExplorer' }).props('root');
+    expect(rootDescriptor).toStrictEqual({
+      handle: decryptedRoot,
+      kind: 'storage-directory',
+      readOnly: true,
+      rootName: '/',
+    });
+    expect(() => fileExplorerRootDescriptorSchema.parse(rootDescriptor)).not.toThrow();
   });
 
   it('shows the decrypted companion and follows an inspected namespace path', async () => {
@@ -271,9 +319,11 @@ describe('HizoFSWorkbenchModal', () => {
 
   it('remounts the physical Inspector when switching between connected filesystem sources', async () => {
     const activeSession = authenticatedInspectionSession();
+    const activeRoot = { kind: 'directory', name: '' } as StorageDirectoryHandle;
     const temporarySession = authenticatedInspectionSession();
+    const temporaryRoot = { kind: 'directory', name: 'temporary-root' } as StorageDirectoryHandle;
     mocks.temporaryAuthenticatedSession = temporarySession;
-    mocks.temporaryDecryptedRoot = { kind: 'directory', name: 'temporary-root' } as StorageDirectoryHandle;
+    mocks.temporaryDecryptedRoot = temporaryRoot;
     mocks.temporaryWorkspace = {
       status: 'live',
       workspaceId: 'temporary-workspace',
@@ -282,14 +332,24 @@ describe('HizoFSWorkbenchModal', () => {
       physicalPath: ['naidan-debug-hizofs', 'runtime-temporary-workspace.hizofs'],
     };
 
-    const wrapper = mount(HizoFSWorkbenchModal, { props: { authenticatedSession: activeSession } });
+    const wrapper = mount(HizoFSWorkbenchModal, {
+      props: { authenticatedSession: activeSession, decryptedRoot: activeRoot },
+    });
     await flushPromises();
     const activeInspectorElement = wrapper.getComponent({ name: 'HizoFSPhysicalInspectorPanel' }).element;
+    expect(wrapper.getComponent({ name: 'FileExplorer' }).props('root')).toStrictEqual(expect.objectContaining({
+      handle: activeRoot,
+      rootName: '/',
+    }));
 
     await wrapper.get('[data-source-kind="ephemeral_debug_workspace"]').trigger('click');
     await flushPromises();
     const temporaryInspector = wrapper.getComponent({ name: 'HizoFSPhysicalInspectorPanel' });
     expect(temporaryInspector.props('authenticatedSession')).toStrictEqual(temporarySession);
+    expect(wrapper.getComponent({ name: 'FileExplorer' }).props('root')).toStrictEqual(expect.objectContaining({
+      handle: temporaryRoot,
+      rootName: 'temporary-root',
+    }));
     expect(temporaryInspector.element).not.toBe(activeInspectorElement);
 
     const temporaryInspectorElement = temporaryInspector.element;
@@ -298,6 +358,22 @@ describe('HizoFSWorkbenchModal', () => {
     const nextActiveInspector = wrapper.getComponent({ name: 'HizoFSPhysicalInspectorPanel' });
     expect(nextActiveInspector.props('authenticatedSession')).toStrictEqual(activeSession);
     expect(nextActiveInspector.element).not.toBe(temporaryInspectorElement);
+    expect(mocks.refreshActive).toHaveBeenCalledOnce();
+    expect(wrapper.getComponent({ name: 'FileExplorer' }).props('root')).toStrictEqual(expect.objectContaining({
+      handle: activeRoot,
+      rootName: '/',
+    }));
+  });
+
+  it('fails closed when the active source has no stable decrypted read snapshot', async () => {
+    const wrapper = mount(HizoFSWorkbenchModal, {
+      props: { authenticatedSession: authenticatedInspectionSession() },
+    });
+    await flushPromises();
+
+    expect(wrapper.findComponent({ name: 'FileExplorer' }).exists()).toBe(false);
+    expect(wrapper.get('[data-testid="hizofs-workbench-companion-body"]').text())
+      .toContain('Unlock the active HizoFS and refresh this source');
   });
 
   it('renders a connected Temporary HizoFS through the same authenticated and decrypted surfaces', async () => {
@@ -345,6 +421,101 @@ describe('HizoFSWorkbenchModal', () => {
     }));
     expect(wrapper.find('[data-testid="hizofs-destroy-temporary-workspace"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="hizofs-workbench-preview-columns"]').exists()).toBe(false);
+  });
+
+  it('runs the purpose-specific comprehensive fixture and reveals its logical root', async () => {
+    const authenticatedSession = authenticatedInspectionSession();
+    mocks.temporaryAuthenticatedSession = authenticatedSession;
+    mocks.temporaryDecryptedRoot = { kind: 'directory', name: 'temporary-root' } as StorageDirectoryHandle;
+    mocks.temporaryWorkspace = {
+      status: 'live',
+      workspaceId: 'temporary-workspace',
+      createdAt: 1,
+      fileSystemId: 'temporary-file-system',
+      physicalPath: ['naidan-debug-hizofs', 'runtime-temporary-workspace.hizofs'],
+    };
+    mocks.generateTemporaryFixture.mockImplementationOnce(async ({ onProgress }: {
+      onProgress: (args: { progress: { phase: 'complete'; completedPhaseCount: number; totalPhaseCount: number; detail: string } }) => void;
+      workspaceId: string;
+    }) => {
+      onProgress({
+        progress: {
+          phase: 'complete',
+          completedPhaseCount: 7,
+          totalPhaseCount: 7,
+          detail: 'Comprehensive fixture generated',
+        },
+      });
+      return {
+        coverage: [{ id: 'sample', path: '/sample', purpose: 'audit', expectedStructures: [] }],
+        manifestPath: '/__hizofs_fixture__/manifest.json',
+        rootPath: '/__hizofs_fixture__',
+      };
+    });
+    const wrapper = mount(HizoFSWorkbenchModal);
+    await flushPromises();
+    await wrapper.get('[data-source-kind="ephemeral_debug_workspace"]').trigger('click');
+
+    await wrapper.get('[data-testid="hizofs-generate-temporary-fixture"]').trigger('click');
+    await flushPromises();
+
+    expect(mocks.generateTemporaryFixture).toHaveBeenCalledWith(expect.objectContaining({
+      onProgress: expect.any(Function),
+      workspaceId: 'temporary-workspace',
+    }));
+    expect(wrapper.get('[data-testid="hizofs-temporary-fixture-progress"]').text()).toContain('complete · 7 / 7');
+    expect(wrapper.get('[data-testid="hizofs-temporary-fixture-result"]').text()).toContain('1 audit cases');
+    expect(wrapper.getComponent({ name: 'HizoFSPhysicalInspectorPanel' }).props('requestedNamespacePath'))
+      .toBe('/__hizofs_fixture__');
+  });
+
+  it('lists and selects any document-scoped temporary workspace', async () => {
+    const first = {
+      status: 'live' as const,
+      workspaceId: 'temporary-workspace-a',
+      createdAt: 1,
+      fileSystemId: 'temporary-file-system-a',
+      physicalPath: ['naidan-debug-hizofs', 'runtime-temporary-workspace-a.hizofs'],
+    };
+    const second = {
+      ...first,
+      workspaceId: 'temporary-workspace-b',
+      fileSystemId: 'temporary-file-system-b',
+    };
+    mocks.temporaryWorkspace = second;
+    mocks.temporaryWorkspaces = [first, second];
+    const wrapper = mount(HizoFSWorkbenchModal);
+    await flushPromises();
+
+    const workspaceRows = wrapper.findAll('[data-testid="hizofs-temporary-workspace"]');
+    expect(workspaceRows).toHaveLength(2);
+    expect(wrapper.get('[data-testid="hizofs-temporary-workspace-list"]').text()).toContain('Temporary HizoFS');
+    expect(wrapper.get('[data-testid="hizofs-temporary-workspace-list"]').text()).toContain('Available until reload');
+    await workspaceRows[0]!.trigger('click');
+    await flushPromises();
+
+    expect(mocks.selectTemporary).toHaveBeenCalledWith({ workspaceId: first.workspaceId });
+  });
+
+  it('lists stale raw residue without exposing it as an inspectable filesystem', async () => {
+    const residue = {
+      status: 'stale' as const,
+      workspaceId: 'stale-workspace',
+      fileSystemId: undefined,
+      physicalPath: ['naidan-debug-hizofs', 'runtime-stale-workspace.hizofs'],
+    };
+    mocks.temporaryWorkspace = residue;
+    mocks.temporaryWorkspaces = [residue];
+    const wrapper = mount(HizoFSWorkbenchModal);
+    await flushPromises();
+    await wrapper.get('[data-source-kind="ephemeral_debug_workspace"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="hizofs-temporary-workspace-list"]').text()).toContain('Expired · cleanup only');
+    expect(wrapper.find('[data-testid="physical-inspector"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('Expired Temporary HizoFS · cleanup removes remaining raw OPFS data without reopening it.');
+    await wrapper.get('[data-testid="hizofs-cleanup-selected-temporary"]').trigger('click');
+    await flushPromises();
+    expect(mocks.destroyTemporary).toHaveBeenCalledWith({ workspaceId: 'stale-workspace' });
   });
 
   it('opens an independently selected container through the same physical projection without inventing a decrypted session', async () => {

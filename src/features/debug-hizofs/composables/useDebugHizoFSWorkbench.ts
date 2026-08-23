@@ -1,8 +1,12 @@
-import { readonly, ref, shallowReadonly, shallowRef } from 'vue';
+import { computed, readonly, ref, shallowReadonly, shallowRef } from 'vue';
 import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
 import type { HizoFSPhysicalInspectionSource } from '@/features/debug-hizofs/logic/active-physical-inspection-source';
 import type { HizoFSAuthenticatedInspectionSession } from '@/00-storage/service/hizofs/inspection';
 import type { HizoFSDebugWorkspaceSession, HizoFSDebugWorkspaceSummary } from '@/features/debug-hizofs/logic/debug-workspace';
+import type {
+  HizoFSComprehensiveFixtureProgress,
+  HizoFSComprehensiveFixtureResult,
+} from '@/features/debug-hizofs/benchmark/comprehensive-workload';
 
 type ActivePhysicalLocationModule = Readonly<{
   openActiveAuthenticatedHizoFSContainerLocationLease: () => Promise<{
@@ -38,9 +42,14 @@ const isOpen = ref(false);
 const physicalInspectionSource = shallowRef<HizoFSPhysicalInspectionSource>();
 const authenticatedInspectionSession = shallowRef<HizoFSAuthenticatedInspectionSession>();
 const decryptedRoot = shallowRef<StorageDirectoryHandle>();
-const temporaryWorkspace = shallowRef<Extract<HizoFSDebugWorkspaceSummary, { readonly status: 'live' }>>();
+const temporaryWorkspaces = shallowRef<readonly HizoFSDebugWorkspaceSummary[]>([]);
+const selectedTemporaryWorkspaceId = ref<string>();
+const temporaryWorkspace = computed(() => temporaryWorkspaces.value.find(
+  workspace => workspace.workspaceId === selectedTemporaryWorkspaceId.value,
+));
 const temporaryAuthenticatedInspectionSession = shallowRef<HizoFSAuthenticatedInspectionSession>();
 const temporaryDecryptedRoot = shallowRef<StorageDirectoryHandle>();
+const temporaryInspectionRevision = ref(0);
 let temporaryWorkspaceGeneration = 0;
 let authenticatedInspectionSessionLease: Awaited<ReturnType<ActiveAuthenticatedInspectionModule['openActiveAuthenticatedHizoFSInspectionSessionLease']>> | undefined;
 let authenticatedInspectionSessionGeneration = 0;
@@ -226,20 +235,19 @@ type ActiveWorkbenchLocationModule = Pick<
   'openActiveAuthenticatedHizoFSDecryptedSnapshotLease' | 'openActiveAuthenticatedHizoFSInspectionSessionLease'
 >;
 
-async function openDebugHizoFSWorkbenchWith({ loadActiveLocation }: {
+async function refreshActiveHizoFSReadAuthoritiesWith({ loadActiveLocation }: {
   loadActiveLocation: () => Promise<ActiveWorkbenchLocationModule>;
-}): Promise<void> {
+}): Promise<'current' | 'stale'> {
   const generation = ++workbenchLifecycleGeneration;
   try {
     await openDefaultAuthenticatedInspectionSessionWith({ loadActiveLocation });
-    if (generation !== workbenchLifecycleGeneration) return;
+    if (generation !== workbenchLifecycleGeneration) return 'stale';
     await openDefaultDecryptedRootWith({ loadActiveLocation });
-    if (generation !== workbenchLifecycleGeneration) return;
-    isOpen.value = true;
+    if (generation !== workbenchLifecycleGeneration) return 'stale';
+    return 'current';
   } catch (cause: unknown) {
     if (generation === workbenchLifecycleGeneration) {
       workbenchLifecycleGeneration += 1;
-      isOpen.value = false;
       try {
         await releaseWorkbenchReadAuthorities();
       } catch (cleanupFailure: unknown) {
@@ -253,31 +261,100 @@ async function openDebugHizoFSWorkbenchWith({ loadActiveLocation }: {
   }
 }
 
+async function openDebugHizoFSWorkbenchWith({ loadActiveLocation }: {
+  loadActiveLocation: () => Promise<ActiveWorkbenchLocationModule>;
+}): Promise<void> {
+  isOpen.value = false;
+  try {
+    const result = await refreshActiveHizoFSReadAuthoritiesWith({ loadActiveLocation });
+    switch (result) {
+    case 'current':
+      isOpen.value = true;
+      return;
+    case 'stale': return;
+    default: return result satisfies never;
+    }
+  } catch (cause: unknown) {
+    isOpen.value = false;
+    throw cause;
+  }
+}
+
+type DebugWorkspaceModule = Pick<
+  typeof import('@/features/debug-hizofs/logic/debug-workspace'),
+  | 'createHizoFSDebugWorkspace'
+  | 'deleteStaleHizoFSDebugWorkspaceResidue'
+  | 'destroyHizoFSDebugWorkspace'
+  | 'generateHizoFSDebugWorkspaceComprehensiveFixture'
+  | 'listHizoFSDebugWorkspaces'
+  | 'openHizoFSDebugWorkspace'
+>;
+
+function clearSelectedTemporaryWorkspaceCapabilities(): void {
+  temporaryAuthenticatedInspectionSession.value = undefined;
+  temporaryDecryptedRoot.value = undefined;
+}
+
+async function refreshTemporaryHizoFSWorkspacesWith({ loadWorkspace }: {
+  loadWorkspace: () => Promise<Pick<DebugWorkspaceModule, 'listHizoFSDebugWorkspaces'>>;
+}): Promise<void> {
+  const workspaceModule = await loadWorkspace();
+  temporaryWorkspaces.value = await workspaceModule.listHizoFSDebugWorkspaces({ nativeOpfsRoot: undefined });
+  const selected = temporaryWorkspace.value;
+  if (selected === undefined) {
+    selectedTemporaryWorkspaceId.value = undefined;
+    clearSelectedTemporaryWorkspaceCapabilities();
+    return;
+  }
+  switch (selected.status) {
+  case 'live': return;
+  case 'stale':
+    clearSelectedTemporaryWorkspaceCapabilities();
+    return;
+  default: return selected satisfies never;
+  }
+}
+
+async function selectTemporaryHizoFSWorkspaceWith({ loadWorkspace, workspaceId }: {
+  loadWorkspace: () => Promise<Pick<DebugWorkspaceModule, 'openHizoFSDebugWorkspace'>>;
+  workspaceId: string;
+}): Promise<void> {
+  const selected = temporaryWorkspaces.value.find(workspace => workspace.workspaceId === workspaceId);
+  if (selected === undefined) throw new Error(`HizoFS debug workspace is not listed: ${workspaceId}`);
+  const generation = ++temporaryWorkspaceGeneration;
+  selectedTemporaryWorkspaceId.value = workspaceId;
+  clearSelectedTemporaryWorkspaceCapabilities();
+  switch (selected.status) {
+  case 'stale': return;
+  case 'live': break;
+  default: return selected satisfies never;
+  }
+  const workspaceModule = await loadWorkspace();
+  const session: HizoFSDebugWorkspaceSession = await workspaceModule.openHizoFSDebugWorkspace({ workspaceId });
+  if (generation !== temporaryWorkspaceGeneration || selectedTemporaryWorkspaceId.value !== workspaceId) {
+    await session.dispose();
+    return;
+  }
+  temporaryAuthenticatedInspectionSession.value = session.authenticatedInspectionSession;
+  temporaryDecryptedRoot.value = session.decryptedRoot;
+}
+
 async function createTemporaryHizoFSWorkspaceWith({ loadAuthority, loadWorkspace }: {
   loadAuthority: () => Promise<Pick<typeof import('@/features/debug-hizofs/worker/debug-workspace-authority'), 'createBrowserHizoFSDebugWorkspaceAuthority'>>;
-  loadWorkspace: () => Promise<Pick<typeof import('@/features/debug-hizofs/logic/debug-workspace'), 'createHizoFSDebugWorkspace' | 'destroyHizoFSDebugWorkspace' | 'openHizoFSDebugWorkspace'>>;
+  loadWorkspace: () => Promise<DebugWorkspaceModule>;
 }): Promise<void> {
-  if (temporaryWorkspace.value !== undefined) return;
-  const generation = ++temporaryWorkspaceGeneration;
   const workspaceModule = await loadWorkspace();
   const authorityModule = await loadAuthority();
   const summary = await workspaceModule.createHizoFSDebugWorkspace({
     authority: authorityModule.createBrowserHizoFSDebugWorkspaceAuthority(),
     nativeOpfsRoot: undefined,
   });
-  let session: HizoFSDebugWorkspaceSession | undefined;
   try {
-    session = await workspaceModule.openHizoFSDebugWorkspace({ workspaceId: summary.workspaceId });
-    if (generation !== temporaryWorkspaceGeneration) {
-      await workspaceModule.destroyHizoFSDebugWorkspace({
-        workspaceId: summary.workspaceId,
-        nativeOpfsRoot: undefined,
-      });
-      return;
-    }
-    temporaryWorkspace.value = summary;
-    temporaryAuthenticatedInspectionSession.value = session.authenticatedInspectionSession;
-    temporaryDecryptedRoot.value = session.decryptedRoot;
+    await refreshTemporaryHizoFSWorkspacesWith({ loadWorkspace: async () => workspaceModule });
+    await selectTemporaryHizoFSWorkspaceWith({
+      loadWorkspace: async () => workspaceModule,
+      workspaceId: summary.workspaceId,
+    });
   } catch (cause: unknown) {
     try {
       await workspaceModule.destroyHizoFSDebugWorkspace({
@@ -290,30 +367,54 @@ async function createTemporaryHizoFSWorkspaceWith({ loadAuthority, loadWorkspace
         'temporary HizoFS workspace open and cleanup both failed',
       );
     }
+    await refreshTemporaryHizoFSWorkspacesWith({ loadWorkspace: async () => workspaceModule });
     throw cause;
   }
 }
 
-async function destroyTemporaryHizoFSWorkspaceWith({ loadWorkspace }: {
-  loadWorkspace: () => Promise<Pick<typeof import('@/features/debug-hizofs/logic/debug-workspace'), 'destroyHizoFSDebugWorkspace'>>;
+async function destroyTemporaryHizoFSWorkspaceWith({ loadWorkspace, workspaceId }: {
+  loadWorkspace: () => Promise<Pick<
+    DebugWorkspaceModule,
+    'deleteStaleHizoFSDebugWorkspaceResidue' | 'destroyHizoFSDebugWorkspace' | 'listHizoFSDebugWorkspaces'
+  >>;
+  workspaceId: string;
 }): Promise<void> {
-  const workspace = temporaryWorkspace.value;
-  temporaryWorkspaceGeneration += 1;
-  if (workspace === undefined) return;
-
-  // WHY: the session may already be partly closed when cleanup fails. Stop
-  // exposing read capabilities immediately, but retain the workspace identity
-  // until destruction succeeds so the user can retry cleanup.
-  temporaryAuthenticatedInspectionSession.value = undefined;
-  temporaryDecryptedRoot.value = undefined;
-  const workspaceModule = await loadWorkspace();
-  await workspaceModule.destroyHizoFSDebugWorkspace({
-    workspaceId: workspace.workspaceId,
-    nativeOpfsRoot: undefined,
-  });
-  if (temporaryWorkspace.value?.workspaceId === workspace.workspaceId) {
-    temporaryWorkspace.value = undefined;
+  const workspace = temporaryWorkspaces.value.find(candidate => candidate.workspaceId === workspaceId);
+  if (workspace === undefined) throw new Error(`HizoFS debug workspace is not listed: ${workspaceId}`);
+  const wasSelected = selectedTemporaryWorkspaceId.value === workspaceId;
+  if (wasSelected) {
+    temporaryWorkspaceGeneration += 1;
+    clearSelectedTemporaryWorkspaceCapabilities();
   }
+  const workspaceModule = await loadWorkspace();
+  try {
+    switch (workspace.status) {
+    case 'live':
+      await workspaceModule.destroyHizoFSDebugWorkspace({ workspaceId, nativeOpfsRoot: undefined });
+      break;
+    case 'stale':
+      await workspaceModule.deleteStaleHizoFSDebugWorkspaceResidue({ workspaceId, nativeOpfsRoot: undefined });
+      break;
+    default: workspace satisfies never;
+    }
+    if (wasSelected) selectedTemporaryWorkspaceId.value = undefined;
+  } finally {
+    await refreshTemporaryHizoFSWorkspacesWith({ loadWorkspace: async () => workspaceModule });
+  }
+}
+
+async function generateTemporaryHizoFSFixtureWith({ loadWorkspace, onProgress, workspaceId }: {
+  loadWorkspace: () => Promise<Pick<DebugWorkspaceModule, 'generateHizoFSDebugWorkspaceComprehensiveFixture'>>;
+  onProgress: ({ progress }: { progress: HizoFSComprehensiveFixtureProgress }) => void;
+  workspaceId: string;
+}): Promise<HizoFSComprehensiveFixtureResult> {
+  const workspaceModule = await loadWorkspace();
+  const result = await workspaceModule.generateHizoFSDebugWorkspaceComprehensiveFixture({
+    onProgress,
+    workspaceId,
+  });
+  if (selectedTemporaryWorkspaceId.value === workspaceId) temporaryInspectionRevision.value += 1;
+  return result;
 }
 
 export function useDebugHizoFSWorkbench() {
@@ -324,14 +425,47 @@ export function useDebugHizoFSWorkbench() {
     });
   }
 
-  async function destroyTemporaryHizoFSWorkspace(): Promise<void> {
+  async function refreshTemporaryHizoFSWorkspaces(): Promise<void> {
+    await refreshTemporaryHizoFSWorkspacesWith({
+      loadWorkspace: async () => await import('@/features/debug-hizofs/logic/debug-workspace'),
+    });
+  }
+
+  async function selectTemporaryHizoFSWorkspace({ workspaceId }: { workspaceId: string }): Promise<void> {
+    await selectTemporaryHizoFSWorkspaceWith({
+      loadWorkspace: async () => await import('@/features/debug-hizofs/logic/debug-workspace'),
+      workspaceId,
+    });
+  }
+
+  async function destroyTemporaryHizoFSWorkspace({ workspaceId }: { workspaceId: string }): Promise<void> {
     await destroyTemporaryHizoFSWorkspaceWith({
       loadWorkspace: async () => await import('@/features/debug-hizofs/logic/debug-workspace'),
+      workspaceId,
+    });
+  }
+
+  async function generateTemporaryHizoFSFixture({ onProgress, workspaceId }: {
+    onProgress: ({ progress }: { progress: HizoFSComprehensiveFixtureProgress }) => void;
+    workspaceId: string;
+  }): Promise<HizoFSComprehensiveFixtureResult> {
+    return await generateTemporaryHizoFSFixtureWith({
+      loadWorkspace: async () => await import('@/features/debug-hizofs/logic/debug-workspace'),
+      onProgress,
+      workspaceId,
     });
   }
 
   async function openDebugHizoFSWorkbench(): Promise<void> {
     await openDebugHizoFSWorkbenchWith({
+      loadActiveLocation: async () => await import(
+        '@/00-storage/service/naidan-opfs/active-hizofs-container-location'
+      ),
+    });
+  }
+
+  async function refreshActiveHizoFSReadAuthorities(): Promise<void> {
+    await refreshActiveHizoFSReadAuthoritiesWith({
       loadActiveLocation: async () => await import(
         '@/00-storage/service/naidan-opfs/active-hizofs-container-location'
       ),
@@ -349,12 +483,19 @@ export function useDebugHizoFSWorkbench() {
     authenticatedInspectionSession: shallowReadonly(authenticatedInspectionSession),
     createTemporaryHizoFSWorkspace,
     destroyTemporaryHizoFSWorkspace,
+    generateTemporaryHizoFSFixture,
+    refreshTemporaryHizoFSWorkspaces,
+    selectTemporaryHizoFSWorkspace,
+    selectedTemporaryWorkspaceId: readonly(selectedTemporaryWorkspaceId),
     temporaryAuthenticatedInspectionSession: shallowReadonly(temporaryAuthenticatedInspectionSession),
     temporaryDecryptedRoot: shallowReadonly(temporaryDecryptedRoot),
+    temporaryInspectionRevision: readonly(temporaryInspectionRevision),
     temporaryWorkspace: shallowReadonly(temporaryWorkspace),
+    temporaryWorkspaces: shallowReadonly(temporaryWorkspaces),
     decryptedRoot: shallowReadonly(decryptedRoot),
     physicalInspectionSource: shallowReadonly(physicalInspectionSource),
     openDebugHizoFSWorkbench,
+    refreshActiveHizoFSReadAuthorities,
     closeDebugHizoFSWorkbench,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
@@ -370,8 +511,12 @@ export function useDebugHizoFSWorkbench() {
 export const TEST_ONLY = {
   createTemporaryHizoFSWorkspaceWith,
   destroyTemporaryHizoFSWorkspaceWith,
+  generateTemporaryHizoFSFixtureWith,
+  refreshTemporaryHizoFSWorkspacesWith,
+  selectTemporaryHizoFSWorkspaceWith,
   ensureDefaultHizoFSPhysicalInspectionSourceWith,
   openDebugHizoFSWorkbenchWith,
+  refreshActiveHizoFSReadAuthoritiesWith,
   openDefaultAuthenticatedInspectionSessionWith,
   openDefaultDecryptedRootWith,
   reset() {
@@ -387,9 +532,11 @@ export const TEST_ONLY = {
     defaultSourceLoad = undefined;
     physicalInspectionSource.value = undefined;
     temporaryWorkspaceGeneration += 1;
-    temporaryWorkspace.value = undefined;
+    temporaryWorkspaces.value = [];
+    selectedTemporaryWorkspaceId.value = undefined;
     temporaryAuthenticatedInspectionSession.value = undefined;
     temporaryDecryptedRoot.value = undefined;
+    temporaryInspectionRevision.value = 0;
     isOpen.value = false;
   },
 };

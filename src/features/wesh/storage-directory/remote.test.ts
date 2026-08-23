@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createInMemoryStorageRoot } from '@/00-storage/service/storage-file-system/test-support/in-memory-storage-file-system';
 import type { WeshOpenFlags } from '@/features/wesh/types';
+import type { StorageFileHandle } from '@/00-storage/service/storage-file-system/types';
 import { RemoteStorageDirectoryWeshProvider } from './provider';
-import { createWeshStorageDirectoryRemoteForMounts } from './remote';
+import { createWeshStorageDirectoryRemoteForMounts, OpenStorageFile } from './remote';
 
 const MOUNT_PATH = '/mnt/encrypted';
 
@@ -65,6 +66,53 @@ async function readAll({
 }
 
 describe('Wesh StorageDirectoryHandle remote', () => {
+  it.each([
+    { label: 'empty', size: 0 },
+    { label: 'smaller than the preview chunk', size: 31 },
+    { label: 'at the preview chunk boundary', size: 64 * 1024 },
+    { label: 'larger than the preview chunk', size: 64 * 1024 + 17 },
+  ])('clamps $label reads to the current logical file size', async ({ size }) => {
+    const bytes = Uint8Array.from({ length: size }, (_unused, index) => index & 0xff);
+    const read = vi.fn(async ({ buffer, length, offset, position }: {
+      buffer: Uint8Array;
+      length: number;
+      offset: number;
+      position: number;
+      signal: AbortSignal | undefined;
+    }) => {
+      if (position > bytes.byteLength || length > bytes.byteLength - position) {
+        throw new RangeError('file read range exceeds file size');
+      }
+      buffer.set(bytes.subarray(position, position + length), offset);
+      return { bytesRead: length };
+    });
+    const fileHandle: StorageFileHandle = {
+      kind: 'file',
+      name: 'preview.bin',
+      stat: vi.fn(async () => ({ createdAt: undefined, modifiedAt: undefined, size })),
+      openReadable: vi.fn(async () => ({
+        backing: { type: 'reader_only' },
+        close: vi.fn(async () => undefined),
+        mimeType: 'application/octet-stream',
+        read,
+        size,
+        stream: vi.fn(),
+      })),
+      createWritable: vi.fn(),
+    };
+    const handle = new OpenStorageFile({ fileHandle, flags: READ_ONLY_FLAGS });
+    await handle.initialize();
+    const first = new Uint8Array(64 * 1024);
+    const firstResult = await handle.read({ buffer: first });
+    const second = new Uint8Array(64 * 1024);
+    const secondResult = await handle.read({ buffer: second });
+
+    expect(firstResult.bytesRead).toBe(Math.min(size, first.byteLength));
+    expect(secondResult.bytesRead).toBe(Math.max(0, size - first.byteLength));
+    expect(read.mock.calls.every(([request]) => request.position + request.length <= size)).toBe(true);
+    await handle.close();
+  });
+
   it('publishes multiple Wesh writes only when the storage writable closes', async () => {
     const { provider, remote } = await createMountedStorageDirectory();
     const handle = await provider.open({

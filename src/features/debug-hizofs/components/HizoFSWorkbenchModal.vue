@@ -17,6 +17,7 @@ import {
   PlusIcon,
   RefreshCwIcon,
   SearchIcon,
+  Trash2Icon,
   XIcon,
 } from 'lucide-vue-next';
 import { useDebugHizoFSWorkbench } from '@/features/debug-hizofs/composables/useDebugHizoFSWorkbench';
@@ -27,6 +28,10 @@ import type { HizoFSPhysicalInspectionWorker } from '@/features/debug-hizofs/wor
 import HizoFSBenchmarkPanel from './HizoFSBenchmarkPanel.vue';
 import { exactObject } from '@/utils/exact-object';
 import HizoFSPhysicalInspectorPanel from './HizoFSPhysicalInspectorPanel.vue';
+import type {
+  HizoFSComprehensiveFixtureProgress,
+  HizoFSComprehensiveFixtureResult,
+} from '@/features/debug-hizofs/benchmark/comprehensive-workload';
 
 const props = defineProps<{
   authenticatedSession?: HizoFSAuthenticatedInspectionSession;
@@ -41,10 +46,17 @@ const {
   createTemporaryHizoFSWorkspace,
   decryptedRoot: installedDecryptedRoot,
   destroyTemporaryHizoFSWorkspace,
+  generateTemporaryHizoFSFixture,
   physicalInspectionSource: installedPhysicalInspectionSource,
+  refreshActiveHizoFSReadAuthorities,
+  refreshTemporaryHizoFSWorkspaces,
+  selectTemporaryHizoFSWorkspace,
+  selectedTemporaryWorkspaceId,
   temporaryAuthenticatedInspectionSession,
   temporaryDecryptedRoot,
+  temporaryInspectionRevision,
   temporaryWorkspace,
+  temporaryWorkspaces,
 } = useDebugHizoFSWorkbench();
 const primaryView = ref<'benchmark' | 'physical_inspector'>('physical_inspector');
 type WorkbenchInspectionSourceKind = 'active_encrypted_store' | 'ephemeral_debug_workspace' | 'standalone_container';
@@ -57,7 +69,7 @@ type WorkbenchInspectionSource = Readonly<
       status: 'available' | 'opening' | 'partial' | 'unavailable';
     }
   | {
-      access: 'read_write';
+      access: 'read_write' | 'unavailable';
       description: string;
       kind: 'ephemeral_debug_workspace';
       label: string;
@@ -84,9 +96,14 @@ const physicalTraversalBreadcrumbs = ref<readonly HizoFSPhysicalInspectorTravers
 const requestedNamespacePath = ref<string>();
 const openedInspector = ref<HizoFSPhysicalInspectionWorker>();
 const openingInspector = ref(false);
+const refreshingActiveReadAuthorities = ref(false);
 const inspectorErrorMessage = ref<string>();
+const activeReadAuthorityErrorMessage = ref<string>();
 const temporaryWorkspaceErrorMessage = ref<string>();
 const changingTemporaryWorkspace = ref(false);
+const generatingTemporaryFixture = ref(false);
+const temporaryFixtureProgress = ref<HizoFSComprehensiveFixtureProgress>();
+const temporaryFixtureResult = ref<HizoFSComprehensiveFixtureResult>();
 const standaloneInspector = ref<HizoFSPhysicalInspectionWorker>();
 const standaloneContainerName = ref<string>();
 const standaloneErrorMessage = ref<string>();
@@ -125,17 +142,52 @@ const companionFileExplorerRoot = computed<FileExplorerRootDescriptor | undefine
     handle: root,
     kind: 'storage-directory',
     readOnly: true,
-    rootName: root.name,
+    rootName: root.name.length === 0 ? '/' : root.name,
   });
 });
 const activeInspector = computed(() => props.physicalInspector ?? openedInspector.value);
+
+function temporaryInspectionSource(): Extract<WorkbenchInspectionSource, { kind: 'ephemeral_debug_workspace' }> {
+  const workspace = temporaryWorkspace.value;
+  if (workspace === undefined) {
+    return {
+      access: 'read_write',
+      description: 'Document-lifetime filesystems for inspection and controlled fixtures',
+      kind: 'ephemeral_debug_workspace',
+      label: 'Temporary HizoFS',
+      status: changingTemporaryWorkspace.value ? 'opening' : 'unavailable',
+    };
+  }
+  switch (workspace.status) {
+  case 'live': return {
+    access: 'read_write',
+    description: 'Document-lifetime filesystems for inspection and controlled fixtures',
+    kind: 'ephemeral_debug_workspace',
+    label: `Temporary HizoFS · ${shortWorkspaceId({ workspaceId: workspace.workspaceId })}`,
+    status: changingTemporaryWorkspace.value
+      ? 'opening'
+      : temporaryAuthenticatedInspectionSession.value !== undefined && temporaryDecryptedRoot.value !== undefined
+        ? 'available'
+        : 'partial',
+  };
+  case 'stale': return {
+    access: 'unavailable',
+    description: 'Raw OPFS residue from an expired document runtime',
+    kind: 'ephemeral_debug_workspace',
+    label: `Temporary residue · ${shortWorkspaceId({ workspaceId: workspace.workspaceId })}`,
+    status: changingTemporaryWorkspace.value ? 'opening' : 'unavailable',
+  };
+  default: return workspace satisfies never;
+  }
+}
+
 const inspectionSources = computed<readonly WorkbenchInspectionSource[]>(() => [
   {
     access: 'read',
     description: 'Current Naidan HizoFS · authenticated production data',
     kind: 'active_encrypted_store',
     label: 'Naidan active HizoFS',
-    status: openingInspector.value
+    status: openingInspector.value || refreshingActiveReadAuthorities.value
       ? 'opening'
       : (activeInspector.value !== undefined || configuredAuthenticatedInspectionSession.value !== undefined) && configuredDecryptedRoot.value !== undefined
         ? 'available'
@@ -143,19 +195,7 @@ const inspectionSources = computed<readonly WorkbenchInspectionSource[]>(() => [
           ? 'partial'
           : 'unavailable',
   },
-  {
-    access: 'read_write',
-    description: 'Disposable simple-case filesystem for inspection and experiments',
-    kind: 'ephemeral_debug_workspace',
-    label: 'Temporary HizoFS',
-    status: changingTemporaryWorkspace.value
-      ? 'opening'
-      : temporaryWorkspace.value === undefined
-        ? 'unavailable'
-        : temporaryAuthenticatedInspectionSession.value !== undefined && temporaryDecryptedRoot.value !== undefined
-          ? 'available'
-          : 'partial',
-  },
+  temporaryInspectionSource(),
   {
     access: 'read',
     description: 'Open an independent HizoFS container for offline inspection',
@@ -176,7 +216,9 @@ const selectedInspectionSource = computed(() => {
 const selectedSourceHasConnectedInstance = computed(() => {
   switch (selectedInspectionSource.value.kind) {
   case 'active_encrypted_store': return true;
-  case 'ephemeral_debug_workspace': return temporaryWorkspace.value !== undefined;
+  case 'ephemeral_debug_workspace':
+    return temporaryWorkspace.value?.status === 'live'
+      && temporaryAuthenticatedInspectionSession.value !== undefined;
   case 'standalone_container': return standaloneInspector.value !== undefined;
   default: return selectedInspectionSource.value satisfies never;
   }
@@ -283,10 +325,10 @@ async function focusPhysicalTraversalBreadcrumb({ breadcrumb }: {
 }): Promise<void> {
   switch (breadcrumb.kind) {
   case 'authority':
-    await focusWorkbenchSurface({ selector: '[data-workbench-inspector-surface="physical-authority"], [data-testid="hizofs-physical-inspector-embedded-control-column"]' });
+    await focusWorkbenchSurface({ selector: '[data-workbench-inspector-surface="physical-authority"]' });
     return;
   case 'frame':
-    await focusWorkbenchSurface({ selector: '[data-workbench-inspector-surface="segments"], [data-testid="hizofs-physical-inspector-embedded-control-column"]' });
+    await focusWorkbenchSurface({ selector: '[data-workbench-inspector-surface="segments"]' });
     return;
   case 'namespace':
     await focusLogicalNamespaceBreadcrumb();
@@ -307,14 +349,14 @@ function selectWorkbenchInstanceEntry({ kind }: { kind: WorkbenchInstanceEntryKi
   switch (kind) {
   case 'physical_authority':
   case 'active_roots':
-    void focusWorkbenchSurface({ selector: '[data-workbench-inspector-surface="physical-authority"], [data-testid="hizofs-physical-inspector-embedded-control-column"]' });
+    void focusWorkbenchSurface({ selector: '[data-workbench-inspector-surface="physical-authority"]' });
     return;
   case 'root_namespace':
     requestedNamespacePath.value = '/';
-    void focusWorkbenchSurface({ selector: '[data-workbench-inspector-surface="namespace"], [data-testid="hizofs-physical-inspector-embedded-control-column"]' });
+    void focusWorkbenchSurface({ selector: '[data-workbench-inspector-surface="namespace"]' });
     return;
   case 'segments':
-    void focusWorkbenchSurface({ selector: '[data-workbench-inspector-surface="segments"], [data-testid="hizofs-physical-inspector-embedded-control-column"]' });
+    void focusWorkbenchSurface({ selector: '[data-workbench-inspector-surface="segments"]' });
     return;
   case 'derived_filesystem':
     companionExplorerExpanded.value = true;
@@ -343,12 +385,32 @@ function sourceIcon({ source }: { source: WorkbenchInspectionSource }): 'active'
   }
 }
 
+function shortWorkspaceId({ workspaceId }: { workspaceId: string }): string {
+  return workspaceId.length <= 12 ? workspaceId : `${workspaceId.slice(0, 8)}…`;
+}
+
+function resetTemporaryFixtureState(): void {
+  temporaryFixtureProgress.value = undefined;
+  temporaryFixtureResult.value = undefined;
+}
+
+function resetInspectionNavigation(): void {
+  inspectedNamespacePath.value = undefined;
+  inspectedNamespaceAuthority.value = undefined;
+  requestedNamespacePath.value = undefined;
+  physicalTraversalBreadcrumbs.value = [];
+  companionFollowEnabled.value = true;
+}
+
 async function createTemporaryWorkspaceFromUi(): Promise<void> {
   if (changingTemporaryWorkspace.value) return;
   changingTemporaryWorkspace.value = true;
   temporaryWorkspaceErrorMessage.value = undefined;
   try {
     await createTemporaryHizoFSWorkspace();
+    selectedInspectionSourceKind.value = 'ephemeral_debug_workspace';
+    resetInspectionNavigation();
+    resetTemporaryFixtureState();
     requestedNamespacePath.value = '/';
   } catch (error: unknown) {
     temporaryWorkspaceErrorMessage.value = errorMessage({ error });
@@ -357,16 +419,15 @@ async function createTemporaryWorkspaceFromUi(): Promise<void> {
   }
 }
 
-async function destroyTemporaryWorkspaceFromUi(): Promise<void> {
-  if (changingTemporaryWorkspace.value) return;
+async function selectTemporaryWorkspaceFromUi({ workspaceId }: { workspaceId: string }): Promise<void> {
+  if (changingTemporaryWorkspace.value || generatingTemporaryFixture.value) return;
   changingTemporaryWorkspace.value = true;
   temporaryWorkspaceErrorMessage.value = undefined;
   try {
-    await destroyTemporaryHizoFSWorkspace();
-    inspectedNamespacePath.value = undefined;
-    inspectedNamespaceAuthority.value = undefined;
-    requestedNamespacePath.value = undefined;
-    physicalTraversalBreadcrumbs.value = [];
+    await selectTemporaryHizoFSWorkspace({ workspaceId });
+    selectedInspectionSourceKind.value = 'ephemeral_debug_workspace';
+    resetInspectionNavigation();
+    resetTemporaryFixtureState();
   } catch (error: unknown) {
     temporaryWorkspaceErrorMessage.value = errorMessage({ error });
   } finally {
@@ -374,22 +435,72 @@ async function destroyTemporaryWorkspaceFromUi(): Promise<void> {
   }
 }
 
+async function destroyTemporaryWorkspaceFromUi({ workspaceId }: { workspaceId: string }): Promise<void> {
+  if (changingTemporaryWorkspace.value) return;
+  changingTemporaryWorkspace.value = true;
+  temporaryWorkspaceErrorMessage.value = undefined;
+  try {
+    await destroyTemporaryHizoFSWorkspace({ workspaceId });
+    if (selectedTemporaryWorkspaceId.value === undefined) {
+      resetInspectionNavigation();
+      resetTemporaryFixtureState();
+    }
+  } catch (error: unknown) {
+    temporaryWorkspaceErrorMessage.value = errorMessage({ error });
+  } finally {
+    changingTemporaryWorkspace.value = false;
+  }
+}
+
+async function generateTemporaryFixtureFromUi(): Promise<void> {
+  const workspace = temporaryWorkspace.value;
+  if (workspace?.status !== 'live' || generatingTemporaryFixture.value) return;
+  generatingTemporaryFixture.value = true;
+  temporaryWorkspaceErrorMessage.value = undefined;
+  resetTemporaryFixtureState();
+  try {
+    temporaryFixtureResult.value = await generateTemporaryHizoFSFixture({
+      onProgress: ({ progress }) => {
+        temporaryFixtureProgress.value = progress;
+      },
+      workspaceId: workspace.workspaceId,
+    });
+    resetInspectionNavigation();
+    requestedNamespacePath.value = temporaryFixtureResult.value.rootPath;
+    companionExplorerExpanded.value = true;
+  } catch (error: unknown) {
+    temporaryWorkspaceErrorMessage.value = errorMessage({ error });
+  } finally {
+    generatingTemporaryFixture.value = false;
+  }
+}
+
 function selectInspectionSource({ kind }: { kind: WorkbenchInspectionSourceKind }): void {
   selectedInspectionSourceKind.value = kind;
-  inspectedNamespacePath.value = undefined;
-  inspectedNamespaceAuthority.value = undefined;
-  requestedNamespacePath.value = undefined;
-  physicalTraversalBreadcrumbs.value = [];
-  companionFollowEnabled.value = true;
+  resetInspectionNavigation();
   switch (kind) {
   case 'active_encrypted_store':
-    if (activeInspector.value === undefined && !openingInspector.value) void refreshPhysicalInspector();
+    void refreshActiveSource();
     return;
   case 'ephemeral_debug_workspace':
   case 'standalone_container':
     return;
   default:
     kind satisfies never;
+  }
+}
+
+async function refreshActiveSource(): Promise<void> {
+  if (refreshingActiveReadAuthorities.value) return;
+  refreshingActiveReadAuthorities.value = true;
+  activeReadAuthorityErrorMessage.value = undefined;
+  try {
+    await refreshActiveHizoFSReadAuthorities();
+    await refreshPhysicalInspector();
+  } catch (error: unknown) {
+    activeReadAuthorityErrorMessage.value = errorMessage({ error });
+  } finally {
+    refreshingActiveReadAuthorities.value = false;
   }
 }
 
@@ -542,6 +653,9 @@ watch(primaryView, view => {
 
 onMounted(() => {
   void refreshPhysicalInspector();
+  void refreshTemporaryHizoFSWorkspaces().catch((error: unknown) => {
+    temporaryWorkspaceErrorMessage.value = errorMessage({ error });
+  });
 });
 
 onUnmounted(() => {
@@ -595,9 +709,9 @@ defineExpose({
           type="button"
           aria-label="Refresh HizoFS instance"
           tw-class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-40 dark:text-gray-300 dark:hover:bg-gray-800"
-          :disabled="openingInspector"
-          @click="refreshPhysicalInspector"
-        ><RefreshCwIcon :tw-class="['h-4 w-4', openingInspector ? 'animate-spin' : '']" /></button>
+          :disabled="openingInspector || refreshingActiveReadAuthorities"
+          @click="refreshActiveSource"
+        ><RefreshCwIcon :tw-class="['h-4 w-4', openingInspector || refreshingActiveReadAuthorities ? 'animate-spin' : '']" /></button>
         <button type="button" aria-label="Close HizoFS Workbench" tw-class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="closeDebugHizoFSWorkbench"><XIcon tw-class="h-5 w-5" /></button>
       </header>
 
@@ -638,7 +752,7 @@ defineExpose({
                 <div tw-class="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Sources</div>
                 <div tw-class="text-[9px] text-gray-400">HizoFS instances</div>
               </div>
-              <button type="button" data-testid="hizofs-create-temporary-preview" tw-class="rounded border border-emerald-300 px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30" @click="selectInspectionSource({ kind: 'ephemeral_debug_workspace' })"><PlusIcon tw-class="mr-1 inline h-3 w-3" />Temporary</button>
+              <button type="button" data-testid="hizofs-create-temporary-preview" :disabled="changingTemporaryWorkspace || generatingTemporaryFixture" tw-class="rounded border border-emerald-300 px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30" @click="createTemporaryWorkspaceFromUi"><PlusIcon tw-class="mr-1 inline h-3 w-3" />Temporary</button>
             </div>
             <div tw-class="min-h-0 flex-1 overflow-auto">
               <button
@@ -660,6 +774,16 @@ defineExpose({
                 </span>
                 <ChevronRightIcon tw-class="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-300" />
               </button>
+              <section v-if="temporaryWorkspaces.length > 0" data-testid="hizofs-temporary-workspace-list" tw-class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-950">
+                <div tw-class="border-b border-gray-200 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700">Temporary HizoFS</div>
+                <div v-for="workspace in temporaryWorkspaces" :key="workspace.workspaceId" :tw-class="['flex border-b border-gray-100 last:border-b-0 dark:border-gray-800', selectedTemporaryWorkspaceId === workspace.workspaceId ? 'bg-emerald-50 dark:bg-emerald-950/30' : '']">
+                  <button type="button" data-testid="hizofs-temporary-workspace" :data-workspace-id="workspace.workspaceId" :disabled="changingTemporaryWorkspace || generatingTemporaryFixture" tw-class="min-w-0 flex-1 px-3 py-2 text-left disabled:opacity-50" @click="selectTemporaryWorkspaceFromUi({ workspaceId: workspace.workspaceId })">
+                    <span tw-class="block truncate font-mono text-[10px] text-gray-700 dark:text-gray-300">{{ shortWorkspaceId({ workspaceId: workspace.workspaceId }) }}</span>
+                    <span :tw-class="workspace.status === 'live' ? 'mt-0.5 block text-[9px] text-emerald-600 dark:text-emerald-300' : 'mt-0.5 block text-[9px] text-amber-600 dark:text-amber-300'">{{ workspace.status === 'live' ? 'Available until reload' : 'Expired · cleanup only' }}</span>
+                  </button>
+                  <button type="button" data-testid="hizofs-remove-temporary-workspace" :data-workspace-id="workspace.workspaceId" :aria-label="workspace.status === 'live' ? 'Destroy temporary HizoFS' : 'Clean up remaining OPFS data'" :disabled="changingTemporaryWorkspace || generatingTemporaryFixture" tw-class="self-center p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 dark:hover:bg-red-950/30" @click="destroyTemporaryWorkspaceFromUi({ workspaceId: workspace.workspaceId })"><Trash2Icon tw-class="h-3.5 w-3.5" /></button>
+                </div>
+              </section>
             </div>
           </aside>
 
@@ -671,25 +795,30 @@ defineExpose({
 
             <template v-if="selectedSourceHasConnectedInstance">
               <div v-if="selectedInspectionSource.kind === 'ephemeral_debug_workspace'" tw-class="border-b border-emerald-200 p-3 dark:border-emerald-900">
-                <button type="button" data-testid="hizofs-destroy-temporary-workspace" :disabled="changingTemporaryWorkspace" tw-class="w-full border border-red-200 px-3 py-2 text-left text-xs font-medium text-red-700 disabled:opacity-50 dark:border-red-900 dark:text-red-300" @click="destroyTemporaryWorkspaceFromUi">Destroy temporary filesystem</button>
-              </div>
-              <section data-testid="hizofs-workbench-source-capabilities" tw-class="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-950">
-                <div tw-class="border-b border-gray-200 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700">Source capabilities</div>
-                <div tw-class="divide-y divide-gray-100 dark:divide-gray-800">
-                  <div tw-class="flex items-start gap-3 px-3 py-2">
-                    <span tw-class="min-w-0 flex-1"><span tw-class="block text-[10px] font-medium text-gray-700 dark:text-gray-300">Physical inspection</span><span tw-class="block font-mono text-[9px] text-gray-400">authenticated persisted reads</span></span>
-                    <span :tw-class="selectedPhysicalInspector !== undefined || selectedAuthenticatedInspectionSession !== undefined ? 'border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-mono text-[9px] text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300' : 'border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-mono text-[9px] text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300'">{{ selectedPhysicalInspector !== undefined || selectedAuthenticatedInspectionSession !== undefined ? 'available' : 'pending' }}</span>
-                  </div>
-                  <div tw-class="flex items-start gap-3 px-3 py-2">
-                    <span tw-class="min-w-0 flex-1"><span tw-class="block text-[10px] font-medium text-gray-700 dark:text-gray-300">Decrypted filesystem</span><span tw-class="block font-mono text-[9px] text-gray-400">stable read snapshot</span></span>
-                    <span :tw-class="selectedDecryptedRoot !== undefined ? 'border border-blue-200 bg-blue-50 px-1.5 py-0.5 font-mono text-[9px] text-blue-700 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-300' : 'border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-mono text-[9px] text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300'">{{ selectedDecryptedRoot !== undefined ? 'available' : 'pending' }}</span>
-                  </div>
-                  <div tw-class="flex items-start gap-3 px-3 py-2">
-                    <span tw-class="min-w-0 flex-1"><span tw-class="block text-[10px] font-medium text-gray-700 dark:text-gray-300">Mutation authority</span><span tw-class="block font-mono text-[9px] text-gray-400">production writes / publication</span></span>
-                    <span tw-class="border border-gray-200 bg-white px-1.5 py-0.5 font-mono text-[9px] text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400">not exposed</span>
-                  </div>
+                <div tw-class="grid gap-2">
+                  <button type="button" data-testid="hizofs-generate-temporary-fixture" :disabled="changingTemporaryWorkspace || generatingTemporaryFixture || temporaryFixtureResult !== undefined" tw-class="w-full border border-emerald-300 px-3 py-2 text-left text-xs font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300" @click="generateTemporaryFixtureFromUi">{{ generatingTemporaryFixture ? 'Generating sample data…' : temporaryFixtureResult === undefined ? 'Generate comprehensive sample data' : 'Sample data generated' }}</button>
+                  <button type="button" data-testid="hizofs-destroy-temporary-workspace" :disabled="changingTemporaryWorkspace || generatingTemporaryFixture" tw-class="w-full border border-red-200 px-3 py-2 text-left text-xs font-medium text-red-700 disabled:opacity-50 dark:border-red-900 dark:text-red-300" @click="destroyTemporaryWorkspaceFromUi({ workspaceId: temporaryWorkspace!.workspaceId })">Destroy temporary filesystem</button>
                 </div>
-              </section>
+                <div v-if="temporaryFixtureProgress !== undefined" data-testid="hizofs-temporary-fixture-progress" tw-class="mt-2 border-t border-emerald-100 pt-2 font-mono text-[9px] text-emerald-700 dark:border-emerald-900 dark:text-emerald-300">
+                  <div>{{ temporaryFixtureProgress.phase }} · {{ temporaryFixtureProgress.completedPhaseCount }} / {{ temporaryFixtureProgress.totalPhaseCount }}</div>
+                  <div tw-class="mt-1 text-gray-500 dark:text-gray-400">{{ temporaryFixtureProgress.detail }}</div>
+                </div>
+                <div v-if="temporaryFixtureResult !== undefined" data-testid="hizofs-temporary-fixture-result" tw-class="mt-2 border-t border-emerald-100 pt-2 text-[9px] text-emerald-700 dark:border-emerald-900 dark:text-emerald-300">{{ temporaryFixtureResult.coverage.length }} audit cases · {{ temporaryFixtureResult.rootPath }}</div>
+              </div>
+              <details data-testid="hizofs-workbench-source-capabilities" tw-class="shrink-0 border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-950">
+                <summary tw-class="flex cursor-pointer list-none flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-[9px] dark:text-gray-300">
+                  <span tw-class="font-semibold uppercase tracking-wide text-gray-500">Source capabilities</span>
+                  <span tw-class="ml-auto font-mono text-emerald-600 dark:text-emerald-300">Physical: {{ selectedPhysicalInspector !== undefined || selectedAuthenticatedInspectionSession !== undefined ? 'available' : 'pending' }}</span>
+                  <span tw-class="font-mono text-blue-600 dark:text-blue-300">Logical: {{ selectedDecryptedRoot !== undefined ? 'available' : 'pending' }}</span>
+                  <span tw-class="font-mono text-gray-500 dark:text-gray-400">Writes: not exposed</span>
+                  <ChevronDownIcon tw-class="h-3 w-3 shrink-0 text-gray-400" />
+                </summary>
+                <div tw-class="grid grid-cols-3 gap-px border-t border-gray-200 bg-gray-200 dark:border-gray-700 dark:bg-gray-700">
+                  <div tw-class="bg-white px-3 py-2 dark:bg-gray-900"><span tw-class="block text-[10px] font-medium text-gray-700 dark:text-gray-300">Physical inspection</span><span tw-class="block font-mono text-[9px] text-gray-400">authenticated persisted reads · {{ selectedPhysicalInspector !== undefined || selectedAuthenticatedInspectionSession !== undefined ? 'available' : 'pending' }}</span></div>
+                  <div tw-class="bg-white px-3 py-2 dark:bg-gray-900"><span tw-class="block text-[10px] font-medium text-gray-700 dark:text-gray-300">Decrypted filesystem</span><span tw-class="block font-mono text-[9px] text-gray-400">stable read snapshot · {{ selectedDecryptedRoot !== undefined ? 'available' : 'pending' }}</span></div>
+                  <div tw-class="bg-white px-3 py-2 dark:bg-gray-900"><span tw-class="block text-[10px] font-medium text-gray-700 dark:text-gray-300">Mutation authority</span><span tw-class="block font-mono text-[9px] text-gray-400">production writes / publication · not exposed</span></div>
+                </div>
+              </details>
               <div tw-class="min-h-0 flex-1 overflow-auto">
                 <div tw-class="border-b border-emerald-200 bg-emerald-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300">Persisted / authenticated</div>
                 <button type="button" data-testid="hizofs-workbench-instance-entry" data-instance-entry-kind="physical_authority" tw-class="flex w-full items-center gap-3 border-b border-gray-100 bg-emerald-50/40 px-3 py-2.5 text-left hover:bg-emerald-50 dark:border-gray-800 dark:bg-emerald-950/10 dark:hover:bg-emerald-950/20" @click="selectWorkbenchInstanceEntry({ kind: 'physical_authority' })"><SearchIcon tw-class="h-4 w-4 text-emerald-600" /><span tw-class="min-w-0 flex-1"><span tw-class="block text-xs font-medium">Physical authority</span><span tw-class="block text-[9px] text-gray-400">Unlock Envelope copies and Superblock selection</span></span><ChevronRightIcon tw-class="h-3.5 w-3.5" /></button>
@@ -708,17 +837,25 @@ defineExpose({
               </div>
               <div tw-class="border-b border-gray-200 p-3 dark:border-gray-700">
                 <button
-                  v-if="selectedInspectionSource.kind === 'ephemeral_debug_workspace'"
+                  v-if="selectedInspectionSource.kind === 'ephemeral_debug_workspace' && temporaryWorkspace === undefined"
                   type="button"
                   data-testid="hizofs-create-temporary-workspace"
-                  :disabled="changingTemporaryWorkspace"
+                  :disabled="changingTemporaryWorkspace || generatingTemporaryFixture"
                   tw-class="w-full border border-emerald-300 px-3 py-2 text-left text-xs font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300"
                   @click="createTemporaryWorkspaceFromUi"
                 >{{ changingTemporaryWorkspace ? 'Creating temporary filesystem…' : 'Create temporary filesystem' }}</button>
+                <button
+                  v-else-if="selectedInspectionSource.kind === 'ephemeral_debug_workspace'"
+                  type="button"
+                  data-testid="hizofs-cleanup-selected-temporary"
+                  :disabled="changingTemporaryWorkspace || generatingTemporaryFixture"
+                  tw-class="w-full border border-red-200 px-3 py-2 text-left text-xs font-medium text-red-700 disabled:opacity-50 dark:border-red-900 dark:text-red-300"
+                  @click="destroyTemporaryWorkspaceFromUi({ workspaceId: temporaryWorkspace!.workspaceId })"
+                >{{ temporaryWorkspace!.status === 'stale' ? 'Clean up remaining OPFS data' : 'Retry Temporary HizoFS cleanup' }}</button>
                 <button v-else type="button" data-testid="hizofs-open-standalone-container" :disabled="openingStandaloneContainer" tw-class="w-full border border-gray-300 px-3 py-2 text-left text-xs font-medium disabled:opacity-60 dark:border-gray-700" @click="openStandaloneContainer">{{ openingStandaloneContainer ? 'Opening standalone HizoFS…' : 'Open standalone HizoFS…' }}</button>
                 <p v-if="temporaryWorkspaceErrorMessage !== undefined && selectedInspectionSource.kind === 'ephemeral_debug_workspace'" tw-class="mt-2 break-words font-mono text-[9px] text-red-600 dark:text-red-300">{{ temporaryWorkspaceErrorMessage }}</p>
                 <p v-else-if="standaloneErrorMessage !== undefined && selectedInspectionSource.kind === 'standalone_container'" data-testid="hizofs-standalone-container-error" tw-class="mt-2 break-words font-mono text-[9px] text-red-600 dark:text-red-300">{{ standaloneErrorMessage }}</p>
-                <p v-else tw-class="mt-2 font-mono text-[9px] text-amber-600 dark:text-amber-300">{{ selectedInspectionSource.kind === 'ephemeral_debug_workspace' ? 'Creates a real self-contained HizoFS source with physical + decrypted read capabilities.' : 'Choose the HizoFS container directory. Authentication remains a one-shot Inspector operation; no decrypted filesystem session is created.' }}</p>
+                <p v-else tw-class="mt-2 font-mono text-[9px] text-amber-600 dark:text-amber-300">{{ selectedInspectionSource.kind === 'ephemeral_debug_workspace' ? temporaryWorkspace?.status === 'stale' ? 'Expired Temporary HizoFS · cleanup removes remaining raw OPFS data without reopening it.' : 'Creates a real self-contained HizoFS source with physical + decrypted read capabilities for this document.' : 'Choose the HizoFS container directory. Authentication remains a one-shot Inspector operation; no decrypted filesystem session is created.' }}</p>
               </div>
               <div tw-class="min-h-0 flex-1 overflow-auto">
                 <div tw-class="border-b border-emerald-200 bg-emerald-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300">Persisted / authenticated</div>
@@ -742,7 +879,7 @@ defineExpose({
             </section>
             <HizoFSPhysicalInspectorPanel
               v-else-if="selectedPhysicalInspector !== undefined || selectedAuthenticatedInspectionSession !== undefined"
-              :key="selectedInspectionSource.kind"
+              :key="`${selectedInspectionSource.kind}:${selectedTemporaryWorkspaceId ?? ''}:${String(temporaryInspectionRevision)}`"
               :authenticated-session="selectedAuthenticatedInspectionSession"
               :embedded-in-workbench="true"
               :inspector="selectedPhysicalInspector"
@@ -837,6 +974,7 @@ defineExpose({
           <div v-show="companionExplorerExpanded" data-testid="hizofs-workbench-companion-body" tw-class="h-[34vh] min-h-[260px] border-t border-blue-100 dark:border-blue-900">
             <Suspense v-if="selectedSourceHasConnectedInstance && companionFileExplorerRoot !== undefined">
               <FileExplorer
+                :key="`${selectedInspectionSource.kind}:${selectedTemporaryWorkspaceId ?? ''}:${String(temporaryInspectionRevision)}`"
                 :root="companionFileExplorerRoot"
                 :initial-path="undefined"
                 :initial-locked="true"
@@ -850,7 +988,7 @@ defineExpose({
               />
               <template #fallback><div tw-class="flex h-full items-center justify-center gap-2 text-xs text-gray-500"><LoaderCircleIcon tw-class="h-4 w-4 animate-spin" />Opening decrypted view…</div></template>
             </Suspense>
-            <div v-else tw-class="flex h-full items-center justify-center px-8 text-center text-xs text-gray-500">{{ selectedSourceHasConnectedInstance ? 'This source must supply a decrypted root before files can be shown here.' : 'The decrypted File Explorer will occupy this same companion surface when this source backend is connected.' }}</div>
+            <div v-else tw-class="flex h-full items-center justify-center px-8 text-center text-xs text-gray-500">{{ selectedInspectionSource.kind === 'active_encrypted_store' ? activeReadAuthorityErrorMessage ?? 'Unlock the active HizoFS and refresh this source to obtain a stable decrypted read snapshot.' : selectedSourceHasConnectedInstance ? 'This source must supply a decrypted root before files can be shown here.' : 'The decrypted File Explorer will occupy this same companion surface when this source backend is connected.' }}</div>
           </div>
         </section>
       </template>

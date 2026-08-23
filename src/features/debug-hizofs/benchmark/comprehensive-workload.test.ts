@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { readStorageFileText } from '@/00-storage/service/storage-file-system/io';
 import {
+  createDefaultHizoFSComprehensiveFixtureThresholds,
   HIZOFS_COMPREHENSIVE_FIXTURE_ROOT_PATH,
   generateHizoFSComprehensiveFixture,
   type HizoFSComprehensiveFixtureThresholds,
 } from './comprehensive-workload';
+import { HIZOFS_V1_FORMAT_CONSTANTS } from '@/00-storage/service/hizofs/00-format';
+import { DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS } from '@/00-storage/service/hizofs/filesystem/mutation/index-leaf-packing-policy';
 import { createInMemoryStorageRoot } from '@/00-storage/service/storage-file-system/test-support/in-memory-storage-file-system';
 
 const thresholds = {
@@ -17,6 +20,17 @@ const thresholds = {
 } as const satisfies HizoFSComprehensiveFixtureThresholds;
 
 describe('HizoFS comprehensive fixture workload', () => {
+  it('derives default fixture thresholds from current HizoFS authorities', () => {
+    expect(createDefaultHizoFSComprehensiveFixtureThresholds()).toEqual({
+      directoryIndexLeafEntryLimit: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.directory,
+      fileChunkSize: HIZOFS_V1_FORMAT_CONSTANTS.limits.fileDataPlaintextBytes,
+      fileExtentIndexLeafEntryLimit: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.fileExtent,
+      inodeIndexLeafEntryLimit: DEFAULT_HIZOFS_INDEX_LEAF_ENTRY_LIMITS.rootInodeTable,
+      inlineDirectoryEncodedByteLimit: HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineDirectoryEncodedBytes,
+      inlineFileByteLimit: HIZOFS_V1_FORMAT_CONSTANTS.limits.inlineFileBytes,
+    });
+  });
+
   it('generates deterministic public-API coverage without owning format authority', async () => {
     const root = createInMemoryStorageRoot({ name: 'decrypted-root' });
     const progressPhases: string[] = [];

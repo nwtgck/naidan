@@ -274,12 +274,19 @@ export class OpenStorageFile implements WeshFileHandle {
     ) {
       throw new Error('Read buffer range is invalid');
     }
-    this.reader ??= await this.fileHandle.openReadable({ mimeType: 'application/octet-stream' });
     const readPosition = position ?? this.cursor;
+    const logicalSize = this.logicalSize;
+    if (logicalSize === undefined) throw new Error('Storage file handle is not initialized');
+    if (!Number.isSafeInteger(readPosition) || readPosition < 0) {
+      throw new RangeError('Read position must be a safe non-negative integer');
+    }
+    const boundedLength = Math.min(length, Math.max(0, logicalSize - readPosition));
+    if (boundedLength === 0) return { bytesRead: 0 };
+    this.reader ??= await this.fileHandle.openReadable({ mimeType: 'application/octet-stream' });
     const result = await this.reader.read({
       buffer,
       offset,
-      length,
+      length: boundedLength,
       position: readPosition,
       signal: undefined,
     });
