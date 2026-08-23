@@ -78,6 +78,7 @@ import {
   type OpenedEmptyEncryptedContainer,
 } from "@/00-storage/service/hizofs/authenticated-store/empty-container-store";
 import { AuthenticatedStoreError } from "@/00-storage/service/hizofs/authenticated-store/errors";
+import { createAuthenticatedHizoFSInspectionPort, type AuthenticatedHizoFSInspectionPort } from "@/00-storage/service/hizofs/authenticated-store/inspection-port";
 import { AuthenticatedFileDataRecordCache } from "@/00-storage/service/hizofs/authenticated-store/file-data-record-cache";
 import { AuthenticatedSegmentWriterOwner } from "@/00-storage/service/hizofs/authenticated-store/active-segment-writer-owner";
 import {
@@ -847,6 +848,47 @@ export async function withAuthenticatedDevelopmentWritableSessionRootKeyProof<T>
     });
   } finally {
     if (state.lifecycle === "proving") state.lifecycle = "open";
+  }
+}
+
+export async function withAuthenticatedDevelopmentWritableSessionReadAuthority<T>({
+  operation,
+  session,
+}: {
+  operation: ({ fileSystemId, physical, rootKey }: {
+    fileSystemId: FileSystemId;
+    physical: AuthenticatedHizoFSInspectionPort;
+    rootKey: FileSystemRootKey;
+  }) => Promise<T>;
+  session: StorageFileSystemSession;
+}): Promise<T> {
+  const state = developmentWritableCredentialStateBySession.get(session);
+  if (state === undefined) throw new TypeError("HizoFS authenticated read authority session is foreign");
+  switch (state.lifecycle) {
+  case "open": break;
+  case "closed": throw new TypeError("HizoFS authenticated read authority session is closed");
+  case "closing": throw new TypeError("HizoFS authenticated read authority session is closing");
+  case "proving": throw new TypeError("HizoFS authenticated read authority session is performing a root-key proof operation");
+  case "recovery_required": throw new TypeError("HizoFS authenticated read authority session requires recovery");
+  case "reencrypting": throw new TypeError("HizoFS authenticated read authority session is proving re-encryption credentials");
+  case "updating": throw new TypeError("HizoFS authenticated read authority session is updating credentials");
+  default: return state.lifecycle satisfies never;
+  }
+  assertCredentialSessionOperationAllowed({ gate: state.operationGate });
+
+  // WHY: inspection may outlive the synchronous session-state check while the
+  // provider begins shutdown. Lend an independent Root Key copy for exactly
+  // one bounded callback so provider cleanup can destroy its owned key without
+  // invalidating an in-flight read, while the caller can never retain the copy.
+  const borrowedRootKey = cloneFileSystemRootKey({ rootKey: state.opened.rootKey });
+  try {
+    return await operation({
+      fileSystemId: state.opened.fileSystemId,
+      physical: createAuthenticatedHizoFSInspectionPort({ backend: state.backend }),
+      rootKey: borrowedRootKey,
+    });
+  } finally {
+    borrowedRootKey.destroy();
   }
 }
 

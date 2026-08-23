@@ -12,6 +12,7 @@ function inspection(): HizoFSPhysicalContainerInspection {
         recordKind: 1,
         segmentId: "00000000000000000000000000000001",
       },
+      activeFailureReason: "active Commit authentication failed",
       commitSequence: "7",
       mode: "fallback_read_only",
       nestedSubvolumeTableRoot: undefined,
@@ -27,8 +28,15 @@ function inspection(): HizoFSPhysicalContainerInspection {
     segments: [{
       fileSize: "4096",
       frames: [{
+        flags: 0,
         frameLength: 200,
         homeOffset: "64",
+        homeReference: {
+          byteOffset: "64",
+          frameLength: 200,
+          recordKind: 1,
+          segmentId: "00000000000000000000000000000001",
+        },
         homeSegmentId: "00000000000000000000000000000001",
         physicalOffset: "64",
         plaintextLength: 80,
@@ -43,6 +51,7 @@ function inspection(): HizoFSPhysicalContainerInspection {
     superblockCopies: [{
       activeCommit: undefined,
       activeCommitSequence: "7",
+      fallbackCommit: undefined,
       copy: 0,
       header: undefined,
       minimumUnlockSequence: undefined,
@@ -104,6 +113,7 @@ describe("HizoFS physical container inspection view", () => {
       {
         activeCommit: undefined,
         activeCommitSequence: "7",
+        fallbackCommit: undefined,
         copy: 0,
         header: undefined,
         headerJson: "unavailable",
@@ -243,9 +253,59 @@ describe("HizoFS physical container inspection view", () => {
     }]);
   });
 
+  it("exposes only the selected authenticated Superblock fallback as a recovery reference", () => {
+    const source = inspection();
+    const rejectedCopy = source.superblockCopies[0];
+    if (rejectedCopy === undefined) throw new Error("expected Superblock fixture");
+    const rejectedFallback = {
+      byteOffset: "11",
+      frameLength: 128,
+      recordKind: 1,
+      segmentId: "0000000000000000000000000000000a",
+    };
+    const selectedFallback = {
+      byteOffset: "32",
+      frameLength: 160,
+      recordKind: 1,
+      segmentId: "00000000000000000000000000000009",
+    };
+    const view = createHizoFSPhysicalContainerInspectionView({
+      inspection: {
+        ...source,
+        superblockCopies: [
+          { ...rejectedCopy, fallbackCommit: rejectedFallback },
+          {
+            ...rejectedCopy,
+            copy: 1,
+            fallbackCommit: selectedFallback,
+            reason: undefined,
+            selected: true,
+            state: "proof_valid",
+          },
+        ],
+        superblockSelection: { copy: 1, redundancy: "degraded", sequence: "10", state: "selected" },
+      },
+    });
+
+    expect(view.recoveryNavigationTargets).toEqual([{
+      label: "Fallback Commit candidate",
+      request: {
+        frameLength: 160,
+        homeOffset: "32",
+        homeSegmentId: "00000000000000000000000000000009",
+        recordKind: 1,
+      },
+    }]);
+    expect(view.copyRows.find(row => row.kind === "superblock" && row.copy === 1)).toMatchObject({
+      fallbackCommit: selectedFallback,
+      selected: true,
+    });
+  });
+
   it("retains root shortcut and segment valid-prefix diagnostics", () => {
     const view = createHizoFSPhysicalContainerInspectionView({ inspection: inspection() });
     expect(view.rootDirectorySummary).toBe("fallback_read_only, commit 7, root inode 1");
+    expect(view.rootRecoveryReason).toBe("active Commit authentication failed");
     expect(view.rootNavigationTargets).toEqual([
       {
         label: "Fallback Commit",
@@ -272,8 +332,15 @@ describe("HizoFS physical container inspection view", () => {
       frameCount: 1,
       frameRowsTruncated: false,
       frames: [{
+        flags: 0,
         frameLength: 200,
         homeOffset: "64",
+        homeReference: {
+          byteOffset: "64",
+          frameLength: 200,
+          recordKind: 1,
+          segmentId: "00000000000000000000000000000001",
+        },
         homeSegmentId: "00000000000000000000000000000001",
         physicalOffset: "64",
         physicalSegmentId: "00000000000000000000000000000001",

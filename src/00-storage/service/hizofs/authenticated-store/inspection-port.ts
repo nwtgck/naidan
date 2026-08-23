@@ -20,7 +20,10 @@ import {
   readBootstrapRoot,
   type BootstrapCommitAuthority,
 } from './bootstrap-segment-store';
-import { readAuthenticatedPhysicalRecord } from './record-reader';
+import {
+  readAuthenticatedPhysicalRecord,
+  readAuthenticatedPhysicalRecordWithFrame,
+} from './record-reader';
 import { resolveAuthenticatedHomeRecord } from './relocation-index-reader';
 import { readAuthenticatedSegmentIndex } from './segment-footer-store';
 import { openSuperblockCopies } from './superblock-store';
@@ -69,6 +72,12 @@ export interface AuthenticatedHizoFSInspectionPort {
     physicalReference: PhysicalRecordReference;
     rootKey: FileSystemRootKey;
   }): ReturnType<typeof readAuthenticatedPhysicalRecord>;
+  readPhysicalRecordWithFrame({ fileSystemId, homeReference, physicalReference, rootKey }: {
+    fileSystemId: FileSystemId;
+    homeReference: HomeRecordReference | undefined;
+    physicalReference: PhysicalRecordReference;
+    rootKey: FileSystemRootKey;
+  }): ReturnType<typeof readAuthenticatedPhysicalRecordWithFrame>;
   readSegmentIndex({ fileSystemId, physicalSegmentId, rootKey, segmentClass }: {
     fileSystemId: FileSystemId;
     physicalSegmentId: SegmentId;
@@ -120,6 +129,15 @@ export function createAuthenticatedHizoFSInspectionPort({ backend }: {
       rootKey,
     }),
     readPhysicalRecord: async ({ fileSystemId, homeReference, physicalReference, rootKey }) => await readAuthenticatedPhysicalRecord({
+      backend,
+      expectedIdentity: homeReference === undefined
+        ? { type: "physical_only" }
+        : { homeReference, type: "logical" },
+      fileSystemId,
+      physicalReference,
+      rootKey,
+    }),
+    readPhysicalRecordWithFrame: async ({ fileSystemId, homeReference, physicalReference, rootKey }) => await readAuthenticatedPhysicalRecordWithFrame({
       backend,
       expectedIdentity: homeReference === undefined
         ? { type: "physical_only" }

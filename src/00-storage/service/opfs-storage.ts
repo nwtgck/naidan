@@ -968,6 +968,14 @@ export class OPFSStorageProvider extends IStorageProvider {
       await this.closeFileSystemSession();
       uninstallActiveLocation = installActiveAuthenticatedHizoFSContainerLocation({
         fileSystemId: session.fileSystemId,
+        openAuthenticatedInspectionSession: session.openAuthenticatedInspectionSession,
+        openReadSnapshot: async () => {
+          const createReadSnapshot = session.fileSystemSession.createReadSnapshot;
+          if (createReadSnapshot === undefined) {
+            throw new Error('active HizoFS Inspector requires stable read snapshots');
+          }
+          return await createReadSnapshot.call(session.fileSystemSession);
+        },
       });
     } catch (cause: unknown) {
       return await closePersistenceSessionAfterInstallFailure({ cause, session });

@@ -3,7 +3,6 @@ import {
   createFeatureBits,
   createHomeRecordReference,
   createPhysicalRecordReference,
-  createUnlockSequence,
   createUInt64,
   decodeCommonPageHeader,
   decodeDirectoryPage,
@@ -32,6 +31,10 @@ import {
   type UInt64,
 } from "@/00-storage/service/hizofs/00-format";
 import type { AuthenticatedHizoFSInspectionPort } from "@/00-storage/service/hizofs/authenticated-store/inspection-port";
+import {
+  withHizoFSInspectionAuthority,
+  type HizoFSOpenedInspectionAuthority,
+} from "@/00-storage/service/hizofs/inspection/inspection-authority";
 
 export type HizoFSPhysicalRecordInspectionRequest = Readonly<{
   frameLength: number;
@@ -183,6 +186,13 @@ export type HizoFSPhysicalRecordInspection = Readonly<{
   recordKind: number;
   recordKindName: keyof typeof HIZOFS_V1_FORMAT_CONSTANTS.recordKinds;
   sealedLength: number;
+}>;
+
+export type HizoFSPhysicalRecordFrameInspection = Readonly<{
+  frameBase64Url: string;
+  frameByteLength: number;
+  physicalOffset: string;
+  physicalSegmentId: string;
 }>;
 
 function parseOffset({ label, value }: { label: string; value: string }): UInt64 {
@@ -577,20 +587,13 @@ function validateMaximumPreviewBytes({ maximumPreviewBytes }: {
   }
 }
 
-export async function inspectHizoFSPhysicalRecord({
-  maximumPreviewBytes = 256,
-  passphrase,
-  physical,
-  request,
-  supportedFeatureBits = createFeatureBits({ value: 0n }),
-}: {
-  maximumPreviewBytes?: number;
-  passphrase: string;
-  physical: AuthenticatedHizoFSInspectionPort;
+
+function physicalReferencesForInspectionRequest({ request }: {
   request: HizoFSPhysicalRecordInspectionRequest;
-  supportedFeatureBits?: FeatureBits;
-}): Promise<HizoFSPhysicalRecordInspection> {
-  validateMaximumPreviewBytes({ maximumPreviewBytes });
+}): Readonly<{
+  homeReference: HomeRecordReference | undefined;
+  physicalReference: PhysicalRecordReference;
+}> {
   const physicalSegmentId = parseSegmentIdLowercaseHex({ value: request.physicalSegmentId });
   const physicalReference = createPhysicalRecordReference({ fields: {
     byteOffset: parseOffset({ label: "physicalOffset", value: request.physicalOffset }),
@@ -611,40 +614,148 @@ export async function inspectHizoFSPhysicalRecord({
         segmentId: parseSegmentIdLowercaseHex({ value: request.homeSegmentId }),
       } });
     })();
+  return { homeReference, physicalReference };
+}
 
-  const openedUnlock = await physical.openUnlockCopies({
-    minimumUnlockSequence: createUnlockSequence({ value: 1n }),
-    passphrase,
+export async function inspectHizoFSPhysicalRecordWithAuthority({
+  authority,
+  maximumPreviewBytes = 256,
+  physical,
+  request,
+}: {
+  authority: HizoFSOpenedInspectionAuthority;
+  maximumPreviewBytes?: number;
+  physical: AuthenticatedHizoFSInspectionPort;
+  request: HizoFSPhysicalRecordInspectionRequest;
+}): Promise<HizoFSPhysicalRecordInspection> {
+  validateMaximumPreviewBytes({ maximumPreviewBytes });
+  const { homeReference, physicalReference } = physicalReferencesForInspectionRequest({ request });
+  const record = await physical.readPhysicalRecord({
+    fileSystemId: authority.fileSystemId,
+    homeReference,
+    physicalReference,
+    rootKey: authority.rootKey,
   });
-  const rootKey = openedUnlock.rootKey;
   try {
-    const openedSuperblock = await physical.openSuperblockCopies({
-      fileSystemId: openedUnlock.fileSystemId,
-      rootKey,
-      supportedFeatureBits,
+    return recordInspection({
+      maximumPreviewBytes,
+      pageIsRoot: request.pageIsRoot,
+      record,
     });
-    await physical.openUnlockAuthority({
-      fileSystemId: openedUnlock.fileSystemId,
-      minimumUnlockSequence: openedSuperblock.logicalState.minimumUnlockSequence,
-      rootKey,
-    });
-    const record = await physical.readPhysicalRecord({
-      fileSystemId: openedUnlock.fileSystemId,
-      homeReference,
-      physicalReference,
-      rootKey,
-    });
-    try {
-      return recordInspection({
-        maximumPreviewBytes,
-        pageIsRoot: request.pageIsRoot,
-        record,
-      });
-    } finally {
-      record.plaintext.fill(0);
-    }
   } finally {
-    rootKey.destroy();
+    record.plaintext.fill(0);
+  }
+}
+
+export async function inspectHizoFSPhysicalRecordFrameWithAuthority({
+  authority,
+  physical,
+  request,
+}: {
+  authority: HizoFSOpenedInspectionAuthority;
+  physical: AuthenticatedHizoFSInspectionPort;
+  request: HizoFSPhysicalRecordInspectionRequest;
+}): Promise<HizoFSPhysicalRecordFrameInspection> {
+  const { homeReference, physicalReference } = physicalReferencesForInspectionRequest({ request });
+  const record = await physical.readPhysicalRecordWithFrame({
+    fileSystemId: authority.fileSystemId,
+    homeReference,
+    physicalReference,
+    rootKey: authority.rootKey,
+  });
+  try {
+    return {
+      frameBase64Url: encodeBase64UrlUnpadded({ bytes: record.frameBytes }),
+      frameByteLength: record.frameBytes.byteLength,
+      physicalOffset: String(record.physicalReference.byteOffset),
+      physicalSegmentId: segmentIdToLowercaseHex({ id: record.physicalReference.segmentId }),
+    };
+  } finally {
+    record.plaintext.fill(0);
+  }
+}
+
+export async function inspectHizoFSPhysicalRecordFrame({
+  passphrase,
+  physical,
+  request,
+  supportedFeatureBits = createFeatureBits({ value: 0n }),
+}: {
+  passphrase: string;
+  physical: AuthenticatedHizoFSInspectionPort;
+  request: HizoFSPhysicalRecordInspectionRequest;
+  supportedFeatureBits?: FeatureBits;
+}): Promise<HizoFSPhysicalRecordFrameInspection> {
+  return await withHizoFSInspectionAuthority({
+    operation: async ({ authority }) => await inspectHizoFSPhysicalRecordFrameWithAuthority({
+      authority,
+      physical,
+      request,
+    }),
+    passphrase,
+    physical,
+    supportedFeatureBits,
+  });
+}
+
+export async function inspectHizoFSPhysicalRecord({
+  maximumPreviewBytes = 256,
+  passphrase,
+  physical,
+  request,
+  supportedFeatureBits = createFeatureBits({ value: 0n }),
+}: {
+  maximumPreviewBytes?: number;
+  passphrase: string;
+  physical: AuthenticatedHizoFSInspectionPort;
+  request: HizoFSPhysicalRecordInspectionRequest;
+  supportedFeatureBits?: FeatureBits;
+}): Promise<HizoFSPhysicalRecordInspection> {
+  return await withHizoFSInspectionAuthority({
+    operation: async ({ authority }) => await inspectHizoFSPhysicalRecordWithAuthority({
+      authority,
+      maximumPreviewBytes,
+      physical,
+      request,
+    }),
+    passphrase,
+    physical,
+    supportedFeatureBits,
+  });
+}
+
+export async function inspectHizoFSHomeRecordWithAuthority({
+  authority,
+  maximumPreviewBytes = 256,
+  physical,
+  request,
+}: {
+  authority: HizoFSOpenedInspectionAuthority;
+  maximumPreviewBytes?: number;
+  physical: AuthenticatedHizoFSInspectionPort;
+  request: HizoFSHomeRecordInspectionRequest;
+}): Promise<HizoFSPhysicalRecordInspection> {
+  validateMaximumPreviewBytes({ maximumPreviewBytes });
+  const homeReference = createHomeRecordReference({ fields: {
+    byteOffset: parseOffset({ label: "homeOffset", value: request.homeOffset }),
+    frameLength: request.frameLength,
+    recordKind: request.recordKind,
+    segmentId: parseSegmentIdLowercaseHex({ value: request.homeSegmentId }),
+  } });
+  const record = await physical.readHomeRecord({
+    fileSystemId: authority.fileSystemId,
+    homeReference,
+    relocationIndexRootPhysicalRef: authority.relocationIndexRootPhysicalRef,
+    rootKey: authority.rootKey,
+  });
+  try {
+    return recordInspection({
+      maximumPreviewBytes,
+      pageIsRoot: request.pageIsRoot,
+      record,
+    });
+  } finally {
+    record.plaintext.fill(0);
   }
 }
 
@@ -661,47 +772,17 @@ export async function inspectHizoFSHomeRecord({
   request: HizoFSHomeRecordInspectionRequest;
   supportedFeatureBits?: FeatureBits;
 }): Promise<HizoFSPhysicalRecordInspection> {
-  validateMaximumPreviewBytes({ maximumPreviewBytes });
-  const homeReference = createHomeRecordReference({ fields: {
-    byteOffset: parseOffset({ label: "homeOffset", value: request.homeOffset }),
-    frameLength: request.frameLength,
-    recordKind: request.recordKind,
-    segmentId: parseSegmentIdLowercaseHex({ value: request.homeSegmentId }),
-  } });
-  const openedUnlock = await physical.openUnlockCopies({
-    minimumUnlockSequence: createUnlockSequence({ value: 1n }),
+  return await withHizoFSInspectionAuthority({
+    operation: async ({ authority }) => await inspectHizoFSHomeRecordWithAuthority({
+      authority,
+      maximumPreviewBytes,
+      physical,
+      request,
+    }),
     passphrase,
+    physical,
+    supportedFeatureBits,
   });
-  const rootKey = openedUnlock.rootKey;
-  try {
-    const openedSuperblock = await physical.openSuperblockCopies({
-      fileSystemId: openedUnlock.fileSystemId,
-      rootKey,
-      supportedFeatureBits,
-    });
-    await physical.openUnlockAuthority({
-      fileSystemId: openedUnlock.fileSystemId,
-      minimumUnlockSequence: openedSuperblock.logicalState.minimumUnlockSequence,
-      rootKey,
-    });
-    const record = await physical.readHomeRecord({
-      fileSystemId: openedUnlock.fileSystemId,
-      homeReference,
-      relocationIndexRootPhysicalRef: openedSuperblock.logicalState.relocationIndexRootPhysicalRef,
-      rootKey,
-    });
-    try {
-      return recordInspection({
-        maximumPreviewBytes,
-        pageIsRoot: request.pageIsRoot,
-        record,
-      });
-    } finally {
-      record.plaintext.fill(0);
-    }
-  } finally {
-    rootKey.destroy();
-  }
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

@@ -2,48 +2,46 @@ import type {
   StorageDirectoryHandle,
   StorageFileSystemSession,
 } from '@/00-storage/service/storage-file-system/types';
+import type { HizoFSAuthenticatedInspectionSession } from '@/features/debug-hizofs/worker/authenticated-inspection-session';
 
 const DEBUG_WORKSPACE_DIRECTORY_NAME = 'naidan-debug-hizofs';
 const DEBUG_WORKSPACE_DIRECTORY_SUFFIX = '.hizofs';
 const DEBUG_WORKSPACE_NAME_PREFIX = 'runtime-';
-const ROOT_KEY_BYTE_LENGTH = 32;
 
 export type HizoFSDebugWorkspaceProduct = {
+  readonly authenticatedInspectionSession: HizoFSAuthenticatedInspectionSession;
   readonly fileSystemId: string;
   readonly fileSystemSession: StorageFileSystemSession;
+
+  dispose(): Promise<void>;
 };
 
 /**
  * Creates an isolated, disposable HizoFS workspace for low-level inspection.
  *
- * The workspace generates its own temporary root key and does not register
- * credentials, routing authority, or persistence state with Naidan. Developers
- * can therefore inspect HizoFS independently of the filesystem that stores
- * Naidan data.
- *
  * Construction remains behind an injected authority so this debug feature does
- * not own persisted-format policy, cryptographic composition, or physical-store
- * implementation. This module owns the original root-key buffer that it passes
- * to the authority and clears that buffer when creation fails or the workspace
- * is destroyed. The authority remains responsible for the lifetime of any
- * internal key material derived or copied from that input.
+ * not own persisted-format policy, credential creation, cryptographic
+ * composition, or physical-store implementation. The authority must create a
+ * normal self-contained HizoFS container and retain any secret-bearing state
+ * entirely behind the returned secret-free product surface.
  */
 export interface HizoFSDebugWorkspaceAuthority {
-  create({ backingDirectory, fileSystemRootKey }: {
+  create({ backingDirectory }: {
     backingDirectory: FileSystemDirectoryHandle;
-    fileSystemRootKey: Uint8Array;
   }): Promise<HizoFSDebugWorkspaceProduct>;
 }
 
 type LiveHizoFSDebugWorkspace = {
+  readonly authenticatedInspectionSession: HizoFSAuthenticatedInspectionSession;
   readonly workspaceId: string;
   readonly createdAt: number;
   readonly fileSystemId: string;
   readonly fileSystemSession: StorageFileSystemSession;
-  readonly fileSystemRootKey: Uint8Array;
+  readonly disposeProduct: () => Promise<void>;
 };
 
 const liveWorkspaces = new Map<string, LiveHizoFSDebugWorkspace>();
+const workspaceDestroyAttempts = new Map<string, Promise<void>>();
 
 export type HizoFSDebugWorkspaceSummary =
   | {
@@ -61,6 +59,7 @@ export type HizoFSDebugWorkspaceSummary =
     };
 
 export interface HizoFSDebugWorkspaceSession {
+  readonly authenticatedInspectionSession: HizoFSAuthenticatedInspectionSession;
   readonly source: Extract<HizoFSDebugWorkspaceSummary, { readonly status: 'live' }>;
   readonly decryptedRoot: StorageDirectoryHandle;
 
@@ -76,18 +75,17 @@ export async function createHizoFSDebugWorkspace({ authority, nativeOpfsRoot }: 
   const workspaceId = createWorkspaceId();
   const physicalDirectoryName = getPhysicalDirectoryName({ workspaceId });
   const backingDirectory = await parent.getDirectoryHandle(physicalDirectoryName, { create: true });
-  const fileSystemRootKey = crypto.getRandomValues(new Uint8Array(ROOT_KEY_BYTE_LENGTH));
-
   let product: HizoFSDebugWorkspaceProduct | undefined;
   try {
-    product = await authority.create({ backingDirectory, fileSystemRootKey });
+    product = await authority.create({ backingDirectory });
     const createdAt = Date.now();
     liveWorkspaces.set(workspaceId, {
+      authenticatedInspectionSession: product.authenticatedInspectionSession,
       workspaceId,
       createdAt,
       fileSystemId: product.fileSystemId,
       fileSystemSession: product.fileSystemSession,
-      fileSystemRootKey,
+      disposeProduct: product.dispose,
     });
     return createLiveSummary({
       workspaceId,
@@ -95,8 +93,7 @@ export async function createHizoFSDebugWorkspace({ authority, nativeOpfsRoot }: 
       fileSystemId: product.fileSystemId,
     });
   } catch (error) {
-    fileSystemRootKey.fill(0);
-    await product?.fileSystemSession.close().catch(() => undefined);
+    await product?.dispose().catch(() => undefined);
     await parent.removeEntry(physicalDirectoryName, { recursive: true }).catch(() => undefined);
     throw error;
   }
@@ -107,6 +104,7 @@ export async function listHizoFSDebugWorkspaces({ nativeOpfsRoot }: {
 }): Promise<readonly HizoFSDebugWorkspaceSummary[]> {
   const result: HizoFSDebugWorkspaceSummary[] = [];
   for (const workspace of liveWorkspaces.values()) {
+    if (workspaceDestroyAttempts.has(workspace.workspaceId)) continue;
     result.push(createLiveSummary({
       workspaceId: workspace.workspaceId,
       createdAt: workspace.createdAt,
@@ -137,7 +135,9 @@ export async function listHizoFSDebugWorkspaces({ nativeOpfsRoot }: {
     }
     }
     const workspaceId = parseWorkspaceId({ physicalDirectoryName: name });
-    if (workspaceId === undefined || liveWorkspaces.has(workspaceId)) continue;
+    if (workspaceId === undefined
+      || liveWorkspaces.has(workspaceId)
+      || workspaceDestroyAttempts.has(workspaceId)) continue;
     result.push({
       status: 'stale',
       workspaceId,
@@ -152,10 +152,11 @@ export async function openHizoFSDebugWorkspace({ workspaceId }: {
   workspaceId: string;
 }): Promise<HizoFSDebugWorkspaceSession> {
   const workspace = liveWorkspaces.get(workspaceId);
-  if (workspace === undefined) {
+  if (workspace === undefined || workspaceDestroyAttempts.has(workspaceId)) {
     throw new Error(`HizoFS debug workspace is not live: ${workspaceId}`);
   }
   return {
+    authenticatedInspectionSession: workspace.authenticatedInspectionSession,
     source: createLiveSummary({
       workspaceId: workspace.workspaceId,
       createdAt: workspace.createdAt,
@@ -170,14 +171,32 @@ export async function destroyHizoFSDebugWorkspace({ workspaceId, nativeOpfsRoot 
   workspaceId: string;
   nativeOpfsRoot: FileSystemDirectoryHandle | undefined;
 }): Promise<void> {
+  const existingAttempt = workspaceDestroyAttempts.get(workspaceId);
+  if (existingAttempt !== undefined) {
+    await existingAttempt;
+    return;
+  }
+  const attempt = destroyHizoFSDebugWorkspaceOnce({ workspaceId, nativeOpfsRoot });
+  workspaceDestroyAttempts.set(workspaceId, attempt);
+  try {
+    await attempt;
+  } finally {
+    if (workspaceDestroyAttempts.get(workspaceId) === attempt) {
+      workspaceDestroyAttempts.delete(workspaceId);
+    }
+  }
+}
+
+async function destroyHizoFSDebugWorkspaceOnce({ workspaceId, nativeOpfsRoot }: {
+  workspaceId: string;
+  nativeOpfsRoot: FileSystemDirectoryHandle | undefined;
+}): Promise<void> {
   const live = liveWorkspaces.get(workspaceId);
   if (live !== undefined) {
+    // WHY: keep the registry entry until disposal succeeds so a failed shutdown
+    // remains addressable and can be retried instead of becoming an orphan.
+    await live.disposeProduct();
     liveWorkspaces.delete(workspaceId);
-    try {
-      await live.fileSystemSession.close();
-    } finally {
-      live.fileSystemRootKey.fill(0);
-    }
   }
 
   const opfsRoot = nativeOpfsRoot ?? await navigator.storage.getDirectory();

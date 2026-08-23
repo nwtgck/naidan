@@ -3,6 +3,7 @@ import { TEST_ONLY as PERSISTENCE_RUNTIME_TEST_ONLY, type OpfsPersistenceRuntime
 import { installOpfsPersistenceRuntimeFactory, TEST_ONLY as PERSISTENCE_RUNTIME_REGISTRY_TEST_ONLY } from '@/00-storage/service/naidan-opfs/persistence-runtime-registry';
 import {
   openActiveAuthenticatedHizoFSContainerLocationLease,
+  openActiveAuthenticatedHizoFSDecryptedSnapshotLease,
   TEST_ONLY as ACTIVE_HIZOFS_LOCATION_TEST_ONLY,
 } from '@/00-storage/service/naidan-opfs/active-hizofs-container-location';
 import { naidanOpfsContainerOriginRelativePathComponents } from '@/00-storage/service/naidan-opfs/opfs-storage-location';
@@ -372,13 +373,19 @@ describe('OPFS Persistence Control runtime composition', () => {
       secondSequence: 1,
     });
     const sessionClose = vi.fn(async () => {});
+    const snapshotClose = vi.fn(async () => {});
+    const snapshotRoot = { kind: 'directory', name: 'snapshot-root' };
+    const createReadSnapshot = vi.fn(async () => ({
+      close: snapshotClose,
+      root: snapshotRoot,
+    }));
     const session = {
       backend: {},
       close: sessionClose,
       fileSystemId: PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({
         fileSystemId: '0123456789_ABCDEFGHIJ',
       }).mode.activeFileSystemId,
-      fileSystemSession: {},
+      fileSystemSession: { createReadSnapshot },
     } as unknown as OpfsPersistenceUnlockedSession;
     const runtime: OpfsPersistenceRuntime = {
       writableProfile: 'development-unverified',
@@ -425,6 +432,12 @@ describe('OPFS Persistence Control runtime composition', () => {
       naidanOpfsContainerOriginRelativePathComponents({ fileSystemId: session.fileSystemId }),
     );
     expect(() => locationLease.assertCurrent()).not.toThrow();
+    const decryptedLease = await openActiveAuthenticatedHizoFSDecryptedSnapshotLease();
+    if (decryptedLease === undefined) throw new Error('expected active decrypted snapshot lease');
+    expect(decryptedLease.root).toBe(snapshotRoot);
+    expect(createReadSnapshot).toHaveBeenCalledOnce();
+    await decryptedLease.dispose();
+    expect(snapshotClose).toHaveBeenCalledOnce();
 
     await provider.dispose();
     expect(() => locationLease.assertCurrent()).toThrow('no longer current');

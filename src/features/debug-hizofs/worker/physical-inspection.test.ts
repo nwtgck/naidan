@@ -3,6 +3,7 @@ import type {
   HizoFSHomeRecordInspectionRequest,
   HizoFSNamespacePathInspection,
   HizoFSPhysicalContainerInspection,
+  HizoFSPhysicalRecordFrameInspection,
   HizoFSPhysicalRecordInspection,
   HizoFSPhysicalRecordInspectionRequest,
 } from "@/00-storage/service/hizofs/inspection";
@@ -59,6 +60,14 @@ const namespaceInspection = {
   pathComponents: [],
 } satisfies HizoFSNamespacePathInspection;
 
+
+const frameInspection = {
+  frameBase64Url: "AQIDBA",
+  frameByteLength: 4,
+  physicalOffset: "128",
+  physicalSegmentId: "00000000000000000000000000000002",
+} satisfies HizoFSPhysicalRecordFrameInspection;
+
 const record = {
   frameLength: 96,
   headerFlags: 0,
@@ -82,7 +91,14 @@ describe("HizoFS physical inspection worker", () => {
     const inspectHomeRecord = vi.fn(async () => record);
     const inspectNamespacePath = vi.fn(async () => namespaceInspection);
     const inspectRecord = vi.fn(async () => record);
-    const driver: HizoFSPhysicalInspectionDriver = { inspectContainer, inspectHomeRecord, inspectNamespacePath, inspectRecord };
+    const inspectRecordFrame = vi.fn(async () => frameInspection);
+    const driver: HizoFSPhysicalInspectionDriver = {
+      inspectContainer,
+      inspectHomeRecord,
+      inspectNamespacePath,
+      inspectRecord,
+      inspectRecordFrame,
+    };
     const worker = createHizoFSPhysicalInspectionWorker({ driver });
 
     await expect(worker.inspectContainer({ passphrase: "first-passphrase" })).resolves.toBe(container);
@@ -102,6 +118,10 @@ describe("HizoFS physical inspection worker", () => {
       passphrase: "second-passphrase",
       request,
     })).resolves.toBe(record);
+    await expect(worker.inspectRecordFrame({
+      passphrase: "frame-passphrase",
+      request,
+    })).resolves.toBe(frameInspection);
 
     expect(inspectContainer).toHaveBeenCalledWith({ passphrase: "first-passphrase" });
     expect(inspectHomeRecord).toHaveBeenCalledWith({
@@ -118,6 +138,10 @@ describe("HizoFS physical inspection worker", () => {
     expect(inspectRecord).toHaveBeenCalledWith({
       maximumPreviewBytes: 1,
       passphrase: "second-passphrase",
+      request,
+    });
+    expect(inspectRecordFrame).toHaveBeenCalledWith({
+      passphrase: "frame-passphrase",
       request,
     });
     expect(JSON.stringify(worker)).not.toContain("passphrase");

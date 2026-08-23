@@ -21,6 +21,7 @@ import {
   type PersistenceControlReadablePhysicalPort,
 } from '@/00-storage/service/naidan-persistence-control/store';
 import type { PersistenceControlRootKeyDerivationCapability } from '@/00-storage/service/naidan-persistence-control/crypto';
+import { createHizoFSAuthenticatedInspectionSession, type HizoFSAuthenticatedInspectionSession } from '@/00-storage/service/hizofs/inspection';
 import {
   DEFAULT_HIZOFS_BACKING_FILE_HANDLE_CACHE_ENTRY_LIMIT,
   DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
@@ -36,6 +37,7 @@ import {
   openAuthenticatedReadOnlyApplicationSessionFromCapability,
   replaceAuthenticatedDevelopmentWritableSessionPassphrase,
   withAuthenticatedDevelopmentWritableSessionRetainedCredentials,
+  withAuthenticatedDevelopmentWritableSessionReadAuthority,
   withAuthenticatedDevelopmentWritableSessionRootKeyProof,
   openBrowserAuthenticatedReadOnlyContainerCapability,
   type AuthenticatedDevelopmentWritableContainerCapability,
@@ -182,6 +184,7 @@ export type CredentialBoundApplicationSessionOpenResult =
       readonly fileSystemSession: StorageFileSystemSession;
       readonly gracefullyShutdownRuntime: () => Promise<void>;
       readonly openManagementCleanHeadBarrier: () => OpfsPersistenceManagementCleanHeadBarrier;
+      readonly openAuthenticatedInspectionSession: (() => Promise<Readonly<{ session: HizoFSAuthenticatedInspectionSession; close(): Promise<void> }>>) | undefined;
       readonly selected: SelectedPersistenceControlAuthority;
       readonly type: 'opened';
     };
@@ -207,6 +210,7 @@ type CredentialBoundRegisteredApplicationSession = Readonly<{
   fileSystemSession: StorageFileSystemSession;
   gracefullyShutdownRuntime: () => Promise<void>;
   openManagementCleanHeadBarrier: () => OpfsPersistenceManagementCleanHeadBarrier;
+  openAuthenticatedInspectionSession: (() => Promise<Readonly<{ session: HizoFSAuthenticatedInspectionSession; close(): Promise<void> }>>) | undefined;
 }>;
 
 type CredentialBoundApplicationSessionFactoryResult =
@@ -238,6 +242,7 @@ function normalizeCredentialBoundApplicationSession({ value }: {
       fileSystemSession: value,
       gracefullyShutdownRuntime: async () => undefined,
       openManagementCleanHeadBarrier: createNoopManagementCleanHeadBarrierFactory(),
+      openAuthenticatedInspectionSession: undefined,
     });
 }
 
@@ -3271,6 +3276,7 @@ export async function registerCredentialBoundApplicationSession<Authority>({
       fileSystemSession: applicationSession.fileSystemSession,
       gracefullyShutdownRuntime: applicationSession.gracefullyShutdownRuntime,
       openManagementCleanHeadBarrier: applicationSession.openManagementCleanHeadBarrier,
+      openAuthenticatedInspectionSession: applicationSession.openAuthenticatedInspectionSession,
       selected: opened.selected,
       type: 'opened',
     };
@@ -3301,6 +3307,7 @@ export async function registerCredentialBoundApplicationSession<Authority>({
       fileSystemSession: applicationSession.fileSystemSession,
       gracefullyShutdownRuntime: applicationSession.gracefullyShutdownRuntime,
       openManagementCleanHeadBarrier: applicationSession.openManagementCleanHeadBarrier,
+      openAuthenticatedInspectionSession: applicationSession.openAuthenticatedInspectionSession,
       selected: opened.selected,
       type: 'opened',
     };
@@ -3641,6 +3648,17 @@ async function openNativeCredentialRequiredApplicationSessionWith({
           activeManagementBarrier = barrier;
           return barrier;
         },
+        openAuthenticatedInspectionSession: async () => Object.freeze({
+          close: async () => undefined,
+          session: createHizoFSAuthenticatedInspectionSession({
+            authorityBorrower: {
+              run: async ({ operation }) => await withAuthenticatedDevelopmentWritableSessionReadAuthority({
+                operation,
+                session: fileSystemSession,
+              }),
+            },
+          }),
+        }),
       });
     },
     openPlainApplicationSession: async ({ recheckAuthority }) => {
@@ -3649,6 +3667,7 @@ async function openNativeCredentialRequiredApplicationSessionWith({
         fileSystemSession: createNativeOpfsFileSystemSession({ root: nativeNamespaceRoot }),
         gracefullyShutdownRuntime: async () => undefined,
         openManagementCleanHeadBarrier: createNoopManagementCleanHeadBarrierFactory(),
+        openAuthenticatedInspectionSession: undefined,
       });
     },
     physical,

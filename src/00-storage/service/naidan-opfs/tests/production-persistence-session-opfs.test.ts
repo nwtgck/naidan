@@ -270,6 +270,8 @@ describe('native credential-required application session composition', () => {
       fileSystemId: activeFileSystemId,
       type: 'opened',
     });
+    if (result.type !== 'opened') throw new Error('expected opened HizoFS application session');
+    expect(result.openAuthenticatedInspectionSession).toEqual(expect.any(Function));
     expect(secondResult).toMatchObject({
       authoritativeEndpoint: { fileSystemId: activeFileSystemId, type: 'hizofs' },
       fileSystemId: activeFileSystemId,

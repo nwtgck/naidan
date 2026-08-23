@@ -3,9 +3,13 @@ import {
   HIZOFS_SUPERBLOCK_FILES,
   HIZOFS_V1_FORMAT_CONSTANTS,
   createFeatureBits,
+  createSubvolumeId,
+  createTimestampMilliseconds,
   decodeSuperblockHeader,
   encodeSuperblockHeader,
   parseFileSystemId,
+  parseSegmentIdLowercaseHex,
+  segmentIdToRelativePath,
 } from '@/00-storage/service/hizofs/00-format';
 import {
   createEmptyEncryptedContainer,
@@ -23,6 +27,11 @@ import {
   inspectHizoFSPhysicalContainer,
   inspectHizoFSPhysicalRecord,
 } from "@/00-storage/service/hizofs/inspection";
+import { openAuthenticatedReadWriteApplicationSession } from "@/00-storage/service/hizofs/worker/composition-root";
+import { HizoFSWorkerRuntimeHost } from "@/00-storage/service/hizofs/worker/runtime-host";
+import { createContainerCoordinationScope, parseContainerCoordinationScopeToken } from "@/00-storage/service/hizofs/runtime/container-coordination-scope";
+import { InMemoryCrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/testing/in-memory-cross-realm-lock-port";
+import { DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY } from "@/00-storage/service/hizofs/runtime/runtime-policy";
 
 const supportedFeatureBits = createFeatureBits({ value: 0n });
 
@@ -45,6 +54,70 @@ async function fixture() {
     supportedFeatureBits,
   });
   opened.rootKey.destroy();
+  return backend;
+}
+
+function immediateRuntimeHost(): HizoFSWorkerRuntimeHost {
+  return new HizoFSWorkerRuntimeHost({
+    crossRealmLockPort: new InMemoryCrossRealmLockPort(),
+    policy: {
+      lazyDurability: {
+        ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+        publicationModeRequest: "immediate",
+      },
+      maxDirectoryIteratorEntries: 32,
+      maxHeldLockNames: 64,
+      maxMaintenanceRootRegistrations: 64,
+      maxReaderPins: 16,
+      maxSegmentReferences: 16,
+    },
+    scope: createContainerCoordinationScope({
+      token: parseContainerCoordinationScopeToken({
+        value: "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+      }),
+    }),
+  });
+}
+
+async function fixtureWithPublishedFallback() {
+  const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+  const randomSource = deterministicRandomSource();
+  const opened = await createEmptyEncryptedContainer({
+    backend,
+    passphrase: "correct horse battery staple",
+    randomSource,
+    supportedFeatureBits,
+  });
+  let nextTimestamp = 1_700_000_000_000n;
+  const session = await openAuthenticatedReadWriteApplicationSession({
+    captureAuthority: async () => ({ revision: 1 }),
+    recheckAuthority: async () => undefined,
+    runtimeHost: immediateRuntimeHost(),
+    verifyCapturedAuthority: async () => ({
+      backend,
+      canonicalBackingLocation: "memory://inspector-fallback.hizofs",
+      explicitBulkLimits: {
+        candidate: { maxEntries: 32, maxInlineFileBytesTotal: 4096 },
+        directoryImport: { maximumEntryMutationsPerBatch: 16 },
+      },
+      fileMutationLimits: { maximumExtentMutationsPerBatch: 8 },
+      opened,
+      operationTimestamp: () => {
+        const value = createTimestampMilliseconds({ value: nextTimestamp });
+        nextTimestamp += 1n;
+        return value;
+      },
+      randomSource,
+      removalLimits: { deleteBatchSize: 16 },
+      recheckDurableGenerationAuthority: async () => undefined,
+      rootSubvolumeId: createSubvolumeId({ value: 1n }),
+      supportedFeatureBits,
+      writableProfile: "release-qualified",
+    }),
+  });
+  await session.root.getFileHandle({ create: true, name: "fallback-generation.txt" });
+  await session.sync();
+  await session.close();
   return backend;
 }
 
@@ -76,6 +149,37 @@ async function corruptLastByte({ backend, path }: {
   if (value === undefined) throw new Error('fixture final byte is missing');
   corrupted[index] = value ^ 1;
   const file = await backend.openFileForUpdate({ path: canonicalPath });
+  try {
+    await backend.writeAt({ bytes: authenticatedHizoFSPhysicalBytes({ bytes: corrupted }), file, offset: 0n });
+    await backend.syncFileData({ file });
+  } finally {
+    await backend.closeFile({ file });
+  }
+}
+
+async function corruptInspectedFrameLastByte({
+  backend,
+  reference,
+}: {
+  backend: InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>;
+  reference: { byteOffset: string; frameLength: number; segmentId: string };
+}): Promise<void> {
+  const segmentId = parseSegmentIdLowercaseHex({ value: reference.segmentId });
+  const path = canonicalContainerPath({
+    value: segmentIdToRelativePath({ id: segmentId, segmentClass: "metadata" }),
+  });
+  const bytes = await backend.readFileBounded({ maximumByteLength: 4 * 1024 * 1024, path });
+  if (bytes === undefined) throw new Error("active Commit segment is missing");
+  const frameLastByte = BigInt(reference.byteOffset) + BigInt(reference.frameLength) - 1n;
+  if (frameLastByte < 0n || frameLastByte >= BigInt(bytes.byteLength)) {
+    throw new RangeError("active Commit frame falls outside its segment");
+  }
+  const corrupted = Uint8Array.from(bytes);
+  const index = Number(frameLastByte);
+  const value = corrupted[index];
+  if (value === undefined) throw new Error("active Commit final frame byte is missing");
+  corrupted[index] = value ^ 1;
+  const file = await backend.openFileForUpdate({ path });
   try {
     await backend.writeAt({ bytes: authenticatedHizoFSPhysicalBytes({ bytes: corrupted }), file, offset: 0n });
     await backend.syncFileData({ file });
@@ -139,9 +243,48 @@ describe('HizoFS physical container inspection', () => {
     expect(inspection.unlockEnvelopeCopies[0]?.envelope?.authenticatorTag).toBeTypeOf("string");
     expect(inspection.unlockEnvelopeCopies[0]?.envelope?.credentialSlots[0]?.wrappedFileSystemRootKey).toBeTypeOf("string");
     expect(inspection.superblockCopies.every(copy => copy.header !== undefined && copy.plaintext !== undefined)).toBe(true);
+    expect(inspection.superblockCopies.every(copy => copy.fallbackCommit === undefined)).toBe(true);
     expect(inspection.superblockCopies[0]?.header?.nonce).toBeInstanceOf(Uint8Array);
     expect(propertyNames({ value: inspection })).not.toContain("passphrase");
     expect(propertyNames({ value: inspection })).not.toContain("rootKey");
+  });
+
+  it("retains the active failure reason when a real published fallback opens read-only", async () => {
+    const backend = await fixtureWithPublishedFallback();
+    const physical = createAuthenticatedHizoFSInspectionPort({ backend });
+    const beforeCorruption = await inspectHizoFSPhysicalContainer({
+      passphrase: "correct horse battery staple",
+      physical,
+      supportedFeatureBits,
+    });
+    if (beforeCorruption.rootDirectoryShortcut?.state !== "available") {
+      throw new Error("published fallback fixture root shortcut is unavailable");
+    }
+    expect(beforeCorruption.rootDirectoryShortcut.mode).toBe("active");
+    const selectedSuperblock = beforeCorruption.superblockCopies.find(copy => copy.selected);
+    expect(selectedSuperblock?.fallbackCommit).toBeDefined();
+
+    await corruptInspectedFrameLastByte({
+      backend,
+      reference: beforeCorruption.rootDirectoryShortcut.activeCommit,
+    });
+
+    const recovered = await inspectHizoFSPhysicalContainer({
+      passphrase: "correct horse battery staple",
+      physical,
+      supportedFeatureBits,
+    });
+    if (recovered.rootDirectoryShortcut?.state !== "available") {
+      throw new Error("fallback root shortcut is unavailable after active corruption");
+    }
+    expect(recovered.rootDirectoryShortcut.mode).toBe("fallback_read_only");
+    if (recovered.rootDirectoryShortcut.mode !== "fallback_read_only") {
+      throw new Error("expected fallback read-only inspection mode");
+    }
+    expect(recovered.rootDirectoryShortcut.activeFailureReason).not.toBe("");
+    expect(recovered.rootDirectoryShortcut.commitSequence).toBe("1");
+    expect(recovered.rootDirectoryShortcut.activeCommit).toEqual(selectedSuperblock?.fallbackCommit);
+    expect(backend.openHandleCount()).toBe(0);
   });
 
   it("retains a decoded Superblock header when later structural validation rejects the copy", async () => {
@@ -224,6 +367,13 @@ describe('HizoFS physical container inspection', () => {
     if (segment?.physicalSegmentId === undefined || frame === undefined) {
       throw new Error('fixture authenticated frame is missing');
     }
+    expect(frame.flags).toBe(0);
+    expect(frame.homeReference).toEqual({
+      byteOffset: frame.homeOffset,
+      frameLength: frame.frameLength,
+      recordKind: frame.recordKind,
+      segmentId: frame.homeSegmentId,
+    });
     const record = await inspectHizoFSPhysicalRecord({
       maximumPreviewBytes: 8,
       passphrase: 'correct horse battery staple',

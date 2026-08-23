@@ -229,6 +229,7 @@ async function createTestRuntimePort({
             release: barrier.release,
           };
         },
+        openAuthenticatedInspectionSession: undefined,
         selected: {} as never,
         type: 'opened',
       };

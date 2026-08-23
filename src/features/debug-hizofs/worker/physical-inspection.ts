@@ -3,9 +3,11 @@ import {
   inspectHizoFSNamespacePath,
   inspectHizoFSPhysicalContainer,
   inspectHizoFSPhysicalRecord,
+  inspectHizoFSPhysicalRecordFrame,
   type HizoFSHomeRecordInspectionRequest,
   type HizoFSNamespacePathInspection,
   type HizoFSPhysicalContainerInspection,
+  type HizoFSPhysicalRecordFrameInspection,
   type HizoFSPhysicalRecordInspection,
   type HizoFSPhysicalRecordInspectionRequest,
 } from "@/00-storage/service/hizofs/inspection";
@@ -31,6 +33,10 @@ export interface HizoFSPhysicalInspectionDriver {
     passphrase: string;
     request: HizoFSPhysicalRecordInspectionRequest;
   }): Promise<HizoFSPhysicalRecordInspection>;
+  inspectRecordFrame({ passphrase, request }: {
+    passphrase: string;
+    request: HizoFSPhysicalRecordInspectionRequest;
+  }): Promise<HizoFSPhysicalRecordFrameInspection>;
 }
 
 export interface HizoFSPhysicalInspectionWorker {
@@ -53,6 +59,10 @@ export interface HizoFSPhysicalInspectionWorker {
     passphrase: string;
     request: HizoFSPhysicalRecordInspectionRequest;
   }): Promise<HizoFSPhysicalRecordInspection>;
+  inspectRecordFrame({ passphrase, request }: {
+    passphrase: string;
+    request: HizoFSPhysicalRecordInspectionRequest;
+  }): Promise<HizoFSPhysicalRecordFrameInspection>;
 }
 
 export function createHizoFSPhysicalInspectionDriver({ physical }: {
@@ -82,6 +92,11 @@ export function createHizoFSPhysicalInspectionDriver({ physical }: {
       physical,
       request,
     }),
+    inspectRecordFrame: async ({ passphrase, request }) => await inspectHizoFSPhysicalRecordFrame({
+      passphrase,
+      physical,
+      request,
+    }),
   };
 }
 
@@ -103,6 +118,10 @@ export function createHizoFSPhysicalInspectionWorker({ driver }: {
     }),
     inspectRecord: async ({ maximumPreviewBytes, passphrase, request }) => await driver.inspectRecord({
       maximumPreviewBytes,
+      passphrase,
+      request,
+    }),
+    inspectRecordFrame: async ({ passphrase, request }) => await driver.inspectRecordFrame({
       passphrase,
       request,
     }),

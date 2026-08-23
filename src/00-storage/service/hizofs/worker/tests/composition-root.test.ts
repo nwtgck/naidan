@@ -48,6 +48,7 @@ import {
 } from "@/00-storage/service/hizofs/authenticated-store/superblock-store";
 import {
   generateFileSystemRootKey,
+  type FileSystemRootKey,
   type FileSystemRootKeyProofDerivationCapability,
   type RandomByteSource,
 } from "@/00-storage/service/hizofs/01-crypto";
@@ -113,6 +114,7 @@ import {
   publishAuthenticatedExplicitBulkCommit,
   publishAuthenticatedOrdinaryEntryCreate,
   replaceAuthenticatedDevelopmentWritableSessionPassphrase,
+  withAuthenticatedDevelopmentWritableSessionReadAuthority,
   withAuthenticatedDevelopmentWritableSessionRetainedCredentials,
   withAuthenticatedDevelopmentWritableSessionRootKeyProof,
   TEST_ONLY as COMPOSITION_TEST_ONLY,
@@ -3825,6 +3827,52 @@ describe("HizoFS worker composition root", () => {
 
     await capability.releaseResources();
     await session.close();
+  });
+
+  it("lends a destroyed-after-callback Root Key copy for authenticated reads", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const created = await createEmptyEncryptedContainer({
+      backend,
+      passphrase: "passphrase",
+      randomSource: deterministicRandomSource(),
+      supportedFeatureBits: createFeatureBits({ value: 0n }),
+    });
+    const expectedFileSystemId = created.fileSystemId;
+    created.rootKey.destroy();
+    const capability = await openAuthenticatedDevelopmentWritableContainerCapability({
+      backend: developmentBackend({ backend }),
+      passphrase: "passphrase",
+      verifyProofAuthority: async () => undefined,
+    });
+    if (capability.type !== "opened") throw new Error("expected development writable capability");
+    const session = await openAuthenticatedDevelopmentWritableApplicationSessionFromCapability({
+      authority: capability.authority,
+      canonicalBackingLocation: "memory://session-read-authority.hizofs",
+      recheckAuthority: async () => undefined,
+      runtimeHost: runtimeHost(),
+    });
+
+    let borrowedRootKey: FileSystemRootKey | undefined;
+    await withAuthenticatedDevelopmentWritableSessionReadAuthority({
+      operation: async ({ fileSystemId, physical, rootKey }) => {
+        expect(fileSystemId).toBe(expectedFileSystemId);
+        borrowedRootKey = rootKey;
+        await expect(physical.openSuperblockCopies({
+          fileSystemId,
+          rootKey,
+          supportedFeatureBits: createFeatureBits({ value: 0n }),
+        })).resolves.toBeDefined();
+      },
+      session,
+    });
+    expect(borrowedRootKey?.isDestroyed()).toBe(true);
+
+    await session.close();
+    await expect(withAuthenticatedDevelopmentWritableSessionReadAuthority({
+      operation: async () => undefined,
+      session,
+    })).rejects.toThrow("session is closed");
+    await capability.releaseResources();
   });
 
   it("proves an explicit retained credential set without exposing the session Root Key", async () => {

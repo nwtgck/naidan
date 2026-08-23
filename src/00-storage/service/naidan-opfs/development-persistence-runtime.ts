@@ -337,6 +337,7 @@ async function createDevelopmentUnlockedSession({ opened, port }: {
     fileSystemId: opened.fileSystemId,
     fileSystemSession: opened.fileSystemSession,
     openManagementCleanHeadBarrier,
+    openAuthenticatedInspectionSession: opened.openAuthenticatedInspectionSession,
   };
 }
 

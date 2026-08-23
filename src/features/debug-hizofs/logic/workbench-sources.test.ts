@@ -7,6 +7,15 @@ import {
   createHizoFSWorkbenchSourceRegistry,
   type ActiveHizoFSWorkbenchSource,
 } from './workbench-sources';
+function authenticatedInspectionSession() {
+  return {
+    inspectContainer: vi.fn(async () => ({}) as never),
+    inspectHomeRecord: vi.fn(async () => ({}) as never),
+    inspectNamespacePath: vi.fn(async () => ({}) as never),
+    inspectRecord: vi.fn(async () => ({}) as never),
+  };
+}
+
 
 function debugAuthority(): HizoFSDebugWorkspaceAuthority {
   return {
@@ -22,7 +31,12 @@ function debugAuthority(): HizoFSDebugWorkspaceAuthority {
         async close() {},
         async sync() {},
       };
-      return { fileSystemId: 'debug-file-system', fileSystemSession };
+      return {
+        authenticatedInspectionSession: authenticatedInspectionSession(),
+        fileSystemId: 'debug-file-system',
+        fileSystemSession,
+        dispose: async () => await fileSystemSession.close(),
+      };
     },
   };
 }

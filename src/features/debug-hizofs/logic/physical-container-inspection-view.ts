@@ -28,6 +28,11 @@ export type HizoFSPhysicalRootNavigationTarget = Readonly<{
   request: HizoFSHomeRecordInspectionRequest;
 }>;
 
+export type HizoFSPhysicalRecoveryNavigationTarget = Readonly<{
+  label: "Fallback Commit candidate";
+  request: HizoFSHomeRecordInspectionRequest;
+}>;
+
 export type HizoFSUnlockEnvelopeCopyInspectionRow = Readonly<{
   copy: 0 | 1;
   credentialSlotCount: number | undefined;
@@ -45,6 +50,7 @@ export type HizoFSUnlockEnvelopeCopyInspectionRow = Readonly<{
 export type HizoFSSuperblockCopyInspectionRow = Readonly<{
   activeCommit: HizoFSRecordReferenceInspection | undefined;
   activeCommitSequence: string | undefined;
+  fallbackCommit: HizoFSRecordReferenceInspection | undefined;
   copy: 0 | 1;
   header: HizoFSSuperblockCopyInspection["header"];
   headerJson: string;
@@ -66,7 +72,9 @@ export type HizoFSPhysicalCopyInspectionRow =
   | HizoFSUnlockEnvelopeCopyInspectionRow;
 
 export type HizoFSPhysicalFrameInspectionRow = Readonly<{
+  flags: number;
   frameLength: number;
+  homeReference: HizoFSRecordReferenceInspection | undefined;
   homeOffset: string;
   homeSegmentId: string;
   physicalOffset: string;
@@ -93,7 +101,9 @@ export type HizoFSPhysicalContainerInspectionView = Readonly<{
   displayedFrameCount: number;
   frameRowsTruncated: boolean;
   physicalAnomalies: readonly string[];
+  recoveryNavigationTargets: readonly HizoFSPhysicalRecoveryNavigationTarget[];
   rootDirectorySummary: string;
+  rootRecoveryReason: string | undefined;
   rootNavigationTargets: readonly HizoFSPhysicalRootNavigationTarget[];
   segmentRows: readonly HizoFSPhysicalSegmentInspectionRow[];
   totalFrameCount: number;
@@ -157,6 +167,7 @@ function superblockCopyRow({ copy }: {
   const {
     activeCommit,
     activeCommitSequence,
+    fallbackCommit,
     copy: copyNumber,
     header,
     minimumUnlockSequence,
@@ -174,6 +185,7 @@ function superblockCopyRow({ copy }: {
   return exactObject<HizoFSSuperblockCopyInspectionRow>()({
     activeCommit,
     activeCommitSequence,
+    fallbackCommit,
     copy: copyNumber,
     header,
     headerJson: stringifyPersistedAuditValue({ value: header }),
@@ -211,24 +223,59 @@ function authorityNavigationTargets({ superblockCopies }: {
   })];
 }
 
+function recoveryNavigationTargets({ superblockCopies }: {
+  superblockCopies: HizoFSPhysicalContainerInspection["superblockCopies"];
+}): readonly HizoFSPhysicalRecoveryNavigationTarget[] {
+  const reference = superblockCopies.find(copy => copy.selected)?.fallbackCommit;
+  if (reference === undefined) return [];
+  return [exactObject<HizoFSPhysicalRecoveryNavigationTarget>()({
+    label: "Fallback Commit candidate",
+    request: rootNavigationTarget({
+      label: "Fallback Commit",
+      pageIsRoot: undefined,
+      reference,
+    }).request,
+  })];
+}
+
 function rootDirectorySummary({ shortcut }: {
   shortcut: HizoFSPhysicalContainerInspection["rootDirectoryShortcut"];
 }): string {
   if (shortcut === undefined) return "not evaluated";
   switch (shortcut.state) {
   case "available": {
-    const {
-      activeCommit: _activeCommit,
-      commitSequence,
-      mode,
-      nestedSubvolumeTableRoot: _nestedSubvolumeTableRoot,
-      rootDirectoryInodeNumber,
-      rootInodeTableRoot: _rootInodeTableRoot,
-      state: _state,
-      ...unhandledShortcut
-    } = shortcut;
-    unhandledShortcut satisfies Record<PropertyKey, never>;
-    return `${mode}, commit ${commitSequence}, root inode ${rootDirectoryInodeNumber}`;
+    switch (shortcut.mode) {
+    case "active": {
+      const {
+        activeCommit: _activeCommit,
+        commitSequence,
+        mode,
+        nestedSubvolumeTableRoot: _nestedSubvolumeTableRoot,
+        rootDirectoryInodeNumber,
+        rootInodeTableRoot: _rootInodeTableRoot,
+        state: _state,
+        ...unhandledShortcut
+      } = shortcut;
+      unhandledShortcut satisfies Record<PropertyKey, never>;
+      return `${mode}, commit ${commitSequence}, root inode ${rootDirectoryInodeNumber}`;
+    }
+    case "fallback_read_only": {
+      const {
+        activeCommit: _activeCommit,
+        activeFailureReason: _activeFailureReason,
+        commitSequence,
+        mode,
+        nestedSubvolumeTableRoot: _nestedSubvolumeTableRoot,
+        rootDirectoryInodeNumber,
+        rootInodeTableRoot: _rootInodeTableRoot,
+        state: _state,
+        ...unhandledShortcut
+      } = shortcut;
+      unhandledShortcut satisfies Record<PropertyKey, never>;
+      return `${mode}, commit ${commitSequence}, root inode ${rootDirectoryInodeNumber}`;
+    }
+    default: return shortcut satisfies never;
+    }
   }
   case "unavailable": {
     const { reason, state: _state, ...unhandledShortcut } = shortcut;
@@ -258,6 +305,23 @@ function rootNavigationTarget({ label, pageIsRoot, reference }: {
   });
 }
 
+function rootRecoveryReason({ shortcut }: {
+  shortcut: HizoFSPhysicalContainerInspection["rootDirectoryShortcut"];
+}): string | undefined {
+  if (shortcut === undefined) return undefined;
+  switch (shortcut.state) {
+  case "unavailable": return undefined;
+  case "available": {
+    switch (shortcut.mode) {
+    case "active": return undefined;
+    case "fallback_read_only": return shortcut.activeFailureReason;
+    default: return shortcut satisfies never;
+    }
+  }
+  default: return shortcut satisfies never;
+  }
+}
+
 function selectedCommitLabel({ mode }: {
   mode: Extract<HizoFSPhysicalContainerInspection["rootDirectoryShortcut"], { state: "available" }>["mode"];
 }): "Active Commit" | "Fallback Commit" {
@@ -279,18 +343,17 @@ function rootNavigationTargets({ shortcut }: {
     return [];
   }
   case "available": {
-    const {
+    const targetsFor = ({
       activeCommit,
-      commitSequence: _commitSequence,
       mode,
       nestedSubvolumeTableRoot,
-      rootDirectoryInodeNumber: _rootDirectoryInodeNumber,
       rootInodeTableRoot,
-      state: _state,
-      ...unhandledShortcut
-    } = shortcut;
-    unhandledShortcut satisfies Record<PropertyKey, never>;
-    return [
+    }: {
+      activeCommit: HizoFSRecordReferenceInspection;
+      mode: "active" | "fallback_read_only";
+      nestedSubvolumeTableRoot: HizoFSRecordReferenceInspection | undefined;
+      rootInodeTableRoot: HizoFSRecordReferenceInspection;
+    }): readonly HizoFSPhysicalRootNavigationTarget[] => [
       rootNavigationTarget({
         label: selectedCommitLabel({ mode }),
         pageIsRoot: undefined,
@@ -309,6 +372,38 @@ function rootNavigationTargets({ shortcut }: {
           reference: nestedSubvolumeTableRoot,
         })]),
     ];
+    switch (shortcut.mode) {
+    case "active": {
+      const {
+        activeCommit,
+        commitSequence: _commitSequence,
+        mode,
+        nestedSubvolumeTableRoot,
+        rootDirectoryInodeNumber: _rootDirectoryInodeNumber,
+        rootInodeTableRoot,
+        state: _state,
+        ...unhandledShortcut
+      } = shortcut;
+      unhandledShortcut satisfies Record<PropertyKey, never>;
+      return targetsFor({ activeCommit, mode, nestedSubvolumeTableRoot, rootInodeTableRoot });
+    }
+    case "fallback_read_only": {
+      const {
+        activeCommit,
+        activeFailureReason: _activeFailureReason,
+        commitSequence: _commitSequence,
+        mode,
+        nestedSubvolumeTableRoot,
+        rootDirectoryInodeNumber: _rootDirectoryInodeNumber,
+        rootInodeTableRoot,
+        state: _state,
+        ...unhandledShortcut
+      } = shortcut;
+      unhandledShortcut satisfies Record<PropertyKey, never>;
+      return targetsFor({ activeCommit, mode, nestedSubvolumeTableRoot, rootInodeTableRoot });
+    }
+    default: return shortcut satisfies never;
+    }
   }
   default: return shortcut satisfies never;
   }
@@ -319,8 +414,10 @@ function frameRow({ frame, physicalSegmentId }: {
   physicalSegmentId: string;
 }): HizoFSPhysicalFrameInspectionRow {
   const {
+    flags,
     frameLength,
     homeOffset,
+    homeReference,
     homeSegmentId,
     physicalOffset,
     plaintextLength,
@@ -329,8 +426,10 @@ function frameRow({ frame, physicalSegmentId }: {
   } = frame;
   unhandledFrame satisfies Record<PropertyKey, never>;
   return exactObject<HizoFSPhysicalFrameInspectionRow>()({
+    flags,
     frameLength,
     homeOffset,
+    homeReference,
     homeSegmentId,
     physicalOffset,
     physicalSegmentId,
@@ -411,8 +510,10 @@ export function createHizoFSPhysicalContainerInspectionView({
     displayedFrameCount,
     frameRowsTruncated: displayedFrameCount < totalFrameCount,
     physicalAnomalies: [...physicalAnomalies],
+    recoveryNavigationTargets: recoveryNavigationTargets({ superblockCopies }),
     rootDirectorySummary: rootDirectorySummary({ shortcut: rootDirectoryShortcut }),
     rootNavigationTargets: rootNavigationTargets({ shortcut: rootDirectoryShortcut }),
+    rootRecoveryReason: rootRecoveryReason({ shortcut: rootDirectoryShortcut }),
     segmentRows,
     totalFrameCount,
     superblockSelectionSummary: selectionSummary({ selection: superblockSelection }),

@@ -21,9 +21,82 @@ export type HizoFSOpenedInspectionAuthority = Readonly<{
 }>;
 
 /**
- * Keeps the root-key capability inside one operation and destroys it before
- * returning. Inspection callers receive authenticated values, never the
- * secret-bearing capability itself.
+ * Borrows a caller-owned root-key capability for one bounded inspection
+ * operation without transferring or destroying that capability. The root key
+ * stays inside HizoFS core composition and is never returned in inspection data.
+ */
+export async function withBorrowedHizoFSInspectionAuthority<T>({
+  fileSystemId,
+  operation,
+  physical,
+  rootKey,
+  supportedFeatureBits = createFeatureBits({ value: 0n }),
+}: {
+  fileSystemId: FileSystemId;
+  operation: ({ authority }: { authority: HizoFSOpenedInspectionAuthority }) => Promise<T>;
+  physical: AuthenticatedHizoFSInspectionPort;
+  rootKey: FileSystemRootKey;
+  supportedFeatureBits?: FeatureBits;
+}): Promise<T> {
+  const openedSuperblock = await physical.openSuperblockCopies({
+    fileSystemId,
+    rootKey,
+    supportedFeatureBits,
+  });
+  await physical.openUnlockAuthority({
+    fileSystemId,
+    minimumUnlockSequence: openedSuperblock.logicalState.minimumUnlockSequence,
+    rootKey,
+  });
+
+  const common = {
+    fileSystemId,
+    relocationIndexRootPhysicalRef: openedSuperblock.logicalState.relocationIndexRootPhysicalRef,
+    rootKey,
+  };
+  try {
+    const opened = await physical.readBootstrapRoot({
+      authority: {
+        commitHomeRef: openedSuperblock.logicalState.activeCommitHomeRef,
+        commitSequence: openedSuperblock.logicalState.activeCommitSequence,
+        mutationId: openedSuperblock.logicalState.activeMutationId,
+        type: "active",
+      },
+      ...common,
+    });
+    return await operation({
+      authority: {
+        ...common,
+        commit: opened.commit,
+        mode: "active",
+      },
+    });
+  } catch (activeCause: unknown) {
+    const fallback = openedSuperblock.logicalState.fallbackCommitHomeRef;
+    if (fallback === null) throw activeCause;
+    const opened = await physical.readBootstrapRoot({
+      authority: {
+        commitHomeRef: fallback,
+        commitSequence: createCommitSequence({
+          value: openedSuperblock.logicalState.activeCommitSequence - 1n,
+        }),
+        type: "fallback",
+      },
+      ...common,
+    });
+    return await operation({
+      authority: {
+        ...common,
+        commit: opened.commit,
+        mode: "fallback_read_only",
+      },
+    });
+  }
+}
+
+/**
+ * Opens a passphrase-backed inspection authority and destroys the temporary
+ * root-key capability before returning to the caller.
  */
 export async function withHizoFSInspectionAuthority<T>({
   operation,
@@ -42,60 +115,13 @@ export async function withHizoFSInspectionAuthority<T>({
   });
   const rootKey = openedUnlock.rootKey;
   try {
-    const openedSuperblock = await physical.openSuperblockCopies({
+    return await withBorrowedHizoFSInspectionAuthority({
       fileSystemId: openedUnlock.fileSystemId,
+      operation,
+      physical,
       rootKey,
       supportedFeatureBits,
     });
-    await physical.openUnlockAuthority({
-      fileSystemId: openedUnlock.fileSystemId,
-      minimumUnlockSequence: openedSuperblock.logicalState.minimumUnlockSequence,
-      rootKey,
-    });
-
-    const common = {
-      fileSystemId: openedUnlock.fileSystemId,
-      relocationIndexRootPhysicalRef: openedSuperblock.logicalState.relocationIndexRootPhysicalRef,
-      rootKey,
-    };
-    try {
-      const opened = await physical.readBootstrapRoot({
-        authority: {
-          commitHomeRef: openedSuperblock.logicalState.activeCommitHomeRef,
-          commitSequence: openedSuperblock.logicalState.activeCommitSequence,
-          mutationId: openedSuperblock.logicalState.activeMutationId,
-          type: "active",
-        },
-        ...common,
-      });
-      return await operation({
-        authority: {
-          ...common,
-          commit: opened.commit,
-          mode: "active",
-        },
-      });
-    } catch (activeCause: unknown) {
-      const fallback = openedSuperblock.logicalState.fallbackCommitHomeRef;
-      if (fallback === null) throw activeCause;
-      const opened = await physical.readBootstrapRoot({
-        authority: {
-          commitHomeRef: fallback,
-          commitSequence: createCommitSequence({
-            value: openedSuperblock.logicalState.activeCommitSequence - 1n,
-          }),
-          type: "fallback",
-        },
-        ...common,
-      });
-      return await operation({
-        authority: {
-          ...common,
-          commit: opened.commit,
-          mode: "fallback_read_only",
-        },
-      });
-    }
   } finally {
     rootKey.destroy();
   }

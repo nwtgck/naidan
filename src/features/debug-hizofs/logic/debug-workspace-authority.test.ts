@@ -14,6 +14,15 @@ import { createInMemoryStorageRoot } from '@/00-storage/service/storage-file-sys
 
 const roots: MockFileSystemDirectoryHandle[] = [];
 
+function authenticatedInspectionSession() {
+  return {
+    inspectContainer: vi.fn(async () => ({}) as never),
+    inspectHomeRecord: vi.fn(async () => ({}) as never),
+    inspectNamespacePath: vi.fn(async () => ({}) as never),
+    inspectRecord: vi.fn(async () => ({}) as never),
+  };
+}
+
 function authority(): {
   readonly authority: HizoFSDebugWorkspaceAuthority;
   readonly close: ReturnType<typeof vi.fn>;
@@ -34,7 +43,12 @@ function authority(): {
           close,
           sync: vi.fn(async () => undefined),
         };
-        return { fileSystemId: 'debug-file-system', fileSystemSession };
+        return {
+          authenticatedInspectionSession: authenticatedInspectionSession(),
+          fileSystemId: 'debug-file-system',
+          fileSystemSession,
+          dispose: async () => await fileSystemSession.close(),
+        };
       },
     },
   };
@@ -97,6 +111,104 @@ describe('HizoFS debug workspaces', () => {
     await expect(createHizoFSDebugWorkspace({ authority: failing, nativeOpfsRoot: root }))
       .rejects.toThrow('creation failed');
     expect(await listHizoFSDebugWorkspaces({ nativeOpfsRoot: root })).toEqual([]);
+  });
+
+  it('retains a live workspace after disposal fails so destruction can be retried', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    roots.push(root);
+    const fileSystemSession: StorageFileSystemSession = {
+      root: createInMemoryStorageRoot({ name: 'decrypted-root' }),
+      capabilities: {
+        atomicMove: 'supported',
+        directBlob: 'supported',
+        symbolicLink: 'supported',
+        wholeFileClone: 'supported',
+      },
+      close: vi.fn(async () => undefined),
+      sync: vi.fn(async () => undefined),
+    };
+    const dispose = vi.fn()
+      .mockRejectedValueOnce(new Error('runtime retained'))
+      .mockResolvedValueOnce(undefined);
+    const retryableAuthority: HizoFSDebugWorkspaceAuthority = {
+      async create() {
+        return {
+          authenticatedInspectionSession: authenticatedInspectionSession(),
+          fileSystemId: 'retryable-file-system',
+          fileSystemSession,
+          dispose,
+        };
+      },
+    };
+    const summary = await createHizoFSDebugWorkspace({
+      authority: retryableAuthority,
+      nativeOpfsRoot: root,
+    });
+
+    await expect(destroyHizoFSDebugWorkspace({
+      workspaceId: summary.workspaceId,
+      nativeOpfsRoot: root,
+    })).rejects.toThrow('runtime retained');
+    expect(await listHizoFSDebugWorkspaces({ nativeOpfsRoot: root })).toContainEqual(summary);
+
+    await destroyHizoFSDebugWorkspace({
+      workspaceId: summary.workspaceId,
+      nativeOpfsRoot: root,
+    });
+    expect(dispose).toHaveBeenCalledTimes(2);
+    expect(await listHizoFSDebugWorkspaces({ nativeOpfsRoot: root })).not.toContainEqual(summary);
+  });
+
+  it('hides a workspace from new opens while destruction is in flight', async () => {
+    const root = new MockFileSystemDirectoryHandle({ name: 'opfs-root' });
+    roots.push(root);
+    let signalDisposeStarted: (() => void) | undefined;
+    let releaseDispose: (() => void) | undefined;
+    const disposeStarted = new Promise<void>(resolve => {
+      signalDisposeStarted = resolve;
+    });
+    const fileSystemSession: StorageFileSystemSession = {
+      root: createInMemoryStorageRoot({ name: 'decrypted-root' }),
+      capabilities: {
+        atomicMove: 'supported',
+        directBlob: 'supported',
+        symbolicLink: 'supported',
+        wholeFileClone: 'supported',
+      },
+      close: vi.fn(async () => undefined),
+      sync: vi.fn(async () => undefined),
+    };
+    const inFlightAuthority: HizoFSDebugWorkspaceAuthority = {
+      async create() {
+        return {
+          authenticatedInspectionSession: authenticatedInspectionSession(),
+          fileSystemId: 'in-flight-file-system',
+          fileSystemSession,
+          dispose: async () => {
+            signalDisposeStarted?.();
+            await new Promise<void>(resolve => {
+              releaseDispose = resolve;
+            });
+          },
+        };
+      },
+    };
+    const summary = await createHizoFSDebugWorkspace({
+      authority: inFlightAuthority,
+      nativeOpfsRoot: root,
+    });
+
+    const destroying = destroyHizoFSDebugWorkspace({
+      workspaceId: summary.workspaceId,
+      nativeOpfsRoot: root,
+    });
+    await disposeStarted;
+    await expect(openHizoFSDebugWorkspace({ workspaceId: summary.workspaceId }))
+      .rejects.toThrow('is not live');
+    expect(await listHizoFSDebugWorkspaces({ nativeOpfsRoot: root })).not.toContainEqual(summary);
+
+    releaseDispose?.();
+    await destroying;
   });
 
   it('discovers and removes keyless physical directories as stale workspaces', async () => {

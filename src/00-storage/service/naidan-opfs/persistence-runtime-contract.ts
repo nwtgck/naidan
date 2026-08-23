@@ -1,5 +1,6 @@
 import type { IStorageProvider } from '@/00-storage/service/interface';
 import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
+import type { HizoFSAuthenticatedInspectionSession } from '@/00-storage/service/hizofs/inspection';
 import type {
   NaidanPersistenceModeV1,
   NaidanPersistenceControlV1,
@@ -73,6 +74,10 @@ export interface OpfsPersistenceUnlockedSession {
   readonly backend: IStorageProvider;
   readonly fileSystemId: FileSystemId;
   readonly fileSystemSession: StorageFileSystemSession;
+  readonly openAuthenticatedInspectionSession: (() => Promise<Readonly<{
+    session: HizoFSAuthenticatedInspectionSession;
+    close(): Promise<void>;
+  }>>) | undefined;
   close(): Promise<void>;
   openManagementCleanHeadBarrier(): OpfsPersistenceManagementCleanHeadBarrier;
 }

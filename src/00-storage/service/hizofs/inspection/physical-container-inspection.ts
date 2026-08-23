@@ -75,6 +75,7 @@ export type HizoFSUnlockEnvelopeCopyInspection = Readonly<{
 export type HizoFSSuperblockCopyInspection = Readonly<{
   activeCommit: HizoFSRecordReferenceInspection | undefined;
   activeCommitSequence: string | undefined;
+  fallbackCommit: HizoFSRecordReferenceInspection | undefined;
   copy: 0 | 1;
   header: SuperblockHeaderV1 | undefined;
   minimumUnlockSequence: string | undefined;
@@ -89,7 +90,9 @@ export type HizoFSSuperblockCopyInspection = Readonly<{
 }>;
 
 export type HizoFSSegmentFrameInspection = Readonly<{
+  flags: number;
   frameLength: number;
+  homeReference: HizoFSRecordReferenceInspection | undefined;
   homeOffset: string;
   homeSegmentId: string;
   physicalOffset: string;
@@ -124,7 +127,17 @@ export type HizoFSRootDirectoryShortcutInspection =
   | Readonly<{
       activeCommit: HizoFSRecordReferenceInspection;
       commitSequence: string;
-      mode: "active" | "fallback_read_only";
+      mode: "active";
+      nestedSubvolumeTableRoot: HizoFSRecordReferenceInspection | undefined;
+      rootDirectoryInodeNumber: string;
+      rootInodeTableRoot: HizoFSRecordReferenceInspection;
+      state: "available";
+    }>
+  | Readonly<{
+      activeCommit: HizoFSRecordReferenceInspection;
+      activeFailureReason: string;
+      commitSequence: string;
+      mode: "fallback_read_only";
       nestedSubvolumeTableRoot: HizoFSRecordReferenceInspection | undefined;
       rootDirectoryInodeNumber: string;
       rootInodeTableRoot: HizoFSRecordReferenceInspection;
@@ -321,6 +334,7 @@ async function inspectSuperblockCopies({ fileSystemId, physical, rootKey, select
     const base = {
       activeCommit: undefined,
       activeCommitSequence: undefined,
+      fallbackCommit: undefined,
       copy,
       header: undefined,
       minimumUnlockSequence: undefined,
@@ -384,6 +398,9 @@ async function inspectSuperblockCopies({ fileSystemId, physical, rootKey, select
         result.push({
           ...structuralBase,
           activeCommit: referenceInspection({ reference: plaintext.activeCommitHomeRef }),
+          fallbackCommit: plaintext.fallbackCommitHomeRef === null
+            ? undefined
+            : referenceInspection({ reference: plaintext.fallbackCommitHomeRef }),
           minimumUnlockSequence: String(plaintext.minimumUnlockSequence),
           plaintext,
           relocationIndexRoot: plaintext.relocationIndexRootPhysicalRef === null
@@ -576,7 +593,16 @@ async function listPhysicalSegments({ fileSystemId, maximumFrames, maximumSegmen
           segments.push({
             fileSize: String(entry.byteLength),
             frames: index.frames.map(frame => ({
+              flags: frame.header.flags,
               frameLength: frame.header.frameLength,
+              homeReference: frame.header.flags === HIZOFS_V1_FORMAT_CONSTANTS.flags.recordPhysicalOnly
+                ? undefined
+                : {
+                  byteOffset: String(frame.header.homeOffset),
+                  frameLength: frame.header.frameLength,
+                  recordKind: frame.header.recordKind,
+                  segmentId: segmentIdToLowercaseHex({ id: frame.header.homeSegmentId }),
+                },
               homeOffset: String(frame.header.homeOffset),
               homeSegmentId: segmentIdToLowercaseHex({ id: frame.header.homeSegmentId }),
               physicalOffset: String(frame.physicalOffset),
@@ -652,6 +678,7 @@ async function inspectRootShortcut({ fileSystemId, openedSuperblock, physical, r
       });
       return {
         activeCommit: referenceInspection({ reference: fallback }),
+        activeFailureReason: reasonFrom({ cause: activeCause }),
         commitSequence: String(opened.commit.commitSequence),
         mode: "fallback_read_only",
         nestedSubvolumeTableRoot: opened.commit.nestedSubvolumeTableRootHomeRef === null
@@ -668,6 +695,140 @@ async function inspectRootShortcut({ fileSystemId, openedSuperblock, physical, r
       };
     }
   }
+}
+
+async function inspectHizoFSPhysicalContainerWithOpenedAuthority({
+  fileSystemId,
+  maximumFrames,
+  maximumSegments,
+  physical,
+  rootKey,
+  structuralUnlock,
+  supportedFeatureBits,
+}: {
+  fileSystemId: FileSystemId;
+  maximumFrames: number;
+  maximumSegments: number;
+  physical: AuthenticatedHizoFSInspectionPort;
+  rootKey: FileSystemRootKey;
+  structuralUnlock: StructuralUnlockInspection;
+  supportedFeatureBits: FeatureBits;
+}): Promise<HizoFSPhysicalContainerInspection> {
+  let openedSuperblock: OpenedSuperblockCopies;
+  try {
+    openedSuperblock = await physical.openSuperblockCopies({
+      fileSystemId,
+      rootKey,
+      supportedFeatureBits,
+    });
+  } catch (cause: unknown) {
+    const authority = await physical.openUnlockAuthority({
+      fileSystemId,
+      minimumUnlockSequence: createUnlockSequence({ value: 1n }),
+      rootKey,
+    });
+    return {
+      physicalAnomalies: [],
+      rootDirectoryShortcut: undefined,
+      segments: [],
+      superblockCopies: await inspectSuperblockCopies({
+        fileSystemId,
+        physical,
+        rootKey,
+        selectedCopy: undefined,
+      }),
+      superblockSelection: rejectionFrom({ cause }),
+      unlockEnvelopeCopies: await classifiedUnlockCopies({
+        rootKey,
+        selectedCopy: authority.selectedPhysicalCopy,
+        structural: structuralUnlock.structural,
+        unresolved: structuralUnlock.copies,
+      }),
+      unlockSelection: {
+        copy: authority.selectedPhysicalCopy,
+        redundancy: credentialRedundancy({ copyState: authority.copyState }),
+        sequence: String(authority.unlockSequence),
+        state: "selected",
+      },
+    };
+  }
+
+  const unlockAuthority = await physical.openUnlockAuthority({
+    fileSystemId,
+    minimumUnlockSequence: openedSuperblock.logicalState.minimumUnlockSequence,
+    rootKey,
+  });
+  const unlockEnvelopeCopies = await classifiedUnlockCopies({
+    rootKey,
+    selectedCopy: unlockAuthority.selectedPhysicalCopy,
+    structural: structuralUnlock.structural,
+    unresolved: structuralUnlock.copies,
+  });
+  const superblockCopies = await inspectSuperblockCopies({
+    fileSystemId,
+    physical,
+    rootKey,
+    selectedCopy: openedSuperblock.selectedCopy,
+  });
+  const rootDirectoryShortcut = await inspectRootShortcut({
+    fileSystemId,
+    openedSuperblock,
+    physical,
+    rootKey,
+  });
+  const physicalSegments = await listPhysicalSegments({
+    fileSystemId,
+    maximumFrames,
+    maximumSegments,
+    physical,
+    rootKey,
+  });
+  return {
+    physicalAnomalies: physicalSegments.anomalies,
+    rootDirectoryShortcut,
+    segments: physicalSegments.segments,
+    superblockCopies,
+    superblockSelection: {
+      copy: openedSuperblock.selectedCopy,
+      redundancy: superblockRedundancy({ copyState: openedSuperblock.copyState }),
+      sequence: String(openedSuperblock.selectedPublicationSequence),
+      state: "selected",
+    },
+    unlockEnvelopeCopies,
+    unlockSelection: {
+      copy: unlockAuthority.selectedPhysicalCopy,
+      redundancy: credentialRedundancy({ copyState: unlockAuthority.copyState }),
+      sequence: String(unlockAuthority.unlockSequence),
+      state: "selected",
+    },
+  };
+}
+
+export async function inspectHizoFSPhysicalContainerWithAuthority({
+  fileSystemId,
+  maximumFrames = 65_536,
+  maximumSegments = 4096,
+  physical,
+  rootKey,
+  supportedFeatureBits = createFeatureBits({ value: 0n }),
+}: {
+  fileSystemId: FileSystemId;
+  maximumFrames?: number;
+  maximumSegments?: number;
+  physical: AuthenticatedHizoFSInspectionPort;
+  rootKey: FileSystemRootKey;
+  supportedFeatureBits?: FeatureBits;
+}): Promise<HizoFSPhysicalContainerInspection> {
+  const structuralUnlock = await readStructuralUnlockCopies({ physical });
+  return await inspectHizoFSPhysicalContainerWithOpenedAuthority({
+    fileSystemId,
+    maximumFrames,
+    maximumSegments,
+    physical,
+    rootKey,
+    structuralUnlock,
+    supportedFeatureBits,
+  });
 }
 
 export async function inspectHizoFSPhysicalContainer({
@@ -704,94 +865,15 @@ export async function inspectHizoFSPhysicalContainer({
 
   const rootKey = openedUnlock.rootKey;
   try {
-    let openedSuperblock: OpenedSuperblockCopies;
-    try {
-      openedSuperblock = await physical.openSuperblockCopies({
-        fileSystemId: openedUnlock.fileSystemId,
-        rootKey,
-        supportedFeatureBits,
-      });
-    } catch (cause: unknown) {
-      const authority = await physical.openUnlockAuthority({
-        fileSystemId: openedUnlock.fileSystemId,
-        minimumUnlockSequence: createUnlockSequence({ value: 1n }),
-        rootKey,
-      });
-      return {
-        physicalAnomalies: [],
-        rootDirectoryShortcut: undefined,
-        segments: [],
-        superblockCopies: await inspectSuperblockCopies({
-          fileSystemId: openedUnlock.fileSystemId,
-          physical,
-          rootKey,
-          selectedCopy: undefined,
-        }),
-        superblockSelection: rejectionFrom({ cause }),
-        unlockEnvelopeCopies: await classifiedUnlockCopies({
-          rootKey,
-          selectedCopy: authority.selectedPhysicalCopy,
-          structural: structuralUnlock.structural,
-          unresolved: structuralUnlock.copies,
-        }),
-        unlockSelection: {
-          copy: authority.selectedPhysicalCopy,
-          redundancy: credentialRedundancy({ copyState: authority.copyState }),
-          sequence: String(authority.unlockSequence),
-          state: "selected",
-        },
-      };
-    }
-
-    const unlockAuthority = await physical.openUnlockAuthority({
-      fileSystemId: openedUnlock.fileSystemId,
-      minimumUnlockSequence: openedSuperblock.logicalState.minimumUnlockSequence,
-      rootKey,
-    });
-    const unlockEnvelopeCopies = await classifiedUnlockCopies({
-      rootKey,
-      selectedCopy: unlockAuthority.selectedPhysicalCopy,
-      structural: structuralUnlock.structural,
-      unresolved: structuralUnlock.copies,
-    });
-    const superblockCopies = await inspectSuperblockCopies({
-      fileSystemId: openedUnlock.fileSystemId,
-      physical,
-      rootKey,
-      selectedCopy: openedSuperblock.selectedCopy,
-    });
-    const rootDirectoryShortcut = await inspectRootShortcut({
-      fileSystemId: openedUnlock.fileSystemId,
-      openedSuperblock,
-      physical,
-      rootKey,
-    });
-    const physicalSegments = await listPhysicalSegments({
+    return await inspectHizoFSPhysicalContainerWithOpenedAuthority({
       fileSystemId: openedUnlock.fileSystemId,
       maximumFrames,
       maximumSegments,
       physical,
       rootKey,
+      structuralUnlock,
+      supportedFeatureBits,
     });
-    return {
-      physicalAnomalies: physicalSegments.anomalies,
-      rootDirectoryShortcut,
-      segments: physicalSegments.segments,
-      superblockCopies,
-      superblockSelection: {
-        copy: openedSuperblock.selectedCopy,
-        redundancy: superblockRedundancy({ copyState: openedSuperblock.copyState }),
-        sequence: String(openedSuperblock.selectedPublicationSequence),
-        state: "selected",
-      },
-      unlockEnvelopeCopies,
-      unlockSelection: {
-        copy: unlockAuthority.selectedPhysicalCopy,
-        redundancy: credentialRedundancy({ copyState: unlockAuthority.copyState }),
-        sequence: String(unlockAuthority.unlockSequence),
-        state: "selected",
-      },
-    };
   } finally {
     rootKey.destroy();
   }

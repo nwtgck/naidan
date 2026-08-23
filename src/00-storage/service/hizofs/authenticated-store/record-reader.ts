@@ -38,6 +38,10 @@ export type AuthenticatedRecordRead = Readonly<{
   plaintext: Uint8Array;
 }>;
 
+export type AuthenticatedRecordReadWithFrame = AuthenticatedRecordRead & Readonly<{
+  frameBytes: Uint8Array;
+}>;
+
 export type ExpectedRecordIdentity =
   | Readonly<{
     homeReference: HomeRecordReference;
@@ -176,7 +180,7 @@ async function readDescriptorAndFrameFromSingleSnapshot({
   return { descriptor, frameBytes: pair.second };
 }
 
-export async function readAuthenticatedPhysicalRecord({
+export async function readAuthenticatedPhysicalRecordWithFrame({
   backend,
   diagnostics,
   expectedIdentity,
@@ -190,7 +194,7 @@ export async function readAuthenticatedPhysicalRecord({
   fileSystemId: FileSystemId;
   physicalReference: PhysicalRecordReference;
   rootKey: FileSystemRootKey;
-}): Promise<AuthenticatedRecordRead> {
+}): Promise<AuthenticatedRecordReadWithFrame> {
   validatePhysicalReferenceFrameBound({ physicalReference });
   const pairedRead = await readDescriptorAndFrameFromSingleSnapshot({
     backend,
@@ -283,7 +287,33 @@ export async function readAuthenticatedPhysicalRecord({
     plaintextBytes: plaintext.byteLength,
     recordKind: header.recordKind,
   });
-  return { header, physicalReference, plaintext };
+  return { frameBytes, header, physicalReference, plaintext };
+}
+
+export async function readAuthenticatedPhysicalRecord({
+  backend,
+  diagnostics,
+  expectedIdentity,
+  fileSystemId,
+  physicalReference,
+  rootKey,
+}: {
+  backend: HizoFSReadableBackend;
+  diagnostics?: AuthenticatedStoreDiagnosticsPort;
+  expectedIdentity: ExpectedRecordIdentity;
+  fileSystemId: FileSystemId;
+  physicalReference: PhysicalRecordReference;
+  rootKey: FileSystemRootKey;
+}): Promise<AuthenticatedRecordRead> {
+  const { frameBytes: _frameBytes, ...record } = await readAuthenticatedPhysicalRecordWithFrame({
+    backend,
+    diagnostics,
+    expectedIdentity,
+    fileSystemId,
+    physicalReference,
+    rootKey,
+  });
+  return record;
 }
 
 export async function readAuthenticatedHomeRecord({

@@ -1,3 +1,4 @@
+export * from './authenticated-inspection-session';
 export * from './namespace-inspection';
 export * from './inspection-authority';
 export * from './physical-container-inspection';

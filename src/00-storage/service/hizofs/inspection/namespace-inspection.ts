@@ -227,6 +227,32 @@ export async function inspectHizoFSNamespacePath({
   pathComponents: readonly string[];
   physical: AuthenticatedHizoFSInspectionPort;
 }): Promise<HizoFSNamespacePathInspection> {
+  return await withHizoFSInspectionAuthority({
+    passphrase,
+    physical,
+    operation: async ({ authority }) => await inspectHizoFSNamespacePathWithAuthority({
+      authority,
+      maximumDirectoryEntries,
+      maximumPages,
+      pathComponents,
+      physical,
+    }),
+  });
+}
+
+export async function inspectHizoFSNamespacePathWithAuthority({
+  authority,
+  maximumDirectoryEntries = 256,
+  maximumPages = 4_096,
+  pathComponents,
+  physical,
+}: {
+  authority: HizoFSOpenedInspectionAuthority;
+  maximumDirectoryEntries?: number;
+  maximumPages?: number;
+  pathComponents: readonly string[];
+  physical: AuthenticatedHizoFSInspectionPort;
+}): Promise<HizoFSNamespacePathInspection> {
   validateBound({
     label: "maximumDirectoryEntries",
     maximum: MAXIMUM_INSPECTION_DIRECTORY_ENTRIES,
@@ -246,44 +272,37 @@ export async function inspectHizoFSNamespacePath({
     encodeFilenameComponent({ value: component });
     return component;
   });
-
-  return await withHizoFSInspectionAuthority({
-    passphrase,
-    physical,
-    operation: async ({ authority }) => {
-      const pageSource = createPageSource({ authority, maximumPages, physical });
-      const { directory, stat, symlinkTarget } = await readHizoFSNamespacePathForInspection({
-        inodeTableRootHomeRef: authority.commit.rootInodeTableRootHomeRef,
-        maximumDirectoryEntries,
-        pathComponents: capturedPath,
-        rootDirectoryInodeNumber: authority.commit.rootDirectoryInodeNumber,
-        source: pageSource.source,
-      });
-      return {
-        authorityMode: authority.mode,
-        commitSequence: String(authority.commit.commitSequence),
-        directory: directory === undefined
-          ? undefined
-          : {
-            entries: directory.entries.map(entry => projectEntry({ entry })),
-            truncated: directory.truncated,
-          },
-        inode: {
-          createdAt: stat.createdAt === null ? undefined : String(stat.createdAt),
-          fileSize: stat.fileSize === undefined ? undefined : String(stat.fileSize),
-          inodeKind: stat.kind,
-          inodeNumber: String(stat.inodeNumber),
-          inodeRevision: String(stat.inodeRevision),
-          modifiedAt: stat.modifiedAt === null ? undefined : String(stat.modifiedAt),
-          symlinkTarget,
-        },
-        pageReads: pageSource.pageReads(),
-        pageReadsTruncated: pageSource.pageReadsTruncated(),
-        pagesRead: pageSource.pagesRead(),
-        pathComponents: capturedPath,
-      };
-    },
+  const pageSource = createPageSource({ authority, maximumPages, physical });
+  const { directory, stat, symlinkTarget } = await readHizoFSNamespacePathForInspection({
+    inodeTableRootHomeRef: authority.commit.rootInodeTableRootHomeRef,
+    maximumDirectoryEntries,
+    pathComponents: capturedPath,
+    rootDirectoryInodeNumber: authority.commit.rootDirectoryInodeNumber,
+    source: pageSource.source,
   });
+  return {
+    authorityMode: authority.mode,
+    commitSequence: String(authority.commit.commitSequence),
+    directory: directory === undefined
+      ? undefined
+      : {
+        entries: directory.entries.map(entry => projectEntry({ entry })),
+        truncated: directory.truncated,
+      },
+    inode: {
+      createdAt: stat.createdAt === null ? undefined : String(stat.createdAt),
+      fileSize: stat.fileSize === undefined ? undefined : String(stat.fileSize),
+      inodeKind: stat.kind,
+      inodeNumber: String(stat.inodeNumber),
+      inodeRevision: String(stat.inodeRevision),
+      modifiedAt: stat.modifiedAt === null ? undefined : String(stat.modifiedAt),
+      symlinkTarget,
+    },
+    pageReads: pageSource.pageReads(),
+    pageReadsTruncated: pageSource.pageReadsTruncated(),
+    pagesRead: pageSource.pagesRead(),
+    pathComponents: capturedPath,
+  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

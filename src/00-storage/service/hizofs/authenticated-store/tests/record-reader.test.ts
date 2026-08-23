@@ -12,7 +12,11 @@ import {
   authenticatedHizoFSPhysicalBytes,
   type AuthenticatedHizoFSPhysicalBytes,
 } from "@/00-storage/service/hizofs/authenticated-store/physical-bytes";
-import { readAuthenticatedHomeRecord } from "@/00-storage/service/hizofs/authenticated-store/record-reader";
+import {
+  physicalReferenceAtHome,
+  readAuthenticatedHomeRecord,
+  readAuthenticatedPhysicalRecordWithFrame,
+} from "@/00-storage/service/hizofs/authenticated-store/record-reader";
 import { generateFileSystemRootKey, type RandomByteSource } from "@/00-storage/service/hizofs/01-crypto";
 import * as HizoFSCrypto from "@/00-storage/service/hizofs/01-crypto";
 import { canonicalContainerPath } from "@/00-storage/service/hizofs/physical-store/paths";
@@ -82,6 +86,35 @@ function deterministicRandomSource(): RandomByteSource {
 }
 
 describe("authenticated Record Frame reader", () => {
+  it("returns the exact authenticated frame bytes only through the explicit framed read", async () => {
+    const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
+    const randomSource = deterministicRandomSource();
+    const fileSystemId = parseFileSystemId({ value: "0123456789_ABCDEFGHIJ" });
+    const rootKey = generateFileSystemRootKey({ randomSource });
+    const created = await createInitialBootstrapSegment({ backend, fileSystemId, randomSource, rootKey });
+
+    const record = await readAuthenticatedPhysicalRecordWithFrame({
+      backend,
+      expectedIdentity: { homeReference: created.activeCommitHomeRef, type: "logical" },
+      fileSystemId,
+      physicalReference: physicalReferenceAtHome({ homeReference: created.activeCommitHomeRef }),
+      rootKey,
+    });
+
+    const persistedFrame = await backend.readExact({
+      length: created.activeCommitHomeRef.frameLength,
+      offset: created.activeCommitHomeRef.byteOffset,
+      path: canonicalContainerPath({ value: segmentIdToRelativePath({
+        id: created.activeCommitHomeRef.segmentId,
+        segmentClass: "metadata",
+      }) }),
+    });
+    expect(record.frameBytes).toEqual(persistedFrame);
+    expect(record.frameBytes.byteLength).toBe(created.activeCommitHomeRef.frameLength);
+    expect(decodeFileSystemCommitPayload({ bytes: record.plaintext }).commitSequence).toBe(1n);
+    record.plaintext.fill(0);
+    rootKey.destroy();
+  });
   it("reports a successful authenticated read with canonical record and byte measurements", async () => {
     const backend = new InMemoryCrashDurabilityBackend<AuthenticatedHizoFSPhysicalBytes>({});
     const randomSource = deterministicRandomSource();

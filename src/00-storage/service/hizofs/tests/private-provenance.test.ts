@@ -10,7 +10,7 @@ const SOURCE_ROOTS = [
   "src/features/debug-opfs-encryption",
 ] as const;
 
-const SOURCE_FILES = ["eslint.config.js", "tmp-tsconfig.hizofs.json", "vite.config.ts"] as const;
+const SOURCE_FILES = ["eslint.config.js", "vite.config.ts"] as const;
 const SCANNED_EXTENSIONS = new Set([".cjs", ".js", ".json", ".mjs", ".ts", ".tsx", ".vue"]);
 
 function joinedPattern({ parts }: { parts: readonly string[] }): RegExp {
