@@ -116,6 +116,7 @@ import {
   cleanupNativePlainApplicationNamespaceWithReport,
   isNativePlainApplicationNamespaceEmpty,
   listNativePlainApplicationNamespaceEntryNames,
+  projectCanonicalNaidanApplicationNamespaceSession,
 } from './native-plain-application-namespace';
 import {
   runWithExclusiveOpfsPlainNamespaceFence,
@@ -676,7 +677,9 @@ function createNativeHizoFSSourceTransitionDriver({ authorityIdentity, binding, 
           authorityIdentity,
           close: async () => await snapshot.close(),
           source: projectNativePlainTransitionSource({
-            source: createStorageFileSystemTransitionSource({ session: snapshot }),
+            source: createStorageFileSystemTransitionSource({
+              session: projectCanonicalNaidanApplicationNamespaceSession({ session: snapshot }),
+            }),
           }),
         };
       },

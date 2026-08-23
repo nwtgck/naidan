@@ -1,0 +1,1 @@
+export const OpfsEncryptionSettingsPanel__plain_target_conflict_explanation = (): string => 'Naidan found existing plaintext entries where decrypted data would be written. They were preserved and decryption did not start.';

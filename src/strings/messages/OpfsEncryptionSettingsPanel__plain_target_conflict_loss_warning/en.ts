@@ -1,0 +1,1 @@
+export const OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning = (): string => 'Deleting these entries can permanently destroy data that exists only in raw OPFS. This cannot be undone.';

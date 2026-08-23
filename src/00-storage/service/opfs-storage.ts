@@ -37,6 +37,7 @@ import type { StorageFileSystemSession } from './storage-file-system/types';
 import {
   OpfsPlainNamespaceSessionLock,
   OpfsStorageSessionLock,
+  runWithExclusiveOpfsPlainNamespaceFence,
   runWithExclusiveOpfsStorageSessionFence,
 } from './opfs/opfs-storage-session-lock';
 import { isOpfsTransitionStorageBackend } from './opfs/opfs-transition-backend';
@@ -57,6 +58,10 @@ import { reportHizoFSTrialDebug } from './naidan-opfs/trial-debug';
 import { installActiveAuthenticatedHizoFSContainerLocation } from './naidan-opfs/active-hizofs-container-location';
 import type { OpfsEncryptionTransitionProgressListener } from './naidan-opfs/transition-progress';
 import { NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS } from './naidan-persistence-control/00-format';
+import {
+  NativePlainDisableConflictCoordinator,
+  type OpfsEncryptionDisablePreflight,
+} from './naidan-opfs/native-plain-disable-conflict';
 
 const PERSISTENCE_CONTROL_DIRECTORY_NAME =
   NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS.storage.collectionDirectoryName;
@@ -353,6 +358,7 @@ async function settleStorageProviderShutdown({
  * encryption-state directory exists or encryption-specific APIs are called.
  */
 export class OPFSStorageProvider extends IStorageProvider {
+  private readonly nativePlainDisableConflictCoordinator = new NativePlainDisableConflictCoordinator();
   readonly canPersistBinary = true;
 
   private backend: IStorageProvider | undefined;
@@ -546,6 +552,31 @@ export class OPFSStorageProvider extends IStorageProvider {
       onProgress,
       request: { operation: 'disable', session: this.requireUnlockedEncryptionSession() },
       signal,
+    });
+  }
+
+  async inspectDisableEncryptionConflict(): Promise<OpfsEncryptionDisablePreflight> {
+    this.requireUnlockedEncryptionSession();
+    return await runWithExclusiveOpfsPlainNamespaceFence({
+      lockManager: navigator.locks,
+      run: async () => await this.nativePlainDisableConflictCoordinator.inspect({
+        nativeNamespaceRoot: await navigator.storage.getDirectory(),
+      }),
+      signal: undefined,
+    });
+  }
+
+  async cleanupDisableEncryptionConflict({ inspectionId }: {
+    inspectionId: string;
+  }): Promise<OpfsEncryptionDisablePreflight> {
+    this.requireUnlockedEncryptionSession();
+    return await runWithExclusiveOpfsPlainNamespaceFence({
+      lockManager: navigator.locks,
+      run: async () => await this.nativePlainDisableConflictCoordinator.cleanupIfUnchanged({
+        inspectionId,
+        nativeNamespaceRoot: await navigator.storage.getDirectory(),
+      }),
+      signal: undefined,
     });
   }
 

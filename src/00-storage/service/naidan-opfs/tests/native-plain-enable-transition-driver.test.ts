@@ -10,15 +10,15 @@ const FILE_SYSTEM_ID = PERSISTENCE_RUNTIME_TEST_ONLY.createEncryptedInspection({
   fileSystemId: "0123456789_ABCDEFGHIJ",
 }).mode.activeFileSystemId;
 
-function nativeDirectory({ names, removalFault }: {
-  names: readonly string[];
+function nativeDirectory({ entries, removalFault }: {
+  entries: readonly Readonly<{ kind: "directory" | "file"; name: string }>[];
   removalFault?: {
     readonly cause: Error;
     readonly name: string;
     readonly timing: "after_commit" | "before_commit";
   };
 }) {
-  const currentNames = new Set(names);
+  const currentEntries = new Map(entries.map(entry => [entry.name, entry] as const));
   let pendingFault = removalFault;
   const removeEntry = vi.fn(async (name: string) => {
     if (pendingFault?.name === name && pendingFault.timing === "before_commit") {
@@ -26,7 +26,7 @@ function nativeDirectory({ names, removalFault }: {
       pendingFault = undefined;
       throw cause;
     }
-    currentNames.delete(name);
+    currentEntries.delete(name);
     if (pendingFault?.name === name && pendingFault.timing === "after_commit") {
       const cause = pendingFault.cause;
       pendingFault = undefined;
@@ -34,8 +34,16 @@ function nativeDirectory({ names, removalFault }: {
     }
   });
   const storage = {
+    entries: async function* () {
+      for (const entry of currentEntries.values()) {
+        const handle = entry.kind === "directory"
+          ? { entries: async function* () {}, kind: "directory" as const }
+          : { kind: "file" as const };
+        yield [entry.name, handle] as const;
+      }
+    },
     keys: async function* () {
-      for (const name of currentNames) yield name;
+      for (const name of currentEntries.keys()) yield name;
     },
     removeEntry,
   } as unknown as FileSystemDirectoryHandle;
@@ -107,7 +115,12 @@ describe("native plain enable transition driver", () => {
   it("cleans application entries while retaining authority and container entries", async () => {
     const container = fileSystemIdToNaidanContainerToken({ id: FILE_SYSTEM_ID });
     const { removeEntry, root } = nativeDirectory({
-      names: ["settings.json", "persistence-control", container, "chats"],
+      entries: [
+        { kind: "file", name: "settings.json" },
+        { kind: "directory", name: "persistence-control" },
+        { kind: "directory", name: container },
+        { kind: "directory", name: "chats" },
+      ],
     });
     const driver = createNativePlainEnableTransitionDriver({ nativeNamespaceRoot: root });
 
@@ -122,7 +135,10 @@ describe("native plain enable transition driver", () => {
   it("resumes plain source cleanup from the remaining entry after an interrupted deletion", async () => {
     const failure = new Error("deletion interrupted before commit");
     const { removeEntry, root } = nativeDirectory({
-      names: ["settings.json", "chats"],
+      entries: [
+        { kind: "file", name: "settings.json" },
+        { kind: "directory", name: "chats" },
+      ],
       removalFault: { cause: failure, name: "settings.json", timing: "before_commit" },
     });
     const driver = createNativePlainEnableTransitionDriver({ nativeNamespaceRoot: root });
@@ -140,7 +156,10 @@ describe("native plain enable transition driver", () => {
   it("does not delete a plain source entry twice after committed deletion response loss", async () => {
     const failure = new Error("deletion response lost after commit");
     const { removeEntry, root } = nativeDirectory({
-      names: ["settings.json", "chats"],
+      entries: [
+        { kind: "file", name: "settings.json" },
+        { kind: "directory", name: "chats" },
+      ],
       removalFault: { cause: failure, name: "chats", timing: "after_commit" },
     });
     const driver = createNativePlainEnableTransitionDriver({ nativeNamespaceRoot: root });
@@ -155,7 +174,7 @@ describe("native plain enable transition driver", () => {
   });
 
   it("rejects target lifecycle operations and HizoFS endpoints", async () => {
-    const { root } = nativeDirectory({ names: [] });
+    const { root } = nativeDirectory({ entries: [] });
     const driver = createNativePlainEnableTransitionDriver({ nativeNamespaceRoot: root });
     const hizofs = { fileSystemId: FILE_SYSTEM_ID, type: "hizofs" } as const;
 

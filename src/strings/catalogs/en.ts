@@ -1471,6 +1471,13 @@ import { useSettings__failed_to_import_data_from_url } from '@/strings/messages/
 import { useSettings__invalid_storage_type_falling_back_to_default_detection } from '@/strings/messages/useSettings__invalid_storage_type_falling_back_to_default_detection/en';
 import { useSettings__ok } from '@/strings/messages/useSettings__ok/en';
 import { useSettings__request_to_use_storage_type_was_ignored } from '@/strings/messages/useSettings__request_to_use_storage_type_was_ignored/en';
+import { OpfsEncryptionSettingsPanel__additional_conflicting_entries } from '@/strings/messages/OpfsEncryptionSettingsPanel__additional_conflicting_entries/en';
+import { OpfsEncryptionSettingsPanel__conflict_changed } from '@/strings/messages/OpfsEncryptionSettingsPanel__conflict_changed/en';
+import { OpfsEncryptionSettingsPanel__delete_conflicting_data_and_retry } from '@/strings/messages/OpfsEncryptionSettingsPanel__delete_conflicting_data_and_retry/en';
+import { OpfsEncryptionSettingsPanel__encrypted_source_remains_authoritative } from '@/strings/messages/OpfsEncryptionSettingsPanel__encrypted_source_remains_authoritative/en';
+import { OpfsEncryptionSettingsPanel__plain_target_conflict } from '@/strings/messages/OpfsEncryptionSettingsPanel__plain_target_conflict/en';
+import { OpfsEncryptionSettingsPanel__plain_target_conflict_explanation } from '@/strings/messages/OpfsEncryptionSettingsPanel__plain_target_conflict_explanation/en';
+import { OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning } from '@/strings/messages/OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning/en';
 import { opfsEncryption__build_and_verify_separate_encrypted_store } from '@/strings/messages/opfsEncryption__build_and_verify_separate_encrypted_store/en';
 import { opfsEncryption__cancel } from '@/strings/messages/opfsEncryption__cancel/en';
 import { opfsEncryption__change_opfs_passphrase } from '@/strings/messages/opfsEncryption__change_opfs_passphrase/en';
@@ -3124,6 +3131,13 @@ export const en = {
   useSettings__invalid_storage_type_falling_back_to_default_detection,
   useSettings__ok,
   useSettings__request_to_use_storage_type_was_ignored,
+  OpfsEncryptionSettingsPanel__additional_conflicting_entries,
+  OpfsEncryptionSettingsPanel__conflict_changed,
+  OpfsEncryptionSettingsPanel__delete_conflicting_data_and_retry,
+  OpfsEncryptionSettingsPanel__encrypted_source_remains_authoritative,
+  OpfsEncryptionSettingsPanel__plain_target_conflict,
+  OpfsEncryptionSettingsPanel__plain_target_conflict_explanation,
+  OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning,
   opfsEncryption__build_and_verify_separate_encrypted_store,
   opfsEncryption__cancel,
   opfsEncryption__change_opfs_passphrase,

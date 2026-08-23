@@ -13,6 +13,7 @@ import type {
 } from './naidan-opfs/persistence-runtime-contract';
 import type { OpfsEncryptionTransitionProgressListener } from './naidan-opfs/transition-progress';
 import type { OpfsSpecialFileSystemType } from './opfs/opfs-special-file-system';
+import type { OpfsEncryptionDisablePreflight } from './naidan-opfs/native-plain-disable-conflict';
 import {
   notifyRegisteredOpfsExternalTransitionSettled,
   notifyRegisteredOpfsExternalTransitionStarting,
@@ -694,6 +695,24 @@ export class StorageService {
   }): Promise<void> {
     await this.runOpfsEncryptionTransition({
       run: async () => await this.getOpfsProvider().disableEncryption({ signal, onProgress }),
+    });
+  }
+
+  async inspectOpfsEncryptionDisableConflict(): Promise<OpfsEncryptionDisablePreflight> {
+    return await this.synchronizer.withLock({
+      fn: async () => await this.getOpfsProvider().inspectDisableEncryptionConflict(),
+      lockKey: SYNC_LOCK_KEY,
+      ...this.getLockOptions({ source: 'inspectOpfsEncryptionDisableConflict' }),
+    });
+  }
+
+  async cleanupOpfsEncryptionDisableConflict({ inspectionId }: {
+    inspectionId: string;
+  }): Promise<OpfsEncryptionDisablePreflight> {
+    return await this.synchronizer.withLock({
+      fn: async () => await this.getOpfsProvider().cleanupDisableEncryptionConflict({ inspectionId }),
+      lockKey: SYNC_LOCK_KEY,
+      ...this.getLockOptions({ source: 'cleanupOpfsEncryptionDisableConflict' }),
     });
   }
 

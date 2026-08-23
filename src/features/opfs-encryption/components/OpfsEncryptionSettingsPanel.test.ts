@@ -9,6 +9,7 @@ const mockShowConfirm = vi.fn();
 const mockBeginLocalOperation = vi.fn();
 const mockFinishLocalOperation = vi.fn();
 const mockUpdateProgress = vi.fn();
+const mockOpenFileExplorer = vi.fn();
 
 vi.mock('@/00-storage/service', () => ({
   storageService: {
@@ -16,8 +17,14 @@ vi.mock('@/00-storage/service', () => ({
     enableOpfsEncryption: vi.fn(),
     changeOpfsEncryptionPassphrase: vi.fn(),
     disableOpfsEncryption: vi.fn(),
+    inspectOpfsEncryptionDisableConflict: vi.fn(),
+    cleanupOpfsEncryptionDisableConflict: vi.fn(),
     reencryptOpfsEncryption: vi.fn(),
   },
+}));
+
+vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({
+  useFileExplorerModal: () => ({ openFileExplorer: mockOpenFileExplorer }),
 }));
 
 vi.mock('@/composables/useConfirm', () => ({
@@ -79,6 +86,7 @@ beforeEach(() => {
   vi.stubGlobal('location', { reload: vi.fn() });
   vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue({ type: 'plain' });
   vi.mocked(storageService.enableOpfsEncryption).mockResolvedValue(undefined);
+  vi.mocked(storageService.inspectOpfsEncryptionDisableConflict).mockResolvedValue({ type: 'clear' });
 });
 
 describe('OpfsEncryptionSettingsPanel', () => {
@@ -303,6 +311,136 @@ line two`,
     expect(wrapper.get('[data-testid="opfs-encryption-toggle"]').attributes('aria-checked')).toBe('true');
     expect(storageService.inspectOpfsEncryptionSettings).toHaveBeenCalledOnce();
     expect(location.reload).not.toHaveBeenCalled();
+  });
+
+  it('preserves conflicting plaintext by default and opens the existing raw OPFS explorer', async () => {
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
+      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
+    );
+    vi.mocked(storageService.inspectOpfsEncryptionDisableConflict).mockResolvedValue({
+      entries: [
+        { entryKind: 'file', relativePath: 'naidan-storage/settings.json' },
+        { entryKind: 'directory', relativePath: 'naidan-chat-wesh' },
+      ],
+      inspectionId: 'conflict-1',
+      totalEntryCount: 2,
+      truncated: false,
+      type: 'conflict',
+    });
+    const wrapper = await mountPanel({ storageType: 'opfs' });
+
+    await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
+    await flushPromises();
+
+    const dialog = getTeleportedElement('[data-testid="opfs-encryption-disable-conflict-dialog"]');
+    expect(dialog.text()).toContain('Naidan found existing plaintext entries');
+    expect(dialog.text()).toContain('naidan-storage/settings.json');
+    expect(dialog.text()).toContain('naidan-chat-wesh');
+    expect(storageService.cleanupOpfsEncryptionDisableConflict).not.toHaveBeenCalled();
+    expect(storageService.disableOpfsEncryption).not.toHaveBeenCalled();
+    expect(mockBeginLocalOperation).not.toHaveBeenCalled();
+
+    const rawButton = dialog.findAll('button').find(button => button.text().includes('Open raw OPFS explorer'));
+    expect(rawButton).toBeDefined();
+    await rawButton!.trigger('click');
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: { kind: 'opfs-root' } });
+    expect(wrapper.get('[data-testid="opfs-encryption-disable-conflict-review"]')).toBeDefined();
+  });
+
+  it('deletes an unchanged conflict only after destructive confirmation and retries normal disable', async () => {
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
+      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
+    );
+    vi.mocked(storageService.inspectOpfsEncryptionDisableConflict).mockResolvedValue({
+      entries: [{ entryKind: 'file', relativePath: 'naidan-storage/settings.json' }],
+      inspectionId: 'conflict-2',
+      totalEntryCount: 1,
+      truncated: false,
+      type: 'conflict',
+    });
+    vi.mocked(storageService.cleanupOpfsEncryptionDisableConflict).mockResolvedValue({ type: 'clear' });
+    vi.mocked(storageService.disableOpfsEncryption).mockResolvedValue(undefined);
+    mockShowConfirm.mockResolvedValue(true);
+    const wrapper = await mountPanel({ storageType: 'opfs' });
+
+    await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
+    await flushPromises();
+    await getTeleportedElement('[data-testid="opfs-encryption-disable-conflict-cleanup"]').trigger('click');
+    await flushPromises();
+
+    expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      confirmButtonVariant: 'danger',
+      message: expect.stringContaining('permanently destroy data'),
+    }));
+    expect(storageService.cleanupOpfsEncryptionDisableConflict).toHaveBeenCalledWith({ inspectionId: 'conflict-2' });
+    expect(storageService.disableOpfsEncryption).toHaveBeenCalledWith({
+      onProgress: mockUpdateProgress,
+      signal: undefined,
+    });
+    expect(mockBeginLocalOperation).toHaveBeenCalledOnce();
+  });
+
+  it('shows a changed conflict without deleting or starting a transition', async () => {
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
+      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
+    );
+    vi.mocked(storageService.inspectOpfsEncryptionDisableConflict).mockResolvedValue({
+      entries: [{ entryKind: 'file', relativePath: 'naidan-storage/old.bin' }],
+      inspectionId: 'old',
+      totalEntryCount: 1,
+      truncated: false,
+      type: 'conflict',
+    });
+    vi.mocked(storageService.cleanupOpfsEncryptionDisableConflict).mockResolvedValue({
+      entries: [{ entryKind: 'file', relativePath: 'naidan-storage/new.bin' }],
+      inspectionId: 'new',
+      totalEntryCount: 1,
+      truncated: false,
+      type: 'conflict',
+    });
+    mockShowConfirm.mockResolvedValue(true);
+    const wrapper = await mountPanel({ storageType: 'opfs' });
+
+    await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
+    await flushPromises();
+    await getTeleportedElement('[data-testid="opfs-encryption-disable-conflict-cleanup"]').trigger('click');
+    await flushPromises();
+
+    const dialog = getTeleportedElement('[data-testid="opfs-encryption-disable-conflict-dialog"]');
+    expect(dialog.text()).toContain('naidan-storage/new.bin');
+    expect(dialog.text()).toContain('Nothing was deleted');
+    expect(storageService.disableOpfsEncryption).not.toHaveBeenCalled();
+    expect(mockBeginLocalOperation).not.toHaveBeenCalled();
+  });
+
+  it('keeps the conflict available after raw cleanup fails', async () => {
+    vi.mocked(storageService.inspectOpfsEncryptionSettings).mockResolvedValue(
+      { access: 'unlocked', fileSystemId: createEncryptedInspection().mode.activeFileSystemId, type: 'encrypted' },
+    );
+    vi.mocked(storageService.inspectOpfsEncryptionDisableConflict).mockResolvedValue({
+      entries: [{ entryKind: 'directory', relativePath: 'naidan-tmp' }],
+      inspectionId: 'conflict-delete-failure',
+      totalEntryCount: 1,
+      truncated: false,
+      type: 'conflict',
+    });
+    vi.mocked(storageService.cleanupOpfsEncryptionDisableConflict).mockRejectedValue(
+      new DOMException('raw cleanup failed', 'UnknownError'),
+    );
+    mockShowConfirm.mockResolvedValue(true);
+    const wrapper = await mountPanel({ storageType: 'opfs' });
+
+    await wrapper.get('[data-testid="opfs-encryption-toggle"]').trigger('click');
+    await flushPromises();
+    await getTeleportedElement('[data-testid="opfs-encryption-disable-conflict-cleanup"]').trigger('click');
+    await flushPromises();
+
+    expect(getTeleportedElement('[data-testid="opfs-encryption-disable-conflict-dialog"]').text())
+      .toContain('naidan-tmp');
+    expect(getTeleportedElement('[data-testid="opfs-encryption-disable-conflict-error"]').text())
+      .toContain('raw cleanup failed');
+    expect(storageService.disableOpfsEncryption).not.toHaveBeenCalled();
+    expect(mockBeginLocalOperation).not.toHaveBeenCalled();
   });
 
   it('does not reopen or re-inspect storage after re-encryption settlement', async () => {

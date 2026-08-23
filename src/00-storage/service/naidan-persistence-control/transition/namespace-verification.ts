@@ -29,16 +29,23 @@ export type TransitionNamespaceVerificationPolicy = Readonly<{
 }>;
 
 export class TransitionNamespaceVerificationError extends Error {
-  public constructor({ code, message }: {
+  public constructor({ code, message, path }: {
     code: 'budget_invalid' | 'content_mismatch' | 'directory_mismatch' | 'invalid_directory_page' | 'invalid_entry_name' | 'invalid_symlink_target' | 'metadata_mismatch' | 'path_too_deep' | 'source_changed';
     message: string;
+    path?: string;
   }) {
     super(message);
     this.code = code;
     this.name = 'TransitionNamespaceVerificationError';
+    this.path = path;
   }
 
   public readonly code: 'budget_invalid' | 'content_mismatch' | 'directory_mismatch' | 'invalid_directory_page' | 'invalid_entry_name' | 'invalid_symlink_target' | 'metadata_mismatch' | 'path_too_deep' | 'source_changed';
+  public readonly path: string | undefined;
+}
+
+function displayPath({ path }: { path: TransitionNamespacePath }): string {
+  return path.length === 0 ? '/' : `/${path.join('/')}`;
 }
 
 function validatePolicy({ policy }: { policy: TransitionNamespaceVerificationPolicy }): void {
@@ -61,28 +68,29 @@ function sameMetadata({ left, right }: {
   return left.createdAt === right.createdAt && left.modifiedAt === right.modifiedAt;
 }
 
-function compareEntries({ sourceEntries, targetEntries }: {
+function compareEntries({ path, sourceEntries, targetEntries }: {
+  path: TransitionNamespacePath;
   sourceEntries: readonly TransitionNamespaceEntry[];
   targetEntries: readonly TransitionNamespaceEntry[];
 }): void {
   if (sourceEntries.length !== targetEntries.length) {
-    throw new TransitionNamespaceVerificationError({ code: 'directory_mismatch', message: 'source and target directory page lengths differ' });
+    throw new TransitionNamespaceVerificationError({ code: 'directory_mismatch', message: 'source and target directory entry counts differ', path: displayPath({ path }) });
   }
   for (let index = 0; index < sourceEntries.length; index += 1) {
     const sourceEntry = sourceEntries[index];
     const targetEntry = targetEntries[index];
     if (sourceEntry === undefined || targetEntry === undefined
       || sourceEntry.name !== targetEntry.name || sourceEntry.kind !== targetEntry.kind) {
-      throw new TransitionNamespaceVerificationError({ code: 'directory_mismatch', message: 'source and target directory entries differ' });
+      throw new TransitionNamespaceVerificationError({ code: 'directory_mismatch', message: 'source and target directory entries differ', path: displayPath({ path }) });
     }
     if (!sameMetadata({ left: sourceEntry.metadata, right: targetEntry.metadata })) {
-      throw new TransitionNamespaceVerificationError({ code: 'metadata_mismatch', message: 'source and target entry metadata differ' });
+      throw new TransitionNamespaceVerificationError({ code: 'metadata_mismatch', message: 'source and target entry metadata differ', path: displayPath({ path: [...path, sourceEntry.name] }) });
     }
     switch (sourceEntry.kind) {
     case 'directory': break;
     case 'file': {
       if (targetEntry.kind !== 'file' || sourceEntry.size !== targetEntry.size) {
-        throw new TransitionNamespaceVerificationError({ code: 'content_mismatch', message: 'source and target file sizes differ' });
+        throw new TransitionNamespaceVerificationError({ code: 'content_mismatch', message: 'source and target file sizes differ', path: displayPath({ path: [...path, sourceEntry.name] }) });
       }
       break;
     }
@@ -101,12 +109,20 @@ function appendPath({ maximumPathComponents, name, path }: {
     validateTransitionNamespaceEntryName({ name });
   } catch (cause: unknown) {
     if (cause instanceof TransitionNamespaceContractError) {
-      throw new TransitionNamespaceVerificationError({ code: cause.code, message: cause.message });
+      throw new TransitionNamespaceVerificationError({
+        code: cause.code,
+        message: cause.message,
+        path: displayPath({ path: [...path, name] }),
+      });
     }
     throw cause;
   }
   if (path.length >= maximumPathComponents) {
-    throw new TransitionNamespaceVerificationError({ code: 'path_too_deep', message: 'verification path exceeds its explicit component bound' });
+    throw new TransitionNamespaceVerificationError({
+      code: 'path_too_deep',
+      message: 'verification path exceeds its explicit component bound',
+      path: displayPath({ path: [...path, name] }),
+    });
   }
   return [...path, name];
 }
@@ -147,7 +163,11 @@ export async function runTransitionNamespaceVerificationSlice({ cursor, policy, 
     targetRootMetadata: target.readRootMetadata(),
   });
   if (!sameMetadata({ left: sourceRootMetadata, right: targetRootMetadata })) {
-    throw new TransitionNamespaceVerificationError({ code: 'metadata_mismatch', message: 'source and target root directory metadata differ' });
+    throw new TransitionNamespaceVerificationError({
+      code: 'metadata_mismatch',
+      message: 'source and target root directory metadata differ',
+      path: '/',
+    });
   }
 
   let activeFile = cursor.activeFile;
@@ -164,7 +184,13 @@ export async function runTransitionNamespaceVerificationSlice({ cursor, policy, 
     signal?.throwIfAborted();
     if (activeFile !== undefined) {
       const remaining = activeFile.size - activeFile.offset;
-      if (remaining < 0n) throw new TransitionNamespaceVerificationError({ code: 'source_changed', message: 'verification offset exceeds captured file size' });
+      if (remaining < 0n) {
+        throw new TransitionNamespaceVerificationError({
+          code: 'source_changed',
+          message: 'verification offset exceeds captured file size',
+          path: displayPath({ path: activeFile.path }),
+        });
+      }
       if (remaining === 0n) {
         activeFile = undefined;
         verifiedEntries += 1n;
@@ -177,16 +203,28 @@ export async function runTransitionNamespaceVerificationSlice({ cursor, policy, 
         targetChunk: target.readFileChunk({ maximumBytes, offset: activeFile.offset, path: activeFile.path }),
       });
       if (sourceChunk.bytes.byteLength > maximumBytes || targetChunk.bytes.byteLength > maximumBytes) {
-        throw new TransitionNamespaceVerificationError({ code: 'source_changed', message: 'verification endpoint exceeded the requested bounded chunk length' });
+        throw new TransitionNamespaceVerificationError({
+          code: 'source_changed',
+          message: 'verification endpoint exceeded the requested bounded chunk length',
+          path: displayPath({ path: activeFile.path }),
+        });
       }
       if (!equalBytes({ left: sourceChunk.bytes, right: targetChunk.bytes }) || sourceChunk.state !== targetChunk.state) {
-        throw new TransitionNamespaceVerificationError({ code: 'content_mismatch', message: 'source and target file chunks differ' });
+        throw new TransitionNamespaceVerificationError({
+          code: 'content_mismatch',
+          message: 'source and target file chunks differ',
+          path: displayPath({ path: activeFile.path }),
+        });
       }
       const nextOffset = activeFile.offset + BigInt(sourceChunk.bytes.byteLength);
       if (sourceChunk.bytes.byteLength < 1
         || (sourceChunk.state === 'complete' && nextOffset !== activeFile.size)
         || (sourceChunk.state === 'more' && nextOffset >= activeFile.size)) {
-        throw new TransitionNamespaceVerificationError({ code: 'source_changed', message: 'file completion no longer matches captured size' });
+        throw new TransitionNamespaceVerificationError({
+          code: 'source_changed',
+          message: 'file completion no longer matches captured size',
+          path: displayPath({ path: activeFile.path }),
+        });
       }
       activeFile = { ...activeFile, offset: nextOffset };
       verifiedBytes += BigInt(sourceChunk.bytes.byteLength);
@@ -209,26 +247,32 @@ export async function runTransitionNamespaceVerificationSlice({ cursor, policy, 
       validateTransitionNamespaceDirectoryPage({ afterName: frame.afterName, entries: targetPage.entries, maximumEntries, state: targetPage.state });
     } catch (cause: unknown) {
       if (cause instanceof TransitionNamespaceContractError) {
-        throw new TransitionNamespaceVerificationError({ code: cause.code, message: cause.message });
+        throw new TransitionNamespaceVerificationError({
+          code: cause.code,
+          message: cause.message,
+          path: displayPath({ path: frame.path }),
+        });
       }
       throw cause;
     }
-    if (sourcePage.state !== targetPage.state) {
-      throw new TransitionNamespaceVerificationError({ code: 'directory_mismatch', message: 'source and target directory completion differs' });
+    const comparisonEntryCount = Math.min(sourcePage.entries.length, targetPage.entries.length);
+    if ((sourcePage.state === 'complete' && sourcePage.entries.length < targetPage.entries.length)
+      || (targetPage.state === 'complete' && targetPage.entries.length < sourcePage.entries.length)) {
+      throw new TransitionNamespaceVerificationError({
+        code: 'directory_mismatch',
+        message: 'source and target directory entry counts differ',
+        path: displayPath({ path: frame.path }),
+      });
     }
-    compareEntries({ sourceEntries: sourcePage.entries, targetEntries: targetPage.entries });
-    if (sourcePage.entries.length === 0) {
-      switch (sourcePage.state) {
-      case 'complete': break;
-      case 'more':
-        throw new TransitionNamespaceVerificationError({ code: 'directory_mismatch', message: 'empty nonterminal directory page is invalid' });
-      default: return sourcePage.state satisfies never;
-      }
+    const sourceEntries = sourcePage.entries.slice(0, comparisonEntryCount);
+    const targetEntries = targetPage.entries.slice(0, comparisonEntryCount);
+    compareEntries({ path: frame.path, sourceEntries, targetEntries });
+    if (sourceEntries.length === 0) {
       directories.pop();
       remainingOperations -= 1;
       continue;
     }
-    for (const sourceEntry of sourcePage.entries) {
+    for (const sourceEntry of sourceEntries) {
       if (remainingOperations < 1) break;
       const path = appendPath({ maximumPathComponents: policy.maximumPathComponents, name: sourceEntry.name, path: frame.path });
       directories[directories.length - 1] = { afterName: sourceEntry.name, path: frame.path };
@@ -252,12 +296,20 @@ export async function runTransitionNamespaceVerificationSlice({ cursor, policy, 
           validateTransitionSymlinkTarget({ target: targetTarget });
         } catch (cause: unknown) {
           if (cause instanceof TransitionNamespaceContractError) {
-            throw new TransitionNamespaceVerificationError({ code: cause.code, message: cause.message });
+            throw new TransitionNamespaceVerificationError({
+              code: cause.code,
+              message: cause.message,
+              path: displayPath({ path }),
+            });
           }
           throw cause;
         }
         if (sourceTarget !== targetTarget) {
-          throw new TransitionNamespaceVerificationError({ code: 'content_mismatch', message: 'source and target symbolic link targets differ' });
+          throw new TransitionNamespaceVerificationError({
+            code: 'content_mismatch',
+            message: 'source and target symbolic link targets differ',
+            path: displayPath({ path }),
+          });
         }
         verifiedEntries += 1n;
         remainingOperations -= 1;

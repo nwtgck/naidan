@@ -2,6 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import {
   AlertTriangleIcon,
+  FileIcon,
+  FolderIcon,
+  FolderOpenIcon,
   EyeIcon,
   EyeOffIcon,
   KeyRoundIcon,
@@ -16,6 +19,8 @@ import { validateEncryptionPassphrase } from '@/00-storage/service/naidan-opfs/p
 import { useConfirm } from '@/composables/useConfirm';
 import { useOpfsEncryptionTransition } from '@/features/opfs-encryption/composables/useOpfsEncryptionTransition';
 import { ensureStrings, lazyStrings } from '@/strings';
+import type { OpfsEncryptionDisableConflict } from '@/00-storage/service/naidan-opfs/native-plain-disable-conflict';
+import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 
 
 const props = defineProps<{
@@ -23,6 +28,7 @@ const props = defineProps<{
 }>();
 
 const { showConfirm } = useConfirm();
+const { openFileExplorer } = useFileExplorerModal();
 const {
   beginLocalOperation,
   updateProgress,
@@ -45,6 +51,8 @@ const showReencryptPassphrase = ref(false);
 const showConfirmNewPassphrase = ref(false);
 const errorMessage = ref<string>();
 const experimentalAccepted = ref(false);
+const disableConflict = ref<OpfsEncryptionDisableConflict>();
+const disableConflictDialogOpen = ref(false);
 
 const available = computed(() => props.storageType === 'opfs');
 const toggleChecked = computed(() => inspection.value.type === 'encrypted');
@@ -108,7 +116,12 @@ async function refreshInspection(): Promise<'updated' | 'failed'> {
   loading.value = true;
   errorMessage.value = undefined;
   try {
-    inspection.value = await storageService.inspectOpfsEncryptionSettings();
+    const nextInspection = await storageService.inspectOpfsEncryptionSettings();
+    inspection.value = nextInspection;
+    if (nextInspection.type !== 'encrypted' || nextInspection.access !== 'unlocked') {
+      disableConflict.value = undefined;
+      disableConflictDialogOpen.value = false;
+    }
     return 'updated';
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);
@@ -158,24 +171,16 @@ async function rejectLineBreakPaste({ event }: { event: ClipboardEvent }): Promi
   }
 }
 
-async function handleToggle(): Promise<void> {
-  if (!available.value || loading.value || operationLocked.value) {
-    return;
-  }
-  if (!toggleChecked.value) {
-    setupOpen.value = true;
-    return;
-  }
-
-  const confirmed = await showConfirm({
+async function confirmOrdinaryDisable(): Promise<boolean> {
+  return await showConfirm({
     title: await ensureStrings.opfsEncryption__turn_off_opfs_encryption(),
     message: await ensureStrings.opfsEncryption__decrypt_storage_explanation(),
     confirmButtonText: await ensureStrings.opfsEncryption__decrypt_storage(),
     confirmButtonVariant: 'danger',
   });
-  if (!confirmed) {
-    return;
-  }
+}
+
+async function runDisableTransition(): Promise<void> {
   loading.value = true;
   errorMessage.value = undefined;
   beginLocalOperation();
@@ -188,6 +193,79 @@ async function handleToggle(): Promise<void> {
     // StorageService has already notified the central failure reload guard.
   } finally {
     finishLocalOperation({ outcome: 'settled_for_reload' });
+    loading.value = false;
+  }
+}
+
+async function handleToggle(): Promise<void> {
+  if (!available.value || loading.value || operationLocked.value) return;
+  if (!toggleChecked.value) {
+    setupOpen.value = true;
+    return;
+  }
+
+  loading.value = true;
+  errorMessage.value = undefined;
+  try {
+    const preflight = await storageService.inspectOpfsEncryptionDisableConflict();
+    switch (preflight.type) {
+    case 'clear': {
+      disableConflict.value = undefined;
+      loading.value = false;
+      if (await confirmOrdinaryDisable()) await runDisableTransition();
+      return;
+    }
+    case 'conflict':
+      disableConflict.value = preflight;
+      disableConflictDialogOpen.value = true;
+      return;
+    default: return preflight satisfies never;
+    }
+  } catch (error: unknown) {
+    errorMessage.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    loading.value = false;
+  }
+}
+
+function openRawOpfsExplorer(): void {
+  disableConflictDialogOpen.value = false;
+  openFileExplorer({ options: { kind: 'opfs-root' } });
+}
+
+async function cleanupConflictAndRetry(): Promise<void> {
+  const conflict = disableConflict.value;
+  if (conflict === undefined || loading.value) return;
+  const confirmed = await showConfirm({
+    title: await ensureStrings.OpfsEncryptionSettingsPanel__delete_conflicting_data_and_retry(),
+    message: `${await ensureStrings.OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning()}\n\n${await ensureStrings.OpfsEncryptionSettingsPanel__encrypted_source_remains_authoritative()}`,
+    confirmButtonText: await ensureStrings.OpfsEncryptionSettingsPanel__delete_conflicting_data_and_retry(),
+    confirmButtonVariant: 'danger',
+  });
+  if (!confirmed) return;
+
+  loading.value = true;
+  errorMessage.value = undefined;
+  try {
+    const result = await storageService.cleanupOpfsEncryptionDisableConflict({
+      inspectionId: conflict.inspectionId,
+    });
+    switch (result.type) {
+    case 'clear':
+      disableConflict.value = undefined;
+      disableConflictDialogOpen.value = false;
+      loading.value = false;
+      await runDisableTransition();
+      return;
+    case 'conflict':
+      disableConflict.value = result;
+      errorMessage.value = await ensureStrings.OpfsEncryptionSettingsPanel__conflict_changed();
+      return;
+    default: return result satisfies never;
+    }
+  } catch (error: unknown) {
+    errorMessage.value = error instanceof Error ? error.message : String(error);
+  } finally {
     loading.value = false;
   }
 }
@@ -269,6 +347,7 @@ defineExpose({
       enableEncryption,
       changePassphrase,
       reencrypt,
+      cleanupConflictAndRetry,
     },
   }) || {}),
 });
@@ -328,6 +407,17 @@ defineExpose({
       {{ lazyStrings.opfsEncryption__encryption_control_state_cannot_be_read_safely() }}
     </div>
 
+    <button
+      v-if="disableConflict !== undefined && !disableConflictDialogOpen"
+      type="button"
+      data-testid="opfs-encryption-disable-conflict-review"
+      tw-class="flex w-full items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-left text-xs text-amber-900 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200 dark:hover:bg-amber-950/35"
+      @click="disableConflictDialogOpen = true"
+    >
+      <AlertTriangleIcon tw-class="mt-0.5 h-4 w-4 shrink-0" />
+      <span>{{ lazyStrings.OpfsEncryptionSettingsPanel__plain_target_conflict() }}</span>
+    </button>
+
     <p v-if="errorMessage" tw-class="text-xs text-red-600 dark:text-red-400 break-words">
       {{ errorMessage }}
     </p>
@@ -358,6 +448,52 @@ defineExpose({
     </div>
 
   </div>
+
+  <Teleport to="body">
+    <div v-if="disableConflict !== undefined && disableConflictDialogOpen" data-testid="opfs-encryption-disable-conflict-dialog" tw-class="fixed inset-0 z-[112] overflow-y-auto bg-gray-950/60 backdrop-blur-sm flex items-center justify-center p-4" @click.self="disableConflictDialogOpen = false">
+      <section role="dialog" aria-modal="true" aria-labelledby="opfs-encryption-disable-conflict-title" tw-class="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-[2rem] border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900">
+        <header tw-class="shrink-0 border-b border-gray-100 px-7 py-6 dark:border-gray-800">
+          <h2 id="opfs-encryption-disable-conflict-title" tw-class="flex items-center gap-2 text-lg font-extrabold text-gray-900 dark:text-white">
+            <AlertTriangleIcon tw-class="h-5 w-5 shrink-0 text-amber-600" />
+            {{ lazyStrings.OpfsEncryptionSettingsPanel__plain_target_conflict() }}
+          </h2>
+          <p tw-class="mt-2 text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+            {{ lazyStrings.OpfsEncryptionSettingsPanel__plain_target_conflict_explanation() }}
+          </p>
+        </header>
+        <div tw-class="min-h-0 space-y-4 overflow-y-auto px-7 py-6">
+          <ul data-testid="opfs-encryption-disable-conflict-list" tw-class="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 dark:divide-gray-800 dark:border-gray-700">
+            <li v-for="entry in disableConflict.entries" :key="`${entry.entryKind}:${entry.relativePath}`" tw-class="flex min-w-0 items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-gray-200">
+              <FolderIcon v-if="entry.entryKind === 'directory'" tw-class="h-4 w-4 shrink-0 text-amber-600" />
+              <FileIcon v-else tw-class="h-4 w-4 shrink-0 text-gray-500" />
+              <span tw-class="min-w-0 break-all font-mono">{{ entry.relativePath }}</span>
+            </li>
+          </ul>
+          <p v-if="disableConflict.truncated" tw-class="text-xs text-gray-500 dark:text-gray-400">
+            {{ lazyStrings.OpfsEncryptionSettingsPanel__additional_conflicting_entries({ count: disableConflict.totalEntryCount - disableConflict.entries.length }) }}
+          </p>
+          <div tw-class="space-y-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-relaxed text-red-800 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-200">
+            <p>{{ lazyStrings.OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning() }}</p>
+            <p>{{ lazyStrings.OpfsEncryptionSettingsPanel__encrypted_source_remains_authoritative() }}</p>
+          </div>
+          <p v-if="errorMessage" data-testid="opfs-encryption-disable-conflict-error" tw-class="text-xs text-red-600 break-words dark:text-red-400">{{ errorMessage }}</p>
+        </div>
+        <footer tw-class="flex shrink-0 flex-wrap justify-end gap-2 border-t border-gray-100 px-7 py-5 dark:border-gray-800">
+          <button type="button" :disabled="loading" tw-class="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3.5 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800" @click="openRawOpfsExplorer">
+            <FolderOpenIcon tw-class="h-4 w-4" />
+            {{ lazyStrings.opfsEncryption__open_raw_opfs_explorer() }}
+          </button>
+          <button type="button" :disabled="loading" tw-class="rounded-xl px-3.5 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800" @click="disableConflictDialogOpen = false">
+            {{ lazyStrings.opfsEncryption__cancel() }}
+          </button>
+          <button type="button" data-testid="opfs-encryption-disable-conflict-cleanup" :disabled="loading" tw-class="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 disabled:bg-gray-400" @click="cleanupConflictAndRetry">
+            <Loader2Icon v-if="loading" tw-class="h-4 w-4 animate-spin" />
+            {{ lazyStrings.OpfsEncryptionSettingsPanel__delete_conflicting_data_and_retry() }}
+          </button>
+        </footer>
+      </section>
+    </div>
+  </Teleport>
 
   <Teleport to="body">
     <div v-if="setupOpen" data-testid="opfs-encryption-setup-dialog" tw-class="fixed inset-0 z-[110] overflow-y-auto bg-gray-950/60 backdrop-blur-sm flex items-center justify-center p-4" @click.self="resetSetup">

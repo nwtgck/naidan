@@ -22,8 +22,10 @@ function fixture({ lifecycle, names = [] }: {
   const currentLifecycle = vi.fn(async () => lifecycle);
   const runtime = { currentLifecycle, prepareTarget } as unknown as NativePlainTransitionRuntime;
   const storage = {
-    keys: async function* () {
-      for (const name of names) yield name;
+    entries: async function* () {
+      for (const name of names) {
+        yield [name, { kind: 'file', name } as FileSystemFileHandle] as const;
+      }
     },
   } as unknown as FileSystemDirectoryHandle;
   const root = {

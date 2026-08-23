@@ -8,12 +8,18 @@ import { NAIDAN_OPFS_STORAGE_DIRECTORY_NAME } from "@/00-storage/service/naidan-
 import { getNaidanOpfsSpecialFileSystemDirectoryName } from "@/00-storage/service/opfs/naidan-opfs-root-directory-registry";
 import { HIZOFS_TRIAL_DEBUG_MARKER } from "@/00-storage/service/naidan-opfs/trial-debug";
 import { TEST_ONLY as RETIRED_PROGRESS_TEST_ONLY } from "@/00-storage/service/naidan-opfs/retired-local-transition-progress-cleanup";
-import { listNativePlainApplicationNamespaceEntryNames } from "@/00-storage/service/naidan-opfs/native-plain-application-namespace";
+import {
+  createNativePlainApplicationNamespaceSession,
+  listNativePlainApplicationNamespaceEntryNames,
+} from "@/00-storage/service/naidan-opfs/native-plain-application-namespace";
+import { openActiveAuthenticatedHizoFSDecryptedSnapshotLease } from "@/00-storage/service/naidan-opfs/active-hizofs-container-location";
 import {
   NAIDAN_PERSISTENCE_CONTROL_FORMAT_CONSTANTS,
 } from "@/00-storage/service/naidan-persistence-control/00-format";
 import { OPFSStorageProvider } from "@/00-storage/service/opfs-storage";
+import { StorageService } from "@/00-storage/service";
 import type { OpfsSpecialFileSystemType } from "@/00-storage/service/opfs/opfs-special-file-system";
+import type { StorageDirectoryHandle } from "@/00-storage/service/storage-file-system/types";
 import {
   createInMemoryOpfsStorageManager,
   InMemoryOpfsDirectoryHandle,
@@ -46,6 +52,14 @@ function settings({ endpointUrl }: { endpointUrl: string }): Settings {
 
 async function listEntryNames({ directory }: {
   directory: FileSystemDirectoryHandle;
+}): Promise<readonly string[]> {
+  const names: string[] = [];
+  for await (const [name] of directory.entries()) names.push(name);
+  return names.toSorted();
+}
+
+async function listStorageEntryNames({ directory }: {
+  directory: StorageDirectoryHandle;
 }): Promise<readonly string[]> {
   const names: string[] = [];
   for await (const [name] of directory.entries()) names.push(name);
@@ -393,6 +407,118 @@ describe("browserless production HizoFS disable system", () => {
         && detail !== null
         && "event" in detail
         && detail.event === "native_disable_failure")).toBe(false);
+    } finally {
+      uninstallRuntime();
+    }
+  }, 60_000);
+
+  it("disables after raw-conflict cleanup when the encrypted source has absent and empty managed roots", async () => {
+    const root = new InMemoryOpfsDirectoryHandle({
+      capabilityProfile: "window",
+      name: "opfs-root",
+    });
+    const locks = new InMemoryWebLockManager();
+    vi.stubGlobal("navigator", {
+      locks,
+      storage: createInMemoryOpfsStorageManager({ root }),
+    });
+    const uninstallRuntime = installDevelopmentUnverifiedOpfsPersistenceRuntime({
+      lockManager: locks,
+    });
+
+    try {
+      const plain = new OPFSStorageProvider();
+      await plain.init();
+      await plain.saveSettings({
+        settings: settings({ endpointUrl: "http://partial-managed-root-source" }),
+      });
+      await plain.enableEncryption({
+        onProgress: undefined,
+        passphrase: PASSPHRASE,
+        signal: undefined,
+      });
+
+      const encrypted = new StorageService();
+      await expect(encrypted.init({ type: "opfs" }))
+        .rejects.toThrow("OPFS encryption must be unlocked before storage can be used");
+      await encrypted.unlockOpfsEncryptionWithPassphrase({ passphrase: PASSPHRASE });
+      await encrypted.clearOpfsSpecialFileSystem({ type: "tmp" });
+      const nestedChat = await encrypted.openOpfsSpecialFileSystemDirectory({
+        create: true,
+        path: "/nested",
+        type: "chat_wesh",
+      });
+      if (nestedChat?.type !== "storage_directory") {
+        throw new Error("Expected encrypted nested chat storage directory");
+      }
+      const nestedFile = await nestedChat.handle.getFileHandle({ create: true, name: "value.bin" });
+      const nestedWritable = await nestedFile.createWritable({ keepExistingData: false });
+      await nestedWritable.write({ data: Uint8Array.of(71, 72), position: 0 });
+      await nestedWritable.close();
+
+      const storageRoot = await root.getDirectoryHandle(
+        NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+        { create: false },
+      );
+      await writeFileBytes({
+        bytes: Uint8Array.of(91, 92, 93),
+        directory: storageRoot as unknown as FileSystemDirectoryHandle,
+        name: "stale-disable-target.bin",
+      });
+      const conflict = await encrypted.inspectOpfsEncryptionDisableConflict();
+      expect(conflict).toMatchObject({ type: "conflict" });
+      if (conflict.type !== "conflict") throw new Error("Expected a native plain target conflict");
+      await expect(encrypted.cleanupOpfsEncryptionDisableConflict({ inspectionId: conflict.inspectionId }))
+        .resolves.toEqual({ type: "clear" });
+
+      const encryptedSnapshot = await openActiveAuthenticatedHizoFSDecryptedSnapshotLease();
+      if (encryptedSnapshot === undefined) throw new Error("Expected an active encrypted snapshot");
+      await expect(listStorageEntryNames({ directory: encryptedSnapshot.root })).resolves.toEqual([
+        "naidan-chat-wesh",
+        "naidan-debug-wesh",
+        "naidan-storage",
+      ]);
+      const emptyDebugRoot = await encryptedSnapshot.root.getDirectoryHandle({
+        create: false,
+        name: "naidan-debug-wesh",
+      });
+      await expect(listStorageEntryNames({ directory: emptyDebugRoot })).resolves.toEqual([]);
+      const encryptedChatRoot = await encryptedSnapshot.root.getDirectoryHandle({
+        create: false,
+        name: "naidan-chat-wesh",
+      });
+      await expect(listStorageEntryNames({ directory: encryptedChatRoot })).resolves.toEqual(["nested"]);
+      await encryptedSnapshot.dispose();
+
+      const plainProjection = createNativePlainApplicationNamespaceSession({
+        nativeNamespaceRoot: root as unknown as FileSystemDirectoryHandle,
+      });
+      await expect(listStorageEntryNames({ directory: plainProjection.root })).resolves.toEqual([
+        "naidan-chat-wesh",
+        "naidan-debug-wesh",
+        "naidan-storage",
+        "naidan-tmp",
+      ]);
+      await plainProjection.close();
+
+      await encrypted.disableOpfsEncryption({
+        onProgress: undefined,
+        signal: undefined,
+      });
+
+      const reopenedPlain = new OPFSStorageProvider();
+      await expect(reopenedPlain.inspectEncryption()).resolves.toMatchObject({ type: "plain" });
+      await reopenedPlain.init();
+      await expect(reopenedPlain.loadSettings()).resolves.toMatchObject({
+        endpoint: { url: "http://partial-managed-root-source" },
+      });
+      const plainNestedChat = await root.getDirectoryHandle("naidan-chat-wesh", { create: false });
+      const plainNestedDirectory = await plainNestedChat.getDirectoryHandle("nested", { create: false });
+      await expect(readFileBytes({
+        directory: plainNestedDirectory as unknown as FileSystemDirectoryHandle,
+        name: "value.bin",
+      })).resolves.toEqual(Uint8Array.of(71, 72));
+      await reopenedPlain.dispose();
     } finally {
       uninstallRuntime();
     }

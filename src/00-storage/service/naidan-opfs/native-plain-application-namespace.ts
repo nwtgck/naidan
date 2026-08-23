@@ -113,6 +113,88 @@ function createEmptyProjectedDirectory({ name }: {
   };
 }
 
+function projectCanonicalManagedRootShape({ root }: {
+  root: StorageDirectoryHandle;
+}): StorageDirectoryHandle {
+  const projectEntry = ({ entry }: { entry: StorageEntryHandle }): StorageEntryHandle => {
+    switch (entry.kind) {
+    case 'directory': return projectDirectory({ directory: entry, filterDirectChild: () => true });
+    case 'file':
+    case 'symlink': return entry;
+    default: return entry satisfies never;
+    }
+  };
+  const openManagedRoot = async ({ name }: {
+    name: NaidanOpfsContainerRootDirectoryName;
+  }): Promise<StorageDirectoryHandle> => {
+    try {
+      return projectDirectory({
+        directory: await root.getDirectoryHandle({ create: false, name }),
+        filterDirectChild: () => true,
+      });
+    } catch (cause: unknown) {
+      if (isNotFoundError({ cause })) return createEmptyProjectedDirectory({ name });
+      throw cause;
+    }
+  };
+  return {
+    cloneFile: async () => unsupportedMutation(),
+    createSymlink: async () => unsupportedMutation(),
+    entries: async function* () {
+      const presentManagedRoots = new Set<NaidanOpfsContainerRootDirectoryName>();
+      for await (const [name, entry] of root.entries()) {
+        const managedName = parseNaidanOpfsContainerRootDirectoryName({ name });
+        if (managedName !== undefined) presentManagedRoots.add(managedName);
+        yield [name, projectEntry({ entry })] as const;
+      }
+      for (const name of NAIDAN_OPFS_CONTAINER_ROOT_DIRECTORY_NAMES) {
+        if (!presentManagedRoots.has(name)) {
+          yield [name, createEmptyProjectedDirectory({ name })] as const;
+        }
+      }
+    },
+    getDirectoryHandle: async ({ create, name }) => {
+      if (create) unsupportedMutation();
+      const managedName = parseNaidanOpfsContainerRootDirectoryName({ name });
+      if (managedName !== undefined) return await openManagedRoot({ name: managedName });
+      return projectDirectory({
+        directory: await root.getDirectoryHandle({ create: false, name }),
+        filterDirectChild: () => true,
+      });
+    },
+    getEntryHandle: async ({ name }) => {
+      const managedName = parseNaidanOpfsContainerRootDirectoryName({ name });
+      if (managedName !== undefined) return await openManagedRoot({ name: managedName });
+      return projectEntry({ entry: await root.getEntryHandle({ name }) });
+    },
+    getFileHandle: async ({ create, name }) => {
+      if (create) unsupportedMutation();
+      return await root.getFileHandle({ create: false, name });
+    },
+    kind: 'directory',
+    moveEntry: async () => unsupportedMutation(),
+    name: root.name,
+    removeEntry: async () => unsupportedMutation(),
+    stat: async () => await root.stat(),
+  };
+}
+
+/**
+ * Gives every transition endpoint the same four managed-root projection.
+ * A missing managed root is represented as an empty read-only directory; any
+ * other root entry remains visible so verification cannot hide extra data.
+ */
+export function projectCanonicalNaidanApplicationNamespaceSession({ session }: {
+  session: StorageFileSystemSession;
+}): StorageFileSystemSession {
+  return {
+    capabilities: session.capabilities,
+    close: async () => await session.close(),
+    root: projectCanonicalManagedRootShape({ root: session.root }),
+    sync: async () => await session.sync(),
+  };
+}
+
 function projectManagedRootDirectory({ directory, name }: {
   directory: StorageDirectoryHandle;
   name: NaidanOpfsContainerRootDirectoryName;
@@ -149,12 +231,9 @@ export function createNativePlainApplicationNamespaceSession({ nativeNamespaceRo
       entries: async function* () {
         for (const name of NAIDAN_OPFS_CONTAINER_ROOT_DIRECTORY_NAMES) {
           const directory = await openManagedRootDirectory({ name, root: nativeRoot });
-          yield [
-            name,
-            directory === undefined
-              ? createEmptyProjectedDirectory({ name })
-              : projectManagedRootDirectory({ directory, name }),
-          ] as const;
+          if (directory !== undefined) {
+            yield [name, projectManagedRootDirectory({ directory, name })] as const;
+          }
         }
       },
       getDirectoryHandle: async ({ create, name }) => {
@@ -164,9 +243,8 @@ export function createNativePlainApplicationNamespaceSession({ nativeNamespaceRo
           throw new DOMException('excluded transition entry', 'NotFoundError');
         }
         const directory = await openManagedRootDirectory({ name: managedName, root: nativeRoot });
-        return directory === undefined
-          ? createEmptyProjectedDirectory({ name: managedName })
-          : projectManagedRootDirectory({ directory, name: managedName });
+        if (directory === undefined) throw new DOMException('missing managed root', 'NotFoundError');
+        return projectManagedRootDirectory({ directory, name: managedName });
       },
       getEntryHandle: async ({ name }) => {
         const managedName = parseNaidanOpfsContainerRootDirectoryName({ name });
@@ -174,9 +252,8 @@ export function createNativePlainApplicationNamespaceSession({ nativeNamespaceRo
           throw new DOMException('excluded transition entry', 'NotFoundError');
         }
         const directory = await openManagedRootDirectory({ name: managedName, root: nativeRoot });
-        return directory === undefined
-          ? createEmptyProjectedDirectory({ name: managedName })
-          : projectManagedRootDirectory({ directory, name: managedName });
+        if (directory === undefined) throw new DOMException('missing managed root', 'NotFoundError');
+        return projectManagedRootDirectory({ directory, name: managedName });
       },
       getFileHandle: async ({ create }) => {
         if (create) unsupportedMutation();
@@ -190,12 +267,12 @@ export function createNativePlainApplicationNamespaceSession({ nativeNamespaceRo
     },
     filterDirectChild: ({ name }) => parseNaidanOpfsContainerRootDirectoryName({ name }) !== undefined,
   });
-  return {
+  return projectCanonicalNaidanApplicationNamespaceSession({ session: {
     capabilities: nativeSession.capabilities,
     close: async () => await nativeSession.close(),
     root: projectedRoot,
     sync: async () => await nativeSession.sync(),
-  };
+  } });
 }
 
 /**
@@ -227,9 +304,23 @@ export async function runWithNativePlainApplicationNamespaceSession<T>({ failure
   return value as T;
 }
 
-type NativePlainApplicationNamespaceEntry =
-  | Readonly<{ kind: 'storage_child'; name: string }>
-  | Readonly<{ kind: 'managed_root'; name: NaidanOpfsSpecialFileSystemDirectoryName }>;
+export type NativePlainApplicationNamespaceEntry =
+  | Readonly<{
+    entryKind: 'directory';
+    owner: 'managed_root';
+    path: readonly [NaidanOpfsSpecialFileSystemDirectoryName];
+  }>
+  | Readonly<{
+    entryKind: 'directory' | 'file';
+    owner: 'storage_child';
+    path: readonly [typeof NAIDAN_OPFS_STORAGE_DIRECTORY_NAME, string];
+  }>;
+
+export type NativePlainApplicationNamespaceObservedEntry = Readonly<{
+  entryKind: 'directory' | 'file';
+  owner: NativePlainApplicationNamespaceEntry['owner'];
+  path: readonly string[];
+}>;
 
 async function openNativeDirectory({ name, parent }: {
   name: string;
@@ -252,21 +343,74 @@ async function listNativePlainApplicationNamespaceEntries({ nativeNamespaceRoot 
     parent: nativeNamespaceRoot,
   });
   if (storage !== undefined) {
-    for await (const name of storage.keys()) {
+    for await (const [name, handle] of storage.entries()) {
       if (includeNativePlainApplicationStorageEntry({ name })) {
-        entries.push({ kind: 'storage_child', name });
+        entries.push({ entryKind: handle.kind, owner: 'storage_child', path: [NAIDAN_OPFS_STORAGE_DIRECTORY_NAME, name] });
       }
     }
   }
   for (const name of NAIDAN_OPFS_SPECIAL_FILE_SYSTEM_DIRECTORY_NAMES) {
-    if (await openNativeDirectory({ name, parent: nativeNamespaceRoot }) !== undefined) {
-      entries.push({ kind: 'managed_root', name });
+    const directory = await openNativeDirectory({ name, parent: nativeNamespaceRoot });
+    if (directory !== undefined) {
+      entries.push({ entryKind: 'directory', owner: 'managed_root', path: [name] });
     }
   }
   return entries.toSorted((left, right) => {
-    const byName = left.name.localeCompare(right.name);
+    const byName = left.path.at(-1)!.localeCompare(right.path.at(-1)!);
     if (byName !== 0) return byName;
-    return left.kind.localeCompare(right.kind);
+    const byOwner = left.owner.localeCompare(right.owner);
+    if (byOwner !== 0) return byOwner;
+    return left.entryKind.localeCompare(right.entryKind);
+  });
+}
+
+export async function inspectNativePlainApplicationNamespaceEntries({ nativeNamespaceRoot }: {
+  nativeNamespaceRoot: FileSystemDirectoryHandle;
+}): Promise<readonly NativePlainApplicationNamespaceObservedEntry[]> {
+  const roots = await listNativePlainApplicationNamespaceEntries({ nativeNamespaceRoot });
+  const observed: NativePlainApplicationNamespaceObservedEntry[] = [];
+  for (const root of roots) {
+    observed.push(root);
+    switch (root.entryKind) {
+    case 'file': continue;
+    case 'directory': break;
+    default: root satisfies never;
+    }
+    const directory = await (async () => {
+      switch (root.owner) {
+      case 'managed_root':
+        return await nativeNamespaceRoot.getDirectoryHandle(root.path[0], { create: false });
+      case 'storage_child':
+        return await (await nativeNamespaceRoot.getDirectoryHandle(
+          NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
+          { create: false },
+        )).getDirectoryHandle(root.path[1], { create: false });
+      default: return root satisfies never;
+      }
+    })();
+    const stack = [{ directory, path: root.path }] as Array<{
+      directory: FileSystemDirectoryHandle;
+      path: readonly string[];
+    }>;
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      for await (const [name, handle] of current.directory.entries()) {
+        const path = [...current.path, name];
+        observed.push({ entryKind: handle.kind, owner: root.owner, path });
+        switch (handle.kind) {
+        case 'directory': stack.push({ directory: handle, path }); break;
+        case 'file': break;
+        default: handle satisfies never;
+        }
+      }
+    }
+  }
+  return observed.toSorted((left, right) => {
+    const byPath = left.path.join('/').localeCompare(right.path.join('/'));
+    if (byPath !== 0) return byPath;
+    const byOwner = left.owner.localeCompare(right.owner);
+    if (byOwner !== 0) return byOwner;
+    return left.entryKind.localeCompare(right.entryKind);
   });
 }
 
@@ -280,7 +424,7 @@ export async function listNativePlainApplicationNamespaceEntryNames({ nativeName
   nativeNamespaceRoot: FileSystemDirectoryHandle;
 }): Promise<readonly string[]> {
   return (await listNativePlainApplicationNamespaceEntries({ nativeNamespaceRoot }))
-    .map(({ name }) => name);
+    .map(({ path }) => path.at(-1)!);
 }
 
 export async function cleanupNativePlainApplicationNamespaceWithReport({ nativeNamespaceRoot }: {
@@ -291,20 +435,20 @@ export async function cleanupNativePlainApplicationNamespaceWithReport({ nativeN
   let storage: FileSystemDirectoryHandle | undefined;
   const removedNames: string[] = [];
   for (const entry of entries) {
-    switch (entry.kind) {
+    switch (entry.owner) {
     case 'managed_root':
-      await nativeNamespaceRoot.removeEntry(entry.name, { recursive: true });
+      await nativeNamespaceRoot.removeEntry(entry.path[0], { recursive: true });
       break;
     case 'storage_child':
       storage ??= await nativeNamespaceRoot.getDirectoryHandle(
         NAIDAN_OPFS_STORAGE_DIRECTORY_NAME,
         { create: false },
       );
-      await storage.removeEntry(entry.name, { recursive: true });
+      await storage.removeEntry(entry.path[1], { recursive: true });
       break;
     default: entry satisfies never;
     }
-    removedNames.push(entry.name);
+    removedNames.push(entry.path.at(-1)!);
   }
   return removedNames;
 }

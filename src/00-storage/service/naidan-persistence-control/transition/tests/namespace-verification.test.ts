@@ -41,6 +41,19 @@ const policy = {
   maximumPathComponents: 16,
 } as const;
 
+async function verifyToCompletion({ source, target }: {
+  source: TransitionNamespaceSourcePort;
+  target: TransitionNamespaceSourcePort;
+}): Promise<void> {
+  let cursor = createTransitionNamespaceVerificationCursor();
+  let slices = 0;
+  while (cursor.state !== 'complete') {
+    cursor = await runTransitionNamespaceVerificationSlice({ cursor, policy, signal: undefined, source, target });
+    slices += 1;
+    expect(slices).toBeLessThan(20);
+  }
+}
+
 describe('bounded transition namespace verification', () => {
   it('verifies metadata and content across resumable slices', async () => {
     const source = port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined });
@@ -56,14 +69,59 @@ describe('bounded transition namespace verification', () => {
     expect(cursor.verifiedEntries).toBe(2n);
   });
 
+  it('compares canonical ordered entry streams independently of page partitioning', async () => {
+    const baseSource = port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined });
+    const baseTarget = port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined });
+    const source = {
+      ...baseSource,
+      listDirectory: async ({ afterName, maximumEntries, path }) => await baseSource.listDirectory({
+        afterName,
+        maximumEntries: Math.min(maximumEntries, 1),
+        path,
+      }),
+    } satisfies TransitionNamespaceSourcePort;
+    const target = {
+      ...baseTarget,
+      listDirectory: async ({ afterName, maximumEntries, path }) => await baseTarget.listDirectory({
+        afterName,
+        maximumEntries: Math.min(maximumEntries, 2),
+        path,
+      }),
+    } satisfies TransitionNamespaceSourcePort;
+
+    await expect(verifyToCompletion({ source, target })).resolves.toBeUndefined();
+  });
+
   it('rejects extra target entries', async () => {
+    await expect(verifyToCompletion({
+      source: port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined }),
+      target: port({ changedByte: undefined, extraName: 'z', modifiedAt: undefined }),
+    })).rejects.toMatchObject({ code: 'directory_mismatch', path: '/' });
+  });
+
+  it('continues to reject a missing entry and noncanonical ordering', async () => {
+    const complete = port({ changedByte: undefined, extraName: 'z', modifiedAt: undefined });
+    const missing = port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined });
+    await expect(verifyToCompletion({
+      source: complete,
+      target: missing,
+    })).rejects.toMatchObject({ code: 'directory_mismatch', path: '/' });
+
+    const base = port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined });
+    const reordered = {
+      ...base,
+      listDirectory: async ({ afterName, maximumEntries, path }) => {
+        const page = await base.listDirectory({ afterName, maximumEntries, path });
+        return { ...page, entries: [...page.entries].reverse() };
+      },
+    } satisfies TransitionNamespaceSourcePort;
     await expect(runTransitionNamespaceVerificationSlice({
       cursor: createTransitionNamespaceVerificationCursor(),
       policy: { ...policy, maximumDirectoryEntriesPerRead: 3 },
       signal: undefined,
-      source: port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined }),
-      target: port({ changedByte: undefined, extraName: 'z', modifiedAt: undefined }),
-    })).rejects.toMatchObject({ code: 'directory_mismatch' });
+      source: base,
+      target: reordered,
+    })).rejects.toMatchObject({ code: 'invalid_directory_page', path: '/' });
   });
 
   it('rejects matching but independently invalid pages and oversized chunks', async () => {
@@ -79,7 +137,7 @@ describe('bounded transition namespace verification', () => {
     };
     await expect(runTransitionNamespaceVerificationSlice({
       cursor: createTransitionNamespaceVerificationCursor(), policy, signal: undefined, source: oversizedPage, target: oversizedPage,
-    })).rejects.toMatchObject({ code: 'invalid_directory_page' });
+    })).rejects.toMatchObject({ code: 'invalid_directory_page', path: '/' });
 
     const base = port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined });
     const first = await runTransitionNamespaceVerificationSlice({
@@ -92,7 +150,7 @@ describe('bounded transition namespace verification', () => {
     };
     await expect(runTransitionNamespaceVerificationSlice({
       cursor: first, policy, signal: undefined, source: oversizedChunk, target: oversizedChunk,
-    })).rejects.toMatchObject({ code: 'source_changed' });
+    })).rejects.toMatchObject({ code: 'source_changed', path: '/file' });
   });
 
   it('rejects metadata and file content mismatches', async () => {
@@ -104,18 +162,18 @@ describe('bounded transition namespace verification', () => {
       cursor: createTransitionNamespaceVerificationCursor(), policy, signal: undefined,
       source: port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined }),
       target: rootMismatch,
-    })).rejects.toMatchObject({ code: 'metadata_mismatch' });
+    })).rejects.toMatchObject({ code: 'metadata_mismatch', path: '/' });
 
     await expect(runTransitionNamespaceVerificationSlice({
       cursor: createTransitionNamespaceVerificationCursor(), policy, signal: undefined,
       source: port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined }),
       target: port({ changedByte: undefined, extraName: undefined, modifiedAt: 9n }),
-    })).rejects.toMatchObject({ code: 'metadata_mismatch' });
+    })).rejects.toMatchObject({ code: 'metadata_mismatch', path: '/file' });
 
     const source = port({ changedByte: undefined, extraName: undefined, modifiedAt: undefined });
     const target = port({ changedByte: 9, extraName: undefined, modifiedAt: undefined });
     await expect(runTransitionNamespaceVerificationSlice({
       cursor: createTransitionNamespaceVerificationCursor(), policy, signal: undefined, source, target,
-    })).rejects.toMatchObject({ code: 'content_mismatch' });
+    })).rejects.toMatchObject({ code: 'content_mismatch', path: '/file' });
   });
 });

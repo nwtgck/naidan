@@ -17,6 +17,7 @@ import {
 } from '@/00-storage/service/naidan-opfs/native-plain-transition-namespace';
 import type { NativePlainTransitionRuntime } from '@/00-storage/service/naidan-opfs/native-plain-transition-runtime-state';
 import { createStorageFileSystemTransitionSource } from '@/00-storage/service/naidan-persistence-control/transition/storage-file-system-transition-source';
+import { NativePlainTargetConflictError } from './native-plain-disable-conflict';
 
 export const NATIVE_PLAIN_DISABLE_AUTHORITY_IDENTITY = 'naidan-plain-opfs-v1';
 
@@ -124,7 +125,7 @@ export function createNativePlainDisableTransitionDriver({ binding, nativeNamesp
       const current = await runtime.currentLifecycle();
       if (current === undefined) {
         if (!await isNativePlainApplicationNamespaceEmpty({ nativeNamespaceRoot })) {
-          throw new TypeError('native plain target contains unowned application bytes');
+          throw new NativePlainTargetConflictError();
         }
         await runtime.prepareTarget();
         return;

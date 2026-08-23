@@ -86,6 +86,8 @@ const mockProvider = {
   dispose: vi.fn().mockResolvedValue(undefined),
   enableEncryption: vi.fn().mockResolvedValue(undefined),
   disableEncryption: vi.fn().mockResolvedValue(undefined),
+  inspectDisableEncryptionConflict: vi.fn().mockResolvedValue({ type: 'clear' }),
+  cleanupDisableEncryptionConflict: vi.fn().mockResolvedValue({ type: 'clear' }),
   reencrypt: vi.fn().mockResolvedValue(undefined),
   convergeTransitionWithPassphrase: vi.fn().mockResolvedValue(undefined),
   returnInterruptedEncryptionToPlain: vi.fn().mockResolvedValue(undefined),
@@ -132,6 +134,8 @@ describe('StorageService Synchronization Wrapper', () => {
     mockProvider.loadSettings.mockResolvedValue(null);
     mockProvider.enableEncryption.mockResolvedValue(undefined);
     mockProvider.disableEncryption.mockResolvedValue(undefined);
+    mockProvider.inspectDisableEncryptionConflict.mockResolvedValue({ type: 'clear' });
+    mockProvider.cleanupDisableEncryptionConflict.mockResolvedValue({ type: 'clear' });
     mockProvider.reencrypt.mockResolvedValue(undefined);
     mockProvider.convergeTransitionWithPassphrase.mockResolvedValue(undefined);
     mockProvider.returnInterruptedEncryptionToPlain.mockResolvedValue(undefined);
@@ -266,6 +270,32 @@ describe('StorageService Synchronization Wrapper', () => {
       event: expect.objectContaining({ type: 'opfs_encryption' }),
     });
     expect(mockLocalTransitionSettled).toHaveBeenCalledWith({ settlement: 'preparation_failed' });
+  });
+
+  it('inspects and cleans disable conflicts without starting transition settlement', async () => {
+    service = new StorageService();
+    await service.init({ type: 'opfs' });
+    const conflict = {
+      entries: [{ entryKind: 'file' as const, relativePath: 'naidan-storage/settings.json' }],
+      inspectionId: 'conflict-1',
+      totalEntryCount: 1,
+      truncated: false,
+      type: 'conflict' as const,
+    };
+    mockProvider.inspectDisableEncryptionConflict.mockResolvedValue(conflict);
+    mockProvider.cleanupDisableEncryptionConflict.mockResolvedValue({ type: 'clear' });
+
+    await expect(service.inspectOpfsEncryptionDisableConflict()).resolves.toEqual(conflict);
+    await expect(service.cleanupOpfsEncryptionDisableConflict({ inspectionId: 'conflict-1' }))
+      .resolves.toEqual({ type: 'clear' });
+
+    expect(mockProvider.cleanupDisableEncryptionConflict).toHaveBeenCalledWith({ inspectionId: 'conflict-1' });
+    expect(mockLocalTransitionStarting).not.toHaveBeenCalled();
+    expect(mockPrepareExternalTransition).not.toHaveBeenCalled();
+    expect(mockLocalTransitionSettled).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalledWith({
+      event: expect.objectContaining({ type: 'opfs_encryption' }),
+    });
   });
 
   it.each([
