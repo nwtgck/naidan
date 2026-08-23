@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { StorageBinaryObjectReadHandle } from '@/00-storage/service/binary-object-io';
 import { createInMemoryStorageRoot } from '@/00-storage/service/storage-file-system/test-support/in-memory-storage-file-system';
 import type { WeshOpenFlags } from '@/features/wesh/types';
 import type { StorageFileHandle } from '@/00-storage/service/storage-file-system/types';
@@ -90,13 +91,17 @@ describe('Wesh StorageDirectoryHandle remote', () => {
       kind: 'file',
       name: 'preview.bin',
       stat: vi.fn(async () => ({ createdAt: undefined, modifiedAt: undefined, size })),
-      openReadable: vi.fn(async () => ({
+      openReadable: vi.fn(async ({ mimeType }: { mimeType: string }): Promise<StorageBinaryObjectReadHandle> => ({
         backing: { type: 'reader_only' },
         close: vi.fn(async () => undefined),
-        mimeType: 'application/octet-stream',
+        mimeType,
         read,
         size,
-        stream: vi.fn(),
+        stream: vi.fn(({ end: _end, signal: _signal, start: _start }: {
+          end: number | undefined;
+          signal: AbortSignal | undefined;
+          start: number;
+        }) => new ReadableStream<Uint8Array>()),
       })),
       createWritable: vi.fn(),
     };

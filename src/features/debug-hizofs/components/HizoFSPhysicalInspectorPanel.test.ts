@@ -917,12 +917,20 @@ describe("HizoFSPhysicalInspectorPanel", () => {
   });
 
   it("opens an authenticated namespace page reference with a new one-shot passphrase", async () => {
+    const payloadJson = JSON.stringify({
+      entries: [
+        { inodeNumber: "1", kind: "directory" },
+        { inodeNumber: "16", kind: "file" },
+      ],
+      level: 0,
+      type: "leaf",
+    }, undefined, 2);
     mocks.createRecordView.mockReturnValueOnce({
       identitySummary: "home 03:128; physical 03:128",
       navigationTargets: [],
       payloadDocumentLabel: "Exact decoded structural payload DTO",
-      payloadJson: '{"kind":"inode_table_page"}',
-      payloadSummary: "inode_table leaf, level 0, 1 items, root",
+      payloadJson,
+      payloadSummary: "inode_table leaf, level 0, 2 items, root",
       plaintextSummary: "80/80 bytes previewed",
       recordKindName: "inode_table_page",
     });
@@ -950,7 +958,22 @@ describe("HizoFSPhysicalInspectorPanel", () => {
       },
     });
     expect((wrapper.get('[data-testid="hizofs-physical-inspector-passphrase"]').element as HTMLInputElement).value).toBe("");
-    expect(wrapper.get('[data-testid="hizofs-physical-inspector-record"]').text()).toContain("inode_table leaf");
+    const record = wrapper.get('[data-testid="hizofs-physical-inspector-record"]');
+    expect(record.text()).toContain("inode_table leaf");
+    const context = wrapper.get('[data-testid="hizofs-physical-inspector-record-validation-context"]');
+    expect(context.text()).toContain("Validation trace context");
+    expect(context.text()).toContain("Commit 4 · selected logical target /");
+    expect(context.text()).toContain("not owned by or dedicated to the selected logical target");
+    expect(context.text()).toContain("does not identify the operation phase or prove direct target lineage");
+    expect(context.text()).toContain("Observed rolesinode_table");
+    expect(context.text()).toContain("Recorded events3");
+    const pageContext = wrapper.get('[data-testid="hizofs-physical-inspector-inode-table-page-context"]');
+    expect(pageContext.text()).toContain("can pack multiple Inode entries");
+    expect(pageContext.text()).toContain("complete page payload");
+    expect(pageContext.text()).toContain("not filtered to the selected logical target");
+    const exactPayload = wrapper.get('[data-testid="hizofs-physical-inspector-record-payload"]');
+    expect(exactPayload.text()).toContain('"inodeNumber": "1"');
+    expect(exactPayload.text()).toContain('"inodeNumber": "16"');
   });
 
   it("keeps an evidence-only logical observation on namespace-derived records and returns to it", async () => {
@@ -962,9 +985,10 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     await wrapper.get('[data-testid="hizofs-physical-inspector-validation-reference"]').trigger("click");
     await flushPromises();
 
-    const context = wrapper.get('[data-testid="hizofs-physical-inspector-record-logical-context"]');
-    expect(context.text()).toContain("Observed while resolving active logical / at Commit 4");
-    expect(context.text()).toContain("observation context, not ownership");
+    const context = wrapper.get('[data-testid="hizofs-physical-inspector-record-validation-context"]');
+    expect(context.text()).toContain("Commit 4 · selected logical target /");
+    expect(context.text()).toContain("Commit-wide inspection validation");
+    expect(context.text()).toContain("not owned by or dedicated to the selected logical target");
     expect(wrapper.find('[data-testid="hizofs-physical-inspector-record-traversal"]').exists()).toBe(true);
 
     await wrapper.get('[data-testid="hizofs-physical-inspector-return-logical-context"]').trigger("click");

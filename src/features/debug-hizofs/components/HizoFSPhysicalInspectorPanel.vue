@@ -517,6 +517,7 @@ async function inspectSelectedHomeRecord(): Promise<void> {
       recordKind: reference.recordKind,
     },
     title: "Logical Home Record",
+    validationObservation: undefined,
   });
 }
 
@@ -556,7 +557,12 @@ async function inspectNavigationTarget({ sourceColumnIndex, target }: {
 }): Promise<void> {
   switch (target.targetType) {
   case "home_record":
-    await inspectHomeRecord({ request: target.request, sourceColumnIndex, title: target.label });
+    await inspectHomeRecord({
+      request: target.request,
+      sourceColumnIndex,
+      title: target.label,
+      validationObservation: undefined,
+    });
     break;
   case "physical_record":
     await inspectPhysicalRecord({ request: target.request, sourceColumnIndex, title: target.label });
@@ -609,14 +615,6 @@ async function inspectAuthorityHomeTarget({ target }: {
   await inspectAuthorityNavigationTarget({ target: { label, request, targetType: "home_record" } });
 }
 
-async function inspectNamespaceNavigationTarget({ target }: {
-  target: HizoFSPhysicalRecordNavigationTarget;
-}): Promise<void> {
-  traversalOrigin.value = "namespace";
-  clearRecordTraversal();
-  await inspectNavigationTarget({ target });
-}
-
 function selectNamespaceColumn({ columnIndex }: { columnIndex: number }): void {
   const selected = namespaceViews.value[columnIndex];
   if (selected === undefined) return;
@@ -634,13 +632,20 @@ function selectNamespaceColumn({ columnIndex }: { columnIndex: number }): void {
 async function inspectNamespaceValidationReference({ reference }: {
   reference: NonNullable<ReturnType<typeof createHizoFSNamespaceInspectionView>>["validationEvidence"]["uniqueHomeRecordReferences"][number];
 }): Promise<void> {
-  const { occurrenceCount: _occurrenceCount, request, roles: _roles, ...unhandledReference } = reference;
+  const { occurrenceCount, request, roles, ...unhandledReference } = reference;
   unhandledReference satisfies Record<PropertyKey, never>;
-  await inspectNamespaceNavigationTarget({
-    target: {
-      label: `Validation Home Record ${request.homeSegmentId}:${request.homeOffset}`,
-      request,
-      targetType: "home_record",
+  const currentNamespaceView = namespaceView.value;
+  if (currentNamespaceView === undefined) return;
+  traversalOrigin.value = "namespace";
+  clearRecordTraversal();
+  await inspectHomeRecord({
+    request,
+    title: `Validation Home Record ${request.homeSegmentId}:${request.homeOffset}`,
+    validationObservation: {
+      commitSequence: currentNamespaceView.commitSequence,
+      occurrenceCount,
+      path: currentNamespaceView.path,
+      roles,
     },
   });
 }
@@ -716,10 +721,11 @@ function navigationTargetTestId({ target }: {
   }
 }
 
-async function inspectHomeRecord({ request, sourceColumnIndex, title = "Home Record" }: {
+async function inspectHomeRecord({ request, sourceColumnIndex, title = "Home Record", validationObservation }: {
   request: Parameters<HizoFSPhysicalInspectionWorker["inspectHomeRecord"]>[0]["request"];
   sourceColumnIndex?: number;
   title?: string;
+  validationObservation: HizoFSPhysicalInspectorRecordTraversalColumn["validationObservation"];
 }): Promise<void> {
   if (!canInspect.value) return;
   const namespaceObservation = namespaceObservationForRecord({ sourceColumnIndex });
@@ -734,7 +740,12 @@ async function inspectHomeRecord({ request, sourceColumnIndex, title = "Home Rec
     if (requestRevision !== recordTraversalRevision) return;
     const view = createHizoFSPhysicalRecordInspectionView({ inspection });
     recordTraversalColumns.value = appendHizoFSPhysicalInspectorRecordTraversalColumn({
-      column: createHizoFSPhysicalInspectorRecordTraversalColumn({ namespaceObservation, title, view }),
+      column: createHizoFSPhysicalInspectorRecordTraversalColumn({
+        namespaceObservation,
+        title,
+        validationObservation,
+        view,
+      }),
       columns: recordTraversalColumns.value,
       sourceColumnIndex,
     });
@@ -1223,6 +1234,7 @@ defineExpose({
               <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Inspection validation evidence</div>
               <div tw-class="mt-0.5 truncate font-mono text-[9px] text-gray-500 dark:text-gray-400">Commit {{ namespaceView.commitSequence }} · requested path {{ namespaceView.path }}</div>
               <div tw-class="mt-0.5 font-mono text-[9px] text-amber-700 dark:text-amber-300">Runtime authenticated read activity · not persisted structure</div>
+              <div tw-class="mt-0.5 text-[9px] leading-4 text-gray-500 dark:text-gray-400">Combined Commit validation activity, not a direct lineage or ownership view for the requested path.</div>
             </div>
             <dl data-testid="hizofs-physical-inspector-validation-summary" tw-class="grid grid-cols-[minmax(0,1fr)_max-content] gap-x-3 gap-y-1 border-b border-gray-200 px-3 py-2.5 font-mono text-[10px] dark:border-gray-700">
               <dt tw-class="text-gray-500">Total authenticated page-read events</dt><dd>{{ namespaceView.validationEvidence.totalPageReadEventCount }}</dd>
@@ -1232,8 +1244,9 @@ defineExpose({
               <dt tw-class="text-gray-500">Trace bound</dt><dd>{{ namespaceView.validationEvidence.traceTruncated ? 'truncated' : 'complete' }}</dd>
             </dl>
             <details data-testid="hizofs-physical-inspector-validation-references" tw-class="border-b border-gray-200 dark:border-gray-700">
-              <summary tw-class="cursor-pointer px-3 py-2 text-[10px] font-semibold text-gray-700 dark:text-gray-200">Unique Home Record References (recorded trace)</summary>
+              <summary tw-class="cursor-pointer px-3 py-2 text-[10px] font-semibold text-gray-700 dark:text-gray-200">Unique Home Record References observed during validation</summary>
               <div tw-class="divide-y divide-gray-100 border-t border-gray-200 dark:divide-gray-800 dark:border-gray-700">
+                <div tw-class="px-3 py-2 text-[9px] leading-4 text-gray-500 dark:text-gray-400">Deduplicated read events from the recorded trace. These references do not claim ownership by, or direct lineage from, the requested logical target.</div>
                 <button v-for="reference in namespaceView.validationEvidence.uniqueHomeRecordReferences" :key="`${reference.request.homeSegmentId}:${reference.request.homeOffset}:${reference.request.frameLength}:${reference.request.recordKind}`" type="button" data-testid="hizofs-physical-inspector-validation-reference" :disabled="!canInspect" tw-class="block w-full px-3 py-2 text-left font-mono text-[9px] leading-4 text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800" @click="inspectNamespaceValidationReference({ reference })">{{ namespaceValidationReferenceSummary({ reference }) }}</button>
               </div>
             </details>
@@ -1314,7 +1327,27 @@ defineExpose({
                   </details>
                   <section data-testid="hizofs-physical-inspector-record-references" tw-class="border-b border-gray-200 dark:border-gray-700">
                     <div tw-class="border-b border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300">Persisted references</div>
-                    <div v-if="column.namespaceObservation !== undefined" data-testid="hizofs-physical-inspector-record-logical-context" tw-class="border-b border-emerald-100 p-3 dark:border-emerald-950/50">
+                    <div v-if="column.validationObservation !== undefined" data-testid="hizofs-physical-inspector-record-validation-context" tw-class="border-b border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/10">
+                      <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">Validation trace context</div>
+                      <div tw-class="mt-1 font-mono text-[9px] text-gray-600 dark:text-gray-300">Commit {{ column.validationObservation.commitSequence }} · selected logical target {{ column.validationObservation.path }}</div>
+                      <p tw-class="mt-2 text-[10px] leading-4 text-gray-700 dark:text-gray-300">This authenticated persisted Record was observed during Commit-wide inspection validation. It is not owned by or dedicated to the selected logical target.</p>
+                      <p tw-class="mt-1 text-[10px] leading-4 text-gray-600 dark:text-gray-400">Recorded activity can include the full namespace graph proof, path lookup, and, when applicable, directory listing or symlink read. Current trace evidence does not identify the operation phase or prove direct target lineage.</p>
+                      <dl tw-class="mt-2 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-1 font-mono text-[9px]">
+                        <dt tw-class="text-gray-500">Observed roles</dt><dd>{{ column.validationObservation.roles.join(', ') }}</dd>
+                        <dt tw-class="text-gray-500">Recorded events</dt><dd>{{ column.validationObservation.occurrenceCount }}</dd>
+                      </dl>
+                      <p v-if="column.view.recordKindName === 'inode_table_page'" data-testid="hizofs-physical-inspector-inode-table-page-context" tw-class="mt-2 border-l-2 border-amber-300 pl-2 text-[10px] leading-4 text-gray-700 dark:border-amber-800 dark:text-gray-300">A canonical inode_table_page is one page-granularity persisted Record that can pack multiple Inode entries. The exact decoded representation below is the complete page payload and is not filtered to the selected logical target.</p>
+                      <button
+                        v-if="column.namespaceObservation !== undefined"
+                        type="button"
+                        data-testid="hizofs-physical-inspector-return-logical-context"
+                        tw-class="mt-2 border border-blue-300 px-2 py-1.5 text-left text-[10px] font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                        @click="returnToNamespaceObservation({ observation: column.namespaceObservation })"
+                      >
+                        Return to logical {{ column.namespaceObservation.path }}
+                      </button>
+                    </div>
+                    <div v-else-if="column.namespaceObservation !== undefined" data-testid="hizofs-physical-inspector-record-logical-context" tw-class="border-b border-emerald-100 p-3 dark:border-emerald-950/50">
                       <div tw-class="font-mono text-[9px] text-gray-400">Observed while resolving {{ column.namespaceObservation.authorityMode }} logical {{ column.namespaceObservation.path }} at Commit {{ column.namespaceObservation.commitSequence }} · observation context, not ownership</div>
                       <button
                         type="button"

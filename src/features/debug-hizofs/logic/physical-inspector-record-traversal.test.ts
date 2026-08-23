@@ -174,6 +174,42 @@ describe("HizoFS physical Inspector record traversal", () => {
     }).namespaceObservation).toEqual(expectedObservation);
   });
 
+  it("preserves Commit-wide validation context without claiming target lineage", () => {
+    const column = createHizoFSPhysicalInspectorRecordTraversalColumn({
+      namespaceObservation: {
+        authorityMode: "active",
+        commitSequence: "4",
+        path: "/naidan-storage/migration-state.json",
+        pathComponents: ["naidan-storage", "migration-state.json"],
+      },
+      title: "Validation Home Record 03:128",
+      validationObservation: {
+        commitSequence: "4",
+        occurrenceCount: 3,
+        path: "/naidan-storage/migration-state.json",
+        roles: ["inode_table"],
+      },
+      view: recordView({ identitySummary: "page", payloadSummary: "inode_table page" }),
+    });
+
+    const expectedObservation = {
+      commitSequence: "4",
+      occurrenceCount: 3,
+      path: "/naidan-storage/migration-state.json",
+      roles: ["inode_table"],
+    };
+    expect(column.validationObservation).toEqual(expectedObservation);
+    expect(attachHizoFSPhysicalInspectorRecordFrame({
+      column,
+      framedBinary: {
+        frameBase64Url: "AQID",
+        frameByteLength: 3,
+        physicalOffset: "96",
+        physicalSegmentId: "02",
+      },
+    }).validationObservation).toEqual(expectedObservation);
+  });
+
   it("keeps the reference chain as columns and replaces descendants when branching from an earlier column", () => {
     const root = createHizoFSPhysicalInspectorRecordTraversalColumn({
       title: "Active Commit",

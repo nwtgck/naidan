@@ -7,7 +7,6 @@ import type {
   HizoFSPhysicalRecordNavigationTarget,
 } from "./physical-record-inspection-view";
 
-
 export type HizoFSPhysicalInspectorAuthorityTraversalColumn = Readonly<{
   navigationTargets: readonly HizoFSPhysicalRecordNavigationTarget[];
   rootDirectorySummary: string;
@@ -116,6 +115,13 @@ export type HizoFSPhysicalInspectorNamespaceObservation = Readonly<{
   pathComponents: readonly string[];
 }>;
 
+export type HizoFSPhysicalInspectorValidationObservation = Readonly<{
+  commitSequence: string;
+  occurrenceCount: number;
+  path: string;
+  roles: HizoFSNamespaceInspectionView["validationEvidence"]["uniqueHomeRecordReferences"][number]["roles"];
+}>;
+
 export type HizoFSPhysicalInspectorTraversalBreadcrumb =
   | Readonly<{ kind: "authority"; label: "Physical authority" }>
   | Readonly<{ kind: "frame"; label: "Physical frame" }>
@@ -126,6 +132,7 @@ export type HizoFSPhysicalInspectorRecordTraversalColumn = Readonly<{
   framedBinary?: HizoFSPhysicalRecordFrameInspection;
   namespaceObservation?: HizoFSPhysicalInspectorNamespaceObservation;
   title: string;
+  validationObservation?: HizoFSPhysicalInspectorValidationObservation;
   view: HizoFSPhysicalRecordInspectionView;
 }>;
 
@@ -136,9 +143,10 @@ export type HizoFSPhysicalInspectorRecordTraversalColumn = Readonly<{
  * force the Workbench projection to acknowledge it instead of silently
  * rendering an older subset.
  */
-export function createHizoFSPhysicalInspectorRecordTraversalColumn({ namespaceObservation, title, view }: {
+export function createHizoFSPhysicalInspectorRecordTraversalColumn({ namespaceObservation, title, validationObservation, view }: {
   namespaceObservation?: HizoFSPhysicalInspectorNamespaceObservation;
   title: string;
+  validationObservation?: HizoFSPhysicalInspectorValidationObservation;
   view: HizoFSPhysicalRecordInspectionView;
 }): HizoFSPhysicalInspectorRecordTraversalColumn {
   const {
@@ -180,6 +188,16 @@ export function createHizoFSPhysicalInspectorRecordTraversalColumn({ namespaceOb
           pathComponents: [...namespaceObservation.pathComponents],
         }),
       }),
+    ...(validationObservation === undefined
+      ? {}
+      : {
+        validationObservation: exactObject<HizoFSPhysicalInspectorValidationObservation>()({
+          commitSequence: validationObservation.commitSequence,
+          occurrenceCount: validationObservation.occurrenceCount,
+          path: validationObservation.path,
+          roles: [...validationObservation.roles],
+        }),
+      }),
     title,
     view,
   });
@@ -189,7 +207,7 @@ export function attachHizoFSPhysicalInspectorRecordFrame({ column, framedBinary 
   column: HizoFSPhysicalInspectorRecordTraversalColumn;
   framedBinary: HizoFSPhysicalRecordFrameInspection;
 }): HizoFSPhysicalInspectorRecordTraversalColumn {
-  const { framedBinary: _previousFramedBinary, namespaceObservation, title, view, ...unhandledColumn } = column;
+  const { framedBinary: _previousFramedBinary, namespaceObservation, title, validationObservation, view, ...unhandledColumn } = column;
   unhandledColumn satisfies Record<PropertyKey, never>;
   const {
     frameBase64Url,
@@ -208,6 +226,7 @@ export function attachHizoFSPhysicalInspectorRecordFrame({ column, framedBinary 
     }),
     ...(namespaceObservation === undefined ? {} : { namespaceObservation }),
     title,
+    ...(validationObservation === undefined ? {} : { validationObservation }),
     view,
   });
 }
