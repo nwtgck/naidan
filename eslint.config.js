@@ -24,6 +24,8 @@ import noRawDompurify from './eslint-local-rules/no-raw-dompurify.js';
 import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-apis.js';
 import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-imports.js';
 import enforceDependencyDirections from './eslint-local-rules/enforce-dependency-directions.js';
+import noHizoFSExternalNetwork from './eslint-local-rules/no-hizofs-external-network.js';
+import noHizoFSTestExternalProcess from './eslint-local-rules/no-hizofs-test-external-process.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -192,6 +194,8 @@ export default tseslint.config(
   noXssProneBrowserApis,
   preferRootAliasImports,
   enforceDependencyDirections,
+  noHizoFSExternalNetwork,
+  noHizoFSTestExternalProcess,
   // debug-hizofs is a developer and reviewer audit surface, not a general-user
   // abstraction. It intentionally reads persisted-format and inspection DTOs
   // directly so newly added fields cannot disappear behind a lossy mapper. It
