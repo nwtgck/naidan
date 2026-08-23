@@ -25,6 +25,7 @@ export type HizoFSNamespacePageNavigationTarget = Readonly<{
 }>;
 
 export type HizoFSNamespaceInspectionView = Readonly<{
+  authorityMode: HizoFSNamespacePathInspection["authorityMode"];
   authoritySummary: string;
   commitSequence: string;
   createdAt: string | undefined;
@@ -159,6 +160,7 @@ export function createHizoFSNamespaceInspectionView({ inspection }: {
     ? undefined
     : pathComponents.slice(0, -1);
   return exactObject<HizoFSNamespaceInspectionView>()({
+    authorityMode,
     authoritySummary: `${authorityMode}, Commit ${commitSequence}`,
     commitSequence,
     createdAt,

@@ -2,9 +2,10 @@ import type {
   StorageDirectoryHandle,
   StorageFileSystemSession,
 } from '@/00-storage/service/storage-file-system/types';
+import { NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME } from '@/00-storage/service/opfs/naidan-opfs-root-directory-registry';
 import type { HizoFSAuthenticatedInspectionSession } from '@/features/debug-hizofs/worker/authenticated-inspection-session';
+import { exactObject } from '@/utils/exact-object';
 
-const DEBUG_WORKSPACE_DIRECTORY_NAME = 'naidan-debug-hizofs';
 const DEBUG_WORKSPACE_DIRECTORY_SUFFIX = '.hizofs';
 const DEBUG_WORKSPACE_NAME_PREFIX = 'runtime-';
 
@@ -71,26 +72,34 @@ export async function createHizoFSDebugWorkspace({ authority, nativeOpfsRoot }: 
   nativeOpfsRoot: FileSystemDirectoryHandle | undefined;
 }): Promise<Extract<HizoFSDebugWorkspaceSummary, { readonly status: 'live' }>> {
   const opfsRoot = nativeOpfsRoot ?? await navigator.storage.getDirectory();
-  const parent = await opfsRoot.getDirectoryHandle(DEBUG_WORKSPACE_DIRECTORY_NAME, { create: true });
+  const parent = await opfsRoot.getDirectoryHandle(NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME, { create: true });
   const workspaceId = createWorkspaceId();
   const physicalDirectoryName = getPhysicalDirectoryName({ workspaceId });
   const backingDirectory = await parent.getDirectoryHandle(physicalDirectoryName, { create: true });
   let product: HizoFSDebugWorkspaceProduct | undefined;
   try {
     product = await authority.create({ backingDirectory });
+    const {
+      authenticatedInspectionSession,
+      fileSystemId,
+      fileSystemSession,
+      dispose,
+      ...unhandledProduct
+    } = product;
+    unhandledProduct satisfies Record<PropertyKey, never>;
     const createdAt = Date.now();
-    liveWorkspaces.set(workspaceId, {
-      authenticatedInspectionSession: product.authenticatedInspectionSession,
+    liveWorkspaces.set(workspaceId, exactObject<LiveHizoFSDebugWorkspace>()({
+      authenticatedInspectionSession,
       workspaceId,
       createdAt,
-      fileSystemId: product.fileSystemId,
-      fileSystemSession: product.fileSystemSession,
-      disposeProduct: product.dispose,
-    });
+      fileSystemId,
+      fileSystemSession,
+      disposeProduct: dispose,
+    }));
     return createLiveSummary({
       workspaceId,
       createdAt,
-      fileSystemId: product.fileSystemId,
+      fileSystemId,
     });
   } catch (error) {
     await product?.dispose().catch(() => undefined);
@@ -105,17 +114,13 @@ export async function listHizoFSDebugWorkspaces({ nativeOpfsRoot }: {
   const result: HizoFSDebugWorkspaceSummary[] = [];
   for (const workspace of liveWorkspaces.values()) {
     if (workspaceDestroyAttempts.has(workspace.workspaceId)) continue;
-    result.push(createLiveSummary({
-      workspaceId: workspace.workspaceId,
-      createdAt: workspace.createdAt,
-      fileSystemId: workspace.fileSystemId,
-    }));
+    result.push(createLiveSummaryFromLiveWorkspace({ workspace }));
   }
 
   const opfsRoot = nativeOpfsRoot ?? await navigator.storage.getDirectory();
   let parent: FileSystemDirectoryHandle;
   try {
-    parent = await opfsRoot.getDirectoryHandle(DEBUG_WORKSPACE_DIRECTORY_NAME);
+    parent = await opfsRoot.getDirectoryHandle(NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME);
   } catch (error) {
     if (isNotFoundError({ error })) return sortWorkspaceSummaries({ summaries: result });
     throw error;
@@ -138,12 +143,12 @@ export async function listHizoFSDebugWorkspaces({ nativeOpfsRoot }: {
     if (workspaceId === undefined
       || liveWorkspaces.has(workspaceId)
       || workspaceDestroyAttempts.has(workspaceId)) continue;
-    result.push({
+    result.push(exactObject<Extract<HizoFSDebugWorkspaceSummary, { readonly status: 'stale' }>>()({
       status: 'stale',
       workspaceId,
       fileSystemId: undefined,
-      physicalPath: [DEBUG_WORKSPACE_DIRECTORY_NAME, name],
-    });
+      physicalPath: [NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME, name],
+    }));
   }
   return sortWorkspaceSummaries({ summaries: result });
 }
@@ -155,16 +160,28 @@ export async function openHizoFSDebugWorkspace({ workspaceId }: {
   if (workspace === undefined || workspaceDestroyAttempts.has(workspaceId)) {
     throw new Error(`HizoFS debug workspace is not live: ${workspaceId}`);
   }
-  return {
-    authenticatedInspectionSession: workspace.authenticatedInspectionSession,
+  const {
+    authenticatedInspectionSession,
+    workspaceId: liveWorkspaceId,
+    createdAt,
+    fileSystemId,
+    fileSystemSession,
+    disposeProduct: _disposeProduct,
+    ...unhandledWorkspace
+  } = workspace;
+  unhandledWorkspace satisfies Record<PropertyKey, never>;
+  // WHY: opening a Workbench session borrows the live workspace; destruction
+  // remains owned by destroyHizoFSDebugWorkspace rather than this read surface.
+  return exactObject<HizoFSDebugWorkspaceSession>()({
+    authenticatedInspectionSession,
     source: createLiveSummary({
-      workspaceId: workspace.workspaceId,
-      createdAt: workspace.createdAt,
-      fileSystemId: workspace.fileSystemId,
+      workspaceId: liveWorkspaceId,
+      createdAt,
+      fileSystemId,
     }),
-    decryptedRoot: workspace.fileSystemSession.root,
+    decryptedRoot: fileSystemSession.root,
     async dispose() {},
-  };
+  });
 }
 
 export async function destroyHizoFSDebugWorkspace({ workspaceId, nativeOpfsRoot }: {
@@ -201,7 +218,7 @@ async function destroyHizoFSDebugWorkspaceOnce({ workspaceId, nativeOpfsRoot }: 
 
   const opfsRoot = nativeOpfsRoot ?? await navigator.storage.getDirectory();
   try {
-    const parent = await opfsRoot.getDirectoryHandle(DEBUG_WORKSPACE_DIRECTORY_NAME);
+    const parent = await opfsRoot.getDirectoryHandle(NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME);
     const matchingNames: string[] = [];
     for await (const [name, handle] of parent.entries()) {
       switch (handle.kind) {
@@ -226,18 +243,36 @@ async function destroyHizoFSDebugWorkspaceOnce({ workspaceId, nativeOpfsRoot }: 
   }
 }
 
+function createLiveSummaryFromLiveWorkspace({ workspace }: {
+  workspace: LiveHizoFSDebugWorkspace;
+}): Extract<HizoFSDebugWorkspaceSummary, { readonly status: 'live' }> {
+  // WHY: summaries expose identity/location metadata only; authenticated,
+  // decrypted, and cleanup authorities remain confined to the live registry.
+  const {
+    authenticatedInspectionSession: _authenticatedInspectionSession,
+    workspaceId,
+    createdAt,
+    fileSystemId,
+    fileSystemSession: _fileSystemSession,
+    disposeProduct: _disposeProduct,
+    ...unhandledWorkspace
+  } = workspace;
+  unhandledWorkspace satisfies Record<PropertyKey, never>;
+  return createLiveSummary({ workspaceId, createdAt, fileSystemId });
+}
+
 function createLiveSummary({ workspaceId, createdAt, fileSystemId }: {
   workspaceId: string;
   createdAt: number;
   fileSystemId: string;
 }): Extract<HizoFSDebugWorkspaceSummary, { readonly status: 'live' }> {
-  return {
+  return exactObject<Extract<HizoFSDebugWorkspaceSummary, { readonly status: 'live' }>>()({
     status: 'live',
     workspaceId,
     createdAt,
     fileSystemId,
-    physicalPath: [DEBUG_WORKSPACE_DIRECTORY_NAME, getPhysicalDirectoryName({ workspaceId })],
-  };
+    physicalPath: [NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME, getPhysicalDirectoryName({ workspaceId })],
+  });
 }
 
 function sortWorkspaceSummaries({ summaries }: {
@@ -275,6 +310,6 @@ function isNotFoundError({ error }: { error: unknown }): boolean {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
-  DEBUG_WORKSPACE_DIRECTORY_NAME,
+  DEBUG_WORKSPACE_DIRECTORY_NAME: NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME,
   getPhysicalDirectoryName,
 };

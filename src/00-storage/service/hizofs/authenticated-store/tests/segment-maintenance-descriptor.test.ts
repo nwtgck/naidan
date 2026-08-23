@@ -72,6 +72,11 @@ function index({ id, state, lengths = [16, 48] }: {
       ...frame({ id, plaintextLength }),
       physicalOffset: 64n + BigInt(ordinal * 128),
     })),
+    header: {
+      authenticationTag: new Uint8Array(HIZOFS_V1_FORMAT_CONSTANTS.crypto.tagBytes),
+      physicalSegmentId: id,
+      segmentClass: "metadata",
+    },
     state,
   };
 }

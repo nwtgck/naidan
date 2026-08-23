@@ -34,6 +34,7 @@ export function createHizoFSPhysicalInspectorNamespaceTraversalColumn({ view }: 
   view: HizoFSNamespaceInspectionView;
 }): HizoFSPhysicalInspectorNamespaceTraversalColumn {
   const {
+    authorityMode: _authorityMode,
     authoritySummary,
     commitSequence: _commitSequence,
     createdAt: _createdAt,
@@ -127,6 +128,8 @@ export function createHizoFSPhysicalInspectorAuthorityTraversalColumn({ view }: 
 }
 
 export type HizoFSPhysicalInspectorNamespaceObservation = Readonly<{
+  authorityMode: HizoFSNamespaceInspectionView["authorityMode"];
+  commitSequence: string;
   path: string;
   pathComponents: readonly string[];
 }>;
@@ -158,7 +161,9 @@ export function createHizoFSPhysicalInspectorRecordTraversalColumn({ namespaceOb
 }): HizoFSPhysicalInspectorRecordTraversalColumn {
   const {
     frameLength: _frameLength,
+    header: _header,
     headerFlags: _headerFlags,
+    headerJson: _headerJson,
     homeOffset: _homeOffset,
     homeSegmentId: _homeSegmentId,
     identitySummary: _identitySummary,
@@ -187,6 +192,8 @@ export function createHizoFSPhysicalInspectorRecordTraversalColumn({ namespaceOb
       ? {}
       : {
         namespaceObservation: exactObject<HizoFSPhysicalInspectorNamespaceObservation>()({
+          authorityMode: namespaceObservation.authorityMode,
+          commitSequence: namespaceObservation.commitSequence,
           path: namespaceObservation.path,
           pathComponents: [...namespaceObservation.pathComponents],
         }),
@@ -202,8 +209,21 @@ export function attachHizoFSPhysicalInspectorRecordFrame({ column, framedBinary 
 }): HizoFSPhysicalInspectorRecordTraversalColumn {
   const { framedBinary: _previousFramedBinary, namespaceObservation, title, view, ...unhandledColumn } = column;
   unhandledColumn satisfies Record<PropertyKey, never>;
+  const {
+    frameBase64Url,
+    frameByteLength,
+    physicalOffset,
+    physicalSegmentId,
+    ...unhandledFramedBinary
+  } = framedBinary;
+  unhandledFramedBinary satisfies Record<PropertyKey, never>;
   return exactObject<HizoFSPhysicalInspectorRecordTraversalColumn>()({
-    framedBinary,
+    framedBinary: exactObject<HizoFSPhysicalRecordFrameInspection>()({
+      frameBase64Url,
+      frameByteLength,
+      physicalOffset,
+      physicalSegmentId,
+    }),
     ...(namespaceObservation === undefined ? {} : { namespaceObservation }),
     title,
     view,

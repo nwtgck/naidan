@@ -71,6 +71,18 @@ export async function createHizoFSPhysicalInspectionWorkerForOpfsPath({
   const capturedPhysicalPath = capturePhysicalPath({ physicalPath });
   const opfsRoot = nativeOpfsRoot ?? await navigator.storage.getDirectory();
   const containerRoot = await openPhysicalDirectory({ physicalPath: capturedPhysicalPath, root: opfsRoot });
+  return createHizoFSPhysicalInspectionWorkerForDirectory({ containerRoot });
+}
+
+/**
+ * Opens an independently selected HizoFS container as a read-only inspection
+ * source. The directory handle remains source-owned and the returned surface
+ * exposes only passphrase-bound authenticated inspection operations, never a
+ * physical writer, Root Key, or decrypted filesystem handle.
+ */
+export function createHizoFSPhysicalInspectionWorkerForDirectory({ containerRoot }: {
+  containerRoot: FileSystemDirectoryHandle;
+}): HizoFSPhysicalInspectionWorker {
   const backend = new OpfsWritableBackend<AuthenticatedHizoFSPhysicalBytes>({ root: containerRoot });
   const physical = createAuthenticatedHizoFSInspectionPort({ backend });
   return createHizoFSPhysicalInspectionWorker({

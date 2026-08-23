@@ -13,6 +13,7 @@ import {
   type RecordFrameHeaderV1,
   type SegmentClass,
   type SegmentFrameDescriptor,
+  type SegmentHeaderV1,
   type SegmentId,
 } from "@/00-storage/service/hizofs/00-format";
 import {
@@ -39,6 +40,7 @@ export type AuthenticatedSegmentFrame = SegmentFrameDescriptor;
 
 export type AuthenticatedSegmentDescriptor = Readonly<{
   fileSize: bigint;
+  header: SegmentHeaderV1;
   path: CanonicalContainerPath;
 }>;
 
@@ -144,7 +146,7 @@ export async function authenticateSegmentDescriptorSnapshot({
       message: "Segment Header authentication failed",
     });
   }
-  return { fileSize, path };
+  return { fileSize, header, path };
 }
 
 export async function readAuthenticatedSegmentDescriptor({ backend, diagnostics, fileSystemId, physicalSegmentId, rootKey, segmentClass }: {

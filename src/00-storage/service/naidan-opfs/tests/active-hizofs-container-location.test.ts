@@ -17,12 +17,12 @@ function fileSystemId({ value }: { value: string }) {
 
 function authenticatedInspectionSession(): HizoFSAuthenticatedInspectionSession {
   return {
-    inspectContainer: vi.fn(),
-    inspectHomeRecord: vi.fn(),
-    inspectNamespacePath: vi.fn(),
-    inspectRecord: vi.fn(),
-    inspectRecordFrame: vi.fn(),
-  } as unknown as HizoFSAuthenticatedInspectionSession;
+    inspectContainer: vi.fn(async () => ({}) as never),
+    inspectHomeRecord: vi.fn(async () => ({}) as never),
+    inspectNamespacePath: vi.fn(async () => ({}) as never),
+    inspectRecord: vi.fn(async () => ({}) as never),
+    inspectRecordFrame: vi.fn(async () => ({}) as never),
+  };
 }
 
 function installActive({ value, openReadSnapshot = async () => ({

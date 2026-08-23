@@ -34,11 +34,12 @@ vi.mock('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench', () => ({
 
 function createInspector(): HizoFSPhysicalInspectionWorker {
   return {
-    inspectContainer: vi.fn(),
-    inspectHomeRecord: vi.fn(),
-    inspectNamespacePath: vi.fn(),
-    inspectRecord: vi.fn(),
-  } as unknown as HizoFSPhysicalInspectionWorker;
+    inspectContainer: vi.fn(async () => ({}) as never),
+    inspectHomeRecord: vi.fn(async () => ({}) as never),
+    inspectNamespacePath: vi.fn(async () => ({}) as never),
+    inspectRecord: vi.fn(async () => ({}) as never),
+    inspectRecordFrame: vi.fn(async () => ({}) as never),
+  };
 }
 
 describe('HizoFSWorkbenchModal integrated tools', () => {
@@ -76,7 +77,7 @@ describe('HizoFSWorkbenchModal integrated tools', () => {
     expect(sourceButtons.map(button => button.attributes('data-source-kind'))).toStrictEqual([
       'active_encrypted_store',
       'ephemeral_debug_workspace',
-      'standalone_preview',
+      'standalone_container',
     ]);
     expect(wrapper.text()).toContain('Persisted / authenticated');
     expect(wrapper.text()).toContain('Derived / decrypted');
@@ -114,7 +115,7 @@ describe('HizoFSWorkbenchModal integrated tools', () => {
     expect(wrapper.get('[data-testid="hizofs-workbench-companion-explorer"]').text()).toContain('Create first');
     expect(wrapper.find('[data-testid="hizofs-physical-inspector-passphrase"]').exists()).toBe(false);
 
-    await wrapper.get('[data-source-kind="standalone_preview"]').trigger('click');
+    await wrapper.get('[data-source-kind="standalone_container"]').trigger('click');
     expect(wrapper.get('[data-testid="hizofs-workbench-breadcrumbs"]').text()).toContain('Persisted structure');
 
     await wrapper.get('[data-source-kind="active_encrypted_store"]').trigger('click');

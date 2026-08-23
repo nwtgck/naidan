@@ -15,7 +15,9 @@ function recordView({ identitySummary, payloadSummary }: {
 }): HizoFSPhysicalRecordInspectionView {
   return {
     frameLength: 128,
+    header: {} as never,
     headerFlags: 0,
+    headerJson: "{}",
     homeOffset: "64",
     homeSegmentId: "01",
     identitySummary,
@@ -41,6 +43,7 @@ describe("HizoFS physical Inspector record traversal", () => {
 
   it("projects the decrypted namespace as a traversal root with authenticated page edges", () => {
     const view: HizoFSNamespaceInspectionView = {
+      authorityMode: "active",
       authoritySummary: "active, Commit 4",
       commitSequence: "4",
       createdAt: "10",
@@ -142,12 +145,23 @@ describe("HizoFS physical Inspector record traversal", () => {
   });
   it("preserves namespace observation evidence across framed-binary enrichment", () => {
     const column = createHizoFSPhysicalInspectorRecordTraversalColumn({
-      namespaceObservation: { path: "/docs", pathComponents: ["docs"] },
+      namespaceObservation: {
+        authorityMode: "active",
+        commitSequence: "4",
+        path: "/docs",
+        pathComponents: ["docs"],
+      },
       title: "Directory page 1",
       view: recordView({ identitySummary: "page", payloadSummary: "directory page" }),
     });
 
-    expect(column.namespaceObservation).toEqual({ path: "/docs", pathComponents: ["docs"] });
+    const expectedObservation = {
+      authorityMode: "active",
+      commitSequence: "4",
+      path: "/docs",
+      pathComponents: ["docs"],
+    };
+    expect(column.namespaceObservation).toEqual(expectedObservation);
     expect(attachHizoFSPhysicalInspectorRecordFrame({
       column,
       framedBinary: {
@@ -156,7 +170,7 @@ describe("HizoFS physical Inspector record traversal", () => {
         physicalOffset: "96",
         physicalSegmentId: "02",
       },
-    }).namespaceObservation).toEqual({ path: "/docs", pathComponents: ["docs"] });
+    }).namespaceObservation).toEqual(expectedObservation);
   });
 
   it("keeps the reference chain as columns and replaces descendants when branching from an earlier column", () => {

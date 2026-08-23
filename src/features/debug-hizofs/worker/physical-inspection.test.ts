@@ -70,6 +70,17 @@ const frameInspection = {
 
 const record = {
   frameLength: 96,
+  header: {
+    flags: 0,
+    frameLength: 96,
+    homeOffset: 64n,
+    homeSegmentId: new Uint8Array(16),
+    nonce: new Uint8Array(12),
+    plaintextLength: 8,
+    recordCodecVersion: 1,
+    recordKind: 2,
+    sealedLength: 64,
+  } as never,
   headerFlags: 0,
   homeOffset: "64",
   homeSegmentId: "00000000000000000000000000000001",

@@ -239,6 +239,9 @@ describe('HizoFS physical container inspection', () => {
       expect.objectContaining({ segmentClass: 'metadata', state: 'unsealed_complete' }),
     ]));
     expect(inspection.segments.flatMap(segment => segment.frames).length).toBeGreaterThanOrEqual(2);
+    expect(inspection.segments.filter(segment => segment.state !== "invalid" && segment.state !== "unknown_physical_entry")
+      .every(segment => segment.header !== undefined)).toBe(true);
+    expect(inspection.segments.flatMap(segment => segment.frames).every(frame => frame.header.recordKind === frame.recordKind)).toBe(true);
     expect(inspection.unlockEnvelopeCopies.every(copy => copy.envelope !== undefined)).toBe(true);
     expect(inspection.unlockEnvelopeCopies[0]?.envelope?.authenticatorTag).toBeTypeOf("string");
     expect(inspection.unlockEnvelopeCopies[0]?.envelope?.credentialSlots[0]?.wrappedFileSystemRootKey).toBeTypeOf("string");

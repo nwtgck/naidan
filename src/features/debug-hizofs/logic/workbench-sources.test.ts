@@ -2,17 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
 import { createInMemoryStorageRoot } from '@/00-storage/service/storage-file-system/test-support/in-memory-storage-file-system';
+import type { HizoFSAuthenticatedInspectionSession } from '@/00-storage/service/hizofs/inspection';
 import type { HizoFSDebugWorkspaceAuthority } from './debug-workspace';
 import {
   createHizoFSWorkbenchSourceRegistry,
   type ActiveHizoFSWorkbenchSource,
 } from './workbench-sources';
-function authenticatedInspectionSession() {
+function authenticatedInspectionSession(): HizoFSAuthenticatedInspectionSession {
   return {
     inspectContainer: vi.fn(async () => ({}) as never),
     inspectHomeRecord: vi.fn(async () => ({}) as never),
     inspectNamespacePath: vi.fn(async () => ({}) as never),
     inspectRecord: vi.fn(async () => ({}) as never),
+    inspectRecordFrame: vi.fn(async () => ({}) as never),
   };
 }
 

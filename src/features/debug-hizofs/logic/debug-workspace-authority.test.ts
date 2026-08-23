@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/utils/in-memory-file-system';
 import { writeStorageFileText } from '@/00-storage/service/storage-file-system/io';
 import type { StorageFileSystemSession } from '@/00-storage/service/storage-file-system/types';
+import type { HizoFSAuthenticatedInspectionSession } from '@/00-storage/service/hizofs/inspection';
 import {
   createHizoFSDebugWorkspace,
   destroyHizoFSDebugWorkspace,
@@ -14,12 +15,13 @@ import { createInMemoryStorageRoot } from '@/00-storage/service/storage-file-sys
 
 const roots: MockFileSystemDirectoryHandle[] = [];
 
-function authenticatedInspectionSession() {
+function authenticatedInspectionSession(): HizoFSAuthenticatedInspectionSession {
   return {
     inspectContainer: vi.fn(async () => ({}) as never),
     inspectHomeRecord: vi.fn(async () => ({}) as never),
     inspectNamespacePath: vi.fn(async () => ({}) as never),
     inspectRecord: vi.fn(async () => ({}) as never),
+    inspectRecordFrame: vi.fn(async () => ({}) as never),
   };
 }
 

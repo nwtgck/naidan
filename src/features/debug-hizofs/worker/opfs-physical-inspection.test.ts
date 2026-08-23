@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createHizoFSPhysicalInspectionWorkerForOpfsPath } from "./opfs-physical-inspection";
+import {
+  createHizoFSPhysicalInspectionWorkerForDirectory,
+  createHizoFSPhysicalInspectionWorkerForOpfsPath,
+} from "./opfs-physical-inspection";
 
 const mocks = vi.hoisted(() => ({
   createDriver: vi.fn(),
@@ -54,6 +57,22 @@ describe("OPFS physical inspection worker factory", () => {
     expect(mocks.createPort).toHaveBeenCalledWith({ backend: expect.anything() });
     expect(mocks.createDriver).toHaveBeenCalledWith({ physical });
     expect(mocks.createWorker).toHaveBeenCalledWith({ driver });
+  });
+
+  it("composes the same narrow worker directly from an independently selected container", () => {
+    const container = directoryHandle();
+    const physical = { kind: "inspection-port" };
+    const driver = { kind: "driver" };
+    const worker = { kind: "worker" };
+    mocks.createPort.mockReturnValueOnce(physical);
+    mocks.createDriver.mockReturnValueOnce(driver);
+    mocks.createWorker.mockReturnValueOnce(worker);
+
+    expect(createHizoFSPhysicalInspectionWorkerForDirectory({ containerRoot: container })).toBe(worker);
+    expect(mocks.createPort).toHaveBeenCalledWith({ backend: expect.anything() });
+    expect(mocks.createDriver).toHaveBeenCalledWith({ physical });
+    expect(mocks.createWorker).toHaveBeenCalledWith({ driver });
+    expect(container.getDirectoryHandle).not.toHaveBeenCalled();
   });
 
   it("accepts a bounded non-BMP physical path component", async () => {

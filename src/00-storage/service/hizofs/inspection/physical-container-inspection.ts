@@ -17,7 +17,12 @@ import {
   type FileSystemId,
   type HomeRecordReference,
   type PhysicalRecordReference,
+  type RecordFrameHeaderV1,
   type SegmentClass,
+  type SegmentFooterHeaderV1,
+  type SegmentFooterIndexEntryV1,
+  type SegmentFooterTrailerV1,
+  type SegmentHeaderV1,
   type SegmentId,
   type SuperblockHeaderV1,
   type SuperblockPlaintextV1,
@@ -95,6 +100,7 @@ export type HizoFSSegmentFrameInspection = Readonly<{
   homeReference: HizoFSRecordReferenceInspection | undefined;
   homeOffset: string;
   homeSegmentId: string;
+  header: RecordFrameHeaderV1;
   physicalOffset: string;
   plaintextLength: number;
   recordKind: number;
@@ -102,7 +108,13 @@ export type HizoFSSegmentFrameInspection = Readonly<{
 
 export type HizoFSSegmentInspection = Readonly<{
   fileSize: string | undefined;
+  footerHeader: SegmentFooterHeaderV1 | undefined;
+  footerIndexEntries: readonly SegmentFooterIndexEntryV1[] | undefined;
+  footerPhysicalOffset: string | undefined;
+  footerTotalLength: number | undefined;
+  footerTrailer: SegmentFooterTrailerV1 | undefined;
   frames: readonly HizoFSSegmentFrameInspection[];
+  header: SegmentHeaderV1 | undefined;
   path: string;
   physicalSegmentId: string | undefined;
   reason: string | undefined;
@@ -548,7 +560,13 @@ async function listPhysicalSegments({ fileSystemId, maximumFrames, maximumSegmen
         case "directory":
           segments.push({
             fileSize: undefined,
+            footerHeader: undefined,
+            footerIndexEntries: undefined,
+            footerPhysicalOffset: undefined,
+            footerTotalLength: undefined,
+            footerTrailer: undefined,
             frames: [],
+            header: undefined,
             path,
             physicalSegmentId: undefined,
             reason: "segment shard entry is not a file",
@@ -570,7 +588,13 @@ async function listPhysicalSegments({ fileSystemId, maximumFrames, maximumSegmen
         } catch (cause: unknown) {
           segments.push({
             fileSize: String(entry.byteLength),
+            footerHeader: undefined,
+            footerIndexEntries: undefined,
+            footerPhysicalOffset: undefined,
+            footerTotalLength: undefined,
+            footerTrailer: undefined,
             frames: [],
+            header: undefined,
             path,
             physicalSegmentId: undefined,
             reason: reasonFrom({ cause }),
@@ -592,6 +616,11 @@ async function listPhysicalSegments({ fileSystemId, maximumFrames, maximumSegmen
           frameCount += index.frames.length;
           segments.push({
             fileSize: String(entry.byteLength),
+            footerHeader: index.footer?.header,
+            footerIndexEntries: index.footer?.indexEntries,
+            footerPhysicalOffset: index.footer === undefined ? undefined : String(index.footer.physicalOffset),
+            footerTotalLength: index.footer?.totalLength,
+            footerTrailer: index.footer?.trailer,
             frames: index.frames.map(frame => ({
               flags: frame.header.flags,
               frameLength: frame.header.frameLength,
@@ -605,10 +634,12 @@ async function listPhysicalSegments({ fileSystemId, maximumFrames, maximumSegmen
                 },
               homeOffset: String(frame.header.homeOffset),
               homeSegmentId: segmentIdToLowercaseHex({ id: frame.header.homeSegmentId }),
+              header: frame.header,
               physicalOffset: String(frame.physicalOffset),
               plaintextLength: frame.header.plaintextLength,
               recordKind: frame.header.recordKind,
             })),
+            header: index.header,
             path,
             physicalSegmentId: segmentIdToLowercaseHex({ id: segmentId }),
             reason: segmentReason({ state: index.state }),
@@ -619,7 +650,13 @@ async function listPhysicalSegments({ fileSystemId, maximumFrames, maximumSegmen
           if (cause instanceof InspectionFrameBudgetExceededError) throw cause;
           segments.push({
             fileSize: String(entry.byteLength),
+            footerHeader: undefined,
+            footerIndexEntries: undefined,
+            footerPhysicalOffset: undefined,
+            footerTotalLength: undefined,
+            footerTrailer: undefined,
             frames: [],
+            header: undefined,
             path,
             physicalSegmentId: segmentIdToLowercaseHex({ id: segmentId }),
             reason: reasonFrom({ cause }),

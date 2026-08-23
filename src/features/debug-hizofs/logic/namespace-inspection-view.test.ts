@@ -41,6 +41,7 @@ function inspection(): HizoFSNamespacePathInspection {
 describe("HizoFS namespace inspection view", () => {
   it("preserves fallback authority, truncation, and Subvolume boundaries", () => {
     expect(createHizoFSNamespaceInspectionView({ inspection: inspection() })).toEqual({
+      authorityMode: "fallback_read_only",
       authoritySummary: "fallback_read_only, Commit 9",
       commitSequence: "9",
       createdAt: undefined,

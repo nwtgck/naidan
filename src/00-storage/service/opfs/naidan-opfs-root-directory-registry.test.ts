@@ -4,6 +4,7 @@ import {
   getNaidanOpfsSpecialFileSystemDirectoryName,
   NAIDAN_OPFS_CONTAINER_ROOT_DIRECTORY_NAMES,
   NAIDAN_OPFS_CONTAINER_ROOT_DIRECTORY_TYPES,
+  NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME,
   NAIDAN_OPFS_MODELS_DIRECTORY_NAME,
   NAIDAN_OPFS_ROOT_DIRECTORY_REGISTRY,
   NAIDAN_OPFS_SPECIAL_FILE_SYSTEM_DIRECTORY_NAMES,
@@ -39,6 +40,11 @@ describe('Naidan OPFS root directory registry', () => {
         directoryName: 'models',
         purpose: 'reconstructible_model_cache',
       },
+      debug_hizofs: {
+        containerRootDisposition: 'outside_container_root',
+        directoryName: 'naidan-debug-hizofs',
+        purpose: 'debug_hizofs_workspace',
+      },
     });
   });
 
@@ -62,6 +68,13 @@ describe('Naidan OPFS root directory registry', () => {
     ]);
     expect(NAIDAN_OPFS_STORAGE_DIRECTORY_NAME).toBe('naidan-storage');
     expect(NAIDAN_OPFS_MODELS_DIRECTORY_NAME).toBe('models');
+    expect(NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME).toBe('naidan-debug-hizofs');
+    expect(NAIDAN_OPFS_CONTAINER_ROOT_DIRECTORY_NAMES).not.toContain(
+      NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME,
+    );
+    expect(NAIDAN_OPFS_SPECIAL_FILE_SYSTEM_DIRECTORY_NAMES).not.toContain(
+      NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME,
+    );
   });
 
   it.each([

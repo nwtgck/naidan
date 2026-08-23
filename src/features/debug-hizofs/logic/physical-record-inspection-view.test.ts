@@ -72,6 +72,17 @@ function commitInspection(): HizoFSPhysicalRecordInspection {
   const decodedPayload = commitDecodedPayload();
   return {
     frameLength: 200,
+    header: {
+      flags: 0,
+      frameLength: 200,
+      homeOffset: createUInt64({ value: 64n }),
+      homeSegmentId: parseSegmentIdLowercaseHex({ value: "00000000000000000000000000000001" }),
+      nonce: new Uint8Array(12),
+      plaintextLength: 112,
+      recordCodecVersion: 1,
+      recordKind: kinds.file_system_commit,
+      sealedLength: 128,
+    },
     headerFlags: 0,
     homeOffset: "64",
     homeSegmentId: "00000000000000000000000000000001",
@@ -121,7 +132,9 @@ describe("HizoFS physical record inspection view", () => {
     const inspection = commitInspection();
     expect(createHizoFSPhysicalRecordInspectionView({ inspection })).toEqual({
       frameLength: 200,
+      header: inspection.header,
       headerFlags: 0,
+      headerJson: expect.stringContaining('"recordKind"'),
       homeOffset: "64",
       homeSegmentId: "00000000000000000000000000000001",
       identitySummary: "home 00000000000000000000000000000001:64; physical 00000000000000000000000000000002:96",

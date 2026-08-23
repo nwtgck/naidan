@@ -86,6 +86,17 @@ describe("authenticated Segment Footer store", () => {
     expect(sealed.state).toBe("sealed");
     expect(sealed.frames).toHaveLength(2);
     expect(sealed.footer).toBeDefined();
+    expect(sealed.header).toMatchObject({ segmentClass: "metadata" });
+    const sealedFooter = sealed.footer;
+    if (sealedFooter === undefined) throw new Error("sealed Segment Footer invariant failed");
+    expect(sealedFooter.indexEntries).toHaveLength(sealed.frames.length);
+    expect(sealedFooter.indexEntries.map(entry => entry.physicalOffset)).toEqual(
+      sealed.frames.map(frame => frame.physicalOffset),
+    );
+    expect(sealedFooter.trailer).toMatchObject({
+      footerTotalLength: sealedFooter.totalLength,
+      physicalSegmentId: fixture.physicalSegmentId,
+    });
 
     const reopened = await readAuthenticatedSegmentIndex({
       backend: fixture.backend,

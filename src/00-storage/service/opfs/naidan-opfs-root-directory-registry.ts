@@ -1,7 +1,11 @@
 type NaidanOpfsRootDirectoryRegistryEntry = Readonly<{
   containerRootDisposition: 'copy_into_container_root' | 'outside_container_root';
   directoryName: string;
-  purpose: 'application_storage' | 'reconstructible_model_cache' | 'special_file_system';
+  purpose:
+    | 'application_storage'
+    | 'debug_hizofs_workspace'
+    | 'reconstructible_model_cache'
+    | 'special_file_system';
 }>;
 
 /**
@@ -38,6 +42,11 @@ export const NAIDAN_OPFS_ROOT_DIRECTORY_REGISTRY = {
     containerRootDisposition: 'outside_container_root',
     directoryName: 'models',
     purpose: 'reconstructible_model_cache',
+  },
+  debug_hizofs: {
+    containerRootDisposition: 'outside_container_root',
+    directoryName: 'naidan-debug-hizofs',
+    purpose: 'debug_hizofs_workspace',
   },
 } as const satisfies Readonly<Record<string, NaidanOpfsRootDirectoryRegistryEntry>>;
 
@@ -79,6 +88,8 @@ export const NAIDAN_OPFS_STORAGE_DIRECTORY_NAME =
   NAIDAN_OPFS_ROOT_DIRECTORY_REGISTRY.storage.directoryName;
 export const NAIDAN_OPFS_MODELS_DIRECTORY_NAME =
   NAIDAN_OPFS_ROOT_DIRECTORY_REGISTRY.models.directoryName;
+export const NAIDAN_OPFS_DEBUG_HIZOFS_DIRECTORY_NAME =
+  NAIDAN_OPFS_ROOT_DIRECTORY_REGISTRY.debug_hizofs.directoryName;
 
 function registryEntries(): ReadonlyArray<readonly [
   NaidanOpfsRootDirectoryType,

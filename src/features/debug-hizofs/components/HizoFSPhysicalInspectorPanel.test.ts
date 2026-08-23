@@ -141,14 +141,48 @@ describe("HizoFSPhysicalInspectorPanel", () => {
           recordKind: 3,
         },
       }],
-      segmentRows: [{ fileSize: "1024", frameCount: 1, frameRowsTruncated: false, frames: [{ flags: 0, frameLength: 128, homeOffset: "64", homeReference: { byteOffset: "64", frameLength: 128, recordKind: 3, segmentId: "00000000000000000000000000000001" }, homeSegmentId: "00000000000000000000000000000001", physicalOffset: "96", physicalSegmentId: "00000000000000000000000000000002", plaintextLength: 48, recordKind: 3 }], path: "segments/a", physicalSegmentId: "00000000000000000000000000000002", reason: undefined, segmentClass: "metadata", state: "sealed" }],
+      segmentRows: [{
+        fileSize: "1024",
+        footerHeader: {},
+        footerHeaderJson: '{"entryCount":1}',
+        footerIndexEntries: [{ recordKind: 3 }],
+        footerIndexEntriesJson: '[{"recordKind":3}]',
+        footerPhysicalOffset: "768",
+        footerTotalLength: 256,
+        footerTrailer: {},
+        footerTrailerJson: '{"footerTotalLength":256}',
+        frameCount: 1,
+        frameRowsTruncated: false,
+        frames: [{
+          flags: 0,
+          frameLength: 128,
+          header: {},
+          headerJson: '{"recordKind":3,"recordCodecVersion":1}',
+          homeOffset: "64",
+          homeReference: { byteOffset: "64", frameLength: 128, recordKind: 3, segmentId: "00000000000000000000000000000001" },
+          homeSegmentId: "00000000000000000000000000000001",
+          physicalOffset: "96",
+          physicalSegmentId: "00000000000000000000000000000002",
+          plaintextLength: 48,
+          recordKind: 3,
+        }],
+        header: {},
+        headerJson: '{"segmentClass":"metadata"}',
+        path: "segments/a",
+        physicalSegmentId: "00000000000000000000000000000002",
+        reason: undefined,
+        segmentClass: "metadata",
+        state: "sealed",
+      }],
       superblockSelectionSummary: "copy 0, sequence 12, converged",
       totalFrameCount: 1,
       unlockSelectionSummary: "copy 1, sequence 9, degraded",
     });
     mocks.createRecordView.mockReturnValue({
       frameLength: 128,
+      header: {},
       headerFlags: 3,
+      headerJson: '{"recordKind":2,"recordCodecVersion":1}',
       homeOffset: "64",
       homeSegmentId: "01",
       identitySummary: "home 01:64; physical 02:96",
@@ -169,6 +203,7 @@ describe("HizoFSPhysicalInspectorPanel", () => {
       sealedLength: 64,
     });
     mocks.createNamespaceView.mockReturnValue({
+      authorityMode: "active",
       authoritySummary: "active, Commit 4",
       commitSequence: "4",
       createdAt: "100",
@@ -223,6 +258,10 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     expect(authenticatedSession.inspectContainer).toHaveBeenCalledOnce();
     expect(wrapper.get('[data-testid="hizofs-physical-inspector-container"]').text()).toContain("Authority copies");
     expect(wrapper.get('[data-testid="hizofs-physical-inspector-container"]').text()).toContain("Segments / frames");
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-segment-structure"]').text()).toContain("Persisted Segment structure");
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-segment-header"]').text()).toContain("Exact Segment Header DTO");
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-segment-footer"]').text()).toContain("Exact authenticated Segment Footer DTOs");
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-segment-footer-index"]').text()).toContain('"recordKind":3');
   });
 
   it("keeps the compatibility credential fallback visually secondary", () => {
@@ -426,6 +465,28 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     expect((wrapper.get('[data-testid="hizofs-physical-inspector-passphrase"]').element as HTMLInputElement).value).toBe("");
   });
 
+  it("does not offer a logical Home Record jump for a physical-only frame", async () => {
+    const containerView = mocks.createContainerView();
+    containerView.segmentRows[0].frames[0].flags = 1;
+    containerView.segmentRows[0].frames[0].homeReference = undefined;
+    containerView.segmentRows[0].frames[0].recordKind = 48;
+    mocks.createContainerView.mockClear();
+    const inspector = createWorker();
+    const wrapper = mount(HizoFSPhysicalInspectorPanel, { props: { inspector } });
+
+    await wrapper.get('[data-testid="hizofs-physical-inspector-passphrase"]').setValue("container passphrase");
+    await wrapper.get('[data-testid="hizofs-physical-inspector-read-container"]').trigger("click");
+    await flushPromises();
+    await wrapper.get('[data-testid="hizofs-physical-inspector-frame"]').trigger("click");
+
+    expect(wrapper.find('[data-testid="hizofs-physical-inspector-read-home-record"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="hizofs-physical-inspector-read-record"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-record-selection"]').text()).toContain("record kind48");
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-record-selection"]').text()).toContain("flags1");
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-selected-home-reference"]').text())
+      .toBe("unavailable (physical-only frame)");
+  });
+
   it("follows a selected ordinary physical frame back to its authenticated logical Home Record", async () => {
     const inspector = createWorker();
     const wrapper = mount(HizoFSPhysicalInspectorPanel, { props: { inspector } });
@@ -434,6 +495,8 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     await wrapper.get('[data-testid="hizofs-physical-inspector-read-container"]').trigger("click");
     await flushPromises();
     await wrapper.get('[data-testid="hizofs-physical-inspector-frame"]').trigger("click");
+    expect(wrapper.get('[data-testid="hizofs-physical-inspector-selected-home-reference"]').text())
+      .toContain("00000000000000000000000000000001:64, frame 128, kind 3");
     await wrapper.get('[data-testid="hizofs-physical-inspector-passphrase"]').setValue("container passphrase");
     await wrapper.get('[data-testid="hizofs-physical-inspector-read-home-record"]').trigger("click");
     await flushPromises();
@@ -820,7 +883,7 @@ describe("HizoFSPhysicalInspectorPanel", () => {
     await flushPromises();
 
     const context = wrapper.get('[data-testid="hizofs-physical-inspector-record-logical-context"]');
-    expect(context.text()).toContain("Observed while resolving logical /docs");
+    expect(context.text()).toContain("Observed while resolving active logical /docs at Commit 4");
     expect(context.text()).toContain("observation context, not ownership");
     expect(wrapper.find('[data-testid="hizofs-physical-inspector-record-traversal"]').exists()).toBe(true);
 

@@ -20,6 +20,8 @@ import {
   type SegmentClass,
   type SegmentFooterHeaderV1,
   type SegmentFooterIndexEntryV1,
+  type SegmentFooterTrailerV1,
+  type SegmentHeaderV1,
   type SegmentId,
 } from "@/00-storage/service/hizofs/00-format";
 import {
@@ -56,13 +58,16 @@ import {
 
 export type AuthenticatedSegmentFooter = Readonly<{
   header: SegmentFooterHeaderV1;
+  indexEntries: readonly SegmentFooterIndexEntryV1[];
   physicalOffset: bigint;
   totalLength: number;
+  trailer: SegmentFooterTrailerV1;
 }>;
 
 export type AuthenticatedSegmentIndex = Readonly<{
   footer: AuthenticatedSegmentFooter | undefined;
   frames: readonly AuthenticatedSegmentFrame[];
+  header: SegmentHeaderV1;
   state: "abandoned_unsealed" | "complete_unsealed" | "footer_unusable" | "sealed";
 }>;
 
@@ -172,6 +177,7 @@ async function tryReadAuthenticatedFooter({
     const entrySize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentFooterIndexEntry;
     const frameHeaderSize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.recordFrameHeader;
     const frames: AuthenticatedSegmentFrame[] = [];
+    const indexEntries: SegmentFooterIndexEntryV1[] = [];
     let expectedPhysicalOffset = BigInt(headerSize);
     for (let index = 0; index < header.entryCount; index += 1) {
       const entryBytes = plaintextIndex.subarray(index * entrySize, (index + 1) * entrySize);
@@ -201,11 +207,18 @@ async function tryReadAuthenticatedFooter({
         return undefined;
       }
       frames.push({ header: frameHeader, physicalOffset: expectedPhysicalOffset });
+      indexEntries.push(entry);
       expectedPhysicalOffset += BigInt(entry.frameLength);
     }
     if (expectedPhysicalOffset !== footerOffset) return undefined;
     return {
-      footer: { header, physicalOffset: footerOffset, totalLength: trailer.footerTotalLength },
+      footer: {
+        header,
+        indexEntries,
+        physicalOffset: footerOffset,
+        totalLength: trailer.footerTotalLength,
+        trailer: decodedTrailer,
+      },
       frames,
     };
   } finally {
@@ -239,7 +252,7 @@ export async function readAuthenticatedSegmentIndex({ backend, diagnostics, file
     rootKey,
     segmentClass,
   });
-  if (footer !== undefined) return { ...footer, state: "sealed" };
+  if (footer !== undefined) return { ...footer, header: descriptor.header, state: "sealed" };
 
   const prefix = await scanAuthenticatedSegmentPrefix({
     backend,
@@ -251,11 +264,11 @@ export async function readAuthenticatedSegmentIndex({ backend, diagnostics, file
   });
   switch (prefix.state) {
   case "abandoned_unsealed":
-    return { footer: undefined, frames: prefix.frames, state: "abandoned_unsealed" };
+    return { footer: undefined, frames: prefix.frames, header: descriptor.header, state: "abandoned_unsealed" };
   case "complete_unsealed":
-    return { footer: undefined, frames: prefix.frames, state: "complete_unsealed" };
+    return { footer: undefined, frames: prefix.frames, header: descriptor.header, state: "complete_unsealed" };
   case "footer_candidate":
-    return { footer: undefined, frames: prefix.frames, state: "footer_unusable" };
+    return { footer: undefined, frames: prefix.frames, header: descriptor.header, state: "footer_unusable" };
   default:
     return prefix.state satisfies never;
   }
@@ -285,7 +298,7 @@ async function createSegmentFooterPublication({
   randomSource?: RandomByteSource;
   rootKey: FileSystemRootKey;
   segmentClass: SegmentClass;
-}): Promise<Readonly<{ footer: AuthenticatedSegmentFooter; footerBytes: Uint8Array }>> {
+}): Promise<Readonly<{ footerBytes: Uint8Array }>> {
   const headerSize = HIZOFS_V1_FORMAT_CONSTANTS.fixedSizes.segmentHeader;
   const nonce = generateSegmentFooterNonce({ randomSource });
   const header = createSegmentFooterHeader({
@@ -297,7 +310,8 @@ async function createSegmentFooterPublication({
   });
   const footerHeaderBytes = encodeSegmentFooterHeader({ header });
   const totalLength = calculateSegmentFooterTotalLength({ entryCount });
-  const footerTrailerBytes = encodeSegmentFooterTrailer({ trailer: { footerTotalLength: totalLength, physicalSegmentId } });
+  const trailer = { footerTotalLength: totalLength, physicalSegmentId } as const;
+  const footerTrailerBytes = encodeSegmentFooterTrailer({ trailer });
   const sealedIndex = await measureAuthenticatedCryptoOperation({
     diagnostics,
     operation: "encrypt",
@@ -312,7 +326,6 @@ async function createSegmentFooterPublication({
     }),
   });
   return Object.freeze({
-    footer: Object.freeze({ header, physicalOffset: footerOffset, totalLength }),
     footerBytes: concatenate({
       chunks: [footerHeaderBytes, sealedIndex, footerTrailerBytes],
       totalLength,

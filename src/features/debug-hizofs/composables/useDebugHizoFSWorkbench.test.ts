@@ -8,6 +8,17 @@ import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-s
 import type { HizoFSPhysicalInspectionSource } from '@/features/debug-hizofs/logic/active-physical-inspection-source';
 import type { HizoFSAuthenticatedInspectionSession } from '@/00-storage/service/hizofs/inspection';
 
+
+function authenticatedInspectionSession(): HizoFSAuthenticatedInspectionSession {
+  return {
+    inspectContainer: vi.fn(async () => ({}) as never),
+    inspectHomeRecord: vi.fn(async () => ({}) as never),
+    inspectNamespacePath: vi.fn(async () => ({}) as never),
+    inspectRecord: vi.fn(async () => ({}) as never),
+    inspectRecordFrame: vi.fn(async () => ({}) as never),
+  };
+}
+
 function source(): HizoFSPhysicalInspectionSource {
   return { open: vi.fn(async () => {
     throw new Error('not called');
@@ -59,12 +70,7 @@ describe('HizoFS Workbench source composition', () => {
 
 
   it('leases an authenticated physical inspection session and releases it on close', async () => {
-    const session = {
-      inspectContainer: vi.fn(),
-      inspectHomeRecord: vi.fn(),
-      inspectNamespacePath: vi.fn(),
-      inspectRecord: vi.fn(),
-    } as unknown as HizoFSAuthenticatedInspectionSession;
+    const session = authenticatedInspectionSession();
     const dispose = vi.fn(async () => undefined);
     const assertCurrent = vi.fn();
     const openLease = vi.fn(async () => ({ assertCurrent, dispose, session }));
@@ -84,13 +90,7 @@ describe('HizoFS Workbench source composition', () => {
   });
 
   it('retains a failed authenticated-session cleanup internally for retry without exposing the session', async () => {
-    const session = {
-      inspectContainer: vi.fn(),
-      inspectHomeRecord: vi.fn(),
-      inspectNamespacePath: vi.fn(),
-      inspectRecord: vi.fn(),
-      inspectRecordFrame: vi.fn(),
-    } as unknown as HizoFSAuthenticatedInspectionSession;
+    const session = authenticatedInspectionSession();
     const dispose = vi.fn()
       .mockRejectedValueOnce(new Error('inspection cleanup blocked'))
       .mockResolvedValueOnce(undefined);
@@ -187,12 +187,7 @@ describe('HizoFS Workbench source composition', () => {
   });
 
   it('releases an authenticated session when a later decrypted provider open fails', async () => {
-    const session = {
-      inspectContainer: vi.fn(),
-      inspectHomeRecord: vi.fn(),
-      inspectNamespacePath: vi.fn(),
-      inspectRecord: vi.fn(),
-    } as unknown as HizoFSAuthenticatedInspectionSession;
+    const session = authenticatedInspectionSession();
     const disposeInspection = vi.fn(async () => undefined);
     const loadActiveLocation = vi.fn(async () => ({
       openActiveAuthenticatedHizoFSDecryptedSnapshotLease: vi.fn(async () => {
@@ -214,12 +209,7 @@ describe('HizoFS Workbench source composition', () => {
   });
 
   it('does not resume opening after close invalidates an in-flight authenticated session open', async () => {
-    const session = {
-      inspectContainer: vi.fn(),
-      inspectHomeRecord: vi.fn(),
-      inspectNamespacePath: vi.fn(),
-      inspectRecord: vi.fn(),
-    } as unknown as HizoFSAuthenticatedInspectionSession;
+    const session = authenticatedInspectionSession();
     const disposeInspection = vi.fn(async () => undefined);
     let resolveInspection: ((value: {
       assertCurrent(): void;
@@ -265,12 +255,7 @@ describe('HizoFS Workbench source composition', () => {
   });
 
   it('connects one temporary workspace as a combined authenticated and decrypted source', async () => {
-    const authenticatedSession = {
-      inspectContainer: vi.fn(),
-      inspectHomeRecord: vi.fn(),
-      inspectNamespacePath: vi.fn(),
-      inspectRecord: vi.fn(),
-    } as unknown as HizoFSAuthenticatedInspectionSession;
+    const authenticatedSession = authenticatedInspectionSession();
     const root = { kind: 'directory', name: 'temporary-root' } as StorageDirectoryHandle;
     const summary = {
       status: 'live' as const,
@@ -318,12 +303,7 @@ describe('HizoFS Workbench source composition', () => {
   });
 
   it('keeps a failed temporary destruction retryable without exposing stale read capabilities', async () => {
-    const authenticatedSession = {
-      inspectContainer: vi.fn(),
-      inspectHomeRecord: vi.fn(),
-      inspectNamespacePath: vi.fn(),
-      inspectRecord: vi.fn(),
-    } as unknown as HizoFSAuthenticatedInspectionSession;
+    const authenticatedSession = authenticatedInspectionSession();
     const root = { kind: 'directory', name: 'temporary-root' } as StorageDirectoryHandle;
     const summary = {
       status: 'live' as const,

@@ -10,9 +10,14 @@ const mocks = vi.hoisted(() => ({
   close: vi.fn(),
   createTemporary: vi.fn(),
   destroyTemporary: vi.fn(),
+  createStandaloneInspector: vi.fn(),
   temporaryAuthenticatedSession: undefined as HizoFSAuthenticatedInspectionSession | undefined,
   temporaryDecryptedRoot: undefined as StorageDirectoryHandle | undefined,
   temporaryWorkspace: undefined as { readonly status: 'live'; readonly workspaceId: string; readonly createdAt: number; readonly fileSystemId: string; readonly physicalPath: readonly string[] } | undefined,
+}));
+
+vi.mock('@/features/debug-hizofs/worker/opfs-physical-inspection', () => ({
+  createHizoFSPhysicalInspectionWorkerForDirectory: mocks.createStandaloneInspector,
 }));
 
 vi.mock('@/features/debug-hizofs/composables/useDebugHizoFSWorkbench', () => ({
@@ -53,13 +58,24 @@ vi.mock('./HizoFSBenchmarkPanel.vue', () => ({
   },
 }));
 
+function authenticatedInspectionSession(): HizoFSAuthenticatedInspectionSession {
+  return {
+    inspectContainer: vi.fn(async () => ({}) as never),
+    inspectHomeRecord: vi.fn(async () => ({}) as never),
+    inspectNamespacePath: vi.fn(async () => ({}) as never),
+    inspectRecord: vi.fn(async () => ({}) as never),
+    inspectRecordFrame: vi.fn(async () => ({}) as never),
+  };
+}
+
 function inspector(): HizoFSPhysicalInspectionWorker {
   return {
-    inspectContainer: vi.fn(),
-    inspectHomeRecord: vi.fn(),
-    inspectNamespacePath: vi.fn(),
-    inspectRecord: vi.fn(),
-  } as unknown as HizoFSPhysicalInspectionWorker;
+    inspectContainer: vi.fn(async () => ({}) as never),
+    inspectHomeRecord: vi.fn(async () => ({}) as never),
+    inspectNamespacePath: vi.fn(async () => ({}) as never),
+    inspectRecord: vi.fn(async () => ({}) as never),
+    inspectRecordFrame: vi.fn(async () => ({}) as never),
+  };
 }
 
 describe('HizoFSWorkbenchModal', () => {
@@ -68,6 +84,7 @@ describe('HizoFSWorkbenchModal', () => {
     mocks.temporaryAuthenticatedSession = undefined;
     mocks.temporaryDecryptedRoot = undefined;
     mocks.temporaryWorkspace = undefined;
+    Reflect.deleteProperty(window, 'showDirectoryPicker');
   });
 
   it('uses an injected one-shot physical Inspector without opening another source', async () => {
@@ -84,12 +101,7 @@ describe('HizoFSWorkbenchModal', () => {
   });
 
   it('passes an already-authenticated inspection session without opening a passphrase source', async () => {
-    const authenticatedSession = {
-      inspectContainer: vi.fn(),
-      inspectHomeRecord: vi.fn(),
-      inspectNamespacePath: vi.fn(),
-      inspectRecord: vi.fn(),
-    } as unknown as HizoFSAuthenticatedInspectionSession;
+    const authenticatedSession = authenticatedInspectionSession();
     const source: HizoFSPhysicalInspectionSource = { open: vi.fn(async () => inspector()) };
     const wrapper = mount(HizoFSWorkbenchModal, {
       props: { authenticatedSession, physicalInspectionSource: source },
@@ -98,6 +110,7 @@ describe('HizoFSWorkbenchModal', () => {
 
     const renderedInspector = wrapper.getComponent({ name: 'HizoFSPhysicalInspectorPanel' });
     expect(renderedInspector.props('authenticatedSession')).toStrictEqual(authenticatedSession);
+    expect(renderedInspector.props('inspector')).toBeUndefined();
     expect(source.open).not.toHaveBeenCalled();
   });
 
@@ -132,12 +145,16 @@ describe('HizoFSWorkbenchModal', () => {
 
     const inspectorPanel = wrapper.getComponent({ name: 'HizoFSPhysicalInspectorPanel' });
     inspectorPanel.vm.$emit('traversalChanged', { breadcrumbs: [{ kind: 'namespace', label: 'Decrypted namespace' }, { columnIndex: 0, kind: 'record', label: 'Root Inode Table' }] });
-    inspectorPanel.vm.$emit('namespaceInspected', { path: '/docs' });
+    inspectorPanel.vm.$emit('namespaceInspected', {
+      authorityMode: 'active',
+      commitSequence: '4',
+      path: '/docs',
+    });
     await flushPromises();
-    expect(wrapper.text()).toContain('following /docs');
+    expect(wrapper.text()).toContain('following current path /docs · record identity not asserted');
     expect(wrapper.get('[data-testid="hizofs-workbench-breadcrumbs"]').text()).toContain('Decrypted namespace');
     expect(wrapper.get('[data-testid="hizofs-workbench-breadcrumbs"]').text()).toContain('Root Inode Table');
-    expect(wrapper.get('[data-testid="hizofs-workbench-breadcrumbs"]').text()).toContain('logical /docs');
+    expect(wrapper.get('[data-testid="hizofs-workbench-breadcrumbs"]').text()).toContain('current logical path /docs');
 
     const workbenchScroll = wrapper.get('[data-testid="hizofs-workbench-column-scroll"]').element as HTMLElement;
     const recordColumn = document.createElement('div');
@@ -189,6 +206,29 @@ describe('HizoFSWorkbenchModal', () => {
     expect(wrapper.getComponent({ name: 'HizoFSPhysicalInspectorPanel' }).props('requestedNamespacePath')).toBe('/docs/notes.txt');
   });
 
+  it('does not project a fallback namespace observation onto the current decrypted snapshot', async () => {
+    const decryptedRoot = { kind: 'directory', name: 'HizoFS' } as StorageDirectoryHandle;
+    const wrapper = mount(HizoFSWorkbenchModal, {
+      props: { decryptedRoot, physicalInspector: inspector() },
+    });
+    await flushPromises();
+
+    wrapper.getComponent({ name: 'HizoFSPhysicalInspectorPanel' }).vm.$emit('namespaceInspected', {
+      authorityMode: 'fallback_read_only',
+      commitSequence: '3',
+      path: '/historical-docs',
+    });
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="hizofs-workbench-companion-explorer"]').text()).toContain(
+      'fallback read-only /historical-docs · current snapshot detached',
+    );
+    expect(wrapper.get('[data-testid="hizofs-workbench-logical-breadcrumb"]').text()).toContain(
+      'fallback authority logical /historical-docs',
+    );
+    expect(wrapper.getComponent({ name: 'FileExplorer' }).props('revealPath')).toBeUndefined();
+  });
+
   it('opens the active source lazily and rejects a stale completion after the source changes', async () => {
     let completeFirst: ((value: HizoFSPhysicalInspectionWorker) => void) | undefined;
     const first: HizoFSPhysicalInspectionSource = {
@@ -230,18 +270,8 @@ describe('HizoFSWorkbenchModal', () => {
   });
 
   it('remounts the physical Inspector when switching between connected filesystem sources', async () => {
-    const activeSession = {
-      inspectContainer: vi.fn(),
-      inspectHomeRecord: vi.fn(),
-      inspectNamespacePath: vi.fn(),
-      inspectRecord: vi.fn(),
-    } as unknown as HizoFSAuthenticatedInspectionSession;
-    const temporarySession = {
-      inspectContainer: vi.fn(),
-      inspectHomeRecord: vi.fn(),
-      inspectNamespacePath: vi.fn(),
-      inspectRecord: vi.fn(),
-    } as unknown as HizoFSAuthenticatedInspectionSession;
+    const activeSession = authenticatedInspectionSession();
+    const temporarySession = authenticatedInspectionSession();
     mocks.temporaryAuthenticatedSession = temporarySession;
     mocks.temporaryDecryptedRoot = { kind: 'directory', name: 'temporary-root' } as StorageDirectoryHandle;
     mocks.temporaryWorkspace = {
@@ -271,12 +301,7 @@ describe('HizoFSWorkbenchModal', () => {
   });
 
   it('renders a connected Temporary HizoFS through the same authenticated and decrypted surfaces', async () => {
-    const authenticatedSession = {
-      inspectContainer: vi.fn(),
-      inspectHomeRecord: vi.fn(),
-      inspectNamespacePath: vi.fn(),
-      inspectRecord: vi.fn(),
-    } as unknown as HizoFSAuthenticatedInspectionSession;
+    const authenticatedSession = authenticatedInspectionSession();
     const decryptedRoot = { kind: 'directory', name: 'temporary-root' } as StorageDirectoryHandle;
     mocks.temporaryAuthenticatedSession = authenticatedSession;
     mocks.temporaryDecryptedRoot = decryptedRoot;
@@ -298,14 +323,18 @@ describe('HizoFSWorkbenchModal', () => {
     expect(renderedInspector.props('authenticatedSession')).toStrictEqual(authenticatedSession);
     expect(wrapper.get('[data-testid="hizofs-workbench-breadcrumbs"]').text()).toContain('Persisted structure');
     renderedInspector.vm.$emit('traversalChanged', { breadcrumbs: [{ kind: 'authority', label: 'Physical authority' }, { columnIndex: 0, kind: 'record', label: 'Active Commit' }] });
-    renderedInspector.vm.$emit('namespaceInspected', { path: '/docs' });
+    renderedInspector.vm.$emit('namespaceInspected', {
+      authorityMode: 'active',
+      commitSequence: '4',
+      path: '/docs',
+    });
     await wrapper.vm.$nextTick();
     const temporaryBreadcrumbs = wrapper.get('[data-testid="hizofs-workbench-breadcrumbs"]').text();
     expect(temporaryBreadcrumbs).toContain('Physical authority');
     expect(temporaryBreadcrumbs).toContain('Active Commit');
-    expect(temporaryBreadcrumbs).toContain('logical /docs');
+    expect(temporaryBreadcrumbs).toContain('current logical path /docs');
     expect(wrapper.find('[data-testid="workbench-companion-file-explorer"]').exists()).toBe(true);
-    expect(wrapper.get('[data-testid="hizofs-workbench-companion-explorer"]').text()).toContain('following /docs');
+    expect(wrapper.get('[data-testid="hizofs-workbench-companion-explorer"]').text()).toContain('following current path /docs');
     await wrapper.get('[data-testid="hizofs-toggle-companion-follow"]').trigger('click');
     expect(wrapper.get('[data-testid="hizofs-workbench-companion-explorer"]').text()).toContain('Detached');
     expect(wrapper.get('[data-testid="hizofs-workbench-companion-explorer"]').text()).toContain('detached · persisted selection /docs');
@@ -316,6 +345,30 @@ describe('HizoFSWorkbenchModal', () => {
     }));
     expect(wrapper.find('[data-testid="hizofs-destroy-temporary-workspace"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="hizofs-workbench-preview-columns"]').exists()).toBe(false);
+  });
+
+  it('opens an independently selected container through the same physical projection without inventing a decrypted session', async () => {
+    const standaloneInspector = inspector();
+    const containerRoot = { kind: 'directory', name: 'portable.hizofs' } as FileSystemDirectoryHandle;
+    Object.defineProperty(window, 'showDirectoryPicker', {
+      configurable: true,
+      value: vi.fn(async () => containerRoot),
+    });
+    mocks.createStandaloneInspector.mockReturnValueOnce(standaloneInspector);
+    const wrapper = mount(HizoFSWorkbenchModal);
+    await flushPromises();
+
+    await wrapper.get('[data-source-kind="standalone_container"]').trigger('click');
+    await wrapper.get('[data-testid="hizofs-open-standalone-container"]').trigger('click');
+    await flushPromises();
+
+    expect(mocks.createStandaloneInspector).toHaveBeenCalledWith({ containerRoot });
+    expect(wrapper.getComponent({ name: 'HizoFSPhysicalInspectorPanel' }).props('inspector'))
+      .toStrictEqual(standaloneInspector);
+    expect(wrapper.get('[data-source-kind="standalone_container"]').text()).toContain('ready');
+    expect(wrapper.get('[data-testid="hizofs-workbench-companion-explorer"]').text())
+      .toContain('decrypted filesystem session unavailable');
+    expect(wrapper.findComponent({ name: 'FileExplorer' }).exists()).toBe(false);
   });
 
   it('keeps benchmark execution independent from physical inspection', async () => {

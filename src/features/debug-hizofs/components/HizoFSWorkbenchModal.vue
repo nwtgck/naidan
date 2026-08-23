@@ -47,7 +47,7 @@ const {
   temporaryWorkspace,
 } = useDebugHizoFSWorkbench();
 const primaryView = ref<'benchmark' | 'physical_inspector'>('physical_inspector');
-type WorkbenchInspectionSourceKind = 'active_encrypted_store' | 'ephemeral_debug_workspace' | 'standalone_preview';
+type WorkbenchInspectionSourceKind = 'active_encrypted_store' | 'ephemeral_debug_workspace' | 'standalone_container';
 type WorkbenchInspectionSource = Readonly<
   | {
       access: 'read';
@@ -66,9 +66,9 @@ type WorkbenchInspectionSource = Readonly<
   | {
       access: 'read';
       description: string;
-      kind: 'standalone_preview';
+      kind: 'standalone_container';
       label: string;
-      status: 'preview';
+      status: 'available' | 'opening' | 'unavailable';
     }
 >;
 const selectedInspectionSourceKind = ref<WorkbenchInspectionSourceKind>('active_encrypted_store');
@@ -76,6 +76,10 @@ const companionExplorerExpanded = ref(true);
 const workbenchColumnScroll = ref<HTMLElement>();
 const companionFollowEnabled = ref(true);
 const inspectedNamespacePath = ref<string>();
+const inspectedNamespaceAuthority = ref<Readonly<{
+  authorityMode: 'active' | 'fallback_read_only';
+  commitSequence: string;
+}>>();
 const physicalTraversalBreadcrumbs = ref<readonly HizoFSPhysicalInspectorTraversalBreadcrumb[]>([]);
 const requestedNamespacePath = ref<string>();
 const openedInspector = ref<HizoFSPhysicalInspectionWorker>();
@@ -83,7 +87,12 @@ const openingInspector = ref(false);
 const inspectorErrorMessage = ref<string>();
 const temporaryWorkspaceErrorMessage = ref<string>();
 const changingTemporaryWorkspace = ref(false);
+const standaloneInspector = ref<HizoFSPhysicalInspectionWorker>();
+const standaloneContainerName = ref<string>();
+const standaloneErrorMessage = ref<string>();
+const openingStandaloneContainer = ref(false);
 let openGeneration = 0;
+let standaloneOpenGeneration = 0;
 let unmounted = false;
 
 const configuredAuthenticatedInspectionSession = computed(() => (
@@ -97,7 +106,7 @@ const selectedAuthenticatedInspectionSession = computed(() => {
   switch (selectedInspectionSourceKind.value) {
   case 'active_encrypted_store': return configuredAuthenticatedInspectionSession.value;
   case 'ephemeral_debug_workspace': return temporaryAuthenticatedInspectionSession.value;
-  case 'standalone_preview': return undefined;
+  case 'standalone_container': return undefined;
   default: return selectedInspectionSourceKind.value satisfies never;
   }
 });
@@ -105,7 +114,7 @@ const selectedDecryptedRoot = computed(() => {
   switch (selectedInspectionSourceKind.value) {
   case 'active_encrypted_store': return configuredDecryptedRoot.value;
   case 'ephemeral_debug_workspace': return temporaryDecryptedRoot.value;
-  case 'standalone_preview': return undefined;
+  case 'standalone_container': return undefined;
   default: return selectedInspectionSourceKind.value satisfies never;
   }
 });
@@ -150,9 +159,13 @@ const inspectionSources = computed<readonly WorkbenchInspectionSource[]>(() => [
   {
     access: 'read',
     description: 'Open an independent HizoFS container for offline inspection',
-    kind: 'standalone_preview',
-    label: 'Standalone HizoFS',
-    status: 'preview',
+    kind: 'standalone_container',
+    label: standaloneContainerName.value === undefined
+      ? 'Standalone HizoFS'
+      : `Standalone HizoFS · ${standaloneContainerName.value}`,
+    status: openingStandaloneContainer.value
+      ? 'opening'
+      : standaloneInspector.value === undefined ? 'unavailable' : 'available',
   },
 ]);
 const selectedInspectionSource = computed(() => {
@@ -164,31 +177,46 @@ const selectedSourceHasConnectedInstance = computed(() => {
   switch (selectedInspectionSource.value.kind) {
   case 'active_encrypted_store': return true;
   case 'ephemeral_debug_workspace': return temporaryWorkspace.value !== undefined;
-  case 'standalone_preview': return false;
+  case 'standalone_container': return standaloneInspector.value !== undefined;
   default: return selectedInspectionSource.value satisfies never;
   }
 });
 const selectedPhysicalInspector = computed(() => {
   switch (selectedInspectionSourceKind.value) {
   case 'active_encrypted_store': return activeInspector.value;
-  case 'ephemeral_debug_workspace':
-  case 'standalone_preview': return undefined;
+  case 'ephemeral_debug_workspace': return undefined;
+  case 'standalone_container': return standaloneInspector.value;
   default: return selectedInspectionSourceKind.value satisfies never;
   }
 });
+function fallbackCompanionStatus(): string | undefined {
+  const authorityMode = inspectedNamespaceAuthority.value?.authorityMode;
+  switch (authorityMode) {
+  case undefined:
+  case 'active': return undefined;
+  case 'fallback_read_only':
+    return inspectedNamespacePath.value === undefined
+      ? 'fallback read-only observation · current snapshot detached'
+      : `fallback read-only ${inspectedNamespacePath.value} · current snapshot detached`;
+  default: return authorityMode satisfies never;
+  }
+}
 const companionExplorerStatus = computed(() => {
   switch (selectedInspectionSource.value.kind) {
-  case 'active_encrypted_store':
+  case 'active_encrypted_store': {
     if (companionFileExplorerRoot.value === undefined) return 'read snapshot unavailable';
     if (!companionFollowEnabled.value) {
       return inspectedNamespacePath.value === undefined
         ? 'detached · no persisted path selected'
         : `detached · persisted selection ${inspectedNamespacePath.value}`;
     }
+    const fallbackStatus = fallbackCompanionStatus();
+    if (fallbackStatus !== undefined) return fallbackStatus;
     return inspectedNamespacePath.value === undefined
       ? 'read snapshot connected · no persisted path selected'
-      : `following ${inspectedNamespacePath.value}`;
-  case 'ephemeral_debug_workspace':
+      : `following current path ${inspectedNamespacePath.value} · record identity not asserted`;
+  }
+  case 'ephemeral_debug_workspace': {
     if (companionFileExplorerRoot.value === undefined) {
       return temporaryWorkspace.value === undefined
         ? 'temporary filesystem not created'
@@ -199,12 +227,27 @@ const companionExplorerStatus = computed(() => {
         ? 'detached · no persisted path selected'
         : `detached · persisted selection ${inspectedNamespacePath.value}`;
     }
+    const fallbackStatus = fallbackCompanionStatus();
+    if (fallbackStatus !== undefined) return fallbackStatus;
     return inspectedNamespacePath.value === undefined
       ? 'temporary filesystem connected · no persisted path selected'
-      : `following ${inspectedNamespacePath.value}`;
-  case 'standalone_preview':
-    return 'standalone container not opened · backend pending';
+      : `following current path ${inspectedNamespacePath.value} · record identity not asserted`;
+  }
+  case 'standalone_container':
+    return standaloneInspector.value === undefined
+      ? 'standalone container not opened'
+      : 'physical + authenticated namespace inspection available · decrypted filesystem session unavailable';
   default: return selectedInspectionSource.value satisfies never;
+  }
+});
+const companionRevealPath = computed(() => {
+  if (!companionFollowEnabled.value) return undefined;
+  const authorityMode = inspectedNamespaceAuthority.value?.authorityMode;
+  switch (authorityMode) {
+  case 'active': return inspectedNamespacePath.value;
+  case undefined:
+  case 'fallback_read_only': return undefined;
+  default: return authorityMode satisfies never;
   }
 });
 const companionExplorerBadge = computed(() => {
@@ -213,7 +256,7 @@ const companionExplorerBadge = computed(() => {
   case 'ephemeral_debug_workspace':
     if (temporaryWorkspace.value === undefined) return 'Create first';
     return companionFollowEnabled.value ? 'Follow on' : 'Detached';
-  case 'standalone_preview': return 'UI shell';
+  case 'standalone_container': return 'Unavailable';
   default: return selectedInspectionSource.value satisfies never;
   }
 });
@@ -287,7 +330,6 @@ function sourceStatusLabel({ source }: { source: WorkbenchInspectionSource }): s
   case 'opening': return 'opening';
   case 'partial': return 'partial';
   case 'unavailable': return 'unavailable';
-  case 'preview': return 'UI preview';
   default: return source satisfies never;
   }
 }
@@ -296,7 +338,7 @@ function sourceIcon({ source }: { source: WorkbenchInspectionSource }): 'active'
   switch (source.kind) {
   case 'active_encrypted_store': return 'active';
   case 'ephemeral_debug_workspace': return 'temporary';
-  case 'standalone_preview': return 'standalone';
+  case 'standalone_container': return 'standalone';
   default: return source satisfies never;
   }
 }
@@ -322,6 +364,7 @@ async function destroyTemporaryWorkspaceFromUi(): Promise<void> {
   try {
     await destroyTemporaryHizoFSWorkspace();
     inspectedNamespacePath.value = undefined;
+    inspectedNamespaceAuthority.value = undefined;
     requestedNamespacePath.value = undefined;
     physicalTraversalBreadcrumbs.value = [];
   } catch (error: unknown) {
@@ -334,6 +377,7 @@ async function destroyTemporaryWorkspaceFromUi(): Promise<void> {
 function selectInspectionSource({ kind }: { kind: WorkbenchInspectionSourceKind }): void {
   selectedInspectionSourceKind.value = kind;
   inspectedNamespacePath.value = undefined;
+  inspectedNamespaceAuthority.value = undefined;
   requestedNamespacePath.value = undefined;
   physicalTraversalBreadcrumbs.value = [];
   companionFollowEnabled.value = true;
@@ -342,15 +386,20 @@ function selectInspectionSource({ kind }: { kind: WorkbenchInspectionSourceKind 
     if (activeInspector.value === undefined && !openingInspector.value) void refreshPhysicalInspector();
     return;
   case 'ephemeral_debug_workspace':
-  case 'standalone_preview':
+  case 'standalone_container':
     return;
   default:
     kind satisfies never;
   }
 }
 
-function recordInspectedNamespacePath({ path }: { path: string }): void {
+function recordInspectedNamespacePath({ authorityMode, commitSequence, path }: {
+  authorityMode: 'active' | 'fallback_read_only';
+  commitSequence: string;
+  path: string;
+}): void {
   inspectedNamespacePath.value = path;
+  inspectedNamespaceAuthority.value = { authorityMode, commitSequence };
   requestedNamespacePath.value = path;
 }
 
@@ -384,8 +433,40 @@ function isActiveInspectionSourceKind({ kind }: { kind: WorkbenchInspectionSourc
   switch (kind) {
   case 'active_encrypted_store': return true;
   case 'ephemeral_debug_workspace':
-  case 'standalone_preview': return false;
+  case 'standalone_container': return false;
   default: return kind satisfies never;
+  }
+}
+
+async function openStandaloneContainer(): Promise<void> {
+  if (openingStandaloneContainer.value) return;
+  const showDirectoryPicker = Reflect.get(window, 'showDirectoryPicker') as unknown;
+  if (typeof showDirectoryPicker !== 'function') {
+    standaloneErrorMessage.value = 'This browser does not provide a directory picker.';
+    return;
+  }
+  const generation = ++standaloneOpenGeneration;
+  openingStandaloneContainer.value = true;
+  standaloneErrorMessage.value = undefined;
+  try {
+    const containerRoot = await Reflect.apply(showDirectoryPicker, window, [{ mode: 'read' }]) as FileSystemDirectoryHandle;
+    const inspection = await import('@/features/debug-hizofs/worker/opfs-physical-inspection');
+    const inspector = inspection.createHizoFSPhysicalInspectionWorkerForDirectory({ containerRoot });
+    if (unmounted || generation !== standaloneOpenGeneration) return;
+    standaloneContainerName.value = containerRoot.name;
+    standaloneInspector.value = inspector;
+    inspectedNamespacePath.value = undefined;
+    inspectedNamespaceAuthority.value = undefined;
+    requestedNamespacePath.value = undefined;
+    physicalTraversalBreadcrumbs.value = [];
+  } catch (error: unknown) {
+    if (!unmounted && generation === standaloneOpenGeneration) {
+      standaloneInspector.value = undefined;
+      standaloneContainerName.value = undefined;
+      standaloneErrorMessage.value = errorMessage({ error });
+    }
+  } finally {
+    if (!unmounted && generation === standaloneOpenGeneration) openingStandaloneContainer.value = false;
   }
 }
 
@@ -466,7 +547,9 @@ onMounted(() => {
 onUnmounted(() => {
   unmounted = true;
   openGeneration += 1;
+  standaloneOpenGeneration += 1;
   openedInspector.value = undefined;
+  standaloneInspector.value = undefined;
 });
 
 defineExpose({
@@ -542,7 +625,7 @@ defineExpose({
               data-testid="hizofs-workbench-logical-breadcrumb"
               tw-class="max-w-[320px] truncate rounded px-1 py-0.5 text-blue-600 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-950/40"
               @click="focusLogicalNamespaceBreadcrumb"
-            >logical {{ inspectedNamespacePath }}</button>
+            >{{ inspectedNamespaceAuthority?.authorityMode === 'fallback_read_only' ? 'fallback authority logical' : 'current logical path' }} {{ inspectedNamespacePath }}</button>
           </template>
         </template>
       </nav>
@@ -620,7 +703,7 @@ defineExpose({
 
             <template v-else>
               <div :tw-class="selectedInspectionSource.kind === 'ephemeral_debug_workspace' ? 'border-b border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-950/20' : 'border-b border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-950'">
-                <div :tw-class="selectedInspectionSource.kind === 'ephemeral_debug_workspace' ? 'text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300' : 'text-[9px] font-semibold uppercase tracking-wide text-gray-500'">{{ selectedInspectionSource.kind === 'ephemeral_debug_workspace' ? 'Temporary HizoFS' : 'Standalone HizoFS · UI-first preview' }}</div>
+                <div :tw-class="selectedInspectionSource.kind === 'ephemeral_debug_workspace' ? 'text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300' : 'text-[9px] font-semibold uppercase tracking-wide text-gray-500'">{{ selectedInspectionSource.kind === 'ephemeral_debug_workspace' ? 'Temporary HizoFS' : 'Standalone HizoFS' }}</div>
                 <div tw-class="mt-1 text-[10px] leading-4 text-gray-500 dark:text-gray-400">{{ selectedInspectionSource.kind === 'ephemeral_debug_workspace' ? 'Disposable self-contained filesystem for isolated inspection and experiments.' : 'Independent container for offline authenticated inspection.' }}</div>
               </div>
               <div tw-class="border-b border-gray-200 p-3 dark:border-gray-700">
@@ -632,9 +715,10 @@ defineExpose({
                   tw-class="w-full border border-emerald-300 px-3 py-2 text-left text-xs font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300"
                   @click="createTemporaryWorkspaceFromUi"
                 >{{ changingTemporaryWorkspace ? 'Creating temporary filesystem…' : 'Create temporary filesystem' }}</button>
-                <button v-else type="button" disabled tw-class="w-full border border-gray-300 px-3 py-2 text-left text-xs font-medium opacity-60 dark:border-gray-700">Open standalone HizoFS…</button>
+                <button v-else type="button" data-testid="hizofs-open-standalone-container" :disabled="openingStandaloneContainer" tw-class="w-full border border-gray-300 px-3 py-2 text-left text-xs font-medium disabled:opacity-60 dark:border-gray-700" @click="openStandaloneContainer">{{ openingStandaloneContainer ? 'Opening standalone HizoFS…' : 'Open standalone HizoFS…' }}</button>
                 <p v-if="temporaryWorkspaceErrorMessage !== undefined && selectedInspectionSource.kind === 'ephemeral_debug_workspace'" tw-class="mt-2 break-words font-mono text-[9px] text-red-600 dark:text-red-300">{{ temporaryWorkspaceErrorMessage }}</p>
-                <p v-else tw-class="mt-2 font-mono text-[9px] text-amber-600 dark:text-amber-300">{{ selectedInspectionSource.kind === 'ephemeral_debug_workspace' ? 'Creates a real self-contained HizoFS source with physical + decrypted read capabilities.' : 'Backend pending · standalone source lifecycle and credential acquisition' }}</p>
+                <p v-else-if="standaloneErrorMessage !== undefined && selectedInspectionSource.kind === 'standalone_container'" data-testid="hizofs-standalone-container-error" tw-class="mt-2 break-words font-mono text-[9px] text-red-600 dark:text-red-300">{{ standaloneErrorMessage }}</p>
+                <p v-else tw-class="mt-2 font-mono text-[9px] text-amber-600 dark:text-amber-300">{{ selectedInspectionSource.kind === 'ephemeral_debug_workspace' ? 'Creates a real self-contained HizoFS source with physical + decrypted read capabilities.' : 'Choose the HizoFS container directory. Authentication remains a one-shot Inspector operation; no decrypted filesystem session is created.' }}</p>
               </div>
               <div tw-class="min-h-0 flex-1 overflow-auto">
                 <div tw-class="border-b border-emerald-200 bg-emerald-50 px-3 py-2 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300">Persisted / authenticated</div>
@@ -756,7 +840,7 @@ defineExpose({
                 :root="companionFileExplorerRoot"
                 :initial-path="undefined"
                 :initial-locked="true"
-                :reveal-path="companionFollowEnabled ? inspectedNamespacePath : undefined"
+                :reveal-path="companionRevealPath"
                 entry-context-action-label="Use path in HizoFS Inspector"
                 initial-view-mode="column"
                 initial-preview-visibility="visible"

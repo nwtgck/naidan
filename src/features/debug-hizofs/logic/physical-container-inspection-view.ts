@@ -77,6 +77,8 @@ export type HizoFSPhysicalFrameInspectionRow = Readonly<{
   homeReference: HizoFSRecordReferenceInspection | undefined;
   homeOffset: string;
   homeSegmentId: string;
+  header: HizoFSSegmentFrameInspection["header"];
+  headerJson: string;
   physicalOffset: string;
   physicalSegmentId: string;
   plaintextLength: number;
@@ -85,9 +87,19 @@ export type HizoFSPhysicalFrameInspectionRow = Readonly<{
 
 export type HizoFSPhysicalSegmentInspectionRow = Readonly<{
   fileSize: string | undefined;
+  footerHeader: HizoFSSegmentInspection["footerHeader"];
+  footerHeaderJson: string;
+  footerIndexEntries: HizoFSSegmentInspection["footerIndexEntries"];
+  footerIndexEntriesJson: string;
+  footerPhysicalOffset: string | undefined;
+  footerTotalLength: number | undefined;
+  footerTrailer: HizoFSSegmentInspection["footerTrailer"];
+  footerTrailerJson: string;
   frames: readonly HizoFSPhysicalFrameInspectionRow[];
   frameCount: number;
   frameRowsTruncated: boolean;
+  header: HizoFSSegmentInspection["header"];
+  headerJson: string;
   path: string;
   physicalSegmentId: string | undefined;
   reason: string | undefined;
@@ -419,6 +431,7 @@ function frameRow({ frame, physicalSegmentId }: {
     homeOffset,
     homeReference,
     homeSegmentId,
+    header,
     physicalOffset,
     plaintextLength,
     recordKind,
@@ -431,6 +444,8 @@ function frameRow({ frame, physicalSegmentId }: {
     homeOffset,
     homeReference,
     homeSegmentId,
+    header,
+    headerJson: stringifyPersistedAuditValue({ value: header }),
     physicalOffset,
     physicalSegmentId,
     plaintextLength,
@@ -444,7 +459,13 @@ function segmentRow({ maximumFrameRows, segment }: {
 }): HizoFSPhysicalSegmentInspectionRow {
   const {
     fileSize,
+    footerHeader,
+    footerIndexEntries,
+    footerPhysicalOffset,
+    footerTotalLength,
+    footerTrailer,
     frames,
+    header,
     path,
     physicalSegmentId,
     reason,
@@ -460,9 +481,19 @@ function segmentRow({ maximumFrameRows, segment }: {
       .map(frame => frameRow({ frame, physicalSegmentId }));
   return exactObject<HizoFSPhysicalSegmentInspectionRow>()({
     fileSize,
+    footerHeader,
+    footerHeaderJson: stringifyPersistedAuditValue({ value: footerHeader }),
+    footerIndexEntries,
+    footerIndexEntriesJson: stringifyPersistedAuditValue({ value: footerIndexEntries }),
+    footerPhysicalOffset,
+    footerTotalLength,
+    footerTrailer,
+    footerTrailerJson: stringifyPersistedAuditValue({ value: footerTrailer }),
     frameCount: frames.length,
     frameRowsTruncated: displayedFrames.length < frames.length,
     frames: displayedFrames,
+    header,
+    headerJson: stringifyPersistedAuditValue({ value: header }),
     path,
     physicalSegmentId,
     reason,

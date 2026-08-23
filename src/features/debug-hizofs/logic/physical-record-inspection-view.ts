@@ -28,7 +28,9 @@ export type HizoFSPhysicalRecordNavigationTarget =
 
 export type HizoFSPhysicalRecordInspectionView = Readonly<{
   frameLength: number;
+  header: HizoFSPhysicalRecordInspection["header"];
   headerFlags: number;
+  headerJson: string;
   homeOffset: string;
   homeSegmentId: string;
   identitySummary: string;
@@ -248,6 +250,7 @@ export function createHizoFSPhysicalRecordInspectionView({ inspection }: {
 }): HizoFSPhysicalRecordInspectionView {
   const {
     frameLength,
+    header,
     headerFlags,
     homeOffset,
     homeSegmentId,
@@ -266,7 +269,9 @@ export function createHizoFSPhysicalRecordInspectionView({ inspection }: {
   unhandledInspection satisfies Record<PropertyKey, never>;
   return exactObject<HizoFSPhysicalRecordInspectionView>()({
     frameLength,
+    header,
     headerFlags,
+    headerJson: stringifyPersistedAuditValue({ value: header }),
     homeOffset,
     homeSegmentId,
     identitySummary: `home ${homeSegmentId}:${homeOffset}; physical ${physicalSegmentId}:${physicalOffset}`,

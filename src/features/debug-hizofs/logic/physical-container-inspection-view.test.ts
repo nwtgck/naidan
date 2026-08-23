@@ -27,6 +27,11 @@ function inspection(): HizoFSPhysicalContainerInspection {
     },
     segments: [{
       fileSize: "4096",
+      footerHeader: undefined,
+      footerIndexEntries: undefined,
+      footerPhysicalOffset: undefined,
+      footerTotalLength: undefined,
+      footerTrailer: undefined,
       frames: [{
         flags: 0,
         frameLength: 200,
@@ -38,10 +43,22 @@ function inspection(): HizoFSPhysicalContainerInspection {
           segmentId: "00000000000000000000000000000001",
         },
         homeSegmentId: "00000000000000000000000000000001",
+        header: {
+          flags: 0,
+          frameLength: 200,
+          homeOffset: 64n as never,
+          homeSegmentId: Uint8Array.from({ length: 16 }, () => 1) as never,
+          nonce: new Uint8Array(12),
+          plaintextLength: 80,
+          recordCodecVersion: 1,
+          recordKind: 1,
+          sealedLength: 96,
+        },
         physicalOffset: "64",
         plaintextLength: 80,
         recordKind: 1,
       }],
+      header: undefined,
       path: "segments/metadata/01/00000000000000000000000000000001.enc",
       physicalSegmentId: "00000000000000000000000000000001",
       reason: "Segment Footer is unusable; valid prefix retained",
@@ -303,7 +320,10 @@ describe("HizoFS physical container inspection view", () => {
   });
 
   it("retains root shortcut and segment valid-prefix diagnostics", () => {
-    const view = createHizoFSPhysicalContainerInspectionView({ inspection: inspection() });
+    const source = inspection();
+    const frameHeader = source.segments[0]?.frames[0]?.header;
+    if (frameHeader === undefined) throw new Error("expected Segment Frame header fixture");
+    const view = createHizoFSPhysicalContainerInspectionView({ inspection: source });
     expect(view.rootDirectorySummary).toBe("fallback_read_only, commit 7, root inode 1");
     expect(view.rootRecoveryReason).toBe("active Commit authentication failed");
     expect(view.rootNavigationTargets).toEqual([
@@ -329,6 +349,14 @@ describe("HizoFS physical container inspection view", () => {
     ]);
     expect(view.segmentRows).toEqual([{
       fileSize: "4096",
+      footerHeader: undefined,
+      footerHeaderJson: "unavailable",
+      footerIndexEntries: undefined,
+      footerIndexEntriesJson: "unavailable",
+      footerPhysicalOffset: undefined,
+      footerTotalLength: undefined,
+      footerTrailer: undefined,
+      footerTrailerJson: "unavailable",
       frameCount: 1,
       frameRowsTruncated: false,
       frames: [{
@@ -342,11 +370,15 @@ describe("HizoFS physical container inspection view", () => {
           segmentId: "00000000000000000000000000000001",
         },
         homeSegmentId: "00000000000000000000000000000001",
+        header: frameHeader,
+        headerJson: expect.any(String),
         physicalOffset: "64",
         physicalSegmentId: "00000000000000000000000000000001",
         plaintextLength: 80,
         recordKind: 1,
       }],
+      header: undefined,
+      headerJson: "unavailable",
       path: "segments/metadata/01/00000000000000000000000000000001.enc",
       physicalSegmentId: "00000000000000000000000000000001",
       reason: "Segment Footer is unusable; valid prefix retained",

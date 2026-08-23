@@ -27,6 +27,7 @@ import {
   type NestedSubvolumeBranchPage,
   type NestedSubvolumeLeafPage,
   type PhysicalRecordReference,
+  type RecordFrameHeaderV1,
   type RelocationIndexPage,
   type UInt64,
 } from "@/00-storage/service/hizofs/00-format";
@@ -173,6 +174,7 @@ export type HizoFSRecordPayloadInspection =
 
 export type HizoFSPhysicalRecordInspection = Readonly<{
   frameLength: number;
+  header: RecordFrameHeaderV1;
   headerFlags: number;
   homeOffset: string;
   homeSegmentId: string;
@@ -557,6 +559,7 @@ function recordInspection({ maximumPreviewBytes, pageIsRoot, record }: {
   const preview = record.plaintext.slice(0, maximumPreviewBytes);
   return {
     frameLength: record.header.frameLength,
+    header: record.header,
     headerFlags: record.header.flags,
     homeOffset: String(record.header.homeOffset),
     homeSegmentId: segmentIdToLowercaseHex({ id: record.header.homeSegmentId }),

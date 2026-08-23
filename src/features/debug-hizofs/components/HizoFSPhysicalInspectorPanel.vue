@@ -34,7 +34,11 @@ const props = defineProps<{
   requestedNamespacePath?: string;
 }>();
 const emit = defineEmits<{
-  namespaceInspected: [payload: { path: string }];
+  namespaceInspected: [payload: {
+    authorityMode: ReturnType<typeof createHizoFSNamespaceInspectionView>["authorityMode"];
+    commitSequence: string;
+    path: string;
+  }];
   traversalChanged: [payload: { breadcrumbs: readonly HizoFSPhysicalInspectorTraversalBreadcrumb[] }];
 }>();
 
@@ -199,6 +203,8 @@ function namespaceObservationForRecord({ sourceColumnIndex }: {
   const currentNamespaceView = namespaceView.value;
   if (currentNamespaceView === undefined) return undefined;
   return {
+    authorityMode: currentNamespaceView.authorityMode,
+    commitSequence: currentNamespaceView.commitSequence,
     path: currentNamespaceView.path,
     pathComponents: [...currentNamespaceView.pathComponents],
   };
@@ -662,7 +668,11 @@ async function inspectNamespace(): Promise<void> {
     if (followLatestRequestedPath) return;
     const nextNamespaceView = createHizoFSNamespaceInspectionView({ inspection });
     namespaceView.value = nextNamespaceView;
-    emit("namespaceInspected", { path: nextNamespaceView.path });
+    emit("namespaceInspected", {
+      authorityMode: nextNamespaceView.authorityMode,
+      commitSequence: nextNamespaceView.commitSequence,
+      path: nextNamespaceView.path,
+    });
   } catch (error) {
     if (!inspectorPanelDisposed && sourceRevision === inspectionSourceRevision) {
       followLatestRequestedPath = props.authenticatedSession !== undefined && namespacePath.value !== requestedPath;
@@ -931,6 +941,27 @@ defineExpose({
                 <article v-for="segment in containerView.segmentRows" :key="segment.path" data-testid="hizofs-physical-inspector-segment" tw-class="px-3 py-2.5">
                   <div tw-class="flex items-start justify-between gap-3"><div tw-class="min-w-0"><div tw-class="truncate font-mono text-xs font-semibold">{{ segment.path }}</div><div tw-class="mt-1 text-[10px] text-gray-500">{{ segment.segmentClass }} · {{ segment.state }} · {{ segment.physicalSegmentId ?? 'unobserved ID' }} · {{ segment.fileSize ?? 'unobserved size' }} bytes</div></div><div tw-class="shrink-0 font-mono text-[10px] text-gray-500">{{ segment.frameCount }} frames<span v-if="segment.frameRowsTruncated"> · rows truncated</span></div></div>
                   <div v-if="segment.reason" tw-class="mt-2 break-words font-mono text-[10px] text-red-600 dark:text-red-300">{{ segment.reason }}</div>
+                  <section data-testid="hizofs-physical-inspector-segment-structure" tw-class="mt-2 border-l-2 border-emerald-200 pl-2 dark:border-emerald-900">
+                    <div tw-class="text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Persisted Segment structure</div>
+                    <dl tw-class="mt-1 grid grid-cols-[68px_minmax(0,1fr)] gap-x-2 gap-y-0.5 font-mono text-[9px] leading-4">
+                      <dt tw-class="text-gray-400">Header</dt><dd>{{ segment.header === undefined ? 'unavailable' : 'authenticated' }}</dd>
+                      <dt tw-class="text-gray-400">Frames</dt><dd>{{ segment.frameCount }} authenticated Record Frame headers</dd>
+                      <dt tw-class="text-gray-400">Footer</dt><dd>{{ segment.footerHeader === undefined ? 'not authenticated / not present' : `authenticated @${segment.footerPhysicalOffset}, ${segment.footerTotalLength} bytes, ${segment.footerIndexEntries?.length ?? 0} index entries` }}</dd>
+                    </dl>
+                    <details v-if="segment.header !== undefined" data-testid="hizofs-physical-inspector-segment-header" tw-class="mt-1 border-t border-gray-100 pt-1 dark:border-gray-800">
+                      <summary tw-class="cursor-pointer font-mono text-[9px] text-emerald-700 dark:text-emerald-300">Exact Segment Header DTO</summary>
+                      <pre tw-class="mt-1 max-h-44 overflow-auto whitespace-pre-wrap break-all font-mono text-[9px] text-gray-600 dark:text-gray-300">{{ segment.headerJson }}</pre>
+                    </details>
+                    <details v-if="segment.footerHeader !== undefined" data-testid="hizofs-physical-inspector-segment-footer" tw-class="mt-1 border-t border-gray-100 pt-1 dark:border-gray-800">
+                      <summary tw-class="cursor-pointer font-mono text-[9px] text-emerald-700 dark:text-emerald-300">Exact authenticated Segment Footer DTOs</summary>
+                      <div tw-class="mt-1 font-mono text-[9px] text-gray-400">Header</div>
+                      <pre tw-class="max-h-44 overflow-auto whitespace-pre-wrap break-all font-mono text-[9px] text-gray-600 dark:text-gray-300">{{ segment.footerHeaderJson }}</pre>
+                      <div tw-class="mt-1 font-mono text-[9px] text-gray-400">Decrypted authenticated index entries</div>
+                      <pre data-testid="hizofs-physical-inspector-segment-footer-index" tw-class="max-h-56 overflow-auto whitespace-pre-wrap break-all font-mono text-[9px] text-gray-600 dark:text-gray-300">{{ segment.footerIndexEntriesJson }}</pre>
+                      <div tw-class="mt-1 font-mono text-[9px] text-gray-400">Trailer</div>
+                      <pre tw-class="max-h-44 overflow-auto whitespace-pre-wrap break-all font-mono text-[9px] text-gray-600 dark:text-gray-300">{{ segment.footerTrailerJson }}</pre>
+                    </details>
+                  </section>
                   <div v-if="segment.frames.length > 0" tw-class="mt-3 max-h-44 overflow-y-auto border-y border-gray-100 dark:border-gray-800">
                     <button
                       v-for="frame in segment.frames"
@@ -953,8 +984,20 @@ defineExpose({
                 <div tw-class="px-3 py-2.5">
                   <dl tw-class="grid grid-cols-[72px_minmax(0,1fr)] gap-x-2 gap-y-1 font-mono text-[10px] leading-4">
                     <dt tw-class="text-gray-400">physical</dt><dd tw-class="break-all">{{ selectedFrame.physicalSegmentId }}:{{ selectedFrame.physicalOffset }}</dd>
-                    <dt tw-class="text-gray-400">home</dt><dd tw-class="break-all">{{ selectedFrame.homeSegmentId }}:{{ selectedFrame.homeOffset }}</dd>
+                    <dt tw-class="text-gray-400">header home</dt><dd tw-class="break-all">{{ selectedFrame.homeSegmentId }}:{{ selectedFrame.homeOffset }}</dd>
+                    <dt tw-class="text-gray-400">record kind</dt><dd>{{ selectedFrame.recordKind }}</dd>
+                    <dt tw-class="text-gray-400">flags</dt><dd>{{ selectedFrame.flags }}</dd>
+                    <dt tw-class="text-gray-400">frame length</dt><dd>{{ selectedFrame.frameLength }}</dd>
+                    <dt tw-class="text-gray-400">plaintext</dt><dd>{{ selectedFrame.plaintextLength }} bytes</dd>
+                    <dt tw-class="text-gray-400">home reference</dt>
+                    <dd data-testid="hizofs-physical-inspector-selected-home-reference" tw-class="break-all">
+                      {{ selectedFrame.homeReference === undefined ? 'unavailable (physical-only frame)' : recordReferenceSummary({ reference: selectedFrame.homeReference }) }}
+                    </dd>
                   </dl>
+                  <details data-testid="hizofs-physical-inspector-frame-header" tw-class="mt-2 border-t border-gray-100 pt-2 dark:border-gray-800">
+                    <summary tw-class="cursor-pointer font-mono text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Exact Record Frame Header DTO</summary>
+                    <pre tw-class="mt-1 max-h-52 overflow-auto whitespace-pre-wrap break-all font-mono text-[9px] text-gray-600 dark:text-gray-300">{{ selectedFrame.headerJson }}</pre>
+                  </details>
                   <label tw-class="mt-3 flex items-center gap-2 text-[10px] font-medium text-gray-600 dark:text-gray-300">
                     <span tw-class="shrink-0">Page role</span>
                     <select v-model="selectedPageRole" data-testid="hizofs-physical-inspector-page-role" tw-class="min-w-0 flex-1 border border-gray-300 bg-white px-2 py-1 font-mono text-[10px] dark:border-gray-600 dark:bg-gray-950">
@@ -1099,10 +1142,14 @@ defineExpose({
                     <dt tw-class="text-gray-400">Preview length</dt><dd>{{ column.view.plaintextPreviewByteLength }}</dd>
                     <dt tw-class="text-gray-400">Preview truncated</dt><dd>{{ column.view.plaintextPreviewTruncated }}</dd>
                   </dl>
+                  <details data-testid="hizofs-physical-inspector-record-header" tw-class="border-b border-gray-100 px-3 py-2.5 dark:border-gray-800">
+                    <summary tw-class="cursor-pointer text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Exact authenticated Record Frame Header DTO</summary>
+                    <pre tw-class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all border-l-2 border-emerald-200 pl-2 font-mono text-[10px] leading-4 text-gray-600 dark:border-emerald-900 dark:text-gray-300">{{ column.view.headerJson }}</pre>
+                  </details>
                   <section data-testid="hizofs-physical-inspector-record-references" tw-class="border-b border-gray-200 dark:border-gray-700">
                     <div tw-class="border-b border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300">Persisted references</div>
                     <div v-if="column.namespaceObservation !== undefined" data-testid="hizofs-physical-inspector-record-logical-context" tw-class="border-b border-emerald-100 p-3 dark:border-emerald-950/50">
-                      <div tw-class="font-mono text-[9px] text-gray-400">Observed while resolving logical {{ column.namespaceObservation.path }} · observation context, not ownership</div>
+                      <div tw-class="font-mono text-[9px] text-gray-400">Observed while resolving {{ column.namespaceObservation.authorityMode }} logical {{ column.namespaceObservation.path }} at Commit {{ column.namespaceObservation.commitSequence }} · observation context, not ownership</div>
                       <button
                         type="button"
                         data-testid="hizofs-physical-inspector-return-logical-context"
@@ -1147,7 +1194,7 @@ defineExpose({
                   <section data-testid="hizofs-physical-inspector-record-binary-shell" tw-class="border-b border-gray-200 dark:border-gray-700">
                     <div tw-class="border-b border-gray-200 bg-gray-50 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-950">Binary representation</div>
                     <div v-if="column.framedBinary !== undefined" tw-class="px-3 py-2 text-[10px] leading-5 text-gray-500 dark:text-gray-400">
-                      <div tw-class="font-mono text-[9px] text-gray-400">Authenticated full Record Frame · {{ column.framedBinary.frameByteLength }} bytes · Base64URL</div>
+                      <div tw-class="break-all font-mono text-[9px] text-gray-400">Authenticated full Record Frame · physical {{ column.framedBinary.physicalSegmentId }}:{{ column.framedBinary.physicalOffset }} · {{ column.framedBinary.frameByteLength }} bytes · Base64URL</div>
                       <pre data-testid="hizofs-physical-inspector-record-framed-binary" tw-class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] text-gray-700 dark:text-gray-300">{{ column.framedBinary.frameBase64Url }}</pre>
                     </div>
                     <div v-else tw-class="px-3 py-2 text-[10px] leading-5 text-gray-500 dark:text-gray-400">

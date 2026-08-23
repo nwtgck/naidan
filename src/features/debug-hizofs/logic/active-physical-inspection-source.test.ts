@@ -4,11 +4,12 @@ import type { HizoFSPhysicalInspectionWorker } from '@/features/debug-hizofs/wor
 
 function inspector(): HizoFSPhysicalInspectionWorker {
   return {
-    inspectContainer: vi.fn(),
-    inspectHomeRecord: vi.fn(),
-    inspectNamespacePath: vi.fn(),
-    inspectRecord: vi.fn(),
-  } as unknown as HizoFSPhysicalInspectionWorker;
+    inspectContainer: vi.fn(async () => ({}) as never),
+    inspectHomeRecord: vi.fn(async () => ({}) as never),
+    inspectNamespacePath: vi.fn(async () => ({}) as never),
+    inspectRecord: vi.fn(async () => ({}) as never),
+    inspectRecordFrame: vi.fn(async () => ({}) as never),
+  };
 }
 
 describe('active HizoFS physical inspection source', () => {
