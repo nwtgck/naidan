@@ -57,6 +57,43 @@ str2
     expect(multiple.result.exitCode).toBe(0);
   });
 
+  it('stops parsing options after the first operand', async () => {
+    const zeroAfterName = await execute({ script: 'basename alpha -z' });
+    const unknownAfterName = await execute({ script: 'basename alpha --unknown' });
+    const multiple = await execute({ script: 'basename -a alpha -z' });
+    const suffix = await execute({ script: 'basename -s .h a/x.h -z' });
+
+    expect(zeroAfterName.stdout.text).toBe('alpha\n');
+    expect(zeroAfterName.stderr.text).toBe('');
+    expect(zeroAfterName.result.exitCode).toBe(0);
+
+    expect(unknownAfterName.stdout.text).toBe('alpha\n');
+    expect(unknownAfterName.stderr.text).toBe('');
+    expect(unknownAfterName.result.exitCode).toBe(0);
+
+    expect(multiple.stdout.text).toBe(`\
+alpha
+-z
+`);
+    expect(multiple.stderr.text).toBe('');
+    expect(multiple.result.exitCode).toBe(0);
+
+    expect(suffix.stdout.text).toBe(`\
+x
+-z
+`);
+    expect(suffix.stderr.text).toBe('');
+    expect(suffix.result.exitCode).toBe(0);
+  });
+
+  it('does not remove a suffix equal to the complete base name', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'basename alpha alpha' });
+
+    expect(stdout.text).toBe('alpha\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports NUL-terminated output and rejects invalid options', async () => {
     const nul = await execute({ script: 'basename -z /usr/bin/sort' });
     const invalid = await execute({ script: 'basename -x foo' });

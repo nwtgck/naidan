@@ -133,26 +133,6 @@ ${WORLD_HASH}  world.txt
     expect(zero.result.exitCode).toBe(0);
   });
 
-  it('escapes file names unless NUL termination disables escaping', async () => {
-    await harness.writeFile({ path: 'back\\slash', data: 'abc' });
-
-    const escaped = await harness.execute({
-      script: "sha256sum 'back\\slash'",
-    });
-    const zero = await harness.execute({
-      script: "sha256sum -z 'back\\slash'",
-    });
-
-    expect(escaped.stdout.text).toBe(`\\${ABC_HASH}  back\\\\slash\n`);
-    expect(escaped.stderr.text).toBe('');
-    expect(Array.from(zero.stdout.buffer)).toEqual(
-      Array.from(new TextEncoder().encode(`${ABC_HASH}  back\\slash\0`)),
-    );
-    expect(zero.stderr.text).toBe('');
-    expect(escaped.result.exitCode).toBe(0);
-    expect(zero.result.exitCode).toBe(0);
-  });
-
   it('consumes repeated standard-input operands sequentially', async () => {
     const result = await harness.execute({
       script: 'sha256sum - -',

@@ -1,3 +1,5 @@
+import { standardSemanticIssuePrecedesDiagnostic } from '@/features/wesh/commands/_shared/argv';
+import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import type {
   ArgvOptionOccurrence,
   StandardArgvParserSpec,
@@ -37,6 +39,7 @@ export type DuOptionsParseResult =
       options: DuOptions,
       operands: string[],
       helpRequested: boolean,
+      preHelpDiagnostics: readonly string[],
     }
   | {
       ok: false,
@@ -46,14 +49,15 @@ export type DuOptionsParseResult =
 function parseNonNegativeInteger({ value }: { value: string }):
   | { ok: true, value: number }
   | { ok: false, message: string } {
-  if (!/^[0-9]+$/u.test(value)) {
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  if (!/^\+?[0-9]+$/u.test(numericText)) {
     return {
       ok: false,
       message: `invalid maximum depth '${value}'`,
     };
   }
 
-  const parsed = Number(value);
+  const parsed = Number(numericText);
   if (!Number.isSafeInteger(parsed)) {
     return {
       ok: false,
@@ -129,6 +133,7 @@ function applyOccurrence({
     excludePatterns: string[],
     excludeFromFiles: string[],
     logicalSizeOptionRequested: boolean,
+    threshold: DuThreshold | undefined,
   },
 }): { ok: true } | { ok: false, message: string } {
   switch (occurrence.kind) {
@@ -202,9 +207,22 @@ function applyOccurrence({
         state.excludeFromFiles.push(occurrence.value);
       }
       return { ok: true };
+    case 'threshold': {
+      if (typeof occurrence.value !== 'string') {
+        return { ok: false, message: 'du: invalid threshold' };
+      }
+      const parsed = parseDuThreshold({ value: occurrence.value });
+      if (!parsed.ok) {
+        return {
+          ok: false,
+          message: `du: invalid ${occurrence.option} argument '${occurrence.value}'`,
+        };
+      }
+      state.threshold = parsed.threshold;
+      return { ok: true };
+    }
     case 'maxDepth':
     case 'files0From':
-    case 'threshold':
       return { ok: true };
     default:
       return { ok: true };
@@ -216,6 +234,16 @@ function applyOccurrence({
   }
 }
 
+function truncateArgsAtHelp({ args }: { args: string[] }): string[] {
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== '--help') continue;
+    const prefix = args.slice(0, index + 1);
+    const parsedPrefix = parseStandardArgv({ args: prefix, spec: duArgvSpec });
+    if (parsedPrefix.optionValues.help === true) return prefix;
+  }
+  return args;
+}
+
 export function parseDuOptions({
   args,
   env,
@@ -223,9 +251,32 @@ export function parseDuOptions({
   args: string[],
   env: Map<string, string>,
 }): DuOptionsParseResult {
-  const parsed = parseStandardArgv({ args, spec: duArgvSpec });
+  const parsedArgs = truncateArgsAtHelp({ args });
+  const parsed = parseStandardArgv({ args: parsedArgs, spec: duArgvSpec });
+  const helpRequested = parsed.optionValues.help === true;
   const diagnostic = parsed.diagnostics[0];
-  if (diagnostic !== undefined) {
+  const semanticIssuePrecedesDiagnostic = !helpRequested && standardSemanticIssuePrecedesDiagnostic({
+    args: parsedArgs,
+    spec: duArgvSpec,
+    parsed,
+    findSemanticIssue: ({ parsed: candidate }) => {
+      const candidateState = {
+        outputFormat: getDefaultOutputFormat({ env }),
+        symlinkMode: 'physical' as DuSymlinkMode,
+        metric: 'logical-bytes' as DuMetric,
+        excludePatterns: [] as string[],
+        excludeFromFiles: [] as string[],
+        logicalSizeOptionRequested: false,
+        threshold: undefined,
+      };
+      for (const occurrence of candidate.occurrences) {
+        const result = applyOccurrence({ occurrence, state: candidateState });
+        if (!result.ok) return result.message;
+      }
+      return undefined;
+    },
+  });
+  if (diagnostic !== undefined && !helpRequested && !semanticIssuePrecedesDiagnostic) {
     return {
       ok: false,
       message: `du: ${diagnostic.message}`,
@@ -239,6 +290,7 @@ export function parseDuOptions({
     excludePatterns: [] as string[],
     excludeFromFiles: [] as string[],
     logicalSizeOptionRequested: false,
+    threshold: undefined,
   };
 
   for (const occurrence of parsed.occurrences) {
@@ -254,46 +306,33 @@ export function parseDuOptions({
   const maxDepth = typeof maxDepthValue === 'number' ? maxDepthValue : undefined;
   const files0FromValue = parsed.optionValues.files0From;
   const files0From = typeof files0FromValue === 'string' ? files0FromValue : undefined;
-
-  if (showAll && summarize) {
-    return {
-      ok: false,
-      message: 'du: cannot both summarize and show all entries',
-    };
-  }
-  if (summarize && maxDepth !== undefined && maxDepth !== 0) {
-    return {
-      ok: false,
-      message: `du: summarizing conflicts with --max-depth=${maxDepth}`,
-    };
-  }
-  if (files0From !== undefined && parsed.positionals.length > 0) {
-    return {
-      ok: false,
-      message: `du: extra operand '${parsed.positionals[0]}'\nfile operands cannot be combined with --files0-from`,
-    };
-  }
-  const thresholdValue = parsed.optionValues.threshold;
-  const threshold = (() => {
-    if (thresholdValue === undefined) {
-      return { ok: true as const, value: undefined };
+  if (!helpRequested) {
+    if (showAll && summarize) {
+      return {
+        ok: false,
+        message: 'du: cannot both summarize and show all entries',
+      };
     }
-    if (typeof thresholdValue !== 'string') {
-      return { ok: false as const, message: 'du: invalid threshold' };
+    if (summarize && maxDepth !== undefined && maxDepth !== 0) {
+      return {
+        ok: false,
+        message: `du: summarizing conflicts with --max-depth=${maxDepth}`,
+      };
     }
-    const result = parseDuThreshold({ value: thresholdValue });
-    if (!result.ok) {
-      return { ok: false as const, message: `du: ${result.message}` };
+    if (files0From !== undefined && parsed.positionals.length > 0) {
+      return {
+        ok: false,
+        message: `du: extra operand '${parsed.positionals[0]}'\nfile operands cannot be combined with --files0-from`,
+      };
     }
-    return { ok: true as const, value: result.threshold };
-  })();
-  if (!threshold.ok) {
-    return threshold;
   }
 
   return {
     ok: true,
-    helpRequested: parsed.optionValues.help === true,
+    helpRequested,
+    preHelpDiagnostics: helpRequested
+      ? parsed.diagnostics.map(value => `du: ${value.message}`)
+      : [],
     operands: parsed.positionals,
     options: {
       showAll,
@@ -306,7 +345,7 @@ export function parseDuOptions({
       countLinks: parsed.optionValues.countLinks === true,
       metric: state.metric,
       outputFormat: state.outputFormat,
-      threshold: threshold.value,
+      threshold: state.threshold,
       files0From,
       excludePatterns: state.excludePatterns,
       excludeFromFiles: state.excludeFromFiles,

@@ -1,5 +1,4 @@
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
-import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
 
 export const falseCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -7,18 +6,7 @@ export const falseCommandDefinition: WeshCommandDefinition = {
     description: 'Do nothing unsuccessfully',
     usage: 'false [arguments...]',
   },
-  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    if (isStandaloneCommandHelpRequest({
-      args: context.args,
-      acceptedForms: [['--help']],
-    })) {
-      await writeCommandHelp({
-        context,
-        command: 'false',
-      });
-      return { exitCode: 0 };
-    }
-
+  fn: async ({ context: _context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     return { exitCode: 1 };
   },
 };

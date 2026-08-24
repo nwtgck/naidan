@@ -174,6 +174,31 @@ a  b  c
     expect(result.exitCode).toBe(0);
   });
 
+  it('treats explicit separators as literal Unicode characters', async () => {
+    const hyphenRange = await execute({
+      script: "column -t -s 'x-z'",
+      stdinText: 'leftymiddle-rightxendzlast\n',
+    });
+    const emoji = await execute({
+      script: "column -t -s '😀'",
+      stdinText: 'a😀b\n',
+    });
+    const limitedEmoji = await execute({
+      script: "column -t -s '😀' -l 2",
+      stdinText: 'a😀b😀c\n',
+    });
+
+    expect(hyphenRange.stdout.text).toBe('leftymiddle  right  end  last\n');
+    expect(emoji.stdout.text).toBe('a  b\n');
+    expect(limitedEmoji.stdout.text).toBe('a  b😀c\n');
+    expect(hyphenRange.stderr.text).toBe('');
+    expect(emoji.stderr.text).toBe('');
+    expect(limitedEmoji.stderr.text).toBe('');
+    expect(hyphenRange.result.exitCode).toBe(0);
+    expect(emoji.result.exitCode).toBe(0);
+    expect(limitedEmoji.result.exitCode).toBe(0);
+  });
+
   it('supports table headers, hidden headings, and header input rows', async () => {
     const explicit = await execute({
       script: 'column -t -s , -N NAME,COUNT',
@@ -244,6 +269,23 @@ banana     12
     expect(byName.stderr.text).toBe('');
     expect(byIndex.result.exitCode).toBe(0);
     expect(byName.result.exitCode).toBe(0);
+  });
+
+  it('keeps hidden explicit header columns in last-column selector resolution', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'column -t -s , -N A,B,C -d -R -1',
+      stdinText: `\
+a,9
+bb,10
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+a   9
+bb  10
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('limits parsed table columns by joining the remaining fields into the final column', async () => {
@@ -379,6 +421,43 @@ abc   1
     expect(result.exitCode).toBe(0);
   });
 
+  it('accounts for emoji and combining marks in table padding', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'column -t',
+      stdinText: '😀 x\ne\u0301 y\na z\n',
+    });
+
+    expect(stdout.text).toBe('😀  x\ne\u0301   y\na   z\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('formats large list inputs without testing every possible column count', async () => {
+    const itemCount = 20_000;
+    const { result, stdout, stderr } = await execute({
+      script: 'column',
+      stdinText: 'x '.repeat(itemCount),
+    });
+    const outputItems = stdout.text.trim().split(/\s+/u);
+
+    expect(outputItems).toHaveLength(itemCount);
+    expect(outputItems.every((item) => item === 'x')).toBe(true);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('handles table row counts above the JavaScript function argument limit', async () => {
+    const input = 'x\n'.repeat(150_000);
+    const { result, stdout, stderr } = await execute({
+      script: 'column -t',
+      stdinText: input,
+    });
+
+    expect(stdout.text).toBe(input);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('formats input that does not end with a newline', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'column -t',
@@ -477,14 +556,39 @@ xx   3
     expect(incompatible.result.exitCode).toBe(1);
   });
 
+  it('accepts numeric options at the documented safety boundary', async () => {
+    const width = await execute({ script: 'column -c 1000000', stdinText: 'x\n' });
+    const spacing = await execute({ script: 'column -S 1000000', stdinText: 'x\n' });
+    const columnLimit = await execute({ script: 'column -t -l 1000000', stdinText: 'x\n' });
+
+    for (const observed of [width, spacing, columnLimit]) {
+      expect(observed.stdout.text).toBe('x\n');
+      expect(observed.stderr.text).toBe('');
+      expect(observed.result.exitCode).toBe(0);
+    }
+  });
+
   it('reports invalid numeric, separator, and table selector option values', async () => {
     const invalidWidth = await execute({ script: 'column --output-width=bad' });
+    const excessiveWidth = await execute({ script: 'column --output-width=1000001' });
+    const excessiveSpacing = await execute({ script: 'column -S 1000001' });
+    const excessiveColumnLimit = await execute({ script: 'column -t -l 1000001' });
     const emptySeparator = await execute({ script: "column -s ''" });
     const invalidRange = await execute({ script: 'column -R 3-2' });
 
     expect(invalidWidth.stdout.text).toBe('');
     expect(invalidWidth.stderr.text).toContain("column: --output-width requires a positive integer, 0, or 'unlimited'");
     expect(invalidWidth.result.exitCode).toBe(1);
+
+    expect(excessiveWidth.stdout.text).toBe('');
+    expect(excessiveWidth.stderr.text).toContain('column: --output-width exceeds safety limit 1000000');
+    expect(excessiveWidth.result.exitCode).toBe(1);
+    expect(excessiveSpacing.stdout.text).toBe('');
+    expect(excessiveSpacing.stderr.text).toContain('column: --use-spaces exceeds safety limit 1000000');
+    expect(excessiveSpacing.result.exitCode).toBe(1);
+    expect(excessiveColumnLimit.stdout.text).toBe('');
+    expect(excessiveColumnLimit.stderr.text).toContain('column: --table-columns-limit exceeds safety limit 1000000');
+    expect(excessiveColumnLimit.result.exitCode).toBe(1);
 
     expect(emptySeparator.stdout.text).toBe('');
     expect(emptySeparator.stderr.text).toContain('column: --separator requires a non-empty separator list');

@@ -25,6 +25,31 @@ const timeArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
+function splitTimeArguments({
+  args,
+}: {
+  args: string[],
+}): { optionArgs: string[], commandArgs: string[] } {
+  if (args.length === 1 && args[0] === '--help') {
+    return { optionArgs: ['--help'], commandArgs: [] };
+  }
+
+  let commandIndex = 0;
+  const optionArgs: string[] = [];
+  if (args[commandIndex] === '-p') {
+    optionArgs.push('-p');
+    commandIndex += 1;
+  }
+  if (args[commandIndex] === '--') {
+    commandIndex += 1;
+  }
+
+  return {
+    optionArgs,
+    commandArgs: args.slice(commandIndex),
+  };
+}
+
 function formatPortableDuration({
   elapsedMs,
 }: {
@@ -73,8 +98,9 @@ export const timeCommandDefinition: WeshCommandDefinition = {
     usage: 'time [-p] COMMAND [ARG]...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const { optionArgs, commandArgs } = splitTimeArguments({ args: context.args });
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: optionArgs,
       spec: timeArgvSpec,
     });
 
@@ -98,7 +124,7 @@ export const timeCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
-    if (parsed.positionals.length === 0) {
+    if (commandArgs.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'time',
@@ -108,14 +134,25 @@ export const timeCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
+    const command = commandArgs[0]!;
     const startedAt = performance.now();
-    const result = await context.executeCommand({
-      command: parsed.positionals[0]!,
-      args: parsed.positionals.slice(1),
-      stdin: context.stdin,
-      stdout: context.stdout,
-      stderr: context.stderr,
-    });
+    let result: WeshCommandResult;
+    try {
+      result = await context.executeCommand({
+        command,
+        args: commandArgs.slice(1),
+        stdin: context.stdin,
+        stdout: context.stdout,
+        stderr: context.stderr,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message !== `Command not found: ${command}`) throw error;
+      await context.text().error({
+        text: `time: cannot run ${command}: No such file or directory\n`,
+      });
+      result = { exitCode: 127 };
+    }
     const finishedAt = performance.now();
 
     await writeTimingReport({

@@ -1,17 +1,32 @@
+import {
+  findFirstStandardSemanticIssue,
+  standardSemanticIssuePrecedesDiagnostic,
+  stopStandardArgvAtFirstEarlyExit,
+  type StandardEarlyExitOption,
+} from '@/features/wesh/commands/_shared/argv';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import {
+  resolveCharacterLocaleMode,
+  uppercaseAscii,
+  type WeshCharacterLocaleMode,
+} from '@/features/wesh/commands/_shared/locale';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
-import { openFileReadStream, openHandleReadStream } from '@/features/wesh/utils/fs';
-import { createBufferedTextWriter } from '@/features/wesh/utils/io';
+import { openFileReadStream, openHandleReadStream, writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
-import { iterateUtf8Records } from '@/features/wesh/utils/text-records';
+import { iterateUtf8RecordEntries } from '@/features/wesh/utils/text-records';
 
 type SortMode = 'lexical' | 'numeric' | 'general-numeric' | 'human-numeric' | 'month' | 'version';
 type SortOrder = 'forward' | 'reverse';
 type SortCheckMode = 'none' | 'strict' | 'silent';
 
-interface SortEntry {
+interface SortRecord {
   value: string,
+  bytes: Uint8Array,
+  byteString?: string,
+}
+
+interface SortEntry extends SortRecord {
   index: number,
 }
 
@@ -47,6 +62,75 @@ interface SortResolvedOptions {
   outputPath: string | undefined,
   fieldSeparator: string | undefined,
   keySpecs: SortResolvedKeySpec[],
+  characterLocaleMode: WeshCharacterLocaleMode,
+}
+
+function createBufferedSortWriter({
+  handle,
+  maxBufferLength,
+}: {
+  handle: WeshFileHandle,
+  maxBufferLength: number,
+}) {
+  let chunks: Uint8Array[] = [];
+  let bufferedLength = 0;
+
+  const flush = async (): Promise<void> => {
+    if (bufferedLength === 0) return;
+    const data = new Uint8Array(bufferedLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      data.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    chunks = [];
+    bufferedLength = 0;
+    await writeAllBytesToHandle({ handle, data });
+  };
+
+  return {
+    async write({ values }: { values: readonly Uint8Array[] }): Promise<void> {
+      for (const value of values) {
+        if (value.byteLength === 0) continue;
+        chunks.push(value);
+        bufferedLength += value.byteLength;
+      }
+      if (bufferedLength >= maxBufferLength) await flush();
+    },
+    flush,
+  };
+}
+
+const SORT_NEWLINE = Uint8Array.of(0x0a);
+const SORT_NUL = Uint8Array.of(0x00);
+
+async function writeSortRecord({
+  writer,
+  record,
+  zeroTerminated,
+}: {
+  writer: ReturnType<typeof createBufferedSortWriter>,
+  record: SortRecord,
+  zeroTerminated: boolean,
+}): Promise<void> {
+  await writer.write({
+    values: [record.bytes, zeroTerminated ? SORT_NUL : SORT_NEWLINE],
+  });
+}
+
+function compareSortRecordBytes({
+  left,
+  right,
+}: {
+  left: Uint8Array,
+  right: Uint8Array,
+}): number {
+  const length = Math.min(left.byteLength, right.byteLength);
+  for (let index = 0; index < length; index += 1) {
+    const difference = left[index]! - right[index]!;
+    if (difference !== 0) return difference;
+  }
+  return left.byteLength - right.byteLength;
 }
 
 function resolveInputPath({
@@ -64,6 +148,7 @@ function resolveInputPath({
 }
 
 type SortKeyParseResult = { ok: true, value: SortKeySpec } | { ok: false, message: string };
+type SortValidationResult = { ok: true } | { ok: false, message: string };
 type SortResolvedOptionsResult = { ok: true, value: SortResolvedOptions } | { ok: false, message: string };
 
 function trimLeadingBlanks({ value }: { value: string }): string {
@@ -126,17 +211,39 @@ function normalizeText({
   }
 
   if (normalization.ignoreNonprinting) {
-    result = Array.from(result).filter((char) => {
-      const code = char.charCodeAt(0);
-      return code > 0x1f && code !== 0x7f;
-    }).join('');
+    result = result.replace(/[^\x20-\x7e]/gu, '');
   }
 
   if (normalization.foldCase) {
-    result = result.toLowerCase();
+    // GNU sort's -f semantics fold lower-case ASCII to upper-case.  The
+    // direction matters in the C locale because punctuation sorts between
+    // upper- and lower-case byte ranges.
+    result = uppercaseAscii({ value: result });
   }
 
   return result;
+}
+
+function compareUnicodeScalarValues({
+  left,
+  right,
+}: {
+  left: string,
+  right: string,
+}): number {
+  let leftIndex = 0;
+  let rightIndex = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    const leftCodePoint = left.codePointAt(leftIndex)!;
+    const rightCodePoint = right.codePointAt(rightIndex)!;
+    if (leftCodePoint < rightCodePoint) return -1;
+    if (leftCodePoint > rightCodePoint) return 1;
+    leftIndex += leftCodePoint > 0xffff ? 2 : 1;
+    rightIndex += rightCodePoint > 0xffff ? 2 : 1;
+  }
+  if (leftIndex < left.length) return 1;
+  if (rightIndex < right.length) return -1;
+  return 0;
 }
 
 function compareLexical({
@@ -150,16 +257,52 @@ function compareLexical({
 }): number {
   const leftValue = normalizeText({ value: left, normalization });
   const rightValue = normalizeText({ value: right, normalization });
-  if (leftValue < rightValue) return -1;
-  if (leftValue > rightValue) return 1;
-  return 0;
+  return compareUnicodeScalarValues({ left: leftValue, right: rightValue });
 }
 
-function parseLeadingNumericPrefix({ value }: { value: string }): number {
-  const match = value.match(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)/);
-  if (match === null) return 0;
-  const parsed = Number.parseFloat(match[0]);
-  return Number.isNaN(parsed) ? 0 : parsed;
+interface SortNumericKey {
+  sign: -1 | 0 | 1,
+  integerDigits: string,
+  fractionalDigits: string,
+}
+
+function parseNumericKey({ value }: { value: string }): SortNumericKey {
+  const normalized = trimLeadingBlanks({ value });
+  const match = normalized.match(/^(-?)(?:(\d+)(?:\.(\d*))?|\.(\d+))/);
+  if (match === null) {
+    return { sign: 0, integerDigits: '0', fractionalDigits: '' };
+  }
+
+  const integerDigits = (match[2] ?? '0').replace(/^0+/, '') || '0';
+  const fractionalDigits = (match[3] ?? match[4] ?? '').replace(/0+$/, '');
+  const isZero = integerDigits === '0' && fractionalDigits.length === 0;
+  return {
+    sign: isZero ? 0 : match[1] === '-' ? -1 : 1,
+    integerDigits,
+    fractionalDigits,
+  };
+}
+
+function compareAbsoluteNumericKeys({
+  left,
+  right,
+}: {
+  left: SortNumericKey,
+  right: SortNumericKey,
+}): number {
+  if (left.integerDigits.length < right.integerDigits.length) return -1;
+  if (left.integerDigits.length > right.integerDigits.length) return 1;
+  if (left.integerDigits < right.integerDigits) return -1;
+  if (left.integerDigits > right.integerDigits) return 1;
+
+  const fractionalLength = Math.max(left.fractionalDigits.length, right.fractionalDigits.length);
+  for (let index = 0; index < fractionalLength; index += 1) {
+    const leftDigit = left.fractionalDigits[index] ?? '0';
+    const rightDigit = right.fractionalDigits[index] ?? '0';
+    if (leftDigit < rightDigit) return -1;
+    if (leftDigit > rightDigit) return 1;
+  }
+  return 0;
 }
 
 function compareNumeric({
@@ -171,11 +314,52 @@ function compareNumeric({
   right: string,
   normalization: ReturnType<typeof getNormalization>,
 }): number {
-  const leftValue = parseLeadingNumericPrefix({ value: normalizeText({ value: left, normalization }) });
-  const rightValue = parseLeadingNumericPrefix({ value: normalizeText({ value: right, normalization }) });
-  if (leftValue < rightValue) return -1;
-  if (leftValue > rightValue) return 1;
-  return 0;
+  const leftKey = parseNumericKey({ value: normalizeText({ value: left, normalization }) });
+  const rightKey = parseNumericKey({ value: normalizeText({ value: right, normalization }) });
+  if (leftKey.sign < rightKey.sign) return -1;
+  if (leftKey.sign > rightKey.sign) return 1;
+  if (leftKey.sign === 0) return 0;
+  const absoluteComparison = compareAbsoluteNumericKeys({ left: leftKey, right: rightKey });
+  return leftKey.sign === -1 ? -absoluteComparison : absoluteComparison;
+}
+
+function parseGeneralNumericKey({ value }: { value: string }): {
+  rank: 'non-number' | 'nan' | 'negative-infinity' | 'finite' | 'positive-infinity',
+  numericValue: number,
+} {
+  const trimmed = trimLeadingBlanks({ value });
+  if (/^-nan(?:\([^)]*\))?/i.test(trimmed) || /^\+?nan(?:\([^)]*\))?/i.test(trimmed)) {
+    return { rank: 'nan', numericValue: Number.NaN };
+  }
+  if (/^-inf(?:inity)?/i.test(trimmed)) {
+    return { rank: 'negative-infinity', numericValue: Number.NEGATIVE_INFINITY };
+  }
+  if (/^\+?inf(?:inity)?/i.test(trimmed)) {
+    return { rank: 'positive-infinity', numericValue: Number.POSITIVE_INFINITY };
+  }
+  const numericMatch = trimmed.match(/^[+-]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)/);
+  if (numericMatch === null) {
+    return { rank: 'non-number', numericValue: Number.NaN };
+  }
+  return { rank: 'finite', numericValue: Number.parseFloat(numericMatch[0]) };
+}
+
+function getGeneralNumericRankOrder({
+  rank,
+}: {
+  rank: ReturnType<typeof parseGeneralNumericKey>['rank'],
+}): number {
+  switch (rank) {
+  case 'non-number': return 0;
+  case 'nan': return 1;
+  case 'negative-infinity': return 2;
+  case 'finite': return 3;
+  case 'positive-infinity': return 4;
+  default: {
+    const _ex: never = rank;
+    throw new Error(`Unhandled general numeric rank: ${_ex}`);
+  }
+  }
 }
 
 function compareGeneralNumeric({
@@ -187,44 +371,46 @@ function compareGeneralNumeric({
   right: string,
   normalization: ReturnType<typeof getNormalization>,
 }): number {
-  const leftValue = Number.parseFloat(normalizeText({ value: left, normalization }));
-  const rightValue = Number.parseFloat(normalizeText({ value: right, normalization }));
-
-  const leftNaN = Number.isNaN(leftValue);
-  const rightNaN = Number.isNaN(rightValue);
-  if (leftNaN && rightNaN) return 0;
-  if (leftNaN) return 1;
-  if (rightNaN) return -1;
-  if (leftValue < rightValue) return -1;
-  if (leftValue > rightValue) return 1;
+  const leftKey = parseGeneralNumericKey({ value: normalizeText({ value: left, normalization }) });
+  const rightKey = parseGeneralNumericKey({ value: normalizeText({ value: right, normalization }) });
+  const rankDifference = getGeneralNumericRankOrder({ rank: leftKey.rank })
+    - getGeneralNumericRankOrder({ rank: rightKey.rank });
+  if (rankDifference !== 0) return rankDifference;
+  if (leftKey.rank !== 'finite' || rightKey.rank !== 'finite') return 0;
+  if (leftKey.numericValue < rightKey.numericValue) return -1;
+  if (leftKey.numericValue > rightKey.numericValue) return 1;
   return 0;
 }
 
-function parseHumanNumericValue({ value }: { value: string }): number {
-  const match = value.trimStart().match(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[kmgtpezyrqKMGTPEZYRQ](?:i?[bB])?)?/);
-  if (match === null) return 0;
+function getHumanNumericUnitRank({ suffix }: { suffix: string }): number {
+  switch (suffix) {
+  case '': return 0;
+  case 'K':
+  case 'k': return 1;
+  case 'M': return 2;
+  case 'G': return 3;
+  case 'T': return 4;
+  case 'P': return 5;
+  case 'E': return 6;
+  case 'Z': return 7;
+  case 'Y': return 8;
+  case 'R': return 9;
+  case 'Q': return 10;
+  default: return 0;
+  }
+}
 
-  const numericMatch = match[0].match(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)/);
-  if (numericMatch === null) return 0;
+function parseHumanNumericKey({ value }: { value: string }): {
+  unitRank: number,
+  numericValue: number,
+} {
+  const match = trimLeadingBlanks({ value }).match(/^(-?(?:\d+(?:\.\d*)?|\.\d+))([kKMGTPEZYRQ]?)(?:i?[bB])?/);
+  if (match === null) return { unitRank: 0, numericValue: 0 };
 
-  const numberPart = Number.parseFloat(numericMatch[0]);
-  const suffix = match[0].slice(numericMatch[0].length).replace(/(?:i?[bB])$/u, '');
-  const unit = suffix.length > 0 ? suffix[0]!.toUpperCase() : undefined;
-  const multipliers: Record<string, number> = {
-    K: 1024,
-    M: 1024 ** 2,
-    G: 1024 ** 3,
-    T: 1024 ** 4,
-    P: 1024 ** 5,
-    E: 1024 ** 6,
-    Z: 1024 ** 7,
-    Y: 1024 ** 8,
-    R: 1024 ** 9,
-    Q: 1024 ** 10,
+  return {
+    unitRank: getHumanNumericUnitRank({ suffix: match[2] ?? '' }),
+    numericValue: Number.parseFloat(match[1]!),
   };
-
-  if (unit === undefined) return numberPart;
-  return numberPart * (multipliers[unit] ?? 1);
 }
 
 function compareHumanNumeric({
@@ -236,11 +422,39 @@ function compareHumanNumeric({
   right: string,
   normalization: ReturnType<typeof getNormalization>,
 }): number {
-  const leftValue = parseHumanNumericValue({ value: normalizeText({ value: left, normalization }) });
-  const rightValue = parseHumanNumericValue({ value: normalizeText({ value: right, normalization }) });
-  if (leftValue < rightValue) return -1;
-  if (leftValue > rightValue) return 1;
+  const leftKey = parseHumanNumericKey({ value: normalizeText({ value: left, normalization }) });
+  const rightKey = parseHumanNumericKey({ value: normalizeText({ value: right, normalization }) });
+  const leftSign = Math.sign(leftKey.numericValue);
+  const rightSign = Math.sign(rightKey.numericValue);
+  if (leftSign < rightSign) return -1;
+  if (leftSign > rightSign) return 1;
+  if (leftSign === 0) return 0;
+
+  if (leftKey.unitRank !== rightKey.unitRank) {
+    const rankComparison = leftKey.unitRank < rightKey.unitRank ? -1 : 1;
+    return leftSign < 0 ? -rankComparison : rankComparison;
+  }
+  if (leftKey.numericValue < rightKey.numericValue) return -1;
+  if (leftKey.numericValue > rightKey.numericValue) return 1;
   return 0;
+}
+
+function getMonthRank({ value }: { value: string }): number | undefined {
+  switch (value) {
+  case 'jan': return 1;
+  case 'feb': return 2;
+  case 'mar': return 3;
+  case 'apr': return 4;
+  case 'may': return 5;
+  case 'jun': return 6;
+  case 'jul': return 7;
+  case 'aug': return 8;
+  case 'sep': return 9;
+  case 'oct': return 10;
+  case 'nov': return 11;
+  case 'dec': return 12;
+  default: return undefined;
+  }
 }
 
 function compareMonth({
@@ -252,13 +466,16 @@ function compareMonth({
   right: string,
   normalization: ReturnType<typeof getNormalization>,
 }): number {
-  const monthOrder = new Map<string, number>([
-    ['jan', 1], ['feb', 2], ['mar', 3], ['apr', 4], ['may', 5], ['jun', 6],
-    ['jul', 7], ['aug', 8], ['sep', 9], ['oct', 10], ['nov', 11], ['dec', 12],
-  ]);
-
-  const leftMonth = monthOrder.get(normalizeText({ value: left, normalization }).trimStart().slice(0, 3).toLowerCase());
-  const rightMonth = monthOrder.get(normalizeText({ value: right, normalization }).trimStart().slice(0, 3).toLowerCase());
+  const leftMonth = getMonthRank({
+    value: trimLeadingBlanks({
+      value: normalizeText({ value: left, normalization }),
+    }).slice(0, 3).toLowerCase(),
+  });
+  const rightMonth = getMonthRank({
+    value: trimLeadingBlanks({
+      value: normalizeText({ value: right, normalization }),
+    }).slice(0, 3).toLowerCase(),
+  });
 
   if (leftMonth !== undefined && rightMonth !== undefined) {
     if (leftMonth < rightMonth) return -1;
@@ -266,9 +483,24 @@ function compareMonth({
     return 0;
   }
 
-  if (leftMonth !== undefined) return -1;
-  if (rightMonth !== undefined) return 1;
-  return compareLexical({ left, right, normalization });
+  if (leftMonth !== undefined) return 1;
+  if (rightMonth !== undefined) return -1;
+  return 0;
+}
+
+function getVersionCharacterOrder({ char }: { char: string }): number {
+  if (char === '~') return -1;
+  if (char === '' || /\d/.test(char)) return 0;
+  if (/[A-Za-z]/.test(char)) return char.codePointAt(0) ?? 0;
+  return 0x100 + (char.codePointAt(0) ?? 0);
+}
+
+function getVersionSpecialRank({ value }: { value: string }): number {
+  if (value === '') return -4;
+  if (value === '.') return -3;
+  if (value === '..') return -2;
+  if (value.startsWith('.')) return -1;
+  return 0;
 }
 
 function compareVersionChunks({
@@ -278,33 +510,40 @@ function compareVersionChunks({
   left: string,
   right: string,
 }): number {
-  const leftChunks = left.match(/(\d+|\D+)/g) ?? [''];
-  const rightChunks = right.match(/(\d+|\D+)/g) ?? [''];
-  const count = Math.max(leftChunks.length, rightChunks.length);
+  const specialDifference = getVersionSpecialRank({ value: left }) - getVersionSpecialRank({ value: right });
+  if (specialDifference !== 0) return specialDifference;
 
-  for (let index = 0; index < count; index++) {
-    const leftChunk = leftChunks[index] ?? '';
-    const rightChunk = rightChunks[index] ?? '';
-    if (leftChunk === rightChunk) continue;
-
-    const leftNumeric = /^\d+$/.test(leftChunk);
-    const rightNumeric = /^\d+$/.test(rightChunk);
-    if (leftNumeric && rightNumeric) {
-      const leftTrimmed = leftChunk.replace(/^0+/, '') || '0';
-      const rightTrimmed = rightChunk.replace(/^0+/, '') || '0';
-      if (leftTrimmed.length < rightTrimmed.length) return -1;
-      if (leftTrimmed.length > rightTrimmed.length) return 1;
-      if (leftTrimmed < rightTrimmed) return -1;
-      if (leftTrimmed > rightTrimmed) return 1;
-      continue;
+  let leftIndex = 0;
+  let rightIndex = 0;
+  while (leftIndex < left.length || rightIndex < right.length) {
+    while (
+      (leftIndex < left.length && !/\d/.test(left[leftIndex]!))
+      || (rightIndex < right.length && !/\d/.test(right[rightIndex]!))
+    ) {
+      const leftChar = left[leftIndex] ?? '';
+      const rightChar = right[rightIndex] ?? '';
+      const orderDifference = getVersionCharacterOrder({ char: leftChar })
+        - getVersionCharacterOrder({ char: rightChar });
+      if (orderDifference !== 0) return orderDifference;
+      if (leftChar !== '') leftIndex += 1;
+      if (rightChar !== '') rightIndex += 1;
     }
 
-    if (leftNumeric) return -1;
-    if (rightNumeric) return 1;
-    if (leftChunk < rightChunk) return -1;
-    if (leftChunk > rightChunk) return 1;
-  }
+    while (left[leftIndex] === '0') leftIndex += 1;
+    while (right[rightIndex] === '0') rightIndex += 1;
 
+    let firstDigitDifference = 0;
+    while (/\d/.test(left[leftIndex] ?? '') && /\d/.test(right[rightIndex] ?? '')) {
+      if (firstDigitDifference === 0) {
+        firstDigitDifference = left.charCodeAt(leftIndex) - right.charCodeAt(rightIndex);
+      }
+      leftIndex += 1;
+      rightIndex += 1;
+    }
+    if (/\d/.test(left[leftIndex] ?? '')) return 1;
+    if (/\d/.test(right[rightIndex] ?? '')) return -1;
+    if (firstDigitDifference !== 0) return firstDigitDifference;
+  }
   return 0;
 }
 
@@ -367,16 +606,22 @@ function splitFields({
     const spans: Array<{ start: number, end: number }> = [];
     let index = 0;
     while (index < line.length) {
+      const blanksStart = index;
       while (index < line.length && (line[index] === ' ' || line[index] === '\t')) {
         index++;
       }
-      const start = index;
+      if (index === line.length) {
+        if (spans.length === 0) spans.push({ start: 0, end: line.length });
+        break;
+      }
+
+      // GNU sort treats leading blanks as part of the first key field unless
+      // -b is active.  Blanks between later fields remain separators.
+      const start = spans.length === 0 ? blanksStart : index;
       while (index < line.length && line[index] !== ' ' && line[index] !== '\t') {
         index++;
       }
-      if (start < index) {
-        spans.push({ start, end: index });
-      }
+      spans.push({ start, end: index });
     }
     return spans;
   }
@@ -452,17 +697,28 @@ function getSpanPosition({
     }
   }
 
-  const position = base + Math.max(char - 1, 0);
-  switch (kind) {
-  case 'start':
-    return Math.min(position, span.end);
-  case 'end':
-    return Math.min(position + 1, line.length);
-  default: {
-    const _ex: never = kind;
-    throw new Error(`Unhandled span position kind: ${_ex}`);
+  const characterCount = (() => {
+    switch (kind) {
+    case 'start':
+      return char - 1;
+    case 'end':
+      return char;
+    default: {
+      const _ex: never = kind;
+      throw new Error(`Unhandled span position kind: ${_ex}`);
+    }
+    }
+  })();
+  let position = base;
+  // A .CHAR offset is measured from the selected field start but is not
+  // clamped to that field's end.  GNU sort therefore lets -k1.2,1.4 include
+  // separator bytes (and even bytes from the following field) when field 1
+  // is shorter than four characters.
+  for (let index = 0; index < characterCount && position < line.length; index += 1) {
+    const codePoint = line.codePointAt(position)!;
+    position += codePoint > 0xffff ? 2 : 1;
   }
-  }
+  return Math.min(position, line.length);
 }
 
 function applySortOrder({
@@ -550,6 +806,7 @@ function parseKeyToken({
   }
 
   let mode: SortMode | undefined;
+  const keyModes = new Set<SortMode>();
   let reverse = false;
   let ignoreLeadingBlanks = false;
   let foldCase = false;
@@ -568,18 +825,22 @@ function parseKeyToken({
       foldCase = true;
       break;
     case 'g':
+      keyModes.add('general-numeric');
       mode = 'general-numeric';
       break;
     case 'h':
+      keyModes.add('human-numeric');
       mode = 'human-numeric';
       break;
     case 'i':
       ignoreNonprinting = true;
       break;
     case 'M':
+      keyModes.add('month');
       mode = 'month';
       break;
     case 'n':
+      keyModes.add('numeric');
       mode = 'numeric';
       break;
     case 'r':
@@ -587,6 +848,7 @@ function parseKeyToken({
       reverse = true;
       break;
     case 'V':
+      keyModes.add('version');
       mode = 'version';
       break;
     default:
@@ -594,18 +856,8 @@ function parseKeyToken({
     }
   }
 
-  if (endPart !== undefined && startPart.value.field > endPart.value.field) {
-    return { ok: false, message: `invalid key definition: '${token}'` };
-  }
-
-  if (
-    endPart !== undefined
-    && startPart.value.field === endPart.value.field
-    && startPart.value.char !== undefined
-    && endPart.value.char !== undefined
-    && startPart.value.char > endPart.value.char
-  ) {
-    return { ok: false, message: `invalid key definition: '${token}'` };
+  if (keyModes.size > 1) {
+    return { ok: false, message: `incompatible ordering options in key definition: '${token}'` };
   }
 
   return {
@@ -654,11 +906,144 @@ function collectKeySpecs({
   return results;
 }
 
-function resolveSortOptions({
+function collectGlobalSortModes({
+  occurrences,
+}: {
+  occurrences: ReturnType<typeof parseStandardArgv>['occurrences'],
+}): Set<SortMode> {
+  const modes = new Set<SortMode>();
+  for (const occurrence of occurrences) {
+    switch (occurrence.kind) {
+    case 'flag':
+    case 'special':
+      for (const effect of occurrence.effects) {
+        if (effect.key !== 'mode') continue;
+        switch (effect.value) {
+        case 'numeric':
+        case 'general-numeric':
+        case 'human-numeric':
+        case 'month':
+        case 'version':
+          modes.add(effect.value);
+          break;
+        default:
+          break;
+        }
+      }
+      break;
+    case 'value':
+      break;
+    default: {
+      const _ex: never = occurrence;
+      throw new Error(`Unhandled argv occurrence: ${_ex}`);
+    }
+    }
+  }
+  return modes;
+}
+
+function validateSortPreHelpSemantics({
   parsed,
 }: {
   parsed: ReturnType<typeof parseStandardArgv>,
+}): SortValidationResult {
+  const outputPaths = new Set<string>();
+  const fieldSeparators = new Set<string>();
+  const checkModes = new Set<Exclude<SortCheckMode, 'none'>>();
+
+  for (const occurrence of parsed.occurrences) {
+    switch (occurrence.kind) {
+    case 'value':
+      switch (occurrence.key) {
+      case 'outputPath':
+        if (typeof occurrence.value === 'string') outputPaths.add(occurrence.value);
+        break;
+      case 'fieldSeparator':
+        if (typeof occurrence.value === 'string') {
+          const separator = decodeFieldSeparator({ value: occurrence.value });
+          if (new TextEncoder().encode(separator).byteLength !== 1) {
+            return { ok: false, message: `multi-character field separator: '${separator}'` };
+          }
+          fieldSeparators.add(separator);
+        }
+        break;
+      default:
+        break;
+      }
+      break;
+    case 'flag':
+    case 'special':
+      for (const effect of occurrence.effects) {
+        if (effect.key !== 'checkMode') continue;
+        switch (effect.value) {
+        case 'strict':
+        case 'silent':
+          checkModes.add(effect.value);
+          break;
+        default:
+          break;
+        }
+      }
+      break;
+    default: {
+      const _ex: never = occurrence;
+      throw new Error(`Unhandled sort option occurrence: ${String(_ex)}`);
+    }
+    }
+  }
+
+  if (outputPaths.size > 1) return { ok: false, message: 'multiple output files specified' };
+  if (fieldSeparators.size > 1) return { ok: false, message: 'incompatible field separators' };
+  if (checkModes.size > 1) return { ok: false, message: "options '-cC' are incompatible" };
+
+  return { ok: true };
+}
+
+function findSortPreHelpSemanticIssue({
+  parsed,
+}: {
+  parsed: ReturnType<typeof parseStandardArgv>,
+}): string | undefined {
+  const keyError = collectKeySpecs({ occurrences: parsed.occurrences })
+    .find((result) => !result.ok && !result.message.startsWith('incompatible ordering options'));
+  if (keyError !== undefined && !keyError.ok) return keyError.message;
+
+  const semantics = validateSortPreHelpSemantics({ parsed });
+  return semantics.ok ? undefined : semantics.message;
+}
+
+function resolveSortOptions({
+  parsed,
+  characterLocaleMode,
+}: {
+  parsed: ReturnType<typeof parseStandardArgv>,
+  characterLocaleMode: WeshCharacterLocaleMode,
 }): SortResolvedOptionsResult {
+  const outputPaths = parsed.occurrences.reduce((paths, occurrence) => {
+    switch (occurrence.kind) {
+    case 'value':
+      if (occurrence.key === 'outputPath' && typeof occurrence.value === 'string') {
+        paths.add(occurrence.value);
+      }
+      return paths;
+    case 'flag':
+    case 'special':
+      return paths;
+    default: {
+      const _ex: never = occurrence;
+      throw new Error(`Unhandled sort option occurrence: ${String(_ex)}`);
+    }
+    }
+  }, new Set<string>());
+  if (outputPaths.size > 1) {
+    return { ok: false, message: 'multiple output files specified' };
+  }
+
+  const globalModes = collectGlobalSortModes({ occurrences: parsed.occurrences });
+  if (globalModes.size > 1) {
+    return { ok: false, message: 'multiple ordering options are incompatible' };
+  }
+
   const keySpecsResult = collectKeySpecs({ occurrences: parsed.occurrences });
   for (const result of keySpecsResult) {
     if (!result.ok) return result;
@@ -671,6 +1056,9 @@ function resolveSortOptions({
   const fieldSeparatorValue = typeof parsed.optionValues.fieldSeparator === 'string'
     ? decodeFieldSeparator({ value: parsed.optionValues.fieldSeparator })
     : undefined;
+  if (fieldSeparatorValue !== undefined && new TextEncoder().encode(fieldSeparatorValue).byteLength !== 1) {
+    return { ok: false, message: `multi-character field separator: '${fieldSeparatorValue}'` };
+  }
 
   const mode = (() => {
     switch (parsed.optionValues.mode) {
@@ -710,6 +1098,7 @@ function resolveSortOptions({
       zeroTerminated: parsed.optionValues.zeroTerminated === true,
       outputPath: typeof parsed.optionValues.outputPath === 'string' ? parsed.optionValues.outputPath : undefined,
       fieldSeparator: fieldSeparatorValue,
+      characterLocaleMode,
       keySpecs: keySpecs.map((keySpec) => ({
         ...keySpec,
         ignoreLeadingBlanks: keySpec.ignoreLeadingBlanks || parsed.optionValues.ignoreLeadingBlanks === true,
@@ -720,6 +1109,44 @@ function resolveSortOptions({
       })),
     },
   };
+}
+
+function bytesToByteString({ bytes }: { bytes: Uint8Array }): string {
+  const chunks: string[] = [];
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + chunkSize)));
+  }
+  return chunks.join('');
+}
+
+function getByteString({ record }: { record: SortRecord }): string {
+  if (record.byteString === undefined) {
+    record.byteString = bytesToByteString({ bytes: record.bytes });
+  }
+  return record.byteString;
+}
+
+function getComparisonText({
+  record,
+  characterLocaleMode,
+}: {
+  record: SortRecord,
+  characterLocaleMode: WeshCharacterLocaleMode,
+}): string {
+  switch (characterLocaleMode) {
+  case 'ascii':
+    // In the C/POSIX locale, sort character positions and transformed
+    // comparisons are byte-oriented.  A one-code-unit-per-byte view avoids
+    // UTF-8 decoding replacement characters changing key boundaries or order.
+    return getByteString({ record });
+  case 'unicode':
+    return record.value;
+  default: {
+    const _ex: never = characterLocaleMode;
+    throw new Error(`Unhandled sort character locale mode: ${_ex}`);
+  }
+  }
 }
 
 function resolveKeyText({
@@ -771,17 +1198,9 @@ function compareEntries({
   right: SortEntry,
   options: SortResolvedOptions,
 }): number {
-  const compareWholeLines = (): number => compareLexical({
-    left: left.value,
-    right: right.value,
-    normalization: getNormalization({
-      options: {
-        foldCase: options.foldCase,
-        ignoreLeadingBlanks: options.ignoreLeadingBlanks,
-        dictionaryOrder: options.dictionaryOrder,
-        ignoreNonprinting: options.ignoreNonprinting,
-      },
-    }),
+  const compareWholeLines = (): number => compareSortRecordBytes({
+    left: left.bytes,
+    right: right.bytes,
   });
 
   if (options.keySpecs.length > 0) {
@@ -796,8 +1215,11 @@ function compareEntries({
       });
 
       const compared = compareValues({
-        left: resolveKeyText({ line: left.value, keySpec }),
-        right: resolveKeyText({ line: right.value, keySpec }),
+        // GNU sort's FIELD.CHAR offsets are byte positions even in a
+        // multibyte locale.  Use the byte-preserving view for both locating
+        // and comparing a key so a boundary may intentionally split UTF-8.
+        left: resolveKeyText({ line: getByteString({ record: left }), keySpec }),
+        right: resolveKeyText({ line: getByteString({ record: right }), keySpec }),
         mode: keySpec.mode ?? options.mode,
         normalization,
       });
@@ -808,19 +1230,27 @@ function compareEntries({
       }
     }
   } else {
-    const primary = compareValues({
-      left: left.value,
-      right: right.value,
-      mode: options.mode,
-      normalization: getNormalization({
-        options: {
-          foldCase: options.foldCase,
-          ignoreLeadingBlanks: options.ignoreLeadingBlanks,
-          dictionaryOrder: options.dictionaryOrder,
-          ignoreNonprinting: options.ignoreNonprinting,
-        },
-      }),
-    });
+    const plainLexicalComparison =
+      options.mode === 'lexical'
+      && !options.foldCase
+      && !options.ignoreLeadingBlanks
+      && !options.dictionaryOrder
+      && !options.ignoreNonprinting;
+    const primary = plainLexicalComparison
+      ? compareSortRecordBytes({ left: left.bytes, right: right.bytes })
+      : compareValues({
+        left: getComparisonText({ record: left, characterLocaleMode: options.characterLocaleMode }),
+        right: getComparisonText({ record: right, characterLocaleMode: options.characterLocaleMode }),
+        mode: options.mode,
+        normalization: getNormalization({
+          options: {
+            foldCase: options.foldCase,
+            ignoreLeadingBlanks: options.ignoreLeadingBlanks,
+            dictionaryOrder: options.dictionaryOrder,
+            ignoreNonprinting: options.ignoreNonprinting,
+          },
+        }),
+      });
 
     if (primary !== 0) {
       return applySortOrder({ value: primary, order: options.order });
@@ -839,10 +1269,47 @@ function compareEntries({
 const SORT_MEMORY_LIMIT_BYTES = 4 * 1024 * 1024;
 const SORT_MERGE_FAN_IN = 32;
 
-function createEmptyAsyncIterator(): AsyncIterator<string> {
+class SortTemporaryDirectoryError extends Error {
+  readonly directory: string;
+  readonly detail: string;
+
+  constructor({
+    directory,
+    detail,
+  }: {
+    directory: string,
+    detail: string,
+  }) {
+    super(`Cannot create a sort temporary file in ${directory}: ${detail}`);
+    this.name = 'SortTemporaryDirectoryError';
+    this.directory = directory;
+    this.detail = detail;
+  }
+}
+
+function createEmptyAsyncIterator(): AsyncIterator<SortRecord> {
   return {
     next: async () => ({ done: true, value: undefined }),
   };
+}
+
+async function* iterateSortRecords({
+  stream,
+  zeroTerminated,
+  stripTrailingCarriageReturn,
+}: {
+  stream: ReadableStream<Uint8Array>,
+  zeroTerminated: boolean,
+  stripTrailingCarriageReturn: boolean,
+}): AsyncIterable<SortRecord> {
+  for await (const record of iterateUtf8RecordEntries({
+    chunks: iterateReadableStreamChunks({ stream }),
+    delimiterByte: zeroTerminated ? 0 : 0x0a,
+    stripTrailingCarriageReturn,
+    includeBytes: true,
+  })) {
+    yield { value: record.text, bytes: record.bytes! };
+  }
 }
 
 async function openSortRecordIterator({
@@ -855,14 +1322,12 @@ async function openSortRecordIterator({
   file: string | undefined,
   zeroTerminated: boolean,
   stdinAvailable: { value: boolean },
-}): Promise<AsyncIterator<string>> {
+}): Promise<AsyncIterator<SortRecord>> {
   const usesStdin = file === undefined || file === '-';
   if (usesStdin && !stdinAvailable.value) {
     return createEmptyAsyncIterator();
   }
-  if (usesStdin) {
-    stdinAvailable.value = false;
-  }
+  if (usesStdin) stdinAvailable.value = false;
 
   const stream = usesStdin
     ? openHandleReadStream({ handle: context.stdin })
@@ -870,27 +1335,50 @@ async function openSortRecordIterator({
       files: context.files,
       path: resolveInputPath({ cwd: context.cwd, path: file }),
     });
-  return iterateUtf8Records({
-    chunks: iterateReadableStreamChunks({ stream }),
-    delimiterByte: zeroTerminated ? 0 : 0x0a,
-    stripTrailingCarriageReturn: !zeroTerminated,
+  return iterateSortRecords({
+    stream,
+    zeroTerminated,
+    stripTrailingCarriageReturn: false,
   })[Symbol.asyncIterator]();
 }
 
 async function closeIterator({
   iterator,
 }: {
-  iterator: AsyncIterator<string> | undefined,
+  iterator: AsyncIterator<SortRecord> | undefined,
 }): Promise<void> {
   await iterator?.return?.();
 }
 
+function needsByteStringComparison({ options }: { options: SortResolvedOptions }): boolean {
+  if (options.keySpecs.length > 0) return true;
+  switch (options.characterLocaleMode) {
+  case 'ascii':
+    return options.mode !== 'lexical'
+      || options.foldCase
+      || options.ignoreLeadingBlanks
+      || options.dictionaryOrder
+      || options.ignoreNonprinting;
+  case 'unicode':
+    return false;
+  default: {
+    const _ex: never = options.characterLocaleMode;
+    throw new Error(`Unhandled sort character locale mode: ${_ex}`);
+  }
+  }
+}
+
 function estimateSortEntryBytes({
-  value,
+  record,
+  options,
 }: {
-  value: string,
+  record: SortRecord,
+  options: SortResolvedOptions,
 }): number {
-  return 64 + value.length * 2;
+  const cachedByteStringBytes = needsByteStringComparison({ options })
+    ? record.bytes.byteLength * 2
+    : 0;
+  return 64 + record.value.length * 2 + record.bytes.byteLength + cachedByteStringBytes;
 }
 
 function createTemporaryName({
@@ -924,15 +1412,13 @@ async function writeRun({
       append: 'preserve',
     },
   });
-  const writer = createBufferedTextWriter({
+  const writer = createBufferedSortWriter({
     handle,
     maxBufferLength: 32 * 1024,
   });
-  const delimiter = zeroTerminated ? '\0' : '\n';
   try {
     for (const entry of entries) {
-      await writer.write({ text: entry.value });
-      await writer.write({ text: delimiter });
+      await writeSortRecord({ writer, record: entry, zeroTerminated });
     }
     await writer.flush();
   } finally {
@@ -948,21 +1434,18 @@ async function openRunIterator({
   context: WeshCommandContext,
   path: string,
   zeroTerminated: boolean,
-}): Promise<AsyncIterator<string>> {
-  const stream = await openFileReadStream({
-    files: context.files,
-    path,
-  });
-  return iterateUtf8Records({
-    chunks: iterateReadableStreamChunks({ stream }),
-    delimiterByte: zeroTerminated ? 0 : 0x0a,
+}): Promise<AsyncIterator<SortRecord>> {
+  const stream = await openFileReadStream({ files: context.files, path });
+  return iterateSortRecords({
+    stream,
+    zeroTerminated,
     stripTrailingCarriageReturn: false,
   })[Symbol.asyncIterator]();
 }
 
 interface SortOutput {
   readonly handle: WeshFileHandle,
-  readonly writer: ReturnType<typeof createBufferedTextWriter>,
+  readonly writer: ReturnType<typeof createBufferedSortWriter>,
   readonly temporaryPath: string | undefined,
   readonly outputPath: string | undefined,
   readonly recoveryPath: string | undefined,
@@ -978,7 +1461,7 @@ async function createSortOutput({
   if (outputPath === undefined) {
     return {
       handle: context.stdout,
-      writer: createBufferedTextWriter({
+      writer: createBufferedSortWriter({
         handle: context.stdout,
         maxBufferLength: 32 * 1024,
       }),
@@ -1017,7 +1500,7 @@ async function createSortOutput({
       });
       return {
         handle,
-        writer: createBufferedTextWriter({
+        writer: createBufferedSortWriter({
           handle,
           maxBufferLength: 32 * 1024,
         }),
@@ -1135,7 +1618,7 @@ async function finalizeSortOutput({
 }
 
 interface SortWriter {
-  readonly writer: ReturnType<typeof createBufferedTextWriter>,
+  readonly writer: ReturnType<typeof createBufferedSortWriter>,
 }
 
 async function emitMergedIterators({
@@ -1143,12 +1626,11 @@ async function emitMergedIterators({
   options,
   output,
 }: {
-  iterators: readonly AsyncIterator<string>[],
+  iterators: readonly AsyncIterator<SortRecord>[],
   options: SortResolvedOptions,
   output: SortWriter,
 }): Promise<void> {
   const current = await Promise.all(iterators.map(async (iterator) => iterator.next()));
-  const delimiter = options.zeroTerminated ? '\0' : '\n';
   let previous: SortEntry | undefined;
 
   while (true) {
@@ -1160,7 +1642,7 @@ async function emitMergedIterators({
         continue;
       }
       const candidate: SortEntry = {
-        value: candidateResult.value,
+        ...candidateResult.value,
         index: 0,
       };
       if (selected === undefined) {
@@ -1183,8 +1665,11 @@ async function emitMergedIterators({
       || previous === undefined
       || compareEntries({ left: previous, right: selected, options }) !== 0;
     if (shouldWrite) {
-      await output.writer.write({ text: selected.value });
-      await output.writer.write({ text: delimiter });
+      await writeSortRecord({
+        writer: output.writer,
+        record: selected,
+        zeroTerminated: options.zeroTerminated,
+      });
       previous = selected;
     }
     current[selectedIndex] = await iterators[selectedIndex]!.next();
@@ -1213,12 +1698,12 @@ async function mergeRunPaths({
     },
   });
   const output: SortWriter = {
-    writer: createBufferedTextWriter({
+    writer: createBufferedSortWriter({
       handle,
       maxBufferLength: 32 * 1024,
     }),
   };
-  const iterators: AsyncIterator<string>[] = [];
+  const iterators: AsyncIterator<SortRecord>[] = [];
   let completed = false;
   try {
     for (const path of paths) {
@@ -1283,7 +1768,10 @@ async function createSortRunStore({
       };
     } catch (error: unknown) {
       if (attempt === 99) {
-        throw error;
+        throw new SortTemporaryDirectoryError({
+          directory: baseDirectory,
+          detail: error instanceof Error ? error.message : String(error),
+        });
       }
     }
   }
@@ -1487,7 +1975,7 @@ async function emitRunPaths({
   options: SortResolvedOptions,
   output: SortWriter,
 }): Promise<void> {
-  const iterators: AsyncIterator<string>[] = [];
+  const iterators: AsyncIterator<SortRecord>[] = [];
   try {
     for (const path of paths) {
       iterators.push(await openRunIterator({
@@ -1527,12 +2015,12 @@ async function mergeInputFilesToRun({
     },
   });
   const output: SortWriter = {
-    writer: createBufferedTextWriter({
+    writer: createBufferedSortWriter({
       handle,
       maxBufferLength: 32 * 1024,
     }),
   };
-  const iterators: AsyncIterator<string>[] = [];
+  const iterators: AsyncIterator<SortRecord>[] = [];
   let completed = false;
   try {
     for (const file of files) {
@@ -1601,7 +2089,7 @@ async function checkSortedInputs({
   let lineNumber = 0;
 
   for (const file of files) {
-    let iterator: AsyncIterator<string> | undefined;
+    let iterator: AsyncIterator<SortRecord> | undefined;
     try {
       iterator = await openSortRecordIterator({
         context,
@@ -1615,22 +2103,27 @@ async function checkSortedInputs({
           break;
         }
         lineNumber += 1;
-        const current: SortEntry = { value: next.value, index: lineNumber - 1 };
-        if (previous !== undefined && compareEntries({ left: previous, right: current, options }) > 0) {
-          switch (checkMode) {
-          case 'strict':
-            await context.text().error({
-              text: `sort: disorder at line ${lineNumber}: ${current.value}\n`,
-            });
-            break;
-          case 'silent':
-            break;
-          default: {
-            const _ex: never = checkMode;
-            throw new Error(`Unhandled sort check mode: ${_ex}`);
+        const current: SortEntry = { ...next.value, index: lineNumber - 1 };
+        if (previous !== undefined) {
+          const comparison = compareEntries({ left: previous, right: current, options });
+          const isDisordered = comparison > 0
+            || (options.uniqueness === 'unique' && comparison === 0);
+          if (isDisordered) {
+            switch (checkMode) {
+            case 'strict':
+              await context.text().error({
+                text: `sort: disorder at line ${lineNumber}: ${current.value}\n`,
+              });
+              break;
+            case 'silent':
+              break;
+            default: {
+              const _ex: never = checkMode;
+              throw new Error(`Unhandled sort check mode: ${_ex}`);
+            }
+            }
+            return { exitCode: 1 };
           }
-          }
-          return { exitCode: 1 };
         }
         previous = current;
       }
@@ -1644,6 +2137,10 @@ async function checkSortedInputs({
   }
   return { exitCode: 0 };
 }
+
+const SORT_HELP_EARLY_EXIT_OPTIONS: readonly StandardEarlyExitOption[] = [
+  { token: '--help', optionKey: 'showHelp' },
+];
 
 const sortArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -1695,16 +2192,40 @@ export const sortCommandDefinition: WeshCommandDefinition = {
     usage: 'sort [OPTION]... [FILE]...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({
+    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: context.args,
       spec: sortArgvSpec,
+      earlyExitOptions: SORT_HELP_EARLY_EXIT_OPTIONS,
+    });
+    const parsed = parseStandardArgv({ args: parsedArgs, spec: sortArgvSpec });
+    const firstPreHelpSemanticIssue = findFirstStandardSemanticIssue({
+      args: parsedArgs,
+      spec: sortArgvSpec,
+      parsed,
+      findSemanticIssue: findSortPreHelpSemanticIssue,
+    });
+    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
+      args: parsedArgs,
+      spec: sortArgvSpec,
+      parsed,
+      findSemanticIssue: findSortPreHelpSemanticIssue,
     });
 
-    if (parsed.diagnostics.length > 0) {
+    if (parsed.diagnostics.length > 0 && !semanticIssuePrecedesDiagnostic) {
       await writeCommandUsageError({
         context,
         command: 'sort',
         message: `sort: ${parsed.diagnostics[0]!.message}`,
+        argvSpec: sortArgvSpec,
+      });
+      return { exitCode: 2 };
+    }
+
+    if (firstPreHelpSemanticIssue !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'sort',
+        message: `sort: ${firstPreHelpSemanticIssue}`,
         argvSpec: sortArgvSpec,
       });
       return { exitCode: 2 };
@@ -1719,7 +2240,10 @@ export const sortCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
-    const resolved = resolveSortOptions({ parsed });
+    const resolved = resolveSortOptions({
+      parsed,
+      characterLocaleMode: resolveCharacterLocaleMode({ env: context.env }),
+    });
     if (!resolved.ok) {
       await writeCommandUsageError({
         context,
@@ -1738,6 +2262,27 @@ export const sortCommandDefinition: WeshCommandDefinition = {
     switch (options.checkMode) {
     case 'strict':
     case 'silent':
+      if (files.length > 1) {
+        const checkOption = (() => {
+          switch (options.checkMode) {
+          case 'strict':
+            return '-c';
+          case 'silent':
+            return '-C';
+          default: {
+            const _ex: never = options.checkMode;
+            throw new Error(`Unhandled sort check mode: ${_ex}`);
+          }
+          }
+        })();
+        await writeCommandUsageError({
+          context,
+          command: 'sort',
+          message: `sort: extra operand '${parsed.positionals[1] ?? ''}' not allowed with ${checkOption}`,
+          argvSpec: sortArgvSpec,
+        });
+        return { exitCode: 2 };
+      }
       return checkSortedInputs({
         context,
         files,
@@ -1763,7 +2308,7 @@ export const sortCommandDefinition: WeshCommandDefinition = {
       if (options.merge) {
         const stdinAvailable = { value: true };
         if (files.length <= SORT_MERGE_FAN_IN) {
-          const iterators: AsyncIterator<string>[] = [];
+          const iterators: AsyncIterator<SortRecord>[] = [];
           try {
             for (const file of files) {
               iterators.push(await openSortRecordIterator({
@@ -1847,7 +2392,7 @@ export const sortCommandDefinition: WeshCommandDefinition = {
       };
 
       for (const file of files) {
-        let iterator: AsyncIterator<string> | undefined;
+        let iterator: AsyncIterator<SortRecord> | undefined;
         try {
           iterator = await openSortRecordIterator({
             context,
@@ -1861,12 +2406,12 @@ export const sortCommandDefinition: WeshCommandDefinition = {
               break;
             }
             const entry: SortEntry = {
-              value: next.value,
+              ...next.value,
               index: globalIndex,
             };
             globalIndex += 1;
             entries.push(entry);
-            entriesBytes += estimateSortEntryBytes({ value: entry.value });
+            entriesBytes += estimateSortEntryBytes({ record: entry, options });
             if (entriesBytes >= SORT_MEMORY_LIMIT_BYTES) {
               await flushRun();
             }
@@ -1882,7 +2427,6 @@ export const sortCommandDefinition: WeshCommandDefinition = {
 
       if (runStore === undefined) {
         entries.sort((left, right) => compareEntries({ left, right, options }));
-        const delimiter = options.zeroTerminated ? '\0' : '\n';
         let previous: SortEntry | undefined;
         for (const entry of entries) {
           if (
@@ -1892,8 +2436,11 @@ export const sortCommandDefinition: WeshCommandDefinition = {
           ) {
             continue;
           }
-          await output.writer.write({ text: entry.value });
-          await output.writer.write({ text: delimiter });
+          await writeSortRecord({
+            writer: output.writer,
+            record: entry,
+            zeroTerminated: options.zeroTerminated,
+          });
           previous = entry;
         }
       } else {
@@ -1914,6 +2461,14 @@ export const sortCommandDefinition: WeshCommandDefinition = {
 
       outputStatus = 'commit';
       return { exitCode: 0 };
+    } catch (error: unknown) {
+      if (error instanceof SortTemporaryDirectoryError) {
+        await context.text().error({
+          text: `sort: cannot create temporary file in '${error.directory}': ${error.detail}\n`,
+        });
+        return { exitCode: 2 };
+      }
+      throw error;
     } finally {
       try {
         await finalizeSortOutput({ context, output, status: outputStatus });

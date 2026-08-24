@@ -1,3 +1,4 @@
+import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshOpenFlags, WeshStat } from '@/features/wesh/types';
 import {
@@ -22,6 +23,13 @@ import {
 const encoder = new TextEncoder();
 let temporarySequence = 0;
 
+export class PatchTargetResolutionError extends Error {
+  constructor({ message }: { message: string }) {
+    super(message);
+    this.name = 'PatchTargetResolutionError';
+  }
+}
+
 function basename({ path }: { path: string }): string {
   const normalized = path === '/' ? '/' : path.replace(/\/+$/u, '');
   const index = normalized.lastIndexOf('/');
@@ -37,12 +45,6 @@ function dirname({ path }: { path: string }): string {
 
 function joinPath({ directory, name }: { directory: string, name: string }): string {
   return directory === '/' ? `/${name}` : `${directory}/${name}`;
-}
-
-function isPathNotFoundError({ error }: { error: unknown }): boolean {
-  if (!(error instanceof Error)) return false;
-  return error.message.startsWith('Path not found:')
-    || error.message.startsWith('NotFoundError:');
 }
 
 async function pathStat({
@@ -117,15 +119,26 @@ export async function readPatchInput({
 
 export async function resolveEffectiveDirectory({
   context,
+  cwd,
   directory,
 }: {
   context: WeshCommandContext,
-  directory: string | undefined,
+  cwd: string,
+  directory: string,
 }): Promise<string> {
-  const fullPath = directory === undefined
-    ? context.cwd
-    : resolvePath({ cwd: context.cwd, path: directory });
-  const stat = await context.files.stat({ path: fullPath });
+  const displayDirectory = directory.length === 0 ? "''" : directory;
+  if (directory.length === 0) {
+    throw new Error(`Can't change to directory ${displayDirectory} : No such file or directory`);
+  }
+
+  const fullPath = resolvePath({ cwd, path: directory });
+  let stat: Awaited<ReturnType<WeshCommandContext['files']['stat']>>;
+  try {
+    stat = await context.files.stat({ path: fullPath });
+  } catch {
+    throw new Error(`Can't change to directory ${displayDirectory} : No such file or directory`);
+  }
+
   switch (stat.type) {
   case 'directory':
     return fullPath;
@@ -133,7 +146,7 @@ export async function resolveEffectiveDirectory({
   case 'fifo':
   case 'chardev':
   case 'symlink':
-    throw new Error(`${directory ?? fullPath}: Not a directory`);
+    throw new Error(`Can't change to directory ${displayDirectory} : Not a directory`);
   default: {
     const _ex: never = stat.type;
     throw new Error(`Unhandled file type: ${_ex}`);
@@ -346,11 +359,15 @@ export async function resolvePatchTarget({
   })();
 
   if (destinationPath === undefined) {
-    throw new Error(`cannot determine file name for patch at input line ${section.sourceLineNumber}`);
+    throw new PatchTargetResolutionError({
+      message: `cannot determine file name for patch at input line ${section.sourceLineNumber}`,
+    });
   }
 
   if (section.header.operation !== 'create' && sourcePath === undefined) {
-    throw new Error(`cannot determine source file for patch at input line ${section.sourceLineNumber}`);
+    throw new PatchTargetResolutionError({
+      message: `cannot determine source file for patch at input line ${section.sourceLineNumber}`,
+    });
   }
 
   return {
@@ -732,12 +749,19 @@ async function resolveBackupPath({
   }
   if (options.backupPrefix !== undefined) {
     const rootPrefix = cwd === '/' ? '/' : `${cwd}/`;
-    const relative = targetPath.startsWith(rootPrefix)
-      ? targetPath.slice(rootPrefix.length)
-      : targetPath.startsWith('/')
-        ? targetPath.slice(1)
-        : targetPath;
+    const relative = basePath.startsWith(rootPrefix)
+      ? basePath.slice(rootPrefix.length)
+      : basePath.startsWith('/')
+        ? basePath.slice(1)
+        : basePath;
     basePath = resolvePath({ cwd, path: `${options.backupPrefix}${relative}` });
+  }
+
+  if (
+    (options.backupPrefix !== undefined || options.backupBasenamePrefix !== undefined)
+    && !options.backupSuffixExplicit
+  ) {
+    return basePath;
   }
 
   switch (options.backupStyle) {

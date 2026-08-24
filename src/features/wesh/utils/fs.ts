@@ -6,6 +6,41 @@ import type {
   WeshEfficientBlobReadResult,
 } from '@/features/wesh/types';
 
+/**
+ * Read all remaining bytes from a sequential file handle without closing it.
+ *
+ * This is intended for shared descriptors such as stdin, where later reads
+ * must observe the consumed offset rather than reopening or rewinding input.
+ */
+export async function readAllHandleBytes({
+  handle,
+}: {
+  handle: WeshFileHandle,
+}): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+
+  while (true) {
+    const buffer = new Uint8Array(64 * 1024);
+    const { bytesRead } = await handle.read({ buffer });
+    if (bytesRead === 0) break;
+
+    const chunk = bytesRead === buffer.byteLength ? buffer : buffer.slice(0, bytesRead);
+    chunks.push(chunk);
+    totalLength += chunk.byteLength;
+  }
+
+  if (chunks.length === 1) return chunks[0]!;
+
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
+}
+
 interface WeshFileCapabilities {
   open({ path, flags, mode }: { path: string, flags: WeshOpenFlags, mode?: number }): Promise<WeshFileHandle>,
   stat({ path }: { path: string }): Promise<unknown>,

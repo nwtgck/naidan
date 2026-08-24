@@ -1665,7 +1665,7 @@ parent-exit
 `);
   });
 
-  it('runs PIPE traps when a pipeline writer gets SIGPIPE', async () => {
+  it('does not run the parent PIPE trap when a pipeline writer gets SIGPIPE', async () => {
     const handle = await rootHandle.getFileHandle('large.txt', { create: true });
     const writable = await handle.createWritable();
     await writable.write(`first\n${'x'.repeat(131072)}`);
@@ -1688,9 +1688,7 @@ cat large.txt | head -n 1`,
     expect(stdout.text).toBe(`\
 first
 `);
-    expect(stderr.text).toBe(`\
-pipe-trap
-`);
+    expect(stderr.text).toBe('');
   });
 
   it('preserves $? while signal traps run', async () => {

@@ -1,4 +1,4 @@
-import type { SuffixMode } from './parse';
+import type { SplitSuffixLength, SuffixMode } from './parse';
 
 export interface SplitSuffixGenerator {
   peekName(): string,
@@ -12,41 +12,126 @@ class SuffixExhaustedError extends Error {
   }
 }
 
-function formatAlphabeticSuffix({
-  index,
-  length,
-}: {
-  index: number,
-  length: number,
-}): string {
-  const digits: string[] = [];
-  let remaining = index;
-
-  for (let position = 0; position < length; position += 1) {
-    digits.push(String.fromCharCode(0x61 + (remaining % 26)));
-    remaining = Math.floor(remaining / 26);
-  }
-
-  if (remaining > 0) {
-    throw new SuffixExhaustedError();
-  }
-
-  return digits.reverse().join('');
-}
-
-function formatNumericSuffix({
+function formatFixedRadixSuffix({
   value,
   length,
+  radix,
+  firstCodePoint,
 }: {
-  value: number,
+  value: bigint,
   length: number,
+  radix: bigint,
+  firstCodePoint: number,
 }): string {
-  const raw = String(value);
-  if (raw.length > length) {
+  const digits = Array<string>(length);
+  let remaining = value;
+
+  for (let position = length - 1; position >= 0; position -= 1) {
+    const digit = Number(remaining % radix);
+    digits[position] = String.fromCharCode(firstCodePoint + digit);
+    remaining /= radix;
+  }
+
+  if (remaining > 0n) {
     throw new SuffixExhaustedError();
   }
 
-  return raw.padStart(length, '0');
+  return digits.join('');
+}
+
+function formatAutoRadixSuffix({
+  index,
+  initialLength,
+  radix,
+  extensionDigit,
+  firstCodePoint,
+}: {
+  index: bigint,
+  initialLength: number,
+  radix: bigint,
+  extensionDigit: string,
+  firstCodePoint: number,
+}): string {
+  let remaining = index;
+  let extensionCount = 0;
+  let variableLength = initialLength;
+
+  while (true) {
+    const blockSize = (radix - 1n) * (radix ** BigInt(variableLength - 1));
+    if (remaining < blockSize) {
+      return `${extensionDigit.repeat(extensionCount)}${formatFixedRadixSuffix({
+        value: remaining,
+        length: variableLength,
+        radix,
+        firstCodePoint,
+      })}`;
+    }
+
+    remaining -= blockSize;
+    extensionCount += 1;
+    variableLength += 1;
+  }
+}
+
+function formatSuffix({
+  index,
+  suffixLength,
+  suffixMode,
+}: {
+  index: bigint,
+  suffixLength: SplitSuffixLength,
+  suffixMode: SuffixMode,
+}): string {
+  switch (suffixLength.kind) {
+  case 'auto':
+    switch (suffixMode.kind) {
+    case 'alphabetic':
+      return formatAutoRadixSuffix({
+        index,
+        initialLength: suffixLength.initialLength,
+        radix: 26n,
+        extensionDigit: 'z',
+        firstCodePoint: 0x61,
+      });
+    case 'numeric':
+      return formatAutoRadixSuffix({
+        index: BigInt(suffixMode.start) + index,
+        initialLength: suffixLength.initialLength,
+        radix: 10n,
+        extensionDigit: '9',
+        firstCodePoint: 0x30,
+      });
+    default: {
+      const _ex: never = suffixMode;
+      throw new Error(`Unhandled suffix mode: ${JSON.stringify(_ex)}`);
+    }
+    }
+  case 'fixed':
+    switch (suffixMode.kind) {
+    case 'alphabetic':
+      return formatFixedRadixSuffix({
+        value: index,
+        length: suffixLength.length,
+        radix: 26n,
+        firstCodePoint: 0x61,
+      });
+    case 'numeric':
+      return formatFixedRadixSuffix({
+        value: BigInt(suffixMode.start) + index,
+        length: suffixLength.length,
+        radix: 10n,
+        firstCodePoint: 0x30,
+      });
+    default: {
+      const _ex: never = suffixMode;
+      throw new Error(`Unhandled suffix mode: ${JSON.stringify(_ex)}`);
+    }
+    }
+  default: {
+    const _ex: never = suffixLength;
+    throw new Error(`Unhandled suffix length: ${JSON.stringify(_ex)}`);
+  }
+  }
 }
 
 export function createSplitSuffixGenerator({
@@ -56,28 +141,15 @@ export function createSplitSuffixGenerator({
   additionalSuffix,
 }: {
   prefix: string,
-  suffixLength: number,
+  suffixLength: SplitSuffixLength,
   suffixMode: SuffixMode,
   additionalSuffix: string,
 }): SplitSuffixGenerator {
-  let index = 0;
+  let index = 0n;
 
-  const buildName = ({ value }: { value: number }): string => {
-    const suffix = (() => {
-      switch (suffixMode.kind) {
-      case 'alphabetic':
-        return formatAlphabeticSuffix({ index: value, length: suffixLength });
-      case 'numeric':
-        return formatNumericSuffix({ value: suffixMode.start + value, length: suffixLength });
-      default: {
-        const _ex: never = suffixMode;
-        throw new Error(`Unhandled suffix mode: ${JSON.stringify(_ex)}`);
-      }
-      }
-    })();
-
-    return `${prefix}${suffix}${additionalSuffix}`;
-  };
+  const buildName = ({ value }: { value: bigint }): string => (
+    `${prefix}${formatSuffix({ index: value, suffixLength, suffixMode })}${additionalSuffix}`
+  );
 
   return {
     peekName(): string {
@@ -85,7 +157,7 @@ export function createSplitSuffixGenerator({
     },
     nextName(): string {
       const name = buildName({ value: index });
-      index += 1;
+      index += 1n;
       return name;
     },
   };

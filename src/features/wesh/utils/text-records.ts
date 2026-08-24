@@ -5,7 +5,15 @@ export type WeshTextRecordTermination = 'delimiter' | 'end_of_input';
 
 export interface WeshTextRecord {
   readonly text: string,
+  readonly bytes: Uint8Array | undefined,
   readonly termination: WeshTextRecordTermination,
+  readonly byteLength: number,
+}
+
+export interface WeshByteRecord {
+  readonly bytes: Uint8Array,
+  readonly termination: WeshTextRecordTermination,
+  readonly byteLength: number,
 }
 
 export function getWeshTextRecordTerminator({
@@ -25,56 +33,39 @@ export function getWeshTextRecordTerminator({
   }
 }
 
-function decodeUtf8Record({
-  decoder,
+function collectUtf8RecordBytes({
   fragments,
+  fragmentsByteLength,
   finalFragment,
-  stripTrailingCarriageReturn,
 }: {
-  decoder: TextDecoder,
   fragments: readonly Uint8Array[],
+  fragmentsByteLength: number,
   finalFragment: Uint8Array,
-  stripTrailingCarriageReturn: boolean,
-}): string {
-  const bytes = (() => {
-    if (fragments.length === 0) {
-      return finalFragment;
-    }
+}): Uint8Array {
+  if (fragments.length === 0) {
+    return finalFragment;
+  }
 
-    const totalLength = fragments.reduce(
-      (sum, fragment) => sum + fragment.byteLength,
-      finalFragment.byteLength,
-    );
-    const combined = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const fragment of fragments) {
-      combined.set(fragment, offset);
-      offset += fragment.byteLength;
-    }
-    combined.set(finalFragment, offset);
-    return combined;
-  })();
-
-  const decodedLength = stripTrailingCarriageReturn
-    && bytes.byteLength > 0
-    && bytes[bytes.byteLength - 1] === CARRIAGE_RETURN_BYTE
-    ? bytes.byteLength - 1
-    : bytes.byteLength;
-
-  return decoder.decode(bytes.subarray(0, decodedLength));
+  const totalLength = fragmentsByteLength + finalFragment.byteLength;
+  const combined = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const fragment of fragments) {
+    combined.set(fragment, offset);
+    offset += fragment.byteLength;
+  }
+  combined.set(finalFragment, offset);
+  return combined;
 }
 
-export async function* iterateUtf8RecordEntries({
+export async function* iterateByteRecordEntries({
   chunks,
   delimiterByte,
-  stripTrailingCarriageReturn,
 }: {
   chunks: AsyncIterable<Uint8Array>,
   delimiterByte: number,
-  stripTrailingCarriageReturn: boolean,
-}): AsyncIterable<WeshTextRecord> {
-  const decoder = new TextDecoder();
+}): AsyncIterable<WeshByteRecord> {
   let fragments: Uint8Array[] = [];
+  let fragmentsByteLength = 0;
 
   for await (const chunk of chunks) {
     let recordStart = 0;
@@ -84,32 +75,118 @@ export async function* iterateUtf8RecordEntries({
       }
 
       yield {
-        text: decodeUtf8Record({
-          decoder,
+        bytes: collectUtf8RecordBytes({
           fragments,
+          fragmentsByteLength,
           finalFragment: chunk.subarray(recordStart, index),
-          stripTrailingCarriageReturn,
         }),
         termination: 'delimiter',
+        byteLength: fragmentsByteLength + index - recordStart + 1,
       };
       fragments = [];
+      fragmentsByteLength = 0;
       recordStart = index + 1;
     }
 
     if (recordStart < chunk.byteLength) {
-      fragments.push(chunk.subarray(recordStart));
+      const fragment = chunk.subarray(recordStart);
+      fragments.push(fragment);
+      fragmentsByteLength += fragment.byteLength;
     }
   }
 
   if (fragments.length > 0) {
     yield {
-      text: decodeUtf8Record({
-        decoder,
+      bytes: collectUtf8RecordBytes({
         fragments,
+        fragmentsByteLength,
         finalFragment: new Uint8Array(0),
-        stripTrailingCarriageReturn: false,
       }),
       termination: 'end_of_input',
+      byteLength: fragmentsByteLength,
+    };
+  }
+}
+
+export function materializeByteRecord({
+  record,
+  delimiterByte,
+}: {
+  record: WeshByteRecord,
+  delimiterByte: number,
+}): Uint8Array {
+  switch (record.termination) {
+  case 'end_of_input':
+    return record.bytes;
+  case 'delimiter': {
+    const result = new Uint8Array(record.bytes.byteLength + 1);
+    result.set(record.bytes);
+    result[result.byteLength - 1] = delimiterByte;
+    return result;
+  }
+  default: {
+    const _ex: never = record.termination;
+    throw new Error(`Unhandled byte record termination: ${_ex}`);
+  }
+  }
+}
+
+function decodeUtf8Record({
+  decoder,
+  bytes,
+  stripTrailingCarriageReturn,
+}: {
+  decoder: TextDecoder,
+  bytes: Uint8Array,
+  stripTrailingCarriageReturn: boolean,
+}): { bytes: Uint8Array, text: string } {
+  const decodedLength = stripTrailingCarriageReturn
+    && bytes.byteLength > 0
+    && bytes[bytes.byteLength - 1] === CARRIAGE_RETURN_BYTE
+    ? bytes.byteLength - 1
+    : bytes.byteLength;
+  const decodedBytes = bytes.subarray(0, decodedLength);
+  return {
+    bytes: decodedBytes,
+    text: decoder.decode(decodedBytes),
+  };
+}
+
+export async function* iterateUtf8RecordEntries({
+  chunks,
+  delimiterByte,
+  stripTrailingCarriageReturn,
+  includeBytes,
+}: {
+  chunks: AsyncIterable<Uint8Array>,
+  delimiterByte: number,
+  stripTrailingCarriageReturn: boolean,
+  includeBytes: boolean,
+}): AsyncIterable<WeshTextRecord> {
+  const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
+  for await (const record of iterateByteRecordEntries({ chunks, delimiterByte })) {
+    const shouldStripTrailingCarriageReturn = (() => {
+      switch (record.termination) {
+      case 'delimiter':
+        return stripTrailingCarriageReturn;
+      case 'end_of_input':
+        return false;
+      default: {
+        const _ex: never = record.termination;
+        throw new Error(`Unhandled text record termination: ${_ex}`);
+      }
+      }
+    })();
+    const decodedRecord = decodeUtf8Record({
+      decoder,
+      bytes: record.bytes,
+      stripTrailingCarriageReturn: shouldStripTrailingCarriageReturn,
+    });
+    yield {
+      text: decodedRecord.text,
+      bytes: includeBytes ? decodedRecord.bytes : undefined,
+      termination: record.termination,
+      byteLength: record.byteLength,
     };
   }
 }
@@ -127,6 +204,7 @@ export async function* iterateUtf8Records({
     chunks,
     delimiterByte,
     stripTrailingCarriageReturn,
+    includeBytes: false,
   })) {
     yield record.text;
   }
@@ -141,6 +219,7 @@ export function iterateUtf8LineRecords({
     chunks,
     delimiterByte: NEWLINE_BYTE,
     stripTrailingCarriageReturn: true,
+    includeBytes: false,
   });
 }
 
@@ -164,4 +243,6 @@ export function iterateUtf8Lines({
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  iterateByteRecordEntries,
+  materializeByteRecord,
 };

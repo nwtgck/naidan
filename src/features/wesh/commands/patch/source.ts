@@ -120,9 +120,9 @@ function hashBytes({
       break;
     case 'ignore-changes':
       if (isHorizontalBlank({ value })) {
-        if (!inBlankRun) hash = updateHash({ hash, value: 0x20 });
         inBlankRun = true;
       } else {
+        if (inBlankRun) hash = updateHash({ hash, value: 0x20 });
         inBlankRun = false;
         hash = updateHash({ hash, value });
       }
@@ -152,16 +152,21 @@ function bytesEqualIgnoringWhitespaceChanges({
   left: Uint8Array,
   right: Uint8Array,
 }): boolean {
+  let leftEnd = left.byteLength;
+  while (leftEnd > 0 && isHorizontalBlank({ value: left[leftEnd - 1]! })) leftEnd -= 1;
+  let rightEnd = right.byteLength;
+  while (rightEnd > 0 && isHorizontalBlank({ value: right[rightEnd - 1]! })) rightEnd -= 1;
+
   let leftIndex = 0;
   let rightIndex = 0;
 
-  while (leftIndex < left.byteLength && rightIndex < right.byteLength) {
+  while (leftIndex < leftEnd && rightIndex < rightEnd) {
     const leftBlank = isHorizontalBlank({ value: left[leftIndex]! });
     const rightBlank = isHorizontalBlank({ value: right[rightIndex]! });
     if (leftBlank || rightBlank) {
       if (!leftBlank || !rightBlank) return false;
-      while (leftIndex < left.byteLength && isHorizontalBlank({ value: left[leftIndex]! })) leftIndex += 1;
-      while (rightIndex < right.byteLength && isHorizontalBlank({ value: right[rightIndex]! })) rightIndex += 1;
+      while (leftIndex < leftEnd && isHorizontalBlank({ value: left[leftIndex]! })) leftIndex += 1;
+      while (rightIndex < rightEnd && isHorizontalBlank({ value: right[rightIndex]! })) rightIndex += 1;
       continue;
     }
 
@@ -170,7 +175,7 @@ function bytesEqualIgnoringWhitespaceChanges({
     rightIndex += 1;
   }
 
-  return leftIndex === left.byteLength && rightIndex === right.byteLength;
+  return leftIndex === leftEnd && rightIndex === rightEnd;
 }
 
 interface LineIndexData {
@@ -215,9 +220,9 @@ async function buildLineIndex({ blob }: { blob: Blob }): Promise<LineIndexData> 
 
       exactHash = updateHash({ hash: exactHash, value: byte });
       if (isHorizontalBlank({ value: byte })) {
-        if (!whitespaceRun) whitespaceHash = updateHash({ hash: whitespaceHash, value: 0x20 });
         whitespaceRun = true;
       } else {
+        if (whitespaceRun) whitespaceHash = updateHash({ hash: whitespaceHash, value: 0x20 });
         whitespaceRun = false;
         whitespaceHash = updateHash({ hash: whitespaceHash, value: byte });
       }

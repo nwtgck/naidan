@@ -12,41 +12,57 @@ export const unaliasCommandDefinition: WeshCommandDefinition = {
       args: context.args,
       acceptedForms: [['--help']],
     })) {
-      await writeCommandHelp({
-        context,
-        command: 'unalias',
-      });
+      await writeCommandHelp({ context, command: 'unalias' });
       return { exitCode: 0 };
     }
 
-    if (context.args.length === 1 && context.args[0] === '-a') {
+    let removeAll = false;
+    let operandIndex = 0;
+    while (operandIndex < context.args.length) {
+      const arg = context.args[operandIndex];
+      if (arg === undefined) {
+        break;
+      }
+      if (arg === '--') {
+        operandIndex += 1;
+        break;
+      }
+      if (arg === '-a') {
+        removeAll = true;
+        operandIndex += 1;
+        continue;
+      }
+      if (arg.startsWith('-') && arg !== '-') {
+        await context.text().error({ text: `unalias: ${arg}: invalid option\n` });
+        await context.text().error({ text: 'unalias: usage: unalias [-a] name [name ...]\n' });
+        return { exitCode: 2 };
+      }
+      break;
+    }
+
+    if (removeAll) {
       for (const alias of context.getAliases()) {
         context.unsetAlias({ name: alias.name });
       }
       return { exitCode: 0 };
     }
 
-    if (context.args.length === 0) {
+    const operands = context.args.slice(operandIndex);
+    if (operands.length === 0) {
       await context.text().error({ text: 'unalias: usage: unalias [-a] name [name ...]\n' });
-      return { exitCode: 1 };
+      return { exitCode: 2 };
     }
 
     let exitCode = 0;
-    for (const arg of context.args) {
-      if (arg.startsWith('-')) {
-        await context.text().error({ text: `unalias: ${arg}: invalid option\n` });
-        exitCode = 2;
-        continue;
-      }
-
-      const existing = context.getAliases().find((entry) => entry.name === arg);
+    for (const name of operands) {
+      const existing = context.getAliases().find(entry => entry.name === name);
       if (existing === undefined) {
-        await context.text().error({ text: `unalias: ${arg}: not found\n` });
+        await context.text().error({ text: `unalias: ${name}: not found\n` });
         exitCode = 1;
         continue;
       }
 
-      context.unsetAlias({ name: arg });
+      context.unsetAlias({ name });
     }
 
     return { exitCode };

@@ -571,7 +571,7 @@ second
     expect(entries).toEqual([{ name: 'child.txt', type: 'file', fullPath: '/real/child.txt' }]);
 
     const changed = await execute({ script: 'cd /real.link; pwd' });
-    expect(changed.stdout.text).toBe('/real\n');
+    expect(changed.stdout.text).toBe('/real.link\n');
     expect(changed.stderr.text).toBe('');
     expect(changed.result.exitCode).toBe(0);
   });

@@ -6,20 +6,22 @@ import type {
   WeshFileHandle,
 } from '@/features/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { openHandleReadStream } from '@/features/wesh/utils/fs';
-import { resolvePath } from '@/features/wesh/path';
+import { canonicalizeExistingPath, resolvePath } from '@/features/wesh/path';
 
 const teeArgvSpec: StandardArgvParserSpec = {
   options: [
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
     { kind: 'flag', short: 'a', long: 'append', effects: [{ key: 'append', value: true }], help: { summary: 'append to the given FILEs, do not overwrite', category: 'common' } },
   ],
-  allowShortFlagBundles: false,
+  allowShortFlagBundles: true,
   stopAtDoubleDash: true,
   treatSingleDashAsPositional: true,
   specialTokenParsers: [],
 };
+
 
 async function writeAll({
   handle,
@@ -70,6 +72,23 @@ type TeeOutput =
   | { kind: 'handle', path: string, handle: WeshFileHandle }
   | { kind: 'writer', path: string, writer: WeshEfficientFileWriter };
 
+async function getAppendOutputIdentity({
+  context,
+  fullPath,
+}: {
+  context: WeshCommandContext,
+  fullPath: string,
+}): Promise<string> {
+  try {
+    return await canonicalizeExistingPath({ context, path: fullPath });
+  } catch {
+    // Preserve the open operation as the owner of missing, dangling-link, and
+    // permission diagnostics. Existing aliases share a canonical identity; a
+    // path that cannot be canonicalized remains keyed by its resolved spelling.
+    return fullPath;
+  }
+}
+
 async function writeTeeOutput({
   output,
   buffer,
@@ -104,7 +123,11 @@ export const teeCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardArgvAtFirstEarlyExit({
+        args: context.args,
+        spec: teeArgvSpec,
+        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+      }),
       spec: teeArgvSpec,
     });
 
@@ -130,17 +153,25 @@ export const teeCommandDefinition: WeshCommandDefinition = {
 
     const append = parsed.optionValues.append === true;
     const outputs: TeeOutput[] = [];
+    const appendOutputsByPath = new Map<string, TeeOutput>();
     let exitCode = 0;
 
     for (const file of parsed.positionals) {
-      if (file === '-') {
-        continue;
-      }
-
       const fullPath = resolvePath({
         cwd: context.cwd,
         path: file,
       });
+
+      const appendOutputIdentity = append
+        ? await getAppendOutputIdentity({ context, fullPath })
+        : undefined;
+      if (appendOutputIdentity !== undefined) {
+        const existingOutput = appendOutputsByPath.get(appendOutputIdentity);
+        if (existingOutput !== undefined) {
+          outputs.push(existingOutput);
+          continue;
+        }
+      }
 
       try {
         if (context.files.tryCreateFileWriterEfficiently !== undefined) {
@@ -149,9 +180,12 @@ export const teeCommandDefinition: WeshCommandDefinition = {
             mode: append ? 'append' : 'truncate',
           });
           switch (writerResult.kind) {
-          case 'writer':
-            outputs.push({ kind: 'writer', path: file, writer: writerResult.writer });
+          case 'writer': {
+            const output = { kind: 'writer', path: file, writer: writerResult.writer } as const;
+            outputs.push(output);
+            if (appendOutputIdentity !== undefined) appendOutputsByPath.set(appendOutputIdentity, output);
             break;
+          }
           case 'fallback_required': {
             const handle = await context.files.open({
               path: fullPath,
@@ -162,7 +196,9 @@ export const teeCommandDefinition: WeshCommandDefinition = {
                 append: append ? 'append' : 'preserve',
               },
             });
-            outputs.push({ kind: 'handle', path: file, handle });
+            const output = { kind: 'handle', path: file, handle } as const;
+            outputs.push(output);
+            if (appendOutputIdentity !== undefined) appendOutputsByPath.set(appendOutputIdentity, output);
             break;
           }
           default: {
@@ -180,7 +216,9 @@ export const teeCommandDefinition: WeshCommandDefinition = {
               append: append ? 'append' : 'preserve',
             },
           });
-          outputs.push({ kind: 'handle', path: file, handle });
+          const output = { kind: 'handle', path: file, handle } as const;
+          outputs.push(output);
+          if (appendOutputIdentity !== undefined) appendOutputsByPath.set(appendOutputIdentity, output);
         }
       } catch (error: unknown) {
         exitCode = 1;
@@ -191,34 +229,41 @@ export const teeCommandDefinition: WeshCommandDefinition = {
       }
     }
 
+    const writeInputBlock = async ({
+      buffer,
+    }: {
+      buffer: Uint8Array,
+    }): Promise<void> => {
+      try {
+        await writeAll({ handle: context.stdout, buffer });
+      } catch {
+        exitCode = 1;
+      }
+
+      for (const output of outputs) {
+        try {
+          await writeTeeOutput({ output, buffer });
+        } catch (error: unknown) {
+          exitCode = 1;
+          const message = error instanceof Error ? error.message : String(error);
+          await context.text().error({
+            text: `tee: ${output.path}: ${message}\n`,
+          });
+        }
+      }
+    };
+
     const stdinStream = openHandleReadStream({ handle: context.stdin });
     const reader = stdinStream.getReader();
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
-        try {
-          await writeAll({ handle: context.stdout, buffer: value });
-        } catch {
-          exitCode = 1;
-        }
-
-        for (const output of outputs) {
-          try {
-            await writeTeeOutput({ output, buffer: value });
-          } catch (error: unknown) {
-            exitCode = 1;
-            const message = error instanceof Error ? error.message : String(error);
-            await context.text().error({
-              text: `tee: ${output.path}: ${message}\n`,
-            });
-          }
-        }
+        await writeInputBlock({ buffer: value });
       }
     } finally {
       reader.releaseLock();
-      await Promise.all(outputs.map(async (output) => {
+      await Promise.all([...new Set(outputs)].map(async (output) => {
         switch (output.kind) {
         case 'handle':
           await closeHandle({ handle: output.handle });

@@ -1,9 +1,13 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { canonicalizeExistingPath } from '@/features/wesh/path';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
 const pwdArgvSpec: StandardArgvParserSpec = {
   options: [
+    { kind: 'flag', short: 'L', long: 'logical', effects: [{ key: 'mode', value: 'logical' }], help: { summary: 'use the logical current directory' } },
+    { kind: 'flag', short: 'P', long: 'physical', effects: [{ key: 'mode', value: 'physical' }], help: { summary: 'avoid symbolic links in the current directory' } },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit' } },
   ],
   allowShortFlagBundles: true,
@@ -16,11 +20,14 @@ export const pwdCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'pwd',
     description: 'Print name of current/working directory',
-    usage: 'pwd',
+    usage: 'pwd [-LP]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardOptionParsingAtFirstPositional({
+        args: context.args,
+        spec: pwdArgvSpec,
+      }),
       spec: pwdArgvSpec,
     });
 
@@ -44,18 +51,29 @@ export const pwdCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
-    if (parsed.positionals.length > 0) {
-      await writeCommandUsageError({
-        context,
-        command: 'pwd',
-        message: 'pwd: too many arguments',
-        argvSpec: pwdArgvSpec,
-      });
+    const pathMode = (parsed.optionValues.mode ?? 'logical') as 'logical' | 'physical';
+    const text = context.text();
+    let path: string;
+    try {
+      path = await (async (): Promise<string> => {
+        switch (pathMode) {
+        case 'logical':
+          return context.cwd;
+        case 'physical':
+          return canonicalizeExistingPath({ context, path: context.cwd });
+        default: {
+          const _ex: never = pathMode;
+          throw new Error(`Unhandled pwd path mode: ${_ex}`);
+        }
+        }
+      })();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      await text.error({ text: `pwd: ${message}\n` });
       return { exitCode: 1 };
     }
 
-    const text = context.text();
-    await text.print({ text: context.cwd + '\n' });
+    await text.print({ text: path + '\n' });
     return { exitCode: 0 };
   },
 };

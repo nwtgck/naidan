@@ -196,6 +196,82 @@ beta
     expect(pattern.result.exitCode).toBe(0);
   });
 
+  it('treats carriage return as ordinary data in pattern numbering', async () => {
+    const result = await execute({
+      script: 'nl -bp.',
+      stdinBytes: Uint8Array.from([0x0d, 0x0a]),
+    });
+
+    expect(result.stdout.buffer).toEqual(
+      Uint8Array.from([0x20, 0x20, 0x20, 0x20, 0x20, 0x31, 0x09, 0x0d, 0x0a]),
+    );
+    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('does not treat malformed UTF-8 bytes as characters in a UTF-8 locale', async () => {
+    const anchored = await execute({
+      script: String.raw`LC_ALL=C.utf8 nl -bp'^..$'`,
+      stdinBytes: Uint8Array.from([0x41, 0xff, 0x0a]),
+    });
+    const dot = await execute({
+      script: String.raw`LC_ALL=C.utf8 nl -bp.`,
+      stdinBytes: Uint8Array.from([0x80]),
+    });
+    const byteLocale = await execute({
+      script: String.raw`LC_ALL=C nl -bp'^..$'`,
+      stdinBytes: Uint8Array.from([0x41, 0xff, 0x0a]),
+    });
+
+    expect(anchored.stdout.buffer).toEqual(
+      Uint8Array.from([0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x41, 0xff, 0x0a]),
+    );
+    expect(dot.stdout.buffer).toEqual(
+      Uint8Array.from([0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x80, 0x0a]),
+    );
+    expect(byteLocale.stdout.buffer).toEqual(
+      Uint8Array.from([0x20, 0x20, 0x20, 0x20, 0x20, 0x31, 0x09, 0x41, 0xff, 0x0a]),
+    );
+    for (const result of [anchored, dot, byteLocale]) {
+      expect(result.stderr.text).toBe('');
+      expect(result.result.exitCode).toBe(0);
+    }
+  });
+
+  it('keeps UTF-8 byte-order marks visible to pattern numbering', async () => {
+    const ascii = await execute({
+      script: "nl -bp'^alpha'",
+      stdinText: `\
+\uFEFFalpha
+beta
+`,
+    });
+    const literalBom = await execute({
+      script: "nl -bp'^\uFEFFalpha'",
+      stdinText: `\
+\uFEFFalpha
+beta
+`,
+    });
+
+    expect(ascii.stdout.text).toBe(expandVisibleSpaces({
+      text: `\
+       \uFEFFalpha
+       beta
+`,
+    }));
+    expect(literalBom.stdout.text).toBe(expandVisibleSpaces({
+      text: `\
+     1\t\uFEFFalpha
+       beta
+`,
+    }));
+    for (const outcome of [ascii, literalBom]) {
+      expect(outcome.stderr.text).toBe('');
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
   it('supports number formatting, width, separator, start, and increment options', async () => {
     const input = `\
 a
@@ -220,6 +296,24 @@ c
     expect(zero.stderr.text).toBe('');
     expect(left.result.exitCode).toBe(0);
     expect(zero.result.exitCode).toBe(0);
+  });
+
+
+  it('accepts leading C-locale whitespace in numeric options', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: "nl -ba -w ' 2' -v '\t3' -i '\v2'",
+      stdinText: `\
+a
+b
+`,
+    });
+
+    expect(stdout.text).toBe(`\
+ 3\ta
+ 5\tb
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('groups blank lines with join-blank-lines', async () => {
@@ -368,6 +462,7 @@ body
     const invalidOption = await execute({ script: 'nl -z' });
     const invalidStyle = await execute({ script: 'nl -bx' });
     const invalidWidth = await execute({ script: 'nl -w0' });
+    const excessiveWidth = await execute({ script: 'nl -w1000001' });
     const invalidRegex = await execute({ script: "nl -bp'['" });
 
     expect(help.stdout.text).toContain('Number lines of files');
@@ -389,9 +484,75 @@ body
     expect(invalidWidth.stderr.text).toContain("nl: invalid line number field width: '0'");
     expect(invalidWidth.result.exitCode).toBe(1);
 
+    expect(excessiveWidth.stdout.text).toBe('');
+    expect(excessiveWidth.stderr.text).toContain('nl: line number field width exceeds safety limit 1000000');
+    expect(excessiveWidth.result.exitCode).toBe(1);
+
     expect(invalidRegex.stdout.text).toBe('');
     expect(invalidRegex.stderr.text).toContain('nl: invalid regular expression');
     expect(invalidRegex.result.exitCode).toBe(1);
+  });
+
+  it('matches GNU nl help ordering around unknown and invalid options', async () => {
+    const helpThenUnknown = await execute({ script: 'nl --help --bogus' });
+    const unknownThenHelp = await execute({ script: 'nl --bogus --help' });
+    const invalidWidthThenHelp = await execute({ script: 'nl -w nope --help' });
+    const helpThenInvalidWidth = await execute({ script: 'nl --help -w nope' });
+    const doubleDash = await execute({ script: 'nl -- --help --bogus' });
+
+    expect(helpThenUnknown.stdout.text).toContain('Number lines of files');
+    expect(helpThenUnknown.stderr.text).toBe('');
+    expect(helpThenUnknown.result.exitCode).toBe(0);
+
+    expect(unknownThenHelp.stdout.text).toContain('Number lines of files');
+    expect(unknownThenHelp.stderr.text).toContain("nl: unrecognized option '--bogus'");
+    expect(unknownThenHelp.stderr.text).not.toContain('usage: nl [OPTION]... [FILE]...');
+    expect(unknownThenHelp.result.exitCode).toBe(0);
+
+    expect(invalidWidthThenHelp.stdout.text).toBe('');
+    expect(invalidWidthThenHelp.stderr.text).toContain("nl: invalid line number field width: 'nope'");
+    expect(invalidWidthThenHelp.result.exitCode).toBe(1);
+
+    expect(helpThenInvalidWidth.stdout.text).toContain('Number lines of files');
+    expect(helpThenInvalidWidth.stderr.text).toBe('');
+    expect(helpThenInvalidWidth.result.exitCode).toBe(0);
+
+    expect(doubleDash.stdout.text).toBe('');
+    expect(doubleDash.stderr.text).toContain('nl: --help:');
+    expect(doubleDash.stderr.text).toContain('nl: --bogus:');
+    expect(doubleDash.result.exitCode).toBe(1);
+
+    const semanticThenUnknown = await execute({ script: 'nl -b bad --bogus --help' });
+    const unknownThenSemantic = await execute({ script: 'nl --bogus -b bad --help' });
+    expect(semanticThenUnknown.stderr.text.indexOf('invalid body numbering style'))
+      .toBeLessThan(semanticThenUnknown.stderr.text.indexOf("unrecognized option '--bogus'"));
+    expect(unknownThenSemantic.stderr.text.indexOf("unrecognized option '--bogus'"))
+      .toBeLessThan(unknownThenSemantic.stderr.text.indexOf('invalid body numbering style'));
+    expect(semanticThenUnknown.result.exitCode).toBe(0);
+    expect(unknownThenSemantic.result.exitCode).toBe(0);
+  });
+
+  it('preserves GNU semantic diagnostics that precede a later --help', async () => {
+    const invalidFormat = await execute({ script: 'nl -n bad --help' });
+    const invalidBody = await execute({ script: 'nl -b bad --help' });
+    const invalidFooter = await execute({ script: 'nl -f bad --help' });
+    const invalidHeader = await execute({ script: 'nl -h bad --help' });
+    const invalidRegex = await execute({ script: "nl -b 'p[' --help" });
+    const helpFirst = await execute({ script: 'nl --help -b bad' });
+
+    for (const execution of [invalidFormat, invalidBody, invalidFooter, invalidHeader]) {
+      expect(execution.result.exitCode).toBe(0);
+      expect(execution.stdout.text).toContain('Number lines of files');
+      expect(execution.stderr.text).not.toBe('');
+    }
+
+    expect(invalidRegex.result.exitCode).toBe(1);
+    expect(invalidRegex.stdout.text).toBe('');
+    expect(invalidRegex.stderr.text).toContain('invalid regular expression');
+
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(helpFirst.stdout.text).toContain('Number lines of files');
+    expect(helpFirst.stderr.text).toBe('');
   });
 
   it('is available through the standard command registry paths', async () => {
@@ -419,4 +580,115 @@ alpha
     expect(helpLookup.stderr.text).toBe('');
     expect(helpLookup.result.exitCode).toBe(0);
   });
+
+  it('uses GNU basic regular expressions for pattern numbering styles', async () => {
+    const input = `\
+123
+abc
+abab
+${' '}
+`;
+    const digits = await execute({
+      script: String.raw`nl -bp'[[:digit:]]\+'`,
+      stdinText: input,
+    });
+    const backreference = await execute({
+      script: String.raw`nl -bp'^\(ab\)\1$'`,
+      stdinText: input,
+    });
+
+    expect(digits.stdout.text).toBe(expandVisibleSpaces({
+      text: `\
+     1\t123
+       abc
+       abab
+·······${' '}
+`,
+    }));
+    expect(backreference.stdout.text).toBe(expandVisibleSpaces({
+      text: `\
+       123
+       abc
+     1\tabab
+·······${' '}
+`,
+    }));
+    for (const outcome of [digits, backreference]) {
+      expect(outcome.stderr.text).toBe('');
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it('uses BRE anchor context and leading closing brackets in pattern styles', async () => {
+    const input = `\
+a^b
+a$b
+a
+]
+b
+`;
+    const caret = await execute({ script: String.raw`nl -bp'a^b'`, stdinText: input });
+    const dollar = await execute({ script: String.raw`nl -bp'a$b'`, stdinText: input });
+    const bracket = await execute({ script: String.raw`nl -bp'[]a]'`, stdinText: input });
+
+    expect(caret.stdout.text).toContain('     1\ta^b\n');
+    expect(caret.stdout.text).not.toContain('     1\ta$b\n');
+    expect(dollar.stdout.text).toContain('     1\ta$b\n');
+    expect(dollar.stdout.text).not.toContain('     1\ta^b\n');
+    expect(bracket.stdout.text).toContain('     1\ta^b\n');
+    expect(bracket.stdout.text).toContain('     2\ta$b\n');
+    expect(bracket.stdout.text).toContain('     3\ta\n');
+    expect(bracket.stdout.text).toContain('     4\t]\n');
+    for (const outcome of [caret, dollar, bracket]) {
+      expect(outcome.stderr.text).toBe('');
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it('uses locale-sensitive POSIX character classes in numbering styles', async () => {
+    const cLocale = await execute({
+      script: "LC_ALL=C nl -bp'[[:alpha:]]'",
+      stdinText: `\
+é
+1
+`,
+    });
+    const utf8Locale = await execute({
+      script: "LC_ALL=C.utf8 nl -bp'[[:alpha:]]'",
+      stdinText: `\
+é
+1
+`,
+    });
+
+    expect(cLocale.stdout.text).toBe(expandVisibleSpaces({
+      text: `\
+       é
+       1
+`,
+    }));
+    expect(cLocale.stderr.text).toBe('');
+    expect(cLocale.result.exitCode).toBe(0);
+    expect(utf8Locale.stdout.text).toBe(expandVisibleSpaces({
+      text: `\
+     1\té
+       1
+`,
+    }));
+    expect(utf8Locale.stderr.text).toBe('');
+    expect(utf8Locale.result.exitCode).toBe(0);
+  });
+
+  it('keeps blank-line grouping state across logical page delimiters and unnumbered sections', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'nl -ba -l2 -w1 -s"|"',
+      stdinText: ['', '\\:', 'text', '\\:\\:', '', ''].join('\n'),
+    });
+
+    expect(stdout.text).toBe(['  ', '', '  text', '', '1|', ''].join('\n'));
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+
 });

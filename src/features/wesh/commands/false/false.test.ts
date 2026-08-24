@@ -33,17 +33,17 @@ describe('wesh false', () => {
     return { result, stdout, stderr };
   }
 
-  it('prints help and ignores extra arguments', async () => {
-    const help = await execute({ script: 'false --help' });
-    const ignored = await execute({ script: 'false anything goes' });
-
-    expect(help.stdout.text).toContain('Do nothing unsuccessfully');
-    expect(help.stdout.text).toContain('usage: false [arguments...]');
-    expect(help.stderr.text).toBe('');
-    expect(help.result.exitCode).toBe(0);
-
-    expect(ignored.stdout.text).toBe('');
-    expect(ignored.stderr.text).toBe('');
-    expect(ignored.result.exitCode).toBe(1);
+  it('ignores all arguments, including option-looking arguments', async () => {
+    for (const script of [
+      'false',
+      'false --help',
+      'false --version x',
+      'false -x anything',
+    ]) {
+      const execution = await execute({ script });
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).toBe('');
+      expect(execution.result.exitCode).toBe(1);
+    }
   });
 });

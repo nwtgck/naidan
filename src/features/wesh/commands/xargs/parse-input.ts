@@ -19,8 +19,10 @@ function finalizeToken({
 
 export function parseXargsStandardInput({
   text,
+  literalNewlines = false,
 }: {
   text: string,
+  literalNewlines?: boolean,
 }): { ok: true, items: string[] } | { ok: false, message: string } {
   const items: string[] = [];
   let current = '';
@@ -65,6 +67,11 @@ export function parseXargsStandardInput({
     case '\t':
     case '\n':
     case '\r': {
+      if (literalNewlines && (char === '\n' || char === '\r')) {
+        current += char;
+        tokenStarted = true;
+        break;
+      }
       const result = finalizeToken({
         tokens: items,
         current,
@@ -79,10 +86,6 @@ export function parseXargsStandardInput({
       tokenStarted = true;
       break;
     }
-  }
-
-  if (escaping) {
-    return { ok: false, message: 'xargs: unmatched backslash in input' };
   }
 
   if (quote !== undefined) {
@@ -207,6 +210,14 @@ export function parseXargsDelimitedInput({
   };
 }
 
+export function isXargsLogicalBlankLine({
+  text,
+}: {
+  text: string,
+}): boolean {
+  return /^[\t\v\f\r ]*$/u.test(text);
+}
+
 export function parseXargsLineInput({
   text,
 }: {
@@ -228,7 +239,7 @@ export function parseXargsLineInput({
     }
 
     continuedLine = '';
-    if (normalizedLine.trim().length === 0) continue;
+    if (isXargsLogicalBlankLine({ text: normalizedLine })) continue;
 
     const parsed = parseXargsStandardInput({ text: normalizedLine });
     if (!parsed.ok) return parsed;
@@ -252,64 +263,62 @@ export function parseXargsInsertInput({
 }: {
   text: string,
 }): { ok: true, items: string[] } | { ok: false, message: string } {
-  const lines = text.split('\n');
-  const items: string[] = [];
+  const normalized = text.replace(/^[ \t]+/, '');
+  if (normalized.length === 0) return { ok: true, items: [] };
 
-  for (const rawLine of lines) {
-    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
-    const normalized = line.replace(/^[ \t]+/, '');
-    if (normalized.length === 0) continue;
-    let current = '';
-    let quote: '"' | '\'' | undefined;
-    let escaping = false;
+  let current = '';
+  let quote: '"' | '\'' | undefined;
+  let escaping = false;
 
-    for (let index = 0; index < normalized.length; index += 1) {
-      const char = normalized[index];
-      if (char === undefined) break;
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index];
+    if (char === undefined) break;
 
-      if (escaping) {
-        current += char;
-        escaping = false;
-        continue;
-      }
-
-      if (quote !== undefined) {
-        if (char === quote) {
-          quote = undefined;
-        } else if (char === '\\' && quote === '"') {
-          escaping = true;
-        } else {
-          current += char;
-        }
-        continue;
-      }
-
-      switch (char) {
-      case '\\':
-        escaping = true;
-        break;
-      case '"':
-      case '\'':
-        quote = char;
-        break;
-      default:
-        current += char;
-        break;
-      }
+    if (char === '\0') {
+      current += char;
+      return { ok: true, items: [current] };
     }
 
     if (escaping) {
-      return { ok: false, message: 'xargs: unmatched backslash in input' };
+      current += char;
+      escaping = false;
+      continue;
     }
 
     if (quote !== undefined) {
-      return { ok: false, message: 'xargs: unmatched quote in input' };
+      if (char === quote) {
+        quote = undefined;
+      } else if (char === '\\' && quote === '"') {
+        escaping = true;
+      } else {
+        current += char;
+      }
+      continue;
     }
 
-    items.push(current);
+    switch (char) {
+    case '\\':
+      escaping = true;
+      break;
+    case '"':
+    case '\'':
+      quote = char;
+      break;
+    default:
+      current += char;
+      break;
+    }
   }
 
-  return { ok: true, items };
+  if (escaping) {
+    return { ok: false, message: 'xargs: unmatched backslash in input' };
+  }
+
+  if (quote !== undefined) {
+    return { ok: false, message: 'xargs: unmatched quote in input' };
+  }
+
+  return { ok: true, items: [current] };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

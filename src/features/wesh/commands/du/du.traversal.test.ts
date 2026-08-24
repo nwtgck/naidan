@@ -202,6 +202,32 @@ describe('wesh du traversal', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('preserves a BOM at the start of every NUL-terminated pathname', async () => {
+    await writeDuTestFile({
+      rootHandle: testContext.rootHandle,
+      path: 'a.txt',
+      data: 'a',
+    });
+    await writeDuTestFile({
+      rootHandle: testContext.rootHandle,
+      path: '\uFEFFb.txt',
+      data: 'bb',
+    });
+
+    const { result, stdout, stderr } = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du -b --files0-from=-',
+      stdin: 'a.txt\0\uFEFFb.txt\0',
+    });
+
+    expect(stdout.text).toBe(`\
+1\ta.txt
+2\t\uFEFFb.txt
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('reports empty records from --files0-from and continues', async () => {
     await writeDuTestFile({
       rootHandle: testContext.rootHandle,

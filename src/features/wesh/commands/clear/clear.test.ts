@@ -33,12 +33,20 @@ describe('wesh clear', () => {
     return { result, stdout, stderr };
   }
 
-  it('prints the escape sequence', async () => {
+  it('clears the screen and optionally preserves scrollback', async () => {
     const normal = await execute({ script: 'clear' });
+    const keepScrollback = await execute({ script: 'clear -x' });
+    const repeated = await execute({ script: 'clear -xx' });
 
-    expect(normal.stdout.text).toBe('\x1b[2J\x1b[H');
+    expect(normal.stdout.text).toBe('\x1b[H\x1b[2J\x1b[3J');
+    expect(keepScrollback.stdout.text).toBe('\x1b[H\x1b[2J');
+    expect(repeated.stdout.text).toBe('\x1b[H\x1b[2J');
     expect(normal.stderr.text).toBe('');
+    expect(keepScrollback.stderr.text).toBe('');
+    expect(repeated.stderr.text).toBe('');
     expect(normal.result.exitCode).toBe(0);
+    expect(keepScrollback.result.exitCode).toBe(0);
+    expect(repeated.result.exitCode).toBe(0);
   });
 
   it('prints help and rejects extra operands and invalid options', async () => {

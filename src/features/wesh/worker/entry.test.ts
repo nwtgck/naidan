@@ -144,7 +144,7 @@ describe('wesh.worker', () => {
       },
     });
 
-    expect(response.exitCode).toBe(1);
+    expect(response.exitCode).toBe(2);
   });
 
   it('can read naidan sysfs metadata through a local remote reader', async () => {

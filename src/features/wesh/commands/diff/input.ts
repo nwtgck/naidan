@@ -1,11 +1,12 @@
+import { decodeCommandDataBytes, decodeCommandDataBytesAsSingleByte } from '@/features/wesh/commands/_shared/data-codec';
+import type { WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { resolvePath } from '@/features/wesh/path';
-import type { WeshCommandContext, WeshFileHandle, WeshStat } from '@/features/wesh/types';
-import { readAllFileBytes } from '@/features/wesh/utils/fs';
+import type { WeshCommandContext, WeshStat } from '@/features/wesh/types';
+import { readAllFileBytes, readAllHandleBytes } from '@/features/wesh/utils/fs';
 import type { DiffComparisonOptions, DiffInput, DiffLineTable } from './model';
 
 const MAX_TYPED_ARRAY_INDEX = 0xFFFF_FFFF;
 const BINARY_PROBE_BYTE_COUNT = 32 * 1024;
-const STREAM_READ_CHUNK_SIZE = 64 * 1024;
 
 function countLines({ bytes }: { bytes: Uint8Array }): number {
   if (bytes.byteLength === 0) {
@@ -78,30 +79,6 @@ export function createDiffInput({
     mtime,
     lines: createLineTable({ bytes }),
   };
-}
-
-async function readAllHandleBytes({ handle }: { handle: WeshFileHandle }): Promise<Uint8Array> {
-  const chunks: Uint8Array[] = [];
-  let totalLength = 0;
-
-  while (true) {
-    const buffer = new Uint8Array(STREAM_READ_CHUNK_SIZE);
-    const { bytesRead } = await handle.read({ buffer });
-    if (bytesRead === 0) {
-      break;
-    }
-    const chunk = buffer.slice(0, bytesRead);
-    chunks.push(chunk);
-    totalLength += chunk.byteLength;
-  }
-
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return result;
 }
 
 export async function readStdinBytes({ context }: { context: WeshCommandContext }): Promise<Uint8Array> {
@@ -345,6 +322,30 @@ export function createLineComparator({
   };
 }
 
+export function decodeLineForPattern({
+  input,
+  lineIndex,
+  stripTrailingCarriageReturn,
+  characterLocaleMode,
+}: {
+  input: DiffInput,
+  lineIndex: number,
+  stripTrailingCarriageReturn: boolean,
+  characterLocaleMode: WeshCharacterLocaleMode,
+}): string {
+  const bytes = getLineBytes({ input, lineIndex, stripTrailingCarriageReturn });
+  switch (characterLocaleMode) {
+  case 'ascii':
+    return decodeCommandDataBytesAsSingleByte({ bytes });
+  case 'unicode':
+    return decodeCommandDataBytes({ bytes });
+  default: {
+    const _ex: never = characterLocaleMode;
+    throw new Error(`Unhandled character locale mode: ${_ex}`);
+  }
+  }
+}
+
 export function decodeLine({
   input,
   lineIndex,
@@ -354,7 +355,9 @@ export function decodeLine({
   lineIndex: number,
   stripTrailingCarriageReturn: boolean,
 }): string {
-  return new TextDecoder().decode(getLineBytes({ input, lineIndex, stripTrailingCarriageReturn }));
+  return new TextDecoder('utf-8', { ignoreBOM: true }).decode(
+    getLineBytes({ input, lineIndex, stripTrailingCarriageReturn }),
+  );
 }
 
 export function isBlankLine({

@@ -275,7 +275,7 @@ for file in /mounted/**/*.xml; do echo "$file"; done`,
     expect(stderr.text).toContain('ls: /mounted/*.json:');
     expect(stderr.text).toContain("*.json");
     expect(stderr.text).not.toContain("getDirectoryHandle");
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
   });
 
   it('supports nullglob, failglob, and dotglob options', async () => {

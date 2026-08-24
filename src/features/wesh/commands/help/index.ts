@@ -1,6 +1,7 @@
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { parseStandardArgv } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
 const helpArgvSpec: StandardArgvParserSpec = {
@@ -27,7 +28,10 @@ export const helpCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardOptionParsingAtFirstPositional({
+        args: context.args,
+        spec: helpArgvSpec,
+      }),
       spec: helpArgvSpec,
     });
 
@@ -61,20 +65,11 @@ export const helpCommandDefinition: WeshCommandDefinition = {
         return { exitCode: 1 };
       }
 
-      return context.executeCommand({
+      await writeCommandHelp({
+        context,
         command: target,
-        args: (() => {
-          switch (target) {
-          case '[':
-            return ['--help', ']'];
-          default:
-            return ['--help'];
-          }
-        })(),
-        stdin: context.stdin,
-        stdout: context.stdout,
-        stderr: context.stderr,
       });
+      return { exitCode: 0 };
     }
 
     await text.print({ text: 'Available commands:\n' });

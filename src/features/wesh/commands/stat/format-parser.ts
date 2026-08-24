@@ -21,6 +21,8 @@ export interface StatFormatDirectiveToken {
   alignment: 'left' | 'right',
   padding: 'space' | 'zero',
   alternateForm: 'enabled' | 'disabled',
+  sign: 'none' | 'plus' | 'space',
+  grouping: 'enabled' | 'disabled',
   width: number | undefined,
   precision: number | undefined,
 }
@@ -44,17 +46,20 @@ export interface CompiledStatFormat {
 
 const MAX_FORMAT_LENGTH = 1_000_000;
 const MAX_FORMAT_FIELD_SIZE = 1_000_000;
-const printfByteEscapes: Readonly<Record<string, number>> = {
-  '\\': 0x5c,
-  a: 0x07,
-  b: 0x08,
-  e: 0x1b,
-  f: 0x0c,
-  n: 0x0a,
-  r: 0x0d,
-  t: 0x09,
-  v: 0x0b,
-};
+function decodePrintfByteEscape({ escaped }: { escaped: string }): number | undefined {
+  switch (escaped) {
+  case '\\': return 0x5c;
+  case 'a': return 0x07;
+  case 'b': return 0x08;
+  case 'e': return 0x1b;
+  case 'f': return 0x0c;
+  case 'n': return 0x0a;
+  case 'r': return 0x0d;
+  case 't': return 0x09;
+  case 'v': return 0x0b;
+  default: return undefined;
+  }
+}
 
 const unavailableSingleDirectives = new Set([
   'b', 'B', 'C', 'd', 'D', 'G', 'h', 'm', 'o', 'r', 'R', 't', 'T', 'U', 'x', 'X', 'z', 'Z',
@@ -99,7 +104,7 @@ function parsePrintfEscape({
     };
   }
 
-  const escapedByte = printfByteEscapes[next];
+  const escapedByte = decodePrintfByteEscape({ escaped: next });
   if (escapedByte !== undefined) {
     return {
       nextIndex: index + 2,
@@ -315,6 +320,8 @@ export function compileStatFormat({
     let alignment: StatFormatDirectiveToken['alignment'] = 'right';
     let padding: StatFormatDirectiveToken['padding'] = 'space';
     let alternateForm: StatFormatDirectiveToken['alternateForm'] = 'disabled';
+    let sign: StatFormatDirectiveToken['sign'] = 'none';
+    let grouping: StatFormatDirectiveToken['grouping'] = 'disabled';
     let cursor = index + 1;
 
     while (cursor < format.length) {
@@ -334,11 +341,31 @@ export function compileStatFormat({
         cursor += 1;
         continue;
       }
-      if (flag === '+' || flag === ' ' || flag === "'") {
-        return {
-          ok: false,
-          message: `stat: unsupported format flag '${flag}'`,
-        };
+      if (flag === '+') {
+        sign = 'plus';
+        cursor += 1;
+        continue;
+      }
+      if (flag === ' ') {
+        switch (sign) {
+        case 'none':
+          sign = 'space';
+          break;
+        case 'plus':
+        case 'space':
+          break;
+        default: {
+          const _ex: never = sign;
+          throw new Error(`Unhandled stat sign flag: ${_ex}`);
+        }
+        }
+        cursor += 1;
+        continue;
+      }
+      if (flag === "'") {
+        grouping = 'enabled';
+        cursor += 1;
+        continue;
       }
       break;
     }
@@ -391,23 +418,6 @@ export function compileStatFormat({
     }
 
     const directive = resolveDirective({ code });
-    if (precision !== undefined && directive !== 'modify-time-seconds') {
-      return {
-        ok: false,
-        message: "stat: precision is only supported for '%Y' in Wesh",
-      };
-    }
-    if (
-      alternateForm === 'enabled'
-      && directive !== 'permissions-octal'
-      && directive !== 'raw-mode'
-    ) {
-      return {
-        ok: false,
-        message: "stat: alternate form is only supported for '%a' and '%f' in Wesh",
-      };
-    }
-
     let width: number | undefined;
     if (widthText.length > 0) {
       const parsedWidth = parseBoundedInteger({
@@ -449,6 +459,8 @@ export function compileStatFormat({
       alignment,
       padding,
       alternateForm,
+      sign,
+      grouping,
       width,
       precision,
     });

@@ -1,7 +1,58 @@
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { basenamePath } from '@/features/wesh/commands/_shared/path';
+
+function splitBasenameArguments({
+  args,
+}: {
+  args: string[],
+}): {
+  optionArguments: string[],
+  positionalArguments: string[],
+} {
+  let index = 0;
+
+  while (index < args.length) {
+    const token = args[index];
+    if (token === undefined) break;
+
+    if (token === '--') {
+      return {
+        optionArguments: args.slice(0, index),
+        positionalArguments: args.slice(index + 1),
+      };
+    }
+
+    if (token === '-' || !token.startsWith('-')) break;
+
+    if (token === '--suffix') {
+      index += Math.min(2, args.length - index);
+      continue;
+    }
+
+    if (token.startsWith('--suffix=')) {
+      index += 1;
+      continue;
+    }
+
+    if (token.startsWith('-') && !token.startsWith('--')) {
+      const suffixOptionIndex = token.slice(1).indexOf('s');
+      if (suffixOptionIndex >= 0 && suffixOptionIndex === token.length - 2) {
+        index += Math.min(2, args.length - index);
+        continue;
+      }
+    }
+
+    index += 1;
+  }
+
+  return {
+    optionArguments: args.slice(0, index),
+    positionalArguments: args.slice(index),
+  };
+}
 
 const basenameArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -23,10 +74,16 @@ export const basenameCommandDefinition: WeshCommandDefinition = {
     usage: 'basename [OPTION]... NAME...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const splitArguments = splitBasenameArguments({ args: context.args });
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardArgvAtFirstEarlyExit({
+        args: splitArguments.optionArguments,
+        spec: basenameArgvSpec,
+        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+      }),
       spec: basenameArgvSpec,
     });
+    for (const positional of splitArguments.positionalArguments) parsed.positionals.push(positional);
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {

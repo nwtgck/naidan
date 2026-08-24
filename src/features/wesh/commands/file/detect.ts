@@ -1,8 +1,22 @@
 import { fileTypeFromBuffer } from 'file-type';
 import type { WeshCommandContext, WeshOpenFlags } from '@/features/wesh/types';
-import type { FileCommandClassification, FileCommandTargetInfo } from './types';
+import type {
+  FileCommandClassification,
+  FileCommandLineTerminator,
+  FileCommandScriptLanguage,
+  FileCommandTargetInfo,
+  FileCommandTextDetails,
+  FileCommandTextEncoding,
+} from './types';
 
 const FILE_SAMPLE_BYTES = 64 * 1024;
+const VERY_LONG_LINE_THRESHOLD = 4096;
+
+type DecodedText = {
+  text: string,
+  encoding: FileCommandTextEncoding,
+  hasByteOrderMark: boolean,
+};
 
 function resolvePath({
   cwd,
@@ -14,18 +28,41 @@ function resolvePath({
   return path.startsWith('/') ? path : `${cwd}/${path}`;
 }
 
-function isAsciiText({
+function isAsciiEncoded({
   bytes,
 }: {
   bytes: Uint8Array,
 }): boolean {
   for (const byte of bytes) {
-    if (byte === 9 || byte === 10 || byte === 13) {
-      continue;
-    }
-    if (byte < 32 || byte > 126) {
-      return false;
-    }
+    if (byte > 0x7F) return false;
+  }
+  return true;
+}
+
+function isAllowedTextCharacter({
+  codePoint,
+}: {
+  codePoint: number,
+}): boolean {
+  if (codePoint >= 0x20 && codePoint !== 0x7F) return true;
+  return codePoint === 0x07
+    || codePoint === 0x08
+    || codePoint === 0x09
+    || codePoint === 0x0A
+    || codePoint === 0x0B
+    || codePoint === 0x0C
+    || codePoint === 0x0D
+    || codePoint === 0x1B;
+}
+
+function isTextLike({
+  text,
+}: {
+  text: string,
+}): boolean {
+  for (const character of text) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined || !isAllowedTextCharacter({ codePoint })) return false;
   }
   return true;
 }
@@ -50,11 +87,19 @@ function decodeUtf8({
 }: {
   bytes: Uint8Array,
   complete: boolean,
-}): string | undefined {
+}): DecodedText | undefined {
   try {
     const decoder = new TextDecoder('utf-8', { fatal: true });
     const text = decoder.decode(bytes, { stream: !complete });
-    return complete ? text : text;
+    const hasByteOrderMark = bytes.length >= 3
+      && bytes[0] === 0xEF
+      && bytes[1] === 0xBB
+      && bytes[2] === 0xBF;
+    return {
+      text,
+      encoding: isAsciiEncoded({ bytes }) ? 'us-ascii' : 'utf-8',
+      hasByteOrderMark,
+    };
   } catch {
     return undefined;
   }
@@ -64,13 +109,17 @@ function decodeUtf16({
   bytes,
 }: {
   bytes: Uint8Array,
-}): string | undefined {
+}): DecodedText | undefined {
   if (bytes.length < 2) {
     return undefined;
   }
   if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
     try {
-      return new TextDecoder('utf-16le', { fatal: true }).decode(bytes.subarray(2));
+      return {
+        text: new TextDecoder('utf-16le', { fatal: true }).decode(bytes.subarray(2)),
+        encoding: 'utf-16le',
+        hasByteOrderMark: true,
+      };
     } catch {
       return undefined;
     }
@@ -82,7 +131,11 @@ function decodeUtf16({
       swapped[index - 1] = bytes[index] ?? 0;
     }
     try {
-      return new TextDecoder('utf-16le', { fatal: true }).decode(swapped);
+      return {
+        text: new TextDecoder('utf-16le', { fatal: true }).decode(swapped),
+        encoding: 'utf-16be',
+        hasByteOrderMark: true,
+      };
     } catch {
       return undefined;
     }
@@ -90,53 +143,265 @@ function decodeUtf16({
   return undefined;
 }
 
-function classifyText({
+function decodeText({
   bytes,
   complete,
 }: {
   bytes: Uint8Array,
   complete: boolean,
-}): FileCommandClassification {
-  const text = decodeUtf8({ bytes, complete });
-  if (text === undefined) {
-    const utf16 = decodeUtf16({ bytes });
-    if (utf16 !== undefined) {
-      return { kind: 'utf16_text' };
+}): DecodedText | undefined {
+  return decodeUtf16({ bytes }) ?? decodeUtf8({ bytes, complete });
+}
+
+function decodeSingleByteText({
+  bytes,
+}: {
+  bytes: Uint8Array,
+}): DecodedText | undefined {
+  let hasHighByte = false;
+  let hasNonIsoControlByte = false;
+  let hasOnlyNextLineControl = true;
+  let text = '';
+  const chunkCodeUnits: number[] = [];
+
+  const flush = () => {
+    if (chunkCodeUnits.length === 0) return;
+    text += String.fromCharCode(...chunkCodeUnits);
+    chunkCodeUnits.length = 0;
+  };
+
+  for (const byte of bytes) {
+    if (byte < 0x80) {
+      if (!isAllowedTextCharacter({ codePoint: byte })) return undefined;
+    } else {
+      hasHighByte = true;
+      if (byte >= 0x80 && byte <= 0x9F) {
+        if (byte !== 0x85) {
+          hasNonIsoControlByte = true;
+          hasOnlyNextLineControl = false;
+        }
+      } else {
+        hasOnlyNextLineControl = false;
+      }
     }
-    return { kind: 'data' };
+
+    chunkCodeUnits.push(byte);
+    if (chunkCodeUnits.length === 4096) flush();
   }
+  flush();
 
-  const normalizedText = text.replace(/^\uFEFF/, '');
-  const trimmed = normalizedText.trimStart();
+  if (!hasHighByte) return undefined;
+  return {
+    text,
+    encoding: hasOnlyNextLineControl
+      ? 'us-ascii'
+      : hasNonIsoControlByte
+        ? 'unknown-8bit'
+        : 'iso-8859-1',
+    hasByteOrderMark: false,
+  };
+}
 
-  if (trimmed.startsWith('#!') && /(?:^|\W)(?:sh|bash|dash|ksh|zsh)(?:\W|$)/.test(trimmed)) {
-    return { kind: 'shell_script' };
+function buildTextDetails({
+  decoded,
+}: {
+  decoded: DecodedText,
+}): FileCommandTextDetails {
+  const lines = decoded.text.split(/\r\n|\r|\n/u);
+  const longestLineLength = lines.reduce(
+    (maximum, line) => Math.max(maximum, line.length),
+    0,
+  );
+  const lineTerminators: FileCommandLineTerminator[] = [];
+  if (/\r\n/u.test(decoded.text)) lineTerminators.push('crlf');
+  if (/\r(?!\n)/u.test(decoded.text)) lineTerminators.push('cr');
+  if (/(^|[^\r])\n/u.test(decoded.text)) lineTerminators.push('lf');
+  if (decoded.text.includes('\u0085')) lineTerminators.push('nel');
+  return {
+    encoding: decoded.encoding,
+    hasByteOrderMark: decoded.hasByteOrderMark,
+    veryLongLineLength: longestLineLength >= VERY_LONG_LINE_THRESHOLD
+      ? longestLineLength
+      : undefined,
+    lineTerminators,
+    hasEscapeSequences: decoded.text.includes('\u001B'),
+    hasOverstriking: decoded.text.includes('\b'),
+  };
+}
+
+function shebangInterpreterName({
+  text,
+}: {
+  text: string,
+}): string | undefined {
+  if (!text.startsWith('#!')) return undefined;
+
+  const lineEnd = text.search(/[\r\n]/u);
+  const line = text.slice(2, lineEnd === -1 ? undefined : lineEnd).trim();
+  if (line.length === 0) return undefined;
+
+  const words = line.split(/[\t ]+/u);
+  const executable = words[0];
+  if (executable === undefined) return undefined;
+  const executableName = executable.slice(executable.lastIndexOf('/') + 1);
+  if (executableName !== 'env') return executableName;
+
+  const envCommand = words[1];
+  if (
+    envCommand === undefined
+    || envCommand.startsWith('-')
+    || /^[A-Za-z_][A-Za-z0-9_]*=/u.test(envCommand)
+  ) {
+    return undefined;
+  }
+  return envCommand.slice(envCommand.lastIndexOf('/') + 1);
+}
+
+function classifyScriptLanguage({
+  text,
+}: {
+  text: string,
+}): FileCommandScriptLanguage | undefined {
+  const interpreter = shebangInterpreterName({ text });
+  switch (interpreter) {
+  case 'sh':
+  case 'dash':
+  case 'ksh':
+  case 'zsh':
+    return 'posix_shell';
+  case 'bash':
+    return 'bash';
+  case 'python':
+  case 'python2':
+  case 'python3':
+    return 'python';
+  case 'node':
+  case 'nodejs':
+    return 'node';
+  case undefined:
+    return undefined;
+  default:
+    return undefined;
+  }
+}
+
+function classifyStructuredText({
+  decoded,
+  complete,
+}: {
+  decoded: DecodedText,
+  complete: boolean,
+}): FileCommandClassification | undefined {
+  const normalizedText = decoded.text.replace(/^\uFEFF/u, '');
+  const normalizedLower = normalizedText.toLowerCase();
+  const htmlCandidate = normalizedText.trimStart();
+  const htmlCandidateLower = htmlCandidate.toLowerCase();
+  const text = buildTextDetails({ decoded });
+
+  if (!isTextLike({ text: normalizedText })) return undefined;
+
+  const scriptLanguage = classifyScriptLanguage({ text: normalizedText });
+  if (scriptLanguage !== undefined) {
+    return { kind: 'script', language: scriptLanguage, text };
   }
 
   if (complete) {
     try {
       JSON.parse(normalizedText);
-      return { kind: 'json' };
+      return { kind: 'json', text };
     } catch {
       // Continue with prefix-based text classification.
     }
   }
 
-  if (trimmed.startsWith('<svg') || trimmed.startsWith('<?xml') && trimmed.toLowerCase().includes('<svg')) {
-    return { kind: 'svg' };
+  if (
+    normalizedLower.startsWith('<svg')
+    || normalizedLower.startsWith('<?xml') && normalizedLower.includes('<svg')
+  ) {
+    return { kind: 'svg', text };
   }
-  if (trimmed.startsWith('<?xml') || trimmed.startsWith('<root') || trimmed.startsWith('<note') || trimmed.startsWith('<rss')) {
-    return { kind: 'xml' };
+  if (normalizedLower.startsWith('<?xml')) {
+    const version = /^<\?xml version=["']([^"']+)["']/u.exec(normalizedText)?.[1];
+    return { kind: 'xml', version, text };
   }
-  if (trimmed.toLowerCase().startsWith('<!doctype html') || trimmed.toLowerCase().startsWith('<html')) {
-    return { kind: 'html' };
+  if (htmlCandidateLower.startsWith('<!doctype html') || htmlCandidateLower.startsWith('<html')) {
+    return { kind: 'html', text };
   }
-  if (isAsciiText({ bytes })) {
-    return { kind: 'ascii_text' };
-  }
-  return { kind: 'utf8_text' };
+  return undefined;
 }
 
+async function classifyBytes({
+  bytes,
+  complete,
+  emptySource,
+}: {
+  bytes: Uint8Array,
+  complete: boolean,
+  emptySource: 'file' | 'stdin',
+}): Promise<FileCommandClassification> {
+  if (bytes.length === 0) {
+    return { kind: 'empty', source: emptySource };
+  }
+
+  const decoded = decodeText({ bytes, complete });
+  if (decoded !== undefined) {
+    const structured = classifyStructuredText({ decoded, complete });
+    if (structured !== undefined) {
+      return structured;
+    }
+  }
+
+  if (decoded?.encoding === 'utf-16le' || decoded?.encoding === 'utf-16be') {
+    if (!isTextLike({ text: decoded.text })) return { kind: 'data' };
+    return {
+      kind: 'utf16_text',
+      text: buildTextDetails({ decoded }),
+    };
+  }
+
+  const detected = await fileTypeFromBuffer(bytes);
+  if (detected !== undefined) {
+    return { kind: 'binary', detected };
+  }
+
+  if (isLikelyBinary({ bytes }) || decoded === undefined) {
+    const singleByteText = decodeSingleByteText({ bytes });
+    if (singleByteText === undefined) return { kind: 'data' };
+    const text = buildTextDetails({ decoded: singleByteText });
+    switch (singleByteText.encoding) {
+    case 'us-ascii':
+      return { kind: 'ascii_text', text };
+    case 'iso-8859-1':
+    case 'unknown-8bit':
+      return { kind: 'extended_ascii_text', text };
+    case 'utf-8':
+    case 'utf-16le':
+    case 'utf-16be':
+      throw new Error(`Unexpected single-byte text encoding: ${singleByteText.encoding}`);
+    default: {
+      const _ex: never = singleByteText.encoding;
+      throw new Error(`Unhandled single-byte text encoding: ${_ex}`);
+    }
+    }
+  }
+
+  if (!isTextLike({ text: decoded.text })) return { kind: 'data' };
+
+  const text = buildTextDetails({ decoded });
+  switch (decoded.encoding) {
+  case 'us-ascii':
+    return { kind: 'ascii_text', text };
+  case 'utf-8':
+    return { kind: 'utf8_text', text };
+  case 'iso-8859-1':
+  case 'unknown-8bit':
+    return { kind: 'extended_ascii_text', text };
+  default: {
+    const _ex: never = decoded.encoding;
+    throw new Error(`Unhandled decoded text encoding: ${_ex}`);
+  }
+  }
+}
 
 async function readFileSample({
   context,
@@ -191,27 +456,72 @@ async function readFileSample({
   }
 }
 
+async function readStdinSample({
+  context,
+}: {
+  context: WeshCommandContext,
+}): Promise<{ bytes: Uint8Array, complete: boolean }> {
+  const bytes = new Uint8Array(FILE_SAMPLE_BYTES + 1);
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    const result = await context.stdin.read({
+      buffer: bytes,
+      offset,
+      length: bytes.byteLength - offset,
+    });
+    if (result.bytesRead === 0) {
+      return { bytes: bytes.subarray(0, offset), complete: true };
+    }
+    offset += result.bytesRead;
+  }
+  return {
+    bytes: bytes.subarray(0, FILE_SAMPLE_BYTES),
+    complete: false,
+  };
+}
+
 export async function statFileTarget({
   context,
   path,
+  followSymlinks,
 }: {
   context: WeshCommandContext,
   path: string,
+  followSymlinks: boolean,
 }): Promise<FileCommandTargetInfo> {
   const resolvedPath = resolvePath({
     cwd: context.cwd,
     path,
   });
+  if (followSymlinks) {
+    const resolved = await context.files.resolve({ path: resolvedPath });
+    return {
+      displayPath: path,
+      resolvedPath: resolved.fullPath,
+      fileType: resolved.stat.type,
+      size: resolved.stat.size,
+      symlinkTarget: undefined,
+      symlinkBroken: false,
+    };
+  }
+
   const lstat = await context.files.lstat({ path: resolvedPath });
   switch (lstat.type) {
   case 'symlink': {
     const target = await context.files.readlink({ path: resolvedPath });
+    let symlinkBroken = false;
+    try {
+      await context.files.resolve({ path: resolvedPath });
+    } catch {
+      symlinkBroken = true;
+    }
     return {
       displayPath: path,
       resolvedPath,
       fileType: lstat.type,
       size: lstat.size,
       symlinkTarget: target,
+      symlinkBroken,
     };
   }
   case 'file':
@@ -224,6 +534,7 @@ export async function statFileTarget({
       fileType: lstat.type,
       size: lstat.size,
       symlinkTarget: undefined,
+      symlinkBroken: false,
     };
   default: {
     const _ex: never = lstat.type;
@@ -245,7 +556,11 @@ export async function detectFileClassification({
   case 'fifo':
     return { kind: 'fifo' };
   case 'symlink':
-    return { kind: 'symlink', target: target.symlinkTarget ?? '' };
+    return {
+      kind: 'symlink',
+      target: target.symlinkTarget ?? '',
+      broken: target.symlinkBroken,
+    };
   case 'chardev':
     return { kind: 'data' };
   case 'file':
@@ -256,31 +571,28 @@ export async function detectFileClassification({
   }
   }
 
-  if (target.size === 0) {
-    return { kind: 'empty' };
-  }
-
   const bytes = await readFileSample({
     context,
     path: target.resolvedPath,
     size: target.size,
   });
-  const complete = bytes.byteLength === target.size;
+  return classifyBytes({
+    bytes,
+    complete: bytes.byteLength === target.size,
+    emptySource: 'file',
+  });
+}
 
-  if (decodeUtf16({ bytes }) !== undefined) {
-    return { kind: 'utf16_text' };
-  }
-
-  const detected = await fileTypeFromBuffer(bytes);
-  if (detected !== undefined) {
-    return { kind: 'binary', detected };
-  }
-
-  if (isLikelyBinary({ bytes })) {
-    return { kind: 'data' };
-  }
-
-  return classifyText({ bytes, complete });
+export async function detectStdinClassification({
+  context,
+}: {
+  context: WeshCommandContext,
+}): Promise<FileCommandClassification> {
+  const sample = await readStdinSample({ context });
+  return classifyBytes({
+    ...sample,
+    emptySource: 'stdin',
+  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

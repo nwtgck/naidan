@@ -91,7 +91,7 @@ export function createSplitOutputController({
   context: WeshCommandContext,
   suffixGenerator: SplitSuffixGenerator,
   verbose: boolean,
-  rejectPath: (({ path }: { path: string }) => string | undefined) | undefined,
+  rejectPath: (({ path }: { path: string }) => Promise<string | undefined>) | undefined,
 }): SplitOutputController {
   let current: OpenOutput | undefined;
   const verboseWriter = createBufferedTextWriter({
@@ -101,7 +101,7 @@ export function createSplitOutputController({
 
   const openNext = async (): Promise<OpenOutput> => {
     const path = suffixGenerator.nextName();
-    const rejectionMessage = rejectPath?.({ path });
+    const rejectionMessage = await rejectPath?.({ path });
     if (rejectionMessage !== undefined) {
       throw new Error(rejectionMessage);
     }
