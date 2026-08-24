@@ -85,6 +85,7 @@ import { duCommandDefinition } from './du/index.ts';
 import { splitCommandDefinition } from './split/index.ts';
 import { csplitCommandDefinition } from './csplit/index.ts';
 import { umaskCommandDefinition } from './umask/index.ts';
+import { gitCommandDefinition } from './git/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -172,6 +173,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   splitCommandDefinition,
   csplitCommandDefinition,
   umaskCommandDefinition,
+  gitCommandDefinition,
   testCommandDefinition,
   leftBracketCommandDefinition,
 ];
