@@ -17,7 +17,7 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.0.1",
+    "@huggingface/transformers": "4.2.0",
     "@vueuse/core": "^14.3.0",
     "comlink": "^4.4.2",
     "dompurify": "^3.4.11",

@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__lane_input_mismatch = ({ mismatchIndex }: { mismatchIndex: number | undefined }): string => `Reference and Production input tokens diverge at ${mismatchIndex === undefined ? "the shorter-prefix boundary" : `index ${mismatchIndex}`}`;

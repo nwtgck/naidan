@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__cache_revision_unknown = (): string => 'The cache path records a requested revision, but completion markers do not independently verify file bytes against the resolved commit SHA.';

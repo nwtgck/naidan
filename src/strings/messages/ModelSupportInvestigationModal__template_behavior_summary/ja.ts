@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__template_behavior_summary = ({ tokenizerClass, passedCount, failedCount }: { tokenizerClass: string; passedCount: number; failedCount: number }): string => `${tokenizerClass}: ${passedCount}件成功、${failedCount}件は非対応または失敗`;

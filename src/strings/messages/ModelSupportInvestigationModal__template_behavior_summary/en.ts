@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__template_behavior_summary = ({ tokenizerClass, passedCount, failedCount }: { tokenizerClass: string; passedCount: number; failedCount: number }): string => `${tokenizerClass}: ${passedCount} rendered, ${failedCount} unsupported or failed`;

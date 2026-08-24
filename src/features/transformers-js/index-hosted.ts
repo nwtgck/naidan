@@ -10,6 +10,7 @@ import type {
   TransformersJsProgressCallback,
   TransformersJsChunkCallback,
   TransformersJsToolCallsCallback,
+  TransformersJsPrefetchResult,
 } from './types';
 
 /**
@@ -17,6 +18,15 @@ import type {
  */
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>,
+}
+
+interface TransformersJsPreDownloadResult {
+  discoveredFileCount: number,
+  prefetchResult: TransformersJsPrefetchResult | undefined,
+  error: {
+    name: string,
+    message: string,
+  } | undefined,
 }
 
 // Singleton state for UI
@@ -307,7 +317,7 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
   modelId: string,
   remote: TransformersJsWorkerClient,
   progress_callback: TransformersJsProgressCallback,
-}): Promise<{ discoveredFileCount: number }> {
+}): Promise<TransformersJsPreDownloadResult> {
   const startedAt = performance.now();
   const scannerClient = createTransformersJsScannerWorkerClient();
 
@@ -317,7 +327,7 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
     else if (cleanModelId.startsWith('https://huggingface.co/')) cleanModelId = cleanModelId.substring(23);
 
     const isLocal = cleanModelId.startsWith('user/');
-    if (isLocal) return { discoveredFileCount: 0 };
+    if (isLocal) return { discoveredFileCount: 0, prefetchResult: undefined, error: undefined };
 
     // 1. Scan for URLs
     const tasks: ScanTask[] = [
@@ -344,6 +354,7 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
     });
 
     // 2. Prefetch URLs via main worker (which has OPFS access and streaming)
+    let prefetchResult: TransformersJsPreDownloadResult['prefetchResult'];
     if (files.length > 0) {
       const urls = files.map(f => f.url);
       debugLog({
@@ -354,22 +365,34 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
           fileCount: urls.length,
         },
       });
-      await remote.prefetchUrls({ urls, progressCallback: progress_callback });
+      prefetchResult = await remote.prefetchUrls({ urls, progressCallback: progress_callback });
       debugLog({
         event: 'preDownload prefetch complete',
         details: {
           modelId,
           elapsedMs: Math.round(performance.now() - startedAt),
           fileCount: urls.length,
+          cachedCount: prefetchResult.cachedCount,
+          downloadedCount: prefetchResult.downloadedCount,
+          failedCount: prefetchResult.failedCount,
+          complete: prefetchResult.complete,
         },
       });
     }
-    return { discoveredFileCount: files.length };
+    return {
+      discoveredFileCount: files.length,
+      prefetchResult,
+      error: undefined,
+    };
   } catch (err) {
     console.warn(`[transformersJsService] Pre-download scan/prefetch failed:`, err);
-    // We don't throw here to avoid a complete failure if just the scanner/prefetcher has an issue,
-    // as the original loadModel/downloadModel will still attempt to run normally.
-    return { discoveredFileCount: 0 };
+    return {
+      discoveredFileCount: 0,
+      prefetchResult: undefined,
+      error: err instanceof Error
+        ? { name: err.name, message: err.message }
+        : { name: 'NonErrorThrownValue', message: typeof err === 'string' ? err : 'A non-Error value was thrown' },
+    };
   } finally {
     await scannerClient.dispose();
   }
@@ -707,7 +730,7 @@ export const transformersJsService = {
           isCached = true;
         }
 
-        if (info.status !== 'progress') {
+        if (info.status !== 'progress' && info.status !== 'progress_total') {
           debugLog({
             event: 'load progress event',
             details: {
@@ -719,8 +742,12 @@ export const transformersJsService = {
         }
 
         const now = Date.now();
-        // Throttle 'progress' updates to 150ms, but allow others (done, cached, etc.) immediately
-        if (info.status !== 'progress' || now - lastProgressNotify > 150) {
+        // Transformers.js 4.2 emits a progress_total immediately before every
+        // progress event. Treat both as one high-frequency progress stream so
+        // they cannot bypass the 150ms notification throttle and saturate the
+        // main thread. Lifecycle events (done, cached, etc.) still notify
+        // immediately; updateProgress above still consumes every raw event.
+        if ((info.status !== 'progress' && info.status !== 'progress_total') || now - lastProgressNotify > 150) {
           notify();
           lastProgressNotify = now;
         }
@@ -734,7 +761,10 @@ export const transformersJsService = {
         details: { modelId, isLoadingFromCache },
       });
       if (!isLoadingFromCache) {
-        await preDownloadModel({ modelId, remote, progress_callback });
+        const preDownloadResult = await preDownloadModel({ modelId, remote, progress_callback });
+        if (preDownloadResult.error !== undefined || preDownloadResult.prefetchResult?.complete === false) {
+          console.warn('[transformersJsService] Pre-download was incomplete; continuing with the authoritative model load.', preDownloadResult);
+        }
       } else {
         debugLog({
           event: 'preDownload skipped',
@@ -821,18 +851,16 @@ export const transformersJsService = {
         updateProgress({ info });
 
         const now = Date.now();
-        if (info.status !== 'progress' || now - lastProgressNotify > 150) {
+        if ((info.status !== 'progress' && info.status !== 'progress_total') || now - lastProgressNotify > 150) {
           notify();
           lastProgressNotify = now;
         }
       };
 
       // 1. Pre-download using scanner/prefetcher
-      const { discoveredFileCount } = await preDownloadModel({ modelId, remote, progress_callback });
-      if (discoveredFileCount === 0) {
-        throw new Error(
-          'Pre-download did not discover any model files. The download would be incomplete, so it was aborted.',
-        );
+      const preDownloadResult = await preDownloadModel({ modelId, remote, progress_callback });
+      if (preDownloadResult.error !== undefined || preDownloadResult.prefetchResult?.complete === false) {
+        console.warn('[transformersJsService] Pre-download was incomplete; continuing with the authoritative downloadModel finalization.', preDownloadResult);
       }
 
       // 2. Finalize with standard downloadModel (to ensure tokenizer and any missed files are handled)

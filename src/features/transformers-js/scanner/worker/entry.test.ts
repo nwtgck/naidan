@@ -15,6 +15,12 @@ vi.mock('@huggingface/transformers', () => ({
     from_pretrained: vi.fn(),
   },
   env: {
+    backends: {
+      onnx: {
+        wasm: {},
+      },
+    },
+    useWasmCache: true,
     allowLocalModels: false,
     allowRemoteModels: true,
     useBrowserCache: false,
@@ -38,7 +44,10 @@ describe('transformers-js.scanner.worker', () => {
     originalFetchMock = vi.fn();
     global.self = {
       fetch: originalFetchMock,
-      location: { origin: 'http://localhost:3000' } as any,
+      location: {
+        origin: 'http://localhost:3000',
+        href: 'http://localhost:3000/src/features/transformers-js/scanner/worker/entry.ts',
+      } as any,
     } as any;
     global.fetch = originalFetchMock;
   });
@@ -120,6 +129,36 @@ describe('transformers-js.scanner.worker', () => {
     });
 
     expect(result.files.map((file: { url: string }) => file.url)).toContain('https://huggingface.co/org/repo/resolve/main/vision_encoder.onnx');
+  });
+
+  it('should fetch tokenizer model metadata instead of mocking it', async () => {
+    await import('./entry');
+    originalFetchMock.mockResolvedValue(new Response(new Uint8Array([9, 8, 7]), { status: 200 }));
+
+    const response = await self.fetch('https://huggingface.co/org/repo/resolve/main/tokenizer.model');
+
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([9, 8, 7]));
+    expect(originalFetchMock).toHaveBeenCalledWith(
+      'https://huggingface.co/org/repo/resolve/main/tokenizer.model',
+      undefined,
+    );
+  });
+
+  it('should never mock same-origin ONNX Runtime WASM', async () => {
+    await import('./entry');
+
+    const { env } = await import('@huggingface/transformers');
+    const wasmEnvironment = env.backends.onnx.wasm;
+    expect(wasmEnvironment).toBeDefined();
+    const runtimeUrl = (wasmEnvironment!.wasmPaths as { wasm: string }).wasm;
+    originalFetchMock.mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), {
+      status: 200,
+      headers: { 'Content-Type': 'application/wasm' },
+    }));
+
+    await self.fetch(runtimeUrl);
+
+    expect(originalFetchMock).toHaveBeenCalledWith(runtimeUrl, undefined);
   });
 
   it('should wire env.fetch to the scanner interceptor', async () => {

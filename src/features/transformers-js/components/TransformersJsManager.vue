@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { ensureStrings, lazyStrings } from '@/strings';
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
 import { transformersJsService } from '@/features/transformers-js';
 import type { ProgressInfo } from '@/features/transformers-js/types';
+import {
+  isModelSupportInvestigationAvailable,
+  loadModelSupportInvestigationModal,
+} from '@/features/transformers-js/model-support-investigation';
 import {
   Loader2Icon, CheckCircle2Icon, AlertCircleIcon, DownloadIcon, FolderOpenIcon, RefreshCcwIcon, Trash2Icon,
   ChevronDownIcon, PlusIcon, HardDriveDownloadIcon, XIcon, BrainCircuitIcon, PowerOffIcon, ExternalLinkIcon, SearchIcon, FileCodeIcon, RotateCcwIcon,
@@ -15,6 +19,10 @@ import { computedAsync } from '@vueuse/core';
 
 const { addToast } = useToast();
 const { showConfirm } = useConfirm();
+
+const ModelSupportInvestigationModal = isModelSupportInvestigationAvailable
+  ? defineAsyncComponent(loadModelSupportInvestigationModal)
+  : undefined;
 
 const emit = defineEmits<{
   (e: 'modelLoaded', modelId: string): void,
@@ -63,6 +71,7 @@ const containerRef = ref<HTMLElement | null>(null);
 const isImporting = ref(false);
 const importProgress = ref(0);
 const lastDownloadError = ref<string | null>(null);
+const investigationModelId = ref<string | undefined>(undefined);
 
 let unsubscribe: (() => void) | null = null;
 let unsubscribeList: (() => void) | null = null;
@@ -118,6 +127,15 @@ const filteredCachedModels = computed(() => {
 const selectModelId = ({ id }: { id: string }) => {
   searchQuery.value = id;
   isDropdownOpen.value = false;
+};
+
+const openModelSupportInvestigation = ({ modelId }: { modelId: string }): void => {
+  if (!isModelSupportInvestigationAvailable) return;
+  investigationModelId.value = modelId;
+};
+
+const closeModelSupportInvestigation = (): void => {
+  investigationModelId.value = undefined;
 };
 
 const handleClickOutside = ({ event }: { event: MouseEvent }) => {
@@ -645,6 +663,15 @@ defineExpose({
                     {{ lazyStrings.TransformersJsManager__incomplete() }}
                   </span>
                   <button
+                    v-if="ModelSupportInvestigationModal !== undefined && !model.isLocal"
+                    type="button"
+                    tw-class="px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 rounded-lg text-[10px] font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
+                    :data-testid="`model-support-investigate-${model.id}`"
+                    @click="openModelSupportInvestigation({ modelId: model.id })"
+                  >
+                    {{ lazyStrings.TransformersJsManager__investigate() }}
+                  </button>
+                  <button
                     @click="loadModel({ modelId: model.id })"
                     :disabled="status === 'loading' || activeModelId === model.id"
                     tw-class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg text-[10px] font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-all disabled:opacity-50"
@@ -670,6 +697,12 @@ defineExpose({
         </div>
       </section>
     </div>
+
+    <ModelSupportInvestigationModal
+      v-if="ModelSupportInvestigationModal !== undefined && investigationModelId !== undefined"
+      :model-id="investigationModelId"
+      @close="closeModelSupportInvestigation"
+    />
   </div>
 </template>
 
