@@ -6,6 +6,7 @@ import type {
   TransformersJsProgressCallback,
   TransformersJsChunkCallback,
   TransformersJsToolCallsCallback,
+  TransformersJsPrefetchResult,
 } from '@/features/transformers-js/types';
 
 function createUnsupportedError(): Error {
@@ -23,7 +24,7 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
     async prefetchUrls({ urls: _urls, progressCallback: _progressCallback }: {
       urls: string[],
       progressCallback: TransformersJsProgressCallback,
-    }): Promise<void> {
+    }): Promise<TransformersJsPrefetchResult> {
       throw createUnsupportedError();
     },
     async loadModel({ modelId: _modelId, progressCallback: _progressCallback }: {

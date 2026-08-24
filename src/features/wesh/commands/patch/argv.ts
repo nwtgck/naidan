@@ -1,4 +1,5 @@
-import { parseStandardArgv } from '@/features/wesh/argv';
+import { parseStandardArgv, type ArgvOptionOccurrence } from '@/features/wesh/argv';
+import { STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import type {
   BackupStyle,
@@ -15,7 +16,7 @@ function parseNonNegativeInteger({
   option: string,
   value: string,
 }): { ok: true, value: number } | { ok: false, message: string } {
-  if (!/^\d+$/u.test(value)) {
+  if (!/^[+-]?\d+$/u.test(value)) {
     return { ok: false, message: `${option}: invalid numeric value '${value}'` };
   }
 
@@ -23,29 +24,44 @@ function parseNonNegativeInteger({
   if (!Number.isSafeInteger(parsed)) {
     return { ok: false, message: `${option}: numeric value is too large: '${value}'` };
   }
+  if (parsed < 0) {
+    return { ok: false, message: `${option}: invalid numeric value '${value}'` };
+  }
 
   return { ok: true, value: parsed };
 }
 
-function parseBackupStyle({
+export function parsePatchBackupStyle({
   value,
 }: {
   value: string,
 }): { ok: true, value: BackupStyle } | { ok: false, message: string } {
-  switch (value) {
-  case 'simple':
-  case 'never':
-    return { ok: true, value: 'simple' };
-  case 'numbered':
-  case 't':
-    return { ok: true, value: 'numbered' };
-  case 'existing':
-  case 'nil':
-    return { ok: true, value: 'existing' };
-  default:
-    return { ok: false, message: `invalid version control style '${value}'` };
+  const aliases = [
+    { name: 'none', style: 'numbered' },
+    { name: 'off', style: 'numbered' },
+    { name: 'simple', style: 'simple' },
+    { name: 'never', style: 'simple' },
+    { name: 'numbered', style: 'numbered' },
+    { name: 't', style: 'numbered' },
+    { name: 'existing', style: 'existing' },
+    { name: 'nil', style: 'existing' },
+  ] as const satisfies readonly { name: string, style: BackupStyle }[];
+
+  if (value.length === 0) return { ok: true, value: 'simple' };
+
+  const exact = aliases.find(alias => alias.name === value);
+  if (exact !== undefined) return { ok: true, value: exact.style };
+
+  const prefixMatches = aliases.filter(alias => alias.name.startsWith(value));
+  if (prefixMatches.length === 1) {
+    return { ok: true, value: prefixMatches[0]!.style };
   }
+  if (prefixMatches.length > 1) {
+    return { ok: false, message: `ambiguous version control style '${value}'` };
+  }
+  return { ok: false, message: `invalid version control style '${value}'` };
 }
+
 
 function parseRejectFormat({
   value,
@@ -90,21 +106,21 @@ export const patchArgvSpec: StandardArgvParserSpec = {
     { kind: 'flag', short: 'e', long: 'ed', effects: [{ key: 'forcedFormat', value: 'ed' }], help: { summary: 'interpret the patch as an ed script', category: 'advanced' } },
     { kind: 'flag', short: 'n', long: 'normal', effects: [{ key: 'forcedFormat', value: 'normal' }], help: { summary: 'interpret the patch as a normal diff', category: 'advanced' } },
     { kind: 'flag', short: 'u', long: 'unified', effects: [{ key: 'forcedFormat', value: 'unified' }], help: { summary: 'interpret the patch as a unified diff', category: 'advanced' } },
-    { kind: 'flag', short: 'N', long: 'forward', effects: [{ key: 'directionMode', value: 'forward-only' }], help: { summary: 'ignore patches that appear reversed or applied', category: 'common' } },
-    { kind: 'flag', short: 'R', long: 'reverse', effects: [{ key: 'directionMode', value: 'reverse' }], help: { summary: 'apply the patch in reverse', category: 'common' } },
-    { kind: 'flag', short: 't', long: 'batch', effects: [{ key: 'reverseDecisionMode', value: 'assume-reverse' }], help: { summary: 'ask no questions and assume reversed patches', category: 'advanced' } },
-    { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'reverseDecisionMode', value: 'force-forward' }], help: { summary: 'ask no questions and do not detect reversal', category: 'advanced' } },
-    { kind: 'value', short: 'i', long: 'input', key: 'inputPath', valueName: 'FILE', allowAttachedValue: false, parseValue: undefined, help: { summary: 'read the patch from FILE', valueName: 'FILE', category: 'common' } },
-    { kind: 'value', short: 'o', long: 'output', key: 'outputPath', valueName: 'FILE', allowAttachedValue: false, parseValue: undefined, help: { summary: 'write patched output to FILE', valueName: 'FILE', category: 'common' } },
-    { kind: 'value', short: 'r', long: 'reject-file', key: 'rejectPath', valueName: 'FILE', allowAttachedValue: false, parseValue: undefined, help: { summary: 'write rejected hunks to FILE', valueName: 'FILE', category: 'common' } },
-    { kind: 'value', short: 'd', long: 'directory', key: 'directory', valueName: 'DIR', allowAttachedValue: false, parseValue: undefined, help: { summary: 'change to DIR before applying the patch', valueName: 'DIR', category: 'common' } },
-    { kind: 'flag', short: 'b', long: 'backup', effects: [{ key: 'backupMode', value: 'always' }], help: { summary: 'make a backup of each changed file', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'backup-if-mismatch', effects: [{ key: 'backupMode', value: 'if-mismatch' }], help: { summary: 'back up files when offset, fuzz, or rejects occur', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'no-backup-if-mismatch', effects: [{ key: 'backupMode', value: 'never' }], help: { summary: 'do not back up files on mismatch', category: 'advanced' } },
+    { kind: 'flag', short: 'N', long: 'forward', effects: [{ key: 'forwardOnly', value: true }], help: { summary: 'ignore patches that appear reversed or applied', category: 'common' } },
+    { kind: 'flag', short: 'R', long: 'reverse', effects: [{ key: 'explicitReverse', value: true }], help: { summary: 'apply the patch in reverse', category: 'common' } },
+    { kind: 'flag', short: 't', long: 'batch', effects: [{ key: 'batch', value: true }], help: { summary: 'ask no questions and assume reversed patches', category: 'advanced' } },
+    { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }], help: { summary: 'ask no questions and do not detect reversal', category: 'advanced' } },
+    { kind: 'value', short: 'i', long: 'input', key: 'inputPath', valueName: 'FILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'read the patch from FILE', valueName: 'FILE', category: 'common' } },
+    { kind: 'value', short: 'o', long: 'output', key: 'outputPath', valueName: 'FILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'write patched output to FILE', valueName: 'FILE', category: 'common' } },
+    { kind: 'value', short: 'r', long: 'reject-file', key: 'rejectPath', valueName: 'FILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'write rejected hunks to FILE', valueName: 'FILE', category: 'common' } },
+    { kind: 'value', short: 'd', long: 'directory', key: 'directory', valueName: 'DIR', allowAttachedValue: true, parseValue: undefined, help: { summary: 'change to DIR before applying the patch', valueName: 'DIR', category: 'common' } },
+    { kind: 'flag', short: 'b', long: 'backup', effects: [{ key: 'backupAlways', value: true }], help: { summary: 'make a backup of each changed file', category: 'common' } },
+    { kind: 'flag', short: undefined, long: 'backup-if-mismatch', effects: [{ key: 'backupMismatchMode', value: 'enabled' }], help: { summary: 'back up files when offset, fuzz, or rejects occur', category: 'advanced' } },
+    { kind: 'flag', short: undefined, long: 'no-backup-if-mismatch', effects: [{ key: 'backupMismatchMode', value: 'disabled' }], help: { summary: 'do not back up files on mismatch', category: 'advanced' } },
     { kind: 'value', short: 'B', long: 'prefix', key: 'backupPrefix', valueName: 'PREFIX', allowAttachedValue: true, parseValue: undefined, help: { summary: 'prepend PREFIX to backup file names', valueName: 'PREFIX', category: 'advanced' } },
     { kind: 'value', short: 'Y', long: 'basename-prefix', key: 'backupBasenamePrefix', valueName: 'PREFIX', allowAttachedValue: true, parseValue: undefined, help: { summary: 'prepend PREFIX to backup basenames', valueName: 'PREFIX', category: 'advanced' } },
     { kind: 'value', short: 'z', long: 'suffix', key: 'backupSuffix', valueName: 'SUFFIX', allowAttachedValue: true, parseValue: undefined, help: { summary: 'use SUFFIX for simple backup files', valueName: 'SUFFIX', category: 'advanced' } },
-    { kind: 'value', short: 'V', long: 'version-control', key: 'backupStyle', valueName: 'STYLE', allowAttachedValue: true, parseValue: parseBackupStyle, help: { summary: 'select simple, numbered, or existing backups', valueName: 'STYLE', category: 'advanced' } },
+    { kind: 'value', short: 'V', long: 'version-control', key: 'backupStyle', valueName: 'STYLE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'select simple, numbered, or existing backups', valueName: 'STYLE', category: 'advanced' } },
     { kind: 'flag', short: 'E', long: 'remove-empty-files', effects: [{ key: 'removeEmptyFiles', value: true }], help: { summary: 'remove output files that become empty', category: 'advanced' } },
     { kind: 'value', short: 'D', long: 'ifdef', key: 'ifdefName', valueName: 'NAME', allowAttachedValue: true, parseValue: undefined, help: { summary: 'mark changes with #ifdef NAME', valueName: 'NAME', category: 'advanced' } },
     { kind: 'flag', short: 's', long: 'quiet', effects: [{ key: 'quietMode', value: 'quiet' }], help: { summary: 'suppress normal progress messages', category: 'common' } },
@@ -139,6 +155,63 @@ export const patchArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
+
+function isPatchDirectoryOccurrence(
+  occurrence: ArgvOptionOccurrence,
+): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> & { key: 'directory' } {
+  return occurrence.kind === 'value' && occurrence.key === 'directory';
+}
+
+/**
+ * GNU patch applies each -d/--directory option as getopt yields it. Therefore
+ * a directory failure can outrank a later parser diagnostic or help/version
+ * sentinel, and repeated relative directories are resolved cumulatively.
+ * Reuse the standard parser on bounded prefixes instead of duplicating its
+ * token-consumption rules. This path is only used when a directory option is
+ * present in the full parse.
+ */
+export function patchDirectoryOperandsBeforeTerminal({
+  args,
+}: {
+  args: string[],
+}): string[] {
+  const hasPotentialDirectoryOption = args.some((token) => (
+    token === '--directory'
+    || token.startsWith('--directory=')
+    || (token.startsWith('-') && !token.startsWith('--') && token.slice(1).includes('d'))
+  ));
+  if (!hasPotentialDirectoryOption) return [];
+
+  const full = parseStandardArgv({ args, spec: patchArgvSpec });
+  if (!full.occurrences.some((occurrence) => isPatchDirectoryOccurrence(occurrence))) {
+    return [];
+  }
+
+  const directories: string[] = [];
+  let observedDirectoryCount = 0;
+
+  for (let end = 1; end <= args.length; end += 1) {
+    const parsedPrefix = parseStandardArgv({ args: args.slice(0, end), spec: patchArgvSpec });
+    const prefixDirectories = parsedPrefix.occurrences.filter((occurrence) => (
+      isPatchDirectoryOccurrence(occurrence)
+    ));
+    while (observedDirectoryCount < prefixDirectories.length) {
+      const occurrence = prefixDirectories[observedDirectoryCount];
+      if (occurrence === undefined) break;
+      directories.push(String(occurrence.value));
+      observedDirectoryCount += 1;
+    }
+
+    const terminalDiagnostic = parsedPrefix.diagnostics.find((diagnostic) => (
+      diagnostic.kind !== 'missing_option_value' || end === args.length
+    ));
+    if (terminalDiagnostic !== undefined) break;
+    if (parsedPrefix.optionValues.help === true || parsedPrefix.optionValues.version === true) break;
+  }
+
+  return directories;
+}
+
 export type ParsePatchArgvResult =
   | { kind: 'help' }
   | { kind: 'version' }
@@ -150,7 +223,14 @@ export function parsePatchArgv({
 }: {
   args: string[],
 }): ParsePatchArgvResult {
-  const parsed = parseStandardArgv({ args, spec: patchArgvSpec });
+  const parsed = parseStandardArgv({
+    args: stopStandardArgvAtFirstEarlyExit({
+      args,
+      spec: patchArgvSpec,
+      earlyExitOptions: STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS,
+    }),
+    spec: patchArgvSpec,
+  });
   const diagnostic = parsed.diagnostics[0];
   if (diagnostic !== undefined) {
     return { kind: 'error', message: `patch: ${diagnostic.message}` };
@@ -187,6 +267,15 @@ export function parsePatchArgv({
   const getMode = typeof parsed.optionValues.getMode === 'number'
     ? parsed.optionValues.getMode
     : undefined;
+  const rawBackupStyle = typeof parsed.optionValues.backupStyle === 'string'
+    ? parsed.optionValues.backupStyle
+    : undefined;
+  const parsedBackupStyle = rawBackupStyle === undefined
+    ? { ok: true as const, value: 'simple' as const }
+    : parsePatchBackupStyle({ value: rawBackupStyle });
+  if (!parsedBackupStyle.ok) {
+    return { kind: 'error', message: `patch: ${parsedBackupStyle.message}` };
+  }
 
   if (getMode !== undefined && getMode !== 0) {
     return { kind: 'error', message: 'patch: external revision control access is not available; only -g0 is supported' };
@@ -197,25 +286,23 @@ export function parsePatchArgv({
     fuzz: typeof parsed.optionValues.fuzz === 'number' ? parsed.optionValues.fuzz : 2,
     whitespaceMode: parsed.optionValues.whitespaceMode === 'ignore-changes' ? 'ignore-changes' : 'exact',
     forcedFormat,
-    directionMode: parsed.optionValues.directionMode === 'forward-only' || parsed.optionValues.directionMode === 'reverse'
-      ? parsed.optionValues.directionMode
-      : 'auto',
-    reverseDecisionMode: parsed.optionValues.reverseDecisionMode === 'assume-reverse' || parsed.optionValues.reverseDecisionMode === 'force-forward'
-      ? parsed.optionValues.reverseDecisionMode
-      : 'safe-skip',
+    explicitReverse: parsed.optionValues.explicitReverse === true,
+    forwardOnly: parsed.optionValues.forwardOnly === true,
+    batch: parsed.optionValues.batch === true,
+    force: parsed.optionValues.force === true,
     inputPath,
     outputPath: typeof parsed.optionValues.outputPath === 'string' ? parsed.optionValues.outputPath : undefined,
     rejectPath: typeof parsed.optionValues.rejectPath === 'string' ? parsed.optionValues.rejectPath : undefined,
-    directory: typeof parsed.optionValues.directory === 'string' ? parsed.optionValues.directory : undefined,
-    backupMode: parsed.optionValues.backupMode === 'always' || parsed.optionValues.backupMode === 'never'
-      ? parsed.optionValues.backupMode
-      : 'if-mismatch',
+    backupAlways: parsed.optionValues.backupAlways === true,
+    backupMismatchMode: parsed.optionValues.backupMismatchMode === 'enabled' || parsed.optionValues.backupMismatchMode === 'disabled'
+      ? parsed.optionValues.backupMismatchMode
+      : 'default',
     backupPrefix: typeof parsed.optionValues.backupPrefix === 'string' ? parsed.optionValues.backupPrefix : undefined,
     backupBasenamePrefix: typeof parsed.optionValues.backupBasenamePrefix === 'string' ? parsed.optionValues.backupBasenamePrefix : undefined,
     backupSuffix: typeof parsed.optionValues.backupSuffix === 'string' ? parsed.optionValues.backupSuffix : '.orig',
-    backupStyle: parsed.optionValues.backupStyle === 'numbered' || parsed.optionValues.backupStyle === 'existing'
-      ? parsed.optionValues.backupStyle
-      : 'simple',
+    backupSuffixExplicit: typeof parsed.optionValues.backupSuffix === 'string',
+    backupStyle: parsedBackupStyle.value,
+    backupStyleExplicit: rawBackupStyle !== undefined,
     removeEmptyFiles: parsed.optionValues.removeEmptyFiles === true,
     ifdefName: typeof parsed.optionValues.ifdefName === 'string' ? parsed.optionValues.ifdefName : undefined,
     quietMode: parsed.optionValues.quietMode === 'quiet' || parsed.optionValues.quietMode === 'verbose'

@@ -7,19 +7,6 @@ import {
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
 
-function buildHelpScript({
-  commandName,
-}: {
-  commandName: string,
-}): string {
-  switch (commandName) {
-  case '[':
-    return '[ --help ]';
-  default:
-    return `${commandName} --help`;
-  }
-}
-
 describe('wesh builtin help coverage', () => {
   let wesh: Wesh;
   let rootHandle: MockFileSystemDirectoryHandle;
@@ -51,7 +38,7 @@ describe('wesh builtin help coverage', () => {
   for (const command of builtinCommands) {
     it(`supports help for ${command.meta.name}`, async () => {
       const { result, stdout, stderr } = await execute({
-        script: buildHelpScript({ commandName: command.meta.name }),
+        script: `help ${command.meta.name}`,
       });
 
       expect(result.exitCode).toBe(0);

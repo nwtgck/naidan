@@ -93,6 +93,188 @@ describe('wesh jq compatibility', () => {
     expect(rawZero.result.exitCode).toBe(0);
   });
 
+  it('rejects equals-attached long-option values', async () => {
+    const cases = [
+      `jq --indent=7 '.'`,
+      `jq --arg=name value -n '$name'`,
+      `jq --argjson=count 2 -n '$count'`,
+      `jq --from-file=filter.jq -n`,
+      `jq --compact-output=true '.'`,
+    ];
+
+    for (const script of cases) {
+      const execution = await execute({ script, stdinText: '{}' });
+      const option = script.split(' ')[1];
+
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).toContain(`Unknown option ${option}`);
+      expect(execution.result.exitCode).toBe(2);
+    }
+  });
+
+  it('supports valid -f flag bundles and rejects attached file names', async () => {
+    await writeFile({ path: '/filter.jq', data: '.' });
+    await writeFile({ path: '/input.json', data: '{"value":2}\n' });
+
+    for (const bundle of ['-cf', '-fc']) {
+      const execution = await execute({
+        script: `jq ${bundle} /filter.jq /input.json`,
+      });
+
+      expect(execution.stdout.text).toBe('{"value":2}\n');
+      expect(execution.stderr.text).toBe('');
+      expect(execution.result.exitCode).toBe(0);
+    }
+
+    for (const invalid of ['-ffilter.jq', '-ff']) {
+      const execution = await execute({
+        script: `jq ${invalid} /filter.jq /input.json`,
+      });
+
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).toContain(`Unknown option ${invalid}`);
+      expect(execution.result.exitCode).toBe(2);
+    }
+  });
+
+  it('matches jq-specific help and version argv scanning boundaries', async () => {
+    const helpThenInvalid = await execute({ script: `jq -h --definitely-invalid-option` });
+    expect(helpThenInvalid.result.exitCode).toBe(0);
+    expect(helpThenInvalid.stdout.text).toContain('usage: jq [OPTION]... FILTER [FILE]...');
+    expect(helpThenInvalid.stderr.text).toBe('');
+
+    const versionThenHelp = await execute({ script: `jq -V -h` });
+    expect(versionThenHelp.result.exitCode).toBe(0);
+    expect(versionThenHelp.stdout.text).toBe('jq-wesh-1.7-compatible\n');
+    expect(versionThenHelp.stderr.text).toBe('');
+
+    const bundledHelp = await execute({ script: `jq -Vh --definitely-invalid-option` });
+    expect(bundledHelp.result.exitCode).toBe(0);
+    expect(bundledHelp.stdout.text).toContain('usage: jq [OPTION]... FILTER [FILE]...');
+    expect(bundledHelp.stderr.text).toBe('');
+
+    const filterFileHelp = await execute({ script: `jq -f -h` });
+    expect(filterFileHelp.result.exitCode).toBe(0);
+    expect(filterFileHelp.stdout.text).toContain('usage: jq [OPTION]... FILTER [FILE]...');
+    expect(filterFileHelp.stderr.text).toBe('');
+
+    const invalidThenHelp = await execute({ script: `jq --definitely-invalid-option -h` });
+    expect(invalidThenHelp.result.exitCode).toBe(2);
+    expect(invalidThenHelp.stdout.text).toBe('');
+    expect(invalidThenHelp.stderr.text).toContain("unrecognized option '--definitely-invalid-option'");
+  });
+
+  it('validates semantic injected values before a later help or version exit', async () => {
+    const invalidArgJson = await execute({
+      script: `jq --argjson x not-json -h`,
+    });
+    expect(invalidArgJson.stdout.text).toBe('');
+    expect(invalidArgJson.stderr.text).toContain('invalid JSON text passed to --argjson x');
+    expect(invalidArgJson.result.exitCode).toBe(2);
+
+    const missingRawFile = await execute({
+      script: `jq --rawfile x missing.txt -V`,
+    });
+    expect(missingRawFile.stdout.text).toBe('');
+    expect(missingRawFile.stderr.text).toContain('missing.txt');
+    expect(missingRawFile.result.exitCode).toBe(2);
+
+    const validArgJson = await execute({
+      script: `jq --argjson x '{"ok":true}' -h`,
+    });
+    expect(validArgJson.stdout.text).toContain('Query and transform JSON values');
+    expect(validArgJson.stderr.text).toBe('');
+    expect(validArgJson.result.exitCode).toBe(0);
+
+    await writeFile({ path: '/raw.txt', data: 'value\n' });
+    const validRawFile = await execute({
+      script: `jq --rawfile x raw.txt -V`,
+    });
+    expect(validRawFile.stdout.text).toBe('jq-wesh-1.7-compatible\n');
+    expect(validRawFile.stderr.text).toBe('');
+    expect(validRawFile.result.exitCode).toBe(0);
+
+    const invalidJsonArgs = await execute({
+      script: `jq --jsonargs -n '.' not-json -h`,
+    });
+    expect(invalidJsonArgs.stdout.text).toBe('');
+    expect(invalidJsonArgs.stderr.text).toContain('invalid JSON text passed to --jsonargs');
+    expect(invalidJsonArgs.result.exitCode).toBe(2);
+
+    const validJsonArgs = await execute({
+      script: `jq --jsonargs -n '.' '{"ok":true}' -h`,
+    });
+    expect(validJsonArgs.stdout.text).toContain('Query and transform JSON values');
+    expect(validJsonArgs.stderr.text).toBe('');
+    expect(validJsonArgs.result.exitCode).toBe(0);
+  });
+
+  it('treats -f as a filter-source mode while continuing to scan options', async () => {
+    await writeFile({ path: '/filter.jq', data: '.' });
+    await writeFile({ path: '/input.json', data: '{"value":2}\n' });
+
+    const optionBeforeFilterPath = await execute({
+      script: `jq -f -c /filter.jq /input.json`,
+    });
+    expect(optionBeforeFilterPath.result.exitCode).toBe(0);
+    expect(optionBeforeFilterPath.stdout.text).toBe('{"value":2}\n');
+    expect(optionBeforeFilterPath.stderr.text).toBe('');
+
+    const optionAfterFilterPath = await execute({
+      script: `jq -f /filter.jq -c /input.json`,
+    });
+    expect(optionAfterFilterPath.result.exitCode).toBe(0);
+    expect(optionAfterFilterPath.stdout.text).toBe('{"value":2}\n');
+    expect(optionAfterFilterPath.stderr.text).toBe('');
+
+    const nullInput = await execute({
+      script: `jq -f -n /filter.jq`,
+    });
+    expect(nullInput.result.exitCode).toBe(0);
+    expect(nullInput.stdout.text).toBe('null\n');
+    expect(nullInput.stderr.text).toBe('');
+  });
+
+  it('matches jq 1.7 indentation argument conversion', async () => {
+    const tabIndent = await execute({
+      script: `jq --indent -1 -n '{a:[1,2]}'`,
+    });
+    expect(tabIndent.result.exitCode).toBe(0);
+    expect(tabIndent.stdout.text).toBe('{\n\t"a": [\n\t\t1,\n\t\t2\n\t]\n}\n');
+    expect(tabIndent.stderr.text).toBe('');
+
+    const atoiZero = await execute({
+      script: `jq --indent abc -n '{a:[1,2]}'`,
+    });
+    expect(atoiZero.result.exitCode).toBe(0);
+    expect(atoiZero.stdout.text).toBe('{"a":[1,2]}\n');
+    expect(atoiZero.stderr.text).toBe('');
+
+    const optionLookingValue = await execute({
+      script: `jq --indent -h -n '{a:[1]}'`,
+    });
+    expect(optionLookingValue.result.exitCode).toBe(0);
+    expect(optionLookingValue.stdout.text).toBe('{"a":[1]}\n');
+    expect(optionLookingValue.stderr.text).toBe('');
+
+    const tooLarge = await execute({
+      script: `jq --indent 8 -n '.'`,
+    });
+    expect(tooLarge.result.exitCode).toBe(2);
+    expect(tooLarge.stdout.text).toBe('');
+    expect(tooLarge.stderr.text).toContain('--indent takes a number between -1 and 7');
+  });
+
+  it('keeps option-looking --arg names in $ARGS.named', async () => {
+    const execution = await execute({
+      script: `jq --arg -h value -n '$ARGS.named["-h"]'`,
+    });
+
+    expect(execution.result.exitCode).toBe(0);
+    expect(execution.stdout.text).toBe('"value"\n');
+    expect(execution.stderr.text).toBe('');
+  });
+
   it('supports null, raw, and slurped input', async () => {
     const nullInput = await execute({
       script: `jq -nc '[., $ARGS]' --args one two`,
@@ -114,6 +296,15 @@ b
 `);
     expect(rawLines.stderr.text).toBe('');
     expect(rawLines.result.exitCode).toBe(0);
+
+    const rawCarriageReturnText = ['a', 'b', ''].join('\r\n');
+    const rawCarriageReturns = await execute({
+      script: `jq -Rr '.'`,
+      stdinText: rawCarriageReturnText,
+    });
+    expect(rawCarriageReturns.stdout.text).toBe(rawCarriageReturnText);
+    expect(rawCarriageReturns.stderr.text).toBe('');
+    expect(rawCarriageReturns.result.exitCode).toBe(0);
 
     const rawSlurp = await execute({
       script: `jq -Rsc '.'`,
@@ -262,6 +453,13 @@ world
     const trueValue = await execute({ script: `jq -ne 'true'` });
     const badArity = await execute({ script: `jq -n 'length(1)'` });
     const missingVariable = await execute({ script: `jq -n '$missing'` });
+    const inheritedVariable = await execute({ script: `jq -n '$constructor'` });
+    const explicitPrototypeName = await execute({
+      script: `jq -n --arg constructor safe '$constructor'`,
+    });
+    const explicitNumericPrototypeName = await execute({
+      script: `jq -n --argjson constructor 1 '$constructor'`,
+    });
 
     expect(empty.result.exitCode).toBe(4);
     expect(falseValue.result.exitCode).toBe(1);
@@ -270,5 +468,14 @@ world
     expect(badArity.result.exitCode).toBe(3);
     expect(missingVariable.stderr.text).toContain('$missing is not defined');
     expect(missingVariable.result.exitCode).toBe(3);
+    expect(inheritedVariable.stdout.text).toBe('');
+    expect(inheritedVariable.stderr.text).toContain('$constructor is not defined');
+    expect(inheritedVariable.result.exitCode).toBe(3);
+    expect(explicitPrototypeName.stdout.text).toBe('"safe"\n');
+    expect(explicitPrototypeName.stderr.text).toBe('');
+    expect(explicitPrototypeName.result.exitCode).toBe(0);
+    expect(explicitNumericPrototypeName.stdout.text).toBe('1\n');
+    expect(explicitNumericPrototypeName.stderr.text).toBe('');
+    expect(explicitNumericPrototypeName.result.exitCode).toBe(0);
   });
 });

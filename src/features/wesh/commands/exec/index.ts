@@ -1,9 +1,14 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
+import { isStandaloneCommandHelpRequest, writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+
 
 const execArgvSpec: StandardArgvParserSpec = {
   options: [
+    { kind: 'flag', short: 'c', long: undefined, effects: [{ key: 'clearEnvironment', value: true }], help: { summary: 'execute command with an empty environment', category: 'common' } },
+    { kind: 'flag', short: 'l', long: undefined, effects: [{ key: 'loginShellArgv0', value: true }], help: { summary: 'prefix argv[0] with a dash', category: 'common' } },
+    { kind: 'value', short: 'a', long: undefined, key: 'argv0', valueName: 'NAME', allowAttachedValue: true, parseValue: undefined, help: { summary: 'pass NAME as argv[0]', valueName: 'NAME', category: 'common' } },
     {
       kind: 'flag',
       short: undefined,
@@ -22,14 +27,25 @@ export const execCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'exec',
     description: 'Replace the shell command context or persist file-descriptor changes',
-    usage: 'exec [command [arg...]]',
+    usage: 'exec [-cl] [-a name] [command [arg...]]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({
+    if (isStandaloneCommandHelpRequest({
       args: context.args,
+      acceptedForms: [['--help']],
+    })) {
+      await writeCommandHelp({
+        context,
+        command: 'exec',
+        argvSpec: execArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
+    const parsed = parseStandardArgv({
+      args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: execArgvSpec }),
       spec: execArgvSpec,
     });
-
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
       await writeCommandUsageError({
@@ -38,16 +54,7 @@ export const execCommandDefinition: WeshCommandDefinition = {
         message: `exec: ${diagnostic.message}`,
         argvSpec: execArgvSpec,
       });
-      return { exitCode: 1 };
-    }
-
-    if (parsed.optionValues.help === true) {
-      await writeCommandHelp({
-        context,
-        command: 'exec',
-        argvSpec: execArgvSpec,
-      });
-      return { exitCode: 0 };
+      return { exitCode: 2 };
     }
 
     if (parsed.positionals.length === 0) {
@@ -57,15 +64,10 @@ export const execCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
-    const [command, ...args] = parsed.positionals;
-    if (command === undefined) {
-      return { exitCode: 0 };
-    }
-
-    return context.executeCommand({
-      command,
-      args,
+    await context.text().error({
+      text: 'exec: replacing the shell requires Wesh core exit control-flow support\n',
     });
+    return { exitCode: 1 };
   },
 };
 

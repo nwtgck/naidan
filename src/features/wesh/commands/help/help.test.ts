@@ -35,34 +35,25 @@ describe('wesh help', () => {
     return { result, stdout, stderr };
   }
 
-  it('delegates help grep to grep --help output', async () => {
-    const direct = await execute({ script: 'grep --help' });
-    const delegated = await execute({ script: 'help grep' });
+  it('renders help without invoking the target command', async () => {
+    const helped = await execute({ script: 'help grep' });
 
-    expect(delegated.stdout.text).toBe(direct.stdout.text);
-    expect(delegated.stderr.text).toBe(direct.stderr.text);
-    expect(delegated.result.exitCode).toBe(0);
+    expect(helped.stdout.text).toContain('Search for patterns');
+    expect(helped.stdout.text).toContain('usage: grep');
+    expect(helped.stderr.text).toBe('');
+    expect(helped.result.exitCode).toBe(0);
   });
 
   for (const command of builtinCommands) {
-    it(`matches ${command.meta.name} --help output`, async () => {
-      const direct = await execute({
-        script: (() => {
-          switch (command.meta.name) {
-          case '[':
-            return '[ --help ]';
-          default:
-            return `${command.meta.name} --help`;
-          }
-        })(),
-      });
-      const delegated = await execute({
+    it(`renders registered metadata for ${command.meta.name}`, async () => {
+      const helped = await execute({
         script: `help ${command.meta.name}`,
       });
 
-      expect(delegated.stdout.text).toBe(direct.stdout.text);
-      expect(delegated.stderr.text).toBe(direct.stderr.text);
-      expect(delegated.result.exitCode).toBe(direct.result.exitCode);
+      expect(helped.stdout.text).toContain(command.meta.description);
+      expect(helped.stdout.text).toContain(`usage: ${command.meta.usage}`);
+      expect(helped.stderr.text).toBe('');
+      expect(helped.result.exitCode).toBe(0);
     });
   }
 
@@ -75,4 +66,21 @@ describe('wesh help', () => {
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('does not reinterpret option-looking tokens after the first help pattern', async () => {
+    const helped = await execute({ script: 'help echo --bogus' });
+
+    expect(helped.stdout.text).toContain('usage: echo');
+    expect(helped.stderr.text).toBe('');
+    expect(helped.result.exitCode).toBe(0);
+  });
+
+  it('does not let a later --help replace the selected help topic', async () => {
+    const helped = await execute({ script: 'help definitely_missing --help' });
+
+    expect(helped.stdout.text).toBe('');
+    expect(helped.stderr.text).toBe("help: no help topics match 'definitely_missing'\n");
+    expect(helped.result.exitCode).toBe(1);
+  });
+
 });

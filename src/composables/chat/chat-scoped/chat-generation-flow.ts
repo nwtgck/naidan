@@ -4,7 +4,7 @@ import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, En
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { isConfiguredEndpoint } from '@/01-models/endpoint';
 import type { LmProvider } from '@/01-models/lm';
-import type { Tool } from '@/01-models/tool';
+import { formatToolExecutionOutcomeForLm, type Tool } from '@/01-models/tool';
 import { loadLmProvider } from '@/features/lm/providerFactory';
 import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
 import { storageService } from '@/00-storage/service';
@@ -472,6 +472,8 @@ export async function generateResponseForAssistant({
   const parentNode = findParentInBranch({ items: mutableChat.root.items, childId: assistantId });
   const imageRequest = parentNode ? parseImageRequest({ content: parentNode.content || '' }) : null;
   const currentGenerationToolCallIds = new Set<ToolCallId>();
+  const pendingToolResultUpdates = new Set<Promise<void>>();
+  const toolResultUpdateErrors: unknown[] = [];
 
   try {
     if (imageRequest) {
@@ -565,7 +567,7 @@ export async function generateResponseForAssistant({
             notifyChatChanged({ chatId: mutableChat.id });
           }
         },
-        onToolCall: ({ id, toolName, args }) => {
+        onToolCall: ({ id, toolName, modelVisibleArguments }) => {
           currentGenerationToolCallIds.add(id);
           if (generationState.currentToolNode === null) {
             const toolNode: ToolMessageNode = reactive({
@@ -606,7 +608,9 @@ export async function generateResponseForAssistant({
                 type: 'function',
                 function: {
                   name: toolName,
-                  arguments: typeof args === 'string' ? args : JSON.stringify(args),
+                  // Keep the historical LM-visible call stable across later history rebuilds.
+                  // Execution-time schema defaults/transforms may change between app versions.
+                  arguments: modelVisibleArguments,
                 },
               },
             ];
@@ -631,44 +635,58 @@ export async function generateResponseForAssistant({
           }
           notifyChatChanged({ chatId: mutableChat.id });
         },
-        onToolResult: async ({ id, result }) => {
-          const allMessages = getAllMessages({ chat: mutableChat });
-          const toolNode = allMessages.find(
-            (node) => node.role === 'tool' && node.results.some((entry) => entry.toolCallId === id),
-          ) as ToolMessageNode | undefined;
+        onToolResult: ({ id, result }) => {
+          const update = (async () => {
+            const allMessages = getAllMessages({ chat: mutableChat });
+            const toolNode = allMessages.find(
+              (node) => node.role === 'tool' && node.results.some((entry) => entry.toolCallId === id),
+            ) as ToolMessageNode | undefined;
 
-          if (toolNode !== undefined) {
-            const index = toolNode.results.findIndex((entry) => entry.toolCallId === id);
-            if (index !== -1) {
-              switch (result.status) {
-              case 'success':
-                toolNode.results[index] = {
-                  toolCallId: id,
-                  status: 'success',
-                  content: await persistToolContent({ text: result.content, type: 'result', toolCallId: id }),
-                };
-                break;
-              case 'error':
-                toolNode.results[index] = {
-                  toolCallId: id,
-                  status: 'error',
-                  error: {
-                    code: result.code,
-                    message: await persistToolContent({ text: result.message, type: 'error', toolCallId: id }),
-                  },
-                };
-                break;
-              default: {
-                const _ex: never = result;
-                console.error(`Unhandled tool result status: ${_ex}`);
+            if (toolNode !== undefined) {
+              const index = toolNode.results.findIndex((entry) => entry.toolCallId === id);
+              if (index !== -1) {
+                switch (result.status) {
+                case 'success':
+                  toolNode.results[index] = {
+                    toolCallId: id,
+                    status: 'success',
+                    content: await persistToolContent({ text: result.content, type: 'result', toolCallId: id }),
+                  };
+                  break;
+                case 'error':
+                  toolNode.results[index] = {
+                    toolCallId: id,
+                    status: 'error',
+                    error: {
+                      code: result.code,
+                      message: await persistToolContent({ text: result.message, type: 'error', toolCallId: id }),
+                    },
+                  };
+                  break;
+                default: {
+                  const _ex: never = result;
+                  console.error(`Unhandled tool result status: ${_ex}`);
+                }
+                }
               }
-              }
+              notifyChatChanged({ chatId: mutableChat.id });
             }
-            notifyChatChanged({ chatId: mutableChat.id });
-          }
 
-          chatVolatileState.deleteVolatileToolOutput({ toolCallId: id });
-          currentGenerationToolCallIds.delete(id);
+            chatVolatileState.deleteVolatileToolOutput({ toolCallId: id });
+            currentGenerationToolCallIds.delete(id);
+          })();
+
+          // Tool execution may continue the LM loop immediately, but generation completion must
+          // wait until every historical Tool Result has finished becoming durable chat state.
+          const trackedUpdate = update.then(
+            () => undefined,
+            (error) => {
+              toolResultUpdateErrors.push(error);
+            },
+          ).finally(() => {
+            pendingToolResultUpdates.delete(trackedUpdate);
+          });
+          pendingToolResultUpdates.add(trackedUpdate);
         },
         onChunk: async ({ chunk }) => {
           generationState.currentAssistantNode.content += chunk;
@@ -697,10 +715,14 @@ export async function generateResponseForAssistant({
         signal: controller.signal,
       });
     } finally {
+      // Do not delay intermediate LM requests on persistence, but do not expose a completed
+      // generation until every Tool Result callback has settled.
+      await Promise.all(pendingToolResultUpdates);
       await Promise.all(enabledTools.map(async (tool) => {
         await tool.dispose?.();
       }));
     }
+    if (toolResultUpdateErrors.length > 0) throw toolResultUpdateErrors[0];
 
     await updateChatContent({
       id: mutableChat.id,
@@ -711,7 +733,7 @@ export async function generateResponseForAssistant({
         currentLeafId: mutableChat.currentLeafId,
       }),
     });
-    processThinking({ node: assistantNode });
+    processStoredAssistantThinking({ node: assistantNode });
     mutableChat.updatedAt = Date.now();
 
     if (mutableChat.title === null && resolved.autoTitleEnabled && chatRuntimeStore.activeGenerations.has(mutableChat.id)) {
@@ -756,7 +778,7 @@ export async function generateResponseForAssistant({
     if (lastOpen > -1 && lastClose < lastOpen) {
       assistantNode.content += '</think>';
     }
-    processThinking({ node: assistantNode });
+    processStoredAssistantThinking({ node: assistantNode });
 
     if ((error as Error).name === 'AbortError' || (error as Error).message === 'Generation aborted') {
       assistantNode.content += '\n\n[Generation Aborted]';
@@ -1101,6 +1123,8 @@ async function buildGenerationMessages({
         const toolCalls = (() => {
           switch (message.role) {
           case 'assistant':
+            // Historical Tool Calls are already LM-visible transcript data. Do not re-parse or
+            // re-validate them with current schemas; current defaults may differ from execution time.
             return message.toolCalls;
           case 'user':
           case 'system':
@@ -1129,6 +1153,15 @@ async function buildGenerationMessages({
   return messages;
 }
 
+function processStoredAssistantThinking({ node }: { node: AssistantMessageNode }): void {
+  if ((node.toolCalls?.length ?? 0) > 0) {
+    // Tool-call Assistant content has already been sent back to the LM during the live loop.
+    // Keep its exact model-visible representation so later history rebuilds preserve that prefix.
+    return;
+  }
+  processThinking({ node });
+}
+
 async function getToolResultText({
   result,
 }: {
@@ -1138,10 +1171,14 @@ async function getToolResultText({
   case 'success':
     switch (result.content.type) {
     case 'text':
-      return result.content.text;
+      return formatToolExecutionOutcomeForLm({
+        outcome: { status: 'success', content: result.content.text },
+      });
     case 'binary_object': {
       const blob = await storageService.getFile({ binaryObjectId: result.content.id });
-      return blob ? await blob.text() : '[Error: Binary object missing]';
+      return formatToolExecutionOutcomeForLm({
+        outcome: { status: 'success', content: blob ? await blob.text() : '[Error: Binary object missing]' },
+      });
     }
     default: {
       const _ex: never = result.content;
@@ -1151,11 +1188,15 @@ async function getToolResultText({
   case 'error':
     switch (result.error.message.type) {
     case 'text':
-      return `Error [${result.error.code}]: ${result.error.message.text}`;
+      return formatToolExecutionOutcomeForLm({
+        outcome: { status: 'error', code: result.error.code, message: result.error.message.text },
+      });
     case 'binary_object': {
       const blob = await storageService.getFile({ binaryObjectId: result.error.message.id });
       const detail = blob ? await blob.text() : 'Binary error detail missing';
-      return `Error [${result.error.code}]: ${detail}`;
+      return formatToolExecutionOutcomeForLm({
+        outcome: { status: 'error', code: result.error.code, message: detail },
+      });
     }
     default: {
       const _ex: never = result.error.message;

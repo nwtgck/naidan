@@ -1,3 +1,4 @@
+import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
@@ -7,10 +8,28 @@ import type {
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 
-const KNOWN_SHELL_OPTIONS: WeshShellOption[] = ['dotglob', 'extglob', 'failglob', 'globstar', 'nullglob'];
+type KnownShellOptionName = WeshShellOption | 'expand_aliases' | 'pipefail';
+
+const KNOWN_SHOPT_OPTIONS: readonly KnownShellOptionName[] = ['dotglob', 'expand_aliases', 'extglob', 'failglob', 'globstar', 'nullglob'];
+const KNOWN_SET_OPTIONS: readonly KnownShellOptionName[] = ['pipefail'];
+
+function isCoreShellOption(name: KnownShellOptionName): name is WeshShellOption {
+  return name !== 'expand_aliases' && name !== 'pipefail';
+}
+
+function getShellOptionEnabled({
+  context,
+  name,
+}: {
+  context: WeshCommandContext;
+  name: KnownShellOptionName;
+}): boolean {
+  return isCoreShellOption(name) && context.getShellOption({ name });
+}
 
 const shoptArgvSpec: StandardArgvParserSpec = {
   options: [
+    { kind: 'flag', short: 'o', long: undefined, effects: [{ key: 'setOptions', value: true }], help: { summary: 'operate on set -o options', category: 'common' } },
     { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'print', value: true }], help: { summary: 'print shell option settings', category: 'common' } },
     { kind: 'flag', short: 'q', long: undefined, effects: [{ key: 'query', value: true }], help: { summary: 'suppress output and use exit status', category: 'common' } },
     { kind: 'flag', short: 's', long: undefined, effects: [{ key: 'set', value: true }], help: { summary: 'enable shell options', category: 'common' } },
@@ -23,38 +42,79 @@ const shoptArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-function isKnownShellOption(name: string): name is WeshShellOption {
-  return KNOWN_SHELL_OPTIONS.includes(name as WeshShellOption);
+function resolveKnownShellOption({
+  name,
+  knownOptions,
+}: {
+  name: string;
+  knownOptions: readonly KnownShellOptionName[];
+}): KnownShellOptionName | undefined {
+  return knownOptions.find(knownOption => knownOption === name);
 }
 
-function getShoptMode({
-  parsed,
+async function writeShellOption({
+  context,
+  name,
+  format,
+  optionFamily,
 }: {
-  parsed: ReturnType<typeof parseStandardArgv>,
-}): 'print' | 'query' | 'set' | 'unset' | undefined {
-  const modes = [
-    parsed.optionValues.print === true ? 'print' : undefined,
-    parsed.optionValues.query === true ? 'query' : undefined,
-    parsed.optionValues.set === true ? 'set' : undefined,
-    parsed.optionValues.unset === true ? 'unset' : undefined,
-  ].filter((mode): mode is 'print' | 'query' | 'set' | 'unset' => mode !== undefined);
-
-  if (modes.length <= 1) {
-    return modes[0] ?? 'print';
+  context: WeshCommandContext;
+  name: KnownShellOptionName;
+  format: 'human-readable' | 'reusable';
+  optionFamily: 'set' | 'shopt';
+}): Promise<void> {
+  const enabled = getShellOptionEnabled({ context, name });
+  switch (format) {
+  case 'human-readable':
+    await context.text().print({
+      text: `${name.padEnd(15)}\t${enabled ? 'on' : 'off'}\n`,
+    });
+    return;
+  case 'reusable': {
+    let text: string;
+    switch (optionFamily) {
+    case 'set':
+      text = `set ${enabled ? '-' : '+'}o ${name}\n`;
+      break;
+    case 'shopt':
+      text = `shopt -${enabled ? 's' : 'u'} ${name}\n`;
+      break;
+    default: {
+      const _ex: never = optionFamily;
+      throw new Error(`Unhandled shopt option family: ${_ex}`);
+    }
+    }
+    await context.text().print({ text });
+    return;
   }
+  default: {
+    const _ex: never = format;
+    throw new Error(`Unhandled shopt output format: ${_ex}`);
+  }
+  }
+}
 
-  return undefined;
+async function writeInvalidOptionName({
+  context,
+  name,
+}: {
+  context: WeshCommandContext;
+  name: string;
+}): Promise<void> {
+  await context.text().error({
+    text: `shopt: ${name}: invalid shell option name\n`,
+  });
 }
 
 export const shoptCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'shopt',
     description: 'Set and unset shell options',
-    usage: 'shopt [-pqsu] [optname ...]',
+    usage: 'shopt [-opqsu] [optname ...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: shoptArgvSpec }),
       spec: shoptArgvSpec,
     });
 
@@ -66,7 +126,7 @@ export const shoptCommandDefinition: WeshCommandDefinition = {
         message: `shopt: ${diagnostic.message}`,
         argvSpec: shoptArgvSpec,
       });
-      return { exitCode: 1 };
+      return { exitCode: 2 };
     }
 
     if (parsed.optionValues.help === true) {
@@ -78,62 +138,120 @@ export const shoptCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
-    const mode = getShoptMode({ parsed });
-    if (mode === undefined) {
-      await writeCommandUsageError({
-        context,
-        command: 'shopt',
-        message: 'shopt: options -p, -q, -s, and -u are mutually exclusive',
-        argvSpec: shoptArgvSpec,
+    const optionFamily: 'set' | 'shopt' = parsed.optionValues.setOptions === true ? 'set' : 'shopt';
+    const knownOptions = (() => {
+      switch (optionFamily) {
+      case 'set':
+        return KNOWN_SET_OPTIONS;
+      case 'shopt':
+        return KNOWN_SHOPT_OPTIONS;
+      default: {
+        const _ex: never = optionFamily;
+        throw new Error(`Unhandled shopt option family: ${_ex}`);
+      }
+      }
+    })();
+    const shouldSet = parsed.optionValues.set === true;
+    const shouldUnset = parsed.optionValues.unset === true;
+    const shouldQuery = parsed.optionValues.query === true;
+    const reusableOutput = parsed.optionValues.print === true;
+
+    if (shouldSet && shouldUnset) {
+      await context.text().error({
+        text: 'shopt: cannot set and unset shell options simultaneously\n',
       });
       return { exitCode: 1 };
     }
 
-    const targetNames = parsed.positionals.length > 0
-      ? parsed.positionals
-      : KNOWN_SHELL_OPTIONS;
-
-    for (const name of targetNames) {
-      if (!isKnownShellOption(name)) {
-        await context.text().error({
-          text: `shopt: ${name}: invalid shell option name\n`,
-        });
-        return { exitCode: 1 };
+    if (parsed.positionals.length === 0) {
+      if (shouldQuery) {
+        return { exitCode: 0 };
       }
+
+      const names = shouldSet
+        ? knownOptions.filter((name) => getShellOptionEnabled({ context, name }))
+        : shouldUnset
+          ? knownOptions.filter((name) => !getShellOptionEnabled({ context, name }))
+          : knownOptions;
+      for (const name of names) {
+        await writeShellOption({
+          context,
+          name,
+          format: reusableOutput ? 'reusable' : 'human-readable',
+          optionFamily,
+        });
+      }
+      return { exitCode: 0 };
     }
 
-    const validatedTargetNames = targetNames.filter(isKnownShellOption);
+    if (shouldSet || shouldUnset) {
+      let hadInvalidName = false;
+      for (const name of parsed.positionals) {
+        const knownName = resolveKnownShellOption({ name, knownOptions });
+        if (knownName === undefined) {
+          hadInvalidName = true;
+          await writeInvalidOptionName({ context, name });
+          continue;
+        }
+        if (!isCoreShellOption(knownName)) {
+          hadInvalidName = true;
+          await context.text().error({
+            text: `shopt: ${knownName}: operation requires Wesh core shell-option support\n`,
+          });
+          continue;
+        }
+        context.setShellOption({ name: knownName, enabled: shouldSet });
+      }
+      let invalidNameExitCode = 0;
+      switch (optionFamily) {
+      case 'set':
+        break;
+      case 'shopt':
+        invalidNameExitCode = hadInvalidName ? 1 : 0;
+        break;
+      default: {
+        const _ex: never = optionFamily;
+        throw new Error(`Unhandled shopt option family: ${_ex}`);
+      }
+      }
+      return { exitCode: invalidNameExitCode };
+    }
 
-    switch (mode) {
-    case 'set':
-      for (const name of validatedTargetNames) {
-        context.setShellOption({ name, enabled: true });
-      }
-      return { exitCode: 0 };
-    case 'unset':
-      for (const name of validatedTargetNames) {
-        context.setShellOption({ name, enabled: false });
-      }
-      return { exitCode: 0 };
-    case 'query':
-      for (const name of validatedTargetNames) {
-        if (!context.getShellOption({ name })) {
-          return { exitCode: 1 };
+    if (shouldQuery) {
+      let failed = false;
+      for (const name of parsed.positionals) {
+        const knownName = resolveKnownShellOption({ name, knownOptions });
+        if (knownName === undefined) {
+          failed = true;
+          await writeInvalidOptionName({ context, name });
+          continue;
+        }
+        if (!getShellOptionEnabled({ context, name: knownName })) {
+          failed = true;
         }
       }
-      return { exitCode: 0 };
-    case 'print':
-      for (const name of validatedTargetNames) {
-        await context.text().print({
-          text: `shopt -${context.getShellOption({ name }) ? 's' : 'u'} ${name}\n`,
-        });
+      return { exitCode: failed ? 1 : 0 };
+    }
+
+    let failed = false;
+    for (const name of parsed.positionals) {
+      const knownName = resolveKnownShellOption({ name, knownOptions });
+      if (knownName === undefined) {
+        failed = true;
+        await writeInvalidOptionName({ context, name });
+        continue;
       }
-      return { exitCode: 0 };
-    default: {
-      const _ex: never = mode;
-      throw new Error(`Unhandled shopt mode: ${_ex}`);
+      await writeShellOption({
+        context,
+        name: knownName,
+        format: reusableOutput ? 'reusable' : 'human-readable',
+        optionFamily,
+      });
+      if (!getShellOptionEnabled({ context, name: knownName })) {
+        failed = true;
+      }
     }
-    }
+    return { exitCode: failed ? 1 : 0 };
   },
 };
 

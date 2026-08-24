@@ -1,5 +1,6 @@
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { dirnamePath } from '@/features/wesh/commands/_shared/path';
 
@@ -22,7 +23,11 @@ export const dirnameCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardArgvAtFirstEarlyExit({
+        args: context.args,
+        spec: dirnameArgvSpec,
+        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+      }),
       spec: dirnameArgvSpec,
     });
 

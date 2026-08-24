@@ -207,7 +207,7 @@ describe('ZIP upload worker logic', () => {
     const targetSrc = await target.getDirectoryHandle('src');
     expect(await (await targetSrc.getFileHandle('existing.ts')).getFile().then(file => file.text())).toBe('existing');
     expect(await (await targetSrc.getFileHandle('main.ts')).getFile().then(file => file.text())).toBe('export const value = 1;');
-    await expect(target.getDirectoryHandle('.__naidan_zip_upload_test-job')).rejects.toThrow('NotFoundError');
+    await expect(target.getDirectoryHandle('.__naidan_zip_upload_test-job')).rejects.toMatchObject({ name: 'NotFoundError' });
   });
 
   it('does not remove an existing entry that matches the preferred staging name', async () => {
@@ -238,7 +238,7 @@ describe('ZIP upload worker logic', () => {
     expect(await (
       await existingTemporaryDirectory.getFileHandle('marker.txt')
     ).getFile().then(file => file.text())).toBe('keep me');
-    await expect(target.getDirectoryHandle('.__naidan_zip_upload_test-job_1')).rejects.toThrow('NotFoundError');
+    await expect(target.getDirectoryHandle('.__naidan_zip_upload_test-job_1')).rejects.toMatchObject({ name: 'NotFoundError' });
   });
 
   it('does not overwrite target changes made while the ZIP is being staged', async () => {
@@ -285,7 +285,7 @@ describe('ZIP upload worker logic', () => {
     ).getFile().then(file => file.text())).toBe('external change during staging');
     await expect(target.getDirectoryHandle(
       '.__naidan_zip_upload_stale-preview-job',
-    )).rejects.toThrow('NotFoundError');
+    )).rejects.toMatchObject({ name: 'NotFoundError' });
   });
 
   it('restores an existing archive when keep-as-is placement fails during commit', async () => {
@@ -321,7 +321,7 @@ describe('ZIP upload worker logic', () => {
     expect(await targetFile.getFile().then(file => file.text())).toBe('original archive');
     await expect(target.getDirectoryHandle(
       '.__naidan_zip_upload_keep-archive-job',
-    )).rejects.toThrow('NotFoundError');
+    )).rejects.toMatchObject({ name: 'NotFoundError' });
   });
 
   it('preserves the single root directory when requested', async () => {

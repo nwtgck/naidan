@@ -299,6 +299,54 @@ describe('streaming ZIP codec', () => {
     expect(output.chunkCount).toBeGreaterThan(streamedChunks.length);
   });
 
+  it('preserves supplied entry-name bytes, UTF-8 flag, and external attributes', async () => {
+    const output = createTestWriteCaptureHandle();
+    const centralDirectory = createTestWriteCaptureHandle();
+    const writer = createTestStreamingZipWriter({
+      outputHandle: output.handle,
+      centralDirectoryHandle: centralDirectory.handle,
+    });
+    const encodedName = Uint8Array.of(0x78, 0x82, 0x2e, 0x74, 0x78, 0x74);
+    const externalAttributes = 0xa1ff0000;
+
+    await writer.addFile({
+      name: 'decoder-owned-name',
+      modifiedAt: new Date(2024, 0, 2, 3, 4, 6),
+      compression: 'store',
+      stream: createByteStream({ chunks: [textEncoder.encode('target.txt')] }),
+      encodedName,
+      nameIsUtf8: false,
+      externalAttributes,
+    });
+    await writer.finalize();
+    await output.handle.close();
+
+    const reader = new StreamingZipReader({
+      source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: output.buffer }) }),
+      compressionCodec,
+      decodeEntryName: ({ bytes, isUtf8 }) => `${isUtf8 ? 'utf8' : 'raw'}:${Buffer.from(bytes).toString('hex')}`,
+    });
+
+    try {
+      const entries = await collectEntries({ reader });
+      expect(entries).toHaveLength(1);
+      const entry = entries[0];
+      if (entry === undefined) {
+        throw new Error('Expected one ZIP entry');
+      }
+      expect(entry.name).toBe('raw:78822e747874');
+      expect(entry.nameBytes).toEqual(encodedName);
+      expect(entry.nameIsUtf8).toBe(false);
+      expect(entry.externalAttributes).toBe(externalAttributes);
+      expect(entry.isSymbolicLink).toBe(true);
+      expect(textDecoder.decode(await readStreamBytes({
+        stream: await reader.openEntry({ entry }),
+      }))).toBe('target.txt');
+    } finally {
+      await reader.close();
+    }
+  });
+
   it('reads JSZip store, deflate, UTF-8, directory, and empty entries', async () => {
     const archive = new JSZip();
     archive.folder('symbols-∞-∑-𝄞-🧪');
@@ -756,6 +804,36 @@ describe('streaming ZIP codec', () => {
     })).rejects.toThrow('ZIP entry name length exceeds the non-ZIP64 limit');
     await longOutput.handle.close();
     await longCentralDirectory.handle.close();
+  });
+
+
+  it('preserves Unix symbolic-link metadata from central-directory attributes', async () => {
+    const archive = new JSZip();
+    archive.file('link.txt', 'target.txt', {
+      compression: 'STORE',
+      unixPermissions: 0o120777,
+    });
+    const archiveBytes = await archive.generateAsync({
+      type: 'uint8array',
+      compression: 'STORE',
+      platform: 'UNIX',
+    });
+    const reader = new TestStreamingZipReader({
+      source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
+    });
+
+    try {
+      const entries = await collectEntries({ reader });
+      const entry = findEntry({ entries, name: 'link.txt' });
+      expect(entry.isDirectory).toBe(false);
+      expect(entry.isSymbolicLink).toBe(true);
+      expect(entry.unixMode).toBe(0o120777);
+      expect(textDecoder.decode(await readStreamBytes({
+        stream: await reader.openEntry({ entry }),
+      }))).toBe('target.txt');
+    } finally {
+      await reader.close();
+    }
   });
 
   it('uses bounded range reads for a large deflated entry', async () => {

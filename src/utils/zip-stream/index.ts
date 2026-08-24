@@ -124,8 +124,19 @@ const textDecoder = new TextDecoder();
 
 export type ZipCompression = 'store' | 'deflate';
 
+export type ZipEntryNameDecoder = ({
+  bytes,
+  isUtf8,
+}: {
+  bytes: Uint8Array,
+  isUtf8: boolean,
+}) => string;
+
 export interface ZipArchiveEntry {
   readonly name: string,
+  readonly nameBytes: Uint8Array,
+  readonly nameIsUtf8: boolean,
+  readonly externalAttributes: number,
   readonly isDirectory: boolean,
   readonly compression: ZipCompression,
   readonly crc32: number,
@@ -134,6 +145,8 @@ export interface ZipArchiveEntry {
   readonly localHeaderOffset: number,
   readonly modifiedAt: Date,
   readonly flags: number,
+  readonly unixMode: number | undefined,
+  readonly isSymbolicLink: boolean,
 }
 
 export interface ZipRandomAccessSource {
@@ -361,6 +374,7 @@ function createCentralDirectoryRecord({
   uncompressedSize,
   localHeaderOffset,
   isDirectory,
+  externalAttributes,
 }: {
   nameBytes: Uint8Array,
   flags: number,
@@ -371,6 +385,7 @@ function createCentralDirectoryRecord({
   uncompressedSize: number,
   localHeaderOffset: number,
   isDirectory: boolean,
+  externalAttributes?: number,
 }): Uint8Array {
   const dos = getDosDateTime({ date: modifiedAt });
   const header = createBytes({
@@ -391,7 +406,7 @@ function createCentralDirectoryRecord({
       view.setUint16(32, 0, true);
       view.setUint16(34, 0, true);
       view.setUint16(36, 0, true);
-      view.setUint32(38, isDirectory ? 0x10 : 0, true);
+      view.setUint32(38, externalAttributes ?? (isDirectory ? 0x10 : 0), true);
       view.setUint32(42, assertUint32({ value: localHeaderOffset, field: 'local header offset' }), true);
     },
   });
@@ -520,15 +535,21 @@ export class StreamingZipWriter {
   async addDirectory({
     name,
     modifiedAt,
+    encodedName,
+    nameIsUtf8 = true,
+    externalAttributes,
   }: {
     name: string,
     modifiedAt: Date,
+    encodedName?: Uint8Array,
+    nameIsUtf8?: boolean,
+    externalAttributes?: number,
   }): Promise<void> {
     this.assertWritable();
     const normalizedName = name.endsWith('/') ? name : `${name}/`;
-    const nameBytes = textEncoder.encode(normalizedName);
+    const nameBytes = encodedName ?? textEncoder.encode(normalizedName);
     const localHeaderOffset = this.output.position;
-    const flags = ZIP_GENERAL_PURPOSE_UTF8_FLAG;
+    const flags = nameIsUtf8 ? ZIP_GENERAL_PURPOSE_UTF8_FLAG : 0;
     await this.output.write({
       chunk: createLocalHeader({
         nameBytes,
@@ -551,6 +572,7 @@ export class StreamingZipWriter {
         uncompressedSize: 0,
         localHeaderOffset,
         isDirectory: true,
+        externalAttributes,
       }),
     });
     this.incrementEntryCount();
@@ -561,17 +583,24 @@ export class StreamingZipWriter {
     modifiedAt,
     compression,
     stream,
+    encodedName,
+    nameIsUtf8 = true,
+    externalAttributes,
   }: {
     name: string,
     modifiedAt: Date,
     compression: ZipCompression,
     stream: ReadableStream<Uint8Array>,
+    encodedName?: Uint8Array,
+    nameIsUtf8?: boolean,
+    externalAttributes?: number,
   }): Promise<void> {
     this.assertWritable();
-    const nameBytes = textEncoder.encode(name);
+    const nameBytes = encodedName ?? textEncoder.encode(name);
     const localHeaderOffset = this.output.position;
     const method = compressionMethodToNumber({ compression });
-    const flags = ZIP_GENERAL_PURPOSE_UTF8_FLAG | ZIP_GENERAL_PURPOSE_DATA_DESCRIPTOR_FLAG;
+    const flags = (nameIsUtf8 ? ZIP_GENERAL_PURPOSE_UTF8_FLAG : 0)
+      | ZIP_GENERAL_PURPOSE_DATA_DESCRIPTOR_FLAG;
     await this.output.write({
       chunk: createLocalHeader({
         nameBytes,
@@ -623,6 +652,7 @@ export class StreamingZipWriter {
         uncompressedSize: result.uncompressedSize,
         localHeaderOffset,
         isDirectory: false,
+        externalAttributes,
       }),
     });
     this.incrementEntryCount();
@@ -783,17 +813,21 @@ export class StreamingZipReader {
   private centralDirectoryPromise: Promise<ZipCentralDirectoryInfo> | undefined;
   private readonly source: ZipRandomAccessSource;
   private readonly compressionCodec: ZipCompressionCodec;
+  private readonly decodeEntryName: ZipEntryNameDecoder;
 
   constructor({
     source,
     compressionCodec,
+    decodeEntryName = ({ bytes }) => textDecoder.decode(bytes),
   }: {
     source: ZipRandomAccessSource,
     compressionCodec: ZipCompressionCodec,
+    decodeEntryName?: ZipEntryNameDecoder,
   }) {
     this.source = source;
     this.bufferedSource = new BufferedZipSource({ source });
     this.compressionCodec = compressionCodec;
+    this.decodeEntryName = decodeEntryName;
   }
 
   async *entries(): AsyncIterable<ZipArchiveEntry> {
@@ -809,6 +843,7 @@ export class StreamingZipReader {
       if (view.getUint32(0, true) !== ZIP_CENTRAL_DIRECTORY_HEADER_SIGNATURE) {
         throw new Error('Invalid ZIP central directory entry');
       }
+      const versionMadeBy = view.getUint16(4, true);
       const flags = view.getUint16(8, true);
       if ((flags & 0x0001) !== 0) {
         throw new Error('Encrypted ZIP entries are not supported');
@@ -830,7 +865,10 @@ export class StreamingZipReader {
         throw new Error('ZIP central directory entry exceeds directory bounds');
       }
       const nameBytes = await this.bufferedSource.read({ offset: offset + 46, length: nameLength });
-      const name = textDecoder.decode(nameBytes);
+      const name = this.decodeEntryName({
+        bytes: nameBytes,
+        isUtf8: (flags & ZIP_GENERAL_PURPOSE_UTF8_FLAG) !== 0,
+      });
       if (diskStart !== 0) {
         throw new Error(`Multi-disk ZIP entry is not supported: ${name}`);
       }
@@ -841,9 +879,16 @@ export class StreamingZipReader {
       ) {
         throw new Error(`ZIP64 entry is not supported: ${name}`);
       }
-      const isDirectory = name.endsWith('/') || (externalAttributes & 0x10) !== 0;
+      const madeByPlatform = versionMadeBy >>> 8;
+      const unixMode = madeByPlatform === 3 ? externalAttributes >>> 16 : undefined;
+      const isSymbolicLink = unixMode !== undefined && (unixMode & 0xf000) === 0xa000;
+      const isDirectory = !isSymbolicLink
+        && (name.endsWith('/') || (externalAttributes & 0x10) !== 0);
       yield {
         name,
+        nameBytes: nameBytes.slice(),
+        nameIsUtf8: (flags & ZIP_GENERAL_PURPOSE_UTF8_FLAG) !== 0,
+        externalAttributes,
         isDirectory,
         compression: compressionNumberToMethod({ method }),
         crc32,
@@ -852,6 +897,8 @@ export class StreamingZipReader {
         localHeaderOffset,
         modifiedAt: fromDosDateTime({ date: modifiedDate, time: modifiedTime }),
         flags,
+        unixMode,
+        isSymbolicLink,
       };
       offset = nextOffset;
     }
@@ -892,8 +939,10 @@ export class StreamingZipReader {
       offset: entry.localHeaderOffset + 30,
       length: nameLength,
     });
-    const localName = textDecoder.decode(localNameBytes);
-    if (localName !== entry.name) {
+    if (
+      localNameBytes.byteLength !== entry.nameBytes.byteLength
+      || localNameBytes.some((byte, index) => byte !== entry.nameBytes[index])
+    ) {
       throw new Error(`ZIP local entry name mismatch: ${entry.name}`);
     }
     if ((localFlags & ZIP_GENERAL_PURPOSE_DATA_DESCRIPTOR_FLAG) === 0) {

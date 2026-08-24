@@ -147,6 +147,32 @@ describe('transformersJsService', () => {
     }));
   });
 
+  it('preserves the base completeness behavior for .model files', async () => {
+    const mockHuggingFaceDir = createMockDir({
+      org: createMockDir({
+        repo: createMockDir({
+          'weights.model': createMockFile(1200, 123456789),
+          '.weights.model.complete': createMockFile(0, 123456789),
+        }),
+      }),
+    });
+
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn().mockResolvedValue(createMockDir({
+          models: createMockDir({ 'huggingface.co': mockHuggingFaceDir }),
+        })),
+      },
+    });
+
+    const { transformersJsService } = await import('./index');
+    const models = await transformersJsService.listCachedModels();
+    expect(models).toContainEqual(expect.objectContaining({
+      id: 'hf.co/org/repo',
+      isComplete: true,
+    }));
+  });
+
   it('should include models even without completion marker but as incomplete', async () => {
     const mockLocalDir = createMockDir({
       'incomplete-model': createMockDir({
@@ -179,7 +205,20 @@ describe('transformersJsService', () => {
         cb({ status: 'progress', progress: 50 });
         return { device: 'webgpu' };
       }),
-      prefetchUrls: vi.fn().mockResolvedValue(undefined),
+      prefetchUrls: vi.fn().mockResolvedValue({
+        requestedCount: 1,
+        cachedCount: 0,
+        downloadedCount: 1,
+        failedCount: 0,
+        complete: true,
+        files: [{
+          status: 'downloaded',
+          url: 'https://hf.co/m/model.onnx',
+          path: 'models/huggingface.co/m/model.onnx',
+          byteLength: 1,
+          expectedByteLength: 1,
+        }],
+      }),
     };
     (Comlink.wrap as any).mockImplementation((_worker: any) => {
       // Return a mock object that supports both engine and scanner worker interfaces
@@ -212,7 +251,29 @@ describe('transformersJsService', () => {
   it('should include a processor scan task for Gemma 4 models', async () => {
     const mockRemote = {
       loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
-      prefetchUrls: vi.fn().mockResolvedValue(undefined),
+      prefetchUrls: vi.fn().mockResolvedValue({
+        requestedCount: 2,
+        cachedCount: 0,
+        downloadedCount: 2,
+        failedCount: 0,
+        complete: true,
+        files: [
+          {
+            status: 'downloaded',
+            url: 'https://hf.co/m/processor_config.json',
+            path: 'models/huggingface.co/m/processor_config.json',
+            byteLength: 1,
+            expectedByteLength: 1,
+          },
+          {
+            status: 'downloaded',
+            url: 'https://hf.co/m/model.onnx',
+            path: 'models/huggingface.co/m/model.onnx',
+            byteLength: 1,
+            expectedByteLength: 1,
+          },
+        ],
+      }),
     };
     const scanModel = vi.fn().mockResolvedValue({
       files: [
@@ -239,10 +300,17 @@ describe('transformersJsService', () => {
     });
   });
 
-  it('should fail downloadModel when pre-download discovers no files', async () => {
+  it('should continue authoritative downloadModel when pre-download discovers no files', async () => {
     const mockRemote = {
       loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
-      prefetchUrls: vi.fn().mockResolvedValue(undefined),
+      prefetchUrls: vi.fn().mockResolvedValue({
+        requestedCount: 0,
+        cachedCount: 0,
+        downloadedCount: 0,
+        failedCount: 0,
+        complete: true,
+        files: [],
+      }),
       downloadModel: vi.fn().mockResolvedValue(undefined),
     };
     const scanModel = vi.fn().mockResolvedValue({
@@ -258,10 +326,13 @@ describe('transformersJsService', () => {
     const { transformersJsService } = await import('./index');
 
     await expect(transformersJsService.downloadModel({ modelId: 'onnx-community/gemma-4-E2B-it-ONNX' }))
-      .rejects
-      .toThrow('Pre-download did not discover any model files');
+      .resolves
+      .toBeUndefined();
 
-    expect(mockRemote.downloadModel).not.toHaveBeenCalled();
+    expect(mockRemote.downloadModel).toHaveBeenCalledWith(
+      'onnx-community/gemma-4-E2B-it-ONNX',
+      expect.any(Function),
+    );
   });
 
   it('should skip scanner/prefetch when loading a fully cached model', async () => {
@@ -286,7 +357,14 @@ describe('transformersJsService', () => {
 
     const mockRemote = {
       loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
-      prefetchUrls: vi.fn().mockResolvedValue(undefined),
+      prefetchUrls: vi.fn().mockResolvedValue({
+        requestedCount: 0,
+        cachedCount: 0,
+        downloadedCount: 0,
+        failedCount: 0,
+        complete: true,
+        files: [],
+      }),
     };
     const scanModel = vi.fn().mockResolvedValue({
       files: [{ url: 'https://hf.co/m/model.onnx' }],

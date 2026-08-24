@@ -30,6 +30,10 @@ import {
   env,
 } from '@huggingface/transformers';
 import type { ITransformersJsScannerWorker, ScannedModelFile, ScanOptions, ScanTask } from '@/features/transformers-js/types';
+import {
+  configureHostedTransformersRuntime,
+  isHuggingFaceModelArtifactUrl,
+} from '@/features/transformers-js/runtime/configure-hosted-runtime';
 
 const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
@@ -40,13 +44,25 @@ function debugLog({ event, details }: { event: string, details: Record<string, u
   });
 }
 
-// Configure environment for scanning
-env.allowLocalModels = false; // Only scan remote
+const originalFetch = self.fetch;
+const { runtimeFetch } = configureHostedTransformersRuntime({
+  env,
+  workerLocationUrl: self.location.href,
+  environment: import.meta.env.DEV ? 'development' : 'production',
+  userAgent: navigator.userAgent,
+  vendor: navigator.vendor,
+  hardwareConcurrency: navigator.hardwareConcurrency,
+  originalFetch,
+  createDecompressionStream: () => new DecompressionStream('gzip'),
+});
+
+// Configure environment for scanning. Runtime MJS/WASM remains real and
+// same-origin; only heavy Hugging Face model artifacts may be mocked.
+env.allowLocalModels = false;
 env.allowRemoteModels = true;
 env.useBrowserCache = false;
 env.useCustomCache = false;
 
-const originalFetch = self.fetch;
 const capturedUrls: Set<string> = new Set();
 let fetchCount = 0;
 let heavyMockCount = 0;
@@ -66,12 +82,10 @@ const interceptedFetch: typeof self.fetch = async (input, init) => {
     capturedUrls.add(url);
   }
 
-  // Identify heavy files that we should mock to save memory/bandwidth during scanning
-  const isHeavy = /\.(onnx|safetensors|bin|pth|model|data|wasm)$/i.test(url) ||
-                  url.includes('_data') ||
-                  url.endsWith('.gz');
-
-  if (isHeavy) {
+  // Only heavy Hugging Face model artifacts may be mocked. Naidan runtime
+  // assets such as ONNX Runtime MJS/WASM must execute from the real same-origin
+  // files or the scan would observe a synthetic runtime.
+  if (isHuggingFaceModelArtifactUrl({ url })) {
     heavyMockCount += 1;
     lastHeavyMockUrl = url;
     console.debug(`[scanner-worker] Mocking heavy file: ${url}`);
@@ -85,7 +99,7 @@ const interceptedFetch: typeof self.fetch = async (input, init) => {
   // For metadata (JSON/Config), perform actual fetch so transformers.js can proceed
   metadataFetchCount += 1;
   lastMetadataFetchUrl = url;
-  return originalFetch(input, init);
+  return runtimeFetch(input, init);
 };
 self.fetch = interceptedFetch;
 env.fetch = interceptedFetch;

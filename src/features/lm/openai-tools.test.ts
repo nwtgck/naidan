@@ -26,7 +26,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     const mockTool: Tool = {
       name: 'get_weather',
       description: 'Get weather',
-      parametersSchema: z.object({ location: z.string() }),
+      parametersSchema: z.object({ location: z.string(), units: z.string().default('metric') }),
       execute: vi.fn().mockResolvedValue({ status: 'success', content: 'Sunny, 25C' }),
     };
 
@@ -65,13 +65,18 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     expect(result).toBe('The weather in Tokyo is Sunny.');
-    expect(mockTool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { location: 'Tokyo' } }));
-    expect(onToolCall).toHaveBeenCalledWith({ id: 'call_1', toolName: 'get_weather', args: { location: 'Tokyo' } });
+    expect(mockTool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { location: 'Tokyo', units: 'metric' } }));
+    expect(onToolCall).toHaveBeenCalledWith({
+      id: 'call_1',
+      toolName: 'get_weather',
+      modelVisibleArguments: '{"location":"Tokyo"}',
+    });
     expect(onToolResult).toHaveBeenCalledWith({ id: 'call_1', result: { status: 'success', content: 'Sunny, 25C' } });
 
     expect(serverInstance!.capturedRequests).toHaveLength(2);
     const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages).toHaveLength(3);
+    expect(secondReqBody.messages[1].tool_calls[0].function.arguments).toBe('{"location":"Tokyo"}');
     expect(secondReqBody.messages[2]).toEqual({
       role: 'tool',
       tool_call_id: 'call_1',
@@ -190,14 +195,21 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
+    const onToolCall = vi.fn();
     await provider.chat({
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
       tools: [mockTool],
+      onToolCall,
     });
 
     expect(mockTool.execute).not.toHaveBeenCalled();
+    expect(onToolCall).toHaveBeenCalledWith({
+      id: 'c1',
+      toolName: 'strict_tool',
+      modelVisibleArguments: '{"hallucinated": true}',
+    });
     const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[1].content).toContain('Invalid arguments');
   });
@@ -257,13 +269,20 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
+    const onToolCall = vi.fn();
     await provider.chat({
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
       tools: [mockTool],
+      onToolCall,
     });
 
+    expect(onToolCall).toHaveBeenCalledWith({
+      id: 'c1',
+      toolName: 't',
+      modelVisibleArguments: '{"a": 123',
+    });
     const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[1].content).toContain('Failed to parse tool arguments');
   });
@@ -316,13 +335,20 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
+    const onToolCall = vi.fn();
     await provider.chat({
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
       tools: [], // No tools
+      onToolCall,
     });
 
+    expect(onToolCall).toHaveBeenCalledWith({
+      id: 'err',
+      toolName: 'missing',
+      modelVisibleArguments: '{}',
+    });
     const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[1].content).toContain('not found');
   });

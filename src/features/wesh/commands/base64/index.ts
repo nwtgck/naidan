@@ -1,3 +1,4 @@
+import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
@@ -5,17 +6,26 @@ import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } fro
 import { writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
+import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 
 function parseWrap({
   value,
 }: {
   value: string,
 }): { ok: true, value: number } | { ok: false, message: string } {
-  if (!/^\d+$/u.test(value)) {
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  const match = /^\+?(\d+)$/u.exec(numericText);
+  if (match === null) {
     return { ok: false, message: `invalid wrap size: '${value}'` };
   }
 
-  return { ok: true, value: Number.parseInt(value, 10) };
+  const parsed = BigInt(match[1]!);
+  return {
+    ok: true,
+    value: parsed > BigInt(Number.MAX_SAFE_INTEGER)
+      ? Number.MAX_SAFE_INTEGER
+      : Number(parsed),
+  };
 }
 
 function encodeBytesToBase64({
@@ -119,9 +129,7 @@ async function encodeStream({
       wroteEncodedData = true;
     }
 
-    if (wrap === 0) {
-      await writer.write({ text: '\n' });
-    } else if (wroteEncodedData && column > 0) {
+    if (wrap !== 0 && wroteEncodedData && column > 0) {
       await writer.write({ text: '\n' });
     }
   } finally {
@@ -129,71 +137,38 @@ async function encodeStream({
   }
 }
 
-function isBase64Whitespace({
+function decodeBase64Value({
   byte,
 }: {
   byte: number,
-}): boolean {
-  switch (byte) {
-  case 0x09:
-  case 0x0a:
-  case 0x0b:
-  case 0x0c:
-  case 0x0d:
-  case 0x20:
-    return true;
-  default:
-    return false;
-  }
-}
-
-function isBase64Byte({
-  byte,
-}: {
-  byte: number,
-}): boolean {
-  return (byte >= 0x41 && byte <= 0x5a)
-    || (byte >= 0x61 && byte <= 0x7a)
-    || (byte >= 0x30 && byte <= 0x39)
-    || byte === 0x2b
-    || byte === 0x2f
-    || byte === 0x3d;
-}
-
-function decodeBase64Group({
-  value,
-}: {
-  value: string,
-}): Uint8Array {
-  let binary: string;
-  try {
-    binary = atob(value);
-  } catch {
-    throw new Error('invalid input');
-  }
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
+}): number | undefined {
+  if (byte >= 0x41 && byte <= 0x5a) return byte - 0x41;
+  if (byte >= 0x61 && byte <= 0x7a) return byte - 0x61 + 26;
+  if (byte >= 0x30 && byte <= 0x39) return byte - 0x30 + 52;
+  if (byte === 0x2b) return 62;
+  if (byte === 0x2f) return 63;
+  return undefined;
 }
 
 async function decodeStream({
   context,
   input,
+  ignoreGarbage,
 }: {
   context: WeshCommandContext,
   input: string | undefined,
+  ignoreGarbage: boolean,
 }): Promise<void> {
-  let group = '';
-  let finished = false;
   const output = new Uint8Array(32 * 1024);
   let outputLength = 0;
+  let quantumLength: 0 | 1 | 2 | 3 = 0;
+  let first = 0;
+  let second = 0;
+  let third = 0;
+  let requiresSecondPadding = false;
 
   const flush = async (): Promise<void> => {
-    if (outputLength === 0) {
-      return;
-    }
+    if (outputLength === 0) return;
     await writeAllBytesToHandle({
       handle: context.stdout,
       data: output.subarray(0, outputLength),
@@ -201,50 +176,84 @@ async function decodeStream({
     outputLength = 0;
   };
 
-  const appendDecoded = async ({
-    value,
+  const appendDecodedByte = async ({
+    byte,
   }: {
-    value: Uint8Array,
+    byte: number,
   }): Promise<void> => {
-    if (outputLength + value.byteLength > output.byteLength) {
-      await flush();
-    }
-    output.set(value, outputLength);
-    outputLength += value.byteLength;
+    if (outputLength === output.byteLength) await flush();
+    output[outputLength] = byte;
+    outputLength += 1;
+  };
+
+  const failInvalidInput = async (): Promise<never> => {
+    await flush();
+    throw new Error('invalid input');
   };
 
   for await (const chunk of iterateReadableStreamChunks({
     stream: await openCommandInputStream({ context, input }),
   })) {
     for (const byte of chunk) {
-      if (isBase64Whitespace({ byte })) {
+      if (byte === 0x0a) continue;
+
+      const value = decodeBase64Value({ byte });
+      if (value !== undefined) {
+        if (requiresSecondPadding) await failInvalidInput();
+
+        switch (quantumLength) {
+        case 0:
+          first = value;
+          quantumLength = 1;
+          break;
+        case 1:
+          second = value;
+          await appendDecodedByte({ byte: (first << 2) | (second >> 4) });
+          quantumLength = 2;
+          break;
+        case 2:
+          third = value;
+          await appendDecodedByte({ byte: ((second & 0x0f) << 4) | (third >> 2) });
+          quantumLength = 3;
+          break;
+        case 3:
+          await appendDecodedByte({ byte: ((third & 0x03) << 6) | value });
+          quantumLength = 0;
+          break;
+        default: {
+          const _ex: never = quantumLength;
+          throw new Error(`Unhandled base64 quantum length: ${_ex}`);
+        }
+        }
         continue;
       }
-      if (finished || !isBase64Byte({ byte })) {
-        throw new Error('invalid input');
+
+      if (byte === 0x3d) {
+        if (requiresSecondPadding) {
+          requiresSecondPadding = false;
+          quantumLength = 0;
+          continue;
+        }
+        if (quantumLength === 2) {
+          if ((second & 0x0f) !== 0) await failInvalidInput();
+          requiresSecondPadding = true;
+          continue;
+        }
+        if (quantumLength === 3) {
+          if ((third & 0x03) !== 0) await failInvalidInput();
+          quantumLength = 0;
+          continue;
+        }
+        await failInvalidInput();
       }
-      group += String.fromCharCode(byte);
-      if (group.length < 4) {
-        continue;
-      }
-      await appendDecoded({
-        value: decodeBase64Group({ value: group }),
-      });
-      if (group.includes('=')) {
-        finished = true;
-      }
-      group = '';
+
+      if (!ignoreGarbage) await failInvalidInput();
     }
   }
 
-  if (group.length === 1) {
-    throw new Error('invalid input');
-  }
-  if (group.length > 0) {
-    await appendDecoded({
-      value: decodeBase64Group({ value: group }),
-    });
-  }
+  if (requiresSecondPadding || quantumLength === 1) await failInvalidInput();
+  if (quantumLength === 2 && (second & 0x0f) !== 0) await failInvalidInput();
+  if (quantumLength === 3 && (third & 0x03) !== 0) await failInvalidInput();
   await flush();
 }
 
@@ -256,6 +265,13 @@ const base64ArgvSpec: StandardArgvParserSpec = {
       long: 'decode',
       effects: [{ key: 'decode', value: true }],
       help: { summary: 'decode data', category: 'common' },
+    },
+    {
+      kind: 'flag',
+      short: 'i',
+      long: 'ignore-garbage',
+      effects: [{ key: 'ignoreGarbage', value: true }],
+      help: { summary: 'when decoding, ignore non-alphabet characters', category: 'common' },
     },
     {
       kind: 'value',
@@ -285,11 +301,11 @@ export const base64CommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'base64',
     description: 'Base64 encode or decode data',
-    usage: 'base64 [OPTION]... [FILE]...',
+    usage: 'base64 [OPTION]... [FILE]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: base64ArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
       spec: base64ArgvSpec,
     });
 
@@ -313,27 +329,38 @@ export const base64CommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
-    const wrap = typeof parsed.optionValues.wrap === 'number' ? parsed.optionValues.wrap : 76;
-    const inputs = parsed.positionals.length === 0 ? ['-'] : parsed.positionals;
-    let exitCode = 0;
-
-    for (const input of inputs) {
-      try {
-        if (parsed.optionValues.decode === true) {
-          await decodeStream({ context, input });
-        } else {
-          await encodeStream({ context, input, wrap });
-        }
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        await context.text().error({
-          text: `base64: ${input === '-' ? 'standard input' : input}: ${message}\n`,
-        });
-        exitCode = 1;
-      }
+    if (parsed.positionals.length > 1) {
+      await writeCommandUsageError({
+        context,
+        command: 'base64',
+        message: `base64: extra operand '${parsed.positionals[1] ?? ''}'`,
+        argvSpec: base64ArgvSpec,
+      });
+      return { exitCode: 1 };
     }
 
-    return { exitCode };
+    const wrap = typeof parsed.optionValues.wrap === 'number' ? parsed.optionValues.wrap : 76;
+    const input = parsed.positionals[0] ?? '-';
+    try {
+      if (parsed.optionValues.decode === true) {
+        await decodeStream({
+          context,
+          input,
+          ignoreGarbage: parsed.optionValues.ignoreGarbage === true,
+        });
+      } else {
+        await encodeStream({ context, input, wrap });
+      }
+      return { exitCode: 0 };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      await context.text().error({
+        text: message === 'invalid input'
+          ? 'base64: invalid input\n'
+          : `base64: ${input === '-' ? 'standard input' : input}: ${message}\n`,
+      });
+      return { exitCode: 1 };
+    }
   },
 };
 

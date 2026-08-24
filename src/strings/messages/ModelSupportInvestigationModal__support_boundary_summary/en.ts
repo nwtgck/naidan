@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__support_boundary_summary = ({ count, boundaries }: { count: number; boundaries: string }): string => `${count} assessment${count === 1 ? "" : "s"} · ${boundaries}`;

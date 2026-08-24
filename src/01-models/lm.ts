@@ -1,6 +1,6 @@
 import type { ChatMessage, LmParameters } from '@/01-models/types';
 import type { ToolCallId } from '@/01-models/ids';
-import type { Tool, ToolExecutionEvent } from '@/01-models/tool';
+import type { Tool, ToolExecutionEvent, ToolExecutionOutcome } from '@/01-models/tool';
 import type { ToolApprovalContext } from '@/01-models/tool-approval';
 
 export const UNKNOWN_STEPS: unique symbol = Symbol('unknown');
@@ -13,11 +13,19 @@ export interface LmProvider {
     parameters?: LmParameters,
     tools?: Tool[],
     toolApprovalContext?: ToolApprovalContext,
-    onToolCall?: ({ id, toolName, args }: { id: ToolCallId, toolName: string, args: unknown }) => void,
+    onToolCall?: ({ id, toolName, modelVisibleArguments }: {
+      id: ToolCallId,
+      toolName: string,
+      /**
+       * Arguments as represented in the LM-visible transcript.
+       * Execution-time validation/defaults/transforms must not rewrite this historical call.
+       */
+      modelVisibleArguments: string,
+    }) => void,
     onToolEvent?: ({ id, event }: { id: ToolCallId, event: ToolExecutionEvent }) => void,
     onToolResult?: ({ id, result }: {
       id: ToolCallId,
-      result: | { status: 'success', content: string } | { status: 'error', code: import('@/01-models/tool').ToolExecutionErrorCode, message: string },
+      result: ToolExecutionOutcome,
     }) => void,
     onAssistantMessageStart?: () => void,
     signal?: AbortSignal,

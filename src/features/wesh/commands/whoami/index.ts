@@ -1,10 +1,12 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
 const whoamiArgvSpec: StandardArgvParserSpec = {
   options: [
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit' } },
+    { kind: 'flag', short: undefined, long: 'version', effects: [{ key: 'version', value: true }], help: { summary: 'output version information and exit', category: 'advanced' } },
   ],
   allowShortFlagBundles: true,
   stopAtDoubleDash: true,
@@ -20,7 +22,7 @@ export const whoamiCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: whoamiArgvSpec, earlyExitOptions: STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS }),
       spec: whoamiArgvSpec,
     });
 
@@ -41,6 +43,11 @@ export const whoamiCommandDefinition: WeshCommandDefinition = {
         command: 'whoami',
         argvSpec: whoamiArgvSpec,
       });
+      return { exitCode: 0 };
+    }
+
+    if (parsed.optionValues.version === true) {
+      await context.text().print({ text: 'whoami (Wesh coreutils) 1.0\n' });
       return { exitCode: 0 };
     }
 

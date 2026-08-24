@@ -34,18 +34,19 @@ describe('wesh which', () => {
     return { result, stdout, stderr };
   }
 
-  it('prints help and reports missing operands', async () => {
+  it('prints help and returns 1 silently for missing operands', async () => {
     const help = await execute({ script: 'which --help' });
     expect(help.stdout.text).toContain('Locate a command');
-    expect(help.stdout.text).toContain('usage: which command...');
+    expect(help.stdout.text).toContain('usage: which [-as] command...');
+    expect(help.stdout.text).toContain('-a');
+    expect(help.stdout.text).toContain('-s');
     expect(help.stdout.text).toContain('--help');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
 
     const missing = await execute({ script: 'which' });
     expect(missing.stdout.text).toBe('');
-    expect(missing.stderr.text).toContain('which: missing operand');
-    expect(missing.stderr.text).toContain('usage: which command...');
+    expect(missing.stderr.text).toBe('');
     expect(missing.result.exitCode).toBe(1);
   });
 
@@ -53,13 +54,23 @@ describe('wesh which', () => {
     const { result, stdout, stderr } = await execute({ script: 'which env missing-command' });
 
     expect(stdout.text).toContain('env: builtin command');
-    expect(stderr.text).toContain('missing-command not found');
+    expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(1);
   });
 
-  it('matches command -v for resolved builtins', async () => {
-    const whichResult = await execute({ script: 'which env' });
-    const commandResult = await execute({ script: 'command -v env' });
+  it('returns 1 without diagnostics when a command is not found', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'which definitely-missing-command',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('reports registered Wesh commands as builtins rather than fabricated paths', async () => {
+    const whichResult = await execute({ script: 'PATH= which env' });
+    const commandResult = await execute({ script: 'PATH= command -v env' });
     const explicitPath = await execute({ script: 'which /bin/env' });
 
     expect(whichResult.stdout.text).toBe('env: builtin command\n');
@@ -72,11 +83,57 @@ describe('wesh which', () => {
     expect(explicitPath.result.exitCode).toBe(0);
   });
 
+  it('does not turn duplicate PATH entries into fabricated paths for builtins', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'PATH=/bin:/bin which -a env',
+    });
+
+    expect(stdout.text).toBe('env: builtin command\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports silent status checks and bundled options', async () => {
+    const found = await execute({ script: 'which -s env' });
+    const missing = await execute({ script: 'which -as definitely-missing-command' });
+
+    expect(found.stdout.text).toBe('');
+    expect(found.stderr.text).toBe('');
+    expect(found.result.exitCode).toBe(0);
+
+    expect(missing.stdout.text).toBe('');
+    expect(missing.stderr.text).toBe('');
+    expect(missing.result.exitCode).toBe(1);
+  });
+
+  it('returns 2 for invalid options', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'which -z env' });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("which: invalid option -- 'z'");
+    expect(result.exitCode).toBe(2);
+  });
+
   it('treats -- as the end of options', async () => {
     const { result, stdout, stderr } = await execute({ script: 'which -- env' });
 
     expect(stdout.text).toBe('env: builtin command\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('stops parsing options after the first command-name operand', async () => {
+    const lateAll = await execute({ script: 'which env -a' });
+    expect(lateAll.stdout.text).toBe('env: builtin command\n');
+    expect(lateAll.stderr.text).toBe('');
+    expect(lateAll.result.exitCode).toBe(1);
+
+    const lateHelp = await execute({ script: 'which env --help' });
+    expect(lateHelp.stdout.text).toBe('env: builtin command\n');
+    expect(lateHelp.stderr.text).toBe('');
+    expect(lateHelp.result.exitCode).toBe(1);
+
+    const leadingAll = await execute({ script: 'which -a env' });
+    expect(leadingAll.result.exitCode).toBe(0);
   });
 });

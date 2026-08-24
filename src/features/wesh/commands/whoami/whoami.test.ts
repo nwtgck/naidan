@@ -33,12 +33,28 @@ describe('wesh whoami', () => {
     return { result, stdout, stderr };
   }
 
-  it('prints the current user', async () => {
+  it('prints the current USER value when core identity is unavailable', async () => {
     const normal = await execute({ script: 'USER=alice whoami' });
 
     expect(normal.stdout.text).toBe('alice\n');
     expect(normal.stderr.text).toBe('');
     expect(normal.result.exitCode).toBe(0);
+  });
+
+  it('supports GNU-style --version before the option terminator', async () => {
+    const version = await execute({ script: 'whoami --version' });
+    const lateVersion = await execute({ script: 'whoami extra --version' });
+    const terminated = await execute({ script: 'whoami -- extra --version' });
+
+    expect(version.stdout.text).toBe('whoami (Wesh coreutils) 1.0\n');
+    expect(version.stderr.text).toBe('');
+    expect(version.result.exitCode).toBe(0);
+    expect(lateVersion.stdout.text).toBe('whoami (Wesh coreutils) 1.0\n');
+    expect(lateVersion.stderr.text).toBe('');
+    expect(lateVersion.result.exitCode).toBe(0);
+    expect(terminated.stdout.text).toBe('');
+    expect(terminated.stderr.text).toContain('whoami: too many arguments');
+    expect(terminated.result.exitCode).toBe(1);
   });
 
   it('prints help and rejects extra operands and invalid options', async () => {

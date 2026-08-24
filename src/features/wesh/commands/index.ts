@@ -39,11 +39,14 @@ import { colonCommandDefinition } from './colon/index.ts';
 import { envCommandDefinition } from './env/index.ts';
 import { exportCmdCommandDefinition } from './export/index.ts';
 import { unsetCommandDefinition } from './unset/index.ts';
+import { setCommandDefinition } from './set/index.ts';
 import { unaliasCommandDefinition } from './unalias/index.ts';
 import { whichCommandDefinition } from './which/index.ts';
 import { commandCommandDefinition } from './command/index.ts';
 import { dateCommandDefinition } from './date/index.ts';
 import { sleepCommandDefinition } from './sleep/index.ts';
+import { killCommandDefinition } from './kill/index.ts';
+import { typeCommandDefinition } from './type/index.ts';
 import { shoptCommandDefinition } from './shopt/index.ts';
 import { historyCommandDefinition } from './history/index.ts';
 import { clearCommandDefinition } from './clear/index.ts';
@@ -81,6 +84,8 @@ import { patchCommandDefinition } from './patch/index.ts';
 import { duCommandDefinition } from './du/index.ts';
 import { splitCommandDefinition } from './split/index.ts';
 import { csplitCommandDefinition } from './csplit/index.ts';
+import { umaskCommandDefinition } from './umask/index.ts';
+import { gitCommandDefinition } from './git/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -123,11 +128,14 @@ export const builtinCommands: WeshCommandDefinition[] = [
   envCommandDefinition,
   exportCmdCommandDefinition,
   unsetCommandDefinition,
+  setCommandDefinition,
   unaliasCommandDefinition,
   whichCommandDefinition,
   commandCommandDefinition,
   dateCommandDefinition,
   sleepCommandDefinition,
+  killCommandDefinition,
+  typeCommandDefinition,
   shoptCommandDefinition,
   historyCommandDefinition,
   clearCommandDefinition,
@@ -164,6 +172,8 @@ export const builtinCommands: WeshCommandDefinition[] = [
   duCommandDefinition,
   splitCommandDefinition,
   csplitCommandDefinition,
+  umaskCommandDefinition,
+  gitCommandDefinition,
   testCommandDefinition,
   leftBracketCommandDefinition,
 ];

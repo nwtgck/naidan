@@ -193,7 +193,8 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
               console.log(`  \u2713 Compressed and deleted original: ${entry.name}`);
             }
           } catch (err) {
-            console.error(`  \u26A0 Failed to compress ${entry.name}:`, err);
+            await fs.promises.rm(gzPath, { force: true });
+            throw new Error(`Failed to compress WASM asset: ${entry.name}`, { cause: err });
           }
         }
       }
@@ -303,12 +304,9 @@ export default defineConfig(({ mode }) => {
       !isStandalone && viteStaticCopy({
         targets: [
           {
-            src: 'node_modules/@huggingface/transformers/dist/ort-wasm*',
+            src: 'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded{,.asyncify}.{mjs,wasm}',
             dest: 'transformers',
-          },
-          {
-            src: 'node_modules/onnxruntime-web/dist/ort-wasm*',
-            dest: 'transformers',
+            rename: { stripBase: true },
           },
         ],
       }),

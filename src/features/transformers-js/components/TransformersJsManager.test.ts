@@ -138,6 +138,19 @@ describe('TransformersJsManager.vue', () => {
     expect(wrapper.text()).toContain('1.0 KB');
   });
 
+  it('shows the hosted investigation action for a cached model', async () => {
+    (transformersJsService.listCachedModels as any).mockResolvedValue([
+      { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
+    ]);
+
+    const wrapper = mount(TransformersJsManager);
+    await flushPromises();
+
+    const investigateButton = wrapper.find('[data-testid="model-support-investigate-hf.co/org/model1"]');
+    expect(investigateButton.exists()).toBe(true);
+    expect(investigateButton.text()).toBe('Investigate');
+  });
+
   it('shows Gemma 4 in the preset model list', async () => {
     const wrapper = mount(TransformersJsManager);
     await flushPromises();

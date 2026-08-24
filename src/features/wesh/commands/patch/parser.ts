@@ -224,8 +224,12 @@ function parseGitTokens({ value }: { value: string }): string[] {
   return tokens;
 }
 
+function trimAsciiHorizontalWhitespace({ value }: { value: string }): string {
+  return value.replace(/^[ \t]+|[ \t]+$/gu, '');
+}
+
 function parseHeaderPath({ value }: { value: string }): string {
-  const trimmed = value.trimStart();
+  const trimmed = value.replace(/^[ \t]+/u, '');
   if (trimmed.startsWith('"')) {
     let index = 1;
     let escaped = false;
@@ -242,7 +246,9 @@ function parseHeaderPath({ value }: { value: string }): string {
   }
 
   const tabIndex = trimmed.indexOf('\t');
-  return (tabIndex >= 0 ? trimmed.slice(0, tabIndex) : trimmed).trimEnd();
+  return trimAsciiHorizontalWhitespace({
+    value: tabIndex >= 0 ? trimmed.slice(0, tabIndex) : trimmed,
+  });
 }
 
 function parseRange({ startText, countText }: { startText: string, countText: string | undefined }): PatchRange {
@@ -331,21 +337,6 @@ function parseUnifiedHunk({
     throw new Error(`truncated unified hunk at line ${headerLine.lineNumber}`);
   }
 
-  const trailingLine = lines[index];
-  if (trailingLine !== undefined) {
-    const trailingPrefix = trailingLine.content[0];
-    const startsNextFile = trailingPrefix === 0x2d
-      && decodeLine({ line: trailingLine }).startsWith('--- ');
-    if (
-      trailingPrefix === 0x20
-      || trailingPrefix === 0x2b
-      || trailingPrefix === 0x5c
-      || (trailingPrefix === 0x2d && !startsNextFile)
-    ) {
-      throw new Error(`hunk body exceeds declared range at line ${trailingLine.lineNumber}`);
-    }
-  }
-
   return {
     hunk: {
       oldRange,
@@ -389,7 +380,9 @@ function parseUnifiedSection({
 
     if (text.startsWith('diff --git ') && index !== startIndex) break;
     if (text.startsWith('Index: ')) {
-      header.indexPath = text.slice('Index: '.length).trim();
+      header.indexPath = trimAsciiHorizontalWhitespace({
+        value: text.slice('Index: '.length),
+      });
       index += 1;
       continue;
     }
@@ -898,7 +891,9 @@ function findIndexedSection({
   const indexText = decodeLine({ line: indexLine });
   if (!indexText.startsWith('Index: ')) return undefined;
 
-  const indexPath = indexText.slice('Index: '.length).trim();
+  const indexPath = trimAsciiHorizontalWhitespace({
+    value: indexText.slice('Index: '.length),
+  });
   for (let cursor = index + 1; cursor < lines.length; cursor++) {
     const text = decodeLine({ line: lines[cursor]! });
     if (text.startsWith('Index: ')) return undefined;
@@ -1071,6 +1066,7 @@ export function parsePatchDocument({
     }
 
     if (text.startsWith('--- ')) {
+      if (sections.length > 0) break;
       throw new Error(`missing +++ header after line ${lines[index]!.lineNumber}`);
     }
     if (text.startsWith('*** ')) {

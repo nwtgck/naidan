@@ -60,6 +60,6 @@ metadata.md
     const restricted = await executeInWesh({ wesh, script: 'ls /sys/fs/naidan/chat-groups/chat-group-1/chats' });
     expect(restricted.stdout.text).toBe('');
     expect(restricted.stderr.text).toBe('ls: /sys/fs/naidan/chat-groups/chat-group-1/chats: Permission denied: /sys/fs/naidan/chat-groups/chat-group-1/chats\n');
-    expect(restricted.result.exitCode).toBe(1);
+    expect(restricted.result.exitCode).toBe(2);
   });
 });

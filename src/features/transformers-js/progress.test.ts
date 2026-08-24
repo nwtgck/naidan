@@ -20,7 +20,14 @@ vi.mock('comlink', () => {
       return {
         [releaseProxy]: vi.fn(),
         scanModel: vi.fn().mockResolvedValue({ files: [] }),
-        prefetchUrls: vi.fn().mockResolvedValue(undefined),
+        prefetchUrls: vi.fn().mockResolvedValue({
+          requestedCount: 0,
+          cachedCount: 0,
+          downloadedCount: 0,
+          failedCount: 0,
+          complete: true,
+          files: [],
+        }),
       };
     }),
     proxy: vi.fn(x => x),
@@ -225,5 +232,31 @@ describe('transformersJsService progress logic', () => {
 
     expect(lastProgress).toBe(99);
     expect(transformersJsService.getState().status).toBe('ready');
+  });
+
+  it('should throttle Transformers.js progress_total/progress pairs as one high-frequency stream', async () => {
+    const mockRemote = {
+      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+        for (let index = 1; index <= 100; index += 1) {
+          cb({ status: 'progress_total', loaded: index, total: 100, progress: index });
+          cb({ status: 'progress', file: 'model.onnx', loaded: index, total: 100, progress: index });
+        }
+        return { device: 'wasm' };
+      }),
+    };
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
+
+    const { transformersJsService } = await import('./index');
+    const listener = vi.fn();
+    transformersJsService.subscribe({ listener });
+
+    await transformersJsService.loadModel({ modelId: 'some-model' });
+
+    // 200 raw progress callbacks must not become 200 reactive notifications.
+    // The raw events are still consumed by updateProgress before notification
+    // throttling, so this only removes main-thread/UI churn.
+    expect(listener.mock.calls.length).toBeLessThan(10);
   });
 });

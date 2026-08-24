@@ -3,7 +3,7 @@ import type { LmProvider } from '@/01-models/lm';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import type { ToolCallId } from '@/01-models/ids';
 import { transformersJsService } from './index';
-import type { Tool } from '@/01-models/tool';
+import { formatToolExecutionOutcomeForLm, type Tool, type ToolExecutionOutcome } from '@/01-models/tool';
 import type { ToolApprovalContext } from '@/features/tools/approval';
 import type { WorkerToolDefinition } from './types';
 import { zodToJsonSchema } from '@/utils/lm-tools';
@@ -16,11 +16,11 @@ export class TransformersJsProvider implements LmProvider {
     parameters?: LmParameters,
     tools?: Tool[],
     toolApprovalContext?: ToolApprovalContext,
-    onToolCall?: ({ id, toolName, args }: { id: ToolCallId, toolName: string, args: unknown }) => void,
+    onToolCall?: ({ id, toolName, modelVisibleArguments }: { id: ToolCallId, toolName: string, modelVisibleArguments: string }) => void,
     onToolEvent?: ({ id, event }: { id: ToolCallId, event: import('@/01-models/tool').ToolExecutionEvent }) => void,
     onToolResult?: ({ id, result }: {
       id: ToolCallId,
-      result: | { status: 'success', content: string } | { status: 'error', code: import('@/01-models/tool').ToolExecutionErrorCode, message: string },
+      result: ToolExecutionOutcome,
     }) => void,
     onAssistantMessageStart?: () => void,
     signal?: AbortSignal,
@@ -94,6 +94,12 @@ export class TransformersJsProvider implements LmProvider {
       for (const tc of receivedToolCalls) {
         if (signal?.aborted) throw new Error('Generation aborted');
 
+        onToolCall?.({
+          id: tc.id,
+          toolName: tc.function.name,
+          modelVisibleArguments: tc.function.arguments,
+        });
+
         const tool = tools?.find(t => t.name === tc.function.name);
         let result: string;
         let parsedArgs: unknown;
@@ -101,28 +107,31 @@ export class TransformersJsProvider implements LmProvider {
         try {
           parsedArgs = JSON.parse(tc.function.arguments);
         } catch (e) {
-          const errorResult: { status: 'error', code: import('@/01-models/tool').ToolExecutionErrorCode, message: string } = {
+          const errorResult: ToolExecutionOutcome = {
             status: 'error',
             code: 'invalid_arguments',
-            message: `Error: Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`,
+            message: `Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`,
           };
           onToolResult?.({ id: tc.id, result: errorResult });
-          currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: errorResult.message });
+          currentMessages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: formatToolExecutionOutcomeForLm({ outcome: errorResult }),
+          });
           continue;
         }
 
         if (!tool) {
-          const errorResult: { status: 'error', code: import('@/01-models/tool').ToolExecutionErrorCode, message: string } = {
+          const errorResult: ToolExecutionOutcome = {
             status: 'error',
             code: 'other',
             message: `Tool "${tc.function.name}" not found.`,
           };
           onToolResult?.({ id: tc.id, result: errorResult });
-          result = errorResult.message;
+          result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
         } else {
           try {
             const validatedArgs = tool.parametersSchema.strict().parse(parsedArgs);
-            onToolCall?.({ id: tc.id, toolName: tool.name, args: validatedArgs });
             const executionResult = await tool.execute({
               args: validatedArgs,
               signal,
@@ -133,28 +142,16 @@ export class TransformersJsProvider implements LmProvider {
             });
             if (signal?.aborted) throw new Error('Generation aborted');
             onToolResult?.({ id: tc.id, result: executionResult });
-
-            switch (executionResult.status) {
-            case 'success':
-              result = executionResult.content;
-              break;
-            case 'error':
-              result = `Error [${executionResult.code}]: ${executionResult.message}`;
-              break;
-            default: {
-              const _ex: never = executionResult;
-              result = `Error: Unhandled tool execution status: ${(_ex as { status: string }).status}`;
-            }
-            }
+            result = formatToolExecutionOutcomeForLm({ outcome: executionResult });
           } catch (e) {
             if (e instanceof Error && e.message === 'Generation aborted') throw e;
 
-            const errorResult: { status: 'error', code: import('@/01-models/tool').ToolExecutionErrorCode, message: string } = e instanceof z.ZodError
+            const errorResult: ToolExecutionOutcome = e instanceof z.ZodError
               ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
               : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
 
             onToolResult?.({ id: tc.id, result: errorResult });
-            result = `Error: ${errorResult.message}`;
+            result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
           }
         }
 

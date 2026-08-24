@@ -1,7 +1,7 @@
 import type { ChatMessage, LmParameters } from '@/01-models/types';
 import type { ToolCallId } from '@/01-models/ids';
 import type { LmProvider } from '@/01-models/lm';
-import type { Tool } from '@/01-models/tool';
+import type { Tool, ToolExecutionOutcome } from '@/01-models/tool';
 
 function createUnsupportedError(): Error {
   return new Error('Transformers.js is not available in standalone mode');
@@ -14,11 +14,11 @@ export class TransformersJsProvider implements LmProvider {
     onChunk: ({ chunk }: { chunk: string }) => void,
     parameters?: LmParameters,
     tools?: Tool[],
-    onToolCall?: ({ id, toolName, args }: { id: ToolCallId, toolName: string, args: unknown }) => void,
+    onToolCall?: ({ id, toolName, modelVisibleArguments }: { id: ToolCallId, toolName: string, modelVisibleArguments: string }) => void,
     onToolEvent?: ({ id, event }: { id: ToolCallId, event: import('@/01-models/tool').ToolExecutionEvent }) => void,
     onToolResult?: ({ id, result }: {
       id: ToolCallId,
-      result: | { status: 'success', content: string } | { status: 'error', code: import('@/01-models/tool').ToolExecutionErrorCode, message: string },
+      result: ToolExecutionOutcome,
     }) => void,
     onAssistantMessageStart?: () => void,
     signal?: AbortSignal,

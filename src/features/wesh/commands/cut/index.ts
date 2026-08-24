@@ -1,10 +1,13 @@
+import {
+  STANDARD_HELP_EARLY_EXIT_OPTIONS,
+  standardSemanticIssuePrecedesDiagnostic,
+  stopStandardArgvAtFirstEarlyExit,
+} from '@/features/wesh/commands/_shared/argv';
 import { parseStandardArgv } from '@/features/wesh/argv';
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
 import { openFileReadStream } from '@/features/wesh/utils/fs';
-import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
-import { iterateUtf8LineRecords } from '@/features/wesh/utils/text-records';
 
 type CutMode = 'bytes' | 'characters' | 'fields';
 
@@ -13,14 +16,9 @@ interface CutRange {
   end: number | undefined,
 }
 
-interface CutTextLine {
-  text: string,
-  hadNewline: boolean,
-}
-
-interface CutByteLine {
+interface CutByteRecord {
   bytes: Uint8Array,
-  hadNewline: boolean,
+  hadDelimiter: boolean,
 }
 
 interface CutInterval {
@@ -31,6 +29,12 @@ interface CutInterval {
 interface CutSegment {
   start: number,
   end: number,
+}
+
+interface CutFieldSelection {
+  bytes: Uint8Array,
+  fieldDelimiterCount: number,
+  selectedNonTrailingFieldCount: number,
 }
 
 function parsePositiveInteger({
@@ -290,109 +294,91 @@ function selectBytes({
   return output;
 }
 
-function selectCharacters({
-  line,
-  intervals,
-  complement,
-}: {
-  line: string,
-  intervals: CutInterval[],
-  complement: boolean,
-}): string {
-  const characters = Array.from(line);
-  const segments = buildSelectedSegments({
-    intervals,
-    length: characters.length,
-    complement,
-  });
-  const selected: string[] = [];
-
-  for (const segment of segments) {
-    selected.push(characters.slice(segment.start, segment.end).join(''));
-  }
-
-  return selected.join('');
-}
-
 function selectFields({
   line,
-  delimiter,
+  delimiterByte,
   outputDelimiter,
   intervals,
   complement,
   suppressNoDelimiterLines,
 }: {
-  line: string,
-  delimiter: string,
-  outputDelimiter: string,
+  line: Uint8Array,
+  delimiterByte: number,
+  outputDelimiter: Uint8Array,
   intervals: CutInterval[],
   complement: boolean,
   suppressNoDelimiterLines: boolean,
-}): string | undefined {
-  if (!line.includes(delimiter)) {
-    return suppressNoDelimiterLines ? undefined : line;
+}): CutFieldSelection | undefined {
+  if (!line.includes(delimiterByte)) {
+    return suppressNoDelimiterLines
+      ? undefined
+      : {
+        bytes: line,
+        fieldDelimiterCount: 0,
+        selectedNonTrailingFieldCount: 1,
+      };
   }
 
-  const result: string[] = [];
+  const selectedFields: CutSegment[] = [];
   const tracker = createCutRangeTracker({
     intervals,
     complement,
   });
   let fieldStart = 0;
   let fieldNumber = 1;
+  let fieldDelimiterCount = 0;
+  let selectedNonTrailingFieldCount = 0;
 
-  for (let index = 0; index <= line.length; index++) {
-    if (index < line.length && line[index] !== delimiter) {
+  for (let index = 0; index <= line.length; index += 1) {
+    if (index < line.length && line[index] !== delimiterByte) {
       continue;
     }
 
-    if (tracker.isSelected({ position: fieldNumber })) {
-      result.push(line.slice(fieldStart, index));
+    const selected = tracker.isSelected({ position: fieldNumber });
+    const trailingEmptyField = index === line.length && fieldStart === line.length;
+    if (selected) {
+      selectedFields.push({
+        start: fieldStart,
+        end: index,
+      });
+      if (!trailingEmptyField) {
+        selectedNonTrailingFieldCount += 1;
+      }
     }
 
+    if (index < line.length) {
+      fieldDelimiterCount += 1;
+    }
     fieldStart = index + 1;
-    fieldNumber++;
+    fieldNumber += 1;
   }
 
-  return result.join(outputDelimiter);
-}
+  const separatorCount = Math.max(0, selectedFields.length - 1);
+  const selectedByteLength = selectedFields.reduce(
+    (total, field) => total + field.end - field.start,
+    0,
+  );
+  const result = new Uint8Array(
+    selectedByteLength + separatorCount * outputDelimiter.length,
+  );
+  let outputOffset = 0;
 
-function selectLine({
-  line,
-  mode,
-  intervals,
-  fieldDelimiter,
-  outputDelimiter,
-  complement,
-  suppressNoDelimiterLines,
-}: {
-  line: string,
-  mode: CutMode,
-  intervals: CutInterval[],
-  fieldDelimiter: string | undefined,
-  outputDelimiter: string | undefined,
-  complement: boolean,
-  suppressNoDelimiterLines: boolean,
-}): string | undefined {
-  switch (mode) {
-  case 'bytes':
-    throw new Error('Byte mode must use the byte-oriented selection path');
-  case 'characters':
-    return selectCharacters({ line, intervals, complement });
-  case 'fields':
-    return selectFields({
-      line,
-      delimiter: fieldDelimiter ?? '\t',
-      outputDelimiter: outputDelimiter ?? fieldDelimiter ?? '\t',
-      intervals,
-      complement,
-      suppressNoDelimiterLines,
-    });
-  default: {
-    const _ex: never = mode;
-    throw new Error(`Unhandled cut mode: ${_ex}`);
+  for (const [index, field] of selectedFields.entries()) {
+    if (index > 0) {
+      result.set(outputDelimiter, outputOffset);
+      outputOffset += outputDelimiter.length;
+    }
+
+    const fieldBytes = line.subarray(field.start, field.end);
+    result.set(fieldBytes, outputOffset);
+    outputOffset += fieldBytes.length;
   }
-  }
+
+  return {
+    bytes: result,
+    fieldDelimiterCount,
+    selectedNonTrailingFieldCount,
+  };
 }
 
 function createStdinStream({
@@ -457,42 +443,29 @@ async function openCutInputStream({
   });
 }
 
-async function *readTextLines({
+async function *readByteRecords({
   stream,
+  delimiterByte,
 }: {
   stream: ReadableStream<Uint8Array>,
-}): AsyncGenerator<CutTextLine> {
-  for await (const record of iterateUtf8LineRecords({
-    chunks: iterateReadableStreamChunks({ stream }),
-  })) {
-    yield {
-      text: record.text,
-      hadNewline: record.termination === 'delimiter',
-    };
-  }
-}
-
-async function *readByteLines({
-  stream,
-}: {
-  stream: ReadableStream<Uint8Array>,
-}): AsyncGenerator<CutByteLine> {
+  delimiterByte: number,
+}): AsyncGenerator<CutByteRecord> {
   const reader = stream.getReader();
-  let lineChunks: Uint8Array[] = [];
-  let lineLength = 0;
+  let recordChunks: Uint8Array[] = [];
+  let recordLength = 0;
 
-  const flushLine = ({ hadNewline }: { hadNewline: boolean }): CutByteLine => {
-    const line = new Uint8Array(lineLength);
+  const flushRecord = ({ hadDelimiter }: { hadDelimiter: boolean }): CutByteRecord => {
+    const bytes = new Uint8Array(recordLength);
     let offset = 0;
-    for (const chunk of lineChunks) {
-      line.set(chunk, offset);
+    for (const chunk of recordChunks) {
+      bytes.set(chunk, offset);
       offset += chunk.length;
     }
-    lineChunks = [];
-    lineLength = 0;
+    recordChunks = [];
+    recordLength = 0;
     return {
-      bytes: line,
-      hadNewline,
+      bytes,
+      hadDelimiter,
     };
   };
 
@@ -507,33 +480,58 @@ async function *readByteLines({
       }
 
       let start = 0;
-      for (let index = 0; index < value.length; index++) {
-        if (value[index] !== 0x0a) {
+      for (let index = 0; index < value.length; index += 1) {
+        if (value[index] !== delimiterByte) {
           continue;
         }
 
         if (index > start) {
           const chunk = value.subarray(start, index);
-          lineChunks.push(chunk);
-          lineLength += chunk.length;
+          recordChunks.push(chunk);
+          recordLength += chunk.length;
         }
-        yield flushLine({ hadNewline: true });
+        yield flushRecord({ hadDelimiter: true });
         start = index + 1;
       }
 
       if (start < value.length) {
         const chunk = value.subarray(start);
-        lineChunks.push(chunk);
-        lineLength += chunk.length;
+        recordChunks.push(chunk);
+        recordLength += chunk.length;
       }
     }
 
-    if (lineLength > 0) {
-      yield flushLine({ hadNewline: false });
+    if (recordLength > 0) {
+      yield flushRecord({ hadDelimiter: false });
     }
   } finally {
     reader.releaseLock();
   }
+}
+
+type CutPreHelpSemanticIssue =
+  | { readonly kind: 'multiple-lists' }
+  | { readonly kind: 'delimiter', readonly value: string };
+
+function findCutPreHelpSemanticIssue({
+  parsed,
+}: {
+  parsed: ReturnType<typeof parseStandardArgv>,
+}): CutPreHelpSemanticIssue | undefined {
+  const listCount = parsed.occurrences.filter((occurrence) => (
+    occurrence.kind === 'value'
+    && (occurrence.key === 'bytes' || occurrence.key === 'characters' || occurrence.key === 'fields')
+  )).length;
+  if (listCount > 1) return { kind: 'multiple-lists' };
+
+  for (const occurrence of parsed.occurrences) {
+    if (occurrence.kind !== 'value' || occurrence.key !== 'delimiter' || typeof occurrence.value !== 'string') continue;
+    const delimiterByteLength = new TextEncoder().encode(occurrence.value).length;
+    if (delimiterByteLength !== 0 && delimiterByteLength !== 1) {
+      return { kind: 'delimiter', value: occurrence.value };
+    }
+  }
+  return undefined;
 }
 
 export const cutCommandDefinition: WeshCommandDefinition = {
@@ -545,6 +543,13 @@ export const cutCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const cutArgvSpec: StandardArgvParserSpec = {
       options: [
+        {
+          kind: 'flag',
+          short: 'z',
+          long: 'zero-terminated',
+          effects: [{ key: 'zeroTerminated', value: true }],
+          help: { summary: 'line delimiter is NUL, not newline', category: 'common' },
+        },
         {
           kind: 'flag',
           short: undefined,
@@ -630,12 +635,21 @@ export const cutCommandDefinition: WeshCommandDefinition = {
       specialTokenParsers: [],
     };
 
-    const parsed = parseStandardArgv({
+    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: context.args,
       spec: cutArgvSpec,
+      earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+    });
+    const parsed = parseStandardArgv({ args: parsedArgs, spec: cutArgvSpec });
+    const preHelpSemanticIssue = findCutPreHelpSemanticIssue({ parsed });
+    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
+      args: parsedArgs,
+      spec: cutArgvSpec,
+      parsed,
+      findSemanticIssue: findCutPreHelpSemanticIssue,
     });
 
-    if (parsed.diagnostics.length > 0) {
+    if (parsed.diagnostics.length > 0 && !semanticIssuePrecedesDiagnostic) {
       await writeCommandUsageError({
         context,
         command: 'cut',
@@ -643,6 +657,67 @@ export const cutCommandDefinition: WeshCommandDefinition = {
         argvSpec: cutArgvSpec,
       });
       return { exitCode: 1 };
+    }
+
+    if (preHelpSemanticIssue !== undefined) {
+      switch (preHelpSemanticIssue.kind) {
+      case 'multiple-lists':
+        await writeCommandUsageError({
+          context,
+          command: 'cut',
+          message: 'cut: only one list may be specified',
+          argvSpec: cutArgvSpec,
+        });
+        return { exitCode: 1 };
+      case 'delimiter':
+        await writeCommandUsageError({
+          context,
+          command: 'cut',
+          message: 'cut: the delimiter must be a single character',
+          argvSpec: cutArgvSpec,
+        });
+        return { exitCode: 1 };
+      default: {
+        const _ex: never = preHelpSemanticIssue;
+        throw new Error(`Unhandled cut pre-help semantic issue: ${JSON.stringify(_ex)}`);
+      }
+      }
+    }
+
+    const listSelectionCount = parsed.occurrences.reduce((count, occurrence) => {
+      switch (occurrence.kind) {
+      case 'value':
+        return occurrence.key === 'bytes' || occurrence.key === 'characters' || occurrence.key === 'fields'
+          ? count + 1
+          : count;
+      case 'flag':
+      case 'special':
+        return count;
+      default: {
+        const _ex: never = occurrence;
+        throw new Error(`Unhandled cut option occurrence: ${String(_ex)}`);
+      }
+      }
+    }, 0);
+    if (listSelectionCount > 1) {
+      throw new Error('cut pre-help validation missed multiple list selections');
+    }
+
+    const delimiterValue = typeof parsed.optionValues.delimiter === 'string'
+      ? parsed.optionValues.delimiter
+      : undefined;
+    const encodedFieldDelimiter = delimiterValue === undefined
+      ? undefined
+      : new TextEncoder().encode(delimiterValue);
+    const fieldDelimiterByte = encodedFieldDelimiter === undefined
+      ? undefined
+      : encodedFieldDelimiter.length === 0
+        ? 0x00
+        : encodedFieldDelimiter.length === 1
+          ? encodedFieldDelimiter[0]
+          : undefined;
+    if (delimiterValue !== undefined && fieldDelimiterByte === undefined) {
+      throw new Error(`cut pre-help validation missed delimiter: ${delimiterValue}`);
     }
 
     if (parsed.optionValues.help === true) {
@@ -713,26 +788,38 @@ export const cutCommandDefinition: WeshCommandDefinition = {
       ranges: parsedList.value,
     });
 
-    const delimiterValue = typeof parsed.optionValues.delimiter === 'string'
-      ? parsed.optionValues.delimiter
-      : undefined;
-    const fieldDelimiter = delimiterValue !== undefined ? delimiterValue.charAt(0) : undefined;
-    if (mode === 'fields' && delimiterValue !== undefined && fieldDelimiter === '') {
+    if (mode !== 'fields' && delimiterValue !== undefined) {
       await writeCommandUsageError({
         context,
         command: 'cut',
-        message: 'cut: empty delimiter',
+        message: 'cut: an input delimiter may be specified only when operating on fields',
+        argvSpec: cutArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+    if (mode !== 'fields' && parsed.optionValues.suppress === true) {
+      await writeCommandUsageError({
+        context,
+        command: 'cut',
+        message: 'cut: suppressing non-delimited lines makes sense only when operating on fields',
         argvSpec: cutArgvSpec,
       });
       return { exitCode: 1 };
     }
 
-    const outputDelimiter = typeof parsed.optionValues.outputDelimiter === 'string'
+    const rawOutputDelimiter = typeof parsed.optionValues.outputDelimiter === 'string'
       ? parsed.optionValues.outputDelimiter
       : undefined;
+    const inputFieldDelimiterByte = fieldDelimiterByte ?? 0x09;
+    const outputDelimiter = rawOutputDelimiter === undefined
+      ? Uint8Array.of(inputFieldDelimiterByte)
+      : rawOutputDelimiter === ''
+        ? Uint8Array.of(0x00)
+        : new TextEncoder().encode(rawOutputDelimiter);
     const complement = parsed.optionValues.complement === true;
     const suppress = parsed.optionValues.suppress === true;
-
+    const zeroTerminated = parsed.optionValues.zeroTerminated === true;
+    const recordDelimiterByte = zeroTerminated ? 0x00 : 0x0a;
     const text = context.text();
     let exitCode = 0;
 
@@ -749,9 +836,13 @@ export const cutCommandDefinition: WeshCommandDefinition = {
 
         switch (mode) {
         case 'bytes':
-          for await (const line of readByteLines({ stream })) {
+        case 'characters':
+          for await (const record of readByteRecords({
+            stream,
+            delimiterByte: recordDelimiterByte,
+          })) {
             const selected = selectBytes({
-              line: line.bytes,
+              line: record.bytes,
               intervals,
               complement,
             });
@@ -761,33 +852,48 @@ export const cutCommandDefinition: WeshCommandDefinition = {
                 buffer: selected,
               });
             }
-            if (line.hadNewline) {
-              await writeAll({
-                handle: context.stdout,
-                buffer: new Uint8Array([0x0a]),
-              });
-            }
+            await writeAll({
+              handle: context.stdout,
+              buffer: Uint8Array.of(recordDelimiterByte),
+            });
           }
           break;
-        case 'characters':
         case 'fields':
-          for await (const line of readTextLines({ stream })) {
-            const selected = selectLine({
-              line: line.text,
-              mode,
-              intervals,
-              fieldDelimiter,
+          for await (const record of readByteRecords({
+            stream,
+            delimiterByte: recordDelimiterByte,
+          })) {
+            const selected = selectFields({
+              line: record.bytes,
+              delimiterByte: inputFieldDelimiterByte,
               outputDelimiter,
+              intervals,
               complement,
-              suppressNoDelimiterLines: suppress && mode === 'fields',
+              suppressNoDelimiterLines: suppress,
             });
             if (selected === undefined) {
               continue;
             }
 
-            await text.print({
-              text: line.hadNewline ? `${selected}\n` : selected,
-            });
+            if (selected.bytes.length > 0) {
+              await writeAll({
+                handle: context.stdout,
+                buffer: selected.bytes,
+              });
+            }
+            const omitSyntheticZeroDelimiter = zeroTerminated
+              && !record.hadDelimiter
+              && record.bytes[record.bytes.length - 1] === inputFieldDelimiterByte
+              && selected.fieldDelimiterCount === 1
+              && (suppress
+                ? selected.selectedNonTrailingFieldCount > 0
+                : selected.selectedNonTrailingFieldCount === 0);
+            if (!omitSyntheticZeroDelimiter) {
+              await writeAll({
+                handle: context.stdout,
+                buffer: Uint8Array.of(recordDelimiterByte),
+              });
+            }
           }
           break;
         default: {

@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__multimodal_unavailable = ({ strategy, reason }: { strategy: string, reason: string }): string => `Production multimodal probeは利用不可 (${strategy}): ${reason}`;

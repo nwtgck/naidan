@@ -1,30 +1,52 @@
 import { splitTextLines } from '@/features/wesh/commands/_shared/text';
-import type { ColumnOptions, ColumnSelector, FillMode, TableModel, TableRow } from './types';
+import { getWeshTextDisplayWidth } from '@/features/wesh/utils/display-width';
+import type { ColumnOptions, ColumnSelector, FillMode, TableModel } from './types';
 
-function escapeRegExp({
-  text,
+function splitAtSeparators({
+  line,
+  separatorCharacters,
+  columnsLimit,
 }: {
-  text: string,
-}): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  line: string,
+  separatorCharacters: ReadonlySet<string>,
+  columnsLimit: number | undefined,
+}): string[] {
+  if (columnsLimit === 1) return [line];
+
+  const fields: string[] = [];
+  let fieldStart = 0;
+  let offset = 0;
+  for (const character of line) {
+    const characterStart = offset;
+    offset += character.length;
+    if (!separatorCharacters.has(character)) continue;
+    if (columnsLimit !== undefined && fields.length >= columnsLimit - 1) continue;
+    fields.push(line.slice(fieldStart, characterStart));
+    fieldStart = offset;
+  }
+  fields.push(line.slice(fieldStart));
+  return fields;
 }
 
 function splitFields({
   line,
-  separators,
+  separatorCharacters,
   mode,
 }: {
   line: string,
-  separators: string | undefined,
+  separatorCharacters: ReadonlySet<string> | undefined,
   mode: 'list' | 'table',
 }): string[] {
-  if (separators === undefined) {
+  if (separatorCharacters === undefined) {
     const trimmed = line.trim();
     return trimmed.length === 0 ? [] : trimmed.split(/\s+/);
   }
 
-  const pattern = new RegExp(`[${escapeRegExp({ text: separators })}]`);
-  const fields = line.split(pattern);
+  const fields = splitAtSeparators({
+    line,
+    separatorCharacters,
+    columnsLimit: undefined,
+  });
   switch (mode) {
   case 'table':
     return fields;
@@ -39,38 +61,27 @@ function splitFields({
 
 function splitTableFields({
   line,
-  separators,
+  separatorCharacters,
   columnsLimit,
 }: {
   line: string,
-  separators: string | undefined,
+  separatorCharacters: ReadonlySet<string> | undefined,
   columnsLimit: number | undefined,
 }): string[] {
   if (columnsLimit === undefined) {
     return splitFields({
       line,
-      separators,
+      separatorCharacters,
       mode: 'table',
     });
   }
 
-  if (separators !== undefined) {
-    if (columnsLimit === 1) {
-      return [line];
-    }
-
-    const fields: string[] = [];
-    let fieldStart = 0;
-    for (let index = 0; index < line.length && fields.length < columnsLimit - 1; index += 1) {
-      const character = line[index];
-      if (character === undefined || !separators.includes(character)) {
-        continue;
-      }
-      fields.push(line.slice(fieldStart, index));
-      fieldStart = index + 1;
-    }
-    fields.push(line.slice(fieldStart));
-    return fields;
+  if (separatorCharacters !== undefined) {
+    return splitAtSeparators({
+      line,
+      separatorCharacters,
+      columnsLimit,
+    });
   }
 
   let remaining = line.trim();
@@ -99,61 +110,6 @@ function splitTableFields({
   return fields;
 }
 
-function isCombiningCodePoint({
-  codePoint,
-}: {
-  codePoint: number,
-}): boolean {
-  return (
-    (codePoint >= 0x0300 && codePoint <= 0x036F)
-    || (codePoint >= 0x1AB0 && codePoint <= 0x1AFF)
-    || (codePoint >= 0x1DC0 && codePoint <= 0x1DFF)
-    || (codePoint >= 0x20D0 && codePoint <= 0x20FF)
-    || (codePoint >= 0xFE20 && codePoint <= 0xFE2F)
-  );
-}
-
-function isWideCodePoint({
-  codePoint,
-}: {
-  codePoint: number,
-}): boolean {
-  return (
-    (codePoint >= 0x1100 && codePoint <= 0x115F)
-    || codePoint === 0x2329
-    || codePoint === 0x232A
-    || (codePoint >= 0x2E80 && codePoint <= 0xA4CF)
-    || (codePoint >= 0xAC00 && codePoint <= 0xD7A3)
-    || (codePoint >= 0xF900 && codePoint <= 0xFAFF)
-    || (codePoint >= 0xFE10 && codePoint <= 0xFE19)
-    || (codePoint >= 0xFE30 && codePoint <= 0xFE6F)
-    || (codePoint >= 0xFF00 && codePoint <= 0xFF60)
-    || (codePoint >= 0xFFE0 && codePoint <= 0xFFE6)
-  );
-}
-
-function getDisplayWidth({
-  text,
-}: {
-  text: string,
-}): number {
-  let width = 0;
-  for (const character of text) {
-    const codePoint = character.codePointAt(0);
-    if (codePoint === undefined) {
-      continue;
-    }
-    if (codePoint === 0 || codePoint < 32 || (codePoint >= 0x7F && codePoint < 0xA0)) {
-      continue;
-    }
-    if (isCombiningCodePoint({ codePoint })) {
-      continue;
-    }
-    width += isWideCodePoint({ codePoint }) ? 2 : 1;
-  }
-  return width;
-}
-
 function spaces({
   count,
 }: {
@@ -170,6 +126,9 @@ function collectListItems({
   options: ColumnOptions,
 }): string[] {
   const items: string[] = [];
+  const separatorCharacters = options.inputSeparators === undefined
+    ? undefined
+    : new Set(options.inputSeparators);
   for (const line of splitTextLines({ text })) {
     if (!options.keepEmptyLines && line.trim().length === 0) {
       continue;
@@ -177,7 +136,7 @@ function collectListItems({
 
     const fields = splitFields({
       line,
-      separators: options.inputSeparators,
+      separatorCharacters,
       mode: 'list',
     });
     if (fields.length === 0) {
@@ -186,59 +145,51 @@ function collectListItems({
       }
       continue;
     }
-    items.push(...fields);
+    for (const field of fields) items.push(field);
   }
   return items;
 }
 
-function arrangeListGrid({
-  items,
+function listItemIndex({
+  row,
+  column,
+  rows,
   columns,
   fillMode,
+  itemCount,
 }: {
-  items: string[],
+  row: number,
+  column: number,
+  rows: number,
   columns: number,
   fillMode: FillMode,
-}): string[][] {
-  const rows = Math.ceil(items.length / columns);
-  const grid = Array.from({ length: rows }, () => Array.from({ length: columns }, () => ''));
-
-  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+  itemCount: number,
+}): number | undefined {
+  const itemIndex = (() => {
     switch (fillMode) {
-    case 'columns-before-rows': {
-      const row = itemIndex % rows;
-      const column = Math.floor(itemIndex / rows);
-      grid[row]![column] = items[itemIndex]!;
-      break;
-    }
-    case 'rows-before-columns': {
-      const row = Math.floor(itemIndex / columns);
-      const column = itemIndex % columns;
-      grid[row]![column] = items[itemIndex]!;
-      break;
-    }
+    case 'columns-before-rows':
+      return column * rows + row;
+    case 'rows-before-columns':
+      return row * columns + column;
     default: {
       const _ex: never = fillMode;
       throw new Error(`Unhandled fill mode: ${_ex}`);
     }
     }
-  }
-
-  return grid;
+  })();
+  return itemIndex < itemCount ? itemIndex : undefined;
 }
 
-function columnWidths({
-  rows,
+function includeTableRowWidths({
+  widths,
+  row,
 }: {
-  rows: string[][],
-}): number[] {
-  const widths: number[] = [];
-  for (const row of rows) {
-    for (let index = 0; index < row.length; index += 1) {
-      widths[index] = Math.max(widths[index] ?? 0, getDisplayWidth({ text: row[index] ?? '' }));
-    }
+  widths: number[],
+  row: string[],
+}): void {
+  for (let index = 0; index < row.length; index += 1) {
+    widths[index] = Math.max(widths[index] ?? 0, getWeshTextDisplayWidth({ text: row[index] ?? '', initialColumn: 0, tabSize: undefined }));
   }
-  return widths;
 }
 
 function listGridWidth({
@@ -255,34 +206,131 @@ function listGridWidth({
   return widths.reduce((sum, width) => sum + width, 0) + separatorWidth * (widths.length - 1);
 }
 
-function chooseListColumns({
-  items,
+function listColumnWidths({
+  itemWidths,
+  columns,
+  fillMode,
+}: {
+  itemWidths: number[],
+  columns: number,
+  fillMode: FillMode,
+}): number[] {
+  const rows = Math.ceil(itemWidths.length / columns);
+  const widths = Array.from({ length: columns }, () => 0);
+  for (let itemIndex = 0; itemIndex < itemWidths.length; itemIndex += 1) {
+    const column = (() => {
+      switch (fillMode) {
+      case 'columns-before-rows':
+        return Math.floor(itemIndex / rows);
+      case 'rows-before-columns':
+        return itemIndex % columns;
+      default: {
+        const _ex: never = fillMode;
+        throw new Error(`Unhandled fill mode: ${_ex}`);
+      }
+      }
+    })();
+    widths[column] = Math.max(widths[column] ?? 0, itemWidths[itemIndex] ?? 0);
+  }
+  return widths;
+}
+
+function maximumListColumnsByLowerBound({
+  itemWidths,
+  maximumColumns,
   outputWidth,
   fillMode,
   separatorWidth,
 }: {
-  items: string[],
+  itemWidths: number[],
+  maximumColumns: number,
   outputWidth: number,
   fillMode: FillMode,
   separatorWidth: number,
 }): number {
-  if (items.length === 0) {
-    return 0;
+  let totalWidth = 0;
+  let minimumWidth = Number.POSITIVE_INFINITY;
+  let maximumWidth = 0;
+  for (const width of itemWidths) {
+    totalWidth += width;
+    minimumWidth = Math.min(minimumWidth, width);
+    maximumWidth = Math.max(maximumWidth, width);
   }
 
-  if (outputWidth === 0) {
-    return items.length;
+  // This bound is monotonic even though the exact grid width is not. Every
+  // populated column contributes at least the minimum item width, one column
+  // contributes the maximum, and a column maximum can account for at most
+  // `rows` item widths. Binary search only removes candidates that cannot fit;
+  // chooseListLayout still evaluates the remaining candidates exactly.
+  const lowerBound = ({ columns }: { columns: number }): number => {
+    const rows = Math.ceil(itemWidths.length / columns);
+    const usedColumns = (() => {
+      switch (fillMode) {
+      case 'columns-before-rows':
+        return Math.ceil(itemWidths.length / rows);
+      case 'rows-before-columns':
+        return columns;
+      default: {
+        const _ex: never = fillMode;
+        throw new Error(`Unhandled fill mode: ${_ex}`);
+      }
+      }
+    })();
+    const maximaFromMinimum = maximumWidth + Math.max(0, usedColumns - 1) * minimumWidth;
+    const maximaFromAverage = Math.ceil(totalWidth / rows);
+    return Math.max(maximaFromMinimum, maximaFromAverage) + separatorWidth * (columns - 1);
+  };
+
+  let low = 1;
+  let high = maximumColumns;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (lowerBound({ columns: middle }) <= outputWidth) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return low;
+}
+
+function chooseListLayout({
+  itemWidths,
+  outputWidth,
+  fillMode,
+  separatorWidth,
+}: {
+  itemWidths: number[],
+  outputWidth: number,
+  fillMode: FillMode,
+  separatorWidth: number,
+}): { columns: number, widths: number[] } {
+  if (itemWidths.length === 0) {
+    return { columns: 0, widths: [] };
   }
 
-  for (let columns = items.length; columns >= 1; columns -= 1) {
-    const grid = arrangeListGrid({ items, columns, fillMode });
-    const widths = columnWidths({ rows: grid });
-    if (listGridWidth({ widths, separatorWidth }) <= outputWidth) {
-      return columns;
+  const separatorBound = outputWidth === 0
+    ? itemWidths.length
+    : Math.min(itemWidths.length, Math.floor(outputWidth / separatorWidth) + 1);
+  const maximumColumns = outputWidth === 0
+    ? separatorBound
+    : maximumListColumnsByLowerBound({
+      itemWidths,
+      maximumColumns: separatorBound,
+      outputWidth,
+      fillMode,
+      separatorWidth,
+    });
+  for (let columns = maximumColumns; columns >= 1; columns -= 1) {
+    const widths = listColumnWidths({ itemWidths, columns, fillMode });
+    if (outputWidth === 0 || listGridWidth({ widths, separatorWidth }) <= outputWidth) {
+      return { columns, widths };
     }
   }
 
-  return 1;
+  let maximumWidth = 0;
+  for (const itemWidth of itemWidths) maximumWidth = Math.max(maximumWidth, itemWidth);
+  return { columns: 1, widths: [maximumWidth] };
 }
 
 export function renderList({
@@ -299,23 +347,30 @@ export function renderList({
 
   const minSpaces = options.useSpaces ?? 0;
   const separatorWidth = minSpaces > 0 ? minSpaces : 8;
-  const columns = chooseListColumns({
-    items,
+  const itemWidths = items.map((item) => getWeshTextDisplayWidth({ text: item, initialColumn: 0, tabSize: undefined }));
+  const { columns, widths } = chooseListLayout({
+    itemWidths,
     outputWidth: options.outputWidth,
     fillMode: options.fillMode,
     separatorWidth,
   });
-  const grid = arrangeListGrid({
-    items,
-    columns,
-    fillMode: options.fillMode,
-  });
-  const widths = columnWidths({ rows: grid });
+  const rowCount = Math.ceil(items.length / columns);
   const outputRows: string[] = [];
 
-  for (const row of grid) {
-    let lastColumn = row.length - 1;
-    while (lastColumn >= 0 && (row[lastColumn] ?? '') === '') {
+  for (let row = 0; row < rowCount; row += 1) {
+    let lastColumn = columns - 1;
+    while (lastColumn >= 0) {
+      const itemIndex = listItemIndex({
+        row,
+        column: lastColumn,
+        rows: rowCount,
+        columns,
+        fillMode: options.fillMode,
+        itemCount: items.length,
+      });
+      if (itemIndex !== undefined && items[itemIndex] !== '') {
+        break;
+      }
       lastColumn -= 1;
     }
     if (lastColumn < 0) {
@@ -325,11 +380,20 @@ export function renderList({
 
     let output = '';
     for (let column = 0; column <= lastColumn; column += 1) {
-      const cell = row[column] ?? '';
+      const itemIndex = listItemIndex({
+        row,
+        column,
+        rows: rowCount,
+        columns,
+        fillMode: options.fillMode,
+        itemCount: items.length,
+      });
+      const cell = itemIndex === undefined ? '' : items[itemIndex]!;
       output += cell;
       if (column < lastColumn) {
         if (minSpaces > 0) {
-          const padding = (widths[column] ?? 0) - getDisplayWidth({ text: cell }) + minSpaces;
+          const cellWidth = itemIndex === undefined ? 0 : itemWidths[itemIndex] ?? 0;
+          const padding = (widths[column] ?? 0) - cellWidth + minSpaces;
           output += spaces({ count: padding });
         } else {
           output += '\t';
@@ -349,7 +413,11 @@ function buildTableModel({
   text: string,
   options: ColumnOptions,
 }): TableModel {
-  const rows: TableRow[] = [];
+  const rows: string[][] = [];
+  let inputHeader: string[] | undefined;
+  const separatorCharacters = options.inputSeparators === undefined
+    ? undefined
+    : new Set(options.inputSeparators);
   for (const line of splitTextLines({ text })) {
     if (!options.keepEmptyLines && line.trim().length === 0) {
       continue;
@@ -357,10 +425,14 @@ function buildTableModel({
 
     const fields = splitTableFields({
       line,
-      separators: options.inputSeparators,
+      separatorCharacters,
       columnsLimit: options.tableColumnsLimit,
     });
-    rows.push({ fields });
+    if (options.tableHeaderAsColumns && inputHeader === undefined) {
+      inputHeader = fields;
+    } else {
+      rows.push(fields);
+    }
   }
 
   if (options.tableColumns !== undefined) {
@@ -368,35 +440,16 @@ function buildTableModel({
   }
 
   if (options.tableHeaderAsColumns) {
-    const [headerRow, ...dataRows] = rows;
-    return {
-      header: headerRow?.fields ?? [],
-      rows: dataRows,
-    };
+    return { header: inputHeader ?? [], rows };
   }
 
   return { header: undefined, rows };
 }
 
-function normalizeTableRows({
-  model,
-}: {
-  model: TableModel,
-}): { rows: string[][], header: string[] | undefined } {
-  const columnCount = Math.max(
-    model.header?.length ?? 0,
-    ...model.rows.map((row) => row.fields.length),
-    0,
-  );
-  const normalize = ({ fields }: { fields: string[] }): string[] => [
-    ...fields,
-    ...Array.from({ length: Math.max(0, columnCount - fields.length) }, () => ''),
-  ];
-
-  return {
-    header: model.header === undefined ? undefined : normalize({ fields: model.header }),
-    rows: model.rows.map((row) => normalize({ fields: row.fields })),
-  };
+function tableColumnCount({ model }: { model: TableModel }): number {
+  let columnCount = model.header?.length ?? 0;
+  for (const row of model.rows) columnCount = Math.max(columnCount, row.length);
+  return columnCount;
 }
 
 function selectorMatches({
@@ -471,7 +524,7 @@ function renderTableRow({
 
   for (let column = 0; column <= lastColumn; column += 1) {
     const cell = row[column] ?? '';
-    const width = getDisplayWidth({ text: cell });
+    const width = getWeshTextDisplayWidth({ text: cell, initialColumn: 0, tabSize: undefined });
     const padding = (widths[column] ?? 0) - width;
     if (rightAligned.has(column)) {
       output += spaces({ count: padding }) + cell;
@@ -498,24 +551,37 @@ export function renderTable({
   options: ColumnOptions,
 }): string {
   const model = buildTableModel({ text, options });
-  const { rows, header } = normalizeTableRows({ model });
-  const visibleRows = header !== undefined && !options.tableNoHeadings ? [header, ...rows] : rows;
-  if (visibleRows.length === 0) {
+  const { rows, header } = model;
+  const showHeader = header !== undefined && !options.tableNoHeadings;
+  if (!showHeader && rows.length === 0) {
     return '';
   }
 
-  const widths = columnWidths({ rows: visibleRows });
+  const widths: number[] = [];
+  if (showHeader) includeTableRowWidths({ widths, row: header });
+  for (const row of rows) includeTableRowWidths({ widths, row });
   const rightAligned = rightAlignedColumns({
     selectors: options.tableRight,
     header,
-    columnCount: widths.length,
+    columnCount: tableColumnCount({ model }),
   });
-  const lines = visibleRows.map((row) => renderTableRow({
-    row,
-    widths,
-    rightAligned,
-    outputSeparator: options.outputSeparator,
-  }));
+  const lines: string[] = [];
+  if (showHeader) {
+    lines.push(renderTableRow({
+      row: header,
+      widths,
+      rightAligned,
+      outputSeparator: options.outputSeparator,
+    }));
+  }
+  for (const row of rows) {
+    lines.push(renderTableRow({
+      row,
+      widths,
+      rightAligned,
+      outputSeparator: options.outputSeparator,
+    }));
+  }
 
   return `${lines.join('\n')}\n`;
 }
@@ -523,4 +589,5 @@ export function renderTable({
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  chooseListLayout,
 };

@@ -1,4 +1,9 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import {
+  STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS,
+  standardSemanticIssuePrecedesDiagnostic,
+  stopStandardArgvAtFirstEarlyExit,
+} from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
@@ -79,14 +84,32 @@ async function openCmpInput({
     };
   }
   case 'fallback_required': {
+    const stat = await context.files.stat({ path });
     const handle = await context.files.open({
       path,
       flags: CMP_READ_FLAGS,
     });
+    const knownRemainingBytes = (() => {
+      switch (stat.type) {
+      case 'file': {
+        const size = BigInt(Math.max(0, stat.size));
+        return size > skip ? size - skip : 0n;
+      }
+      case 'directory':
+      case 'fifo':
+      case 'chardev':
+      case 'symlink':
+        return undefined;
+      default: {
+        const _ex: never = stat.type;
+        throw new Error(`Unhandled stat type: ${_ex}`);
+      }
+      }
+    })();
     return {
       stream: openHandleReadStream({ handle }),
       remainingSkip: skip,
-      knownRemainingBytes: undefined,
+      knownRemainingBytes,
     };
   }
   default: {
@@ -124,6 +147,28 @@ function effectiveKnownLength({
   return limit;
 }
 
+
+function verbosePositionWidth({
+  leftLength,
+  rightLength,
+  limit,
+}: {
+  leftLength: bigint | undefined,
+  rightLength: bigint | undefined,
+  limit: bigint | undefined,
+}): number {
+  const knownLengths = [leftLength, rightLength]
+    .filter((value): value is bigint => value !== undefined)
+    .map((value) => effectiveKnownLength({ length: value, limit }));
+  if (knownLengths.length === 0) {
+    return 1;
+  }
+  const comparisonSpan = knownLengths.reduce(
+    (current, value) => value < current ? value : current,
+  );
+  return Math.max(1, comparisonSpan.toString().length);
+}
+
 function errorMessage({
   error,
 }: {
@@ -153,6 +198,32 @@ async function writeCmpRuntimeError({
   });
 }
 
+async function suppressCmpOpenError({
+  context,
+  quiet,
+  operand,
+}: {
+  context: WeshCommandContext,
+  quiet: boolean,
+  operand: string,
+}): Promise<boolean> {
+  if (!quiet || operand === '-') {
+    return false;
+  }
+
+  try {
+    const stat = await context.files.stat({
+      path: resolvePath({ cwd: context.cwd, path: operand }),
+    });
+    // GNU cmp -s suppresses ordinary open failures such as ENOENT, but a
+    // directory is opened and then fails during reading, so that diagnostic
+    // remains visible.
+    return stat.type !== 'directory';
+  } catch {
+    return true;
+  }
+}
+
 function processWasInterrupted({
   context,
 }: {
@@ -169,62 +240,38 @@ export const cmpCommandDefinition: WeshCommandDefinition = {
     usage: 'cmp [OPTION]... FILE1 [FILE2 [SKIP1 [SKIP2]]]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({
+    const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: context.args,
       spec: cmpArgvSpec,
+      earlyExitOptions: STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS,
     });
+    const parsed = parseStandardArgv({ args: parsedArgs, spec: cmpArgvSpec });
 
     const diagnostic = parsed.diagnostics[0];
-    if (diagnostic !== undefined) {
+    const semanticIssuePrecedesDiagnostic = standardSemanticIssuePrecedesDiagnostic({
+      args: parsedArgs,
+      spec: cmpArgvSpec,
+      parsed,
+      findSemanticIssue: ({ parsed: candidate }) => {
+        for (const occurrence of candidate.occurrences) {
+          if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') continue;
+          if (occurrence.key === 'limit') {
+            const result = parseCmpByteCount({ value: occurrence.value, option: '--bytes' });
+            if (!result.ok) return result.message;
+          }
+          if (occurrence.key === 'ignoreInitial') {
+            const result = parseCmpIgnoreInitial({ value: occurrence.value });
+            if (!result.ok) return result.message;
+          }
+        }
+        return undefined;
+      },
+    });
+    if (diagnostic !== undefined && !semanticIssuePrecedesDiagnostic) {
       await writeCommandUsageError({
         context,
         command: 'cmp',
         message: `cmp: ${diagnostic.message}`,
-        argvSpec: cmpArgvSpec,
-      });
-      return { exitCode: 2 };
-    }
-
-    if (parsed.optionValues.help === true) {
-      await writeCommandHelp({
-        context,
-        command: 'cmp',
-        argvSpec: cmpArgvSpec,
-      });
-      return { exitCode: 0 };
-    }
-
-    if (parsed.optionValues.version === true) {
-      await context.text().print({ text: 'cmp (wesh)\n' });
-      return { exitCode: 0 };
-    }
-
-    if (parsed.positionals.length < 1) {
-      await writeCommandUsageError({
-        context,
-        command: 'cmp',
-        message: 'cmp: missing operand',
-        argvSpec: cmpArgvSpec,
-      });
-      return { exitCode: 2 };
-    }
-    if (parsed.positionals.length > 4) {
-      await writeCommandUsageError({
-        context,
-        command: 'cmp',
-        message: `cmp: extra operand '${parsed.positionals[4] ?? ''}'`,
-        argvSpec: cmpArgvSpec,
-      });
-      return { exitCode: 2 };
-    }
-
-    const verbose = parsed.optionValues.verbose === true;
-    const quiet = parsed.optionValues.quiet === true;
-    if (verbose && quiet) {
-      await writeCommandUsageError({
-        context,
-        command: 'cmp',
-        message: 'cmp: options -l and -s are incompatible',
         argvSpec: cmpArgvSpec,
       });
       return { exitCode: 2 };
@@ -282,6 +329,52 @@ export const cmpCommandDefinition: WeshCommandDefinition = {
       default:
         break;
       }
+    }
+
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'cmp',
+        argvSpec: cmpArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
+    if (parsed.optionValues.version === true) {
+      await context.text().print({ text: 'cmp (wesh)\n' });
+      return { exitCode: 0 };
+    }
+
+    if (parsed.positionals.length < 1) {
+      await writeCommandUsageError({
+        context,
+        command: 'cmp',
+        message: 'cmp: missing operand',
+        argvSpec: cmpArgvSpec,
+      });
+      return { exitCode: 2 };
+    }
+    if (parsed.positionals.length > 4) {
+      await writeCommandUsageError({
+        context,
+        command: 'cmp',
+        message: `cmp: extra operand '${parsed.positionals[4] ?? ''}'`,
+        argvSpec: cmpArgvSpec,
+      });
+      return { exitCode: 2 };
+    }
+
+    const verbose = parsed.optionValues.verbose === true;
+    const quiet = parsed.optionValues.quiet === true;
+    if (verbose && quiet) {
+      await writeCommandUsageError({
+        context,
+        command: 'cmp',
+        message: 'cmp: options -l and -s are incompatible',
+        argvSpec: cmpArgvSpec,
+      });
+      return { exitCode: 2 };
     }
 
     const rawLeftSkip = parsed.positionals[2];
@@ -344,7 +437,11 @@ export const cmpCommandDefinition: WeshCommandDefinition = {
       }
       await writeCmpRuntimeError({
         context,
-        quiet,
+        quiet: await suppressCmpOpenError({
+          context,
+          quiet,
+          operand: leftName,
+        }),
         operand: leftName,
         error,
       });
@@ -364,7 +461,11 @@ export const cmpCommandDefinition: WeshCommandDefinition = {
       }
       await writeCmpRuntimeError({
         context,
-        quiet,
+        quiet: await suppressCmpOpenError({
+          context,
+          quiet,
+          operand: rightName,
+        }),
         operand: rightName,
         error,
       });
@@ -394,6 +495,11 @@ export const cmpCommandDefinition: WeshCommandDefinition = {
         maxBufferLength: 16 * 1024,
       })
       : undefined;
+    const positionWidth = verbosePositionWidth({
+      leftLength: leftInput.knownRemainingBytes,
+      rightLength: rightInput.knownRemainingBytes,
+      limit,
+    });
     let foundDifference = false;
 
     try {
@@ -416,6 +522,7 @@ export const cmpCommandDefinition: WeshCommandDefinition = {
               text: formatCmpVerboseDifference({
                 difference,
                 printBytes: parsed.optionValues.printBytes === true,
+                positionWidth,
               }),
             });
             continue;
@@ -505,7 +612,9 @@ export const cmpCommandDefinition: WeshCommandDefinition = {
       })();
       await writeCmpRuntimeError({
         context,
-        quiet,
+        // -s suppresses differences and open failures, but GNU cmp still
+        // reports errors encountered while reading an already opened input.
+        quiet: false,
         operand: inputOperand,
         error: error instanceof CmpInputError ? error.originalError : error,
       });

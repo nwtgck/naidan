@@ -42,7 +42,7 @@ export async function* iterateChecksumLines({
 }: {
   stream: ReadableStream<Uint8Array>,
 }): AsyncIterable<ChecksumLine> {
-  const decoder = new TextDecoder('utf-8', { fatal: true });
+  const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
   let parts: Uint8Array[] = [];
   let byteLength = 0;
   let lineNumber = 0;
@@ -165,7 +165,11 @@ function parseGnuRecord({
   }
 
   const expectedHash = line.slice(0, 64);
-  if (!isHexHash({ value: expectedHash }) || line[64] !== ' ') {
+  const checksumSeparator = line[64];
+  if (
+    !isHexHash({ value: expectedHash })
+    || (checksumSeparator !== ' ' && checksumSeparator !== '\t')
+  ) {
     return undefined;
   }
 
@@ -247,9 +251,10 @@ export function parseChecksumRecord({
     return { kind: 'ignored' };
   }
 
-  const hasEscapeMarker = text.startsWith('\\');
+  const candidate = text.replace(/^[ \t]+/u, '');
+  const hasEscapeMarker = candidate.startsWith('\\');
   const escaped: 'escaped' | 'plain' = hasEscapeMarker ? 'escaped' : 'plain';
-  const line = hasEscapeMarker ? text.slice(1) : text;
+  const line = hasEscapeMarker ? candidate.slice(1) : candidate;
   const gnuRecord = parseGnuRecord({ line, escaped });
   if (gnuRecord !== undefined) {
     return { kind: 'record', record: gnuRecord };

@@ -35,6 +35,16 @@ interface GenerationResult {
   sequences?: unknown,
 }
 
+export interface GenerationStrategyObservationSink {
+  onGenerateStart({ inputs, pastKeyValues }: {
+    inputs: Record<string, unknown>,
+    pastKeyValues: unknown,
+  }): void,
+  onGenerateComplete({ result }: {
+    result: GenerationResult & (ModelOutput | Tensor),
+  }): void,
+}
+
 interface TextGenerationModel extends PreTrainedModel {
   generate(inputs: Record<string, unknown>): Promise<GenerationResult & (ModelOutput | Tensor)>,
 }
@@ -67,11 +77,12 @@ interface GenerationStrategyContext {
     interrupt(): void,
   },
   debugLog: ({ event, details }: { event: string, details: Record<string, unknown> }) => void,
+  observationSink: GenerationStrategyObservationSink | undefined,
 }
 
-interface GenerationStrategy {
+export interface GenerationStrategy {
   kind: 'standard' | 'gpt-oss' | 'qwen3_5' | 'gemma4',
-  generate({ model, tokenizer, messages, onChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog }: GenerationStrategyContext): Promise<void>,
+  generate({ model, tokenizer, messages, onChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog, observationSink }: GenerationStrategyContext): Promise<void>,
 }
 
 export function selectGenerationStrategy({
@@ -107,6 +118,7 @@ const standardGenerationStrategy: GenerationStrategy = {
     params,
     tools,
     stoppingCriteria,
+    observationSink,
   }: GenerationStrategyContext) {
     const formattedMessages = messages.map(message => ({
       role: message.role,
@@ -145,6 +157,7 @@ const standardGenerationStrategy: GenerationStrategy = {
       params,
       streamer,
       stoppingCriteria,
+      observationSink,
     });
 
     if (toolCallParser) {
@@ -168,6 +181,7 @@ const gptOssGenerationStrategy: GenerationStrategy = {
     tools,
     runtimeState,
     stoppingCriteria,
+    observationSink,
   }: GenerationStrategyContext) {
     runtimeState.gptOssPastKeyValues = await generateGptOss({
       model,
@@ -193,6 +207,7 @@ const gptOssGenerationStrategy: GenerationStrategy = {
         params,
         streamer,
         stoppingCriteria,
+        observationSink,
       }),
     });
   },
@@ -209,6 +224,7 @@ const gemma4GenerationStrategy: GenerationStrategy = {
     runtimeState,
     stoppingCriteria,
     debugLog,
+    observationSink,
   }: GenerationStrategyContext) {
     if (!runtimeState.gemma4Processor) {
       throw new Error('Gemma 4 processor not loaded');
@@ -258,6 +274,7 @@ const gemma4GenerationStrategy: GenerationStrategy = {
       params,
       streamer,
       stoppingCriteria,
+      observationSink,
     });
     console.log('[transformersJsWorker] gemma4 raw output start');
     console.log(rawStreamOutput);
@@ -287,6 +304,7 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
     runtimeState,
     stoppingCriteria,
     debugLog,
+    observationSink,
   }: GenerationStrategyContext) {
     if (!runtimeState.qwen3_5Processor) {
       throw new Error('Qwen3.5 processor not loaded');
@@ -359,6 +377,7 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
       params,
       streamer,
       stoppingCriteria,
+      observationSink,
     });
 
     toolCallParser.flush();
@@ -386,6 +405,7 @@ async function generateWithModel({
   params,
   streamer,
   stoppingCriteria,
+  observationSink,
 }: {
   model: PreTrainedModel,
   inputs: Record<string, unknown>,
@@ -396,11 +416,13 @@ async function generateWithModel({
     reset(): void,
     interrupt(): void,
   },
+  observationSink: GenerationStrategyObservationSink | undefined,
 }): Promise<GenerationResult & (ModelOutput | Tensor)> {
   const stoppingCriteriaList = new StoppingCriteriaList();
   stoppingCriteriaList.push(stoppingCriteria as never);
 
-  return await (model as unknown as TextGenerationModel).generate({
+  observationSink?.onGenerateStart({ inputs, pastKeyValues });
+  const result = await (model as unknown as TextGenerationModel).generate({
     ...inputs,
     past_key_values: pastKeyValues,
     max_new_tokens: params?.maxCompletionTokens || 1024,
@@ -411,6 +433,8 @@ async function generateWithModel({
     stopping_criteria: stoppingCriteriaList,
     return_dict_in_generate: true,
   });
+  observationSink?.onGenerateComplete({ result });
+  return result;
 }
 
 function getQwen3_5ReasoningMode({

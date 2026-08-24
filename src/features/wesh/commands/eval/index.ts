@@ -1,6 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
 
 const evalArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -26,7 +27,7 @@ export const evalCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: evalArgvSpec }),
       spec: evalArgvSpec,
     });
 
@@ -38,7 +39,7 @@ export const evalCommandDefinition: WeshCommandDefinition = {
         message: `eval: ${diagnostic.message}`,
         argvSpec: evalArgvSpec,
       });
-      return { exitCode: 1 };
+      return { exitCode: 2 };
     }
 
     if (parsed.optionValues.help === true) {
@@ -47,7 +48,7 @@ export const evalCommandDefinition: WeshCommandDefinition = {
         command: 'eval',
         argvSpec: evalArgvSpec,
       });
-      return { exitCode: 0 };
+      return { exitCode: 2 };
     }
 
     if (parsed.positionals.length === 0) {

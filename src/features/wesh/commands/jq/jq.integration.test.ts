@@ -215,7 +215,9 @@ jq -c '.items[] | try .name catch .'`,
 {"items":[1]}`,
     });
 
-    expect(errorMessage.stdout.text).toContain('cannot access field');
+    expect(errorMessage.stdout.text).toBe(`\
+"Cannot index number with string \\"name\\""
+`);
     expect(errorMessage.stderr.text).toBe('');
     expect(errorMessage.result.exitCode).toBe(0);
   });
@@ -641,6 +643,55 @@ jq -c 'pick(.user.name, .items[1])'`,
     expect(pick.result.exitCode).toBe(0);
   });
 
+  it('matches pick missing-path and invalid-path behavior', async () => {
+    const missing = await execute({
+      script: `\
+jq -c 'pick(.missing, .nested.value, .items[3])'`,
+      stdinText: `\
+{"items":[1]}`,
+    });
+
+    expect(missing.stdout.text).toBe('{"missing":null,"nested":{"value":null},"items":[null,null,null,null]}\n');
+    expect(missing.stderr.text).toBe('');
+    expect(missing.result.exitCode).toBe(0);
+
+    const typeMismatch = await execute({
+      script: `\
+jq -c 'pick(.a.b)'`,
+      stdinText: `\
+{"a":1}`,
+    });
+
+    expect(typeMismatch.stdout.text).toBe('');
+    expect(typeMismatch.stderr.text).toContain('Cannot index number with string "b"');
+    expect(typeMismatch.result.exitCode).toBe(5);
+
+    const negativeIndex = await execute({
+      script: `\
+jq -c 'pick(.items[-1])'`,
+      stdinText: `\
+{"items":[1,2,3]}`,
+    });
+
+    expect(negativeIndex.stdout.text).toBe('');
+    expect(negativeIndex.stderr.text).toBe(
+      'jq: error (at <stdin>:0): Out of bounds negative array index\n',
+    );
+    expect(negativeIndex.result.exitCode).toBe(5);
+
+    const nullInputNegativeIndex = await execute({
+      script: `\
+jq -nc '[] | setpath([-1]; 2)'`,
+      stdinText: '',
+    });
+
+    expect(nullInputNegativeIndex.stdout.text).toBe('');
+    expect(nullInputNegativeIndex.stderr.text).toBe(
+      'jq: error (at <unknown>): Out of bounds negative array index\n',
+    );
+    expect(nullInputNegativeIndex.result.exitCode).toBe(5);
+  });
+
   it('supports type filter builtins', async () => {
     const filtered = await execute({
       script: `\
@@ -663,6 +714,66 @@ null
 `);
     expect(filtered.stderr.text).toBe('');
     expect(filtered.result.exitCode).toBe(0);
+  });
+
+  it('supports in and iterables', async () => {
+    const filtered = await execute({
+      script: `\
+jq -c '.items[] | iterables'`,
+      stdinText: `\
+{"items":[[1],true,null,2,{"a":1},"x"]}`,
+    });
+
+    expect(filtered.stdout.text).toBe(`\
+[1]
+{"a":1}
+`);
+    expect(filtered.stderr.text).toBe('');
+    expect(filtered.result.exitCode).toBe(0);
+
+    const membership = await execute({
+      script: `\
+jq -n -c '("a" | in({a:1},{b:2})), (0 | in([10])), (1 | in([10]))'`,
+    });
+
+    expect(membership.stdout.text).toBe(`\
+true
+false
+true
+false
+`);
+    expect(membership.stderr.text).toBe('');
+    expect(membership.result.exitCode).toBe(0);
+
+    const invalidKey = await execute({
+      script: `\
+jq -n -c 'true | in({a:1})'`,
+    });
+
+    expect(invalidKey.stdout.text).toBe('');
+    expect(invalidKey.stderr.text).toContain('Cannot check whether object has a boolean key');
+    expect(invalidKey.result.exitCode).toBe(5);
+
+    const negativeFilter = await execute({
+      script: `\
+jq -n '(-.5), (-1 | in([1]))' -c`,
+    });
+
+    expect(negativeFilter.stdout.text).toBe(`\
+-0.5
+false
+`);
+    expect(negativeFilter.stderr.text).toBe('');
+    expect(negativeFilter.result.exitCode).toBe(0);
+
+    const negativeCompositeFilter = await execute({
+      script: `\
+jq -n -c '-8|frexp'`,
+    });
+
+    expect(negativeCompositeFilter.stdout.text).toBe('[-0.5,4]\n');
+    expect(negativeCompositeFilter.stderr.text).toBe('');
+    expect(negativeCompositeFilter.result.exitCode).toBe(0);
   });
 
   it('supports walk', async () => {
@@ -777,6 +888,28 @@ jq -c '.foo |= (., 2)'`,
     expect(multiple.stdout.text).toBe('{"foo":1,"bar":2}\n');
     expect(multiple.stderr.text).toBe('');
     expect(multiple.result.exitCode).toBe(0);
+
+    const shortCircuited = await execute({
+      script: `\
+jq -c '.foo |= (., . + 1)'`,
+      stdinText: `\
+{"foo":{"nested":true},"bar":2}`,
+    });
+
+    expect(shortCircuited.stdout.text).toBe('{"foo":{"nested":true},"bar":2}\n');
+    expect(shortCircuited.stderr.text).toBe('');
+    expect(shortCircuited.result.exitCode).toBe(0);
+
+    const pipedShortCircuit = await execute({
+      script: `\
+jq -c '.foo |= ((., error("unused")) | .)'`,
+      stdinText: `\
+{"foo":{"nested":true},"bar":2}`,
+    });
+
+    expect(pipedShortCircuit.stdout.text).toBe('{"foo":{"nested":true},"bar":2}\n');
+    expect(pipedShortCircuit.stderr.text).toBe('');
+    expect(pipedShortCircuit.result.exitCode).toBe(0);
 
     const empty = await execute({
       script: `\

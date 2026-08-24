@@ -1,3 +1,4 @@
+import type { WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 export interface DiffLineTable {
   readonly bytes: Uint8Array,
   readonly starts: Uint32Array,
@@ -72,6 +73,7 @@ export type DiffOutputMode =
 
 export interface DiffOutputOptions {
   readonly mode: DiffOutputMode,
+  readonly characterLocaleMode: WeshCharacterLocaleMode,
   readonly functionLinePattern: RegExp | undefined,
   readonly expandTabs: boolean,
   readonly initialTab: boolean,

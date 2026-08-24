@@ -46,18 +46,21 @@ export function formatCmpByteDifference({
 export function formatCmpVerboseDifference({
   difference,
   printBytes,
+  positionWidth,
 }: {
   difference: Extract<CmpDifference, { kind: 'byte' }>,
   printBytes: boolean,
+  positionWidth: number,
 }): string {
   const leftOctal = formatOctalByte({ byte: difference.leftByte });
   const rightOctal = formatOctalByte({ byte: difference.rightByte });
+  const position = difference.position.toString().padStart(positionWidth, ' ');
   if (!printBytes) {
-    return `${difference.position} ${leftOctal} ${rightOctal}\n`;
+    return `${position} ${leftOctal} ${rightOctal}\n`;
   }
 
   const leftVisible = formatVisibleByte({ byte: difference.leftByte }).padEnd(4, ' ');
-  return `${difference.position} ${leftOctal} ${leftVisible} ${rightOctal} ${formatVisibleByte({ byte: difference.rightByte })}\n`;
+  return `${position} ${leftOctal} ${leftVisible} ${rightOctal} ${formatVisibleByte({ byte: difference.rightByte })}\n`;
 }
 
 export function formatCmpEofDifference({
@@ -73,8 +76,10 @@ export function formatCmpEofDifference({
     return `cmp: EOF on ${shorterName} which is empty\n`;
   }
   switch (mode) {
-  case 'first-difference':
-    return `cmp: EOF on ${shorterName} after byte ${difference.comparedBytes}, in line ${difference.line}\n`;
+  case 'first-difference': {
+    const linePrefix = difference.afterRecordDelimiter ? '' : 'in ';
+    return `cmp: EOF on ${shorterName} after byte ${difference.comparedBytes}, ${linePrefix}line ${difference.line}\n`;
+  }
   case 'verbose':
     return `cmp: EOF on ${shorterName} after byte ${difference.comparedBytes}\n`;
   default: {

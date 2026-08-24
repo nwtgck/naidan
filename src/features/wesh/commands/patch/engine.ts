@@ -102,6 +102,23 @@ function getTrailingContextCount({ oldLines }: { oldLines: PatchLine[] }): numbe
   return count;
 }
 
+function getIgnoredContextCounts({
+  fuzz,
+  leadingContext,
+  trailingContext,
+}: {
+  fuzz: number,
+  leadingContext: number,
+  trailingContext: number,
+}): { ignoredLeading: number, ignoredTrailing: number } {
+  const leadingExcess = Math.max(0, leadingContext - trailingContext);
+  const trailingExcess = Math.max(0, trailingContext - leadingContext);
+  return {
+    ignoredLeading: Math.min(leadingContext, Math.max(0, fuzz - trailingExcess)),
+    ignoredTrailing: Math.min(trailingContext, Math.max(0, fuzz - leadingExcess)),
+  };
+}
+
 function* iterateCandidatePositions({
   expected,
   minimum,
@@ -272,21 +289,21 @@ function appendConditionalChange({
     pushSourcePiece({ output, startLine: removedStart, endLine: removedStart + removedCount });
     pushLinesPiece({ output, lines: [directiveLine({ value: '#else' })] });
     pushLinesPiece({ output, lines: added });
-    pushLinesPiece({ output, lines: [directiveLine({ value: `#endif /* ${name} */` })] });
+    pushLinesPiece({ output, lines: [directiveLine({ value: '#endif' })] });
     return;
   }
 
   if (removedCount > 0) {
     pushLinesPiece({ output, lines: [directiveLine({ value: `#ifndef ${name}` })] });
     pushSourcePiece({ output, startLine: removedStart, endLine: removedStart + removedCount });
-    pushLinesPiece({ output, lines: [directiveLine({ value: `#endif /* ${name} */` })] });
+    pushLinesPiece({ output, lines: [directiveLine({ value: '#endif' })] });
     return;
   }
 
   if (added.length > 0) {
     pushLinesPiece({ output, lines: [directiveLine({ value: `#ifdef ${name}` })] });
     pushLinesPiece({ output, lines: added });
-    pushLinesPiece({ output, lines: [directiveLine({ value: `#endif /* ${name} */` })] });
+    pushLinesPiece({ output, lines: [directiveLine({ value: '#endif' })] });
   }
 }
 
@@ -387,11 +404,18 @@ export async function applyHunk({
   const maximumCandidate = source.lineCount - oldLines.length;
 
   for (let fuzz = 0; fuzz <= maximumFuzz; fuzz++) {
-    const ignoredLeading = Math.min(fuzz, leadingContext);
-    const ignoredTrailing = Math.min(fuzz, trailingContext);
+    const { ignoredLeading, ignoredTrailing } = getIgnoredContextCounts({
+      fuzz,
+      leadingContext,
+      trailingContext,
+    });
+    const beginningAnchorFuzz = Math.max(0, trailingContext - leadingContext);
+    const restrictToBeginning = hunk.oldRange.start === 1 && fuzz < beginningAnchorFuzz;
     const candidates = oldLines.length === 0
       ? [Math.max(minimumCandidate, Math.min(source.lineCount, expected))]
-      : iterateCandidatePositions({ expected, minimum: minimumCandidate, maximum: maximumCandidate });
+      : restrictToBeginning
+        ? minimumCandidate === 0 && maximumCandidate >= 0 ? [0] : []
+        : iterateCandidatePositions({ expected, minimum: minimumCandidate, maximum: maximumCandidate });
 
     for (const candidate of candidates) {
       if (!await candidateMatches({
@@ -418,8 +442,9 @@ export async function applyHunk({
   return { kind: 'failure' };
 }
 
-function pluralizeLines({ count }: { count: number }): string {
-  return count === 1 ? 'line' : 'lines';
+
+function hunkUsesCarriageReturnLineEndings({ hunk }: { hunk: TextHunk }): boolean {
+  return hunk.lines.some((line) => line.content[line.content.byteLength - 1] === 0x0d);
 }
 
 function getExpectedSourceIndex({ range }: { range: PatchRange }): number {
@@ -474,10 +499,14 @@ async function applyTextHunks({
     });
 
     switch (result.kind) {
-    case 'failure':
+    case 'failure': {
       rejectedHunks.push(hunk);
-      diagnostics.push(`Hunk #${index + 1} FAILED at ${hunk.oldRange.start}.`);
+      const detail = hunkUsesCarriageReturnLineEndings({ hunk })
+        ? ' (different line endings)'
+        : '';
+      diagnostics.push(`Hunk #${index + 1} FAILED at ${hunk.oldRange.start}${detail}.`);
       continue;
+    }
     case 'success':
       break;
     default: {
@@ -500,7 +529,8 @@ async function applyTextHunks({
       if (result.offset !== 0) {
         const sign = result.offset > 0 ? '' : '-';
         const absolute = Math.abs(result.offset);
-        parts.push(`(offset ${sign}${absolute} ${pluralizeLines({ count: absolute })})`);
+        const lineWord = result.offset > 0 && absolute === 1 ? 'line' : 'lines';
+        parts.push(`(offset ${sign}${absolute} ${lineWord})`);
       }
       diagnostics.push(`${parts.join(' ')}.`);
     }
@@ -510,6 +540,7 @@ async function applyTextHunks({
   return {
     pieces: output,
     rejectedHunks,
+    rejectionKind: rejectedHunks.length > 0 ? 'failed' : undefined,
     usedOffset,
     usedFuzz,
     diagnostics,
@@ -549,53 +580,82 @@ export async function applyTextSection({
   section: TextPatchSection,
   options: PatchOptions,
 }): Promise<ApplySectionResult> {
-  switch (options.directionMode) {
-  case 'reverse':
-    return applyTextHunks({ source, section, options, direction: 'reverse' });
-  case 'auto':
-  case 'forward-only':
-    break;
-  default: {
-    const _ex: never = options.directionMode;
-    throw new Error(`Unhandled direction mode: ${_ex}`);
-  }
-  }
-
-  const forwardApplies = await firstHunkApplies({ source, section, options });
-  if (forwardApplies || options.reverseDecisionMode === 'force-forward') {
-    return applyTextHunks({ source, section, options, direction: 'forward' });
-  }
-
-  const reversedSection = reverseSection({ section });
-  const reversed = (() => {
-    switch (reversedSection.kind) {
-    case 'text':
-      return reversedSection;
-    case 'ed':
-      throw new Error('internal reversed section type mismatch');
+  const initialDirection: PatchDirection = options.explicitReverse ? 'reverse' : 'forward';
+  const oppositeDirection: PatchDirection = (() => {
+    switch (initialDirection) {
+    case 'forward': return 'reverse';
+    case 'reverse': return 'forward';
     default: {
-      const _ex: never = reversedSection;
-      throw new Error(`Unhandled reversed section: ${JSON.stringify(_ex)}`);
+      const _ex: never = initialDirection;
+      throw new Error(`Unhandled patch direction: ${_ex}`);
     }
     }
   })();
-  const reverseApplies = await firstHunkApplies({ source, section: reversed, options });
-  if (!reverseApplies) {
-    return applyTextHunks({ source, section, options, direction: 'forward' });
+  const initialSection = (() => {
+    switch (initialDirection) {
+    case 'forward': return section;
+    case 'reverse': return reverseSection({ section }) as TextPatchSection;
+    default: {
+      const _ex: never = initialDirection;
+      throw new Error(`Unhandled patch direction: ${_ex}`);
+    }
+    }
+  })();
+
+  const initialApplies = await firstHunkApplies({ source, section: initialSection, options });
+  if (initialApplies || options.force) {
+    return applyTextHunks({ source, section, options, direction: initialDirection });
   }
 
-  if (options.directionMode === 'forward-only' || options.reverseDecisionMode === 'safe-skip') {
+  const oppositeSection = (() => {
+    switch (oppositeDirection) {
+    case 'forward': return section;
+    case 'reverse': return reverseSection({ section }) as TextPatchSection;
+    default: {
+      const _ex: never = oppositeDirection;
+      throw new Error(`Unhandled patch direction: ${_ex}`);
+    }
+    }
+  })();
+  const oppositeApplies = await firstHunkApplies({ source, section: oppositeSection, options });
+  if (!oppositeApplies) {
+    return applyTextHunks({ source, section, options, direction: initialDirection });
+  }
+
+  if (options.forwardOnly || !options.batch) {
     return {
       pieces: [{ kind: 'source', startLine: 0, endLine: source.lineCount }],
-      rejectedHunks: section.hunks,
+      rejectedHunks: initialSection.hunks,
+      rejectionKind: 'ignored',
       usedOffset: false,
       usedFuzz: false,
-      diagnostics: ['Reversed (or previously applied) patch detected!  Skipping patch.'],
-      direction: 'forward',
+      diagnostics: [(() => {
+        switch (initialDirection) {
+        case 'forward': return 'Reversed (or previously applied) patch detected!  Skipping patch.';
+        case 'reverse': return 'Unreversed patch detected!  Skipping patch.';
+        default: {
+          const _ex: never = initialDirection;
+          throw new Error(`Unhandled patch direction: ${_ex}`);
+        }
+        }
+      })()],
+      direction: initialDirection,
     };
   }
 
-  return applyTextHunks({ source, section, options, direction: 'reverse' });
+  const applied = await applyTextHunks({ source, section, options, direction: oppositeDirection });
+  switch (initialDirection) {
+  case 'forward':
+    break;
+  case 'reverse':
+    applied.diagnostics.unshift('Unreversed patch detected!  Ignoring -R.');
+    break;
+  default: {
+    const _ex: never = initialDirection;
+    throw new Error(`Unhandled patch direction: ${_ex}`);
+  }
+  }
+  return applied;
 }
 
 type EdPiece =
@@ -799,17 +859,13 @@ function pushPatchLine({ output, prefix, line }: { output: ByteChunkBuilder, pre
   }
 }
 
-export function serializeUnifiedReject({
+function pushUnifiedRejectHunk({
+  output,
   hunk,
-  oldPath,
-  newPath,
 }: {
+  output: ByteChunkBuilder,
   hunk: TextHunk,
-  oldPath: string,
-  newPath: string,
-}): Uint8Array {
-  const output = new ByteChunkBuilder();
-  pushAscii({ output, value: `--- ${oldPath}\n+++ ${newPath}\n` });
+}): void {
   const oldCount = hunk.oldRange.count === 1 ? '' : `,${hunk.oldRange.count}`;
   const newCount = hunk.newRange.count === 1 ? '' : `,${hunk.newRange.count}`;
   pushAscii({ output, value: `@@ -${hunk.oldRange.start}${oldCount} +${hunk.newRange.start}${newCount} @@${hunk.heading === undefined ? '' : ` ${hunk.heading}`}\n` });
@@ -827,6 +883,123 @@ export function serializeUnifiedReject({
     })();
     pushPatchLine({ output, prefix, line });
   }
+}
+
+export function serializeUnifiedRejects({
+  hunks,
+  oldPath,
+  newPath,
+}: {
+  hunks: readonly TextHunk[],
+  oldPath: string,
+  newPath: string,
+}): Uint8Array {
+  const output = new ByteChunkBuilder();
+  pushAscii({ output, value: `--- ${oldPath}\n+++ ${newPath}\n` });
+  for (const hunk of hunks) pushUnifiedRejectHunk({ output, hunk });
+  return output.finish();
+}
+
+export function serializeUnifiedReject({
+  hunk,
+  oldPath,
+  newPath,
+}: {
+  hunk: TextHunk,
+  oldPath: string,
+  newPath: string,
+}): Uint8Array {
+  return serializeUnifiedRejects({ hunks: [hunk], oldPath, newPath });
+}
+
+function contextRejectChangePrefix({
+  hunk,
+  lineIndex,
+  side,
+}: {
+  hunk: TextHunk,
+  lineIndex: number,
+  side: 'old' | 'new',
+}): '- ' | '+ ' | '! ' {
+  let start = lineIndex;
+  while (start > 0 && hunk.lines[start - 1]!.kind !== 'context') start -= 1;
+  let end = lineIndex + 1;
+  while (end < hunk.lines.length && hunk.lines[end]!.kind !== 'context') end += 1;
+  const block = hunk.lines.slice(start, end);
+  const isReplacement = block.some((line) => line.kind === 'remove')
+    && block.some((line) => line.kind === 'add');
+  if (isReplacement) return '! ';
+  switch (side) {
+  case 'old': return '- ';
+  case 'new': return '+ ';
+  default: {
+    const _ex: never = side;
+    throw new Error(`Unhandled context reject side: ${_ex}`);
+  }
+  }
+}
+
+function formatContextRejectRange({ range }: { range: PatchRange }): string {
+  if (range.count <= 1) return String(range.start);
+  return `${range.start},${range.start + range.count - 1}`;
+}
+
+function pushContextRejectHunk({
+  output,
+  hunk,
+}: {
+  output: ByteChunkBuilder,
+  hunk: TextHunk,
+}): void {
+  pushAscii({ output, value: '***************\n' });
+  pushAscii({ output, value: `*** ${formatContextRejectRange({ range: hunk.oldRange })} ****\n` });
+  for (const [lineIndex, line] of hunk.lines.entries()) {
+    switch (line.kind) {
+    case 'context':
+      pushPatchLine({ output, prefix: '  ', line });
+      break;
+    case 'remove':
+      pushPatchLine({ output, prefix: contextRejectChangePrefix({ hunk, lineIndex, side: 'old' }), line });
+      break;
+    case 'add':
+      break;
+    default: {
+      const _ex: never = line.kind;
+      throw new Error(`Unhandled context reject line kind: ${_ex}`);
+    }
+    }
+  }
+  pushAscii({ output, value: `--- ${formatContextRejectRange({ range: hunk.newRange })} ----\n` });
+  for (const [lineIndex, line] of hunk.lines.entries()) {
+    switch (line.kind) {
+    case 'context':
+      pushPatchLine({ output, prefix: '  ', line });
+      break;
+    case 'add':
+      pushPatchLine({ output, prefix: contextRejectChangePrefix({ hunk, lineIndex, side: 'new' }), line });
+      break;
+    case 'remove':
+      break;
+    default: {
+      const _ex: never = line.kind;
+      throw new Error(`Unhandled context reject line kind: ${_ex}`);
+    }
+    }
+  }
+}
+
+export function serializeContextRejects({
+  hunks,
+  oldPath,
+  newPath,
+}: {
+  hunks: readonly TextHunk[],
+  oldPath: string,
+  newPath: string,
+}): Uint8Array {
+  const output = new ByteChunkBuilder();
+  pushAscii({ output, value: `*** ${oldPath}\n--- ${newPath}\n` });
+  for (const hunk of hunks) pushContextRejectHunk({ output, hunk });
   return output.finish();
 }
 
@@ -839,45 +1012,7 @@ export function serializeContextReject({
   oldPath: string,
   newPath: string,
 }): Uint8Array {
-  const output = new ByteChunkBuilder();
-  pushAscii({ output, value: `*** ${oldPath}\n--- ${newPath}\n***************\n` });
-  const oldEnd = hunk.oldRange.count === 0 ? hunk.oldRange.start : hunk.oldRange.start + hunk.oldRange.count - 1;
-  const newEnd = hunk.newRange.count === 0 ? hunk.newRange.start : hunk.newRange.start + hunk.newRange.count - 1;
-  pushAscii({ output, value: `*** ${hunk.oldRange.start},${oldEnd} ****\n` });
-  for (const line of hunk.lines) {
-    switch (line.kind) {
-    case 'context':
-      pushPatchLine({ output, prefix: '  ', line });
-      break;
-    case 'remove':
-      pushPatchLine({ output, prefix: '- ', line });
-      break;
-    case 'add':
-      break;
-    default: {
-      const _ex: never = line.kind;
-      throw new Error(`Unhandled context reject line kind: ${_ex}`);
-    }
-    }
-  }
-  pushAscii({ output, value: `--- ${hunk.newRange.start},${newEnd} ----\n` });
-  for (const line of hunk.lines) {
-    switch (line.kind) {
-    case 'context':
-      pushPatchLine({ output, prefix: '  ', line });
-      break;
-    case 'add':
-      pushPatchLine({ output, prefix: '+ ', line });
-      break;
-    case 'remove':
-      break;
-    default: {
-      const _ex: never = line.kind;
-      throw new Error(`Unhandled context reject line kind: ${_ex}`);
-    }
-    }
-  }
-  return output.finish();
+  return serializeContextRejects({ hunks: [hunk], oldPath, newPath });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

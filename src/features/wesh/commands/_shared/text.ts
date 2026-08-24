@@ -2,7 +2,7 @@ import type { WeshCommandContext, WeshFileHandle } from '@/features/wesh/types';
 import { resolvePath } from '@/features/wesh/path';
 import { openFileReadStream, openHandleReadStream, readAllFileText } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
-import { iterateUtf8Lines } from '@/features/wesh/utils/text-records';
+import { iterateUtf8Lines, iterateUtf8Records } from '@/features/wesh/utils/text-records';
 
 async function readStreamText({
   stream,
@@ -59,12 +59,16 @@ export function iterateTextLinesFromHandle({
   });
 }
 
-export async function openTextLineIterator({
+export async function openTextRecordIterator({
   context,
   path,
+  delimiterByte,
+  stripTrailingCarriageReturn,
 }: {
   context: WeshCommandContext,
   path: string,
+  delimiterByte: number,
+  stripTrailingCarriageReturn: boolean,
 }): Promise<AsyncIterator<string>> {
   const stream = path === '-'
     ? openHandleReadStream({ handle: context.stdin })
@@ -75,9 +79,26 @@ export async function openTextLineIterator({
         path,
       }),
     });
-  return iterateUtf8Lines({
+  return iterateUtf8Records({
     chunks: iterateReadableStreamChunks({ stream }),
+    delimiterByte,
+    stripTrailingCarriageReturn,
   })[Symbol.asyncIterator]();
+}
+
+export async function openTextLineIterator({
+  context,
+  path,
+}: {
+  context: WeshCommandContext,
+  path: string,
+}): Promise<AsyncIterator<string>> {
+  return openTextRecordIterator({
+    context,
+    path,
+    delimiterByte: 0x0a,
+    stripTrailingCarriageReturn: true,
+  });
 }
 
 export function splitTextLines({

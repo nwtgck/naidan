@@ -1,50 +1,56 @@
-import { createChangeGroups, createDiffOperations } from './algorithm';
-import { areBytesIdentical, createLineComparator, decodeLine, isBinaryInput, isBlankLine } from './input';
-import type { DiffByteWriter } from './output';
-import { writeDiffOutput } from './output';
+import { createChangeGroups, createDiffOperations } from "./algorithm";
+import {
+  areBytesIdentical,
+  createLineComparator,
+  decodeLineForPattern,
+  isBinaryInput,
+  isBlankLine,
+} from "./input";
+import type { DiffByteWriter } from "./output";
+import { writeDiffOutput } from "./output";
 import type {
   DiffChangeGroup,
   DiffComparisonOptions,
   DiffInput,
   DiffOperation,
   DiffOutputOptions,
-} from './model';
+} from "./model";
 
 export interface DiffCompareSettings {
-  readonly comparisonOptions: DiffComparisonOptions,
-  readonly outputOptions: DiffOutputOptions,
-  readonly binaryMode: 'detect' | 'text',
-  readonly reportIdenticalFiles: boolean,
-  readonly ignoreBlankLineChanges: boolean,
-  readonly ignoreMatchingLinePatterns: readonly RegExp[],
-  readonly preferSpeedOverCompatibility: boolean,
+  readonly comparisonOptions: DiffComparisonOptions;
+  readonly outputOptions: DiffOutputOptions;
+  readonly binaryMode: "detect" | "text";
+  readonly reportIdenticalFiles: boolean;
+  readonly ignoreBlankLineChanges: boolean;
+  readonly ignoreMatchingLinePatterns: readonly RegExp[];
+  readonly preferSpeedOverCompatibility: boolean;
 }
 
 function groupEveryLineMatches({
   input,
   start,
   count,
-  patterns,
+  pattern,
   comparisonOptions,
+  characterLocaleMode,
 }: {
-  input: DiffInput,
-  start: number,
-  count: number,
-  patterns: readonly RegExp[],
-  comparisonOptions: DiffComparisonOptions,
+  input: DiffInput;
+  start: number;
+  count: number;
+  pattern: RegExp;
+  comparisonOptions: DiffComparisonOptions;
+  characterLocaleMode: DiffOutputOptions['characterLocaleMode'];
 }): boolean {
   for (let offset = 0; offset < count; offset++) {
-    const value = decodeLine({
+    const value = decodeLineForPattern({
       input,
       lineIndex: start + offset,
-      stripTrailingCarriageReturn: comparisonOptions.stripTrailingCarriageReturn,
+      stripTrailingCarriageReturn:
+        comparisonOptions.stripTrailingCarriageReturn,
+      characterLocaleMode,
     });
-    if (!patterns.some((pattern) => {
-      pattern.lastIndex = 0;
-      return pattern.test(value);
-    })) {
-      return false;
-    }
+    pattern.lastIndex = 0;
+    if (!pattern.test(value)) return false;
   }
   return true;
 }
@@ -55,10 +61,10 @@ function shouldIgnoreGroup({
   right,
   settings,
 }: {
-  group: DiffChangeGroup,
-  left: DiffInput,
-  right: DiffInput,
-  settings: DiffCompareSettings,
+  group: DiffChangeGroup;
+  left: DiffInput;
+  right: DiffInput;
+  settings: DiffCompareSettings;
 }): boolean {
   if (settings.ignoreBlankLineChanges) {
     let allBlank = true;
@@ -66,14 +72,16 @@ function shouldIgnoreGroup({
       allBlank &&= isBlankLine({
         input: left,
         lineIndex: group.leftStart + offset,
-        stripTrailingCarriageReturn: settings.comparisonOptions.stripTrailingCarriageReturn,
+        stripTrailingCarriageReturn:
+          settings.comparisonOptions.stripTrailingCarriageReturn,
       });
     }
     for (let offset = 0; offset < group.rightCount; offset++) {
       allBlank &&= isBlankLine({
         input: right,
         lineIndex: group.rightStart + offset,
-        stripTrailingCarriageReturn: settings.comparisonOptions.stripTrailingCarriageReturn,
+        stripTrailingCarriageReturn:
+          settings.comparisonOptions.stripTrailingCarriageReturn,
       });
     }
     if (allBlank) {
@@ -82,19 +90,25 @@ function shouldIgnoreGroup({
   }
 
   if (settings.ignoreMatchingLinePatterns.length > 0) {
-    return groupEveryLineMatches({
-      input: left,
-      start: group.leftStart,
-      count: group.leftCount,
-      patterns: settings.ignoreMatchingLinePatterns,
-      comparisonOptions: settings.comparisonOptions,
-    }) && groupEveryLineMatches({
-      input: right,
-      start: group.rightStart,
-      count: group.rightCount,
-      patterns: settings.ignoreMatchingLinePatterns,
-      comparisonOptions: settings.comparisonOptions,
-    });
+    return settings.ignoreMatchingLinePatterns.some(
+      (pattern) =>
+        groupEveryLineMatches({
+          input: left,
+          start: group.leftStart,
+          count: group.leftCount,
+          pattern,
+          comparisonOptions: settings.comparisonOptions,
+          characterLocaleMode: settings.outputOptions.characterLocaleMode,
+        }) &&
+        groupEveryLineMatches({
+          input: right,
+          start: group.rightStart,
+          count: group.rightCount,
+          pattern,
+          comparisonOptions: settings.comparisonOptions,
+          characterLocaleMode: settings.outputOptions.characterLocaleMode,
+        }),
+    );
   }
 
   return false;
@@ -106,15 +120,16 @@ function partitionChangeGroups({
   right,
   settings,
 }: {
-  groups: readonly DiffChangeGroup[],
-  left: DiffInput,
-  right: DiffInput,
-  settings: DiffCompareSettings,
-}): { changeGroups: DiffChangeGroup[], ignoredGroups: DiffChangeGroup[] } {
+  groups: readonly DiffChangeGroup[];
+  left: DiffInput;
+  right: DiffInput;
+  settings: DiffCompareSettings;
+}): { changeGroups: DiffChangeGroup[]; ignoredGroups: DiffChangeGroup[] } {
   const changeGroups: DiffChangeGroup[] = [];
   const ignoredGroups: DiffChangeGroup[] = [];
   for (const group of groups) {
-    if (shouldIgnoreGroup({ group, left, right, settings })) ignoredGroups.push(group);
+    if (shouldIgnoreGroup({ group, left, right, settings }))
+      ignoredGroups.push(group);
     else changeGroups.push(group);
   }
   return { changeGroups, ignoredGroups };
@@ -125,11 +140,13 @@ async function writeIdenticalReport({
   left,
   right,
 }: {
-  writer: DiffByteWriter,
-  left: DiffInput,
-  right: DiffInput,
+  writer: DiffByteWriter;
+  left: DiffInput;
+  right: DiffInput;
 }): Promise<void> {
-  await writer.writeText({ text: `Files ${left.displayName} and ${right.displayName} are identical\n` });
+  await writer.writeText({
+    text: `Files ${left.displayName} and ${right.displayName} are identical\n`,
+  });
   await writer.flush();
 }
 
@@ -139,27 +156,33 @@ async function writeDifferentReport({
   right,
   binary,
 }: {
-  writer: DiffByteWriter,
-  left: DiffInput,
-  right: DiffInput,
-  binary: boolean,
+  writer: DiffByteWriter;
+  left: DiffInput;
+  right: DiffInput;
+  binary: boolean;
 }): Promise<void> {
   await writer.writeText({
-    text: `${binary ? 'Binary files' : 'Files'} ${left.displayName} and ${right.displayName} differ\n`,
+    text: `${binary ? "Binary files" : "Files"} ${left.displayName} and ${right.displayName} differ\n`,
   });
   await writer.flush();
 }
 
-function isIfdefMode({ options }: { options: DiffOutputOptions }): boolean {
+function requiresDetailedOutputForIdenticalInputs({
+  options,
+}: {
+  options: DiffOutputOptions;
+}): boolean {
   switch (options.mode.kind) {
-  case 'ifdef': return true;
-  case 'brief':
-  case 'normal':
-  case 'unified':
-  case 'context':
-  case 'side-by-side':
-  case 'ed':
-  case 'rcs': return false;
+  case "ifdef":
+  case "side-by-side":
+    return true;
+  case "brief":
+  case "normal":
+  case "unified":
+  case "context":
+  case "ed":
+  case "rcs":
+    return false;
   default: {
     const _ex: never = options.mode;
     throw new Error(`Unhandled diff output mode: ${JSON.stringify(_ex)}`);
@@ -169,14 +192,16 @@ function isIfdefMode({ options }: { options: DiffOutputOptions }): boolean {
 
 function isBriefMode({ options }: { options: DiffOutputOptions }): boolean {
   switch (options.mode.kind) {
-  case 'brief': return true;
-  case 'normal':
-  case 'unified':
-  case 'context':
-  case 'side-by-side':
-  case 'ed':
-  case 'rcs':
-  case 'ifdef': return false;
+  case "brief":
+    return true;
+  case "normal":
+  case "unified":
+  case "context":
+  case "side-by-side":
+  case "ed":
+  case "rcs":
+  case "ifdef":
+    return false;
   default: {
     const _ex: never = options.mode;
     throw new Error(`Unhandled diff output mode: ${JSON.stringify(_ex)}`);
@@ -191,22 +216,29 @@ export async function compareDiffInputs({
   settings,
   beforeDetailedOutput,
 }: {
-  writer: DiffByteWriter,
-  left: DiffInput,
-  right: DiffInput,
-  settings: DiffCompareSettings,
-  beforeDetailedOutput?: () => Promise<void>,
-}): Promise<{ different: boolean, operations: readonly DiffOperation[], changeGroups: readonly DiffChangeGroup[] }> {
+  writer: DiffByteWriter;
+  left: DiffInput;
+  right: DiffInput;
+  settings: DiffCompareSettings;
+  beforeDetailedOutput?: () => Promise<void>;
+}): Promise<{
+  different: boolean;
+  operations: readonly DiffOperation[];
+  changeGroups: readonly DiffChangeGroup[];
+}> {
   if (areBytesIdentical({ left: left.lines.bytes, right: right.lines.bytes })) {
-    const operations: DiffOperation[] = left.lines.starts.length === 0
-      ? []
-      : [{
-        kind: 'equal',
-        leftStart: 0,
-        rightStart: 0,
-        length: left.lines.starts.length,
-      }];
-    if (isIfdefMode({ options: settings.outputOptions })) {
+    const operations: DiffOperation[] =
+      left.lines.starts.length === 0
+        ? []
+        : [
+          {
+            kind: "equal",
+            leftStart: 0,
+            rightStart: 0,
+            length: left.lines.starts.length,
+          },
+        ];
+    if (requiresDetailedOutputForIdenticalInputs({ options: settings.outputOptions })) {
       await beforeDetailedOutput?.();
       await writeDiffOutput({
         writer,
@@ -225,8 +257,9 @@ export async function compareDiffInputs({
     return { different: false, operations, changeGroups: [] };
   }
 
-  const binary = settings.binaryMode === 'detect'
-    && (isBinaryInput({ input: left }) || isBinaryInput({ input: right }));
+  const binary =
+    settings.binaryMode === "detect" &&
+    (isBinaryInput({ input: left }) || isBinaryInput({ input: right }));
   if (binary) {
     await writeDifferentReport({
       writer,
@@ -258,8 +291,8 @@ export async function compareDiffInputs({
 
   if (changeGroups.length === 0) {
     switch (settings.outputOptions.mode.kind) {
-    case 'side-by-side':
-    case 'ifdef':
+    case "side-by-side":
+    case "ifdef":
       await beforeDetailedOutput?.();
       await writeDiffOutput({
         writer,
@@ -272,12 +305,12 @@ export async function compareDiffInputs({
         outputOptions: settings.outputOptions,
       });
       break;
-    case 'brief':
-    case 'normal':
-    case 'unified':
-    case 'context':
-    case 'ed':
-    case 'rcs':
+    case "brief":
+    case "normal":
+    case "unified":
+    case "context":
+    case "ed":
+    case "rcs":
       break;
     default: {
       const _ex: never = settings.outputOptions.mode;
@@ -291,16 +324,16 @@ export async function compareDiffInputs({
   }
 
   switch (settings.outputOptions.mode.kind) {
-  case 'brief':
+  case "brief":
     await writeDifferentReport({ writer, left, right, binary: false });
     return { different: true, operations, changeGroups };
-  case 'normal':
-  case 'unified':
-  case 'context':
-  case 'side-by-side':
-  case 'ed':
-  case 'rcs':
-  case 'ifdef':
+  case "normal":
+  case "unified":
+  case "context":
+  case "side-by-side":
+  case "ed":
+  case "rcs":
+  case "ifdef":
     break;
   default: {
     const _ex: never = settings.outputOptions.mode;

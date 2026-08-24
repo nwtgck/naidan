@@ -1,6 +1,7 @@
 import type { WeshFileHandle } from '@/features/wesh/types';
+import { getWeshCodePointDisplayWidth } from '@/features/wesh/utils/display-width';
 import { createHunks } from './algorithm';
-import { decodeLine, getLineBytes } from './input';
+import { decodeLineForPattern, getLineBytes } from './input';
 import type {
   DiffChangeGroup,
   DiffComparisonOptions,
@@ -9,6 +10,7 @@ import type {
   DiffOperation,
   DiffOutputOptions,
 } from './model';
+import { quoteDiffFileName } from './quote';
 
 const OUTPUT_BUFFER_SIZE = 64 * 1024;
 const INCOMPLETE_LINE_MARKER = '\\ No newline at end of file\n';
@@ -147,17 +149,6 @@ function formatTimestamp({ mtime }: { mtime: number | undefined }): string {
   return `${date.getFullYear()}-${pad2({ value: date.getMonth() + 1 })}-${pad2({ value: date.getDate() })} ${pad2({ value: date.getHours() })}:${pad2({ value: date.getMinutes() })}:${pad2({ value: date.getSeconds() })}.${pad3({ value: date.getMilliseconds() })} ${formatTimezoneOffset({ date })}`;
 }
 
-function quoteFileName({ value }: { value: string }): string {
-  if (!/[\t\n\\"]/u.test(value)) {
-    return value;
-  }
-  return `"${value
-    .replace(/\\/gu, '\\\\')
-    .replace(/"/gu, '\\"')
-    .replace(/\t/gu, '\\t')
-    .replace(/\n/gu, '\\n')}"`;
-}
-
 function formatHeader({
   input,
   label,
@@ -168,7 +159,7 @@ function formatHeader({
   if (label !== undefined) {
     return label;
   }
-  return `${quoteFileName({ value: input.displayName })}\t${formatTimestamp({ mtime: input.mtime })}`;
+  return `${quoteDiffFileName({ value: input.displayName })}\t${formatTimestamp({ mtime: input.mtime })}`;
 }
 
 const CONTEXT_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
@@ -189,7 +180,7 @@ function formatContextHeader({
   if (label !== undefined) {
     return label;
   }
-  return `${quoteFileName({ value: input.displayName })}\t${formatContextTimestamp({ mtime: input.mtime })}`;
+  return `${quoteDiffFileName({ value: input.displayName })}\t${formatContextTimestamp({ mtime: input.mtime })}`;
 }
 
 function findFunctionLine({
@@ -197,29 +188,63 @@ function findFunctionLine({
   beforeLine,
   pattern,
   stripTrailingCarriageReturn,
+  characterLocaleMode,
 }: {
   input: DiffInput,
   beforeLine: number,
   pattern: RegExp | undefined,
   stripTrailingCarriageReturn: boolean,
-}): string | undefined {
+  characterLocaleMode: DiffOutputOptions['characterLocaleMode'],
+}): Uint8Array | undefined {
   if (pattern === undefined) {
     return undefined;
   }
 
   const start = Math.min(beforeLine - 1, input.lines.starts.length - 1);
   for (let lineIndex = start; lineIndex >= 0; lineIndex--) {
-    const line = decodeLine({ input, lineIndex, stripTrailingCarriageReturn });
+    const line = decodeLineForPattern({
+      input,
+      lineIndex,
+      stripTrailingCarriageReturn,
+      characterLocaleMode,
+    });
     pattern.lastIndex = 0;
     if (pattern.test(line)) {
-      return line;
+      const bytes = getLineBytes({ input, lineIndex, stripTrailingCarriageReturn });
+      let startOffset = 0;
+      let endOffset = bytes.byteLength;
+      while (startOffset < endOffset && isFunctionLineWhitespace({ byte: bytes[startOffset]! })) {
+        startOffset++;
+      }
+      while (endOffset > startOffset && isFunctionLineWhitespace({ byte: bytes[endOffset - 1]! })) {
+        endOffset--;
+      }
+      return bytes.subarray(startOffset, endOffset);
     }
   }
   return undefined;
 }
 
-function formatFunctionSuffix({ value }: { value: string | undefined }): string {
-  return value === undefined ? '' : ` ${value}`;
+function isFunctionLineWhitespace({ byte }: { byte: number }): boolean {
+  return byte === 0x09
+    || byte === 0x0b
+    || byte === 0x0c
+    || byte === 0x0d
+    || byte === 0x20;
+}
+
+async function writeFunctionSuffix({
+  writer,
+  value,
+}: {
+  writer: DiffByteWriter,
+  value: Uint8Array | undefined,
+}): Promise<void> {
+  if (value === undefined) {
+    return;
+  }
+  await writer.writeText({ text: ' ' });
+  await writer.writeBytes({ bytes: value });
 }
 
 async function writeBytesWithExpandedTabs({
@@ -367,7 +392,7 @@ function formatUnifiedRange({ start, count }: { start: number, count: number }):
 
 function formatContextRange({ start, count }: { start: number, count: number }): string {
   if (count === 0) {
-    return '0';
+    return String(start);
   }
   const first = start + 1;
   return count === 1 ? String(first) : `${first},${start + count}`;
@@ -504,10 +529,13 @@ async function writeUnified({
       beforeLine: hunk.leftStart,
       pattern: outputOptions.functionLinePattern,
       stripTrailingCarriageReturn: comparisonOptions.stripTrailingCarriageReturn,
+      characterLocaleMode: outputOptions.characterLocaleMode,
     });
     await writer.writeText({
-      text: `@@ -${formatUnifiedRange({ start: hunk.leftStart, count: hunk.leftCount })} +${formatUnifiedRange({ start: hunk.rightStart, count: hunk.rightCount })} @@${formatFunctionSuffix({ value: functionLine })}\n`,
+      text: `@@ -${formatUnifiedRange({ start: hunk.leftStart, count: hunk.leftCount })} +${formatUnifiedRange({ start: hunk.rightStart, count: hunk.rightCount })} @@`,
     });
+    await writeFunctionSuffix({ writer, value: functionLine });
+    await writer.writeText({ text: '\n' });
 
     let operationIndex = hunk.operationStart;
     while (operationIndex < hunk.operationEnd) {
@@ -741,10 +769,11 @@ async function writeContext({
       beforeLine: hunk.leftStart,
       pattern: outputOptions.functionLinePattern,
       stripTrailingCarriageReturn: comparisonOptions.stripTrailingCarriageReturn,
+      characterLocaleMode: outputOptions.characterLocaleMode,
     });
-    await writer.writeText({
-      text: `***************${formatFunctionSuffix({ value: functionLine })}\n`,
-    });
+    await writer.writeText({ text: '***************' });
+    await writeFunctionSuffix({ writer, value: functionLine });
+    await writer.writeText({ text: '\n' });
     await writer.writeText({ text: `*** ${formatContextRange({ start: hunk.leftStart, count: hunk.leftCount })} ****\n` });
     if (hunkContainsOperationKind({ operations, hunk, kind: 'delete' })) {
       await writeContextSection({ writer, side: 'left', input: left, operations, hunk, comparisonOptions, outputOptions });
@@ -935,6 +964,73 @@ function getValidUtf8SequenceLength({
   return 1;
 }
 
+function decodeValidUtf8CodePoint({
+  bytes,
+  index,
+  sequenceLength,
+}: {
+  bytes: Uint8Array,
+  index: number,
+  sequenceLength: number,
+}): number {
+  const first = bytes[index] ?? 0;
+  switch (sequenceLength) {
+  case 1:
+    return first;
+  case 2:
+    return ((first & 0x1F) << 6)
+      | ((bytes[index + 1] ?? 0) & 0x3F);
+  case 3:
+    return ((first & 0x0F) << 12)
+      | (((bytes[index + 1] ?? 0) & 0x3F) << 6)
+      | ((bytes[index + 2] ?? 0) & 0x3F);
+  case 4:
+    return ((first & 0x07) << 18)
+      | (((bytes[index + 1] ?? 0) & 0x3F) << 12)
+      | (((bytes[index + 2] ?? 0) & 0x3F) << 6)
+      | ((bytes[index + 3] ?? 0) & 0x3F);
+  default:
+    throw new Error(`Unhandled UTF-8 sequence length: ${sequenceLength}`);
+  }
+}
+
+
+function outputOptionsCharacterWidth({
+  bytes,
+  index,
+  characterLocaleMode,
+}: {
+  bytes: Uint8Array,
+  index: number,
+  characterLocaleMode: DiffOutputOptions['characterLocaleMode'],
+}): { readonly byteLength: number, readonly columnWidth: number } {
+  switch (characterLocaleMode) {
+  case 'ascii': {
+    const byte = bytes[index] ?? 0;
+    return {
+      byteLength: 1,
+      columnWidth: byte >= 0x20 && byte <= 0x7E ? 1 : 0,
+    };
+  }
+  case 'unicode': {
+    const byteLength = getValidUtf8SequenceLength({ bytes, index });
+    if (byteLength === 1 && (bytes[index] ?? 0) >= 0x80) {
+      return { byteLength: 1, columnWidth: 1 };
+    }
+    const codePoint = decodeValidUtf8CodePoint({ bytes, index, sequenceLength: byteLength });
+    return {
+      byteLength,
+      columnWidth: getWeshCodePointDisplayWidth({ codePoint }),
+    };
+  }
+  default: {
+    const _exhaustive: never = characterLocaleMode;
+    throw new Error(`Unhandled character locale mode: ${_exhaustive}`);
+  }
+  }
+}
+
+
 async function writeSideBySideColumn({
   writer,
   bytes,
@@ -942,6 +1038,7 @@ async function writeSideBySideColumn({
   width,
   tabSize,
   expandTabsInOutput,
+  characterLocaleMode,
 }: {
   writer: DiffByteWriter,
   bytes: Uint8Array,
@@ -949,16 +1046,59 @@ async function writeSideBySideColumn({
   width: number,
   tabSize: number,
   expandTabsInOutput: boolean,
+  characterLocaleMode: DiffOutputOptions['characterLocaleMode'],
 }): Promise<number> {
   let column = startColumn;
   const endColumn = startColumn + width;
   let index = 0;
   let chunkStart = 0;
+  let clipped = false;
 
   while (index < bytes.byteLength) {
+    if (bytes[index] === 0x0D) {
+      if (chunkStart < index) {
+        await writer.writeBytes({ bytes: bytes.subarray(chunkStart, index) });
+      }
+      await writer.writeBytes({ bytes: bytes.subarray(index, index + 1) });
+      index++;
+      column = 0;
+      if (startColumn > 0) {
+        const resetPadding = padSideBySideToColumn({
+          currentColumn: 0,
+          targetColumn: startColumn,
+          tabSize,
+          useTabs: !expandTabsInOutput,
+        });
+        await writer.writeText({ text: resetPadding.text });
+        column = resetPadding.endColumn;
+      }
+      clipped = false;
+      chunkStart = index;
+      continue;
+    }
+
+    if (clipped) {
+      index++;
+      chunkStart = index;
+      continue;
+    }
+
     if (bytes[index] === 0x09) {
-      const advance = tabSize - (column % tabSize);
-      if (column + advance > endColumn) break;
+      const tabColumn = expandTabsInOutput ? column - startColumn : column;
+      const advance = tabSize - (tabColumn % tabSize);
+      if (column + advance >= endColumn) {
+        if (chunkStart < index) {
+          await writer.writeBytes({ bytes: bytes.subarray(chunkStart, index) });
+        }
+        if (expandTabsInOutput && column < endColumn) {
+          await writer.writeText({ text: ' '.repeat(endColumn - column) });
+          column = endColumn;
+        }
+        index++;
+        chunkStart = index;
+        clipped = true;
+        continue;
+      }
       if (chunkStart < index) {
         await writer.writeBytes({ bytes: bytes.subarray(chunkStart, index) });
       }
@@ -973,9 +1113,19 @@ async function writeSideBySideColumn({
       continue;
     }
 
-    if (column >= endColumn) break;
-    index += getValidUtf8SequenceLength({ bytes, index });
-    column++;
+    const sequenceLength = outputOptionsCharacterWidth({ bytes, index, characterLocaleMode });
+    if (column + sequenceLength.columnWidth > endColumn
+      || (sequenceLength.columnWidth > 0 && column >= endColumn)) {
+      if (chunkStart < index) {
+        await writer.writeBytes({ bytes: bytes.subarray(chunkStart, index) });
+      }
+      index += sequenceLength.byteLength;
+      chunkStart = index;
+      clipped = true;
+      continue;
+    }
+    index += sequenceLength.byteLength;
+    column += sequenceLength.columnWidth;
   }
 
   if (chunkStart < index) {
@@ -1010,10 +1160,12 @@ function padSideBySideToColumn({
   return { text, endColumn: column };
 }
 
+type SideBySideMarker = ' ' | '|' | '<' | '>' | '(' | ')' | '/' | '\\';
+
 function isCommonSideBySideMarker({
   marker,
 }: {
-  marker: ' ' | '|' | '<' | '>' | '(' | ')',
+  marker: SideBySideMarker,
 }): boolean {
   switch (marker) {
   case ' ': return true;
@@ -1021,7 +1173,9 @@ function isCommonSideBySideMarker({
   case '<':
   case '>':
   case '(':
-  case ')': return false;
+  case ')':
+  case '/':
+  case '\\': return false;
   default: {
     const _ex: never = marker;
     throw new Error(`Unhandled side-by-side marker: ${_ex}`);
@@ -1032,13 +1186,15 @@ function isCommonSideBySideMarker({
 function hasRightSideBySideColumn({
   marker,
 }: {
-  marker: ' ' | '|' | '<' | '>' | '(' | ')',
+  marker: SideBySideMarker,
 }): boolean {
   switch (marker) {
   case ' ':
   case '|':
   case '>':
-  case ')': return true;
+  case ')':
+  case '/':
+  case '\\': return true;
   case '<':
   case '(': return false;
   default: {
@@ -1055,33 +1211,65 @@ async function writeSideBySideRow({
   rightBytes,
   width,
   outputOptions,
+  terminateLine = true,
 }: {
   writer: DiffByteWriter,
   leftBytes: Uint8Array,
-  marker: ' ' | '|' | '<' | '>' | '(' | ')',
+  marker: SideBySideMarker,
   rightBytes: Uint8Array,
   width: number,
   outputOptions: DiffOutputOptions,
+  terminateLine?: boolean,
 }): Promise<void> {
+  const rowTerminator = terminateLine ? '\n' : '';
+  if (isCommonSideBySideMarker({ marker }) && leftBytes.byteLength === 0 && rightBytes.byteLength === 0) {
+    await writer.writeText({ text: rowTerminator });
+    return;
+  }
   const layout = resolveSideBySideLayout({
     width,
     tabSize: outputOptions.tabSize,
     expandTabsInOutput: outputOptions.expandTabs,
   });
   if (layout.halfWidth === 0) {
+    const leftEndColumn = await writeSideBySideColumn({
+      writer,
+      bytes: leftBytes,
+      startColumn: 0,
+      width: 0,
+      tabSize: outputOptions.tabSize,
+      expandTabsInOutput: outputOptions.expandTabs,
+      characterLocaleMode: outputOptions.characterLocaleMode,
+    });
     if (isCommonSideBySideMarker({ marker })) {
       const padding = padSideBySideToColumn({
-        currentColumn: 0,
+        currentColumn: leftEndColumn,
         targetColumn: width,
         tabSize: outputOptions.tabSize,
         useTabs: !outputOptions.expandTabs,
       });
-      await writer.writeText({ text: `${padding.text}\n` });
+      await writer.writeText({ text: padding.text });
+      await writeSideBySideColumn({
+        writer,
+        bytes: rightBytes,
+        startColumn: width,
+        width: 0,
+        tabSize: outputOptions.tabSize,
+        expandTabsInOutput: outputOptions.expandTabs,
+        characterLocaleMode: outputOptions.characterLocaleMode,
+      });
+      await writer.writeText({ text: rowTerminator });
       return;
     }
-    const beforeMarker = ' '.repeat(layout.markerColumn);
-    if (!hasRightSideBySideColumn({ marker })) {
-      await writer.writeText({ text: `${beforeMarker}${marker}\n` });
+    const beforeMarker = padSideBySideToColumn({
+      currentColumn: leftEndColumn,
+      targetColumn: layout.markerColumn,
+      tabSize: outputOptions.tabSize,
+      useTabs: !outputOptions.expandTabs,
+    });
+    await writer.writeText({ text: `${beforeMarker.text}${marker}` });
+    if (!hasRightSideBySideColumn({ marker }) || rightBytes.byteLength === 0) {
+      await writer.writeText({ text: rowTerminator });
       return;
     }
     const afterMarker = padSideBySideToColumn({
@@ -1090,7 +1278,17 @@ async function writeSideBySideRow({
       tabSize: outputOptions.tabSize,
       useTabs: !outputOptions.expandTabs,
     });
-    await writer.writeText({ text: `${beforeMarker}${marker}${afterMarker.text}\n` });
+    await writer.writeText({ text: afterMarker.text });
+    await writeSideBySideColumn({
+      writer,
+      bytes: rightBytes,
+      startColumn: width,
+      width: 0,
+      tabSize: outputOptions.tabSize,
+      expandTabsInOutput: outputOptions.expandTabs,
+      characterLocaleMode: outputOptions.characterLocaleMode,
+    });
+    await writer.writeText({ text: rowTerminator });
     return;
   }
 
@@ -1101,6 +1299,7 @@ async function writeSideBySideRow({
     width: layout.halfWidth,
     tabSize: outputOptions.tabSize,
     expandTabsInOutput: outputOptions.expandTabs,
+    characterLocaleMode: outputOptions.characterLocaleMode,
   });
   if (isCommonSideBySideMarker({ marker })) {
     const betweenColumns = padSideBySideToColumn({
@@ -1114,11 +1313,12 @@ async function writeSideBySideRow({
       writer,
       bytes: rightBytes,
       startColumn: layout.column2Offset,
-      width: width - layout.column2Offset,
+      width: layout.halfWidth,
       tabSize: outputOptions.tabSize,
       expandTabsInOutput: outputOptions.expandTabs,
+      characterLocaleMode: outputOptions.characterLocaleMode,
     });
-    await writer.writeText({ text: '\n' });
+    await writer.writeText({ text: rowTerminator });
     return;
   }
 
@@ -1129,8 +1329,8 @@ async function writeSideBySideRow({
     useTabs: !outputOptions.expandTabs,
   });
   await writer.writeText({ text: `${beforeMarker.text}${marker}` });
-  if (!hasRightSideBySideColumn({ marker })) {
-    await writer.writeText({ text: '\n' });
+  if (!hasRightSideBySideColumn({ marker }) || rightBytes.byteLength === 0) {
+    await writer.writeText({ text: rowTerminator });
     return;
   }
   const afterMarker = padSideBySideToColumn({
@@ -1144,11 +1344,12 @@ async function writeSideBySideRow({
     writer,
     bytes: rightBytes,
     startColumn: layout.column2Offset,
-    width: width - layout.column2Offset,
+    width: layout.halfWidth,
     tabSize: outputOptions.tabSize,
     expandTabsInOutput: outputOptions.expandTabs,
+    characterLocaleMode: outputOptions.characterLocaleMode,
   });
-  await writer.writeText({ text: '\n' });
+  await writer.writeText({ text: rowTerminator });
 }
 
 async function writeSideBySide({
@@ -1195,6 +1396,7 @@ async function writeSideBySide({
             rightBytes,
             width,
             outputOptions,
+            terminateLine: left.lines.hasLineFeed[operation.leftStart + offset] === 1,
           });
         }
       }
@@ -1375,13 +1577,25 @@ async function writeSideBySide({
       const rightIndex = inserted[row];
       const leftBytes = leftIndex === undefined ? EMPTY_BYTES : getLineBytes({ input: left, lineIndex: leftIndex, stripTrailingCarriageReturn: comparisonOptions.stripTrailingCarriageReturn });
       const rightBytes = rightIndex === undefined ? EMPTY_BYTES : getLineBytes({ input: right, lineIndex: rightIndex, stripTrailingCarriageReturn: comparisonOptions.stripTrailingCarriageReturn });
+      const leftHasLineFeed = leftIndex !== undefined && left.lines.hasLineFeed[leftIndex] === 1;
+      const rightHasLineFeed = rightIndex !== undefined && right.lines.hasLineFeed[rightIndex] === 1;
+      const marker: SideBySideMarker = leftIndex === undefined
+        ? '>'
+        : rightIndex === undefined
+          ? '<'
+          : leftHasLineFeed === rightHasLineFeed
+            ? '|'
+            : leftHasLineFeed
+              ? '/'
+              : '\\';
       await writeSideBySideRow({
         writer,
         leftBytes,
-        marker: leftIndex === undefined ? '>' : rightIndex === undefined ? '<' : '|',
+        marker,
         rightBytes,
         width,
         outputOptions,
+        terminateLine: leftHasLineFeed || rightHasLineFeed,
       });
     }
   }
