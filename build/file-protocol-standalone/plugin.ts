@@ -33,6 +33,7 @@ import {
   assertFileProtocolStandaloneHtmlBeforeRewrite,
   resolveFileProtocolStandaloneHtmlReference,
 } from './html-validation.js';
+import { insertFileProtocolStandaloneBootstrap } from './html-output.js';
 import {
   FILE_PROTOCOL_STANDALONE_ELEMENT_IDS,
   FILE_PROTOCOL_STANDALONE_GLOBAL_NAME,
@@ -2266,7 +2267,7 @@ function createSystemJsOutputPlugin({
           + `<script id=${JSON.stringify(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsFilePatch)} src=${JSON.stringify(normalizedPatchUrl)}></script>`
           + `<script id=${JSON.stringify(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRetryHook)} src=${JSON.stringify(normalizedRetryUrl)}></script>`
           + `<script id=${JSON.stringify(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.entryBootstrap)}>${entryBootstrap}</script>`;
-        html = html.replace('</head>', `${bootstrap}</head>`);
+        html = insertFileProtocolStandaloneBootstrap({ html, bootstrap });
         assertFileProtocolStandaloneHtmlAfterRewrite({ html, htmlFileName: output.fileName });
         output.source = html;
         diagnostics.html.push({
