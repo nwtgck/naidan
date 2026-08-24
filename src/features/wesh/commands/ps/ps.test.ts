@@ -357,7 +357,7 @@ e\u0301           4
   });
 
   it('uses the configured process user independently of the USER environment variable', async () => {
-    const { result, stdout, stderr } = await execute({
+    const { result, stdout } = await execute({
       script: `\
 unset USER
 sleep 0.2 &
@@ -365,21 +365,19 @@ ps -ef`,
     });
 
     expect(result.exitCode).toBe(0);
-    expect(stderr.text).toContain('[1] background');
     expect(stdout.text).toContain('USER');
     expect(stdout.text).toContain('user');
     expect(stdout.text).toContain('sleep 0.2');
   });
 
   it('can show background processes with -e', async () => {
-    const { result, stdout, stderr } = await execute({
+    const { result, stdout } = await execute({
       script: `\
 sleep 0.2 &
 ps -e -o pid,stat,args`,
     });
 
     expect(result.exitCode).toBe(0);
-    expect(stderr.text).toContain('[1] background');
     expect(stdout.text).toContain('  PID STAT COMMAND');
     expect(stdout.text).toContain('sleep 0.2');
     expect(stdout.text).toContain('R');

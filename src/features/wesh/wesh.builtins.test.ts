@@ -65,6 +65,33 @@ describe('wesh shell builtins', () => {
     expect(persisted.result.exitCode).toBe(0);
   });
 
+  it('keeps the shell running when exec has no replacement command after option parsing', async () => {
+    const executed = await execute({
+      script: `\
+exec --
+printf 'after\n'
+`,
+    });
+
+    expect(executed.stdout.text).toBe('after\n');
+    expect(executed.stderr.text).toBe('');
+    expect(executed.result.exitCode).toBe(0);
+  });
+
+  it('keeps the shell running after exec help', async () => {
+    const executed = await execute({
+      script: `\
+exec --help
+printf 'after\n'
+`,
+    });
+
+    expect(executed.stdout.text).toContain('usage: exec');
+    expect(executed.stdout.text).toMatch(/after\n$/u);
+    expect(executed.stderr.text).toBe('');
+    expect(executed.result.exitCode).toBe(0);
+  });
+
   it('supports exec with persistent read-write file descriptors for read -u', async () => {
     await writeFile({ name: 'fd.txt', data: `\
 alpha
@@ -146,6 +173,45 @@ echo chained >&4`,
     expect(executed.stdout.text).toBe('');
     expect(executed.stderr.text).toBe('chained\n');
     expect(executed.result.exitCode).toBe(0);
+  });
+
+  it('releases replaced exec descriptor references so FIFO readers observe EOF', async () => {
+    const executed = await execute({
+      script: `\
+mkfifo fifo
+cat fifo > output.txt &
+pid=$!
+exec 3> fifo
+printf 'line\n' >&3
+exec 3>&-
+wait "$pid"
+cat output.txt
+`,
+    });
+
+    expect(executed.stdout.text).toBe('line\n');
+    expect(executed.stderr.text).toBe('');
+    expect(executed.result.exitCode).toBe(0);
+  });
+
+  it('does not leak subshell-local exec descriptors into later top-level execution', async () => {
+    const subshell = await execute({
+      script: '(exec 3> subshell-only.txt)',
+    });
+    expect(subshell.stdout.text).toBe('');
+    expect(subshell.stderr.text).toBe('');
+    expect(subshell.result.exitCode).toBe(0);
+
+    const parent = await execute({
+      script: 'printf leaked >&3',
+    });
+    const handle = await rootHandle.getFileHandle('subshell-only.txt');
+    const file = await handle.getFile();
+
+    expect(await file.text()).toBe('');
+    expect(parent.stdout.text).toBe('');
+    expect(parent.stderr.text).toContain('bad file descriptor');
+    expect(parent.result.exitCode).not.toBe(0);
   });
 
   it('keeps duplicated input descriptors readable after closing the original descriptor', async () => {

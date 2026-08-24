@@ -58,7 +58,7 @@ describe('wesh shell expansion', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      script: script,
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -436,7 +436,7 @@ echo "\${REQUIRED:?required value}"`,
 
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain('wesh: REQUIRED: required value');
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(127);
   });
 
   it('supports prefix and suffix pattern removal parameter expansion', async () => {
@@ -479,7 +479,7 @@ echo "$0"`,
       script: 'sleep 0 & echo "$!"',
     });
     expect(backgroundParams.result.exitCode).toBe(0);
-    expect(backgroundParams.stderr.text).toContain('[1] background');
+    expect(backgroundParams.stderr.text).toBe('');
     expect(backgroundParams.stdout.text).toMatch(/^[0-9]+\n$/);
   });
 });

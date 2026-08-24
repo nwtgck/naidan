@@ -76,8 +76,8 @@ describe('wesh exec', () => {
     ]) {
       const { result, stdout, stderr } = await execute({ script });
       expect(stdout.text).toBe('');
-      expect(stderr.text).toBe('exec: replacing the shell requires Wesh core exit control-flow support\n');
-      expect(result.exitCode).toBe(1);
+      expect(stderr.text).toBe('');
+      expect(result.exitCode).toBe(0);
     }
   });
 

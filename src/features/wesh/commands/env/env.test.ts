@@ -218,7 +218,7 @@ REMOVE_ME=old
 
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('wesh: Command not found: definitely-missing-nested-command\n');
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(127);
   });
 
   it('runs a command from a temporary working directory with -C', async () => {

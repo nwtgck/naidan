@@ -304,7 +304,8 @@ for outer in 1 2; do
     fi
     echo "$outer:$inner"
   done
-done`,
+done
+echo after`,
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -313,6 +314,7 @@ done`,
     expect(stdout.text).toBe(`\
 1:keep
 2:keep
+after
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
@@ -332,7 +334,41 @@ done`,
 
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain('break');
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('reports continue outside loops without changing the shell status', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: 'continue',
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('continue');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('returns status 2 for return outside a function or sourced script', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: 'return 7',
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('return');
+    expect(result.exitCode).toBe(2);
   });
 
   it('keeps loop state changes isolated inside pipeline stages', async () => {
@@ -613,7 +649,7 @@ echo "$VALUE"`,
     expect(result.exitCode).toBe(0);
   });
 
-  it('reports return outside a shell function as an error', async () => {
+  it('reports return outside a shell function with status 2', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -627,7 +663,7 @@ echo "$VALUE"`,
 
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain('return');
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
   });
 
   it('uses the last command status for return without an explicit code', async () => {
@@ -878,7 +914,7 @@ child
 parent
 `);
     expect(stderr.text).toContain('Command not found');
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(127);
   });
 
   it('keeps trap changes in command substitution isolated from the parent shell', async () => {
@@ -1235,6 +1271,35 @@ signal-int`,
     expect(stderr.text).toBe('function-int\n');
   });
 
+  it('keeps file redirection open across redirected while-loop iterations', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+cat > lines.txt <<'EOF'
+alpha
+beta
+gamma
+EOF
+while IFS= read -r line; do
+  echo "<$line>"
+done < lines.txt`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+<alpha>
+<beta>
+<gamma>
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports combined stdin and stdout redirection on compound while commands', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
@@ -1369,7 +1434,7 @@ tempfn`,
 
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain('Command not found');
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(127);
   });
 
   it('handles here-documents (<<EOF)', async () => {
@@ -1596,6 +1661,54 @@ trap -p`,
     expect(stderr.text).toBe('');
     expect(stdout.text).toContain(`trap -- 'echo child' EXIT`);
     expect(stdout.text).toContain(`trap -- 'echo parent' EXIT`);
+  });
+
+  it('runs ERR traps for ordinary command failures', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+trap -- 'echo err-trap' ERR
+false
+printf 'after\\n'`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+err-trap
+after
+`);
+  });
+
+  it('suppresses ERR traps in conditional command contexts', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+trap -- 'echo err-trap' ERR
+false && printf unreachable
+if false; then printf unreachable; fi
+false || printf 'or-branch\\n'
+printf 'after\\n'`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+or-branch
+after
+`);
   });
 
   it('runs EXIT traps when the shell finishes', async () => {
