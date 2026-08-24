@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { DebugFileProtocolStandaloneWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub';
+import type { StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
 import type { DebugFileProtocolStandaloneWorkerVerificationResult } from './worker-probe';
 import type {
   DebugFileProtocolStandaloneGlobalDiagnostics,
@@ -20,63 +20,86 @@ function createWorkerDiagnostics({
   workersCreated: number,
   workersTerminated: number,
   activeWorkers: number,
-}): DebugFileProtocolStandaloneWorkerDiagnostics {
+}): StandaloneWorkerRuntimeDiagnostics {
   return {
-    workerId: 'file-protocol-standalone-worker-hub',
-    registryScriptLoads: 1,
-    registryScriptLoadFailures: 0,
-    blobRegistrations: 1,
-    objectUrlsCreated: 1,
+    bootstrapObjectUrlStatus: 'ready',
+    bootstrapObjectUrlsCreated: 1,
+    bootstrapObjectUrlsRevoked: 0,
+    warmupSchedules: 1,
+    warmupRuns: 1,
+    workerConstructorFailures: 0,
     workersCreated,
     workersTerminated,
     activeWorkers,
     terminateInstrumentationFailures: 0,
-    runtimeDigestCalls: 0,
-    sourceStoredAsGlobalString: false,
-    objectUrlLifetime: 'page',
-    registryEntryReleased: true,
-    registryEntryPresent: false,
-    blobUrlStatus: 'ready',
-    blobBytes: 4096,
-    sourcePartCount: 2,
-    sha256: 'diagnostic-sha256',
-    timingsMs: {},
+    initializationAttempts: workersCreated,
+    initializationSuccesses: workersCreated,
+    initializationFailures: 0,
+    initializationTimeouts: 0,
+    workersByName: {
+      'naidan-highlight-worker': {
+        workersCreated: Math.max(0, workersCreated - 1),
+        workersTerminated: Math.max(0, workersTerminated - 1),
+        activeWorkers: 0,
+        initializationAttempts: Math.max(0, workersCreated - 1),
+        initializationSuccesses: Math.max(0, workersCreated - 1),
+        initializationFailures: 0,
+        initializationTimeouts: 0,
+      },
+      'file-protocol-compatible-wesh-worker': {
+        workersCreated: workersCreated > 0 ? 1 : 0,
+        workersTerminated: workersTerminated > 0 ? 1 : 0,
+        activeWorkers: 0,
+        initializationAttempts: workersCreated > 0 ? 1 : 0,
+        initializationSuccesses: workersCreated > 0 ? 1 : 0,
+        initializationFailures: 0,
+        initializationTimeouts: 0,
+      },
+    },
   };
 }
 
 function createValidWorkerResult(): DebugFileProtocolStandaloneWorkerVerificationResult {
-  const diagnosticsBefore = createWorkerDiagnostics({
-    workersCreated: 2,
-    workersTerminated: 2,
-    activeWorkers: 0,
-  });
-  const diagnosticsAfter = createWorkerDiagnostics({
-    workersCreated: 5,
-    workersTerminated: 5,
-    activeWorkers: 0,
-  });
-
+  const diagnosticsBefore = createWorkerDiagnostics({ workersCreated: 2, workersTerminated: 2, activeWorkers: 0 });
+  const diagnosticsAfter = createWorkerDiagnostics({ workersCreated: 6, workersTerminated: 6, activeWorkers: 0 });
   return {
     diagnosticsBefore,
     diagnosticsAfter,
     diagnosticDeltas: {
-      workersCreated: 3,
-      workersTerminated: 3,
+      workersCreated: 4,
+      workersTerminated: 4,
       activeWorkers: 0,
-      registryScriptLoads: 0,
-      blobRegistrations: 0,
-      objectUrlsCreated: 0,
+      initializationAttempts: 4,
+      initializationSuccesses: 4,
+      initializationFailures: 0,
+      initializationTimeouts: 0,
+    },
+    workerDeltas: {
+      highlight: {
+        workersCreated: 3,
+        workersTerminated: 3,
+        activeWorkers: 0,
+        initializationAttempts: 3,
+        initializationSuccesses: 3,
+        initializationFailures: 0,
+        initializationTimeouts: 0,
+      },
+      wesh: {
+        workersCreated: 1,
+        workersTerminated: 1,
+        activeWorkers: 0,
+        initializationAttempts: 1,
+        initializationSuccesses: 1,
+        initializationFailures: 0,
+        initializationTimeouts: 0,
+      },
     },
     concurrentHighlights: [
       { resolvedLanguage: 'json', htmlLength: 20 },
       { resolvedLanguage: 'json', htmlLength: 21 },
     ],
     recreatedWorkerHighlight: { resolvedLanguage: 'json', htmlLength: 22 },
-    weshFileProbe: {
-      exitCode: 0,
-      stdout: '/bin/sh: text/x-shellscript\n',
-      stderr: '',
-    },
+    weshFileProbe: { exitCode: 0, stdout: '/bin/sh: text/x-shellscript\n', stderr: '' },
   };
 }
 
@@ -96,10 +119,6 @@ function appendExpectedScripts(): void {
     script.src = `./assets/${id}.js`;
     document.head.appendChild(script);
   }
-  const manifest = document.createElement('script');
-  manifest.id = 'file-protocol-standalone-worker-manifest';
-  manifest.type = 'application/json';
-  document.head.appendChild(manifest);
   const entry = document.createElement('script');
   entry.id = 'file-protocol-standalone-entry';
   document.head.appendChild(entry);
@@ -168,7 +187,7 @@ function installValidGlobals(): void {
         retryableErrorCount: 0,
         nonRetryableErrorCount: 0,
       },
-      workerRuntime: { worker: { objectUrlsCreated: 1 } },
+      workerRuntime: createWorkerDiagnostics({ workersCreated: 2, workersTerminated: 2, activeWorkers: 0 }),
     },
   };
   const namespace: MutableStandaloneNamespace = {
@@ -515,14 +534,14 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
       crossoriginAttribute: null,
     });
     const liveWorker = internal.debug?.workerRuntime as {
-      worker: { objectUrlsCreated: number },
+      bootstrapObjectUrlsCreated: number,
     };
-    liveWorker.worker.objectUrlsCreated = 99;
+    liveWorker.bootstrapObjectUrlsCreated = 99;
 
     expect(startupDetails).toHaveProperty('startup.checkpoint', 'app-ready');
     expect(report.runtime.startup).toHaveProperty('checkpoint', 'app-ready');
     expect(report.runtime.systemJsPatch).toHaveProperty('patchedScripts.length', 1);
-    expect(report.runtime.worker).toHaveProperty('objectUrlsCreated', 1);
+    expect(report.runtime.worker).toHaveProperty('bootstrapObjectUrlsCreated', 1);
   });
 
   it('fails retry validation when its physical failure records are malformed', async () => {

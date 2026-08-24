@@ -1,6 +1,11 @@
 import * as Comlink from 'comlink';
 
-import { createFileProtocolStandaloneWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub-standalone-loader';
+import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/file-explorer';
+import {
+  createStandaloneWorkerSession,
+  disposeStandaloneWorkerSession,
+  STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+} from '@/features/file-protocol-standalone/worker/standalone-worker-session';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
 import {
   fileExplorerCreateDirectoryArchiveResponseSchema,
@@ -17,7 +22,6 @@ import {
   type FileExplorerWorkerClient,
   type IFileExplorerWorker,
 } from './types';
-import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub.types';
 
 function createDirectoryArchiveJobId(): string {
   if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
@@ -52,9 +56,6 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })();
-  const worker = await createFileProtocolStandaloneWorkerHub();
-  const remote = Comlink.wrap<IWorkerHub>(worker);
-  const fileExplorer = await remote.fileExplorer as Comlink.Remote<IFileExplorerWorker>;
   const requestRoot = (() => {
     switch (root.kind) {
     case 'native-directory':
@@ -73,32 +74,44 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })();
-  const prepareResponse = await fileExplorer.prepareSession({
-    request: {
-      root: requestRoot,
-    },
-  });
-  const sessionId = fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId;
+  const session = await createStandaloneWorkerSession<IFileExplorerWorker>({ createWorker: createStandaloneWorker });
+  const { remote } = session;
+  let sessionId: string;
+  try {
+    const prepareResponse = await remote.prepareSession({
+      request: {
+        root: requestRoot,
+      },
+    });
+    sessionId = fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId;
+  } catch (error) {
+    await disposeStandaloneWorkerSession({
+      session,
+      beforeRelease: undefined,
+      cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+    }).catch(() => undefined);
+    throw error;
+  }
 
   return {
     async readDirectory({ path }) {
       return fileExplorerReadDirectoryResponseSchema.parse(
-        await fileExplorer.readDirectory({ request: { sessionId, path } }),
+        await remote.readDirectory({ request: { sessionId, path } }),
       );
     },
     async readPreview({ path, mode }) {
       return fileExplorerReadPreviewResponseSchema.parse(
-        await fileExplorer.readPreview({ request: { sessionId, path, mode } }),
+        await remote.readPreview({ request: { sessionId, path, mode } }),
       );
     },
     async readFile({ path }) {
       return fileExplorerReadFileResponseSchema.parse(
-        await fileExplorer.readFile({ request: { sessionId, path } }),
+        await remote.readFile({ request: { sessionId, path } }),
       );
     },
     async suggestArchiveExclusions({ directoryPath, query, excludedRelativePaths }) {
       return fileExplorerSuggestArchiveExclusionsResponseSchema.parse(
-        await fileExplorer.suggestArchiveExclusions({
+        await remote.suggestArchiveExclusions({
           request: { sessionId, directoryPath, query, excludedRelativePaths },
         }),
       );
@@ -106,35 +119,35 @@ export async function createFileExplorerWorkerClient({
     startDirectoryArchive({ directoryPath, excludedRelativePaths }) {
       const jobId = createDirectoryArchiveJobId();
       return {
-        result: fileExplorer.createDirectoryArchive({
+        result: remote.createDirectoryArchive({
           request: { sessionId, jobId, directoryPath, excludedRelativePaths },
         }).then(response => fileExplorerCreateDirectoryArchiveResponseSchema.parse(response)),
         async cancel() {
-          await fileExplorer.cancelDirectoryArchive({ request: { sessionId, jobId } });
+          await remote.cancelDirectoryArchive({ request: { sessionId, jobId } });
         },
       };
     },
     async createFile({ parentPath, name }) {
-      await fileExplorer.createFile({ request: { sessionId, parentPath, name } });
+      await remote.createFile({ request: { sessionId, parentPath, name } });
     },
     async createFolder({ parentPath, name }) {
-      await fileExplorer.createFolder({ request: { sessionId, parentPath, name } });
+      await remote.createFolder({ request: { sessionId, parentPath, name } });
     },
     async deleteEntries({ paths }) {
-      await fileExplorer.deleteEntries({ request: { sessionId, paths } });
+      await remote.deleteEntries({ request: { sessionId, paths } });
     },
     async renameEntry({ path, newName }) {
-      await fileExplorer.renameEntry({ request: { sessionId, path, newName } });
+      await remote.renameEntry({ request: { sessionId, path, newName } });
     },
     async copyEntries({ sourcePaths, targetDirectoryPath }) {
-      await fileExplorer.copyEntries({ request: { sessionId, sourcePaths, targetDirectoryPath } });
+      await remote.copyEntries({ request: { sessionId, sourcePaths, targetDirectoryPath } });
     },
     async moveEntries({ sourcePaths, targetDirectoryPath }) {
-      await fileExplorer.moveEntries({ request: { sessionId, sourcePaths, targetDirectoryPath } });
+      await remote.moveEntries({ request: { sessionId, sourcePaths, targetDirectoryPath } });
     },
     async analyzeZipUpload({ analysisId, targetDirectoryPath, fileName, blob }) {
       return fileExplorerAnalyzeZipUploadResponseSchema.parse(
-        await fileExplorer.analyzeZipUpload({
+        await remote.analyzeZipUpload({
           request: { sessionId, analysisId, targetDirectoryPath, fileName, blob },
         }),
       );
@@ -142,7 +155,7 @@ export async function createFileExplorerWorkerClient({
     async readZipUploadPreviewDirectory({ analysisId, placement, relativePath }) {
       const plainPlacement = toPlainFileExplorerZipUploadPlacement({ placement });
       return fileExplorerReadZipUploadPreviewDirectoryResponseSchema.parse(
-        await fileExplorer.readZipUploadPreviewDirectory({
+        await remote.readZipUploadPreviewDirectory({
           request: { sessionId, analysisId, placement: plainPlacement, relativePath },
         }),
       );
@@ -151,27 +164,26 @@ export async function createFileExplorerWorkerClient({
       const jobId = createZipUploadJobId();
       const plainPlacement = toPlainFileExplorerZipUploadPlacement({ placement });
       return {
-        result: fileExplorer.executeZipUpload({
+        result: remote.executeZipUpload({
           request: { sessionId, analysisId, jobId, placement: plainPlacement },
         }).then(response => fileExplorerExecuteZipUploadResponseSchema.parse(response)),
         async cancel() {
-          await fileExplorer.cancelZipUpload({ request: { sessionId, jobId } });
+          await remote.cancelZipUpload({ request: { sessionId, jobId } });
         },
       };
     },
     async disposeZipUploadAnalysis({ analysisId }) {
-      await fileExplorer.disposeZipUploadAnalysis({ request: { sessionId, analysisId } });
+      await remote.disposeZipUploadAnalysis({ request: { sessionId, analysisId } });
     },
     async uploadFiles({ targetDirectoryPath, files }) {
-      await fileExplorer.uploadFiles({ request: { sessionId, targetDirectoryPath, files } });
+      await remote.uploadFiles({ request: { sessionId, targetDirectoryPath, files } });
     },
     async dispose() {
-      try {
-        await fileExplorer.disposeSession({ request: { sessionId } });
-        await remote[Comlink.releaseProxy]();
-      } finally {
-        worker.terminate();
-      }
+      await disposeStandaloneWorkerSession({
+        session,
+        beforeRelease: () => remote.disposeSession({ request: { sessionId } }),
+        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+      });
     },
   };
 }

@@ -1,27 +1,29 @@
-import * as Comlink from 'comlink';
-
-import { createFileProtocolStandaloneWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub-standalone-loader';
-import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub.types';
+import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/highlight';
+import {
+  createStandaloneWorkerSession,
+  disposeStandaloneWorkerSession,
+  STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+} from '@/features/file-protocol-standalone/worker/standalone-worker-session';
 import {
   highlightResponseSchema,
+  type IHighlightWorker,
   type HighlightWorkerClient,
 } from './types';
 
 export async function createHighlightWorkerClient(): Promise<HighlightWorkerClient> {
-  const worker = await createFileProtocolStandaloneWorkerHub();
-  const remote = Comlink.wrap<IWorkerHub>(worker);
-  const highlight = await remote.highlight;
+  const session = await createStandaloneWorkerSession<IHighlightWorker>({ createWorker: createStandaloneWorker });
+  const { remote } = session;
 
   return {
     async highlight({ request }) {
-      return highlightResponseSchema.parse(await highlight.highlight({ request }));
+      return highlightResponseSchema.parse(await remote.highlight({ request }));
     },
     async dispose() {
-      try {
-        await remote[Comlink.releaseProxy]();
-      } finally {
-        worker.terminate();
-      }
+      await disposeStandaloneWorkerSession({
+        session,
+        beforeRelease: undefined,
+        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+      });
     },
   };
 }

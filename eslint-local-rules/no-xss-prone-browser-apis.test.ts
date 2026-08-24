@@ -96,12 +96,4 @@ describe('no-xss-prone-browser-apis rule', () => {
     expect(messages.map(message => message.messageId)).toEqual(['noScriptLikeWorker', 'noScriptLikeWorker', 'noScriptLikeWorker', 'noScriptLikeWorker']);
   });
 
-  it('allows explicit exception files', async () => {
-    const messages = await lintText({
-      filePath: 'src/features/file-protocol-standalone/worker/worker-hub-standalone-loader.ts',
-      code: `new Worker(objectUrl, { name: 'standalone' });`,
-    });
-
-    expect(messages).toHaveLength(0);
-  });
 });

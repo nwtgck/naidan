@@ -1,15 +1,19 @@
 import * as Comlink from 'comlink';
 
-import {
-  createFileProtocolStandaloneWorkerHub,
-  debugGetFileProtocolStandaloneWorkerHubDiagnostics,
-} from '@/features/file-protocol-standalone/worker/worker-hub-standalone-loader';
-import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub.types';
+import type { IHighlightWorker } from '@/features/highlight/worker/types';
 import type {
   IWeshWorker,
   WeshWorkerRemoteExecutionEvent,
 } from '@/features/wesh/worker/types';
-import type { DebugFileProtocolStandaloneWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub';
+import type {
+  StandaloneWorkerNameDiagnostics,
+  StandaloneWorkerRuntimeDiagnostics,
+} from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
+import {
+  createStandaloneWorker as createHighlightWorker,
+  debugGetStandaloneWorkerRuntimeDiagnostics,
+} from 'virtual:file-protocol-standalone/worker/highlight';
+import { createStandaloneWorker as createWeshWorker } from 'virtual:file-protocol-standalone/worker/wesh';
 
 export type DebugFileProtocolStandaloneHighlightProbeResult = Readonly<{
   resolvedLanguage: string,
@@ -22,82 +26,89 @@ export type DebugFileProtocolStandaloneWeshFileProbeResult = Readonly<{
   stderr: string,
 }>;
 
+type DiagnosticDelta = Readonly<{
+  workersCreated: number,
+  workersTerminated: number,
+  activeWorkers: number,
+  initializationAttempts: number,
+  initializationSuccesses: number,
+  initializationFailures: number,
+  initializationTimeouts: number,
+}>;
+
 export type DebugFileProtocolStandaloneWorkerVerificationResult = Readonly<{
-  diagnosticsBefore: DebugFileProtocolStandaloneWorkerDiagnostics,
-  diagnosticsAfter: DebugFileProtocolStandaloneWorkerDiagnostics,
-  diagnosticDeltas: Readonly<{
-    workersCreated: number,
-    workersTerminated: number,
-    activeWorkers: number,
-    registryScriptLoads: number,
-    blobRegistrations: number,
-    objectUrlsCreated: number,
+  diagnosticsBefore: StandaloneWorkerRuntimeDiagnostics,
+  diagnosticsAfter: StandaloneWorkerRuntimeDiagnostics,
+  diagnosticDeltas: DiagnosticDelta,
+  workerDeltas: Readonly<{
+    highlight: DiagnosticDelta,
+    wesh: DiagnosticDelta,
   }>,
   concurrentHighlights: readonly DebugFileProtocolStandaloneHighlightProbeResult[],
   recreatedWorkerHighlight: DebugFileProtocolStandaloneHighlightProbeResult,
   weshFileProbe: DebugFileProtocolStandaloneWeshFileProbeResult,
 }>;
 
-export type DebugFileProtocolStandaloneWorkerHubSession = Readonly<{
+export type DebugFileProtocolStandaloneWorkerSession<Api> = Readonly<{
   worker: Worker,
-  remote: Comlink.Remote<IWorkerHub>,
+  remote: Comlink.Remote<Api>,
 }>;
 
-const debugFileProtocolStandaloneWorkerSessionCreationDeadlineMs = 30_000;
-const debugFileProtocolStandaloneWorkerOperationDeadlineMs = 30_000;
-const debugFileProtocolStandaloneWorkerCleanupDeadlineMs = 5_000;
+type ReleaseSession<Api> = ({ session }: {
+  session: DebugFileProtocolStandaloneWorkerSession<Api>,
+}) => Promise<void>;
+
+const sessionCreationDeadlineMs = 30_000;
+const operationDeadlineMs = 30_000;
+const cleanupDeadlineMs = 5_000;
+const highlightWorkerName = 'naidan-highlight-worker';
+const weshWorkerName = 'file-protocol-compatible-wesh-worker';
 
 /**
- * Stop waiting at the deadline. This does not cancel the underlying operation;
- * resource-producing callers must arrange late cleanup explicitly.
+ * Stop waiting at the deadline. Promise.race does not cancel an underlying
+ * Worker operation, so every resource-producing caller must arrange cleanup.
  */
-async function debugWaitForOperationUntilDeadline<Result>({
-  label,
-  timeoutMs,
-  action,
-}: {
+async function waitForOperationUntilDeadline<Result>({ label, timeoutMs, action }: {
   label: string,
   timeoutMs: number,
   action: () => Promise<Result>,
 }): Promise<Result> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${timeoutMs} ms.`));
-    }, timeoutMs);
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs} ms.`)), timeoutMs);
   });
-
   try {
     return await Promise.race([action(), timeout]);
   } finally {
-    if (timeoutId !== undefined) {
-      clearTimeout(timeoutId);
-    }
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 }
 
-async function debugCreateFileProtocolStandaloneWorkerHubSession(): Promise<DebugFileProtocolStandaloneWorkerHubSession> {
-  const worker = await createFileProtocolStandaloneWorkerHub();
+async function createSession<Api>({ label, createWorker }: {
+  label: string,
+  createWorker: () => Promise<Worker>,
+}): Promise<DebugFileProtocolStandaloneWorkerSession<Api>> {
+  const worker = await waitForOperationUntilDeadline({
+    label,
+    timeoutMs: sessionCreationDeadlineMs,
+    action: createWorker,
+  });
   try {
-    return {
-      worker,
-      remote: Comlink.wrap<IWorkerHub>(worker),
-    };
+    return { worker, remote: Comlink.wrap<Api>(worker) };
   } catch (error) {
     worker.terminate();
     throw error;
   }
 }
 
-/** @internal Exported for Comlink lifecycle regression tests. */
-async function debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession({ session }: {
-  session: DebugFileProtocolStandaloneWorkerHubSession,
+async function releaseAndTerminateSession<Api>({ session }: {
+  session: DebugFileProtocolStandaloneWorkerSession<Api>,
 }): Promise<void> {
-  let releaseError: unknown | undefined;
+  let releaseError: unknown;
   try {
-    await debugWaitForOperationUntilDeadline({
-      label: 'Standalone Worker Comlink proxy release',
-      timeoutMs: debugFileProtocolStandaloneWorkerCleanupDeadlineMs,
+    await waitForOperationUntilDeadline({
+      label: 'Split Worker Comlink proxy release',
+      timeoutMs: cleanupDeadlineMs,
       action: async () => {
         await session.remote[Comlink.releaseProxy]();
       },
@@ -105,37 +116,172 @@ async function debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession({ 
   } catch (error) {
     releaseError = error;
   } finally {
-    // terminate() is idempotent in the standalone Worker wrapper. Always call it
-    // even when a released or unresponsive Comlink endpoint never acknowledges.
+    // terminate() is idempotent in the generated standalone Worker wrapper. Always
+    // force the physical realm down even when Comlink never acknowledges release.
     session.worker.terminate();
   }
-  if (releaseError !== undefined) {
-    throw releaseError;
+  if (releaseError !== undefined) throw releaseError;
+}
+
+async function releaseSessionUntilDeadline<Api>({ session, releaseSession, timeoutMs }: {
+  session: DebugFileProtocolStandaloneWorkerSession<Api>,
+  releaseSession: ReleaseSession<Api>,
+  timeoutMs: number,
+}): Promise<void> {
+  try {
+    await waitForOperationUntilDeadline({
+      label: 'Split Worker session cleanup',
+      timeoutMs,
+      action: () => releaseSession({ session }),
+    });
+  } catch (error) {
+    // Dependency-injected cleanup can itself hang. The verification route must
+    // never leak a Worker realm merely because its diagnostic cleanup failed.
+    session.worker.terminate();
+    throw error;
   }
 }
 
-/** @internal Exported for Comlink lifecycle regression tests. */
-async function debugRunFileProtocolStandaloneHighlightProbe({ session, source }: {
-  session: DebugFileProtocolStandaloneWorkerHubSession,
+async function createSessionUntilDeadline<Api>({
+  createSession,
+  releaseSession,
+  creationTimeoutMs,
+  cleanupTimeoutMs,
+  label,
+}: {
+  createSession: () => Promise<DebugFileProtocolStandaloneWorkerSession<Api>>,
+  releaseSession: ReleaseSession<Api>,
+  creationTimeoutMs: number,
+  cleanupTimeoutMs: number,
+  label: string,
+}): Promise<DebugFileProtocolStandaloneWorkerSession<Api>> {
+  const timeoutError = new Error(`${label} timed out after ${creationTimeoutMs} ms.`);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  const creation = Promise.resolve().then(createSession);
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      reject(timeoutError);
+    }, creationTimeoutMs);
+  });
+  try {
+    return await Promise.race([creation, timeout]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    if (timedOut) {
+      // Promise.race does not cancel Worker construction. Reclaim a session that
+      // resolves after the deadline instead of leaving a hidden live Worker.
+      void creation.then(async (session) => {
+        try {
+          await releaseSessionUntilDeadline({ session, releaseSession, timeoutMs: cleanupTimeoutMs });
+        } catch {
+          // releaseSessionUntilDeadline already forced physical termination.
+        }
+      }, () => undefined);
+    }
+  }
+}
+
+async function createConcurrentHighlightSessions({
+  createSession,
+  releaseSession,
+  creationTimeoutMs,
+  cleanupTimeoutMs,
+}: {
+  createSession: () => Promise<DebugFileProtocolStandaloneWorkerSession<IHighlightWorker>>,
+  releaseSession: ReleaseSession<IHighlightWorker>,
+  creationTimeoutMs: number,
+  cleanupTimeoutMs: number,
+}): Promise<readonly [
+  DebugFileProtocolStandaloneWorkerSession<IHighlightWorker>,
+  DebugFileProtocolStandaloneWorkerSession<IHighlightWorker>,
+]> {
+  const outcomes = await Promise.allSettled([
+    createSessionUntilDeadline({
+      createSession,
+      releaseSession,
+      creationTimeoutMs,
+      cleanupTimeoutMs,
+      label: 'First Highlight Worker session creation',
+    }),
+    createSessionUntilDeadline({
+      createSession,
+      releaseSession,
+      creationTimeoutMs,
+      cleanupTimeoutMs,
+      label: 'Second Highlight Worker session creation',
+    }),
+  ]);
+  const fulfilled = outcomes.filter((outcome): outcome is PromiseFulfilledResult<DebugFileProtocolStandaloneWorkerSession<IHighlightWorker>> => outcome.status === 'fulfilled');
+  const rejected = outcomes.filter((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected');
+  const firstRejected = rejected[0];
+  if (firstRejected !== undefined) {
+    await Promise.allSettled(fulfilled.map(({ value }) => releaseSessionUntilDeadline({
+      session: value,
+      releaseSession,
+      timeoutMs: cleanupTimeoutMs,
+    })));
+    throw firstRejected.reason;
+  }
+  const firstFulfilled = fulfilled[0];
+  const secondFulfilled = fulfilled[1];
+  if (firstFulfilled === undefined || secondFulfilled === undefined) {
+    throw new Error('Concurrent Highlight Worker creation produced an incomplete outcome set.');
+  }
+  return [firstFulfilled.value, secondFulfilled.value];
+}
+
+async function runHighlightProbeWithSession({ session, source }: {
+  session: DebugFileProtocolStandaloneWorkerSession<IHighlightWorker>,
   source: string,
 }): Promise<DebugFileProtocolStandaloneHighlightProbeResult> {
-  const highlight = await session.remote.highlight;
-  const result = await highlight.highlight({
-    request: {
-      code: source,
-      language: 'json',
-      mode: 'named-language',
-    },
+  const result = await session.remote.highlight({
+    request: { code: source, language: 'json', mode: 'named-language' },
   });
+  return { resolvedLanguage: result.resolvedLanguage, htmlLength: result.html.length };
+}
 
-  return {
-    resolvedLanguage: result.resolvedLanguage,
-    htmlLength: result.html.length,
-  };
+async function runHighlightProbeAndCleanup({
+  session,
+  source,
+  runProbe,
+  releaseSession,
+  operationTimeoutMs,
+  cleanupTimeoutMs,
+}: {
+  session: DebugFileProtocolStandaloneWorkerSession<IHighlightWorker>,
+  source: string,
+  runProbe: typeof runHighlightProbeWithSession,
+  releaseSession: ReleaseSession<IHighlightWorker>,
+  operationTimeoutMs: number,
+  cleanupTimeoutMs: number,
+}): Promise<DebugFileProtocolStandaloneHighlightProbeResult> {
+  let result: DebugFileProtocolStandaloneHighlightProbeResult | undefined;
+  let operationError: unknown;
+  try {
+    result = await waitForOperationUntilDeadline({
+      label: 'Highlight Worker probe',
+      timeoutMs: operationTimeoutMs,
+      action: () => runProbe({ session, source }),
+    });
+  } catch (error) {
+    operationError = error;
+  }
+  let cleanupError: unknown;
+  try {
+    await releaseSessionUntilDeadline({ session, releaseSession, timeoutMs: cleanupTimeoutMs });
+  } catch (error) {
+    cleanupError = error;
+  }
+  if (operationError !== undefined) throw operationError;
+  if (cleanupError !== undefined) throw cleanupError;
+  if (result === undefined) throw new Error('Highlight Worker probe produced no result.');
+  return result;
 }
 
 /** @internal Exported for Wesh lifecycle regression tests. */
-async function debugRunFileProtocolStandaloneWeshFileProbeWithRemote({ wesh }: {
+async function runWeshFileProbeWithRemote({ wesh }: {
   wesh: Comlink.Remote<IWeshWorker>,
 }): Promise<DebugFileProtocolStandaloneWeshFileProbeResult> {
   const stdout: string[] = [];
@@ -143,20 +289,15 @@ async function debugRunFileProtocolStandaloneWeshFileProbeWithRemote({ wesh }: {
   const decoder = new TextDecoder();
   let executionId: string | undefined;
   let result: DebugFileProtocolStandaloneWeshFileProbeResult | undefined;
-  let operationError: unknown | undefined;
-
+  let operationError: unknown;
   try {
     await wesh.init({
-      // The built-in /bin/sh special file is readable from an otherwise empty,
-      // immutable root. This exercises Wesh's real file classification path,
-      // including file-type, without creating files or touching user storage.
       rootHandle: 'readonly',
       mounts: [],
       user: 'standalone-verification',
       initialEnv: {},
       initialCwd: '/',
     });
-
     const started = await wesh.startExecution(
       { script: 'file --mime-type /bin/sh' },
       Comlink.proxy((event: WeshWorkerRemoteExecutionEvent) => {
@@ -173,31 +314,22 @@ async function debugRunFileProtocolStandaloneWeshFileProbeWithRemote({ wesh }: {
         case 'error':
           throw new Error(event.message);
         default: {
-          const _ex: never = event;
-          throw new Error(`Unhandled Wesh verification event: ${String(_ex)}`);
+          const _exhaustive: never = event;
+          throw new Error(`Unhandled Wesh verification event: ${String(_exhaustive)}`);
         }
         }
       }),
     );
     executionId = started.executionId;
-    const summary = await wesh.awaitExecution({
-      request: { executionId },
-    });
-    result = {
-      exitCode: summary.exitCode,
-      stdout: stdout.join(''),
-      stderr: stderr.join(''),
-    };
+    const summary = await wesh.awaitExecution({ request: { executionId } });
+    result = { exitCode: summary.exitCode, stdout: stdout.join(''), stderr: stderr.join('') };
   } catch (error) {
     operationError = error;
   }
-
-  let cleanupError: unknown | undefined;
+  let cleanupError: unknown;
   if (executionId !== undefined) {
     try {
-      await wesh.disposeExecution({
-        request: { executionId },
-      });
+      await wesh.disposeExecution({ request: { executionId } });
     } catch (error) {
       cleanupError = error;
     }
@@ -207,294 +339,116 @@ async function debugRunFileProtocolStandaloneWeshFileProbeWithRemote({ wesh }: {
   } catch (error) {
     cleanupError ??= error;
   }
-
-  if (operationError !== undefined) {
-    throw operationError;
-  }
-  if (cleanupError !== undefined) {
-    throw cleanupError;
-  }
-  if (result === undefined) {
-    throw new Error('Standalone Wesh file probe produced no result.');
-  }
+  if (operationError !== undefined) throw operationError;
+  if (cleanupError !== undefined) throw cleanupError;
+  if (result === undefined) throw new Error('Standalone Wesh file probe produced no result.');
   return result;
 }
 
-/** @internal Exported for Comlink lifecycle regression tests. */
-async function debugRunFileProtocolStandaloneWeshFileProbe({ session }: {
-  session: DebugFileProtocolStandaloneWorkerHubSession,
-}): Promise<DebugFileProtocolStandaloneWeshFileProbeResult> {
-  const wesh = await session.remote.wesh as unknown as Comlink.Remote<IWeshWorker>;
-  return debugRunFileProtocolStandaloneWeshFileProbeWithRemote({ wesh });
-}
-
-async function debugReleaseAndTerminateSessionUntilDeadline({
+async function runWeshProbeAndCleanup({
   session,
-  releaseSession,
-  timeoutMs,
-}: {
-  session: DebugFileProtocolStandaloneWorkerHubSession,
-  releaseSession: ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => Promise<void>,
-  timeoutMs: number,
-}): Promise<void> {
-  try {
-    await debugWaitForOperationUntilDeadline({
-      label: 'Standalone Worker session cleanup',
-      timeoutMs,
-      action: async () => releaseSession({ session }),
-    });
-  } catch (error) {
-    // A dependency-injected cleanup can itself become permanently pending. Force
-    // the physical Worker down so verification never leaks a live realm.
-    session.worker.terminate();
-    throw error;
-  }
-}
-
-async function debugCreateSessionUntilDeadline({
-  createSession,
-  releaseSession,
-  creationTimeoutMs,
-  cleanupTimeoutMs,
-  label,
-}: {
-  createSession: () => Promise<DebugFileProtocolStandaloneWorkerHubSession>,
-  releaseSession: ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => Promise<void>,
-  creationTimeoutMs: number,
-  cleanupTimeoutMs: number,
-  label: string,
-}): Promise<DebugFileProtocolStandaloneWorkerHubSession> {
-  const timeoutError = new Error(`${label} timed out after ${creationTimeoutMs} ms.`);
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  let timedOut = false;
-  const creation = Promise.resolve().then(createSession);
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timeoutId = setTimeout(() => {
-      timedOut = true;
-      reject(timeoutError);
-    }, creationTimeoutMs);
-  });
-
-  try {
-    return await Promise.race([creation, timeout]);
-  } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-    if (timedOut) {
-      // Promise.race does not cancel Worker creation. If it completes after the
-      // deadline, release the late session instead of leaking a live Worker.
-      void creation.then(
-        async (session) => {
-          try {
-            await debugReleaseAndTerminateSessionUntilDeadline({
-              session,
-              releaseSession,
-              timeoutMs: cleanupTimeoutMs,
-            });
-          } catch {
-            // debugReleaseAndTerminateSessionUntilDeadline already forces physical termination.
-          }
-        },
-        () => undefined,
-      );
-    }
-  }
-}
-
-async function debugCreateConcurrentWorkerHubSessions({
-  createSession,
-  releaseSession,
-  sessionCreationTimeoutMs,
-  cleanupTimeoutMs,
-}: {
-  createSession: () => Promise<DebugFileProtocolStandaloneWorkerHubSession>,
-  releaseSession: ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => Promise<void>,
-  sessionCreationTimeoutMs: number,
-  cleanupTimeoutMs: number,
-}): Promise<readonly [DebugFileProtocolStandaloneWorkerHubSession, DebugFileProtocolStandaloneWorkerHubSession]> {
-  const [first, second] = await Promise.allSettled([
-    debugCreateSessionUntilDeadline({
-      createSession,
-      releaseSession,
-      creationTimeoutMs: sessionCreationTimeoutMs,
-      cleanupTimeoutMs,
-      label: 'First standalone Worker session creation',
-    }),
-    debugCreateSessionUntilDeadline({
-      createSession,
-      releaseSession,
-      creationTimeoutMs: sessionCreationTimeoutMs,
-      cleanupTimeoutMs,
-      label: 'Second standalone Worker session creation',
-    }),
-  ]);
-
-  switch (first.status) {
-  case 'fulfilled': {
-    switch (second.status) {
-    case 'fulfilled':
-      return [first.value, second.value];
-    case 'rejected':
-      try {
-        await debugReleaseAndTerminateSessionUntilDeadline({
-          session: first.value,
-          releaseSession,
-          timeoutMs: cleanupTimeoutMs,
-        });
-      } catch {
-        // Preserve the Worker creation failure as the primary diagnostic.
-      }
-      throw second.reason;
-    default: {
-      const _ex: never = second;
-      throw new Error(`Unhandled second Worker session creation result: ${String(_ex)}`);
-    }
-    }
-  }
-  case 'rejected': {
-    switch (second.status) {
-    case 'fulfilled':
-      try {
-        await debugReleaseAndTerminateSessionUntilDeadline({
-          session: second.value,
-          releaseSession,
-          timeoutMs: cleanupTimeoutMs,
-        });
-      } catch {
-        // Preserve the Worker creation failure as the primary diagnostic.
-      }
-      throw first.reason;
-    case 'rejected':
-      throw first.reason;
-    default: {
-      const _ex: never = second;
-      throw new Error(`Unhandled second Worker session creation result: ${String(_ex)}`);
-    }
-    }
-  }
-  default: {
-    const _ex: never = first;
-    throw new Error(`Unhandled first Worker session creation result: ${String(_ex)}`);
-  }
-  }
-}
-
-async function debugRunHighlightProbeAndCleanup({
-  session,
-  source,
-  runRoundTrip,
+  runProbe,
   releaseSession,
   operationTimeoutMs,
   cleanupTimeoutMs,
 }: {
-  session: DebugFileProtocolStandaloneWorkerHubSession,
-  source: string,
-  runRoundTrip: ({ session, source }: {
-    session: DebugFileProtocolStandaloneWorkerHubSession,
-    source: string,
-  }) => Promise<DebugFileProtocolStandaloneHighlightProbeResult>,
-  releaseSession: ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => Promise<void>,
+  session: DebugFileProtocolStandaloneWorkerSession<IWeshWorker>,
+  runProbe: ({ session }: { session: DebugFileProtocolStandaloneWorkerSession<IWeshWorker> }) => Promise<DebugFileProtocolStandaloneWeshFileProbeResult>,
+  releaseSession: ReleaseSession<IWeshWorker>,
   operationTimeoutMs: number,
   cleanupTimeoutMs: number,
-}): Promise<DebugFileProtocolStandaloneHighlightProbeResult> {
-  let result: DebugFileProtocolStandaloneHighlightProbeResult | undefined;
-  let operationError: unknown | undefined;
+}): Promise<DebugFileProtocolStandaloneWeshFileProbeResult> {
+  let result: DebugFileProtocolStandaloneWeshFileProbeResult | undefined;
+  let operationError: unknown;
   try {
-    result = await debugWaitForOperationUntilDeadline({
-      label: 'Standalone Worker highlight probe',
+    result = await waitForOperationUntilDeadline({
+      label: 'Wesh Worker file probe',
       timeoutMs: operationTimeoutMs,
-      action: async () => runRoundTrip({ session, source }),
+      action: () => runProbe({ session }),
     });
   } catch (error) {
     operationError = error;
   }
-
-  let cleanupError: unknown | undefined;
+  let cleanupError: unknown;
   try {
-    await debugReleaseAndTerminateSessionUntilDeadline({
-      session,
-      releaseSession,
-      timeoutMs: cleanupTimeoutMs,
-    });
+    await releaseSessionUntilDeadline({ session, releaseSession, timeoutMs: cleanupTimeoutMs });
   } catch (error) {
     cleanupError = error;
   }
-
-  if (operationError !== undefined) {
-    throw operationError;
-  }
-  if (cleanupError !== undefined) {
-    throw cleanupError;
-  }
-  if (result === undefined) {
-    throw new Error('Standalone Worker highlight probe produced no result.');
-  }
+  if (operationError !== undefined) throw operationError;
+  if (cleanupError !== undefined) throw cleanupError;
+  if (result === undefined) throw new Error('Wesh Worker file probe produced no result.');
   return result;
 }
 
-async function debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
-  createSession,
+function zeroDiagnostics(): StandaloneWorkerNameDiagnostics {
+  return {
+    workersCreated: 0,
+    workersTerminated: 0,
+    activeWorkers: 0,
+    initializationAttempts: 0,
+    initializationSuccesses: 0,
+    initializationFailures: 0,
+    initializationTimeouts: 0,
+  };
+}
+
+function diagnosticDelta({ before, after }: {
+  before: StandaloneWorkerNameDiagnostics,
+  after: StandaloneWorkerNameDiagnostics,
+}): DiagnosticDelta {
+  return {
+    workersCreated: after.workersCreated - before.workersCreated,
+    workersTerminated: after.workersTerminated - before.workersTerminated,
+    activeWorkers: after.activeWorkers - before.activeWorkers,
+    initializationAttempts: after.initializationAttempts - before.initializationAttempts,
+    initializationSuccesses: after.initializationSuccesses - before.initializationSuccesses,
+    initializationFailures: after.initializationFailures - before.initializationFailures,
+    initializationTimeouts: after.initializationTimeouts - before.initializationTimeouts,
+  };
+}
+
+async function verifyWithDependencies({
+  createHighlightSession,
+  createWeshSession,
   readDiagnostics,
-  runRoundTrip,
-  runFileProbe,
-  releaseSession,
-  sessionCreationTimeoutMs,
+  runHighlightProbe,
+  runWeshProbe,
+  releaseHighlightSession,
+  releaseWeshSession,
+  creationTimeoutMs,
   operationTimeoutMs,
   cleanupTimeoutMs,
 }: {
-  createSession: () => Promise<DebugFileProtocolStandaloneWorkerHubSession>,
-  readDiagnostics: () => DebugFileProtocolStandaloneWorkerDiagnostics,
-  runRoundTrip: ({ session, source }: {
-    session: DebugFileProtocolStandaloneWorkerHubSession,
-    source: string,
-  }) => Promise<DebugFileProtocolStandaloneHighlightProbeResult>,
-  runFileProbe: ({ session }: {
-    session: DebugFileProtocolStandaloneWorkerHubSession,
-  }) => Promise<DebugFileProtocolStandaloneWeshFileProbeResult>,
-  releaseSession: ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => Promise<void>,
-  sessionCreationTimeoutMs: number,
+  createHighlightSession: () => Promise<DebugFileProtocolStandaloneWorkerSession<IHighlightWorker>>,
+  createWeshSession: () => Promise<DebugFileProtocolStandaloneWorkerSession<IWeshWorker>>,
+  readDiagnostics: () => StandaloneWorkerRuntimeDiagnostics,
+  runHighlightProbe: typeof runHighlightProbeWithSession,
+  runWeshProbe: ({ session }: { session: DebugFileProtocolStandaloneWorkerSession<IWeshWorker> }) => Promise<DebugFileProtocolStandaloneWeshFileProbeResult>,
+  releaseHighlightSession: ReleaseSession<IHighlightWorker>,
+  releaseWeshSession: ReleaseSession<IWeshWorker>,
+  creationTimeoutMs: number,
   operationTimeoutMs: number,
   cleanupTimeoutMs: number,
 }): Promise<DebugFileProtocolStandaloneWorkerVerificationResult> {
   const diagnosticsBefore = readDiagnostics();
-  const concurrentSessions = await debugCreateConcurrentWorkerHubSessions({
-    createSession,
-    releaseSession,
-    sessionCreationTimeoutMs,
+  const concurrentSessions = await createConcurrentHighlightSessions({
+    createSession: createHighlightSession,
+    releaseSession: releaseHighlightSession,
+    creationTimeoutMs,
     cleanupTimeoutMs,
   });
-  const concurrentOutcomes = await Promise.allSettled([
-    debugRunHighlightProbeAndCleanup({
-      session: concurrentSessions[0],
-      source: '{"probe":"concurrent-a"}',
-      runRoundTrip,
-      releaseSession,
-      operationTimeoutMs,
-      cleanupTimeoutMs,
-    }),
-    debugRunHighlightProbeAndCleanup({
-      session: concurrentSessions[1],
-      source: '{"probe":"concurrent-b"}',
-      runRoundTrip,
-      releaseSession,
-      operationTimeoutMs,
-      cleanupTimeoutMs,
-    }),
-  ]);
-
-  for (const outcome of concurrentOutcomes) {
-    switch (outcome.status) {
-    case 'fulfilled':
-      break;
-    case 'rejected':
-      throw outcome.reason;
-    default: {
-      const _ex: never = outcome;
-      throw new Error(`Unhandled concurrent Worker probe result: ${String(_ex)}`);
-    }
-    }
-  }
-
-  const concurrent = concurrentOutcomes.map((outcome) => {
+  const concurrentOutcomes = await Promise.allSettled(concurrentSessions.map((session, index) => runHighlightProbeAndCleanup({
+    session,
+    source: `{"probe":"concurrent-${index === 0 ? 'a' : 'b'}"}`,
+    runProbe: runHighlightProbe,
+    releaseSession: releaseHighlightSession,
+    operationTimeoutMs,
+    cleanupTimeoutMs,
+  })));
+  const concurrentFailure = concurrentOutcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected');
+  if (concurrentFailure) throw concurrentFailure.reason;
+  const concurrentHighlights = concurrentOutcomes.map((outcome) => {
     switch (outcome.status) {
     case 'fulfilled':
       return outcome.value;
@@ -502,103 +456,89 @@ async function debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       throw outcome.reason;
     default: {
       const _ex: never = outcome;
-      throw new Error(`Unhandled concurrent Worker probe result: ${String(_ex)}`);
+      throw new Error(`Unhandled Promise outcome: ${String(_ex)}`);
     }
     }
   });
 
-  const recreatedSession = await debugCreateSessionUntilDeadline({
-    createSession,
-    releaseSession,
-    creationTimeoutMs: sessionCreationTimeoutMs,
+  const recreatedHighlightSession = await createSessionUntilDeadline({
+    createSession: createHighlightSession,
+    releaseSession: releaseHighlightSession,
+    creationTimeoutMs,
     cleanupTimeoutMs,
-    label: 'Recreated standalone Worker session creation',
+    label: 'Recreated Highlight Worker session creation',
   });
-  let recreatedWorkerHighlight: DebugFileProtocolStandaloneHighlightProbeResult | undefined;
-  let weshFileProbe: DebugFileProtocolStandaloneWeshFileProbeResult | undefined;
-  let operationError: unknown | undefined;
-  try {
-    recreatedWorkerHighlight = await debugWaitForOperationUntilDeadline({
-      label: 'Recreated standalone Worker highlight probe',
-      timeoutMs: operationTimeoutMs,
-      action: async () => runRoundTrip({
-        session: recreatedSession,
-        source: '{"probe":"recreated-after-terminate"}',
-      }),
-    });
-    weshFileProbe = await debugWaitForOperationUntilDeadline({
-      label: 'Recreated standalone Worker Wesh file probe',
-      timeoutMs: operationTimeoutMs,
-      action: async () => runFileProbe({ session: recreatedSession }),
-    });
-  } catch (error) {
-    operationError = error;
-  }
+  const recreatedWorkerHighlight = await runHighlightProbeAndCleanup({
+    session: recreatedHighlightSession,
+    source: '{"probe":"recreated-after-terminate"}',
+    runProbe: runHighlightProbe,
+    releaseSession: releaseHighlightSession,
+    operationTimeoutMs,
+    cleanupTimeoutMs,
+  });
 
-  let cleanupError: unknown | undefined;
-  try {
-    await debugReleaseAndTerminateSessionUntilDeadline({
-      session: recreatedSession,
-      releaseSession,
-      timeoutMs: cleanupTimeoutMs,
-    });
-  } catch (error) {
-    cleanupError = error;
-  }
-
-  if (operationError !== undefined) {
-    throw operationError;
-  }
-  if (cleanupError !== undefined) {
-    throw cleanupError;
-  }
-  if (recreatedWorkerHighlight === undefined || weshFileProbe === undefined) {
-    throw new Error('Recreated standalone Worker verification produced no result.');
-  }
-
+  const weshSession = await createSessionUntilDeadline({
+    createSession: createWeshSession,
+    releaseSession: releaseWeshSession,
+    creationTimeoutMs,
+    cleanupTimeoutMs,
+    label: 'Wesh Worker session creation',
+  });
+  const weshFileProbe = await runWeshProbeAndCleanup({
+    session: weshSession,
+    runProbe: runWeshProbe,
+    releaseSession: releaseWeshSession,
+    operationTimeoutMs,
+    cleanupTimeoutMs,
+  });
   const diagnosticsAfter = readDiagnostics();
   return {
     diagnosticsBefore,
     diagnosticsAfter,
-    diagnosticDeltas: {
-      workersCreated: diagnosticsAfter.workersCreated - diagnosticsBefore.workersCreated,
-      workersTerminated: diagnosticsAfter.workersTerminated - diagnosticsBefore.workersTerminated,
-      activeWorkers: diagnosticsAfter.activeWorkers - diagnosticsBefore.activeWorkers,
-      registryScriptLoads: diagnosticsAfter.registryScriptLoads - diagnosticsBefore.registryScriptLoads,
-      blobRegistrations: diagnosticsAfter.blobRegistrations - diagnosticsBefore.blobRegistrations,
-      objectUrlsCreated: diagnosticsAfter.objectUrlsCreated - diagnosticsBefore.objectUrlsCreated,
+    diagnosticDeltas: diagnosticDelta({ before: diagnosticsBefore, after: diagnosticsAfter }),
+    workerDeltas: {
+      highlight: diagnosticDelta({
+        before: diagnosticsBefore.workersByName[highlightWorkerName] ?? zeroDiagnostics(),
+        after: diagnosticsAfter.workersByName[highlightWorkerName] ?? zeroDiagnostics(),
+      }),
+      wesh: diagnosticDelta({
+        before: diagnosticsBefore.workersByName[weshWorkerName] ?? zeroDiagnostics(),
+        after: diagnosticsAfter.workersByName[weshWorkerName] ?? zeroDiagnostics(),
+      }),
     },
-    concurrentHighlights: concurrent,
+    concurrentHighlights,
     recreatedWorkerHighlight,
     weshFileProbe,
   };
 }
 
-/**
- * Create isolated Worker sessions from the same page-lifetime Blob URL. Each
- * session owns one Comlink root proxy for its full lifetime. The recreated
- * session intentionally runs highlight and Wesh through that same proxy before
- * releasing it, which guards against reusing a Worker after Comlink RELEASE.
- */
 export async function debugVerifyFileProtocolStandaloneWorkerFactory(): Promise<DebugFileProtocolStandaloneWorkerVerificationResult> {
-  return debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
-    createSession: debugCreateFileProtocolStandaloneWorkerHubSession,
-    readDiagnostics: debugGetFileProtocolStandaloneWorkerHubDiagnostics,
-    runRoundTrip: debugRunFileProtocolStandaloneHighlightProbe,
-    runFileProbe: debugRunFileProtocolStandaloneWeshFileProbe,
-    releaseSession: debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession,
-    sessionCreationTimeoutMs: debugFileProtocolStandaloneWorkerSessionCreationDeadlineMs,
-    operationTimeoutMs: debugFileProtocolStandaloneWorkerOperationDeadlineMs,
-    cleanupTimeoutMs: debugFileProtocolStandaloneWorkerCleanupDeadlineMs,
+  return verifyWithDependencies({
+    createHighlightSession: () => createSession<IHighlightWorker>({
+      label: 'Highlight Worker creation',
+      createWorker: () => createHighlightWorker(),
+    }),
+    createWeshSession: () => createSession<IWeshWorker>({
+      label: 'Wesh Worker creation',
+      createWorker: () => createWeshWorker(),
+    }),
+    readDiagnostics: debugGetStandaloneWorkerRuntimeDiagnostics,
+    runHighlightProbe: runHighlightProbeWithSession,
+    runWeshProbe: ({ session }) => runWeshFileProbeWithRemote({ wesh: session.remote }),
+    releaseHighlightSession: releaseAndTerminateSession,
+    releaseWeshSession: releaseAndTerminateSession,
+    creationTimeoutMs: sessionCreationDeadlineMs,
+    operationTimeoutMs: operationDeadlineMs,
+    cleanupTimeoutMs: cleanupDeadlineMs,
   });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
-  debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession,
-  debugRunFileProtocolStandaloneHighlightProbe,
-  debugRunFileProtocolStandaloneWeshFileProbeWithRemote,
-  debugRunFileProtocolStandaloneWeshFileProbe,
-  debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies,
+  createSessionUntilDeadline,
+  createConcurrentHighlightSessions,
+  releaseAndTerminateSession,
+  runWeshFileProbeWithRemote,
+  verifyWithDependencies,
 };
