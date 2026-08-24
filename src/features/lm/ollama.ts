@@ -13,7 +13,7 @@ import { idToRaw, toToolCallId, type ToolCallId } from '@/01-models/ids';
 import { zodToJsonSchema } from '@/utils/lm-tools';
 import type { LmParameters, ChatMessage, MultimodalContent } from '@/01-models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import type { Tool } from '@/01-models/tool';
+import { formatToolExecutionOutcomeForLm, type Tool, type ToolExecutionOutcome } from '@/01-models/tool';
 import type { ToolApprovalContext } from '@/features/tools/approval';
 import { getDefaultLmFetch, type LmFetch } from '@/features/lm/fetch';
 import { type LmProvider, UNKNOWN_STEPS } from '@/01-models/lm';
@@ -184,11 +184,11 @@ export class OllamaProvider implements LmProvider {
     parameters?: LmParameters,
     tools?: Tool[],
     toolApprovalContext?: ToolApprovalContext,
-    onToolCall?: ({ id, toolName, args }: { id: ToolCallId, toolName: string, args: unknown }) => void,
+    onToolCall?: ({ id, toolName, modelVisibleArguments }: { id: ToolCallId, toolName: string, modelVisibleArguments: string }) => void,
     onToolEvent?: ({ id, event }: { id: ToolCallId, event: import('@/01-models/tool').ToolExecutionEvent }) => void,
     onToolResult?: ({ id, result }: {
       id: ToolCallId,
-      result: | { status: 'success', content: string } | { status: 'error', code: import('@/01-models/tool').ToolExecutionErrorCode, message: string },
+      result: ToolExecutionOutcome,
     }) => void,
     onAssistantMessageStart?: () => void,
     signal?: AbortSignal,
@@ -483,6 +483,12 @@ export class OllamaProvider implements LmProvider {
         for (const tc of accumulatedToolCalls) {
           if (signal?.aborted) throw new Error('Generation aborted');
 
+          onToolCall?.({
+            id: tc.id,
+            toolName: tc.function.name,
+            modelVisibleArguments: tc.function.arguments,
+          });
+
           const tool = tools?.find(t => t.name === tc.function.name);
           let result: string;
           let args: unknown;
@@ -491,7 +497,13 @@ export class OllamaProvider implements LmProvider {
             try {
               args = JSON.parse(tc.function.arguments);
             } catch (e) {
-              result = `Error: Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`;
+              const errorResult: ToolExecutionOutcome = {
+                status: 'error',
+                code: 'invalid_arguments',
+                message: `Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`,
+              };
+              onToolResult?.({ id: tc.id, result: errorResult });
+              result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
             }
           } else {
             args = tc.function.arguments;
@@ -504,7 +516,6 @@ export class OllamaProvider implements LmProvider {
               // Perform common strict validation here to enforce strictness globally
               const validatedArgs = tool.parametersSchema.strict().parse(args);
 
-              onToolCall?.({ id: tc.id, toolName: tool.name, args: validatedArgs });
               const executionResult = await tool.execute({
                 args: validatedArgs,
                 signal,
@@ -517,33 +528,22 @@ export class OllamaProvider implements LmProvider {
               if (signal?.aborted) throw new Error('Generation aborted');
 
               onToolResult?.({ id: tc.id, result: executionResult });
-              switch (executionResult.status) {
-              case 'success':
-                result = executionResult.content;
-                break;
-              case 'error':
-                result = `Error [${executionResult.code}]: ${executionResult.message}`;
-                break;
-              default: {
-                const _ex: never = executionResult;
-                result = `Error: Unhandled tool execution status: ${(_ex as { status: string }).status}`;
-              }
-              }
+              result = formatToolExecutionOutcomeForLm({ outcome: executionResult });
             } catch (e) {
               if (e instanceof Error && e.message === 'Generation aborted') throw e;
 
-              const errorResult: { status: 'error', code: import('@/01-models/tool').ToolExecutionErrorCode, message: string } = e instanceof z.ZodError
+              const errorResult: ToolExecutionOutcome = e instanceof z.ZodError
                 ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
                 : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
 
               onToolResult?.({ id: tc.id, result: errorResult });
-              result = `Error: ${errorResult.message}`;
+              result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
             }
           } else if (!tool) {
 
-            const errorResult: { status: 'error', code: import('@/01-models/tool').ToolExecutionErrorCode, message: string } = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
+            const errorResult: ToolExecutionOutcome = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
             onToolResult?.({ id: tc.id, result: errorResult });
-            result = errorResult.message;
+            result = formatToolExecutionOutcomeForLm({ outcome: errorResult });
           } else {
             result = result! || 'Error: Unknown failure.';
           }

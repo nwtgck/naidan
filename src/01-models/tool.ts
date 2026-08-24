@@ -8,6 +8,29 @@ import type { NaidanSysfsAccessScope } from '@/01-models/naidan-sysfs';
  */
 export type ToolExecutionErrorCode = 'invalid_arguments' | 'execution_failed' | 'timeout' | 'other';
 
+export type ToolExecutionOutcome =
+  | { status: 'success', content: string }
+  | { status: 'error', code: ToolExecutionErrorCode, message: string };
+
+/**
+ * Formats the exact Tool Result text sent back to the LM.
+ * Persisted Tool Results must rebuild to the same representation.
+ */
+export function formatToolExecutionOutcomeForLm({ outcome }: {
+  outcome: ToolExecutionOutcome,
+}): string {
+  switch (outcome.status) {
+  case 'success':
+    return outcome.content;
+  case 'error':
+    return `Error [${outcome.code}]: ${outcome.message}`;
+  default: {
+    const _ex: never = outcome;
+    return `Error: Unhandled tool execution status: ${(_ex as { status: string }).status}`;
+  }
+  }
+}
+
 /**
  * Naidan-internal tool config key.
  *
@@ -137,6 +160,10 @@ export interface Tool {
    */
   name: string,
   description: string,
+  /**
+   * Defines execution-time validation/defaults/transforms only.
+   * Resolved values must not replace the model-visible arguments in conversation history.
+   */
   parametersSchema: z.ZodObject<z.ZodRawShape>,
   dispose?(): Promise<void>,
 
@@ -149,10 +176,7 @@ export interface Tool {
     signal?: AbortSignal,
     onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>,
     approvalContext?: ToolApprovalContext,
-  }): Promise<
-    | { status: 'success', content: string }
-    | { status: 'error', code: ToolExecutionErrorCode, message: string }
-  >,
+  }): Promise<ToolExecutionOutcome>,
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

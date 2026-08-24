@@ -142,7 +142,11 @@ describe('TransformersJsProvider', () => {
 
       // Tool was called with validated args
       expect(tool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { input: 'hello' }, signal: undefined }));
-      expect(onToolCall).toHaveBeenCalledWith({ id: 'call_1', toolName: 'my_tool', args: { input: 'hello' } });
+      expect(onToolCall).toHaveBeenCalledWith({
+        id: 'call_1',
+        toolName: 'my_tool',
+        modelVisibleArguments: '{"input":"hello"}',
+      });
       expect(onToolResult).toHaveBeenCalledWith({ id: 'call_1', result: { status: 'success', content: 'result of my_tool' } });
 
       // Second call includes tool result message
@@ -162,6 +166,7 @@ describe('TransformersJsProvider', () => {
       };
       setupGenerateTextMock([toolCall]);
 
+      const onToolCall = vi.fn();
       const onToolResult = vi.fn();
 
       const { TransformersJsProvider } = await import('./provider');
@@ -172,9 +177,15 @@ describe('TransformersJsProvider', () => {
         messages: [{ role: 'user', content: 'test' }],
         onChunk: vi.fn(),
         tools: [],
+        onToolCall,
         onToolResult,
       });
 
+      expect(onToolCall).toHaveBeenCalledWith({
+        id: 'call_unknown',
+        toolName: 'nonexistent_tool',
+        modelVisibleArguments: '{}',
+      });
       expect(onToolResult).toHaveBeenCalledWith({
         id: 'call_unknown',
         result: { status: 'error', code: 'other', message: 'Tool "nonexistent_tool" not found.' },
@@ -218,7 +229,11 @@ describe('TransformersJsProvider', () => {
           result: expect.objectContaining({ status: 'error', code: 'invalid_arguments' }),
         }),
       );
-      expect(onToolCall).not.toHaveBeenCalled();
+      expect(onToolCall).toHaveBeenCalledWith({
+        id: 'call_bad_json',
+        toolName: 'my_tool',
+        modelVisibleArguments: 'not valid json',
+      });
       expect(tool.execute).not.toHaveBeenCalled();
     });
 
