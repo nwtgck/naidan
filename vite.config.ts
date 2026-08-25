@@ -15,7 +15,10 @@ import JSZip from 'jszip';
 import pkg from './package.json';
 import { createStandaloneFacadeAliases } from './build/standalone-facades.js';
 import { createNaidanStandalonePlugin } from './build/file-protocol-standalone/plugin.js';
-import { createFileProtocolStandaloneWorkerDefinitions } from './build/file-protocol-standalone/worker-definitions';
+import {
+  createFileProtocolStandaloneWorkerDefinitions,
+  FILE_PROTOCOL_STANDALONE_WORKERS,
+} from './build/file-protocol-standalone/worker-definitions';
 import { readSystemJsLicenseDependency } from './build/file-protocol-standalone/systemjs';
 import { createLicenseModulePlugins } from './build/license-module';
 import { createBoundaryStringsPlugin } from './build/boundary-strings';
@@ -43,6 +46,10 @@ const require = createRequire(import.meta.url);
 const standaloneSystemJsRuntimePath = require.resolve('systemjs/dist/system.min.js');
 const standaloneSystemJsSourceMapPath = require.resolve('systemjs/dist/system.min.js.map');
 const standaloneSystemJsPackageJsonPath = require.resolve('systemjs/package.json');
+const standaloneWorkerRuntimeUnavailablePath = path.resolve(
+  __dirname,
+  'src/features/file-protocol-standalone/worker/standalone-worker-runtime-unavailable.ts',
+);
 
 const standaloneBuildBudgets = {
   // The attached baseline report measured 631,232 entry bytes and 1,033,893
@@ -269,20 +276,19 @@ export default defineConfig(({ mode }) => {
         ...standaloneAliases,
         ...(!isStandalone ? [{
           find: 'virtual:naidan-standalone-worker-runtime',
-          replacement: path.resolve(
-            __dirname,
-            'src/features/file-protocol-standalone/worker/standalone-worker-runtime-unavailable.ts',
-          ),
+          replacement: standaloneWorkerRuntimeUnavailablePath,
         }] : []),
-        ...(mode === 'test' ? [
-          'advanced-text-editor-v3',
-          'highlight',
-          'wesh',
-          'global-search',
-          'file-explorer',
-        ].map(workerName => ({
-          find: `virtual:file-protocol-standalone/worker/${workerName}`,
+        ...(mode === 'test' ? FILE_PROTOCOL_STANDALONE_WORKERS.map(({ virtualId }) => ({
+          find: virtualId,
           replacement: path.resolve(__dirname, 'src/test-mocks/standalone-worker.ts'),
+        })) : []),
+        // The standalone verification route is present in hosted/development
+        // route graphs, and Vite resolves its static virtual Worker imports
+        // before compile-time mode guards can remove calls. Alias only registered
+        // Worker IDs so accidental/typoed virtual imports still fail resolution.
+        ...(!isStandalone ? FILE_PROTOCOL_STANDALONE_WORKERS.map(({ virtualId }) => ({
+          find: virtualId,
+          replacement: standaloneWorkerRuntimeUnavailablePath,
         })) : []),
         {
           find: '@',

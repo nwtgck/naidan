@@ -1,12 +1,26 @@
-import type { StandaloneWorkerRuntimeDiagnostics } from './standalone-worker-runtime.types';
+import type {
+  StandaloneWorkerCreateOptions,
+  StandaloneWorkerRuntimeDiagnostics,
+} from './standalone-worker-runtime.types';
 
 const unavailableMessage = 'The file-protocol standalone Worker runtime is unavailable outside standalone builds.';
 
 /**
  * Vite resolves static imports before compile-time dead-code elimination. Hosted
  * builds therefore need a concrete target for the standalone runtime virtual
- * module even though every runtime call is guarded by __BUILD_MODE_IS_STANDALONE__.
+ * module and Worker factory virtual modules even though every runtime call is
+ * guarded by __BUILD_MODE_IS_STANDALONE__.
  */
+// Match the generated virtual-module contract declared in
+// virtual-file-protocol-standalone.d.ts; consumers already call this API with
+// its optional positional options object.
+// eslint-disable-next-line local-rules-named-args/require-named-args
+export async function createStandaloneWorker(
+  _options: StandaloneWorkerCreateOptions = {},
+): Promise<Worker> {
+  throw new Error(unavailableMessage);
+}
+
 export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics {
   throw new Error(unavailableMessage);
 }
