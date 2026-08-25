@@ -1,4 +1,4 @@
-import { createChangeGroups, createDiffOperations } from '@/features/wesh/commands/diff/algorithm';
+import { createChangeGroups, createDiffOperations } from '@/features/wesh/commands/git/diff/algorithm';
 import type { GitFiles } from './files';
 import type { GitIndexEntry } from './index-file';
 import type { GitTreeMergeConflict } from './merge-tree';

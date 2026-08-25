@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderGitLogGraph } from "./log-graph";
+import { renderGitLogGraph } from "./graph";
 
 const oneSpace = " ";
 const twoSpaces = "  ";

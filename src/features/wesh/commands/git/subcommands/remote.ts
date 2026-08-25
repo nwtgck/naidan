@@ -1,8 +1,8 @@
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
-import { getConfigValue, readEffectiveConfig, removeLocalConfigSection, setLocalConfigValue } from './config';
-import { pathExists } from './files';
-import { joinPath, discoverRepositoryFromContext } from './repository';
-import { sortGitUtf8Strings } from './utf8-order';
+import { getConfigValue, readEffectiveConfig, removeLocalConfigSection, setLocalConfigValue } from '@/features/wesh/commands/git/config';
+import { pathExists } from '@/features/wesh/commands/git/files';
+import { joinPath, discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
+import { sortGitUtf8Strings } from '@/features/wesh/commands/git/utf8-order';
 
 function remoteNames({ config }: { config: Awaited<ReturnType<typeof readEffectiveConfig>> }): string[] {
   const names = new Set<string>();

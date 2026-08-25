@@ -1,10 +1,10 @@
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
-import { readEffectiveConfig } from './config';
-import { readIndex, readIndexRaw } from './index-file';
-import { matchRepositoryPaths } from './pathspec';
-import { quoteGitPath, quoteNonAsciiFromConfig } from './path-output';
-import { relativeToWorktree, discoverRepositoryFromContext } from './repository';
-import { writeHandleBytes } from './files';
+import { readEffectiveConfig } from '@/features/wesh/commands/git/config';
+import { readIndex, readIndexRaw } from '@/features/wesh/commands/git/index-file';
+import { matchRepositoryPaths } from '@/features/wesh/commands/git/pathspec';
+import { quoteGitPath, quoteNonAsciiFromConfig } from '@/features/wesh/commands/git/path-output';
+import { relativeToWorktree, discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
+import { writeHandleBytes } from '@/features/wesh/commands/git/files';
 
 const textEncoder = new TextEncoder();
 

@@ -4,61 +4,13 @@ import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } fr
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { basenamePath } from '@/features/wesh/commands/_shared/path';
 import { getGzipSuffixDiagnostic } from '@/features/wesh/commands/_shared/gzip-suffix';
-import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
-import { gunzipCommandDefinition } from '@/features/wesh/commands/gunzip';
+import { executeGzipDecompressionCommand } from './decompression';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { resolvePath } from '@/features/wesh/path';
 import { writeAllStreamToFile, writeAllStreamToHandle } from '@/features/wesh/utils/fs';
 import { pipeThroughBufferSourceTransform } from '@/features/wesh/utils/stream';
 import { addNamedGzipHeader } from './header';
-
-async function pathEntryExists({
-  context,
-  path,
-}: {
-  context: WeshCommandContext;
-  path: string;
-}): Promise<boolean> {
-  try {
-    await context.files.lstat({ path });
-    return true;
-  } catch (error: unknown) {
-    if (isPathNotFoundError({ error })) {
-      return false;
-    }
-    throw error;
-  }
-}
-
-async function unlinkForcedOutputSymlink({
-  context,
-  path,
-}: {
-  context: WeshCommandContext;
-  path: string;
-}): Promise<void> {
-  try {
-    const stat = await context.files.lstat({ path });
-    switch (stat.type) {
-    case 'symlink':
-      await context.files.unlink({ path });
-      break;
-    case 'directory':
-    case 'file':
-    case 'fifo':
-    case 'chardev':
-      break;
-    default: {
-      const _exhaustiveCheck: never = stat.type;
-      throw new Error(`Unhandled file type: ${String(_exhaustiveCheck)}`);
-    }
-    }
-  } catch (error: unknown) {
-    if (!isPathNotFoundError({ error })) {
-      throw error;
-    }
-  }
-}
+import { pathExists as pathEntryExists, unlinkForcedOutputSymlink } from './filesystem';
 
 const gzipArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -148,7 +100,7 @@ export const gzipCommandDefinition: WeshCommandDefinition = {
         delegatedArgs.push('-t');
       }
       for (const positional of parsed.positionals) delegatedArgs.push(positional);
-      return gunzipCommandDefinition.fn({
+      return executeGzipDecompressionCommand({
         context: {
           ...context,
           args: delegatedArgs,

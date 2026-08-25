@@ -1,28 +1,18 @@
 import { normalizePath } from '@/features/wesh/path';
-import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
-import { applyTextSection, reverseSection } from '@/features/wesh/commands/patch/engine';
-import { materializePatchContent, readPatchInput } from '@/features/wesh/commands/patch/filesystem';
-import { parsePatchDocument } from '@/features/wesh/commands/patch/parser';
-import { createPatchLineSourceFromBytes } from '@/features/wesh/commands/patch/source';
-import type { PatchOptions, TextPatchSection } from '@/features/wesh/commands/patch/types';
-import type { GitIndexEntry } from './index-file';
-import { readIndex, writeIndex } from './index-file';
-import { replaceTrackedWorktreePaths } from './worktree';
-import { cleanWorktreeBytes, loadWorktreeAttributes } from './attributes';
-import { readWorktreeContentConfig } from './config';
-import { readObject, writeObject } from './objects';
-import { relativeToWorktree, discoverRepositoryFromContext } from './repository';
-import type { GitRepository } from './repository';
-import { hashWorktreeEntry, readWorktreeContent, worktreeAbsolutePath } from './worktree';
-import { pathExists } from './files';
-
-interface ApplyArguments {
-  cached: boolean,
-  check: boolean,
-  index: boolean,
-  reverse: boolean,
-  inputPath: string | undefined,
-}
+import type { WeshCommandContext } from '@/features/wesh/types';
+import { applyTextSection, reverseSection } from '@/features/wesh/commands/git/subcommands/apply/patch/engine';
+import { materializePatchContent } from '@/features/wesh/commands/git/subcommands/apply/patch/filesystem';
+import { createPatchLineSourceFromBytes } from '@/features/wesh/commands/git/subcommands/apply/patch/source';
+import type { PatchOptions, TextPatchSection } from '@/features/wesh/commands/git/subcommands/apply/patch/types';
+import type { GitIndexEntry } from '@/features/wesh/commands/git/index-file';
+import { readIndex } from '@/features/wesh/commands/git/index-file';
+import { cleanWorktreeBytes, loadWorktreeAttributes } from '@/features/wesh/commands/git/attributes';
+import { readWorktreeContentConfig } from '@/features/wesh/commands/git/config';
+import { readObject, writeObject } from '@/features/wesh/commands/git/objects';
+import { relativeToWorktree } from '@/features/wesh/commands/git/repository';
+import type { GitRepository } from '@/features/wesh/commands/git/repository';
+import { hashWorktreeEntry, readWorktreeContent, worktreeAbsolutePath } from '@/features/wesh/commands/git/worktree';
+import { pathExists } from '@/features/wesh/commands/git/files';
 
 interface PlannedIndexEntry {
   path: string,
@@ -66,44 +56,6 @@ const PATCH_OPTIONS: PatchOptions = {
   getMode: undefined,
   unsupportedOption: undefined,
 };
-
-function parseApplyArguments({ args }: { args: readonly string[] }): ApplyArguments {
-  let cached = false;
-  let check = false;
-  let reverse = false;
-  let index = false;
-  let inputPath: string | undefined;
-  let parseOptions = true;
-  for (const arg of args) {
-    if (parseOptions && arg === '--') {
-      parseOptions = false;
-      continue;
-    }
-    if (parseOptions && arg.startsWith('-') && arg !== '-') {
-      switch (arg) {
-      case '--cached':
-        cached = true;
-        break;
-      case '--check':
-        check = true;
-        break;
-      case '--reverse':
-      case '-R':
-        reverse = true;
-        break;
-      case '--index':
-        index = true;
-        break;
-      default:
-        throw new Error(`unknown option for git apply: ${arg}`);
-      }
-      continue;
-    }
-    if (inputPath !== undefined) throw new Error('git apply accepts at most one patch input');
-    inputPath = arg;
-  }
-  return { cached, check, index, reverse, inputPath };
-}
 
 function stripGitDiffPrefix({ path }: { path: string }): string {
   if (path.startsWith('a/') || path.startsWith('b/')) return path.slice(2);
@@ -272,7 +224,7 @@ interface PlannedApplyChanges {
   worktreeAbsentPaths: Set<string>,
 }
 
-async function planIndexChanges({ context, repository, sections, reverse }: {
+export async function planIndexChanges({ context, repository, sections, reverse }: {
   context: WeshCommandContext,
   repository: GitRepository,
   sections: readonly TextPatchSection[],
@@ -409,7 +361,7 @@ interface WorktreePatchState {
   mode: number | undefined,
 }
 
-async function planWorktreeChanges({ context, repository, sections, reverse }: {
+export async function planWorktreeChanges({ context, repository, sections, reverse }: {
   context: WeshCommandContext,
   repository: GitRepository,
   sections: readonly TextPatchSection[],
@@ -555,7 +507,7 @@ function regularFileMode({ entry }: { entry: GitIndexEntry }): 0o100644 | 0o1007
   }
 }
 
-async function validateIndexMatchesWorktree({
+export async function validateIndexMatchesWorktree({
   context,
   repository,
   originalEntries,
@@ -597,7 +549,7 @@ async function validateIndexMatchesWorktree({
   }
 }
 
-async function writePlannedObjects({ context, repository, plan }: {
+export async function writePlannedObjects({ context, repository, plan }: {
   context: WeshCommandContext,
   repository: GitRepository,
   plan: { changes: PlannedIndexChange[], originalEntries: GitIndexEntry[] },
@@ -636,77 +588,6 @@ async function writePlannedObjects({ context, repository, plan }: {
   return { entries: [...resultByPath.values()], touchedPaths };
 }
 
-export async function runApply({ context, args }: {
-  context: WeshCommandContext,
-  args: readonly string[],
-}): Promise<WeshCommandResult> {
-  const parsedArgs = parseApplyArguments({ args });
-  const repository = await discoverRepositoryFromContext({ context });
-  const patchBytes = await readPatchInput({ context, path: parsedArgs.inputPath, cwd: context.cwd });
-  const parsedDocument = parsePatchDocument({ bytes: patchBytes, forcedFormat: undefined, binary: false });
-  const sections: TextPatchSection[] = [];
-  for (const section of parsedDocument.sections) {
-    switch (section.kind) {
-    case 'text':
-      sections.push(section);
-      break;
-    case 'ed':
-      throw new Error('ed patches are not supported by git apply');
-    default: {
-      const _ex: never = section;
-      throw new Error(`Unhandled patch section: ${JSON.stringify(_ex)}`);
-    }
-    }
-  }
-  if (sections.length === 0) throw new Error('No valid patches in input');
-
-  try {
-    if (!parsedArgs.cached && !parsedArgs.index) {
-      const plan = await planWorktreeChanges({ context, repository, sections, reverse: parsedArgs.reverse });
-      if (parsedArgs.check) return { exitCode: 0 };
-      const written = await writePlannedObjects({ context, repository, plan });
-      await replaceTrackedWorktreePaths({
-        files: context.files,
-        repository,
-        previousEntries: plan.originalEntries,
-        targetEntries: written.entries,
-        paths: written.touchedPaths,
-        contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }),
-      });
-      return { exitCode: 0 };
-    }
-
-    const plan = await planIndexChanges({ context, repository, sections, reverse: parsedArgs.reverse });
-    if (parsedArgs.index) {
-      await validateIndexMatchesWorktree({
-        context,
-        repository,
-        originalEntries: plan.originalEntries,
-        validationPaths: plan.validationPaths,
-        worktreeAbsentPaths: plan.worktreeAbsentPaths,
-      });
-    }
-    if (parsedArgs.check) return { exitCode: 0 };
-
-    const written = await writePlannedObjects({ context, repository, plan });
-    if (parsedArgs.index) {
-      await replaceTrackedWorktreePaths({
-        files: context.files,
-        repository,
-        previousEntries: plan.originalEntries,
-        targetEntries: written.entries,
-        paths: written.touchedPaths,
-        contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }),
-      });
-    }
-    await writeIndex({ files: context.files, repository, entries: written.entries });
-    return { exitCode: 0 };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    await context.text().error({ text: `error: ${message}\n` });
-    return { exitCode: 1 };
-  }
-}
 
 export const TEST_ONLY = {
 };

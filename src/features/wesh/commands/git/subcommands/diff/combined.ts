@@ -1,9 +1,9 @@
-import { createDiffOperations } from "@/features/wesh/commands/diff/algorithm";
-import { createDiffInput, createLineComparator, decodeLine, getLineBytes } from "@/features/wesh/commands/diff/input";
-import { createDiffByteWriter } from "@/features/wesh/commands/diff/output";
-import type { DiffInput, DiffOperation } from "@/features/wesh/commands/diff/model";
+import { createDiffOperations } from "@/features/wesh/commands/git/diff/algorithm";
+import { createDiffInput, createLineComparator, decodeLine, getLineBytes } from "@/features/wesh/commands/git/diff/input";
+import { createDiffByteWriter } from "@/features/wesh/commands/git/diff/output";
+import type { DiffInput, DiffOperation } from "@/features/wesh/commands/git/diff/model";
 import type { WeshFileHandle } from "@/features/wesh/types";
-import { formatGitPatchPath, quoteGitPath } from "./path-output";
+import { formatGitPatchPath, quoteGitPath } from "@/features/wesh/commands/git/path-output";
 
 interface ParentVersion {
   objectId: string,

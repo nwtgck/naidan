@@ -1,11 +1,11 @@
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
-import { getBooleanConfigValue, readEffectiveConfig } from './config';
-import { resolveGitIdentity, resolveGitTimestamp } from './identity';
-import { readObject, writeObject } from './objects';
-import { createRef, deleteRef, listRefs, readRef } from './refs';
-import { discoverRepositoryFromContext } from './repository';
-import { resolveRevision } from './revision';
-import { compareGitUtf8Strings } from './utf8-order';
+import { getBooleanConfigValue, readEffectiveConfig } from '@/features/wesh/commands/git/config';
+import { resolveGitIdentity, resolveGitTimestamp } from '@/features/wesh/commands/git/identity';
+import { readObject, writeObject } from '@/features/wesh/commands/git/objects';
+import { createRef, deleteRef, listRefs, readRef } from '@/features/wesh/commands/git/refs';
+import { discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
+import { resolveRevision } from '@/features/wesh/commands/git/revision';
+import { compareGitUtf8Strings } from '@/features/wesh/commands/git/utf8-order';
 
 const textEncoder = new TextEncoder();
 

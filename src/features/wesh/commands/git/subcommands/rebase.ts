@@ -1,0 +1,132 @@
+import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
+import { readCommit } from "@/features/wesh/commands/git/commits";
+import { findMergeBases, isAncestor } from "@/features/wesh/commands/git/graph";
+import { readMergeState } from "@/features/wesh/commands/git/merge-state";
+import { branchNameFromHead, readHead, readRef } from "@/features/wesh/commands/git/refs";
+import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
+import { resolveCommitRevision } from "@/features/wesh/commands/git/revision";
+import { readRebaseState } from "@/features/wesh/commands/git/rebase-state";
+import { readReplayState } from "@/features/wesh/commands/git/replay-state";
+import { abortRebase, checkoutRebaseTargetBranch, continueRebase, skipRebase, startRebaseSequence, validateRebaseStartWorktree } from "@/features/wesh/commands/git/rebase-operation";
+import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
+
+export async function runRebase({ context, args }: {
+    context: WeshCommandContext;
+    args: readonly string[];
+}): Promise<WeshCommandResult> {
+  await assertSupportedRepositoryContentPolicy({ context });
+  if (args.length === 1 && args[0] === '--continue')
+    return continueRebase({ context });
+  if (args.length === 1 && args[0] === '--abort')
+    return abortRebase({ context });
+  if (args.length === 1 && args[0] === '--skip')
+    return skipRebase({ context });
+  let upstreamExpression: string;
+  let ontoExpression: string;
+  let branchExpression: string | undefined;
+  let explicitOnto = false;
+  if (args[0] === '--onto') {
+    if (args.length !== 3 && args.length !== 4) {
+      throw new Error('git rebase --onto requires <newbase> <upstream> [<branch>]');
+    }
+    ontoExpression = args[1]!;
+    upstreamExpression = args[2]!;
+    branchExpression = args[3];
+    explicitOnto = true;
+  } else {
+    if ((args.length !== 1 && args.length !== 2) || args[0]!.startsWith('-')) {
+      throw new Error('git rebase requires <upstream> [<branch>]');
+    }
+    upstreamExpression = args[0]!;
+    ontoExpression = upstreamExpression;
+    branchExpression = args[1];
+  }
+  const repository = await discoverRepositoryFromContext({ context });
+  if (await readRebaseState({ files: context.files, repository }) !== undefined) {
+    await context.text().error({ text: 'fatal: It seems that there is already a rebase-merge directory\n' });
+    return { exitCode: 128 };
+  }
+  if (await readMergeState({ files: context.files, repository }) !== undefined
+        || await readReplayState({ files: context.files, repository }) !== undefined) {
+    await context.text().error({ text: 'fatal: cannot rebase while another Git operation is in progress\n' });
+    return { exitCode: 128 };
+  }
+  const currentHead = await readHead({ files: context.files, repository });
+  if (currentHead.objectId === undefined)
+    throw new Error('rebase requires HEAD to reference a commit');
+  const preflightFailure = await validateRebaseStartWorktree({ context, repository, headObjectId: currentHead.objectId });
+  if (preflightFailure !== undefined)
+    return preflightFailure;
+  let headRefName: string;
+  let origHeadObjectId: string;
+  let branchDisplay: string;
+  if (branchExpression === undefined) {
+    if (currentHead.symbolicRef === undefined || !currentHead.symbolicRef.startsWith('refs/heads/')) {
+      throw new Error('rebase requires an attached branch unless a branch operand is specified');
+    }
+    headRefName = currentHead.symbolicRef;
+    origHeadObjectId = currentHead.objectId;
+    branchDisplay = branchNameFromHead({ head: currentHead }) ?? 'HEAD';
+  } else {
+    headRefName = branchExpression.startsWith('refs/heads/') ? branchExpression : `refs/heads/${branchExpression}`;
+    const branchObjectId = await readRef({ files: context.files, repository, refName: headRefName });
+    if (branchObjectId === undefined)
+      throw new Error(`invalid branch: ${branchExpression}`);
+    await readCommit({ files: context.files, repository, objectId: branchObjectId });
+    origHeadObjectId = branchObjectId;
+    branchDisplay = headRefName.slice('refs/heads/'.length);
+  }
+  const upstreamObjectId = await resolveCommitRevision({ files: context.files, repository, expression: upstreamExpression });
+  await readCommit({ files: context.files, repository, objectId: upstreamObjectId });
+  const ontoObjectId = await resolveCommitRevision({ files: context.files, repository, expression: ontoExpression });
+  await readCommit({ files: context.files, repository, objectId: ontoObjectId });
+  if (!explicitOnto && await isAncestor({
+    files: context.files,
+    repository,
+    ancestorObjectId: upstreamObjectId,
+    descendantObjectId: origHeadObjectId,
+  })) {
+    if (currentHead.symbolicRef !== headRefName || currentHead.objectId !== origHeadObjectId) {
+      const checkoutFailure = await checkoutRebaseTargetBranch({
+        context,
+        repository,
+        currentHeadObjectId: currentHead.objectId,
+        targetRefName: headRefName,
+        targetObjectId: origHeadObjectId,
+        branchDisplay,
+      });
+      if (checkoutFailure !== undefined)
+        return checkoutFailure;
+    }
+    await context.text().print({ text: `Current branch ${branchDisplay} is up to date.\n` });
+    return { exitCode: 0 };
+  }
+  let replayBaseObjectId: string;
+  if (explicitOnto) {
+    replayBaseObjectId = upstreamObjectId;
+  } else {
+    const bases = await findMergeBases({
+      files: context.files,
+      repository,
+      leftObjectId: origHeadObjectId,
+      rightObjectId: upstreamObjectId,
+    });
+    if (bases.length !== 1)
+      throw new Error(`rebase expected one merge base, found ${bases.length}`);
+    replayBaseObjectId = upstreamObjectId;
+  }
+  return startRebaseSequence({
+    context,
+    repository,
+    headRefName,
+    origHeadObjectId,
+    checkoutHeadObjectId: currentHead.objectId,
+    ontoObjectId,
+    replayBaseObjectId,
+    ontoDisplay: ontoExpression,
+    reflogAction: 'rebase',
+  });
+}
+
+export const TEST_ONLY = {
+};

@@ -1,9 +1,9 @@
 import { normalizePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
-import type { GitFiles } from './files';
-import { pathExists } from './files';
-import { readIndex, writeIndex } from './index-file';
-import { joinPath, relativeToWorktree, discoverRepositoryFromContext } from './repository';
+import type { GitFiles } from '@/features/wesh/commands/git/files';
+import { pathExists } from '@/features/wesh/commands/git/files';
+import { readIndex, writeIndex } from '@/features/wesh/commands/git/index-file';
+import { joinPath, relativeToWorktree, discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
 
 interface DirectoryMovePlan {
   directories: readonly { sourcePath: string, destinationPath: string }[],
