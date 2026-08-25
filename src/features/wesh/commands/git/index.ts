@@ -1,15 +1,36 @@
-import { normalizePath } from '@/features/wesh/path';
+import { runClone } from "./subcommands/clone";
+import { runPull } from "./subcommands/pull";
+import { runAdd } from "./subcommands/add";
+import { runStatus } from "./subcommands/status";
+import { runRm } from "./subcommands/rm";
+import { runClean } from "./subcommands/clean";
+import { runCommit } from "./subcommands/commit";
+import { runRestore } from "./subcommands/restore";
+import { runReset } from "./subcommands/reset";
+import { runMerge } from "./subcommands/merge";
+import { runCherryPick } from "./subcommands/cherry-pick";
+import { runRevert } from "./subcommands/revert";
+import { runRebase } from "./subcommands/rebase";
+import { runLog } from "./subcommands/log";
+import { runBranch } from "./subcommands/branch";
+import { runSwitch } from "./subcommands/switch";
+import { runCheckout } from "./subcommands/checkout";
+import { runStash } from "./subcommands/stash";
+import { runShow } from "./subcommands/show";
+import { runInit } from './subcommands/init';
+import { runFetch } from './subcommands/fetch';
+import { runPush } from './subcommands/push';
+import { runConfig } from './subcommands/config';
+import { runRevParse } from './subcommands/rev-parse';
+import { runReflog } from './subcommands/reflog';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
-import { runAdd, runBranch, runCheckout, runCherryPick, runClean, runClone, runCommit, runConfig, runFetch, runInit, runLog, runMerge, runPull, runPush, runRebase, runReflog, runReset, runRestore, runRevert, runRm, runRevParse, runShow, runStash, runStatus, runSwitch } from './operations';
-import { runDiff } from './diff';
-import { runLsFiles } from './ls-files';
-import { runRemote } from './remote';
-import { runTag } from './tag';
-import { runApply } from './apply';
-import { runMv } from './mv';
-import { assertSupportedSafeCrlfClean, assertSupportedWorktreeContentConfig, parseConfigKey, readCommandConfigEntries, readEffectiveConfig, readGlobalConfigEntries } from './config';
-import type { GitConfig } from './config';
-import { discoverRepositoryFromContext } from './repository';
+import { runDiff } from './subcommands/diff';
+import { runLsFiles } from './subcommands/ls-files';
+import { runRemote } from './subcommands/remote';
+import { runTag } from './subcommands/tag';
+import { runApply } from './subcommands/apply';
+import { runMv } from './subcommands/mv';
+import { parseGitInvocation } from "./command-invocation";
 
 const HELP_TEXT = `\
 usage: git [--version] [--help] <command> [<args>]
@@ -47,160 +68,6 @@ Common commands:
    rev-parse  Pick out and massage parameters
    ls-files   Show information about files in the index
 `;
-
-async function parseInvocation({ context }: { context: WeshCommandContext }): Promise<{
-  context: WeshCommandContext,
-  args: string[],
-}> {
-  let cwd = context.cwd;
-  const env = new Map(context.env);
-  let index = 0;
-  while (index < context.args.length) {
-    const arg = context.args[index]!;
-    if (arg === '--no-pager') {
-      index += 1;
-      continue;
-    }
-    if (arg === '-c') {
-      const assignment = context.args[index + 1];
-      if (assignment === undefined) throw new Error("option '-c' requires a value");
-      const separator = assignment.indexOf('=');
-      const key = separator < 0 ? assignment : assignment.slice(0, separator);
-      const value = separator < 0 ? '' : assignment.slice(separator + 1);
-      parseConfigKey({ key });
-      const rawCount = env.get('GIT_CONFIG_COUNT') ?? '0';
-      if (!/^(?:0|[1-9][0-9]*)$/u.test(rawCount)) throw new Error('invalid GIT_CONFIG_COUNT');
-      const count = Number(rawCount);
-      env.set(`GIT_CONFIG_KEY_${count}`, key);
-      env.set(`GIT_CONFIG_VALUE_${count}`, value);
-      env.set('GIT_CONFIG_COUNT', String(count + 1));
-      index += 2;
-      continue;
-    }
-    if (arg === '--git-dir' || arg.startsWith('--git-dir=')) {
-      const path = arg === '--git-dir' ? context.args[index + 1] : arg.slice('--git-dir='.length);
-      if (path === undefined || path.length === 0) throw new Error("option '--git-dir' requires a value");
-      env.set('GIT_DIR', normalizePath({ cwd, path }));
-      index += arg === '--git-dir' ? 2 : 1;
-      continue;
-    }
-    if (arg === '--work-tree' || arg.startsWith('--work-tree=')) {
-      const path = arg === '--work-tree' ? context.args[index + 1] : arg.slice('--work-tree='.length);
-      if (path === undefined || path.length === 0) throw new Error("option '--work-tree' requires a value");
-      env.set('GIT_WORK_TREE', normalizePath({ cwd, path }));
-      index += arg === '--work-tree' ? 2 : 1;
-      continue;
-    }
-    if (arg !== '-C') break;
-    const path = context.args[index + 1];
-    if (path === undefined) throw new Error("option '-C' requires a value");
-    const resolved = normalizePath({ cwd, path });
-    let stat;
-    try {
-      stat = await context.files.stat({ path: resolved });
-    } catch {
-      throw new Error(`cannot change to '${path}': No such file or directory`);
-    }
-    switch (stat.type) {
-    case 'directory':
-      cwd = resolved;
-      break;
-    case 'file':
-    case 'fifo':
-    case 'chardev':
-    case 'symlink':
-      throw new Error(`cannot change to '${path}': Not a directory`);
-    default: {
-      const _ex: never = stat.type;
-      throw new Error(`Unhandled -C target type: ${_ex}`);
-    }
-    }
-    index += 2;
-  }
-  return { context: { ...context, cwd, env }, args: context.args.slice(index) };
-}
-
-function commandRequiresSafeCrlfClean({ command, args }: { command: string, args: readonly string[] }): boolean {
-  switch (command) {
-  case 'add':
-    return true;
-  case 'commit':
-    return args.includes('-a') || args.includes('--all');
-  case 'stash': {
-    const subcommand = args[0] === undefined || args[0].startsWith('-') ? 'push' : args[0];
-    return subcommand === 'push';
-  }
-  default:
-    return false;
-  }
-}
-
-function commandUsesWorktreeContentSemantics({ command, args }: { command: string, args: readonly string[] }): boolean {
-  switch (command) {
-  case 'clone':
-  case 'add':
-  case 'apply':
-  case 'rm':
-  case 'status':
-  case 'diff':
-  case 'pull':
-  case 'switch':
-  case 'checkout':
-  case 'reset':
-  case 'restore':
-  case 'merge':
-  case 'cherry-pick':
-  case 'revert':
-  case 'rebase':
-  case 'stash':
-    return true;
-  case 'commit':
-    return args.includes('-a') || args.includes('--all');
-  case 'init':
-  case 'config':
-  case 'remote':
-  case 'fetch':
-  case 'push':
-  case 'clean':
-  case 'mv':
-  case 'log':
-  case 'show':
-  case 'branch':
-  case 'tag':
-  case 'reflog':
-  case 'rev-parse':
-  case 'ls-files':
-    return false;
-  default:
-    return false;
-  }
-}
-
-async function assertSupportedContentPolicy({ context, command, args }: {
-  context: WeshCommandContext,
-  command: string,
-  args: readonly string[],
-}): Promise<void> {
-  if (!commandUsesWorktreeContentSemantics({ command, args })) return;
-  let config: GitConfig;
-  if (command === 'clone') {
-    config = new Map();
-    for (const entry of await readGlobalConfigEntries({ files: context.files, homePath: context.env.get('HOME') ?? '/' })) {
-      config.set(entry.key, entry.value);
-    }
-    for (const entry of readCommandConfigEntries({ env: context.env })) config.set(entry.key, entry.value);
-  } else {
-    const repository = await discoverRepositoryFromContext({ context });
-    config = await readEffectiveConfig({
-      files: context.files,
-      repository,
-      homePath: context.env.get('HOME') ?? '/',
-      env: context.env,
-    });
-  }
-  assertSupportedWorktreeContentConfig({ config });
-  if (commandRequiresSafeCrlfClean({ command, args })) assertSupportedSafeCrlfClean({ config });
-}
 
 async function executeSubcommand({ context, command, args }: {
   context: WeshCommandContext,
@@ -286,7 +153,7 @@ export const gitCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     try {
-      const invocation = await parseInvocation({ context });
+      const invocation = await parseGitInvocation({ context });
       const invocationContext = invocation.context;
       const invocationArgs = invocation.args;
       if (invocationArgs.length === 0 || invocationArgs[0] === '--help' || invocationArgs[0] === '-h') {
@@ -300,7 +167,6 @@ export const gitCommandDefinition: WeshCommandDefinition = {
 
       const command = invocationArgs[0]!;
       const commandArgs = invocationArgs.slice(1);
-      await assertSupportedContentPolicy({ context: invocationContext, command, args: commandArgs });
       return await executeSubcommand({ context: invocationContext, command, args: commandArgs });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

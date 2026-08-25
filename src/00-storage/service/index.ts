@@ -16,6 +16,25 @@ import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } fro
 import { idToRaw, toChatId } from '@/01-models/ids';
 
 
+// Match Wesh VFS lexical mount normalization without introducing a storage -> feature dependency.
+function normalizeMountPathForComparison({ mountPath }: { mountPath: string }): string {
+  const normalizedSegments: string[] = [];
+  for (const segment of mountPath.split('/')) {
+    if (segment.length === 0 || segment === '.') continue;
+    if (segment === '..') {
+      normalizedSegments.pop();
+      continue;
+    }
+    normalizedSegments.push(segment);
+  }
+  return normalizedSegments.length === 0 ? '/' : `/${normalizedSegments.join('/')}`;
+}
+
+function mountPathsAreEquivalent({ left, right }: { left: string, right: string }): boolean {
+  return normalizeMountPathForComparison({ mountPath: left }) === normalizeMountPathForComparison({ mountPath: right });
+}
+
+
 /**
  * StorageService
  *
@@ -337,6 +356,39 @@ export class StorageService {
     return this.getProvider().deleteVolume({ volumeId });
   }
 
+  async deleteVolumeIfEmptyAndUnreferenced({ volumeId }: { volumeId: VolumeId }): Promise<'deleted' | 'kept'> {
+    const isDirectoryEmpty = async ({ handle }: { handle: FileSystemDirectoryHandle }): Promise<boolean> => {
+      for await (const _entry of handle.values()) {
+        return false;
+      }
+      return true;
+    };
+    const isReferenced = async (): Promise<boolean> => (
+      await this.getProvider().hasVolumeMountReference({ volumeId })
+    );
+
+    const handle = await this.getProvider().getVolumeDirectoryHandle({ volumeId });
+    if (handle === null || !await isDirectoryEmpty({ handle })) return 'kept';
+    if (await isReferenced()) return 'kept';
+
+    return await this.synchronizer.withLock({
+      // This runs from best-effort idle cleanup, so keep lock waiting/slow-path
+      // notifications silent rather than surfacing background GC activity to the user.
+      lockKey: LOCK_METADATA,
+      fn: async () => await this.synchronizer.withLock({
+        lockKey: SYNC_LOCK_KEY,
+        fn: async () => {
+          const latestHandle = await this.getProvider().getVolumeDirectoryHandle({ volumeId });
+          if (latestHandle === null || !await isDirectoryEmpty({ handle: latestHandle })) return 'kept';
+          if (await isReferenced()) return 'kept';
+
+          await this.getProvider().deleteVolume({ volumeId });
+          return 'deleted';
+        },
+      }),
+    });
+  }
+
   async renameVolume({ volumeId, name }: { volumeId: VolumeId, name: string }): Promise<void> {
     return this.getProvider().renameVolume({ volumeId, name });
   }
@@ -374,6 +426,54 @@ export class StorageService {
       const existing = current.mounts ?? [];
       return { ...current, mounts: [...existing, mount] };
     } });
+  }
+
+  async addMountToChatIfPathAvailable({ chatId, mount }: { chatId: ChatId, mount: Mount }): Promise<'added' | 'path_occupied'> {
+    try {
+      const result = await this.synchronizer.withLock({
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'addMountToChatIfPathAvailable' }),
+        fn: async () => await this.synchronizer.withLock({
+          lockKey: SYNC_LOCK_KEY,
+          ...this.getLockOptions({ source: 'addMountToChatIfPathAvailable' }),
+          fn: async (): Promise<'added' | 'path_occupied'> => {
+            const provider = this.getProvider();
+            const current = await provider.loadChatMeta({ id: chatId });
+            if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
+
+            const settings = await provider.loadSettings();
+            if (settings?.mounts.some(existing => mountPathsAreEquivalent({ left: existing.mountPath, right: mount.mountPath }))) return 'path_occupied';
+
+            const groupId = current.groupId ?? undefined;
+            if (groupId !== undefined) {
+              const group = await provider.loadChatGroup({ id: groupId });
+              if (group?.mounts?.some(existing => mountPathsAreEquivalent({ left: existing.mountPath, right: mount.mountPath }))) return 'path_occupied';
+            }
+
+            const chatMounts = current.mounts ?? [];
+            if (chatMounts.some(existing => mountPathsAreEquivalent({ left: existing.mountPath, right: mount.mountPath }))) return 'path_occupied';
+
+            await provider.saveChatMeta({ meta: { ...current, mounts: [...chatMounts, mount] } });
+            return 'added';
+          },
+        }),
+      });
+      switch (result) {
+      case 'added':
+        this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id: chatId }), timestamp: Date.now() } });
+        break;
+      case 'path_occupied':
+        break;
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled chat mount result: ${String(_ex)}`);
+      }
+      }
+      return result;
+    } catch (e) {
+      await this.handleStorageError({ error: e, source: 'addMountToChatIfPathAvailable' });
+      throw e;
+    }
   }
 
   async removeMountFromChat({ chatId, volumeId }: { chatId: ChatId, volumeId: VolumeId }): Promise<void> {

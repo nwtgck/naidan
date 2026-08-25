@@ -169,6 +169,31 @@ keep me
     expect(result.exitCode).toBe(0);
   });
 
+
+  it('keeps gzip -d and gunzip aligned for shared decompression behavior', async () => {
+    await writeFile({ path: 'plain.txt', data: 'shared decompression semantics\n' });
+    await execute({ script: 'gzip -nc plain.txt > payload.gz', stdinText: '' });
+
+    const gzipStreamed = await execute({ script: 'gzip -dc payload.gz', stdinText: '' });
+    const gunzipStreamed = await execute({ script: 'gunzip -c payload.gz', stdinText: '' });
+    expect(gunzipStreamed.stdout.text).toBe(gzipStreamed.stdout.text);
+    expect(gunzipStreamed.stderr.text).toBe(gzipStreamed.stderr.text);
+    expect(gunzipStreamed.result.exitCode).toBe(gzipStreamed.result.exitCode);
+
+    const gzipTested = await execute({ script: 'gzip -t payload.gz', stdinText: '' });
+    const gunzipTested = await execute({ script: 'gunzip -t payload.gz', stdinText: '' });
+    expect(gunzipTested.stdout.text).toBe(gzipTested.stdout.text);
+    expect(gunzipTested.stderr.text).toBe(gzipTested.stderr.text);
+    expect(gunzipTested.result.exitCode).toBe(gzipTested.result.exitCode);
+
+    await writeFile({ path: 'invalid.gz', data: 'not gzip data' });
+    const gzipInvalid = await execute({ script: 'gzip -dc invalid.gz', stdinText: '' });
+    const gunzipInvalid = await execute({ script: 'gunzip -c invalid.gz', stdinText: '' });
+    expect(gunzipInvalid.stdout.text).toBe(gzipInvalid.stdout.text);
+    expect(gunzipInvalid.stderr.text).toBe(gzipInvalid.stderr.text);
+    expect(gunzipInvalid.result.exitCode).toBe(gzipInvalid.result.exitCode);
+  });
+
   it('rejects an empty suffix before mutating compression or decompression inputs', async () => {
     await writeFile({ path: 'plain', data: 'preserve this payload\n' });
 

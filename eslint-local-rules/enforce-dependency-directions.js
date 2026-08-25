@@ -108,6 +108,91 @@ function classifyPath({ rootDir, filePath }) {
   return 'other';
 }
 
+function getWeshCommandOwner({ rootDir, filePath }) {
+  const relativePath = normalizePath({ filePath: path.relative(rootDir, filePath) });
+  const commandsPrefix = 'features/wesh/commands/';
+  if (!relativePath.startsWith(commandsPrefix)) {
+    return undefined;
+  }
+
+  const commandRelativePath = relativePath.slice(commandsPrefix.length);
+  const separatorIndex = commandRelativePath.indexOf('/');
+  if (separatorIndex < 0) {
+    if (commandRelativePath === 'index') {
+      return undefined;
+    }
+    return path.extname(commandRelativePath) === '' ? commandRelativePath : undefined;
+  }
+
+  return commandRelativePath.slice(0, separatorIndex);
+}
+
+function isWeshCommandRootRegistry({ rootDir, filePath }) {
+  const relativePath = normalizePath({ filePath: path.relative(rootDir, filePath) });
+  return relativePath === 'features/wesh/commands'
+    || relativePath === 'features/wesh/commands/index'
+    || relativePath === 'features/wesh/commands/index.ts';
+}
+
+function isTestSourceFile({ filePath }) {
+  return /\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/.test(filePath);
+}
+
+function getWeshGitLayer({ rootDir, filePath }) {
+  const relativePath = normalizePath({ filePath: path.relative(rootDir, filePath) });
+  const gitPrefix = 'features/wesh/commands/git/';
+  if (relativePath === 'features/wesh/commands/git/index' || relativePath === 'features/wesh/commands/git/index.ts') {
+    return 'entry';
+  }
+  if (!relativePath.startsWith(gitPrefix)) {
+    return undefined;
+  }
+  const gitRelativePath = relativePath.slice(gitPrefix.length);
+  if (gitRelativePath === 'subcommands' || gitRelativePath.startsWith('subcommands/')) {
+    return 'subcommand';
+  }
+  return 'domain';
+}
+
+function getWeshGitSubcommandOwner({ rootDir, filePath }) {
+  const relativePath = normalizePath({ filePath: path.relative(rootDir, filePath) });
+  const prefix = 'features/wesh/commands/git/subcommands/';
+  if (!relativePath.startsWith(prefix)) {
+    return undefined;
+  }
+  const subcommandRelativePath = relativePath.slice(prefix.length);
+  const [firstSegment] = subcommandRelativePath.split('/');
+  if (firstSegment === undefined || firstSegment.length === 0) {
+    return undefined;
+  }
+  return firstSegment.replace(/\.[^.]+$/u, '');
+}
+
+function isForbiddenWeshGitLayerDependency({ sourceLayer, targetLayer, sourceSubcommandOwner, targetSubcommandOwner }) {
+  if (sourceLayer === undefined || targetLayer === undefined || sourceLayer === 'entry') {
+    return false;
+  }
+  if (targetLayer !== 'subcommand') {
+    return false;
+  }
+  if (sourceLayer !== 'subcommand') {
+    return true;
+  }
+  return sourceSubcommandOwner === undefined
+    || targetSubcommandOwner === undefined
+    || sourceSubcommandOwner !== targetSubcommandOwner;
+}
+
+function isForbiddenWeshCommandDependency({ sourceOwner, targetOwner }) {
+  if (sourceOwner === undefined || targetOwner === undefined) {
+    return false;
+  }
+  if (sourceOwner === targetOwner || targetOwner === '_shared') {
+    return false;
+  }
+  return true;
+}
+
 function isForbiddenDependency({ sourceCategory, targetCategory }) {
   if (sourceCategory === 'application') {
     return targetCategory === 'storage-mapper' || targetCategory === 'storage-dto';
@@ -180,6 +265,66 @@ function createImportPathReporter({ context }) {
 
     const resolved = resolveImportPath({ context, filename, importPath });
     if (resolved === undefined) {
+      return;
+    }
+
+    const sourceCommandOwner = getWeshCommandOwner({
+      rootDir: resolved.rootDir,
+      filePath: resolved.sourcePath,
+    });
+    const targetCommandOwner = getWeshCommandOwner({
+      rootDir: resolved.rootDir,
+      filePath: resolved.targetPath,
+    });
+    if (
+      sourceCommandOwner !== undefined
+      && isWeshCommandRootRegistry({
+        rootDir: resolved.rootDir,
+        filePath: resolved.targetPath,
+      })
+      && !isTestSourceFile({ filePath: resolved.sourcePath })
+    ) {
+      context.report({
+        node: reportNode ?? sourceNode,
+        messageId: 'forbiddenWeshCommandRegistryDependency',
+        data: {
+          importPath,
+          sourceCommand: sourceCommandOwner,
+        },
+      });
+      return;
+    }
+    if (isForbiddenWeshCommandDependency({
+      sourceOwner: sourceCommandOwner,
+      targetOwner: targetCommandOwner,
+    })) {
+      context.report({
+        node: reportNode ?? sourceNode,
+        messageId: 'forbiddenWeshCommandDependency',
+        data: {
+          importPath,
+          sourceCommand: sourceCommandOwner,
+          targetCommand: targetCommandOwner,
+        },
+      });
+      return;
+    }
+
+    const sourceGitLayer = getWeshGitLayer({ rootDir: resolved.rootDir, filePath: resolved.sourcePath });
+    const targetGitLayer = getWeshGitLayer({ rootDir: resolved.rootDir, filePath: resolved.targetPath });
+    const sourceGitSubcommandOwner = getWeshGitSubcommandOwner({ rootDir: resolved.rootDir, filePath: resolved.sourcePath });
+    const targetGitSubcommandOwner = getWeshGitSubcommandOwner({ rootDir: resolved.rootDir, filePath: resolved.targetPath });
+    if (isForbiddenWeshGitLayerDependency({
+      sourceLayer: sourceGitLayer,
+      targetLayer: targetGitLayer,
+      sourceSubcommandOwner: sourceGitSubcommandOwner,
+      targetSubcommandOwner: targetGitSubcommandOwner,
+    })) {
+      context.report({
+        node: reportNode ?? sourceNode,
+        messageId: 'forbiddenWeshGitLayerDependency',
+        data: { importPath, sourceLayer: sourceGitLayer, targetLayer: targetGitLayer },
+      });
       return;
     }
 
@@ -296,6 +441,9 @@ export const rule = {
     },
     messages: {
       forbiddenDependencyDirection: '{{sourceCategory}} must not depend on {{targetCategory}} through "{{importPath}}".',
+      forbiddenWeshCommandDependency: 'Wesh command {{sourceCommand}} must not depend directly on sibling command {{targetCommand}} through "{{importPath}}". Move intentionally shared behavior to a neutral shared/core layer, or keep independently evolving behavior command-local.',
+      forbiddenWeshCommandRegistryDependency: 'Wesh command {{sourceCommand}} production code must not depend on the root command registry through "{{importPath}}". The registry is a composition root, not a command-facing shared API.',
+      forbiddenWeshGitLayerDependency: 'Wesh Git {{sourceLayer}} code must not depend on another {{targetLayer}} owner through "{{importPath}}". Private modules may stay within one subcommand; behavior shared across subcommands belongs in a Git-owned domain module.',
     },
     schema: [
       {

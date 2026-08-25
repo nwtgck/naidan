@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStorageProvider } from './memory-storage';
 import type { Chat, ChatContent, ChatGroup } from '@/01-models/types';
 import type { MigrationChunkDto } from '@/00-storage/00-dto/dto';
-import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-models/ids';
 
 describe('MemoryStorageProvider', () => {
   let provider: MemoryStorageProvider;
@@ -60,6 +60,36 @@ describe('MemoryStorageProvider', () => {
 
     expect(unhydrated?.root.items[0]?.attachments?.[0]).not.toHaveProperty('blob');
     expect(hydrated?.root.items[0]?.attachments?.[0]).toHaveProperty('blob', blob);
+  });
+
+  it('finds a volume reference in chat metadata even when the chat is detached from the hierarchy', async () => {
+    const volumeId = toVolumeId({ raw: 'volume-detached-chat' });
+    const chatId = toChatId({ raw: 'detached-chat' });
+    await provider.saveChatMeta({ meta: {
+      id: chatId,
+      title: 'Detached',
+      createdAt: 1,
+      updatedAt: 1,
+      debugEnabled: false,
+      mounts: [{ type: 'volume', volumeId, mountPath: '/workspace', readOnly: false }],
+    } });
+
+    await expect(provider.hasVolumeMountReference({ volumeId })).resolves.toBe(true);
+    await expect(provider.hasVolumeMountReference({ volumeId: toVolumeId({ raw: 'unreferenced' }) })).resolves.toBe(false);
+  });
+
+  it('finds a volume reference in a chat group even when the group is detached from the hierarchy', async () => {
+    const volumeId = toVolumeId({ raw: 'volume-detached-group' });
+    await provider.saveChatGroup({ chatGroup: {
+      id: toChatGroupId({ raw: 'detached-group' }),
+      name: 'Detached Group',
+      updatedAt: 1,
+      isCollapsed: false,
+      items: [],
+      mounts: [{ type: 'volume', volumeId, mountPath: '/workspace', readOnly: false }],
+    } });
+
+    await expect(provider.hasVolumeMountReference({ volumeId })).resolves.toBe(true);
   });
 
   it('should list saved chats based on hierarchy', async () => {

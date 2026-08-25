@@ -30,10 +30,79 @@ import {
   readAllFileBytes,
   readAllHandleBytes,
 } from "@/features/wesh/utils/fs";
-import { canonicalizeExistingPath } from "@/features/wesh/path";
+import { canonicalizeExistingPath, normalizePath } from "@/features/wesh/path";
 import { iterateReadableStreamChunks } from "@/features/wesh/utils/stream";
 import { iterateByteRecordEntries } from "@/features/wesh/utils/text-records";
-import { createBufferedCommandDataWriter, decodeCommandDataBytes, encodeCommandDataText } from "@/features/wesh/commands/_shared/data-codec";
+import {
+  createBufferedCommandDataWriter,
+  decodeCommandDataBytes,
+  decodeCommandDataBytesAsSingleByte,
+  encodeCommandDataText,
+} from "@/features/wesh/commands/_shared/data-codec";
+
+function decodeSedDataBytes({
+  bytes,
+  characterLocaleMode,
+}: {
+  bytes: Uint8Array;
+  characterLocaleMode: WeshCharacterLocaleMode;
+}): string {
+  switch (characterLocaleMode) {
+  case "ascii":
+    return decodeCommandDataBytesAsSingleByte({ bytes });
+  case "unicode":
+    return decodeCommandDataBytes({ bytes });
+  default: {
+    const _ex: never = characterLocaleMode;
+    throw new Error(`Unhandled sed character locale mode: ${_ex}`);
+  }
+  }
+}
+
+function toSedLocaleText({
+  text,
+  characterLocaleMode,
+}: {
+  text: string;
+  characterLocaleMode: WeshCharacterLocaleMode;
+}): string {
+  switch (characterLocaleMode) {
+  case "ascii":
+    return decodeCommandDataBytesAsSingleByte({
+      bytes: encodeCommandDataText({ text }),
+    });
+  case "unicode":
+    return text;
+  default: {
+    const _ex: never = characterLocaleMode;
+    throw new Error(`Unhandled sed character locale mode: ${_ex}`);
+  }
+  }
+}
+
+function fromSedLocaleText({
+  text,
+  characterLocaleMode,
+}: {
+  text: string;
+  characterLocaleMode: WeshCharacterLocaleMode;
+}): string {
+  switch (characterLocaleMode) {
+  case "ascii": {
+    const bytes = new Uint8Array(text.length);
+    for (let index = 0; index < text.length; index += 1) {
+      bytes[index] = text.charCodeAt(index) & 0xff;
+    }
+    return decodeCommandDataBytes({ bytes });
+  }
+  case "unicode":
+    return text;
+  default: {
+    const _ex: never = characterLocaleMode;
+    throw new Error(`Unhandled sed character locale mode: ${_ex}`);
+  }
+  }
+}
 
 type SedAddress =
   | { kind: "line"; lineNumber: number }
@@ -67,9 +136,9 @@ type SedCommand = SedCommandSelection &
         target: string;
         duplicateSourcePrecedence: "first" | "last";
       }
-    | { kind: "append"; text: string }
-    | { kind: "insert"; text: string }
-    | { kind: "change"; text: string }
+    | { kind: "append"; text: string | undefined }
+    | { kind: "insert"; text: string | undefined }
+    | { kind: "change"; text: string | undefined }
     | { kind: "print" }
     | { kind: "printFirst" }
     | { kind: "list"; width: number | undefined }
@@ -121,9 +190,9 @@ type SedRuntimeExecutableCommand = SedCommandSelection &
         writePath: string | undefined;
       }
     | { kind: "translate"; lookup: Map<string, string> }
-    | { kind: "append"; text: string }
-    | { kind: "insert"; text: string }
-    | { kind: "change"; text: string }
+    | { kind: "append"; text: string | undefined }
+    | { kind: "insert"; text: string | undefined }
+    | { kind: "change"; text: string | undefined }
     | { kind: "print" }
     | { kind: "printFirst" }
     | { kind: "list"; width: number | undefined }
@@ -179,6 +248,7 @@ interface SedOutput {
 
 type SedAction =
   | { kind: "output"; output: SedOutput }
+  | { kind: "appendText"; text: string }
   | { kind: "readFile"; path: string; mode: "all" | "line" }
   | { kind: "writeFile"; path: string; output: SedOutput };
 
@@ -418,6 +488,64 @@ function decodeSedSingleCharacterEscape({
   }
 }
 
+interface SedDecodedEscape {
+  value: string;
+  lastIndex: number;
+}
+
+function decodeSedExtendedEscape({
+  source,
+  backslashIndex,
+}: {
+  source: string;
+  backslashIndex: number;
+}): SedDecodedEscape | undefined {
+  const escaped = source[backslashIndex + 1];
+  if (escaped === undefined) return undefined;
+
+  const decoded = decodeSedSingleCharacterEscape({ escaped });
+  if (decoded !== undefined) {
+    return { value: decoded, lastIndex: backslashIndex + 1 };
+  }
+
+  if (escaped === "c") {
+    const controlled = source[backslashIndex + 2];
+    if (controlled === undefined) return undefined;
+    const codePoint = controlled.codePointAt(0);
+    if (codePoint === undefined) return undefined;
+    const normalizedCodePoint = codePoint >= 0x61 && codePoint <= 0x7a
+      ? codePoint - 0x20
+      : codePoint;
+    const byte = normalizedCodePoint ^ 0x40;
+    return {
+      value: decodeCommandDataBytes({ bytes: Uint8Array.of(byte) }),
+      lastIndex: backslashIndex + 2,
+    };
+  }
+
+  const numericEscape = (() => {
+    switch (escaped) {
+    case "x":
+      return { radix: 16, pattern: /^[0-9A-Fa-f]{1,2}/u };
+    case "o":
+      return { radix: 8, pattern: /^[0-7]{1,3}/u };
+    case "d":
+      return { radix: 10, pattern: /^\d{1,3}/u };
+    default:
+      return undefined;
+    }
+  })();
+  if (numericEscape === undefined) return undefined;
+
+  const match = numericEscape.pattern.exec(source.slice(backslashIndex + 2));
+  if (match === null) return undefined;
+  const byte = Number.parseInt(match[0], numericEscape.radix) & 0xff;
+  return {
+    value: decodeCommandDataBytes({ bytes: Uint8Array.of(byte) }),
+    lastIndex: backslashIndex + 1 + match[0].length,
+  };
+}
+
 function normalizeSedRegularExpressionEscapes({ source }: { source: string }): string {
   let result = '';
   for (let index = 0; index < source.length; index += 1) {
@@ -440,7 +568,11 @@ function normalizeSedRegularExpressionEscapes({ source }: { source: string }): s
       if (controlled === undefined) throw new Error('Trailing backslash');
       const codePoint = controlled.codePointAt(0);
       if (codePoint === undefined) throw new Error('Trailing backslash');
-      result += String.fromCharCode(codePoint & 0x1f);
+      const normalizedCodePoint = codePoint >= 0x61 && codePoint <= 0x7a
+        ? codePoint - 0x20
+        : codePoint;
+      const byte = normalizedCodePoint ^ 0x40;
+      result += decodeCommandDataBytes({ bytes: Uint8Array.of(byte) });
       index += 2;
       continue;
     }
@@ -448,7 +580,9 @@ function normalizeSedRegularExpressionEscapes({ source }: { source: string }): s
     if (escaped === 'x') {
       const match = /^[0-9A-Fa-f]{1,2}/u.exec(source.slice(index + 2));
       if (match !== null) {
-        result += String.fromCharCode(Number.parseInt(match[0], 16));
+        result += decodeCommandDataBytes({
+          bytes: Uint8Array.of(Number.parseInt(match[0], 16) & 0xff),
+        });
         index += 1 + match[0].length;
         continue;
       }
@@ -457,7 +591,9 @@ function normalizeSedRegularExpressionEscapes({ source }: { source: string }): s
     if (escaped === 'o') {
       const match = /^[0-7]{1,3}/u.exec(source.slice(index + 2));
       if (match !== null) {
-        result += String.fromCharCode(Number.parseInt(match[0], 8) & 0xff);
+        result += decodeCommandDataBytes({
+          bytes: Uint8Array.of(Number.parseInt(match[0], 8) & 0xff),
+        });
         index += 1 + match[0].length;
         continue;
       }
@@ -466,7 +602,9 @@ function normalizeSedRegularExpressionEscapes({ source }: { source: string }): s
     if (escaped === 'd') {
       const match = /^\d{1,3}/u.exec(source.slice(index + 2));
       if (match !== null) {
-        result += String.fromCharCode(Number.parseInt(match[0], 10) & 0xff);
+        result += decodeCommandDataBytes({
+          bytes: Uint8Array.of(Number.parseInt(match[0], 10) & 0xff),
+        });
         index += 1 + match[0].length;
         continue;
       }
@@ -476,6 +614,97 @@ function normalizeSedRegularExpressionEscapes({ source }: { source: string }): s
     index += 1;
   }
   return result;
+}
+
+const SED_WILDCARD_DOT_SENTINEL = "\uD800";
+
+function maskSedWildcardDots({ source }: { source: string }): string {
+  let result = "";
+  let inBracketExpression = false;
+  let bracketCanClose = false;
+  let bracketMayConsumeNegation = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index]!;
+    if (character === "\\") {
+      result += character;
+      const escaped = source[index + 1];
+      if (escaped !== undefined) {
+        result += escaped;
+        index += 1;
+      }
+      if (inBracketExpression && !bracketCanClose) bracketCanClose = true;
+      continue;
+    }
+
+    if (!inBracketExpression) {
+      if (character === "[") {
+        inBracketExpression = true;
+        bracketCanClose = false;
+        bracketMayConsumeNegation = true;
+        result += character;
+        continue;
+      }
+      result += character === "." ? SED_WILDCARD_DOT_SENTINEL : character;
+      continue;
+    }
+
+    if (
+      character === "[" &&
+      (source[index + 1] === ":" || source[index + 1] === "." || source[index + 1] === "=")
+    ) {
+      const marker = source[index + 1]!;
+      const closing = `${marker}]`;
+      const closingIndex = source.indexOf(closing, index + 2);
+      if (closingIndex >= 0) {
+        result += source.slice(index, closingIndex + 2);
+        index = closingIndex + 1;
+        bracketCanClose = true;
+        bracketMayConsumeNegation = false;
+        continue;
+      }
+    }
+
+    result += character;
+    if (character === "]") {
+      if (bracketCanClose) {
+        inBracketExpression = false;
+        bracketMayConsumeNegation = false;
+      } else {
+        bracketCanClose = true;
+        bracketMayConsumeNegation = false;
+      }
+    } else if (character === "^" && bracketMayConsumeNegation) {
+      bracketMayConsumeNegation = false;
+    } else if (!bracketCanClose) {
+      bracketCanClose = true;
+      bracketMayConsumeNegation = false;
+    }
+  }
+  return result;
+}
+
+function restoreSedWildcardDots({
+  regex,
+  characterLocaleMode,
+}: {
+  regex: RegExp;
+  characterLocaleMode: WeshCharacterLocaleMode;
+}): RegExp {
+  if (!regex.source.includes(SED_WILDCARD_DOT_SENTINEL)) return regex;
+  const wildcard = (() => {
+    switch (characterLocaleMode) {
+    case "ascii":
+      return String.raw`[\s\S]`;
+    case "unicode":
+      return String.raw`(?![\uDC80-\uDCFF])[\s\S]`;
+    default: {
+      const _ex: never = characterLocaleMode;
+      throw new Error(`Unhandled sed character locale mode: ${_ex}`);
+    }
+    }
+  })();
+  return new RegExp(regex.source.replaceAll(SED_WILDCARD_DOT_SENTINEL, wildcard), regex.flags);
 }
 
 function compileSedRegex({
@@ -491,33 +720,52 @@ function compileSedRegex({
   characterLocaleMode: WeshCharacterLocaleMode;
   nullData: boolean;
 }): RegExp {
-  const flags = global ? "g" : "";
-  const normalizedSource = normalizeSedRegularExpressionEscapes({ source });
-  switch (syntax) {
-  case "basic":
-    return compileBasicRegularExpression({
-      source: normalizedSource,
-      flags,
-      characterClassMode: characterLocaleMode,
-      gnuWordOperators: true,
-      basicOperatorMode: 'gnu',
-      dotMode: nullData ? "non-null" : "non-newline",
-      excludeSurrogateEscapes: characterLocaleMode === "unicode",
-    });
-  case "extended":
-    return compileExtendedRegularExpression({
-      source: normalizedSource,
-      flags,
-      characterClassMode: characterLocaleMode,
-      gnuWordOperators: true,
-      dotMode: nullData ? "non-null" : "non-newline",
-      excludeSurrogateEscapes: characterLocaleMode === "unicode",
-    });
-  default: {
-    const _ex: never = syntax;
-    throw new Error(`Unhandled sed regular expression syntax: ${_ex}`);
-  }
-  }
+  const flags = (() => {
+    const globalFlag = global ? "g" : "";
+    switch (characterLocaleMode) {
+    case "ascii":
+      return globalFlag;
+    case "unicode":
+      return `${globalFlag}u`;
+    default: {
+      const _ex: never = characterLocaleMode;
+      throw new Error(`Unhandled sed character locale mode: ${_ex}`);
+    }
+    }
+  })();
+  const normalizedSource = toSedLocaleText({
+    text: normalizeSedRegularExpressionEscapes({ source }),
+    characterLocaleMode,
+  });
+  const maskedSource = maskSedWildcardDots({ source: normalizedSource });
+  const regex = (() => {
+    switch (syntax) {
+    case "basic":
+      return compileBasicRegularExpression({
+        source: maskedSource,
+        flags,
+        characterClassMode: characterLocaleMode,
+        gnuWordOperators: true,
+        basicOperatorMode: 'gnu',
+        dotMode: nullData ? "non-null" : "non-newline",
+        excludeSurrogateEscapes: characterLocaleMode === "unicode",
+      });
+    case "extended":
+      return compileExtendedRegularExpression({
+        source: maskedSource,
+        flags,
+        characterClassMode: characterLocaleMode,
+        gnuWordOperators: true,
+        dotMode: nullData ? "non-null" : "non-newline",
+        excludeSurrogateEscapes: characterLocaleMode === "unicode",
+      });
+    default: {
+      const _ex: never = syntax;
+      throw new Error(`Unhandled sed regular expression syntax: ${_ex}`);
+    }
+    }
+  })();
+  return restoreSedWildcardDots({ regex, characterLocaleMode });
 }
 
 function resolveSedRegex({
@@ -570,6 +818,113 @@ function applySedRegexModifiers({
   return modified;
 }
 
+function readSedRegexOperand({
+  script,
+  index,
+  delimiter,
+  unterminatedMessage,
+}: {
+  script: string;
+  index: number;
+  delimiter: string;
+  unterminatedMessage: string;
+}):
+  | { ok: true; source: string; nextIndex: number }
+  | { ok: false; message: string } {
+  let cursor = index;
+  let source = "";
+  let inBracketExpression = false;
+  let bracketCanClose = false;
+  let bracketMayConsumeNegation = false;
+
+  while (cursor < script.length) {
+    const character = script[cursor];
+    if (character === undefined) break;
+
+    if (!inBracketExpression && character === delimiter) {
+      return { ok: true, source, nextIndex: cursor + 1 };
+    }
+
+    if (character === "\n") {
+      return { ok: false, message: unterminatedMessage };
+    }
+
+    if (inBracketExpression && delimiter === "\\" && character === "\\") {
+      // When backslash itself is the sed regexp delimiter, a raw delimiter
+      // inside a bracket expression is regexp data rather than an escape
+      // prefix. Escape it for the downstream regexp compiler so the next
+      // bracket character keeps its normal POSIX role.
+      source += "\\\\";
+      if (!bracketCanClose) {
+        bracketCanClose = true;
+        bracketMayConsumeNegation = false;
+      }
+      cursor += 1;
+      continue;
+    }
+
+    if (character === "\\") {
+      const escaped = script[cursor + 1];
+      if (escaped === undefined) {
+        source += character;
+        cursor += 1;
+        continue;
+      }
+
+      if (escaped === "\n") {
+        // GNU sed accepts a backslash followed by a physical script newline
+        // as a newline character inside a regexp operand. Normalize that
+        // script-level spelling to the existing \n regexp escape before the
+        // locale-aware regexp compiler processes it.
+        source += "\\n";
+        cursor += 2;
+        continue;
+      }
+
+      if (!inBracketExpression && escaped === delimiter) {
+        // GNU sed removes the regexp delimiter's escape marker outside a
+        // bracket expression before compiling the regexp. Inside a bracket
+        // expression the same backslash is regexp data and must be retained.
+        source += delimiter;
+        cursor += 2;
+        continue;
+      }
+
+      source += `${character}${escaped}`;
+      if (inBracketExpression && !bracketCanClose) bracketCanClose = true;
+      cursor += 2;
+      continue;
+    }
+
+    source += character;
+    if (!inBracketExpression && character === "[") {
+      inBracketExpression = true;
+      bracketCanClose = false;
+      bracketMayConsumeNegation = true;
+    } else if (inBracketExpression) {
+      if (character === "]") {
+        if (bracketCanClose) {
+          inBracketExpression = false;
+          bracketMayConsumeNegation = false;
+        } else {
+          // A closing bracket is literal as the first bracket member, even
+          // after the optional leading negation marker.
+          bracketCanClose = true;
+          bracketMayConsumeNegation = false;
+        }
+      } else if (character === "^" && bracketMayConsumeNegation) {
+        bracketMayConsumeNegation = false;
+      } else if (!bracketCanClose) {
+        bracketCanClose = true;
+        bracketMayConsumeNegation = false;
+      }
+    }
+    cursor += 1;
+  }
+
+  return { ok: false, message: unterminatedMessage };
+}
+
 function parseRegexLiteral({
   script,
   index,
@@ -581,76 +936,79 @@ function parseRegexLiteral({
 }):
   | { ok: true; regex: RegExp; nextIndex: number }
   | { ok: false; message: string } {
-  const delimiter = script[index];
-  if (delimiter !== "/") {
+  const first = script[index];
+  const alternateDelimiter = first === "\\" ? script[index + 1] : undefined;
+  const delimiter = first === "/" ? first : alternateDelimiter;
+  if (delimiter === undefined) {
     return {
       ok: false,
       message: `invalid regex address near '${script.slice(index)}'`,
     };
   }
-
-  let cursor = index + 1;
-  let pattern = "";
-  let escaped = false;
-  while (cursor < script.length) {
-    const char = script[cursor];
-    if (char === undefined) break;
-
-    if (!escaped && char === delimiter) {
-      try {
-        let nextIndex = cursor + 1;
-        let ignoreCase = false;
-        let multiline = false;
-        while (nextIndex < script.length) {
-          const modifier = script[nextIndex];
-          if (modifier === "I") {
-            ignoreCase = true;
-            nextIndex += 1;
-            continue;
-          }
-          if (modifier === "M") {
-            multiline = true;
-            nextIndex += 1;
-            continue;
-          }
-          break;
-        }
-        if (pattern.length === 0 && (ignoreCase || multiline)) {
-          return {
-            ok: false,
-            message: "cannot specify modifiers on empty regexp",
-          };
-        }
-        const regex = resolveSedRegex({
-          source: pattern,
-          state,
-          global: false,
-        });
-        return {
-          ok: true,
-          regex: applySedRegexModifiers({
-            regex,
-            ignoreCase,
-            multiline,
-            state,
-          }),
-          nextIndex,
-        };
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          ok: false,
-          message: `invalid regular expression '${pattern}': ${message}`,
-        };
-      }
-    }
-
-    pattern += char;
-    escaped = !escaped && char === "\\";
-    cursor += 1;
+  if (!isSingleByteSedDelimiter({ delimiter })) {
+    return {
+      ok: false,
+      message: "delimiter character is not a single-byte character",
+    };
+  }
+  if (delimiter === "\n") {
+    return { ok: false, message: "unterminated regex address" };
   }
 
-  return { ok: false, message: "unterminated regex address" };
+  const operand = readSedRegexOperand({
+    script,
+    index: first === "/" ? index + 1 : index + 2,
+    delimiter,
+    unterminatedMessage: "unterminated regex address",
+  });
+  if (!operand.ok) return operand;
+
+  try {
+    let nextIndex = operand.nextIndex;
+    let ignoreCase = false;
+    let multiline = false;
+    while (nextIndex < script.length) {
+      const modifier = script[nextIndex];
+      if (modifier === "I") {
+        ignoreCase = true;
+        nextIndex += 1;
+        continue;
+      }
+      if (modifier === "M") {
+        multiline = true;
+        nextIndex += 1;
+        continue;
+      }
+      break;
+    }
+    if (operand.source.length === 0 && (ignoreCase || multiline)) {
+      return {
+        ok: false,
+        message: "cannot specify modifiers on empty regexp",
+      };
+    }
+    const regex = resolveSedRegex({
+      source: operand.source,
+      state,
+      global: false,
+    });
+    return {
+      ok: true,
+      regex: applySedRegexModifiers({
+        regex,
+        ignoreCase,
+        multiline,
+        state,
+      }),
+      nextIndex,
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      message: `invalid regular expression '${operand.source}': ${message}`,
+    };
+  }
 }
 
 function parseAddress({
@@ -718,7 +1076,7 @@ function parseAddress({
     };
   }
 
-  if (script[index] === "/") {
+  if (script[index] === "/" || script[index] === "\\") {
     const parsed = parseRegexLiteral({ script, index, state });
     if (!parsed.ok) return parsed;
     return {
@@ -733,6 +1091,10 @@ function parseAddress({
     address: undefined,
     nextIndex: index,
   };
+}
+
+function isSingleByteSedDelimiter({ delimiter }: { delimiter: string }): boolean {
+  return encodeCommandDataText({ text: delimiter }).byteLength === 1;
 }
 
 function parseSubstituteCommand({
@@ -756,35 +1118,34 @@ function parseSubstituteCommand({
   if (delimiter === undefined) {
     return { ok: false, message: "unterminated substitute command" };
   }
+  if (!isSingleByteSedDelimiter({ delimiter })) {
+    return {
+      ok: false,
+      message: "delimiter character is not a single-byte character",
+    };
+  }
 
-  let cursor = index + 2;
-  let pattern = "";
+  const patternOperand = readSedRegexOperand({
+    script,
+    index: index + 2,
+    delimiter,
+    unterminatedMessage: "unterminated substitute command",
+  });
+  if (!patternOperand.ok) return patternOperand;
+
+  let cursor = patternOperand.nextIndex;
+  const pattern = patternOperand.source;
   let replacement = "";
   let escaped = false;
-  let patternTerminated = false;
-
-  while (cursor < script.length) {
-    const char = script[cursor];
-    if (char === undefined) break;
-    if (!escaped && char === delimiter) {
-      patternTerminated = true;
-      cursor += 1;
-      break;
-    }
-    pattern += char;
-    escaped = !escaped && char === "\\";
-    cursor += 1;
-  }
-
-  if (!patternTerminated) {
-    return { ok: false, message: "unterminated substitute command" };
-  }
 
   escaped = false;
   let replacementTerminated = false;
   while (cursor < script.length) {
     const char = script[cursor];
     if (char === undefined) break;
+    if (!escaped && char === "\n") {
+      return { ok: false, message: "unterminated substitute command" };
+    }
     if (!escaped && char === delimiter) {
       replacementTerminated = true;
       cursor += 1;
@@ -803,6 +1164,7 @@ function parseSubstituteCommand({
   let sawGlobal = false;
   let occurrence = 1;
   let print = false;
+  let sawPrint = false;
   let ignoreCase = false;
   let multiline = false;
   let writePath: string | undefined;
@@ -820,7 +1182,11 @@ function parseSubstituteCommand({
       continue;
     }
     if (char === "p") {
+      if (sawPrint) {
+        return { ok: false, message: "multiple 'p' options to 's' command" };
+      }
       print = true;
+      sawPrint = true;
       cursor += 1;
       continue;
     }
@@ -859,6 +1225,10 @@ function parseSubstituteCommand({
       continue;
     }
     break;
+  }
+
+  if (script[cursor] === "\r" && script[cursor + 1] === "\n") {
+    cursor += 1;
   }
 
   if (pattern.length === 0 && (ignoreCase || multiline)) {
@@ -925,6 +1295,12 @@ function parseDelimitedSedText({
   if (delimiter === undefined) {
     return { ok: false, message: `unterminated ${label} command` };
   }
+  if (!isSingleByteSedDelimiter({ delimiter })) {
+    return {
+      ok: false,
+      message: "delimiter character is not a single-byte character",
+    };
+  }
 
   let cursor = index + 1;
   let text = "";
@@ -963,58 +1339,27 @@ function decodeSedTranslateText({
       continue;
     }
 
-    const escaped = source[index + 1]!;
-    const decoded = decodeSedSingleCharacterEscape({ escaped });
+    const decoded = decodeSedExtendedEscape({
+      source,
+      backslashIndex: index,
+    });
     if (decoded !== undefined) {
-      result += decoded;
+      result += decoded.value;
+      index = decoded.lastIndex;
+      continue;
+    }
+
+    const escaped = source[index + 1]!;
+    if (escaped === "c") {
+      // GNU sed treats a trailing \c in a y operand as an empty escape.
+      // A following character would have been consumed by the extended
+      // escape decoder above.
       index += 1;
       continue;
     }
-
-    if (escaped === "c") {
-      const controlled = source[index + 2];
-      if (controlled === undefined) {
-        result += escaped;
-        index += 1;
-        continue;
-      }
-      const codePoint = controlled.codePointAt(0);
-      if (codePoint === undefined) {
-        result += escaped;
-        index += 1;
-        continue;
-      }
-      result += String.fromCharCode(codePoint & 0x1f);
-      index += 2;
-      continue;
-    }
-
-    const numericEscape = (() => {
-      switch (escaped) {
-      case "x":
-        return { radix: 16, pattern: /^[0-9A-Fa-f]{1,2}/u };
-      case "o":
-        return { radix: 8, pattern: /^[0-7]{1,3}/u };
-      case "d":
-        return { radix: 10, pattern: /^\d{1,3}/u };
-      default:
-        return undefined;
-      }
-    })();
-    if (numericEscape !== undefined) {
-      const match = numericEscape.pattern.exec(source.slice(index + 2));
-      if (match !== null) {
-        result += String.fromCharCode(
-          Number.parseInt(match[0], numericEscape.radix) & 0xff,
-        );
-        index += 1 + match[0].length;
-        continue;
-      }
-    }
-
     // GNU sed removes the escape marker for the delimiter, a literal
     // backslash, and otherwise-unknown transliteration escapes alike.
-    // Unlike regexp parsing, \\b therefore means a literal "b" here.
+    // Unlike regexp parsing, \b therefore means a literal "b" here.
     result += escaped === delimiter ? delimiter : escaped;
     index += 1;
   }
@@ -1074,13 +1419,13 @@ function parseTranslateCommand({
   if (delimiter === undefined) {
     return { ok: false, message: "unterminated translate command" };
   }
-  const decodedSource = decodeSedTranslateText({
-    source: source.text,
-    delimiter,
+  const decodedSource = toSedLocaleText({
+    text: decodeSedTranslateText({ source: source.text, delimiter }),
+    characterLocaleMode,
   });
-  const decodedTarget = decodeSedTranslateText({
-    source: target.text,
-    delimiter,
+  const decodedTarget = toSedLocaleText({
+    text: decodeSedTranslateText({ source: target.text, delimiter }),
+    characterLocaleMode,
   });
 
   if (!haveEqualCodePointLength({ left: decodedSource, right: decodedTarget })) {
@@ -1123,6 +1468,7 @@ function parseTextCommand({
   address,
   rangeEnd,
   negated,
+  characterLocaleMode,
 }: {
   script: string;
   index: number;
@@ -1130,56 +1476,76 @@ function parseTextCommand({
   address: SedAddress | undefined;
   rangeEnd: SedAddress | undefined;
   negated: boolean;
+  characterLocaleMode: WeshCharacterLocaleMode;
 }):
   | { ok: true; command: SedCommand; nextIndex: number }
   | { ok: false; message: string } {
   let cursor = index + 1;
-  if (script[cursor] === "\\") {
+  const hasExplicitTextIntroducer = script[cursor] === "\\";
+  if (hasExplicitTextIntroducer) {
     cursor += 1;
     if (script[cursor] === "\n") {
       cursor += 1;
+    } else if (script[cursor] === undefined) {
+      return {
+        ok: true,
+        command: { kind: label, address, rangeEnd, negated, text: undefined },
+        nextIndex: cursor,
+      };
+    }
+  } else {
+    while (script[cursor] === " " || script[cursor] === "\t") cursor += 1;
+    if (script[cursor] === undefined) {
+      return { ok: false, message: `expected \\ after '${label[0]}' command` };
     }
   }
 
   let text = "";
   while (cursor < script.length) {
     const char = script[cursor];
-    if (char === "\\" && script[cursor + 1] === "\n") {
-      text += "\n";
-      cursor += 2;
+    if (char === undefined || char === "\n") break;
+    if (char !== "\\") {
+      text += char;
+      cursor += 1;
       continue;
     }
-    if (char === undefined || char === "\n") {
+
+    const escaped = script[cursor + 1];
+    if (escaped === undefined) {
+      cursor += 1;
       break;
     }
-    text += char;
-    cursor += 1;
+    if (escaped === "\n") {
+      cursor += 2;
+      if (text.length > 0 || cursor < script.length) text += "\n";
+      continue;
+    }
+
+    const decoded = decodeSedExtendedEscape({
+      source: script,
+      backslashIndex: cursor,
+    });
+    if (decoded !== undefined) {
+      text += decoded.value;
+      cursor = decoded.lastIndex + 1;
+      continue;
+    }
+
+    text += escaped;
+    cursor += 2;
   }
 
-  switch (label) {
-  case "append":
-    return {
-      ok: true,
-      command: { kind: "append", address, rangeEnd, negated, text },
-      nextIndex: cursor,
-    };
-  case "insert":
-    return {
-      ok: true,
-      command: { kind: "insert", address, rangeEnd, negated, text },
-      nextIndex: cursor,
-    };
-  case "change":
-    return {
-      ok: true,
-      command: { kind: "change", address, rangeEnd, negated, text },
-      nextIndex: cursor,
-    };
-  default: {
-    const _ex: never = label;
-    throw new Error(`Unhandled sed text command: ${_ex}`);
-  }
-  }
+  return {
+    ok: true,
+    command: {
+      kind: label,
+      address,
+      rangeEnd,
+      negated,
+      text: toSedLocaleText({ text, characterLocaleMode }),
+    },
+    nextIndex: cursor,
+  };
 }
 
 function skipSeparators({
@@ -1433,6 +1799,27 @@ function validateSedLabels({
   return { ok: true };
 }
 
+function validateSedCommandBoundary({
+  script,
+  index,
+}: {
+  script: string;
+  index: number;
+}): { ok: true; nextIndex: number } | { ok: false; message: string } {
+  let cursor = index;
+  while (script[cursor] === " " || script[cursor] === "\t") cursor += 1;
+  const trailing = script[cursor];
+  if (
+    trailing === undefined
+    || trailing === ";"
+    || trailing === "\n"
+    || trailing === "}"
+  ) {
+    return { ok: true, nextIndex: cursor };
+  }
+  return { ok: false, message: "extra characters after command" };
+}
+
 function parseSedScript({
   script,
   state,
@@ -1506,6 +1893,7 @@ function parseSedScript({
     const commandChar = script[index];
     if (commandChar === undefined) break;
 
+    let requiresCommandBoundary = true;
     switch (commandChar) {
     case "s": {
       const parsed = parseSubstituteCommand({
@@ -1732,6 +2120,7 @@ function parseSedScript({
       });
       groupStartIndices.push(startIndex);
       index += 1;
+      requiresCommandBoundary = false;
       break;
     }
     case "}": {
@@ -1817,6 +2206,7 @@ function parseSedScript({
         address,
         rangeEnd,
         negated,
+        characterLocaleMode: state.characterLocaleMode,
       });
       if (!parsed.ok) return parsed;
       commands.push(parsed.command);
@@ -1831,6 +2221,7 @@ function parseSedScript({
         address,
         rangeEnd,
         negated,
+        characterLocaleMode: state.characterLocaleMode,
       });
       if (!parsed.ok) return parsed;
       commands.push(parsed.command);
@@ -1845,6 +2236,7 @@ function parseSedScript({
         address,
         rangeEnd,
         negated,
+        characterLocaleMode: state.characterLocaleMode,
       });
       if (!parsed.ok) return parsed;
       commands.push(parsed.command);
@@ -1856,6 +2248,12 @@ function parseSedScript({
         ok: false,
         message: `unsupported sed command '${commandChar}'`,
       };
+    }
+
+    if (requiresCommandBoundary) {
+      const boundary = validateSedCommandBoundary({ script, index });
+      if (!boundary.ok) return boundary;
+      index = boundary.nextIndex;
     }
   }
 
@@ -2132,25 +2530,31 @@ async function* readTextRecords({
   stream,
   sourceName,
   delimiterByte,
+  characterLocaleMode,
 }: {
   stream: ReadableStream<Uint8Array>;
   sourceName: string;
   delimiterByte: number;
+  characterLocaleMode: WeshCharacterLocaleMode;
 }): AsyncGenerator<SedTextLine> {
   for await (const record of iterateByteRecordEntries({
     chunks: iterateReadableStreamChunks({ stream }),
     delimiterByte,
   })) {
     yield {
-      line: decodeCommandDataBytes({ bytes: record.bytes }),
+      line: decodeSedDataBytes({
+        bytes: record.bytes,
+        characterLocaleMode,
+      }),
       hadNewline: record.termination === "delimiter",
-      sourceName,
+      sourceName: toSedLocaleText({ text: sourceName, characterLocaleMode }),
     };
   }
 }
 
 interface SedOutputWriter {
   write({ output }: { output: SedOutput }): Promise<void>;
+  writeAppendText({ text }: { text: string }): Promise<void>;
   writeReadFile({
     lines,
     terminatePendingOutputWhenEmpty,
@@ -2171,10 +2575,12 @@ function renderSedList({
   text,
   width,
   continuationSeparator,
+  characterLocaleMode,
 }: {
   text: string;
   width: number | undefined;
   continuationSeparator: string;
+  characterLocaleMode: WeshCharacterLocaleMode;
 }): string {
   const maximumWidth = width ?? 70;
   const contentWidth = Math.max(0, maximumWidth - 1);
@@ -2229,10 +2635,23 @@ function renderSedList({
       appendToken({ token });
       continue;
     }
-    for (const byte of encodeCommandDataText({ text: character })) {
+    switch (characterLocaleMode) {
+    case "ascii":
       appendToken({
-        token: `\\${byte.toString(8).padStart(3, "0")}`,
+        token: `\\${character.charCodeAt(0).toString(8).padStart(3, "0")}`,
       });
+      break;
+    case "unicode":
+      for (const byte of encodeCommandDataText({ text: character })) {
+        appendToken({
+          token: `\\${byte.toString(8).padStart(3, "0")}`,
+        });
+      }
+      break;
+    default: {
+      const _ex: never = characterLocaleMode;
+      throw new Error(`Unhandled sed character locale mode: ${_ex}`);
+    }
     }
   }
   output += "$";
@@ -2243,34 +2662,57 @@ function renderSedList({
 function createSedOutputWriter({
   writer,
   recordTerminator,
+  characterLocaleMode,
 }: {
   writer: ReturnType<typeof createBufferedCommandDataWriter>;
   recordTerminator: string;
+  characterLocaleMode: WeshCharacterLocaleMode;
 }): SedOutputWriter {
   let previousOutputMissingNewline = false;
   return {
     write: async ({ output }) => {
       if (previousOutputMissingNewline) {
-        await writer.write({ text: recordTerminator });
+        await writer.write({
+          text: fromSedLocaleText({ text: recordTerminator, characterLocaleMode }),
+        });
       }
       await writer.write({
-        text: output.hadNewline
-          ? `${output.text}${recordTerminator}`
-          : output.text,
+        text: fromSedLocaleText({
+          text: output.hadNewline
+            ? `${output.text}${recordTerminator}`
+            : output.text,
+          characterLocaleMode,
+        }),
       });
       previousOutputMissingNewline = !output.hadNewline;
+    },
+    writeAppendText: async ({ text }) => {
+      if (previousOutputMissingNewline) {
+        await writer.write({
+          text: fromSedLocaleText({ text: recordTerminator, characterLocaleMode }),
+        });
+      }
+      await writer.write({
+        text: fromSedLocaleText({ text: `${text}\n`, characterLocaleMode }),
+      });
+      previousOutputMissingNewline = false;
     },
     writeReadFile: async ({ lines, terminatePendingOutputWhenEmpty }) => {
       let wroteLine = false;
       if (lines !== undefined) {
         for await (const line of lines) {
           if (!wroteLine && previousOutputMissingNewline) {
-            await writer.write({ text: recordTerminator });
+            await writer.write({
+              text: fromSedLocaleText({ text: recordTerminator, characterLocaleMode }),
+            });
           }
           await writer.write({
-            text: line.hadNewline
-              ? `${line.line}${recordTerminator}`
-              : line.line,
+            text: fromSedLocaleText({
+              text: line.hadNewline
+                ? `${line.line}${recordTerminator}`
+                : line.line,
+              characterLocaleMode,
+            }),
           });
           wroteLine = true;
         }
@@ -2311,7 +2753,7 @@ function resolveSedCommandPath({
   context: WeshCommandContext;
   path: string;
 }): string {
-  return path.startsWith("/") ? path : `${context.cwd}/${path}`;
+  return normalizePath({ cwd: context.cwd, path });
 }
 
 function createBufferedEfficientSedWriter({
@@ -2441,10 +2883,12 @@ async function createSedWriteFileManager({
   context,
   commands,
   recordTerminator,
+  characterLocaleMode,
 }: {
   context: WeshCommandContext;
   commands: readonly SedCommand[];
   recordTerminator: string;
+  characterLocaleMode: WeshCharacterLocaleMode;
 }): Promise<SedWriteFileManager> {
   const targets = new Map<string, SedTextFileTarget>();
   try {
@@ -2489,9 +2933,12 @@ async function createSedWriteFileManager({
       if (target === undefined)
         throw new Error(`sed: output file was not initialized: ${path}`);
       await target.write({
-        text: output.hadNewline
-          ? `${output.text}${recordTerminator}`
-          : output.text,
+        text: fromSedLocaleText({
+          text: output.hadNewline
+            ? `${output.text}${recordTerminator}`
+            : output.text,
+          characterLocaleMode,
+        }),
       });
     },
     async close() {
@@ -2542,9 +2989,11 @@ interface SedReadFileManager {
 function createSedReadFileManager({
   context,
   delimiterByte,
+  characterLocaleMode,
 }: {
   context: WeshCommandContext;
   delimiterByte: number;
+  characterLocaleMode: WeshCharacterLocaleMode;
 }): SedReadFileManager {
   const lineIterators = new Map<
     string,
@@ -2564,6 +3013,7 @@ function createSedReadFileManager({
         }),
         sourceName: path,
         delimiterByte,
+        characterLocaleMode,
       });
     } catch {
       return undefined;
@@ -2631,6 +3081,7 @@ async function processSedLines({
   writer,
   writeFiles,
   delimiterByte,
+  characterLocaleMode,
 }: {
   context: WeshCommandContext;
   lines: AsyncIterable<SedTextLine>;
@@ -2639,12 +3090,17 @@ async function processSedLines({
   writer: SedOutputWriter;
   writeFiles: SedWriteFileManager;
   delimiterByte: number;
+  characterLocaleMode: WeshCharacterLocaleMode;
 }): Promise<number | undefined> {
   const runtimeCommands = createSedRuntimeCommands({ commands });
-  const readFiles = createSedReadFileManager({ context, delimiterByte });
+  const readFiles = createSedReadFileManager({
+    context,
+    delimiterByte,
+    characterLocaleMode,
+  });
   const executionState: SedExecutionState = {
     holdSpace: { text: "", hadNewline: true },
-    characterLocaleMode: resolveCharacterLocaleMode({ env: context.env }),
+    characterLocaleMode,
   };
   const iterator = lines[Symbol.asyncIterator]();
   let currentResult: IteratorResult<SedTextLine>;
@@ -2700,6 +3156,9 @@ async function processSedLines({
         case "output":
           await writer.write({ output: action.output });
           break;
+        case "appendText":
+          await writer.writeAppendText({ text: action.text });
+          break;
         case "readFile":
           await readFiles.write({
             path: action.path,
@@ -2751,6 +3210,7 @@ async function processSedStream({
   writer,
   writeFiles,
   delimiterByte,
+  characterLocaleMode,
 }: {
   context: WeshCommandContext;
   stream: ReadableStream<Uint8Array>;
@@ -2760,15 +3220,22 @@ async function processSedStream({
   writer: SedOutputWriter;
   writeFiles: SedWriteFileManager;
   delimiterByte: number;
+  characterLocaleMode: WeshCharacterLocaleMode;
 }): Promise<number | undefined> {
   return await processSedLines({
     context,
-    lines: readTextRecords({ stream, sourceName, delimiterByte }),
+    lines: readTextRecords({
+      stream,
+      sourceName,
+      delimiterByte,
+      characterLocaleMode,
+    }),
     commands,
     quiet,
     writer,
     writeFiles,
     delimiterByte,
+    characterLocaleMode,
   });
 }
 
@@ -2778,18 +3245,25 @@ async function* readSedFiles({
   resolveFile,
   onError,
   delimiterByte,
+  characterLocaleMode,
 }: {
   context: WeshCommandContext;
   files: readonly string[];
   resolveFile?: ({ file }: { file: string }) => Promise<string>;
   onError: ({ file, error }: { file: string; error: unknown }) => Promise<boolean>;
   delimiterByte: number;
+  characterLocaleMode: WeshCharacterLocaleMode;
 }): AsyncGenerator<SedTextLine> {
   for (const file of files) {
     try {
       const inputFile = resolveFile === undefined ? file : await resolveFile({ file });
       const stream = await openSedInputStream({ context, file: inputFile });
-      yield* readTextRecords({ stream, sourceName: file, delimiterByte });
+      yield* readTextRecords({
+        stream,
+        sourceName: file,
+        delimiterByte,
+        characterLocaleMode,
+      });
     } catch (error: unknown) {
       const shouldContinue = await onError({ file, error });
       if (!shouldContinue) return;
@@ -3132,13 +3606,21 @@ function applySedReplacement({
       continue;
     }
     if (character !== "\\") {
-      append({ value: character });
+      const codePoint = replacement.codePointAt(index);
+      const literal = codePoint === undefined ? character : String.fromCodePoint(codePoint);
+      append({ value: toSedLocaleText({ text: literal, characterLocaleMode }) });
+      if (literal.length === 2) index += 1;
       continue;
     }
 
     const next = replacement[index + 1];
     if (next === undefined) {
       append({ value: "\\" });
+      continue;
+    }
+    if (next === "0") {
+      append({ value: match });
+      index += 1;
       continue;
     }
     if (/^[1-9]$/.test(next)) {
@@ -3148,6 +3630,26 @@ function applySedReplacement({
     }
     if (next === "&" || next === "\\") {
       append({ value: next });
+      index += 1;
+      continue;
+    }
+    const decoded = decodeSedExtendedEscape({
+      source: replacement,
+      backslashIndex: index,
+    });
+    if (decoded !== undefined) {
+      append({
+        value: toSedLocaleText({
+          text: decoded.value,
+          characterLocaleMode,
+        }),
+      });
+      index = decoded.lastIndex;
+      continue;
+    }
+    if (next === "c") {
+      // GNU sed preserves the backslash for an incomplete replacement \c.
+      append({ value: "\\" });
       index += 1;
       continue;
     }
@@ -3198,12 +3700,59 @@ function substituteSedPattern({
     regex.source,
     regex.flags.includes("g") ? regex.flags : `${regex.flags}g`,
   );
+  const interiorByteEmptyMatch = (() => {
+    if (characterLocaleMode !== "unicode" || regex.source.includes("\\p{")) return undefined;
+    const result = findPosixLeftmostLongestMatch({
+      regex: searchRegex,
+      source: "!!",
+      startIndex: 1,
+    });
+    return result?.index === 1 && result.text.length === 0 ? result : undefined;
+  })();
   let cursor = 0;
   let searchIndex = 0;
   let previousNonEmptyMatchEnd = -1;
   let text = "";
   let matchNumber = 0;
   let replacedAny = false;
+
+  const appendReplacement = ({ captures }: { captures: readonly (string | undefined)[] }): boolean => {
+    matchNumber += 1;
+    const shouldReplace =
+      matchNumber === occurrence ||
+      (replaceFollowing && matchNumber > occurrence);
+    if (!shouldReplace) return false;
+    text += applySedReplacement({
+      replacement,
+      match: "",
+      captures,
+      characterLocaleMode,
+    });
+    replacedAny = true;
+    return true;
+  };
+
+  const consumeAfterEmptyMatch = ({ start }: { start: number }): { nextIndex: number; completed: boolean } => {
+    const codePoint = source.codePointAt(start);
+    const nextIndex = start + (codePoint !== undefined && codePoint > 0xffff ? 2 : 1);
+    const bytes = encodeCommandDataText({ text: source.slice(start, nextIndex) });
+    if (bytes.byteLength <= 1 || interiorByteEmptyMatch === undefined) {
+      text += source.slice(start, nextIndex);
+      return { nextIndex, completed: false };
+    }
+
+    text += decodeCommandDataBytes({ bytes: bytes.subarray(0, 1) });
+    for (let byteIndex = 1; byteIndex < bytes.byteLength; byteIndex += 1) {
+      const replaced = appendReplacement({ captures: interiorByteEmptyMatch.captures });
+      if (replaced && !replaceFollowing) {
+        text += decodeCommandDataBytes({ bytes: bytes.subarray(byteIndex) });
+        text += source.slice(nextIndex);
+        return { nextIndex: source.length, completed: true };
+      }
+      text += decodeCommandDataBytes({ bytes: bytes.subarray(byteIndex, byteIndex + 1) });
+    }
+    return { nextIndex, completed: false };
+  };
 
   while (searchIndex <= source.length) {
     const result = findPosixLeftmostLongestMatch({
@@ -3218,12 +3767,29 @@ function substituteSedPattern({
     const end = start + match.length;
     if (match.length === 0 && start === previousNonEmptyMatchEnd) {
       if (start >= source.length) break;
-      const codePoint = source.codePointAt(start);
-      const nextIndex =
-        start + (codePoint !== undefined && codePoint > 0xffff ? 2 : 1);
-      text += source.slice(cursor, nextIndex);
-      cursor = nextIndex;
-      searchIndex = nextIndex;
+      const consumed = consumeAfterEmptyMatch({ start });
+      if (consumed.completed) return { text, matched: true };
+      cursor = consumed.nextIndex;
+      searchIndex = consumed.nextIndex;
+      previousNonEmptyMatchEnd = -1;
+      continue;
+    }
+
+    text += source.slice(cursor, start);
+    if (match.length === 0) {
+      const replaced = appendReplacement({ captures: result.captures });
+      if (replaced && !replaceFollowing) {
+        text += source.slice(start);
+        return { text, matched: true };
+      }
+      if (start >= source.length) {
+        cursor = start;
+        break;
+      }
+      const consumed = consumeAfterEmptyMatch({ start });
+      if (consumed.completed) return { text, matched: true };
+      cursor = consumed.nextIndex;
+      searchIndex = consumed.nextIndex;
       previousNonEmptyMatchEnd = -1;
       continue;
     }
@@ -3232,8 +3798,6 @@ function substituteSedPattern({
     const shouldReplace =
       matchNumber === occurrence ||
       (replaceFollowing && matchNumber > occurrence);
-
-    text += source.slice(cursor, start);
     text += shouldReplace
       ? applySedReplacement({
         replacement,
@@ -3243,23 +3807,9 @@ function substituteSedPattern({
       })
       : match;
     replacedAny ||= shouldReplace;
-
-    if (match.length > 0) {
-      cursor = end;
-      searchIndex = end;
-      previousNonEmptyMatchEnd = end;
-    } else if (start >= source.length) {
-      cursor = start;
-      break;
-    } else {
-      const codePoint = source.codePointAt(start);
-      const nextIndex =
-        start + (codePoint !== undefined && codePoint > 0xffff ? 2 : 1);
-      text += source.slice(start, nextIndex);
-      cursor = nextIndex;
-      searchIndex = nextIndex;
-      previousNonEmptyMatchEnd = -1;
-    }
+    cursor = end;
+    searchIndex = end;
+    previousNonEmptyMatchEnd = end;
 
     if (replacedAny && !replaceFollowing) {
       text += source.slice(cursor);
@@ -3424,21 +3974,26 @@ async function executeSedLine({
       break;
     }
     case "append":
-      pendingAppends.push({
-        kind: "output",
-        output: { text: runtimeCommand.command.text, hadNewline: true },
-      });
+      if (runtimeCommand.command.text !== undefined) {
+        pendingAppends.push({
+          kind: "appendText",
+          text: runtimeCommand.command.text,
+        });
+      }
       break;
     case "insert":
-      actions.push({
-        kind: "output",
-        output: { text: runtimeCommand.command.text, hadNewline: true },
-      });
+      if (runtimeCommand.command.text !== undefined) {
+        actions.push({
+          kind: "output",
+          output: { text: runtimeCommand.command.text, hadNewline: true },
+        });
+      }
       break;
     case "change":
       if (
-        runtimeCommand.command.rangeEnd === undefined ||
-          !runtimeCommand.inRange
+        runtimeCommand.command.text !== undefined &&
+          (runtimeCommand.command.rangeEnd === undefined ||
+            !runtimeCommand.inRange)
       ) {
         actions.push({
           kind: "output",
@@ -3472,6 +4027,7 @@ async function executeSedLine({
             text: patternSpace.text,
             width: runtimeCommand.command.width,
             continuationSeparator: patternSeparator,
+            characterLocaleMode: executionState.characterLocaleMode,
           }),
           hadNewline: true,
         },
@@ -3918,10 +4474,11 @@ export const sedCommandDefinition: WeshCommandDefinition = {
     }
 
     const nullData = parsed.optionValues.nullData === true;
+    const characterLocaleMode = resolveCharacterLocaleMode({ env: context.env });
     const parseState: SedParseState = {
       syntax:
         parsed.optionValues.extendedRegexp === true ? "extended" : "basic",
-      characterLocaleMode: resolveCharacterLocaleMode({ env: context.env }),
+      characterLocaleMode,
       nullData,
       previousRegex: undefined,
       previousCaptureCount: 0,
@@ -3983,6 +4540,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
     const stdoutWriter = createSedOutputWriter({
       writer: bufferedStdout,
       recordTerminator,
+      characterLocaleMode,
     });
 
     if (files.length === 0) {
@@ -3998,6 +4556,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
         context,
         commands: allCommands,
         recordTerminator,
+        characterLocaleMode,
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -4025,6 +4584,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           writer: stdoutWriter,
           writeFiles,
           delimiterByte,
+          characterLocaleMode,
         });
         return await finish({ exitCode: quitExitCode ?? 0 });
       }
@@ -4037,6 +4597,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
             context,
             files,
             delimiterByte,
+            characterLocaleMode,
             resolveFile: followSymlinks
               ? async ({ file }) =>
                 await resolveSedFollowSymlinkPath({
@@ -4062,6 +4623,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           writer: stdoutWriter,
           writeFiles,
           delimiterByte,
+          characterLocaleMode,
         });
         return await finish({ exitCode: quitExitCode ?? exitCode });
       }
@@ -4085,6 +4647,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
               writer: stdoutWriter,
               writeFiles,
               delimiterByte,
+              characterLocaleMode,
             });
             if (quitExitCode !== undefined) {
               exitCode = quitExitCode;
@@ -4147,6 +4710,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
             const sedTemporaryWriter = createSedOutputWriter({
               writer: temporaryWriter,
               recordTerminator,
+              characterLocaleMode,
             });
             const quitExitCode = await processSedStream({
               context,
@@ -4160,6 +4724,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
               writer: sedTemporaryWriter,
               writeFiles,
               delimiterByte,
+              characterLocaleMode,
             });
             await temporary.handle.close();
 

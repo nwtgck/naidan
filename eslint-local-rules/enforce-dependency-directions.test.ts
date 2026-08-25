@@ -159,6 +159,116 @@ describe('enforce-dependency-directions rule', () => {
     });
   });
 
+  it('allows dependencies within the same Wesh command', async () => {
+    await expectAllowed({
+      code: `import { helper } from '@/features/wesh/commands/git/diff/helper';`,
+      filePath: 'src/features/wesh/commands/git/index.ts',
+    });
+  });
+
+  it('allows Wesh commands to depend on commands/_shared', async () => {
+    await expectAllowed({
+      code: `import { helper } from '@/features/wesh/commands/_shared/helper';`,
+      filePath: 'src/features/wesh/commands/git/index.ts',
+    });
+  });
+
+  it('allows Wesh command tests to import the root command registry', async () => {
+    await expectAllowed({
+      code: `import { commandDefinitions } from '@/features/wesh/commands/index';`,
+      filePath: 'src/features/wesh/commands/git/git.help.test.ts',
+    });
+  });
+
+  it('allows the root command registry to register specific commands', async () => {
+    await expectAllowed({
+      code: `import { gitCommandDefinition } from '@/features/wesh/commands/git';`,
+      filePath: 'src/features/wesh/commands/index.ts',
+    });
+  });
+
+  it('rejects production Wesh commands depending on the root command registry', async () => {
+    const result = await lintText({
+      code: `import { commandDefinitions } from '@/features/wesh/commands/index';`,
+      filePath: 'src/features/wesh/commands/git/help.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshCommandRegistryDependency');
+  });
+
+  it('rejects production Wesh commands depending on the root registry directory barrel', async () => {
+    const result = await lintText({
+      code: `import { commandDefinitions } from '@/features/wesh/commands';`,
+      filePath: 'src/features/wesh/commands/git/help.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshCommandRegistryDependency');
+  });
+
+  it('rejects commands/_shared depending on the root command registry', async () => {
+    const result = await lintText({
+      code: `import { commandDefinitions } from '@/features/wesh/commands/index';`,
+      filePath: 'src/features/wesh/commands/_shared/registry-helper.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshCommandRegistryDependency');
+  });
+
+  it('rejects direct dependencies between sibling Wesh commands', async () => {
+    const result = await lintText({
+      code: `import { helper } from '@/features/wesh/commands/diff/algorithm';`,
+      filePath: 'src/features/wesh/commands/git/diff.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.ruleId).toBe('local-rules/enforce-dependency-directions');
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshCommandDependency');
+  });
+
+  it('rejects sibling Wesh command directory barrel imports', async () => {
+    const result = await lintText({
+      code: `import { diffCommand } from '@/features/wesh/commands/diff';`,
+      filePath: 'src/features/wesh/commands/git/diff.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshCommandDependency');
+  });
+
+  it('rejects relative dependencies between sibling Wesh commands', async () => {
+    const result = await lintText({
+      code: `import type { DiffInput } from '../diff/model';`,
+      filePath: 'src/features/wesh/commands/git/diff.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshCommandDependency');
+  });
+
+  it('rejects sibling Wesh command re-exports', async () => {
+    const result = await lintText({
+      code: `export { helper } from '@/features/wesh/commands/diff/algorithm';`,
+      filePath: 'src/features/wesh/commands/git/index.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshCommandDependency');
+  });
+
+  it('rejects sibling Wesh command dynamic imports', async () => {
+    const result = await lintText({
+      code: `const implementation = import('@/features/wesh/commands/patch/engine');`,
+      filePath: 'src/features/wesh/commands/git/subcommands/apply.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshCommandDependency');
+  });
+
+  it('rejects commands/_shared dependencies on a specific command', async () => {
+    const result = await lintText({
+      code: `import { helper } from '@/features/wesh/commands/git/diff/helper';`,
+      filePath: 'src/features/wesh/commands/_shared/example.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshCommandDependency');
+  });
+
   it('checks relative imports', async () => {
     await expectForbidden({
       code: `import type { Dto } from '../00-storage/00-dto/dto';`,
@@ -281,4 +391,52 @@ import type { Dto } from '@/00-storage/00-dto/dto';`,
       filePath: 'src/01-models/example.ts',
     });
   });
+  it('allows the Git entrypoint to import a subcommand', async () => {
+    await expectAllowed({
+      code: `import { runStatus } from './subcommands/status';`,
+      filePath: 'src/features/wesh/commands/git/index.ts',
+    });
+  });
+
+  it('allows a Git subcommand to import a Git domain module', async () => {
+    await expectAllowed({
+      code: `import { collectStatus } from '../status';`,
+      filePath: 'src/features/wesh/commands/git/subcommands/status.ts',
+    });
+  });
+
+  it('rejects a Git domain module importing a subcommand', async () => {
+    const result = await lintText({
+      code: `import { runStatus } from './subcommands/status';`,
+      filePath: 'src/features/wesh/commands/git/status.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshGitLayerDependency');
+  });
+
+  it('rejects one Git subcommand importing another', async () => {
+    const result = await lintText({
+      code: `import { runCommit } from './commit';`,
+      filePath: 'src/features/wesh/commands/git/subcommands/status.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshGitLayerDependency');
+  });
+
+  it('allows private modules within the same Git subcommand directory', async () => {
+    await expectAllowed({
+      code: `import { writeCombinedDiff } from './combined';`,
+      filePath: 'src/features/wesh/commands/git/subcommands/diff/index.ts',
+    });
+  });
+
+  it('rejects a nested Git subcommand helper importing another subcommand', async () => {
+    const result = await lintText({
+      code: `import { renderGraph } from '../log/graph';`,
+      filePath: 'src/features/wesh/commands/git/subcommands/diff/combined.ts',
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.messageId).toBe('forbiddenWeshGitLayerDependency');
+  });
+
 });

@@ -166,6 +166,24 @@ Example of likely over-abstraction:
 Example of acceptable abstraction:
 - line-oriented text loading reused by several line-processing commands
 
+## Command Dependency Boundaries
+
+Command implementations must not depend directly on sibling command implementations.
+For example, `commands/git/**` must not import from `commands/diff/**` or
+`commands/patch/**`. The dependency-direction lint rule enforces this boundary.
+
+When similar logic exists in multiple commands, decide ownership by change propagation:
+- move logic to `commands/_shared` or a core `wesh` module only when future changes to
+  that logic should intentionally propagate to every consumer
+- keep logic command-local when compatibility or behavior may need to evolve
+  independently, even when that requires deliberate duplication
+- do not move shell state, VFS, cwd, environment, or execution semantics into
+  `commands/_shared`; those belong to core `wesh` modules
+
+A sibling command is not a shared API. If genuinely shared logic is currently owned by
+a command, move the neutral responsibility to the appropriate shared/core layer rather
+than importing the sibling implementation.
+
 ## Import Discipline
 
 Before reporting a task complete:
