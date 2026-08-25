@@ -29,11 +29,17 @@ const executableScriptTypes = new Set([
   'text/x-javascript',
 ]);
 
+function normalizedScriptType({ script }: Readonly<{script: HTMLScriptElement}>): string {
+  return (script.getAttribute('type') ?? '').split(';', 1)[0]?.trim().toLowerCase() ?? '';
+}
+
 function isExecutableScript(script: HTMLScriptElement): boolean {
-  const type = script.getAttribute('type');
-  if (type === null || type.trim() === '') return true;
-  const normalized = type.split(';', 1)[0]?.trim().toLowerCase() ?? '';
-  return executableScriptTypes.has(normalized);
+  const normalized = normalizedScriptType({ script });
+  return normalized === '' || executableScriptTypes.has(normalized);
+}
+
+function isModuleScript({ script }: Readonly<{script: HTMLScriptElement}>): boolean {
+  return normalizedScriptType({ script }) === 'module';
 }
 
 function isPreRuntimeScript(script: HTMLScriptElement): boolean {
@@ -113,7 +119,41 @@ export function resolveFileProtocolStandaloneHtmlReference({
   return decodedPath;
 }
 
-function assertLinkContracts(document: Document, htmlFileName: string): void {
+function isUnconditionalStylesheetLink({ link }: Readonly<{link: HTMLLinkElement}>): boolean {
+  const media = (link.getAttribute('media') ?? '').trim().toLowerCase();
+  const stylesheetType = (link.getAttribute('type') ?? '').split(';', 1)[0]?.trim().toLowerCase() ?? '';
+  return !hasRelToken(link, 'alternate')
+    && !link.hasAttribute('disabled')
+    && !link.hasAttribute('title')
+    && (media === '' || media === 'all')
+    && (stylesheetType === '' || stylesheetType === 'text/css');
+}
+
+type ValidatedStylesheetLink = Readonly<{
+  element: HTMLLinkElement;
+  fileName: string;
+}>;
+
+function assertLinkContracts({
+  document,
+  htmlFileName,
+  stylesheetCrossorigin,
+}: Readonly<{
+  document: Document;
+  htmlFileName: string;
+  stylesheetCrossorigin: 'allowed' | 'forbidden';
+}>): readonly ValidatedStylesheetLink[] {
+  if (document.querySelector('base[href]') !== null) {
+    throw new Error(`[${pluginName}] Standalone HTML must not define base href because generated output URLs are relative to the HTML file.`);
+  }
+  for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[http-equiv]')) {
+    if ((meta.getAttribute('http-equiv') ?? '').trim().toLowerCase() === 'content-security-policy') {
+      throw new Error(`[${pluginName}] Standalone HTML must not define Content-Security-Policy meta because the generated runtime does not model arbitrary CSP policies.`);
+    }
+  }
+
+  const stylesheetLinks: ValidatedStylesheetLink[] = [];
+  const stylesheetFileNames = new Set<string>();
   for (const link of document.querySelectorAll<HTMLLinkElement>('link[rel]')) {
     if (hasRelToken(link, 'modulepreload') || hasRelToken(link, 'preload')) {
       throw new Error(`[${pluginName}] Standalone HTML must not contain preload links: ${link.outerHTML}`);
@@ -121,19 +161,103 @@ function assertLinkContracts(document: Document, htmlFileName: string): void {
     if (!hasRelToken(link, 'stylesheet')) continue;
     const href = link.getAttribute('href');
     if (href === null) throw new Error(`[${pluginName}] Standalone stylesheet link is missing href.`);
-    resolveFileProtocolStandaloneHtmlReference({
+    const stylesheetFileName = resolveFileProtocolStandaloneHtmlReference({
       reference: href,
       htmlFileName,
       attribute: 'stylesheet href',
     });
+    if (stylesheetFileNames.has(stylesheetFileName)) {
+      throw new Error(`[${pluginName}] Standalone HTML links stylesheet output more than once: ${stylesheetFileName}`);
+    }
+    stylesheetFileNames.add(stylesheetFileName);
+    stylesheetLinks.push({ element: link, fileName: stylesheetFileName });
+    if (stylesheetCrossorigin === 'forbidden' && link.hasAttribute('crossorigin')) {
+      throw new Error(`[${pluginName}] Final standalone stylesheet still has crossorigin: ${link.outerHTML}`);
+    }
   }
+  return stylesheetLinks;
+}
+
+export type FileProtocolStandaloneHtmlSourceRange = Readonly<{
+  startOffset: number;
+  endOffset: number;
+}>;
+
+export type FileProtocolStandaloneHtmlApplicationEntry = Readonly<{
+  source: string;
+  startOffset: number;
+  endOffset: number;
+}>;
+
+export type FileProtocolStandaloneHtmlStylesheetReference = FileProtocolStandaloneHtmlSourceRange & Readonly<{
+  fileName: string;
+  unconditional: boolean;
+  inHead: boolean;
+  crossoriginAttributeRange: FileProtocolStandaloneHtmlSourceRange | undefined;
+}>;
+
+function isHtmlSourceRange(value: unknown): value is FileProtocolStandaloneHtmlSourceRange {
+  if (value === null || typeof value !== 'object') return false;
+  return 'startOffset' in value
+    && typeof value.startOffset === 'number'
+    && 'endOffset' in value
+    && typeof value.endOffset === 'number';
+}
+
+function isAttributeLocationMap(
+  value: unknown,
+): value is Readonly<Record<string, FileProtocolStandaloneHtmlSourceRange>> {
+  if (value === null || typeof value !== 'object') return false;
+  return Object.values(value).every(isHtmlSourceRange);
+}
+
+function collectStylesheetReferences({
+  dom,
+  stylesheetLinks,
+}: Readonly<{
+  dom: JSDOM;
+  stylesheetLinks: readonly ValidatedStylesheetLink[];
+}>): readonly FileProtocolStandaloneHtmlStylesheetReference[] {
+  return stylesheetLinks.map(({ element, fileName }) => {
+    const location = dom.nodeLocation(element);
+    if (location === null || location === undefined) {
+      throw new Error(`[${pluginName}] Unable to locate a stylesheet link in source HTML.`);
+    }
+
+    let crossoriginAttributeRange: FileProtocolStandaloneHtmlSourceRange | undefined;
+    if (element.hasAttribute('crossorigin')) {
+      if (!('attrs' in location) || !isAttributeLocationMap(location.attrs)) {
+        throw new Error(`[${pluginName}] Unable to locate stylesheet attributes in source HTML.`);
+      }
+      const crossoriginLocation = location.attrs.crossorigin;
+      if (crossoriginLocation === undefined) {
+        throw new Error(`[${pluginName}] Unable to locate stylesheet crossorigin in source HTML.`);
+      }
+      crossoriginAttributeRange = {
+        startOffset: crossoriginLocation.startOffset,
+        endOffset: crossoriginLocation.endOffset,
+      };
+    }
+
+    return {
+      fileName,
+      unconditional: isUnconditionalStylesheetLink({ link: element }),
+      inHead: element.parentElement?.tagName === 'HEAD',
+      crossoriginAttributeRange,
+      startOffset: location.startOffset,
+      endOffset: location.endOffset,
+    };
+  });
 }
 
 export function assertFileProtocolStandaloneHtmlBeforeRewrite({
   html,
   htmlFileName,
-}: Readonly<{html: string; htmlFileName: string}>): void {
-  const dom = new JSDOM(html);
+}: Readonly<{html: string; htmlFileName: string}>): Readonly<{
+  stylesheetReferences: readonly FileProtocolStandaloneHtmlStylesheetReference[];
+  applicationEntry: FileProtocolStandaloneHtmlApplicationEntry;
+}> {
+  const dom = new JSDOM(html, { includeNodeLocations: true });
   const document = dom.window.document;
   try {
     for (const id of FILE_PROTOCOL_STANDALONE_GENERATED_ELEMENT_IDS) {
@@ -141,8 +265,15 @@ export function assertFileProtocolStandaloneHtmlBeforeRewrite({
         throw new Error(`[${pluginName}] HTML already contains reserved standalone element id ${JSON.stringify(id)}.`);
       }
     }
-    assertLinkContracts(document, htmlFileName);
-
+    const stylesheetLinks = assertLinkContracts({
+      document,
+      htmlFileName,
+      stylesheetCrossorigin: 'allowed',
+    });
+    const stylesheetReferences = collectStylesheetReferences({
+      dom,
+      stylesheetLinks,
+    });
     const executableScripts = Array.from(document.querySelectorAll('script')).filter(isExecutableScript);
     const preRuntimeScripts = executableScripts.filter(isPreRuntimeScript);
     for (const script of preRuntimeScripts) assertValidPreRuntimeScript(script);
@@ -151,9 +282,28 @@ export function assertFileProtocolStandaloneHtmlBeforeRewrite({
       throw new Error(`[${pluginName}] Expected exactly one Vite application entry script; found ${applicationScripts.length}.`);
     }
     const applicationScript = applicationScripts[0];
-    if (applicationScript?.getAttribute('type') !== 'module' || !applicationScript.hasAttribute('src')) {
+    if (applicationScript === undefined || !isModuleScript({ script: applicationScript }) || !applicationScript.hasAttribute('src')) {
       throw new Error(`[${pluginName}] The Vite application entry must be an external module script.`);
     }
+    const source = applicationScript.getAttribute('src');
+    if (source === null) {
+      throw new Error(`[${pluginName}] The Vite application entry must have src.`);
+    }
+    const location = dom.nodeLocation(applicationScript);
+    if (location === null || location === undefined) {
+      throw new Error(`[${pluginName}] Unable to locate the Vite application entry in source HTML.`);
+    }
+    if (!('endTag' in location) || location.endTag === undefined) {
+      throw new Error(`[${pluginName}] Vite application entry must have an explicit closing script tag.`);
+    }
+    return {
+      stylesheetReferences,
+      applicationEntry: {
+        source,
+        startOffset: location.startOffset,
+        endOffset: location.endOffset,
+      },
+    };
   } finally {
     dom.window.close();
   }
@@ -162,11 +312,15 @@ export function assertFileProtocolStandaloneHtmlBeforeRewrite({
 export function assertFileProtocolStandaloneHtmlAfterRewrite({
   html,
   htmlFileName,
-}: Readonly<{html: string; htmlFileName: string}>): void {
+}: Readonly<{html: string; htmlFileName: string}>): readonly string[] {
   const dom = new JSDOM(html);
   const document = dom.window.document;
   try {
-    assertLinkContracts(document, htmlFileName);
+    const stylesheetLinks = assertLinkContracts({
+      document,
+      htmlFileName,
+      stylesheetCrossorigin: 'forbidden',
+    });
     const executableScripts = Array.from(document.querySelectorAll('script')).filter(isExecutableScript);
     const preRuntimeScripts = executableScripts.filter(isPreRuntimeScript);
     for (const script of preRuntimeScripts) assertValidPreRuntimeScript(script);
@@ -192,7 +346,7 @@ export function assertFileProtocolStandaloneHtmlAfterRewrite({
       }
     }
     for (const script of executableScripts) {
-      if (script.getAttribute('type') === 'module') {
+      if (isModuleScript({ script })) {
         throw new Error(`[${pluginName}] Native module script remains in standalone HTML.`);
       }
       if (script.hasAttribute('crossorigin')) {
@@ -207,6 +361,7 @@ export function assertFileProtocolStandaloneHtmlAfterRewrite({
         });
       }
     }
+    return stylesheetLinks.map(({ fileName }) => fileName);
   } finally {
     dom.window.close();
   }

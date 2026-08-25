@@ -16,6 +16,7 @@ import {
   type LicenseDependencyRecord,
 } from './release-license-audit.js';
 import { createStandaloneWorkerDebugBuildReport } from './release-debug-build-report.js';
+import { assertFileProtocolStandaloneHtmlAfterRewrite } from './html-validation.js';
 
 type ReleaseWorkerDefinition = Readonly<{name: string; sourceEntry: string}>;
 
@@ -90,12 +91,6 @@ async function writeJsonAtomically(fileName: string, value: unknown): Promise<vo
   const temporary = `${fileName}.tmp-${process.pid}`;
   await fs.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`);
   await fs.rename(temporary, fileName);
-}
-
-function stylesheetFilesFromHtml(html: string): string[] {
-  return [...html.matchAll(/<link\b[^>]*\brel=["']stylesheet["'][^>]*\bhref=["']([^"']+)["'][^>]*>/giu)]
-    .map(match => match[1].replace(/^\.\//u, ''))
-    .sort();
 }
 
 function sanitizeLicenseRecord(record: LicenseDependencyRecord): SanitizedLicenseRecord {
@@ -222,7 +217,10 @@ export function createFileProtocolStandaloneReleaseValidationPlugin({
 
       const files = await walkFiles(resolvedOutput);
       const indexHtml = await fs.readFile(path.join(resolvedOutput, 'index.html'), 'utf8');
-      const initialStyleFileNames = stylesheetFilesFromHtml(indexHtml);
+      const initialStyleFileNames = assertFileProtocolStandaloneHtmlAfterRewrite({
+        html: indexHtml,
+        htmlFileName: 'index.html',
+      });
       const debugReport = await createStandaloneWorkerDebugBuildReport({
         outputDirectory: resolvedOutput,
         files,

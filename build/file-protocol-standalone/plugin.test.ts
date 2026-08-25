@@ -53,6 +53,40 @@ async function runGenerateBundle(plugin: Plugin, bundle: unknown): Promise<void>
   await hook.call({} as never, {} as never, bundle as never, false);
 }
 
+type WorkerCssModuleInfoFixture = Readonly<{
+  isEntry: boolean;
+  importedIds: string[];
+  dynamicallyImportedIds: string[];
+}>;
+
+async function runWorkerCssGenerateBundle({
+  moduleInfoEntries,
+  bundle,
+  diagnostics,
+  allowWorkerOnlyCssAssets,
+}: Readonly<{
+  moduleInfoEntries: readonly (readonly [string, WorkerCssModuleInfoFixture])[];
+  bundle: unknown;
+  diagnostics: Record<string, unknown> | undefined;
+  allowWorkerOnlyCssAssets: boolean;
+}>): Promise<void> {
+  const workerCssPolicy = findPlugin(
+    createNaidanStandalonePlugin({
+      ...createOptions(),
+      diagnostics,
+      policies: { allowWorkerOnlyCssAssets },
+    }),
+    'naidan-file-protocol-standalone-worker-css-guard',
+  );
+  const hook = workerCssPolicy.generateBundle;
+  if (typeof hook !== 'function') throw new Error('Expected Worker CSS generateBundle hook');
+  const moduleInfo = new Map<string, WorkerCssModuleInfoFixture>(moduleInfoEntries);
+  await hook.call({
+    getModuleIds: () => moduleInfo.keys(),
+    getModuleInfo: (id: string) => moduleInfo.get(id) ?? null,
+  } as never, {} as never, bundle as never, false);
+}
+
 function pluginNames(value: ReturnType<typeof createNaidanStandalonePlugin>): string[] {
   const plugins = value as Plugin[];
   return plugins.map(plugin => plugin.name);
@@ -260,6 +294,141 @@ describe('createNaidanStandalonePlugin', () => {
         modules: { '/tmp/app.ts': {} },
       },
     })).rejects.toThrow('Raw Worker constructors survive tree-shaking');
+  });
+
+
+  it('rejects Worker-only stylesheet side effects before packaging', async () => {
+    await expect(runWorkerCssGenerateBundle({
+      moduleInfoEntries: [
+        ['/tmp/naidan-test-worker.ts', { isEntry: true, importedIds: [], dynamicallyImportedIds: ['/tmp/worker-only.scss'] }],
+        ['/tmp/ui.ts', { isEntry: true, importedIds: [], dynamicallyImportedIds: [] }],
+        ['/tmp/worker-only.scss', { isEntry: false, importedIds: [], dynamicallyImportedIds: [] }],
+      ],
+      bundle: {
+        'assets/worker-only.css': {
+          type: 'asset',
+          fileName: 'assets/worker-only.css',
+          source: '.worker-only {}',
+        },
+      },
+      diagnostics: undefined,
+      allowWorkerOnlyCssAssets: false,
+    })).rejects.toThrow('Worker-only CSS side effects cannot be applied in a Dedicated Worker');
+  });
+
+  it('rejects Worker-only Vue SFC style virtual modules before packaging', async () => {
+    const styleModuleId = '/tmp/WorkerPanel.vue?vue&type=style&index=0&scoped=abc123&lang.css';
+    await expect(runWorkerCssGenerateBundle({
+      moduleInfoEntries: [
+        ['/tmp/naidan-test-worker.ts', { isEntry: true, importedIds: [styleModuleId], dynamicallyImportedIds: [] }],
+        ['/tmp/ui.ts', { isEntry: true, importedIds: [], dynamicallyImportedIds: [] }],
+        [styleModuleId, { isEntry: false, importedIds: [], dynamicallyImportedIds: [] }],
+      ],
+      bundle: {
+        'assets/worker-panel.css': {
+          type: 'asset',
+          fileName: 'assets/worker-panel.css',
+          source: '.worker-panel {}',
+        },
+      },
+      diagnostics: undefined,
+      allowWorkerOnlyCssAssets: false,
+    })).rejects.toThrow('Worker-only CSS side effects cannot be applied in a Dedicated Worker');
+  });
+
+  it('allows a stylesheet shared by the UI and a Worker and records its ownership', async () => {
+    const diagnostics: Record<string, unknown> = {};
+    await expect(runWorkerCssGenerateBundle({
+      moduleInfoEntries: [
+        ['/tmp/naidan-test-worker.ts', { isEntry: true, importedIds: ['/tmp/shared.css'], dynamicallyImportedIds: [] }],
+        ['/tmp/ui.ts', { isEntry: true, importedIds: ['/tmp/shared.css'], dynamicallyImportedIds: [] }],
+        ['/tmp/shared.css', { isEntry: false, importedIds: [], dynamicallyImportedIds: [] }],
+      ],
+      bundle: {
+        'assets/shared.css': { type: 'asset', fileName: 'assets/shared.css', source: '.shared {}' },
+      },
+      diagnostics,
+      allowWorkerOnlyCssAssets: false,
+    })).resolves.toBeUndefined();
+    expect(diagnostics.workerCss).toMatchObject({
+      classificationBasis: 'source-module-graph',
+      workerCss: ['/tmp/shared.css'],
+      uiCss: ['/tmp/shared.css'],
+      workerOnlyCss: [],
+      emittedCssAssets: ['assets/shared.css'],
+    });
+  });
+
+  it('allows UI-only stylesheet side effects and records them without Worker ownership', async () => {
+    const diagnostics: Record<string, unknown> = {};
+    await expect(runWorkerCssGenerateBundle({
+      moduleInfoEntries: [
+        ['/tmp/naidan-test-worker.ts', { isEntry: true, importedIds: [], dynamicallyImportedIds: [] }],
+        ['/tmp/ui.ts', { isEntry: true, importedIds: ['/tmp/ui-only.css'], dynamicallyImportedIds: [] }],
+        ['/tmp/ui-only.css', { isEntry: false, importedIds: [], dynamicallyImportedIds: [] }],
+      ],
+      bundle: {
+        'assets/ui-only.css': { type: 'asset', fileName: 'assets/ui-only.css', source: '.ui-only {}' },
+      },
+      diagnostics,
+      allowWorkerOnlyCssAssets: false,
+    })).resolves.toBeUndefined();
+    expect(diagnostics.workerCss).toMatchObject({
+      workerCss: [],
+      uiCss: ['/tmp/ui-only.css'],
+      workerOnlyCss: [],
+      emittedCssAssets: ['assets/ui-only.css'],
+    });
+  });
+
+  it('honors an explicit Worker-only stylesheet policy override while preserving diagnostics', async () => {
+    const diagnostics: Record<string, unknown> = {};
+    await expect(runWorkerCssGenerateBundle({
+      moduleInfoEntries: [
+        ['/tmp/naidan-test-worker.ts', { isEntry: true, importedIds: ['/tmp/worker-only.css'], dynamicallyImportedIds: [] }],
+        ['/tmp/ui.ts', { isEntry: true, importedIds: [], dynamicallyImportedIds: [] }],
+        ['/tmp/worker-only.css', { isEntry: false, importedIds: [], dynamicallyImportedIds: [] }],
+      ],
+      bundle: {
+        'assets/worker-only.css': { type: 'asset', fileName: 'assets/worker-only.css', source: '.worker-only {}' },
+      },
+      diagnostics,
+      allowWorkerOnlyCssAssets: true,
+    })).resolves.toBeUndefined();
+    expect(diagnostics.workerCss).toMatchObject({
+      workerCss: ['/tmp/worker-only.css'],
+      uiCss: [],
+      workerOnlyCss: ['/tmp/worker-only.css'],
+      emittedCssAssets: ['assets/worker-only.css'],
+    });
+  });
+
+  it('does not misclassify raw, inline, or URL stylesheet imports as Worker CSS side effects', async () => {
+    const diagnostics: Record<string, unknown> = {};
+    const dataImports = [
+      '/tmp/raw.css?raw',
+      '/tmp/inline.scss?inline',
+      '/tmp/url.css?url',
+      '/tmp/CustomElement.vue?vue&type=style&index=0&inline&lang.css',
+    ];
+    await expect(runWorkerCssGenerateBundle({
+      moduleInfoEntries: [
+        ['/tmp/naidan-test-worker.ts', { isEntry: true, importedIds: dataImports, dynamicallyImportedIds: [] }],
+        ['/tmp/ui.ts', { isEntry: true, importedIds: [], dynamicallyImportedIds: [] }],
+        ...dataImports.map((moduleId): readonly [string, WorkerCssModuleInfoFixture] => [
+          moduleId,
+          { isEntry: false, importedIds: [], dynamicallyImportedIds: [] },
+        ]),
+      ],
+      bundle: {},
+      diagnostics,
+      allowWorkerOnlyCssAssets: false,
+    })).resolves.toBeUndefined();
+    expect(diagnostics.workerCss).toMatchObject({
+      workerCss: [],
+      uiCss: [],
+      workerOnlyCss: [],
+    });
   });
 
   it('keeps final-output CommonJS and WebAssembly guards active', async () => {

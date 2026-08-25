@@ -188,12 +188,12 @@ type StandaloneBuildDiagnostics = Record<string, unknown> & {
   lazyCssDependencyMetadataEnabled?: boolean;
   vitePreloadHelperRealmNeutral?: boolean;
   vitePreloadHelperSkipsDomOutsideUiRealm?: boolean;
+  vitePreloadHelperSkipsFileDomPreloads?: boolean;
   vitePreloadHelperOmitsFileCrossorigin?: boolean;
 };
 
 type ImportScriptsAssetRecord = Readonly<{realSourcePath: string; source: string; outputFileName: string}>;
 type WorkerEntryRecord = NormalizedWorkerDefinition & Readonly<{referenceId: string; resolvedVirtualId: string}>;
-type ExternalModuleScript = Readonly<{tag: string; source: string}>;
 
 function isWorkerConstructorKind(value: string): value is WorkerConstructorKind {
   return value === 'Worker' || value === 'SharedWorker';
@@ -1879,19 +1879,6 @@ export function createStandaloneWorker(options = {}) {
   };
 }
 
-function findExternalModuleScripts(html: string, fileName: string): ExternalModuleScript[] {
-  const scripts: ExternalModuleScript[] = [];
-  for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gu)) {
-    const attributes = match[1];
-    if (!/\btype\s*=\s*(["'])module\1/u.test(attributes)) continue;
-    const source = /\bsrc\s*=\s*(["'])([^"']+)\1/u.exec(attributes);
-    if (!source) throw new Error(`Inline module scripts are unsupported in standalone HTML: ${fileName}`);
-    scripts.push({ tag: match[0], source: source[2] });
-  }
-  return scripts;
-}
-
-
 function collectChunkClosure({ chunkByFileName, entryFileNames }: Readonly<{
   chunkByFileName: ReadonlyMap<string, OutputChunk>;
   entryFileNames: readonly string[];
@@ -1911,6 +1898,63 @@ function collectChunkClosure({ chunkByFileName, entryFileNames }: Readonly<{
   return visited;
 }
 
+function collectUiStylesheetFileNamesInEagerOrder({
+  chunkByFileName,
+  entryFileName,
+}: Readonly<{
+  chunkByFileName: ReadonlyMap<string, OutputChunk>;
+  entryFileName: string;
+}>): string[] {
+  const visitedChunks = new Set<string>();
+  const seenCss = new Set<string>();
+  const orderedCss: string[] = [];
+  const pendingDynamicImports: string[] = [];
+
+  const visitStaticClosure = ({ fileName }: Readonly<{fileName: string}>): void => {
+    if (visitedChunks.has(fileName)) return;
+    visitedChunks.add(fileName);
+    const chunk = chunkByFileName.get(fileName);
+    if (chunk === undefined) {
+      throw new Error(`UI chunk graph references a missing emitted chunk: ${fileName}`);
+    }
+
+    // Match Vite's initial HTML CSS cascade: static imports are traversed
+    // depth-first before the importing chunk's own importedCss Set. file://
+    // cannot use Vite's runtime CSS preload for Dynamic Import, so dynamic
+    // branches are appended later in stable discovery order rather than by
+    // output file name. This preserves Vite's meaningful static cascade order
+    // while making the unavoidable eager extension deterministic.
+    for (const importedFileName of chunk.imports) visitStaticClosure({ fileName: importedFileName });
+
+    const importedCss = chunk.viteMetadata?.importedCss;
+    if (importedCss === undefined) {
+      throw new Error(`Missing Vite importedCss metadata for ${fileName}`);
+    }
+    if (!(importedCss instanceof Set)) {
+      throw new Error(`Unexpected Vite importedCss metadata shape for ${fileName}`);
+    }
+    for (const cssFileName of importedCss) {
+      if (typeof cssFileName !== 'string') {
+        throw new Error(`Unexpected Vite importedCss metadata entry for ${fileName}: ${String(cssFileName)}`);
+      }
+      if (!seenCss.has(cssFileName)) {
+        seenCss.add(cssFileName);
+        orderedCss.push(cssFileName);
+      }
+    }
+
+    pendingDynamicImports.push(...chunk.dynamicImports);
+  };
+
+  visitStaticClosure({ fileName: entryFileName });
+  for (let index = 0; index < pendingDynamicImports.length; index += 1) {
+    const dynamicImport = pendingDynamicImports[index];
+    if (dynamicImport !== undefined) visitStaticClosure({ fileName: dynamicImport });
+  }
+
+  return orderedCss;
+}
+
 function localHtmlReferenceToBundleFileName(reference: string, htmlFileName: string): string {
   return resolveFileProtocolStandaloneHtmlReference({
     reference,
@@ -1919,29 +1963,25 @@ function localHtmlReferenceToBundleFileName(reference: string, htmlFileName: str
   });
 }
 
-function bundleFileNameToHtmlReference(fileName: string, htmlFileName: string): string {
+function bundleFileNameToHtmlReference({ fileName, htmlFileName }: Readonly<{
+  fileName: string;
+  htmlFileName: string;
+}>): string {
   const relative = slash(path.posix.relative(path.posix.dirname(htmlFileName), fileName));
-  return relative.startsWith('.') ? relative : `./${relative}`;
+  // Rollup file names are output paths, while href/src values are URLs. Encode each
+  // path segment so a valid asset name containing spaces, %, #, ?, or non-ASCII
+  // characters cannot change URL semantics when written into standalone HTML.
+  const encodedRelative = relative.split('/').map(segment => encodeURIComponent(segment)).join('/');
+  return encodedRelative.startsWith('.') ? encodedRelative : `./${encodedRelative}`;
 }
 
-function findLocalStylesheetReferences(html: string): string[] {
-  const references: string[] = [];
-  for (const match of html.matchAll(/<link\b[^>]*>/giu)) {
-    const tag = match[0];
-    if (!/\brel\s*=\s*(["'])stylesheet\1/iu.test(tag)) continue;
-    const hrefMatch = /\bhref\s*=\s*(["'])([^"']+)\1/iu.exec(tag);
-    if (!hrefMatch) continue;
-    const href = hrefMatch[2];
-    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(href)) continue;
-    references.push(href);
-  }
-  return references;
-}
 
-function isStylesheetSideEffectModuleId(moduleId: string): boolean {
+function isStylesheetSideEffectModuleId({ moduleId }: Readonly<{moduleId: string}>): boolean {
   const [pathname, query = ''] = moduleId.split('?', 2);
-  if (!/\.(?:css|less|sass|scss|styl|stylus|pcss|postcss)$/iu.test(pathname)) return false;
   const queryFlags = new URLSearchParams(query);
+  const directStylesheet = /\.(?:css|less|sass|scss|styl|stylus|pcss|postcss)$/iu.test(pathname);
+  const vueSfcStyle = queryFlags.has('vue') && queryFlags.get('type') === 'style';
+  if (!directStylesheet && !vueSfcStyle) return false;
   return !queryFlags.has('raw') && !queryFlags.has('inline') && !queryFlags.has('url');
 }
 
@@ -1977,8 +2017,8 @@ function createWorkerCssGuardPlugin({ workers, diagnostics, allowWorkerOnlyCssAs
 
       const workerClosure = collectModuleClosure(workerEntryModuleIds);
       const uiClosure = collectModuleClosure(uiEntryModuleIds);
-      const workerCss = [...workerClosure].filter(isStylesheetSideEffectModuleId).sort();
-      const uiCss = [...uiClosure].filter(isStylesheetSideEffectModuleId).sort();
+      const workerCss = [...workerClosure].filter(moduleId => isStylesheetSideEffectModuleId({ moduleId })).sort();
+      const uiCss = [...uiClosure].filter(moduleId => isStylesheetSideEffectModuleId({ moduleId })).sort();
       const uiCssSet = new Set(uiCss);
       const workerOnlyCss = workerCss.filter(moduleId => !uiCssSet.has(moduleId));
       const emittedCssAssets = Object.values(bundle)
@@ -2048,11 +2088,13 @@ function createVitePreloadHelperCompatibilityPlugin({ diagnostics }: Readonly<{d
     enforce: 'post',
     transform(code, id) {
       if (id !== '\0vite/preload-helper.js') return null;
+      const importMetaResolveCall = 'dep = importMetaResolve(dep);';
       if (
         !code.includes('vite:preloadError')
         || !code.includes('window.dispatchEvent')
         || !code.includes('link.crossOrigin = ""')
         || !code.includes('if (__VITE_IS_MODERN__ && deps && deps.length > 0)')
+        || code.split(importMetaResolveCall).length !== 2
       ) {
         throw new Error('Unexpected Vite preload helper shape; review Worker and file:// compatibility before upgrading Vite');
       }
@@ -2061,19 +2103,29 @@ function createVitePreloadHelperCompatibilityPlugin({ diagnostics }: Readonly<{d
         'if (__VITE_IS_MODERN__ && deps && deps.length > 0)',
         'if (__VITE_IS_MODERN__ && typeof document !== "undefined" && deps && deps.length > 0)',
       );
+      // Vite resolves each dependency before it decides whether the dependency is
+      // CSS. SystemJS exposes import.meta.resolve through _context.meta.resolve,
+      // which is asynchronous, so that native-ESM assumption can turn dep into a
+      // Promise before Vite calls endsWith(). For file: output, JavaScript loading
+      // belongs to SystemJS and physical CSS is already linked from the final HTML.
+      // Return before both meta resolution and DOM preload creation for the entire
+      // file-protocol UI runtime instead of emulating Vite's HTTP-oriented preload
+      // machinery.
       transformed = transformed.replace(
-        'link.crossOrigin = "";',
-        'const fileProtocol = new URL(dep, document.baseURI).protocol === "file:"; if (fileProtocol && !isCss) return; if (!fileProtocol) link.crossOrigin = "";',
+        importMetaResolveCall,
+        'const fileProtocol = new URL(document.baseURI).protocol === "file:"; if (fileProtocol) return; dep = importMetaResolve(dep);',
       );
       if (
         transformed.includes('window.dispatchEvent')
         || transformed.includes('if (__VITE_IS_MODERN__ && deps && deps.length > 0)')
-        || !transformed.includes('const fileProtocol = new URL(dep, document.baseURI).protocol === "file:"; if (fileProtocol && !isCss) return; if (!fileProtocol) link.crossOrigin = "";')
+        || !transformed.includes('const fileProtocol = new URL(document.baseURI).protocol === "file:"; if (fileProtocol) return; dep = importMetaResolve(dep);')
+        || transformed.includes('if (fileProtocol && !isCss) return')
       ) {
         throw new Error('Vite preload helper compatibility transform did not replace every expected construct');
       }
       diagnostics.vitePreloadHelperRealmNeutral = true;
       diagnostics.vitePreloadHelperSkipsDomOutsideUiRealm = true;
+      diagnostics.vitePreloadHelperSkipsFileDomPreloads = true;
       diagnostics.vitePreloadHelperOmitsFileCrossorigin = true;
       return { code: transformed, map: null };
     },
@@ -2098,17 +2150,31 @@ function createExternalWasmGuardPlugin({ allowExternalWasmAssets }: Readonly<{al
 }
 
 
-function stripCrossoriginFromLocalStylesheetLinks(html: string): string {
-  return html.replace(/<link\b[^>]*>/giu, (tag: string) => {
-    if (!/\brel\s*=\s*(["'])stylesheet\1/iu.test(tag)) return tag;
-    const hrefMatch = /\bhref\s*=\s*(["'])([^"']+)\1/iu.exec(tag);
-    if (!hrefMatch) return tag;
-    const href = hrefMatch[2];
-    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(href)) return tag;
-    return tag.replace(/\s+crossorigin(?:\s*=\s*(?:["'][^"']*["']|[^\s>]+))?/giu, '');
-  });
+function removeHtmlSourceRanges({
+  html,
+  ranges,
+}: Readonly<{
+  html: string;
+  ranges: readonly Readonly<{startOffset: number; endOffset: number}>[];
+}>): string {
+  const sorted = [...ranges].sort((left, right) => right.startOffset - left.startOffset);
+  let previousStart = html.length;
+  let rewritten = html;
+  for (const range of sorted) {
+    if (
+      !Number.isInteger(range.startOffset)
+      || !Number.isInteger(range.endOffset)
+      || range.startOffset < 0
+      || range.endOffset <= range.startOffset
+      || range.endOffset > previousStart
+    ) {
+      throw new Error('Invalid or overlapping standalone HTML source range');
+    }
+    rewritten = `${rewritten.slice(0, range.startOffset)}${rewritten.slice(range.endOffset)}`;
+    previousStart = range.startOffset;
+  }
+  return rewritten;
 }
-
 function createSystemJsOutputPlugin({
   diagnostics,
   systemRuntimeFileName,
@@ -2160,7 +2226,82 @@ function createSystemJsOutputPlugin({
         throw new Error(`Unexpected SystemJS retry hook file name: ${emittedRetry}`);
       }
 
-      const chunkOutputs = Object.values(bundle).filter(output => output.type === 'chunk');
+      // Split CSS planners can move all meaningful CSS into JavaScript runtime
+      // registrations while Vite still leaves an empty physical CSS placeholder and
+      // importedCss metadata behind. Keeping that placeholder makes the manifest and
+      // final distribution look eager even though there is no stylesheet content.
+      // Prune only empty assets that are stylesheet side effects. An empty .css file
+      // imported through ?url (or another asset URL path) is still observable data and
+      // must remain physically present even though its contents are empty.
+      const chunkOutputs = Object.values(bundle).filter(
+        (output): output is OutputChunk => output.type === 'chunk',
+      );
+      const stylesheetReferencedCss = new Set<string>();
+      for (const output of chunkOutputs) {
+        const importedCss = output.viteMetadata?.importedCss;
+        if (!(importedCss instanceof Set)) continue;
+        for (const fileName of importedCss) {
+          if (typeof fileName === 'string') stylesheetReferencedCss.add(fileName);
+        }
+      }
+
+      const effectFreeEmptyCssFileNames = new Set<string>();
+      for (const output of Object.values(bundle)) {
+        if (
+          output.type !== 'asset'
+          || !/\.css$/iu.test(output.fileName)
+          || !stylesheetReferencedCss.has(output.fileName)
+        ) continue;
+        const source = typeof output.source === 'string'
+          ? output.source
+          : Buffer.from(output.source).toString('utf8');
+        if (source.trim() === '') effectFreeEmptyCssFileNames.add(output.fileName);
+      }
+      if (effectFreeEmptyCssFileNames.size > 0) {
+        // importedAssets only matters when deciding whether an effect-free CSS
+        // placeholder is still observable as data (for example through ?url).
+        // Do not couple ordinary non-empty CSS builds to this Vite-internal shape.
+        const dataReferencedAssets = new Set<string>();
+        for (const output of chunkOutputs) {
+          const importedAssets = output.viteMetadata?.importedAssets;
+          if (importedAssets !== undefined && !(importedAssets instanceof Set)) {
+            throw new Error(`Unexpected Vite importedAssets metadata shape for ${output.fileName}`);
+          }
+          if (!(importedAssets instanceof Set)) continue;
+          for (const fileName of importedAssets) {
+            if (typeof fileName !== 'string') {
+              throw new Error(`Unexpected Vite importedAssets metadata entry for ${output.fileName}: ${String(fileName)}`);
+            }
+            dataReferencedAssets.add(fileName);
+          }
+        }
+        for (const [bundleKey, output] of Object.entries(bundle)) {
+          if (
+            output.type === 'asset'
+            && effectFreeEmptyCssFileNames.has(output.fileName)
+            && !dataReferencedAssets.has(output.fileName)
+          ) delete bundle[bundleKey];
+        }
+        for (const output of Object.values(bundle)) {
+          switch (output.type) {
+          case 'asset':
+            continue;
+          case 'chunk': {
+            const importedCss = output.viteMetadata?.importedCss;
+            if (!(importedCss instanceof Set)) continue;
+            for (const fileName of effectFreeEmptyCssFileNames) importedCss.delete(fileName);
+            break;
+          }
+          default: {
+            const _ex: never = output;
+            throw new Error(`Unhandled Rollup output type: ${((_ex satisfies never) as { readonly type: string }).type}`);
+          }
+          }
+        }
+      }
+
+      const outputs = Object.values(bundle);
+      const outputByFileName = new Map(outputs.map(output => [output.fileName, output]));
       const chunkByFileName = new Map(chunkOutputs.map(output => [output.fileName, output]));
       for (const output of chunkOutputs) {
         const chunkRecord: ChunkDiagnostic = {
@@ -2206,55 +2347,84 @@ function createSystemJsOutputPlugin({
         let html = typeof output.source === 'string'
           ? output.source
           : Buffer.from(output.source).toString('utf8');
-        assertFileProtocolStandaloneHtmlBeforeRewrite({ html, htmlFileName: output.fileName });
-        const moduleScripts = findExternalModuleScripts(html, output.fileName);
-        if (moduleScripts.length !== 1) {
-          throw new Error(`Naidan standalone output requires exactly one UI entry in ${output.fileName}; found ${moduleScripts.length}`);
-        }
-        html = stripCrossoriginFromLocalStylesheetLinks(html);
-        html = html.replace(moduleScripts[0].tag, '');
-
-        const moduleEntryFileName = localHtmlReferenceToBundleFileName(moduleScripts[0].source, output.fileName);
-        if (!chunkByFileName.has(moduleEntryFileName)) {
-          throw new Error(`HTML module entry does not resolve to an emitted chunk: ${moduleScripts[0].source} in ${output.fileName}`);
-        }
-        const completeUiClosure = collectChunkClosure({
-          chunkByFileName,
-          entryFileNames: [moduleEntryFileName],
+        const {
+          stylesheetReferences,
+          applicationEntry,
+        } = assertFileProtocolStandaloneHtmlBeforeRewrite({
+          html,
+          htmlFileName: output.fileName,
         });
-        const existingStylesheetFileNames = new Set(
-          findLocalStylesheetReferences(html).map(reference => localHtmlReferenceToBundleFileName(reference, output.fileName)),
-        );
-        const uiCss = new Set<string>();
+        // The validator already parses HTML with JSDOM. Reuse its source locations
+        // instead of reparsing attributes with regexes, otherwise valid HTML syntax
+        // such as unquoted attributes can pass validation but fail during rewriting.
+        const prunedStylesheetReferences = stylesheetReferences.filter(({ fileName }) => (
+          effectFreeEmptyCssFileNames.has(fileName)
+        ));
+        const stylesheetCrossoriginRangesToRemove = stylesheetReferences
+          .filter(({ fileName }) => !effectFreeEmptyCssFileNames.has(fileName))
+          .flatMap(({ crossoriginAttributeRange }) => (
+            crossoriginAttributeRange === undefined ? [] : [crossoriginAttributeRange]
+          ));
+        html = removeHtmlSourceRanges({
+          html,
+          ranges: [
+            applicationEntry,
+            ...prunedStylesheetReferences,
+            ...stylesheetCrossoriginRangesToRemove,
+          ],
+        });
+
+        const effectiveStylesheetReferences = stylesheetReferences
+          .filter(({ fileName }) => !effectFreeEmptyCssFileNames.has(fileName));
+        const existingStylesheetFileNameList = effectiveStylesheetReferences
+          .filter(({ unconditional }) => unconditional)
+          .map(({ fileName }) => fileName);
+        const moduleEntryFileName = localHtmlReferenceToBundleFileName(applicationEntry.source, output.fileName);
+        if (!chunkByFileName.has(moduleEntryFileName)) {
+          throw new Error(`HTML module entry does not resolve to an emitted chunk: ${applicationEntry.source} in ${output.fileName}`);
+        }
+        const existingStylesheetFileNames = new Set(existingStylesheetFileNameList);
         // UI and Worker code can share a JavaScript module that imports CSS. Workers
         // cannot apply that CSS, so every stylesheet reachable from the UI graph is
         // linked once from the parent HTML while JavaScript remains lazy.
-        for (const fileName of completeUiClosure) {
-          const importedCss = chunkByFileName.get(fileName)?.viteMetadata?.importedCss;
-          if (importedCss instanceof Set) {
-            for (const cssFileName of importedCss) {
-              if (typeof cssFileName === 'string') uiCss.add(cssFileName);
-            }
+        const uiCssFileNames = collectUiStylesheetFileNamesInEagerOrder({
+          chunkByFileName,
+          entryFileName: moduleEntryFileName,
+        });
+        for (const cssFileName of uiCssFileNames) {
+          const cssOutput = outputByFileName.get(cssFileName);
+          if (cssOutput?.type !== 'asset' || !/\.css$/iu.test(cssOutput.fileName)) {
+            throw new Error(`UI stylesheet metadata references a missing output asset: ${cssFileName}`);
           }
         }
-        const uiPreloadedCssFileNames = [...uiCss]
-          .filter(fileName => !existingStylesheetFileNames.has(fileName))
-          .sort((left, right) => left.localeCompare(right));
+        const uiCssFileNameSet = new Set(uiCssFileNames);
+        const invalidExistingUiStylesheets = effectiveStylesheetReferences
+          .filter(({ fileName, unconditional, inHead }) => uiCssFileNameSet.has(fileName) && (!unconditional || !inHead))
+          .map(({ fileName }) => fileName);
+        if (invalidExistingUiStylesheets.length > 0) {
+          throw new Error(`UI-owned stylesheet links must apply unconditionally from <head>: ${invalidExistingUiStylesheets.join(', ')}`);
+        }
+        const existingUiCssFileNames = existingStylesheetFileNameList
+          .filter(fileName => uiCssFileNameSet.has(fileName));
+        const expectedExistingUiCssPrefix = uiCssFileNames.slice(0, existingUiCssFileNames.length);
+        if (existingUiCssFileNames.some((fileName, index) => fileName !== expectedExistingUiCssPrefix[index])) {
+          throw new Error(
+            `Existing UI stylesheet order does not match the Vite cascade prefix: expected ${JSON.stringify(expectedExistingUiCssPrefix)}, got ${JSON.stringify(existingUiCssFileNames)}`,
+          );
+        }
+        const uiPreloadedCssFileNames = uiCssFileNames
+          .filter(fileName => !existingStylesheetFileNames.has(fileName));
         const uiPreloadedCssUrls = uiPreloadedCssFileNames.map(fileName => (
-          bundleFileNameToHtmlReference(fileName, output.fileName)
+          bundleFileNameToHtmlReference({ fileName, htmlFileName: output.fileName })
         ));
         const cssLinks = uiPreloadedCssUrls
           .map(url => `<link rel="stylesheet" href=${JSON.stringify(url)}>`)
           .join('');
 
-        const relativeToHtml = (fileName: string): string => {
-          const relative = slash(path.posix.relative(path.posix.dirname(output.fileName), fileName));
-          return relative.startsWith('.') ? relative : `./${relative}`;
-        };
-        const normalizedSystemUrl = relativeToHtml(systemRuntimeFileName);
-        const normalizedPatchUrl = relativeToHtml(systemJsFileScriptLoaderPatchFileName);
-        const normalizedRetryUrl = relativeToHtml(systemJsRetryHookFileName);
-        const entryReference = bundleFileNameToHtmlReference(moduleEntryFileName, output.fileName);
+        const normalizedSystemUrl = bundleFileNameToHtmlReference({ fileName: systemRuntimeFileName, htmlFileName: output.fileName });
+        const normalizedPatchUrl = bundleFileNameToHtmlReference({ fileName: systemJsFileScriptLoaderPatchFileName, htmlFileName: output.fileName });
+        const normalizedRetryUrl = bundleFileNameToHtmlReference({ fileName: systemJsRetryHookFileName, htmlFileName: output.fileName });
+        const entryReference = bundleFileNameToHtmlReference({ fileName: moduleEntryFileName, htmlFileName: output.fileName });
         const entryBootstrap = createFileProtocolStandaloneEntryBootstrapSource({
           entryFileName: entryReference.replace(/^\.\//u, ''),
           slowStartupNoticeDelayMs: startupSlowNoticeDelayMs,
@@ -2272,7 +2442,7 @@ function createSystemJsOutputPlugin({
         output.source = html;
         diagnostics.html.push({
           fileName: output.fileName,
-          moduleEntryUrls: [moduleScripts[0].source],
+          moduleEntryUrls: [applicationEntry.source],
           systemRuntimeUrl: normalizedSystemUrl,
           uiPreloadedCssFileNames,
           uiPreloadedCssUrls,
