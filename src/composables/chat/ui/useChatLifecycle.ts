@@ -3,8 +3,10 @@ import { generateId } from '@/01-models/id';
 import type { ChatGroupId, ChatId } from '@/01-models/ids';
 import type { Chat, Hierarchy, HierarchyChatGroupNode, SystemPrompt } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
-import { useChatTools } from '@/features/tools/composables/useChatTools';
+import { getEffectiveToolConfigsForChat, useChatTools } from '@/features/tools/composables/useChatTools';
 import { useToast } from '@/composables/useToast';
+import { isLmToolEnabledInToolConfigs } from '@/features/tools/tool-config';
+import { ensureChatWorkspaceMounted } from '@/features/tools/wesh/chat-workspace';
 import { ensureStrings } from '@/strings';
 import {
   chatRuntimeStore,
@@ -97,6 +99,18 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         id: chatId,
         updater: () => chat,
       });
+
+      // Provision only as part of creating this new chat. Changing a Chat Group
+      // override must not retroactively add workspaces to existing member chats.
+      const effectiveToolConfigs = getEffectiveToolConfigsForChat({ chat });
+      if (isLmToolEnabledInToolConfigs({ toolConfigs: effectiveToolConfigs, name: 'shell_execute' })) {
+        try {
+          await ensureChatWorkspaceMounted({ chat });
+        } catch (error) {
+          console.error('[ChatWorkspace] Failed to provision workspace for new chat:', error);
+        }
+      }
+
       await storageService.updateHierarchy({ updater: ({ current }) => {
         if (groupId !== undefined) {
           const group = current.items.find((item) => item.type === 'chat_group' && item.id === groupId) as HierarchyChatGroupNode | undefined;

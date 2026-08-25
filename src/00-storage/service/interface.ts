@@ -1,6 +1,7 @@
 import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/01-models/types';
 import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '@/00-storage/00-dto/dto';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
+import { idToRaw } from '@/01-models/ids';
 
 export type { ChatSummary };
 
@@ -60,6 +61,23 @@ export abstract class IStorageProvider {
   abstract restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void>;
 
   // --- Public Domain API (Default Implementations) ---
+
+  /**
+   * Checks every persisted mount owner, including records that are not currently
+   * reachable from the hierarchy. The scan short-circuits before chat metadata
+   * whenever settings or a chat group already references the volume.
+   */
+  public async hasVolumeMountReference({ volumeId }: { volumeId: VolumeId }): Promise<boolean> {
+    const settings = await this.loadSettings();
+    if (settings?.mounts.some(mount => mount.volumeId === volumeId)) return true;
+
+    const rawVolumeId = idToRaw({ id: volumeId });
+    const chatGroups = await this.listChatGroupsRaw();
+    if (chatGroups.some(group => group.mounts?.some(mount => mount.volumeId === rawVolumeId))) return true;
+
+    const chatMetas = await this.listChatMetasRaw();
+    return chatMetas.some(meta => meta.mounts?.some(mount => mount.volumeId === rawVolumeId));
+  }
 
   /**
    * Returns sorted ChatGroups with their nested items.

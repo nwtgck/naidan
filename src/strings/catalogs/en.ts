@@ -173,7 +173,6 @@ import { ChatInput__maximize_input } from '@/strings/messages/ChatInput__maximiz
 import { ChatInput__minimize_input } from '@/strings/messages/ChatInput__minimize_input/en';
 import { ChatInput__open_advanced_editor } from '@/strings/messages/ChatInput__open_advanced_editor/en';
 import { ChatInput__remove } from '@/strings/messages/ChatInput__remove/en';
-import { ChatInput__remove_browser_copy } from '@/strings/messages/ChatInput__remove_browser_copy/en';
 import { ChatInput__remove_folder } from '@/strings/messages/ChatInput__remove_folder/en';
 import { ChatInput__send_message_with_shortcut } from '@/strings/messages/ChatInput__send_message_with_shortcut/en';
 import { ChatInput__show_input } from '@/strings/messages/ChatInput__show_input/en';
@@ -1807,7 +1806,6 @@ export const en = {
   ChatInput__minimize_input,
   ChatInput__open_advanced_editor,
   ChatInput__remove,
-  ChatInput__remove_browser_copy,
   ChatInput__remove_folder,
   ChatInput__send_message_with_shortcut,
   ChatInput__show_input,

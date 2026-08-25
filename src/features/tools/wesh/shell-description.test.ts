@@ -14,6 +14,7 @@ const readOnlyMounts: WeshMount[] = [
 describe('buildShellDescription', () => {
   it('includes the base description with backtick help command', () => {
     const result = buildShellDescription({ mounts: noMounts, detectedExtensions: new Set() });
+    expect(result).toContain('For file edits, `sed` and `patch` are available.');
     expect(result).toContain('Run `help` to see available utilities.');
     expect(result).not.toContain('patch --atomic --safe-paths -p1');
   });

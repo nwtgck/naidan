@@ -32,6 +32,7 @@ import {
 import { idToRaw } from '@/01-models/ids';
 import { storageService } from '@/00-storage/service';
 import { useSettings } from '@/composables/useSettings';
+import { ensureChatWorkspaceMounted } from '@/features/tools/wesh/chat-workspace';
 
 type ToolConfigsUpdater = ({
   toolConfigs,
@@ -476,6 +477,25 @@ export function useChatTools(): ChatToolsApi {
     await updateToolConfigsForChat({ chatId: _currentChatId.value, updater });
   };
 
+  const provisionWorkspaceIfShellBecameEnabled = async ({
+    name,
+    wasEnabled,
+  }: {
+    name: LmToolName,
+    wasEnabled: boolean,
+  }): Promise<void> => {
+    if (name !== 'shell_execute' || wasEnabled || !isToolEnabled({ name })) return;
+
+    const chat = getCurrentLiveChat();
+    if (chat === null) return;
+
+    try {
+      await ensureChatWorkspaceMounted({ chat });
+    } catch (error) {
+      console.error('[ChatWorkspace] Failed to provision workspace:', error);
+    }
+  };
+
   const setToolStatus = async ({
     name,
     status,
@@ -486,6 +506,7 @@ export function useChatTools(): ChatToolsApi {
     if (_currentChatId.value === null) return;
     const chatId = _currentChatId.value;
     const key = builtinToolKeyForLmToolName({ name });
+    const wasEnabled = isToolEnabled({ name });
 
     await updateToolConfigsForCurrentChat({
       updater: ({ toolConfigs }) => setToolStatusWithDependenciesInToolConfigs({
@@ -495,6 +516,8 @@ export function useChatTools(): ChatToolsApi {
         inheritedToolConfigs: getInheritedToolConfigsForChat({ chatId }),
       }),
     });
+
+    await provisionWorkspaceIfShellBecameEnabled({ name, wasEnabled });
   };
 
   const setToolEnabled = async ({
@@ -516,12 +539,14 @@ export function useChatTools(): ChatToolsApi {
   }: {
     name: LmToolName,
   }): Promise<void> => {
+    const wasEnabled = isToolEnabled({ name });
     await updateToolConfigsForCurrentChat({
       updater: ({ toolConfigs }) => removeSingletonToolConfig({
         toolConfigs,
         key: builtinToolKeyForLmToolName({ name }),
       }),
     });
+    await provisionWorkspaceIfShellBecameEnabled({ name, wasEnabled });
   };
 
 

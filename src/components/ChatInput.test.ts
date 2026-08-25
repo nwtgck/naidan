@@ -4,12 +4,14 @@ import ChatInput from './ChatInput.vue';
 import { computed, nextTick, ref } from 'vue';
 import { toVolumeId, toChatId } from '@/01-models/ids';
 
-const { mockRouter } = vi.hoisted(() => ({
+const { mockRouter, mockScheduleUnusedEmptyVolumeCleanup, mockRemoveMount } = vi.hoisted(() => ({
   mockRouter: {
     currentRoute: { value: { query: {} as Record<string, string> } },
     replace: vi.fn(),
     push: vi.fn(),
   },
+  mockScheduleUnusedEmptyVolumeCleanup: vi.fn(),
+  mockRemoveMount: vi.fn(),
 }));
 
 // Mock Lucide icons
@@ -91,6 +93,9 @@ vi.mock('../features/tools/composables/useChatWeshPreferences', () => ({
     getNaidanSysfsAccessScope: mockGetNaidanSysfsAccessScope,
   }),
 }));
+vi.mock('@/features/tools/wesh/chat-workspace', () => ({
+  scheduleUnusedEmptyVolumeCleanup: mockScheduleUnusedEmptyVolumeCleanup,
+}));
 vi.mock('../composables/useToast', () => ({
   useToast: () => ({
     addToast: vi.fn(),
@@ -114,6 +119,7 @@ vi.mock('../00-storage/service', () => ({
     getVolumeDirectoryHandle: vi.fn(),
     getFile: vi.fn().mockResolvedValue(new Blob([])),
     listVolumes: vi.fn(),
+    deleteVolume: vi.fn(),
   },
 }));
 vi.mock('../utils/opfs-detection', () => ({
@@ -431,7 +437,7 @@ vi.mock('../composables/chat/useChatMounts', () => ({
       return mockCurrentChat.value?.mounts ?? [];
     }),
     addMount: vi.fn(),
-    removeMount: vi.fn(),
+    removeMount: mockRemoveMount,
     updateMount: vi.fn(),
   }),
 }));
@@ -589,6 +595,32 @@ describe('ChatInput Integration', () => {
 
     expect(wrapper.vm.TEST_ONLY.editingAttachmentId.value).toBe('att-1');
     expect(wrapper.find('[data-testid="image-editor"]').exists()).toBe(true);
+  });
+
+  it('removes an OPFS mount without deleting its volume and schedules empty-volume cleanup', async () => {
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      modelId: 'model-1',
+      mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/workspace', readOnly: false }],
+    };
+    const { storageService } = await import('@/00-storage/service');
+    vi.mocked(storageService.listVolumes).mockImplementation(async function*() {
+      yield { id: toVolumeId({ raw: 'vol-1' }), name: 'Workspace', type: 'opfs', createdAt: 0 };
+    });
+
+    const wrapper = getWrapper();
+    await nextTick();
+    await wrapper.find('[data-testid="mount-remove-btn"]').trigger('click');
+    await flushPromises();
+
+    expect(mockRemoveMount).toHaveBeenCalledWith({
+      chatId: toChatId({ raw: 'chat-1' }),
+      volumeId: toVolumeId({ raw: 'vol-1' }),
+    });
+    expect(mockScheduleUnusedEmptyVolumeCleanup).toHaveBeenCalledWith({
+      volumeId: toVolumeId({ raw: 'vol-1' }),
+    });
+    expect(storageService.deleteVolume).not.toHaveBeenCalled();
   });
 
   it('mount explorer includes tmp while opening from a volume badge for opfs', async () => {
