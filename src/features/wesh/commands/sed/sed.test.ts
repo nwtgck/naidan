@@ -216,6 +216,118 @@ betA
     }
   });
 
+  it("matches GNU numeric and control regexp escapes as raw bytes", async () => {
+    const numeric = await execute({
+      script: String.raw`LC_ALL=C sed 's/\x80/Z/g'`,
+      stdinBytes: Uint8Array.from([0x80, 0xff, 0x80, 0x0a]),
+    });
+    const control = await execute({
+      script: String.raw`LC_ALL=C sed 's/\c?/D/g'`,
+      stdinBytes: Uint8Array.from([0x7f, 0x41, 0x7f, 0x0a]),
+    });
+
+    expect(numeric.stdout.buffer).toEqual(
+      Uint8Array.from([0x5a, 0xff, 0x5a, 0x0a]),
+    );
+    expect(control.stdout.buffer).toEqual(
+      Uint8Array.from([0x44, 0x41, 0x44, 0x0a]),
+    );
+    for (const outcome of [numeric, control]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it("uses byte-oriented text editing in the C locale and Unicode characters in UTF-8 locales", async () => {
+    const cDot = await execute({
+      script: "LC_ALL=C sed 's/./X/g'",
+      stdinText: "é😀\n",
+    });
+    const unicodeDot = await execute({
+      script: "LC_ALL=C.utf8 sed 's/./X/g'",
+      stdinText: "é😀\n",
+    });
+    const cEmptyMatch = await execute({
+      script: "LC_ALL=C sed 's/x*/X/g'",
+      stdinText: "é😀\n",
+    });
+    const unicodeEmptyMatch = await execute({
+      script: "LC_ALL=C.utf8 sed 's/x*/X/g'",
+      stdinText: "é😀\n",
+    });
+    const cLiteralPattern = await execute({
+      script: "LC_ALL=C sed 's/é/AB/'",
+      stdinText: "é\n",
+    });
+    const unicodeLiteralPattern = await execute({
+      script: "LC_ALL=C.utf8 sed 's/é/X/'",
+      stdinText: "é\n",
+    });
+    const cTranslate = await execute({
+      script: "LC_ALL=C sed 'y/é/AB/'",
+      stdinText: "é\n",
+    });
+    const unicodeTranslate = await execute({
+      script: "LC_ALL=C.utf8 sed 'y/é/X/'",
+      stdinText: "é\n",
+    });
+    const cReplacement = await execute({
+      script: "LC_ALL=C sed 's/a/é/'",
+      stdinText: "a\n",
+    });
+    const cAppend = await execute({
+      script: "LC_ALL=C sed 'a é'",
+      stdinText: "a\n",
+    });
+    const cList = await execute({
+      script: "LC_ALL=C sed -n l",
+      stdinText: "é😀\n",
+    });
+
+    expect(cDot.stdout.buffer).toEqual(
+      Uint8Array.from([0x58, 0x58, 0x58, 0x58, 0x58, 0x58, 0x0a]),
+    );
+    expect(unicodeDot.stdout.text).toBe("XX\n");
+    expect(cEmptyMatch.stdout.buffer).toEqual(
+      Uint8Array.from([
+        0x58, 0xc3, 0x58, 0xa9, 0x58, 0xf0, 0x58, 0x9f, 0x58, 0x98, 0x58,
+        0x80, 0x58, 0x0a,
+      ]),
+    );
+    expect(unicodeEmptyMatch.stdout.buffer).toEqual(
+      Uint8Array.from([
+        0x58, 0xc3, 0x58, 0xa9, 0x58, 0xf0, 0x58, 0x9f, 0x58, 0x98, 0x58,
+        0x80, 0x58, 0x0a,
+      ]),
+    );
+    expect(cLiteralPattern.stdout.text).toBe("AB\n");
+    expect(unicodeLiteralPattern.stdout.text).toBe("X\n");
+    expect(cTranslate.stdout.text).toBe("AB\n");
+    expect(unicodeTranslate.stdout.text).toBe("X\n");
+    expect(cReplacement.stdout.text).toBe("é\n");
+    expect(cAppend.stdout.text).toBe(`\
+a
+é
+`);
+    expect(cList.stdout.text).toBe("\\303\\251\\360\\237\\230\\200$\n");
+    for (const outcome of [
+      cDot,
+      unicodeDot,
+      cEmptyMatch,
+      unicodeEmptyMatch,
+      cLiteralPattern,
+      unicodeLiteralPattern,
+      cTranslate,
+      unicodeTranslate,
+      cReplacement,
+      cAppend,
+      cList,
+    ]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
   it("preserves or follows final symbolic links for in-place edits", async () => {
     await writeFile({ path: "default-target", data: "foo\n" });
     await wesh.vfs.symlink({ path: "/default-link", targetPath: "default-target" });
@@ -318,6 +430,39 @@ betA
 `);
     expect(stderr.text).toBe("");
     expect(result.exitCode).toBe(0);
+  });
+
+  it("accepts CRLF after GNU substitution commands without general CRLF normalization", async () => {
+    await writeFile({ path: "sub.sed", data: "2s/.*/X/\r\n" });
+    await writeFile({ path: "print.sed", data: "2p\r\n" });
+
+    const substitution = await execute({
+      script: "sed -f sub.sed",
+      stdinText: `\
+one
+two
+three
+`,
+    });
+    const fixedCommand = await execute({
+      script: "sed -f print.sed",
+      stdinText: `\
+one
+two
+three
+`,
+    });
+
+    expect(substitution.stdout.text).toBe(`\
+one
+X
+three
+`);
+    expect(substitution.stderr.text).toBe("");
+    expect(substitution.result.exitCode).toBe(0);
+    expect(fixedCommand.stdout.text).toBe("");
+    expect(fixedCommand.stderr.text).toContain("extra characters after command");
+    expect(fixedCommand.result.exitCode).toBe(1);
   });
 
   it("supports script files with -f", async () => {
@@ -505,6 +650,28 @@ beta
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }
+  });
+
+  it("supports newline escapes in in-place HTML-like replacements", async () => {
+    const lines = Array.from({ length: 60 }, (_, index) => `line-${index + 1}`);
+    lines[53] = '    <div id="placeholder">old</div>';
+    await writeFile({ path: "index.html", data: `${lines.join("\n")}\n` });
+
+    const { result, stdout, stderr } = await execute({
+      script: String.raw`sed -i '54s/.*/     <span id="countdown" class="countdown">3<\/span>\n     <button id="shareToastNext" class="next-btn">次へ →<\/button>/' index.html`,
+    });
+
+    const edited = (await readFile({ path: "index.html" })).split("\n");
+    expect(edited[53]).toBe(
+      '     <span id="countdown" class="countdown">3</span>',
+    );
+    expect(edited[54]).toBe(
+      '     <button id="shareToastNext" class="next-btn">次へ →</button>',
+    );
+    expect(edited[55]).toBe("line-55");
+    expect(stdout.text).toBe("");
+    expect(stderr.text).toBe("");
+    expect(result.exitCode).toBe(0);
   });
 
   it("supports in-place editing without a backup suffix", async () => {
@@ -716,6 +883,40 @@ BetA
     expect(byteDuplicate.result.exitCode).toBe(0);
   });
 
+  it("preserves GNU byte semantics for y numeric and control escapes", async () => {
+    const escapedBytes = await execute({
+      script: String.raw`LC_ALL=C sed 'y/\x80\xff/XZ/'`,
+      stdinBytes: Uint8Array.from([0x80, 0xff, 0x0a]),
+    });
+    const octalDecimal = await execute({
+      script: String.raw`LC_ALL=C sed 'y/\o377\d128/AB/'`,
+      stdinBytes: Uint8Array.from([0xff, 0x80, 0x0a]),
+    });
+    const delControl = await execute({
+      script: String.raw`LC_ALL=C sed 'y/\c?/D/'`,
+      stdinBytes: Uint8Array.from([0x7f, 0x0a]),
+    });
+
+    expect(escapedBytes.stdout.buffer).toEqual(Uint8Array.from([0x58, 0x5a, 0x0a]));
+    expect(octalDecimal.stdout.buffer).toEqual(Uint8Array.from([0x41, 0x42, 0x0a]));
+    expect(delControl.stdout.buffer).toEqual(Uint8Array.from([0x44, 0x0a]));
+    for (const outcome of [escapedBytes, octalDecimal, delControl]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it("rejects a trailing GNU control escape in a y operand when lengths differ", async () => {
+    const { result, stdout, stderr } = await execute({
+      script: String.raw`sed 'y/x/\c/'`,
+      stdinText: "x\n",
+    });
+
+    expect(stdout.text).toBe("");
+    expect(stderr.text).toContain("different lengths");
+    expect(result.exitCode).toBe(1);
+  });
+
   it("translates Unicode code points with y", async () => {
     const translated = await execute({
       script: "sed 'y/😀a/😃b/'",
@@ -732,6 +933,92 @@ BetA
     expect(invalid.stdout.text).toBe("");
     expect(invalid.stderr.text).toContain("different lengths");
     expect(invalid.result.exitCode).toBe(1);
+  });
+
+  it("rejects unescaped literal newlines inside substitution and address regex syntax", async () => {
+    const replacement = await execute({
+      script: `sed 's/x/A
+B/'`,
+      stdinText: "x\n",
+    });
+    const pattern = await execute({
+      script: `sed 's/x
+y/Z/'`,
+      stdinText: `\
+x
+y
+`,
+    });
+    const address = await execute({
+      script: `sed '/x
+y/p'`,
+      stdinText: `\
+x
+y
+`,
+    });
+
+    for (const outcome of [replacement, pattern, address]) {
+      expect(outcome.stdout.text).toBe("");
+      expect(outcome.stderr.text).toContain("unterminated");
+      expect(outcome.result.exitCode).toBe(1);
+    }
+  });
+
+  it("matches GNU text-command empty and trailing-backslash boundaries", async () => {
+    const missingText = await execute({
+      script: "sed '1a'",
+      stdinText: `\
+one
+two
+`,
+    });
+    const noQueuedText = await execute({
+      script: "sed '1a\\'",
+      stdinText: `\
+one
+two
+`,
+    });
+    const trailingBackslash = await execute({
+      script: "sed '1afoo\\'",
+      stdinText: `\
+one
+two
+`,
+    });
+    await writeFile({ path: "edit.sed", data: "1a\n" });
+    const scriptFileEmptyText = await execute({
+      script: "sed -f edit.sed",
+      stdinText: `\
+one
+two
+`,
+    });
+
+    expect(missingText.stdout.text).toBe("");
+    expect(missingText.stderr.text).toContain("expected \\ after 'a' command");
+    expect(missingText.result.exitCode).toBe(1);
+    expect(noQueuedText.stdout.text).toBe(`\
+one
+two
+`);
+    expect(noQueuedText.stderr.text).toBe("");
+    expect(noQueuedText.result.exitCode).toBe(0);
+    expect(trailingBackslash.stdout.text).toBe(`\
+one
+foo
+two
+`);
+    expect(trailingBackslash.stderr.text).toBe("");
+    expect(trailingBackslash.result.exitCode).toBe(0);
+    expect(scriptFileEmptyText.stdout.text).toBe(`\
+one
+
+two
+`);
+    expect(scriptFileEmptyText.stderr.text).toBe("");
+    expect(scriptFileEmptyText.result.exitCode).toBe(0);
   });
 
   it("supports i and a text commands", async () => {
@@ -951,6 +1238,63 @@ aab
     expect(extended.stderr.text).toBe("");
     expect(basic.result.exitCode).toBe(0);
     expect(extended.result.exitCode).toBe(0);
+  });
+
+  it("decodes GNU replacement escapes and whole-match backreference zero", async () => {
+    const controls = await execute({
+      script: String.raw`sed 's/x/A\nB\tC\rD\aE\fF\vG/'`,
+      stdinText: "x\n",
+    });
+    const numeric = await execute({
+      script: String.raw`sed 's/x/\x41\o102\d67/'`,
+      stdinText: "x\n",
+    });
+    const control = await execute({
+      script: String.raw`sed 's/x/\cA/'`,
+      stdinText: "x\n",
+    });
+    const wholeMatch = await execute({
+      script: String.raw`sed 's/x/<\0>/'`,
+      stdinText: "x\n",
+    });
+    const delControl = await execute({
+      script: String.raw`sed 's/x/\c?/'`,
+      stdinText: "x\n",
+    });
+    const punctuationControls = await execute({
+      script: "sed 's/x/\\c!\\c0\\c`/'",
+      stdinText: "x\n",
+    });
+    const rawBytes = await execute({
+      script: String.raw`sed 's/x/\x80\xff\o377\d255\d999/'`,
+      stdinText: "x\n",
+    });
+
+    expect(Array.from(controls.stdout.buffer)).toEqual(
+      Array.from(new TextEncoder().encode("A\nB\tC\rD\x07E\fF\x0bG\n")),
+    );
+    expect(numeric.stdout.text).toBe("ABC\n");
+    expect(control.stdout.buffer).toEqual(Uint8Array.from([0x01, 0x0a]));
+    expect(wholeMatch.stdout.text).toBe("<x>\n");
+    expect(delControl.stdout.buffer).toEqual(Uint8Array.from([0x7f, 0x0a]));
+    expect(punctuationControls.stdout.buffer).toEqual(
+      Uint8Array.from([0x61, 0x70, 0x20, 0x0a]),
+    );
+    expect(rawBytes.stdout.buffer).toEqual(
+      Uint8Array.from([0x80, 0xff, 0xff, 0xff, 0xe7, 0x0a]),
+    );
+    for (const outcome of [
+      controls,
+      numeric,
+      control,
+      wholeMatch,
+      delControl,
+      punctuationControls,
+      rawBytes,
+    ]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
   });
 
   it("supports GNU replacement case conversion and validates RHS backreferences", async () => {
@@ -1391,6 +1735,157 @@ b
     }
   });
 
+  it("matches embedded record separators with dot like GNU sed", async () => {
+    const newlineSeparated = await execute({
+      script: String.raw`sed -n 'N;s/a.b/X/p'`,
+      stdinText: `\
+a
+b
+`,
+    });
+    const nullSeparated = await execute({
+      script: String.raw`sed -z -n 'N;s/a.b/X/p'`,
+      stdinBytes: Uint8Array.from([0x61, 0x00, 0x62, 0x00]),
+    });
+
+    expect(newlineSeparated.stdout.text).toBe("X\n");
+    expect(nullSeparated.stdout.buffer).toEqual(Uint8Array.from([0x58, 0x00]));
+    for (const outcome of [newlineSeparated, nullSeparated]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it("parses regexp delimiters with GNU bracket-expression and escape rules", async () => {
+    const escapedAlternationDelimiter = await execute({
+      script: String.raw`sed 's|a\|b|X|g'`,
+      stdinText: "a|b a b\n",
+    });
+    const escapedIntervalDelimiter = await execute({
+      script: String.raw`sed 's,a\{1\,3\},X,g'`,
+      stdinText: "a aa aaaa\n",
+    });
+    const delimiterInsideBracket = await execute({
+      script: String.raw`sed 's:[[:punct:]]:X:g'`,
+      stdinText: "a . / _ -\n",
+    });
+    const addressDelimiterInsideBracket = await execute({
+      script: String.raw`sed -n '/[/]/p'`,
+      stdinText: `\
+/
+a
+`,
+    });
+    const leadingNegationDelimiterInsideBracket = await execute({
+      script: String.raw`sed 's^[^^]^X^g'`,
+      stdinText: "^ a b\n",
+    });
+
+    expect(escapedAlternationDelimiter.stdout.text).toBe("X a b\n");
+    expect(escapedIntervalDelimiter.stdout.text).toBe("X X XX\n");
+    expect(delimiterInsideBracket.stdout.text).toBe("a X X X X\n");
+    expect(addressDelimiterInsideBracket.stdout.text).toBe("/\n");
+    expect(leadingNegationDelimiterInsideBracket.stdout.text).toBe("^XXXX\n");
+    for (const outcome of [
+      escapedAlternationDelimiter,
+      escapedIntervalDelimiter,
+      delimiterInsideBracket,
+      addressDelimiterInsideBracket,
+      leadingNegationDelimiterInsideBracket,
+    ]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it("treats a backslash regexp delimiter as a literal inside bracket expressions", async () => {
+    await writeFile({
+      path: "backslash-delimiter.sed",
+      data: `${String.raw`s\[a\b]\X\g`}\n`,
+    });
+
+    const outcome = await execute({
+      script: "sed -f backslash-delimiter.sed",
+      stdinText: `\
+a\\bZ
+`,
+    });
+
+    expect(outcome.stdout.text).toBe("XXXZ\n");
+    expect(outcome.stderr.text).toBe("");
+    expect(outcome.result.exitCode).toBe(0);
+  });
+
+  it("supports GNU alternate delimiters for regexp addresses", async () => {
+    await writeFile({
+      path: "alternate-addresses.sed",
+      data: `\
+\\|alpha|p
+\\:beta:p
+\\\\gamma\\p
+`,
+    });
+
+    const outcome = await execute({
+      script: "sed -n -f alternate-addresses.sed",
+      stdinText: `\
+alpha
+beta
+gamma
+`,
+    });
+
+    expect(outcome.stdout.text).toBe(`\
+alpha
+beta
+gamma
+`);
+    expect(outcome.stderr.text).toBe("");
+    expect(outcome.result.exitCode).toBe(0);
+  });
+
+  it("accepts backslash-newline as a regexp newline in UTF-8 locales", async () => {
+    await writeFile({
+      path: "substitute-newline.sed",
+      data: `\
+N;s/a\\
+b/X/p
+`,
+    });
+    await writeFile({
+      path: "address-newline.sed",
+      data: `\
+N;/a\\
+b/p
+`,
+    });
+
+    const substituted = await execute({
+      script: "LC_ALL=C.UTF-8 sed -n -f substitute-newline.sed",
+      stdinText: `\
+a
+b
+`,
+    });
+    const addressed = await execute({
+      script: "LC_ALL=C.UTF-8 sed -n -f address-newline.sed",
+      stdinText: `\
+a
+b
+`,
+    });
+
+    expect(substituted.stdout.text).toBe("X\n");
+    expect(addressed.stdout.text).toBe(`\
+a
+b
+`);
+    for (const outcome of [substituted, addressed]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
   it("supports single-character POSIX equivalence classes and collating symbols", async () => {
     const equivalence = await execute({
       script: String.raw`sed -n '/[[=a=]]/p'`,
@@ -1496,6 +1991,53 @@ four
     for (const outcome of [selected, numbered]) {
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it("terminates delayed append text with LF under null-data mode", async () => {
+    const outcome = await execute({
+      script: String.raw`sed -z 'aA\nB'`,
+      stdinText: "a\0b\0",
+    });
+
+    expect(outcome.stdout.text).toBe("a\0A\nB\nb\0A\nB\n");
+    expect(outcome.stderr.text).toBe("");
+    expect(outcome.result.exitCode).toBe(0);
+  });
+
+  it("preserves a trailing control escape marker in substitutions", async () => {
+    const outcome = await execute({
+      script: String.raw`sed 's/a/\c/'`,
+      stdinText: "a\n",
+    });
+
+    expect(outcome.stdout.text).toBe("\\\n");
+    expect(outcome.stderr.text).toBe("");
+    expect(outcome.result.exitCode).toBe(0);
+  });
+
+  it("rejects multibyte substitution and transliteration delimiters", async () => {
+    for (const script of [
+      String.raw`sed 'séaéBé'`,
+      String.raw`sed 'yéaéb'`,
+      String.raw`sed 's中a中B中'`,
+      String.raw`sed 'y中a中b'`,
+    ]) {
+      const outcome = await execute({ script, stdinText: "a\n" });
+      expect(outcome.stdout.text).toBe("");
+      expect(outcome.stderr.text).toContain(
+        "delimiter character is not a single-byte character",
+      );
+      expect(outcome.result.exitCode).toBe(1);
+    }
+  });
+
+  it("rejects duplicate print flags on substitutions", async () => {
+    for (const script of [String.raw`sed 's/a/X/pp'`, String.raw`sed -n 's/a/X/ppp'`]) {
+      const outcome = await execute({ script, stdinText: "aaa\n" });
+      expect(outcome.stdout.text).toBe("");
+      expect(outcome.stderr.text).toContain("multiple 'p' options");
+      expect(outcome.result.exitCode).toBe(1);
     }
   });
 
@@ -1840,6 +2382,37 @@ BetA
     expect(result.exitCode).toBe(0);
   });
 
+  it("requires GNU sed command boundaries between non-text commands", async () => {
+    for (const script of [
+      String.raw`sed 'pd'`,
+      String.raw`sed '1p2d'`,
+      String.raw`sed 's/a/X/d'`,
+      String.raw`sed 'y/a/A/p'`,
+    ]) {
+      const outcome = await execute({ script, stdinText: `\
+a
+b
+` });
+      expect(outcome.stdout.text).toBe("");
+      expect(outcome.stderr.text).not.toBe("");
+      expect(outcome.result.exitCode).toBe(1);
+    }
+
+    const separated = await execute({
+      script: String.raw`sed -n '{p ;d}'`,
+      stdinText: `\
+a
+b
+`,
+    });
+    expect(separated.stdout.text).toBe(`\
+a
+b
+`);
+    expect(separated.stderr.text).toBe("");
+    expect(separated.result.exitCode).toBe(0);
+  });
+
   it("ignores comments at command boundaries", async () => {
     const commentOnly = await execute({
       script: String.raw`sed '# comment'`,
@@ -1935,6 +2508,53 @@ X;Y
 three
 `);
     for (const outcome of [appended, inserted, changed]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it("decodes GNU escapes and leading whitespace rules in text commands", async () => {
+    const escaped = await execute({
+      script: String.raw`sed '2aA\nB\tC\x44\o105\d70\qG'`,
+      stdinText: `\
+one
+two
+three
+`,
+    });
+    const strippedLeading = await execute({
+      script: "sed '2i    indented'",
+      stdinText: `\
+one
+two
+`,
+    });
+    const preservedLeading = await execute({
+      script: String.raw`sed '2i\    indented'`,
+      stdinText: `\
+one
+two
+`,
+    });
+
+    expect(escaped.stdout.text).toBe(`\
+one
+two
+A
+B\tCDEFqG
+three
+`);
+    expect(strippedLeading.stdout.text).toBe(`\
+one
+indented
+two
+`);
+    expect(preservedLeading.stdout.text).toBe(`\
+one
+    indented
+two
+`);
+    for (const outcome of [escaped, strippedLeading, preservedLeading]) {
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }
