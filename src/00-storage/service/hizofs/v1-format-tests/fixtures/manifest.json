@@ -1,0 +1,90 @@
+{
+  "schema": "hizofs-v1-historical-fixture-manifest",
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "file": "credential-lifecycle-v1.json",
+      "scenarioId": "credential-replacement-observable-state-v1",
+      "sha256": "2148397fc5552316714eae1ac1875e4a0a184a924a4bced4ceee8d8f0ccb1bf1",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "empty-files-v1.json",
+      "scenarioId": "empty-files-v1",
+      "sha256": "8ecc034d4c275e8a23bfa20dfecd200aca6a478068030b74b1693f5ebb1a76a9",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "empty-filesystem-v1.json",
+      "scenarioId": "empty-filesystem-historical-v1",
+      "sha256": "671d4af31eb850196e5126ebe05fb93cc4011e5d9fe6572509fcdabf7e6e9ed0",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "large-file-600k-v1.json",
+      "scenarioId": "large-file-600k-v1",
+      "sha256": "df378d47260d7c3ea6c61304750804029642713bb1c204800d12e4cf6488d74f",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "maximum-lexical-boundaries-v1.json",
+      "scenarioId": "maximum-lexical-boundaries-v1",
+      "sha256": "06d4c792ca8c85161db31e438afc3b5c9524a479b5687b37b93f75235e72929c",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "multi-chunk-file-v1.json",
+      "scenarioId": "multi-chunk-file-v1",
+      "sha256": "97a602993fc42e035b84edd00514afae5e32d1465c098546c581c64b3bcab85f",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "multiple-credentials-v1.json",
+      "scenarioId": "empty-filesystem-historical-v1",
+      "sha256": "02ef405174db6a101cd2f4bb818b3c74f74eb54c9e6b3ae002eca3ff94a27309",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "mutation-history-v1.json",
+      "scenarioId": "representative-writer-mutations-v1",
+      "sha256": "b739670a3504bae1668ed59775dab026698529b575817c568bd4ef5a2f8a0991",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "representative-filesystem-v1.json",
+      "scenarioId": "representative-filesystem-historical-v1",
+      "sha256": "3c4764cfbd7001856ee5d08ea7a355330eda8805b99ea67396ae134d6c4da137",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "sparse-and-reflink-v1.json",
+      "scenarioId": "sparse-and-reflink-v1",
+      "sha256": "4d2f1efa63eb13062bee0245de4b44dc6bc15015c996776cf79a2008554683c6",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "symlink-v1.json",
+      "scenarioId": "symlink-v1",
+      "sha256": "850a1d9fdfa3a0b2ea032470ead1ec07b35435ebeccaf6f0c83fecb16d0b6209",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "tree-backed-directory-and-file-v1.json",
+      "scenarioId": "tree-backed-directory-and-file-v1",
+      "sha256": "8f70249571425a5df562ec9767c227f424de957aaaa7df864cad21ddf675922d",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "unicode-filesystem-v1.json",
+      "scenarioId": "unicode-filesystem-v1",
+      "sha256": "deb75d7aad92e165aef8ecfb22abaaeb1377e9f4cfa09f5875e48fd1b55c4226",
+      "origin": "real_hizofs_writer"
+    },
+    {
+      "file": "unicode-normalization-distinct-v1.json",
+      "scenarioId": "unicode-normalization-distinct-v1",
+      "sha256": "ea5abb6504466e8fc33e42ba5261db9fa66abd91f87142a00593fa334d9f006e",
+      "origin": "real_hizofs_writer"
+    }
+  ]
+}

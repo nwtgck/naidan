@@ -1,0 +1,87 @@
+{
+  "schema": "hizofs-v1-negative-fixture-manifest",
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "caseId": "both-superblocks-corrupt-v1",
+      "corruptedFileCount": 2,
+      "expectedOutcome": "reject_open",
+      "file": "both-superblocks-corrupt-v1.json",
+      "sha256": "a1284d0e781d1afff900716e7a31a58eb1a38b1ca29ee0211788d6000d917861",
+      "sourceFixture": "representative-filesystem-v1.json",
+      "kind": "corruption"
+    },
+    {
+      "caseId": "both-superblocks-truncated-v1",
+      "truncatedFileCount": 2,
+      "expectedOutcome": "reject_open",
+      "file": "both-superblocks-truncated-v1.json",
+      "sha256": "ef351b753a3c1ebb8957b037ffcfd39cb897f003e3e996a75b1b1f49ae61824c",
+      "sourceFixture": "representative-filesystem-v1.json",
+      "kind": "truncation",
+      "truncatedByteLength": 79
+    },
+    {
+      "caseId": "both-superblocks-missing-v1",
+      "expectedOutcome": "reject_open",
+      "file": "both-superblocks-missing-v1.json",
+      "kind": "missing_persisted_object",
+      "missingFileCount": 2,
+      "sha256": "a4d35757288b067f38000822aa20c407463035c5ff8092dd3df1885a8d8a2dff",
+      "sourceFixture": "representative-filesystem-v1.json"
+    },
+    {
+      "caseId": "both-unlock-envelopes-corrupt-v1",
+      "corruptedFileCount": 2,
+      "expectedOutcome": "reject_open",
+      "file": "both-unlock-envelopes-corrupt-v1.json",
+      "sha256": "eb713ab7e589ebf86d3676e8ae156a979425f8aaf6b72b293a7f779c2f90223f",
+      "sourceFixture": "representative-filesystem-v1.json",
+      "kind": "corruption"
+    },
+    {
+      "caseId": "both-unlock-envelopes-missing-v1",
+      "expectedOutcome": "reject_open",
+      "file": "both-unlock-envelopes-missing-v1.json",
+      "kind": "missing_persisted_object",
+      "missingFileCount": 2,
+      "sha256": "45be2ba3851fee5522ca161de46385f6ab49a87a0cab937852cb0f17eb5da5ca",
+      "sourceFixture": "representative-filesystem-v1.json"
+    },
+    {
+      "caseId": "all-segments-corrupt-v1",
+      "corruptedFileCount": 2,
+      "expectedOutcome": "reject_open_or_observation",
+      "file": "all-segments-corrupt-v1.json",
+      "sha256": "da9018f2d5bac1594f670ffb741d64b16a35626b1546836778960d66eae15f52",
+      "sourceFixture": "representative-filesystem-v1.json",
+      "kind": "corruption"
+    },
+    {
+      "caseId": "all-segments-missing-v1",
+      "expectedOutcome": "reject_open",
+      "file": "all-segments-missing-v1.json",
+      "kind": "missing_persisted_object",
+      "missingFileCount": 2,
+      "sha256": "e9334ca19d36a4f0cdd13ec1359ba8e8c98d4ce2006bbbc070bca8121c8b045a",
+      "sourceFixture": "representative-filesystem-v1.json"
+    },
+    {
+      "caseId": "swapped-segment-path-binding-v1",
+      "expectedOutcome": "reject_open_or_observation",
+      "file": "swapped-segment-path-binding-v1.json",
+      "kind": "segment_path_misbinding",
+      "misboundFileCount": 2,
+      "sha256": "6275c697af66ba50ccd82e6701a9dd4c2f2fc55e1599daa26c2296d103e5ba6d",
+      "sourceFixture": "representative-filesystem-v1.json"
+    },
+    {
+      "caseId": "unsupported-required-feature-authenticated-v1",
+      "expectedOutcome": "unsupported_required_feature",
+      "file": "unsupported-required-feature-authenticated-v1.json",
+      "kind": "authenticated_unsupported_feature",
+      "requiredFeatureBits": "1",
+      "sha256": "ed1ff787eb6f331ca81e26843d69e4a6a92c713dc9ac709b32d95dffc51fff85"
+    }
+  ]
+}

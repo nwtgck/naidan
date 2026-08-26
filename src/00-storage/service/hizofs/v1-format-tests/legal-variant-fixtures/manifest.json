@@ -1,0 +1,77 @@
+{
+  "schema": "hizofs-v1-legal-variant-fixture-manifest",
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "caseId": "single-superblock-corrupt-v1",
+      "affectedFileCount": 1,
+      "expectedScenarioId": "representative-filesystem-historical-v1",
+      "file": "single-superblock-corrupt-v1.json",
+      "sha256": "78cf8f8ecc8b382d202c5175b4a0d69967104bb0f10248be4891091d103d32c7",
+      "sourceFixture": "representative-filesystem-v1.json",
+      "kind": "redundant_copy_degradation"
+    },
+    {
+      "caseId": "single-superblock-missing-v1",
+      "affectedFileCount": 1,
+      "expectedScenarioId": "representative-filesystem-historical-v1",
+      "file": "single-superblock-missing-v1.json",
+      "sha256": "98e47900d878cdb98be12c81b68446bdbc1b3d2e05dcbf86dba4a305801ac148",
+      "sourceFixture": "representative-filesystem-v1.json",
+      "kind": "redundant_copy_degradation"
+    },
+    {
+      "caseId": "newest-superblock-corrupt-v1",
+      "affectedFileCount": 1,
+      "expectedScenarioId": "representative-filesystem-historical-v1",
+      "file": "newest-superblock-corrupt-v1.json",
+      "sha256": "d35f378ed8468ae632d67b4214c3cd9ff2d3d9d2aebe95d19f6ee27c87afd642",
+      "sourceFixture": "representative-filesystem-v1.json",
+      "kind": "redundant_copy_degradation"
+    },
+    {
+      "caseId": "newest-superblock-missing-v1",
+      "affectedFileCount": 1,
+      "expectedScenarioId": "representative-filesystem-historical-v1",
+      "file": "newest-superblock-missing-v1.json",
+      "sha256": "dcef7086ecaffb41e8a668bbf6bed1315647ded4bda84e1d32a50b9f4532aa39",
+      "sourceFixture": "representative-filesystem-v1.json",
+      "kind": "redundant_copy_degradation"
+    },
+    {
+      "caseId": "single-unlock-envelope-corrupt-v1",
+      "affectedFileCount": 1,
+      "expectedScenarioId": "representative-filesystem-historical-v1",
+      "file": "single-unlock-envelope-corrupt-v1.json",
+      "sha256": "c858844f48ca286c19ed06f5f46be104fcc8fa6f053da5765207f27eb44f9ec6",
+      "sourceFixture": "representative-filesystem-v1.json",
+      "kind": "redundant_copy_degradation"
+    },
+    {
+      "caseId": "single-unlock-envelope-missing-v1",
+      "affectedFileCount": 1,
+      "expectedScenarioId": "representative-filesystem-historical-v1",
+      "file": "single-unlock-envelope-missing-v1.json",
+      "sha256": "7c91ce5e2762961ccb74486e3beafa8b70c9f40a36353b97885990e28875f8d3",
+      "sourceFixture": "representative-filesystem-v1.json",
+      "kind": "redundant_copy_degradation"
+    },
+    {
+      "caseId": "active-commit-corrupt-fallback-v1",
+      "corruptedRecordCount": 1,
+      "expectedScenarioId": "representative-filesystem-historical-v1",
+      "file": "active-commit-corrupt-fallback-v1.json",
+      "kind": "active_commit_fallback_recovery",
+      "sha256": "885949bc4d2402942eb7b2e63215c4c370f7f9f1cbbc0b4b8618a8b1281e238c"
+    },
+    {
+      "caseId": "active-commit-segment-missing-fallback-v1",
+      "affectedFileCount": 1,
+      "expectedScenarioId": "representative-filesystem-historical-v1",
+      "file": "active-commit-segment-missing-fallback-v1.json",
+      "kind": "active_commit_segment_missing_fallback",
+      "sha256": "c211a21d8bd65cc3eb801c415458d6e0590bc7d0318796cb65a23041f8b3d5be",
+      "sourceFixture": "active-commit-corrupt-fallback-v1.json"
+    }
+  ]
+}

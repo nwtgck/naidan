@@ -114,6 +114,7 @@ function classifyPath({ rootDir, filePath }) {
   ) return 'hizofs-composition';
   if (relativePath === `${hizofsRoot}/worker-entry` || relativePath === `${hizofsRoot}/worker-entry.ts`) return 'hizofs-worker-entry';
   if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/worker` })) return 'hizofs-worker';
+  if (hasPathPrefix({ relativePath, prefix: `${hizofsRoot}/v1-format-tests` })) return 'hizofs-v1-format-tests';
   if (hasPathPrefix({ relativePath, prefix: hizofsRoot })) return 'hizofs-root';
 
   const controlRoot = '00-storage/service/naidan-persistence-control';
@@ -198,6 +199,19 @@ function isAllowedHizoFSDependency({ sourceCategory, targetCategory }) {
   }
   if (sourceCategory === 'hizofs-worker-entry') return ['hizofs-worker-entry', 'hizofs-composition'].includes(targetCategory);
   if (sourceCategory === 'hizofs-worker') return ['hizofs-worker-entry', 'hizofs-worker', 'hizofs-composition', 'hizofs-api', 'hizofs-diagnostics', 'hizofs-runtime'].includes(targetCategory);
+  if (sourceCategory === 'hizofs-v1-format-tests') {
+    return targetCategory === 'hizofs-v1-format-tests'
+      || targetCategory === 'hizofs-composition'
+      || targetCategory === 'hizofs-worker'
+      || targetCategory === 'hizofs-api'
+      || targetCategory === 'hizofs-authenticated-store'
+      || targetCategory === 'hizofs-diagnostics'
+      || targetCategory === 'hizofs-format-public'
+      || targetCategory === 'hizofs-crypto-public'
+      || targetCategory === 'hizofs-physical-store'
+      || targetCategory === 'hizofs-runtime'
+      || HIZOFS_LOGICAL_CATEGORIES.has(targetCategory);
+  }
   if (sourceCategory === 'hizofs-root') return ['hizofs-api', 'hizofs-worker-entry', 'hizofs-worker', 'hizofs-composition', 'hizofs-compatibility'].includes(targetCategory);
 
   if (sourceCategory === 'naidan-control-format') return targetCategory === 'hizofs-compatibility';

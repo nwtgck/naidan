@@ -488,6 +488,30 @@ import type { Dto } from '@/00-storage/00-dto/dto';`,
       });
     });
 
+    it('allows the dedicated V1 format test owner to compose real HizoFS boundaries without granting the same authority to ordinary HizoFS root files', async () => {
+      const testFile = 'src/00-storage/service/hizofs/v1-format-tests/support/environment.ts';
+      await expectAllowed({
+        code: `import { openEmptyEncryptedContainer } from '@/00-storage/service/hizofs/authenticated-store/empty-container-store';`,
+        filePath: testFile,
+      });
+      await expectAllowed({
+        code: `import { InMemoryCrashDurabilityBackend } from '@/00-storage/service/hizofs/physical-store/testing/in-memory-crash-durability-backend';`,
+        filePath: testFile,
+      });
+      await expectAllowed({
+        code: `import { helper } from '@/00-storage/service/hizofs/v1-format-tests/support/helper';`,
+        filePath: testFile,
+      });
+      await expectForbidden({
+        code: `import { openEmptyEncryptedContainer } from '@/00-storage/service/hizofs/authenticated-store/empty-container-store';`,
+        filePath: 'src/00-storage/service/hizofs/unrelated-root-file.ts',
+      });
+      await expectForbidden({
+        code: `import { helper } from '@/00-storage/service/hizofs/v1-format-tests/support/helper';`,
+        filePath: 'src/00-storage/service/hizofs/worker/composition-root.ts',
+      });
+    });
+
     it('rejects deep format imports from crypto while allowing the public format entry', async () => {
       await expectForbidden({
         code: `import { encodeCryptoContext } from '@/00-storage/service/hizofs/00-format/v1/crypto-context-codec';`,
