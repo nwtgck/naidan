@@ -411,6 +411,57 @@ ij$
     expect(invalidOption.result.exitCode).toBe(1);
   });
 
+  it("does not continue delimited commands across -e source boundaries", async () => {
+    await writeFile({ path: "unfinished-source.sed", data: "s/a/A\\" });
+    await writeFile({ path: "append-source.sed", data: "a\\" });
+
+    const substitute = await execute({
+      script: String.raw`sed -e 's/a/A\' -e 'B/'`,
+      stdinText: "a\n",
+    });
+    const address = await execute({
+      script: String.raw`sed -n -e '/a\' -e 'b/p'`,
+      stdinText: `\
+a
+b
+`,
+    });
+    const translate = await execute({
+      script: String.raw`sed -e 'y/a\' -e 'b/AXB/'`,
+      stdinText: `\
+a
+b
+`,
+    });
+    const append = await execute({
+      script: String.raw`sed -e 'a\' -e 'TEXT'`,
+      stdinText: "a\n",
+    });
+    const fileSubstitute = await execute({
+      script: String.raw`sed -f unfinished-source.sed -e 'B/'`,
+      stdinText: "a\n",
+    });
+    const fileAppend = await execute({
+      script: String.raw`sed -f append-source.sed -e 'TEXT'`,
+      stdinText: "a\n",
+    });
+
+    for (const outcome of [substitute, address, translate, fileSubstitute]) {
+      expect(outcome.stdout.text).toBe("");
+      expect(outcome.stderr.text).not.toBe("");
+      expect(outcome.result.exitCode).toBe(1);
+    }
+    expect(append.stdout.text).toBe(`\
+a
+TEXT
+`);
+    expect(append.stderr.text).toBe("");
+    expect(append.result.exitCode).toBe(0);
+    expect(fileAppend.stdout.text).toBe(append.stdout.text);
+    expect(fileAppend.stderr.text).toBe("");
+    expect(fileAppend.result.exitCode).toBe(0);
+  });
+
   it("supports multiple -e scripts with -n and p", async () => {
     await writeFile({
       path: "input.txt",
@@ -488,6 +539,25 @@ beta
     expect(stdout.text).toBe("bEta\n");
     expect(stderr.text).toBe("");
     expect(result.exitCode).toBe(0);
+  });
+
+  it("matches GNU script-file errors and treats directory sources as empty", async () => {
+    await rootHandle.getDirectoryHandle("scripts", { create: true });
+    await writeFile({ path: "input.txt", data: "alpha\n" });
+
+    const directorySource = await execute({
+      script: "sed -f scripts -e 's/a/A/' input.txt",
+    });
+    const missingSource = await execute({
+      script: "sed -f missing.sed input.txt",
+    });
+
+    expect(directorySource.stdout.text).toBe("Alpha\n");
+    expect(directorySource.stderr.text).toBe("");
+    expect(directorySource.result.exitCode).toBe(0);
+    expect(missingSource.stdout.text).toBe("");
+    expect(missingSource.stderr.text).not.toBe("");
+    expect(missingSource.result.exitCode).toBe(4);
   });
 
   it("preserves malformed UTF-8 literals in script files", async () => {
@@ -606,6 +676,67 @@ omega
     expect(result.exitCode).toBe(0);
   });
 
+  it("accepts ASCII whitespace around range separators and relative counts", async () => {
+    const numeric = await execute({
+      script: "sed -n '1 , + 2p'",
+      stdinText: `\
+a
+b
+c
+d
+`,
+    });
+    const regex = await execute({
+      script: "sed -n '/a/ , /b/ p'",
+      stdinText: `\
+x
+a
+y
+b
+z
+`,
+    });
+    const zero = await execute({
+      script: "sed -n '0 , /b/p'",
+      stdinText: `\
+a
+b
+c
+`,
+    });
+    const tabs = await execute({
+      script: "sed -n '1\t,\t~\t2p'",
+      stdinText: `\
+a
+b
+c
+`,
+    });
+
+    expect(numeric.stdout.text).toBe(`\
+a
+b
+c
+`);
+    expect(regex.stdout.text).toBe(`\
+a
+y
+b
+`);
+    expect(zero.stdout.text).toBe(`\
+a
+b
+`);
+    expect(tabs.stdout.text).toBe(`\
+a
+b
+`);
+    for (const outcome of [numeric, regex, zero, tabs]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
   it("supports in-place editing with backup suffixes", async () => {
     await writeFile({
       path: "input.txt",
@@ -650,6 +781,47 @@ beta
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }
+  });
+
+  it("uses sed fatal status for in-place editing operation failures", async () => {
+    await wesh.vfs.mkdir({ path: "/input-dir", recursive: true });
+    const directoryInput = await execute({
+      script: "sed -i 's/foo/bar/' input-dir",
+    });
+
+    await writeFile({ path: "input.txt", data: "foo\n" });
+    const backupRenameFailure = await execute({
+      script: "sed -i'*/*' 's/foo/bar/' input.txt",
+    });
+
+    expect(directoryInput.stdout.text).toBe("");
+    expect(directoryInput.stderr.text).not.toBe("");
+    expect(directoryInput.result.exitCode).toBe(4);
+    expect(backupRenameFailure.stdout.text).toBe("");
+    expect(backupRenameFailure.stderr.text).not.toBe("");
+    expect(backupRenameFailure.result.exitCode).toBe(4);
+    expect(await readFile({ path: "input.txt" })).toBe("foo\n");
+  });
+
+  it("continues after in-place input errors but stops after fatal edit errors", async () => {
+    await writeFile({ path: "after-missing.txt", data: "foo\n" });
+    const missingInput = await execute({
+      script: "sed -i.bak 's/foo/bar/' missing.txt after-missing.txt",
+    });
+
+    await wesh.vfs.mkdir({ path: "/fatal-dir", recursive: true });
+    await writeFile({ path: "after-fatal.txt", data: "foo\n" });
+    const fatalEdit = await execute({
+      script: "sed -i.bak 's/foo/bar/' fatal-dir after-fatal.txt",
+    });
+
+    expect(missingInput.stderr.text).not.toBe("");
+    expect(missingInput.result.exitCode).toBe(2);
+    expect(await readFile({ path: "after-missing.txt" })).toBe("bar\n");
+    expect(await readFile({ path: "after-missing.txt.bak" })).toBe("foo\n");
+    expect(fatalEdit.stderr.text).not.toBe("");
+    expect(fatalEdit.result.exitCode).toBe(4);
+    expect(await readFile({ path: "after-fatal.txt" })).toBe("foo\n");
   });
 
   it("supports newline escapes in in-place HTML-like replacements", async () => {
@@ -801,6 +973,26 @@ betA
     expect(result.exitCode).toBe(0);
   });
 
+  it("rejects address ranges on q and Q", async () => {
+    for (const script of [
+      String.raw`sed -n '1,2q'`,
+      String.raw`sed -n '/a/,/b/Q'`,
+      String.raw`sed -n '1,+2q 7'`,
+    ]) {
+      const outcome = await execute({
+        script,
+        stdinText: `\
+a
+b
+c
+`,
+      });
+      expect(outcome.stdout.text).toBe("");
+      expect(outcome.stderr.text).toContain("command only uses one address");
+      expect(outcome.result.exitCode).toBe(1);
+    }
+  });
+
   it("supports q to quit after the addressed line", async () => {
     await writeFile({
       path: "input.txt",
@@ -915,6 +1107,34 @@ BetA
     expect(stdout.text).toBe("");
     expect(stderr.text).toContain("different lengths");
     expect(result.exitCode).toBe(1);
+  });
+
+  it("rejects unescaped physical newlines inside y operands", async () => {
+    await writeFile({
+      path: "y-source-newline.sed",
+      data: `y|
+|X|\n`,
+    });
+    await writeFile({
+      path: "y-target-newline.sed",
+      data: `y|a|
+|\n`,
+    });
+
+    const source = await execute({
+      script: "sed -f y-source-newline.sed",
+      stdinText: "\n",
+    });
+    const target = await execute({
+      script: "sed -f y-target-newline.sed",
+      stdinText: "a\n",
+    });
+
+    for (const outcome of [source, target]) {
+      expect(outcome.stdout.text).toBe("");
+      expect(outcome.stderr.text).toContain("unterminated translate command");
+      expect(outcome.result.exitCode).toBe(1);
+    }
   });
 
   it("translates Unicode code points with y", async () => {
@@ -1092,6 +1312,16 @@ delta
     const occurrence = await execute({
       script: String.raw`printf 'a\nb\n' | sed -n 'N;s/^/X/M2p'`,
     });
+    const normalDot = await execute({
+      script: String.raw`printf 'A\nb\n' | sed -n 'N;/A.b/p'`,
+    });
+    const multilineDot = await execute({
+      script: String.raw`printf 'A\nb\n' | sed -n 'N;/A.b/Mp'`,
+    });
+    const nullDataMultilineDot = await execute({
+      script: String.raw`sed -z -n 's/A.b/X/Mp'`,
+      stdinText: "A\nb\0",
+    });
 
     expect(address.stdout.text).toBe(`\
 ALPHA
@@ -1105,7 +1335,20 @@ X
 a
 Xb
 `);
-    for (const outcome of [address, substitution, occurrence]) {
+    expect(normalDot.stdout.text).toBe(`\
+A
+b
+`);
+    expect(multilineDot.stdout.text).toBe("");
+    expect(nullDataMultilineDot.stdout.text).toBe("");
+    for (const outcome of [
+      address,
+      substitution,
+      occurrence,
+      normalDot,
+      multilineDot,
+      nullDataMultilineDot,
+    ]) {
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }
@@ -1310,6 +1553,22 @@ aab
       script: String.raw`LC_ALL=C.utf8 sed -E 's/(.*)/\U\1/'`,
       stdinText: "éÉ ßı\n",
     });
+    const unicodeSingleCharacter = await execute({
+      script: String.raw`LC_ALL=C.utf8 sed -E 's/(.*)/\U\1\E/'`,
+      stdinText: "KÅᾀᾐᾠᾳῃῳ\n",
+    });
+    const unicodeSingleCharacterOneShot = await execute({
+      script: String.raw`LC_ALL=C.utf8 sed -E 's/(.*)/\u\1/'`,
+      stdinText: "ᾀx\n",
+    });
+    const cLocaleInvalidBytesUpper = await execute({
+      script: String.raw`LC_ALL=C sed -E 's/(.)/\U\1\E/g'`,
+      stdinBytes: Uint8Array.from([0x61, 0x80, 0x62, 0xfe, 0xff, 0x0a]),
+    });
+    const cLocaleInvalidBytesLower = await execute({
+      script: String.raw`LC_ALL=C sed -E 's/(.)/\L\1\E/g'`,
+      stdinBytes: Uint8Array.from([0x41, 0x80, 0x42, 0xfe, 0xff, 0x0a]),
+    });
     const invalidReference = await execute({
       script: String.raw`sed -E 's/(a)/\2/'`,
       stdinText: "a\n",
@@ -1318,7 +1577,23 @@ aab
     expect(ascii.stdout.text).toBe("abc-XYZ\n");
     expect(oneShot.stdout.text).toBe("x123\n");
     expect(unicode.stdout.text).toBe("ÉÉ ßI\n");
-    for (const outcome of [ascii, oneShot, unicode]) {
+    expect(unicodeSingleCharacter.stdout.text).toBe("KÅᾈᾘᾨᾼῌῼ\n");
+    expect(unicodeSingleCharacterOneShot.stdout.text).toBe("ᾈx\n");
+    expect(cLocaleInvalidBytesUpper.stdout.buffer).toEqual(
+      Uint8Array.from([0x41, 0xff, 0x42, 0xff, 0xff, 0x0a]),
+    );
+    expect(cLocaleInvalidBytesLower.stdout.buffer).toEqual(
+      Uint8Array.from([0x61, 0xff, 0x62, 0xff, 0xff, 0x0a]),
+    );
+    for (const outcome of [
+      ascii,
+      oneShot,
+      unicode,
+      unicodeSingleCharacter,
+      unicodeSingleCharacterOneShot,
+      cLocaleInvalidBytesUpper,
+      cLocaleInvalidBytesLower,
+    ]) {
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }
@@ -1368,6 +1643,80 @@ cd
       expect(stderr.text).toContain("invalid substitute regex");
       expect(result.exitCode).toBe(1);
     }
+  });
+
+  it("preserves input errors across q and does not pre-open files after q", async () => {
+    await writeFile({ path: "input.txt", data: `\
+alpha
+beta
+` });
+
+    const priorError = await execute({
+      script: "sed 'q 7' missing.txt input.txt",
+    });
+    expect(priorError.stdout.text).toBe("alpha\n");
+    expect(priorError.stderr.text).not.toBe("");
+    expect(priorError.result.exitCode).toBe(2);
+
+    const laterFile = await execute({
+      script: "sed 'q 7' input.txt missing.txt",
+    });
+    expect(laterFile.stdout.text).toBe("alpha\n");
+    expect(laterFile.stderr.text).toBe("");
+    expect(laterFile.result.exitCode).toBe(7);
+
+    await writeFile({ path: "in-place.txt", data: `\
+alpha
+beta
+` });
+    const inPlacePriorError = await execute({
+      script: "sed -i 'q 7' missing.txt in-place.txt",
+    });
+    expect(inPlacePriorError.stdout.text).toBe("");
+    expect(inPlacePriorError.stderr.text).not.toBe("");
+    expect(inPlacePriorError.result.exitCode).toBe(2);
+    expect(await readFileBytes({ path: "in-place.txt" })).toEqual(
+      Uint8Array.from([0x61, 0x6c, 0x70, 0x68, 0x61, 0x0a]),
+    );
+  });
+
+  it("resolves last-line addresses only when control flow reaches them", async () => {
+    await writeFile({ path: "good.txt", data: "good\n" });
+
+    for (const script of [
+      "q;$p",
+      "Q;$p",
+      "1q;$p",
+      "1Q;$p",
+      "b done;$p;:done;q",
+      "b done;$p;:done;Q",
+    ]) {
+      const skippedLastAddress = await execute({
+        script: `sed -n -e '${script}' good.txt missing.txt`,
+      });
+      expect(skippedLastAddress.stdout.text).toBe("");
+      expect(skippedLastAddress.stderr.text).toBe("");
+      expect(skippedLastAddress.result.exitCode).toBe(0);
+    }
+
+    for (const script of ["2q;$p", "/z/q;$p"]) {
+      const reachedLastAddress = await execute({
+        script: `sed -n -e '${script}' good.txt missing.txt`,
+      });
+      expect(reachedLastAddress.stderr.text).not.toBe("");
+      expect(reachedLastAddress.result.exitCode).toBe(2);
+    }
+
+    await writeFile({ path: "good.txt", data: `\
+one
+two
+` });
+    const activeRangeBeforeQuit = await execute({
+      script: "sed -n -e '2q;1,$p' good.txt missing.txt",
+    });
+    expect(activeRangeBeforeQuit.stdout.text).toBe("one\n");
+    expect(activeRangeBeforeQuit.stderr.text).toBe("");
+    expect(activeRangeBeforeQuit.result.exitCode).toBe(0);
   });
 
   it("returns status 2 when an input file cannot be read", async () => {
@@ -1449,6 +1798,35 @@ Yc
     ]);
     expect(missingWhole.stderr.text).toBe("");
     expect(missingWhole.result.exitCode).toBe(0);
+  });
+
+  it("terminates pending unterminated stdout on q but not Q", async () => {
+    const quietQuit = await execute({
+      script: String.raw`sed -n 'p;q 3'`,
+      stdinText: "b",
+    });
+    const quietQuitWithoutPrint = await execute({
+      script: String.raw`sed -n 'p;Q 3'`,
+      stdinText: "b",
+    });
+    const automaticQuit = await execute({
+      script: String.raw`sed 'p;q'`,
+      stdinText: "b",
+    });
+    const nullDataQuit = await execute({
+      script: String.raw`sed -z -n 'p;q'`,
+      stdinBytes: Uint8Array.of(0x62),
+    });
+
+    expect([...quietQuit.stdout.buffer]).toEqual([0x62, 0x0a]);
+    expect(quietQuit.result.exitCode).toBe(3);
+    expect([...quietQuitWithoutPrint.stdout.buffer]).toEqual([0x62]);
+    expect(quietQuitWithoutPrint.result.exitCode).toBe(3);
+    expect([...automaticQuit.stdout.buffer]).toEqual([0x62, 0x0a, 0x62, 0x0a]);
+    expect([...nullDataQuit.stdout.buffer]).toEqual([0x62, 0x00]);
+    for (const outcome of [quietQuit, quietQuitWithoutPrint, automaticQuit, nullDataQuit]) {
+      expect(outcome.stderr.text).toBe("");
+    }
   });
 
   it("writes pattern spaces and first lines with w and W", async () => {
@@ -1625,6 +2003,36 @@ gamma
     }
   });
 
+  it("terminates label operands at ASCII whitespace and comments", async () => {
+    const tabSeparated = await execute({
+      script: "sed -n ':a\tb;p'",
+      stdinText: "x\n",
+    });
+    const commentSeparated = await execute({
+      script: "sed -n ':hash#name;p'",
+      stdinText: "x\n",
+    });
+    const branchSeparated = await execute({
+      script: "sed -n 'b a\tb;s/.*/BAD/;:a\tb;p'",
+      stdinText: "x\n",
+    });
+    const missingBeforeComment = await execute({
+      script: "sed -n 'b hash#name;:hash#name;p'",
+      stdinText: "x\n",
+    });
+
+    for (const outcome of [tabSeparated, commentSeparated, branchSeparated]) {
+      expect(outcome.stdout.text).toBe("");
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+    expect(missingBeforeComment.stdout.text).toBe("");
+    expect(missingBeforeComment.stderr.text).toContain(
+      "can't find label for jump to 'hash'",
+    );
+    expect(missingBeforeComment.result.exitCode).toBe(4);
+  });
+
   it("reports invalid and missing branch labels before reading input", async () => {
     const addressedLabel = await execute({
       script: String.raw`sed '1:x;p'`,
@@ -1792,6 +2200,42 @@ a
       delimiterInsideBracket,
       addressDelimiterInsideBracket,
       leadingNegationDelimiterInsideBracket,
+    ]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it("keeps POSIX bracket subexpressions intact when ] is the regexp delimiter", async () => {
+    const characterClass = await execute({
+      script: String.raw`sed 's][[:alpha:]]]X]g'`,
+      stdinText: "a1!\n",
+    });
+    const equivalenceClass = await execute({
+      script: String.raw`sed 's][[=a=]]]X]g'`,
+      stdinText: "ab\n",
+    });
+    const collatingSymbol = await execute({
+      script: String.raw`sed 's][[.a.]]]X]g'`,
+      stdinText: "ab\n",
+    });
+    const alternateAddress = await execute({
+      script: String.raw`sed -n '\][[:alpha:]]]p'`,
+      stdinText: `\
+a1
+9
+`,
+    });
+
+    expect(characterClass.stdout.text).toBe("X1!\n");
+    expect(equivalenceClass.stdout.text).toBe("Xb\n");
+    expect(collatingSymbol.stdout.text).toBe("Xb\n");
+    expect(alternateAddress.stdout.text).toBe("a1\n");
+    for (const outcome of [
+      characterClass,
+      equivalenceClass,
+      collatingSymbol,
+      alternateAddress,
     ]) {
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
@@ -2050,6 +2494,18 @@ four
       script: String.raw`sed 's/a/X/2g'`,
       stdinText: "a a a\n",
     });
+    const leadingZeroNumbered = await execute({
+      script: String.raw`sed 's/a/X/01'`,
+      stdinText: "a a a\n",
+    });
+    const leadingZeroFollowing = await execute({
+      script: String.raw`sed 's/a/X/0002g'`,
+      stdinText: "a a a\n",
+    });
+    const zeroOccurrence = await execute({
+      script: String.raw`sed 's/a/X/00'`,
+      stdinText: "a a a\n",
+    });
     const ignoreCase = await execute({
       script: String.raw`sed 's/alpha/X/Ig'`,
       stdinText: "Alpha alpha ALPHA\n",
@@ -2057,25 +2513,43 @@ four
 
     expect(numbered.stdout.text).toBe("a X a\n");
     expect(following.stdout.text).toBe("a X X\n");
+    expect(leadingZeroNumbered.stdout.text).toBe("X a a\n");
+    expect(leadingZeroFollowing.stdout.text).toBe("a X X\n");
     expect(ignoreCase.stdout.text).toBe("X X X\n");
-    for (const outcome of [numbered, following, ignoreCase]) {
+    for (const outcome of [
+      numbered,
+      following,
+      leadingZeroNumbered,
+      leadingZeroFollowing,
+      ignoreCase,
+    ]) {
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }
+    expect(zeroOccurrence.stdout.text).toBe("");
+    expect(zeroOccurrence.stderr.text).toContain("invalid substitute occurrence");
+    expect(zeroOccurrence.result.exitCode).toBe(1);
   });
 
   it("supports GNU zero-address ranges from the first input record", async () => {
-    const { result, stdout, stderr } = await execute({
-      script: String.raw`sed -n '0,/match/p'`,
+    const range = await execute({
+      script: String.raw`sed -n '00,/match/p'`,
       stdinText: `\
 match
 later match
 `,
     });
+    const standalone = await execute({
+      script: String.raw`sed -n '00p'`,
+      stdinText: "match\n",
+    });
 
-    expect(stdout.text).toBe("match\n");
-    expect(stderr.text).toBe("");
-    expect(result.exitCode).toBe(0);
+    expect(range.stdout.text).toBe("match\n");
+    expect(range.stderr.text).toBe("");
+    expect(range.result.exitCode).toBe(0);
+    expect(standalone.stdout.text).toBe("");
+    expect(standalone.stderr.text).toContain("invalid usage of line address 0");
+    expect(standalone.result.exitCode).toBe(1);
   });
 
   it("matches GNU sed range termination rules", async () => {
@@ -2284,6 +2758,59 @@ delta
     expect(invalidZeroStep.result.exitCode).toBe(1);
   });
 
+  it("matches GNU active range state across branch skips and pattern mutation", async () => {
+    const patternMutation = await execute({
+      script: String.raw`sed -n 's/a/A/;0,/a/P;p'`,
+      stdinText: `\
+x
+a
+b
+`,
+    });
+    const branchSkip = await execute({
+      script: String.raw`sed -n 's/a/A/;t end;0,/a/P;:end;p'`,
+      stdinText: `\
+x
+a
+b
+`,
+    });
+    const skippedNumericEnd = await execute({
+      script: String.raw`sed -n '2b end;1,2!=;:end;p'`,
+      stdinText: `\
+1
+2
+3
+`,
+    });
+
+    expect(patternMutation.stdout.text).toBe(`\
+x
+x
+A
+A
+b
+b
+`);
+    expect(branchSkip.stdout.text).toBe(`\
+x
+x
+A
+b
+b
+`);
+    expect(skippedNumericEnd.stdout.text).toBe(`\
+1
+2
+3
+3
+`);
+    for (const outcome of [patternMutation, branchSkip, skippedNumericEnd]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
   it("settles active range endings when an earlier delete ends the cycle", async () => {
     const quiet = await execute({
       script: String.raw`sed -n -e '2d' -e '1,2p'`,
@@ -2369,6 +2896,60 @@ BetA
     }
   });
 
+  it("preserves active regexp and line-step ranges when n or N consumes input", async () => {
+    const regexp = await execute({
+      script: String.raw`sed -n '1,/a/p;n;p'`,
+      stdinText: `\
+x
+a
+b
+`,
+    });
+    const lineStep = await execute({
+      script: String.raw`sed -n '1,2~1p;N;p'`,
+      stdinText: `\
+1
+2
+3
+4
+`,
+    });
+
+    expect(regexp.stdout.text).toBe(`\
+x
+a
+b
+`);
+    expect(lineStep.stdout.text).toBe(`\
+1
+1
+2
+3
+3
+4
+`);
+    for (const outcome of [regexp, lineStep]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it("does not start an absolute numeric range after its end was already consumed", async () => {
+    const { result, stdout, stderr } = await execute({
+      script: String.raw`sed -n '1,~2d;1,2p'`,
+      stdinText: `\
+1
+2
+3
+4
+`,
+    });
+
+    expect(stdout.text).toBe("");
+    expect(stderr.text).toBe("");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("preserves the command-line order of -f and -e scripts", async () => {
     await writeFile({ path: "first.sed", data: "s/b/B/\n" });
     await writeFile({ path: "input.txt", data: "beta\n" });
@@ -2429,11 +3010,37 @@ s/l/L/'`,
       script: String.raw`sed 's/a/A/;# comment'`,
       stdinText: "alpha\n",
     });
+    const adjacentToCommand = await execute({
+      script: String.raw`sed -n '1p# comment'`,
+      stdinText: `\
+alpha
+beta
+`,
+    });
+    const adjacentToSubstitute = await execute({
+      script: String.raw`sed -n 's/a/A/p# comment'`,
+      stdinText: "alpha\n",
+    });
+    const adjacentToQuitStatus = await execute({
+      script: String.raw`sed -n 'q 7 # comment'`,
+      stdinText: "alpha\n",
+    });
 
     expect(commentOnly.stdout.text).toBe("alpha\n");
     expect(afterNewline.stdout.text).toBe("ALpha\n");
     expect(afterSemicolon.stdout.text).toBe("Alpha\n");
-    for (const outcome of [commentOnly, afterNewline, afterSemicolon]) {
+    expect(adjacentToCommand.stdout.text).toBe("alpha\n");
+    expect(adjacentToSubstitute.stdout.text).toBe("Alpha\n");
+    expect(adjacentToQuitStatus.stdout.text).toBe("");
+    expect(adjacentToQuitStatus.stderr.text).toBe("");
+    expect(adjacentToQuitStatus.result.exitCode).toBe(7);
+    for (const outcome of [
+      commentOnly,
+      afterNewline,
+      afterSemicolon,
+      adjacentToCommand,
+      adjacentToSubstitute,
+    ]) {
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }

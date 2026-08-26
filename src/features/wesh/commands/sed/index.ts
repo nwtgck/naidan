@@ -248,6 +248,7 @@ interface SedOutput {
 
 type SedAction =
   | { kind: "output"; output: SedOutput }
+  | { kind: "terminatePendingOutput" }
   | { kind: "appendText"; text: string }
   | { kind: "readFile"; path: string; mode: "all" | "line" }
   | { kind: "writeFile"; path: string; output: SedOutput };
@@ -380,6 +381,7 @@ interface SedParseState {
   syntax: SedRegularExpressionSyntax;
   characterLocaleMode: WeshCharacterLocaleMode;
   nullData: boolean;
+  sourceBoundaryIndices: ReadonlySet<number>;
   previousRegex: RegExp | undefined;
   previousCaptureCount: number;
 }
@@ -390,12 +392,13 @@ function parseLineNumberAddress({
   value: string;
 }): SedAddress | undefined {
   if (!/^\d+$/.test(value)) return undefined;
-  if (value === "0") {
+  const lineNumber = Number.parseInt(value, 10);
+  if (lineNumber === 0) {
     return { kind: "zero" };
   }
   return {
     kind: "line",
-    lineNumber: parseInt(value, 10),
+    lineNumber,
   };
 }
 
@@ -618,6 +621,23 @@ function normalizeSedRegularExpressionEscapes({ source }: { source: string }): s
 
 const SED_WILDCARD_DOT_SENTINEL = "\uD800";
 
+function findSedPosixBracketSubexpressionEnd({
+  source,
+  index,
+}: {
+  source: string;
+  index: number;
+}): number | undefined {
+  if (source[index] !== "[") return undefined;
+  const marker = source[index + 1];
+  if (marker !== ":" && marker !== "." && marker !== "=") return undefined;
+  const closingIndex = source.indexOf(`${marker}]`, index + 2);
+  if (closingIndex < 0) return undefined;
+  const newlineIndex = source.indexOf("\n", index + 2);
+  if (newlineIndex >= 0 && newlineIndex < closingIndex) return undefined;
+  return closingIndex + 2;
+}
+
 function maskSedWildcardDots({ source }: { source: string }): string {
   let result = "";
   let inBracketExpression = false;
@@ -649,16 +669,14 @@ function maskSedWildcardDots({ source }: { source: string }): string {
       continue;
     }
 
-    if (
-      character === "[" &&
-      (source[index + 1] === ":" || source[index + 1] === "." || source[index + 1] === "=")
-    ) {
-      const marker = source[index + 1]!;
-      const closing = `${marker}]`;
-      const closingIndex = source.indexOf(closing, index + 2);
-      if (closingIndex >= 0) {
-        result += source.slice(index, closingIndex + 2);
-        index = closingIndex + 1;
+    if (character === "[") {
+      const bracketSubexpressionEnd = findSedPosixBracketSubexpressionEnd({
+        source,
+        index,
+      });
+      if (bracketSubexpressionEnd !== undefined) {
+        result += source.slice(index, bracketSubexpressionEnd);
+        index = bracketSubexpressionEnd - 1;
         bracketCanClose = true;
         bracketMayConsumeNegation = false;
         continue;
@@ -687,17 +705,21 @@ function maskSedWildcardDots({ source }: { source: string }): string {
 function restoreSedWildcardDots({
   regex,
   characterLocaleMode,
+  dotMatchesNewline,
 }: {
   regex: RegExp;
   characterLocaleMode: WeshCharacterLocaleMode;
+  dotMatchesNewline: boolean;
 }): RegExp {
   if (!regex.source.includes(SED_WILDCARD_DOT_SENTINEL)) return regex;
   const wildcard = (() => {
     switch (characterLocaleMode) {
     case "ascii":
-      return String.raw`[\s\S]`;
+      return dotMatchesNewline ? String.raw`[\s\S]` : String.raw`[^\n]`;
     case "unicode":
-      return String.raw`(?![\uDC80-\uDCFF])[\s\S]`;
+      return dotMatchesNewline
+        ? String.raw`(?![\uDC80-\uDCFF])[\s\S]`
+        : String.raw`(?![\uDC80-\uDCFF])[^\n]`;
     default: {
       const _ex: never = characterLocaleMode;
       throw new Error(`Unhandled sed character locale mode: ${_ex}`);
@@ -713,12 +735,14 @@ function compileSedRegex({
   global,
   characterLocaleMode,
   nullData,
+  dotMatchesNewline,
 }: {
   source: string;
   syntax: SedRegularExpressionSyntax;
   global: boolean;
   characterLocaleMode: WeshCharacterLocaleMode;
   nullData: boolean;
+  dotMatchesNewline: boolean;
 }): RegExp {
   const flags = (() => {
     const globalFlag = global ? "g" : "";
@@ -765,17 +789,19 @@ function compileSedRegex({
     }
     }
   })();
-  return restoreSedWildcardDots({ regex, characterLocaleMode });
+  return restoreSedWildcardDots({ regex, characterLocaleMode, dotMatchesNewline });
 }
 
 function resolveSedRegex({
   source,
   state,
   global,
+  dotMatchesNewline,
 }: {
   source: string;
   state: SedParseState;
   global: boolean;
+  dotMatchesNewline: boolean;
 }): RegExp {
   if (source.length === 0) {
     if (state.previousRegex === undefined) {
@@ -790,6 +816,7 @@ function resolveSedRegex({
     global,
     characterLocaleMode: state.characterLocaleMode,
     nullData: state.nullData,
+    dotMatchesNewline,
   });
   state.previousRegex = cloneSedRegex({ regex, global: false });
   state.previousCaptureCount = countSedCapturingGroups({
@@ -823,11 +850,13 @@ function readSedRegexOperand({
   index,
   delimiter,
   unterminatedMessage,
+  sourceBoundaryIndices,
 }: {
   script: string;
   index: number;
   delimiter: string;
   unterminatedMessage: string;
+  sourceBoundaryIndices: ReadonlySet<number>;
 }):
   | { ok: true; source: string; nextIndex: number }
   | { ok: false; message: string } {
@@ -838,6 +867,9 @@ function readSedRegexOperand({
   let bracketMayConsumeNegation = false;
 
   while (cursor < script.length) {
+    if (sourceBoundaryIndices.has(cursor)) {
+      return { ok: false, message: unterminatedMessage };
+    }
     const character = script[cursor];
     if (character === undefined) break;
 
@@ -863,12 +895,34 @@ function readSedRegexOperand({
       continue;
     }
 
+    if (inBracketExpression && character === "[") {
+      const bracketSubexpressionEnd = findSedPosixBracketSubexpressionEnd({
+        source: script,
+        index: cursor,
+      });
+      if (bracketSubexpressionEnd !== undefined) {
+        // POSIX character classes, equivalence classes, and collating symbols
+        // contain their own closing bracket. Keep the whole nested token inside
+        // the surrounding bracket expression so a matching sed delimiter (for
+        // example `]`) cannot terminate the regexp operand early.
+        source += script.slice(cursor, bracketSubexpressionEnd);
+        bracketCanClose = true;
+        bracketMayConsumeNegation = false;
+        cursor = bracketSubexpressionEnd;
+        continue;
+      }
+    }
+
     if (character === "\\") {
       const escaped = script[cursor + 1];
       if (escaped === undefined) {
         source += character;
         cursor += 1;
         continue;
+      }
+
+      if (escaped === "\n" && sourceBoundaryIndices.has(cursor + 1)) {
+        return { ok: false, message: unterminatedMessage };
       }
 
       if (escaped === "\n") {
@@ -891,7 +945,20 @@ function readSedRegexOperand({
       }
 
       source += `${character}${escaped}`;
-      if (inBracketExpression && !bracketCanClose) bracketCanClose = true;
+      if (inBracketExpression) {
+        // GNU regex bracket expressions treat backslash as a member rather
+        // than as an escape for the closing `]`. Therefore `\]` can close
+        // the bracket after the backslash itself has supplied a member. This
+        // matters to sed's delimiter scanner when `]` is also the delimiter.
+        if (!bracketCanClose) {
+          bracketCanClose = true;
+          bracketMayConsumeNegation = false;
+        }
+        if (escaped === "]") {
+          inBracketExpression = false;
+          bracketMayConsumeNegation = false;
+        }
+      }
       cursor += 2;
       continue;
     }
@@ -960,6 +1027,7 @@ function parseRegexLiteral({
     index: first === "/" ? index + 1 : index + 2,
     delimiter,
     unterminatedMessage: "unterminated regex address",
+    sourceBoundaryIndices: state.sourceBoundaryIndices,
   });
   if (!operand.ok) return operand;
 
@@ -991,6 +1059,7 @@ function parseRegexLiteral({
       source: operand.source,
       state,
       global: false,
+      dotMatchesNewline: !multiline,
     });
     return {
       ok: true,
@@ -1046,7 +1115,11 @@ function parseAddress({
 
   if (allowRelative && (script[index] === "+" || script[index] === "~")) {
     const operator = script[index];
-    const countMatch = script.slice(index + 1).match(/^\d+/u);
+    let countIndex = index + 1;
+    while (script[countIndex] === " " || script[countIndex] === "\t") {
+      countIndex += 1;
+    }
+    const countMatch = script.slice(countIndex).match(/^\d+/u);
     const countText = countMatch?.[0] ?? "";
     const count = countText.length === 0 ? 0 : Number.parseInt(countText, 10);
     return {
@@ -1063,7 +1136,7 @@ function parseAddress({
         }
         }
       })(),
-      nextIndex: index + 1 + countText.length,
+      nextIndex: countIndex + countText.length,
     };
   }
 
@@ -1130,6 +1203,7 @@ function parseSubstituteCommand({
     index: index + 2,
     delimiter,
     unterminatedMessage: "unterminated substitute command",
+    sourceBoundaryIndices: state.sourceBoundaryIndices,
   });
   if (!patternOperand.ok) return patternOperand;
 
@@ -1141,6 +1215,9 @@ function parseSubstituteCommand({
   escaped = false;
   let replacementTerminated = false;
   while (cursor < script.length) {
+    if (state.sourceBoundaryIndices.has(cursor)) {
+      return { ok: false, message: "unterminated substitute command" };
+    }
     const char = script[cursor];
     if (char === undefined) break;
     if (!escaped && char === "\n") {
@@ -1211,7 +1288,7 @@ function parseSubstituteCommand({
       cursor = parsed.nextIndex;
       break;
     }
-    if (/^[1-9]$/.test(char)) {
+    if (/^\d$/.test(char)) {
       if (sawOccurrence) {
         return { ok: false, message: "multiple number options to s command" };
       }
@@ -1219,7 +1296,11 @@ function parseSubstituteCommand({
       if (numberMatch?.[0] === undefined) {
         return { ok: false, message: "invalid substitute occurrence" };
       }
-      occurrence = Number.parseInt(numberMatch[0], 10);
+      const parsedOccurrence = Number.parseInt(numberMatch[0], 10);
+      if (parsedOccurrence === 0) {
+        return { ok: false, message: "invalid substitute occurrence" };
+      }
+      occurrence = parsedOccurrence;
       sawOccurrence = true;
       cursor += numberMatch[0].length;
       continue;
@@ -1241,6 +1322,7 @@ function parseSubstituteCommand({
         source: pattern,
         state,
         global: true,
+        dotMatchesNewline: !multiline,
       }),
       ignoreCase,
       multiline,
@@ -1284,10 +1366,12 @@ function parseDelimitedSedText({
   script,
   index,
   label,
+  sourceBoundaryIndices,
 }: {
   script: string;
   index: number;
   label: string;
+  sourceBoundaryIndices: ReadonlySet<number>;
 }):
   | { ok: true; text: string; nextIndex: number }
   | { ok: false; message: string } {
@@ -1307,8 +1391,14 @@ function parseDelimitedSedText({
   let escaped = false;
 
   while (cursor < script.length) {
+    if (sourceBoundaryIndices.has(cursor)) {
+      return { ok: false, message: `unterminated ${label} command` };
+    }
     const char = script[cursor];
     if (char === undefined) break;
+    if (!escaped && char === "\n") {
+      return { ok: false, message: `unterminated ${label} command` };
+    }
     if (!escaped && char === delimiter) {
       return {
         ok: true,
@@ -1391,6 +1481,7 @@ function parseTranslateCommand({
   rangeEnd,
   negated,
   characterLocaleMode,
+  sourceBoundaryIndices,
 }: {
   script: string;
   index: number;
@@ -1398,6 +1489,7 @@ function parseTranslateCommand({
   rangeEnd: SedAddress | undefined;
   negated: boolean;
   characterLocaleMode: WeshCharacterLocaleMode;
+  sourceBoundaryIndices: ReadonlySet<number>;
 }):
   | { ok: true; command: SedCommand; nextIndex: number }
   | { ok: false; message: string } {
@@ -1405,6 +1497,7 @@ function parseTranslateCommand({
     script,
     index: index + 1,
     label: "translate",
+    sourceBoundaryIndices,
   });
   if (!source.ok) return source;
 
@@ -1412,6 +1505,7 @@ function parseTranslateCommand({
     script,
     index: source.nextIndex - 1,
     label: "translate",
+    sourceBoundaryIndices,
   });
   if (!target.ok) return target;
 
@@ -1588,24 +1682,28 @@ function parseOptionalSedNumber({
       trailing !== undefined &&
       trailing !== ";" &&
       trailing !== "\n" &&
-      trailing !== "}"
+      trailing !== "}" &&
+      trailing !== "#"
     ) {
       return { ok: false, message: `invalid ${label} argument` };
     }
     return { ok: true, value: undefined, nextIndex: cursor };
   }
+  const valueText = script.slice(start, cursor);
+  while (script[cursor] === " " || script[cursor] === "\t") cursor += 1;
   const trailing = script[cursor];
   if (
     trailing !== undefined &&
     trailing !== ";" &&
     trailing !== "\n" &&
-    trailing !== "}"
+    trailing !== "}" &&
+    trailing !== "#"
   ) {
     return { ok: false, message: `invalid ${label} argument` };
   }
   return {
     ok: true,
-    value: Number.parseInt(script.slice(start, cursor), 10),
+    value: Number.parseInt(valueText, 10),
     nextIndex: cursor,
   };
 }
@@ -1653,10 +1751,13 @@ function parseSedLabelOperand({
     cursor < script.length &&
     script[cursor] !== ";" &&
     script[cursor] !== "\n" &&
-    script[cursor] !== "}"
+    script[cursor] !== "}" &&
+    script[cursor] !== " " &&
+    script[cursor] !== "\t" &&
+    script[cursor] !== "#"
   )
     cursor += 1;
-  const label = script.slice(start, cursor).replace(/[ \t]+$/u, "");
+  const label = script.slice(start, cursor);
   if (label.length === 0) {
     switch (requirement) {
     case "required":
@@ -1814,6 +1915,7 @@ function validateSedCommandBoundary({
     || trailing === ";"
     || trailing === "\n"
     || trailing === "}"
+    || trailing === "#"
   ) {
     return { ok: true, nextIndex: cursor };
   }
@@ -1851,8 +1953,15 @@ function parseSedScript({
     index = firstAddress.nextIndex;
 
     let rangeEnd: SedAddress | undefined;
-    if (script[index] === ",") {
-      let rangeAddressIndex = index + 1;
+    let rangeSeparatorIndex = index;
+    while (
+      script[rangeSeparatorIndex] === " " ||
+      script[rangeSeparatorIndex] === "\t"
+    ) {
+      rangeSeparatorIndex += 1;
+    }
+    if (script[rangeSeparatorIndex] === ",") {
+      let rangeAddressIndex = rangeSeparatorIndex + 1;
       while (script[rangeAddressIndex] === " " || script[rangeAddressIndex] === "\t") {
         rangeAddressIndex += 1;
       }
@@ -2032,6 +2141,9 @@ function parseSedScript({
       break;
     case "q":
     case "Q": {
+      if (rangeEnd !== undefined) {
+        return { ok: false, message: "command only uses one address" };
+      }
       const parsed = parseOptionalSedNumber({
         script,
         index: index + 1,
@@ -2067,6 +2179,7 @@ function parseSedScript({
         name: parsed.label!,
       });
       index = parsed.nextIndex;
+      requiresCommandBoundary = false;
       break;
     }
     case "b":
@@ -2107,6 +2220,7 @@ function parseSedScript({
       }
       }
       index = parsed.nextIndex;
+      requiresCommandBoundary = false;
       break;
     }
     case "{": {
@@ -2192,6 +2306,7 @@ function parseSedScript({
         rangeEnd,
         negated,
         characterLocaleMode: state.characterLocaleMode,
+        sourceBoundaryIndices: state.sourceBoundaryIndices,
       });
       if (!parsed.ok) return parsed;
       commands.push(parsed.command);
@@ -2374,18 +2489,25 @@ function commandApplies({
       isLastLine,
     });
   } else if (runtimeCommand.inRange) {
-    if (
-      matchesRangeEndAddress({
-        runtimeCommand,
-        lineNumber,
-        line,
-        isLastLine,
-      })
-    ) {
+    const rangeEnd = command.rangeEnd;
+    if (rangeEnd.kind === "line" && lineNumber > rangeEnd.lineNumber) {
       runtimeCommand.inRange = false;
-      runtimeCommand.rangeEndedOnLine = lineNumber;
+      runtimeCommand.rangeEndedOnLine = rangeEnd.lineNumber;
+      applies = false;
+    } else {
+      if (
+        matchesRangeEndAddress({
+          runtimeCommand,
+          lineNumber,
+          line,
+          isLastLine,
+        })
+      ) {
+        runtimeCommand.inRange = false;
+        runtimeCommand.rangeEndedOnLine = lineNumber;
+      }
+      applies = true;
     }
-    applies = true;
   } else if (runtimeCommand.rangeEndedOnLine === lineNumber) {
     applies = true;
   } else {
@@ -2395,8 +2517,13 @@ function commandApplies({
       switch (address.kind) {
       case "zero":
         return !runtimeCommand.rangeStarted;
-      case "line":
-        return !runtimeCommand.rangeStarted && lineNumber >= address.lineNumber;
+      case "line": {
+        if (runtimeCommand.rangeStarted || lineNumber < address.lineNumber)
+          return false;
+        if (lineNumber === address.lineNumber) return true;
+        const rangeEnd = command.rangeEnd;
+        return rangeEnd.kind !== "line" || lineNumber <= rangeEnd.lineNumber;
+      }
       case "last":
       case "regex":
       case "lineStep":
@@ -2474,33 +2601,129 @@ function commandApplies({
   return command.negated ? !applies : applies;
 }
 
+function commandNeedsLastLine({
+  runtimeCommand,
+  lineNumber,
+  line,
+}: {
+  runtimeCommand: SedRuntimeCommand | SedExecutableRuntimeCommand;
+  lineNumber: number;
+  line: string;
+}): boolean {
+  const { command } = runtimeCommand;
+  const addressNeedsLastLine = (() => {
+    const address = command.address;
+    if (address === undefined) return false;
+    switch (address.kind) {
+    case "last":
+      return true;
+    case "zero":
+    case "line":
+    case "regex":
+    case "lineStep":
+      return false;
+    case "relativeOffset":
+    case "relativeModulo":
+      throw new Error("Relative sed addresses cannot start a range");
+    default: {
+      const _ex: never = address;
+      throw new Error(
+        `Unhandled sed address kind: ${(_ex satisfies never as { readonly kind: string }).kind}`,
+      );
+    }
+    }
+  })();
+
+  if (command.rangeEnd === undefined) return addressNeedsLastLine;
+
+  const rangeEndsOnLastLine = (() => {
+    const rangeEnd = command.rangeEnd;
+    switch (rangeEnd.kind) {
+    case "last":
+      return true;
+    case "zero":
+    case "line":
+    case "regex":
+    case "lineStep":
+    case "relativeOffset":
+    case "relativeModulo":
+      return false;
+    default: {
+      const _ex: never = rangeEnd;
+      throw new Error(
+        `Unhandled sed range end kind: ${(_ex satisfies never as { readonly kind: string }).kind}`,
+      );
+    }
+    }
+  })();
+
+  if (runtimeCommand.inRange) return rangeEndsOnLastLine;
+  if (runtimeCommand.rangeEndedOnLine === lineNumber) return false;
+  if (addressNeedsLastLine) return true;
+  if (!rangeEndsOnLastLine) return false;
+
+  const address = command.address;
+  if (address === undefined) return true;
+  switch (address.kind) {
+  case "last":
+    return true;
+  case "zero":
+    return !runtimeCommand.rangeStarted;
+  case "line":
+    return !runtimeCommand.rangeStarted && lineNumber >= address.lineNumber;
+  case "regex":
+  case "lineStep":
+    return matchesAddress({
+      address,
+      lineNumber,
+      line,
+      isLastLine: false,
+    });
+  case "relativeOffset":
+  case "relativeModulo":
+    throw new Error("Relative sed addresses cannot start a range");
+  default: {
+    const _ex: never = address;
+    throw new Error(
+      `Unhandled sed range start kind: ${(_ex satisfies never as { readonly kind: string }).kind}`,
+    );
+  }
+  }
+}
+
 function settleActiveRangeEnds({
   runtimeCommands,
   startIndex,
   endIndex,
   lineNumber,
   line,
-  isLastLine,
+  reason,
 }: {
   runtimeCommands: readonly SedExecutableRuntimeCommand[];
   startIndex: number;
   endIndex: number;
   lineNumber: number;
   line: string;
-  isLastLine: boolean;
+  reason: "cycleTermination" | "inputConsumption";
 }): void {
   for (let index = startIndex; index < endIndex; index += 1) {
     const runtimeCommand = runtimeCommands[index]!;
     const rangeEnd = runtimeCommand.command.rangeEnd;
     if (!runtimeCommand.inRange || rangeEnd === undefined) continue;
-    if (rangeEnd.kind === "relativeOffset" || rangeEnd.kind === "relativeModulo") {
+    if (
+      rangeEnd.kind === "last" ||
+      rangeEnd.kind === "relativeOffset" ||
+      rangeEnd.kind === "relativeModulo" ||
+      (reason === "inputConsumption" &&
+        (rangeEnd.kind === "regex" || rangeEnd.kind === "lineStep"))
+    ) {
       continue;
     }
     if (matchesRangeEndAddress({
       runtimeCommand,
       lineNumber,
       line,
-      isLastLine,
+      isLastLine: false,
     })) {
       runtimeCommand.inRange = false;
       runtimeCommand.rangeEndedOnLine = lineNumber;
@@ -2554,6 +2777,7 @@ async function* readTextRecords({
 
 interface SedOutputWriter {
   write({ output }: { output: SedOutput }): Promise<void>;
+  terminatePendingOutput(): Promise<void>;
   writeAppendText({ text }: { text: string }): Promise<void>;
   writeReadFile({
     lines,
@@ -2669,13 +2893,16 @@ function createSedOutputWriter({
   characterLocaleMode: WeshCharacterLocaleMode;
 }): SedOutputWriter {
   let previousOutputMissingNewline = false;
+  const terminatePendingOutput = async (): Promise<void> => {
+    if (!previousOutputMissingNewline) return;
+    await writer.write({
+      text: fromSedLocaleText({ text: recordTerminator, characterLocaleMode }),
+    });
+    previousOutputMissingNewline = false;
+  };
   return {
     write: async ({ output }) => {
-      if (previousOutputMissingNewline) {
-        await writer.write({
-          text: fromSedLocaleText({ text: recordTerminator, characterLocaleMode }),
-        });
-      }
+      await terminatePendingOutput();
       await writer.write({
         text: fromSedLocaleText({
           text: output.hadNewline
@@ -2686,12 +2913,9 @@ function createSedOutputWriter({
       });
       previousOutputMissingNewline = !output.hadNewline;
     },
+    terminatePendingOutput,
     writeAppendText: async ({ text }) => {
-      if (previousOutputMissingNewline) {
-        await writer.write({
-          text: fromSedLocaleText({ text: recordTerminator, characterLocaleMode }),
-        });
-      }
+      await terminatePendingOutput();
       await writer.write({
         text: fromSedLocaleText({ text: `${text}\n`, characterLocaleMode }),
       });
@@ -3104,8 +3328,13 @@ async function processSedLines({
   };
   const iterator = lines[Symbol.asyncIterator]();
   let currentResult: IteratorResult<SedTextLine>;
-  let lookahead: IteratorResult<SedTextLine>;
+  let lookahead: IteratorResult<SedTextLine> | undefined;
   let lineNumber = 0;
+
+  const ensureLookahead = async (): Promise<IteratorResult<SedTextLine>> => {
+    lookahead ??= await iterator.next();
+    return lookahead;
+  };
 
   const closeInputs = async (): Promise<void> => {
     const failures: unknown[] = [];
@@ -3127,7 +3356,6 @@ async function processSedLines({
 
   try {
     currentResult = await iterator.next();
-    lookahead = currentResult.done ? currentResult : await iterator.next();
     while (!currentResult.done) {
       lineNumber += 1;
       const current = currentResult.value;
@@ -3136,18 +3364,18 @@ async function processSedLines({
         lineNumber,
         current,
         quiet,
-        isLastLine: lookahead.done === true,
+        resolveIsLastLine: async () => (await ensureLookahead()).done === true,
         executionState,
         patternSeparator: String.fromCharCode(delimiterByte),
         consumeNextLine: async () => {
-          if (lookahead.done) return undefined;
+          const next = await ensureLookahead();
+          if (next.done) return undefined;
           lineNumber += 1;
-          const consumed = lookahead.value;
-          lookahead = await iterator.next();
+          const consumed = next.value;
+          lookahead = undefined;
           return {
             current: consumed,
             lineNumber,
-            isLastLine: lookahead.done === true,
           };
         },
       });
@@ -3155,6 +3383,9 @@ async function processSedLines({
         switch (action.kind) {
         case "output":
           await writer.write({ output: action.output });
+          break;
+        case "terminatePendingOutput":
+          await writer.terminatePendingOutput();
           break;
         case "appendText":
           await writer.writeAppendText({ text: action.text });
@@ -3184,8 +3415,12 @@ async function processSedLines({
         return result.quitExitCode;
       }
 
-      currentResult = lookahead;
-      lookahead = currentResult.done ? currentResult : await iterator.next();
+      if (lookahead !== undefined) {
+        currentResult = lookahead;
+        lookahead = undefined;
+      } else {
+        currentResult = await iterator.next();
+      }
     }
   } catch (error: unknown) {
     try {
@@ -3500,6 +3735,34 @@ function createSedRuntimeCommands({
 
 type SedReplacementCaseMode = "none" | "lower" | "upper";
 
+function resolveSedSingleCharacterUppercase({
+  character,
+}: {
+  character: string;
+}): string | undefined {
+  const codePoint = character.codePointAt(0);
+  if (codePoint === undefined) return undefined;
+
+  if (
+    (codePoint >= 0x1f80 && codePoint <= 0x1f87)
+    || (codePoint >= 0x1f90 && codePoint <= 0x1f97)
+    || (codePoint >= 0x1fa0 && codePoint <= 0x1fa7)
+  ) {
+    return String.fromCodePoint(codePoint + 0x08);
+  }
+
+  switch (codePoint) {
+  case 0x1fb3:
+    return "ᾼ";
+  case 0x1fc3:
+    return "ῌ";
+  case 0x1ff3:
+    return "ῼ";
+  default:
+    return undefined;
+  }
+}
+
 function applySedCharacterCase({
   character,
   mode,
@@ -3510,7 +3773,13 @@ function applySedCharacterCase({
   characterLocaleMode: WeshCharacterLocaleMode;
 }): string {
   switch (characterLocaleMode) {
-  case "ascii":
+  case "ascii": {
+    const codeUnit = character.charCodeAt(0);
+    if (codeUnit >= 0x80 && codeUnit < 0xff) {
+      // GNU sed's C-locale replacement case conversion maps non-ASCII
+      // single bytes below 0xff to 0xff for both upper and lower modes.
+      return "\xff";
+    }
     switch (mode) {
     case "lower":
       return foldAsciiCase({ value: character });
@@ -3521,6 +3790,7 @@ function applySedCharacterCase({
       throw new Error(`Unhandled replacement case mode: ${_ex}`);
     }
     }
+  }
   case "unicode": {
     const converted = (() => {
       switch (mode) {
@@ -3534,19 +3804,18 @@ function applySedCharacterCase({
       }
       }
     })();
-    const convertedCharacters = [...converted.normalize("NFC")];
+    const convertedCharacters = [...converted];
     if (convertedCharacters.length === 1) return convertedCharacters[0]!;
 
-    // JavaScript exposes full Unicode case mappings, while sed applies a
-    // single-character locale mapping. U+0130 is the common full-lowercase
-    // mapping whose first character is the locale result; multi-letter
-    // expansions such as sharp-s remain unchanged by GNU sed.
+    // JavaScript exposes full Unicode case mappings, while GNU sed applies
+    // a single-character locale mapping. Preserve sed's one-code-point
+    // result instead of accepting JavaScript's multi-code-point expansion.
     switch (mode) {
     case "lower":
       if (character === "İ") return "i";
       return character;
     case "upper":
-      return character;
+      return resolveSedSingleCharacterUppercase({ character }) ?? character;
     default: {
       const _ex: never = mode;
       throw new Error(`Unhandled replacement case mode: ${_ex}`);
@@ -3826,7 +4095,7 @@ async function executeSedLine({
   lineNumber: initialLineNumber,
   current,
   quiet,
-  isLastLine: initialIsLastLine,
+  resolveIsLastLine,
   executionState,
   consumeNextLine,
   patternSeparator,
@@ -3835,20 +4104,19 @@ async function executeSedLine({
   lineNumber: number;
   current: SedTextLine;
   quiet: boolean;
-  isLastLine: boolean;
+  resolveIsLastLine: () => Promise<boolean>;
   executionState: SedExecutionState;
   consumeNextLine: () => Promise<
     | {
         current: SedTextLine;
         lineNumber: number;
-        isLastLine: boolean;
       }
     | undefined
   >;
   patternSeparator: string;
 }): Promise<SedLineResult> {
   let lineNumber = initialLineNumber;
-  let isLastLine = initialIsLastLine;
+  let isLastLine: boolean | undefined;
   let patternSpace: SedSpace = {
     text: current.line,
     hadNewline: current.hadNewline,
@@ -3867,14 +4135,31 @@ async function executeSedLine({
   let commandIndex = 0;
   let executionSteps = 0;
 
-  settleActiveRangeEnds({
-    runtimeCommands,
-    startIndex: 0,
-    endIndex: runtimeCommands.length,
-    lineNumber,
-    line: current.line,
-    isLastLine,
-  });
+  const getIsLastLine = async (): Promise<boolean> => {
+    isLastLine ??= await resolveIsLastLine();
+    return isLastLine;
+  };
+
+  const settleRanges = ({
+    startIndex,
+    endIndex,
+    line,
+    reason,
+  }: {
+    startIndex: number;
+    endIndex: number;
+    line: string;
+    reason: "cycleTermination" | "inputConsumption";
+  }): void => {
+    settleActiveRangeEnds({
+      runtimeCommands,
+      startIndex,
+      endIndex,
+      lineNumber,
+      line,
+      reason,
+    });
+  };
 
   while (commandIndex < runtimeCommands.length) {
     executionSteps += 1;
@@ -3883,12 +4168,17 @@ async function executeSedLine({
     }
     const runtimeCommand = runtimeCommands[commandIndex]!;
     let nextCommandIndex = commandIndex + 1;
+    const needsLastLine = commandNeedsLastLine({
+      runtimeCommand,
+      lineNumber,
+      line: patternSpace.text,
+    });
     if (
       !commandApplies({
         runtimeCommand,
         lineNumber,
         line: patternSpace.text,
-        isLastLine,
+        isLastLine: needsLastLine ? await getIsLastLine() : false,
       })
     ) {
       commandIndex = (() => {
@@ -4096,14 +4386,12 @@ async function executeSedLine({
       };
       sourceName = next.current.sourceName;
       lineNumber = next.lineNumber;
-      isLastLine = next.isLastLine;
-      settleActiveRangeEnds({
-        runtimeCommands,
+      isLastLine = undefined;
+      settleRanges({
         startIndex: 0,
         endIndex: runtimeCommands.length,
-        lineNumber,
         line: next.current.line,
-        isLastLine,
+        reason: "inputConsumption",
       });
       substitutionSucceeded = false;
       break;
@@ -4120,14 +4408,12 @@ async function executeSedLine({
       };
       sourceName = next.current.sourceName;
       lineNumber = next.lineNumber;
-      isLastLine = next.isLastLine;
-      settleActiveRangeEnds({
-        runtimeCommands,
+      isLastLine = undefined;
+      settleRanges({
         startIndex: 0,
         endIndex: runtimeCommands.length,
-        lineNumber,
         line: next.current.line,
-        isLastLine,
+        reason: "inputConsumption",
       });
       substitutionSucceeded = false;
       break;
@@ -4179,7 +4465,12 @@ async function executeSedLine({
       break;
     case "quit":
       quitExitCode = runtimeCommand.command.exitCode;
-      if (!runtimeCommand.command.printPattern) deleted = true;
+      if (runtimeCommand.command.printPattern) {
+        actions.push({ kind: "terminatePendingOutput" });
+        patternSpace.hadNewline = true;
+      } else {
+        deleted = true;
+      }
       break;
     case "label":
     case "groupStart":
@@ -4213,14 +4504,13 @@ async function executeSedLine({
     }
     }
 
-    if (deleted || quitExitCode !== undefined) {
-      settleActiveRangeEnds({
-        runtimeCommands,
+    if (quitExitCode !== undefined) break;
+    if (deleted) {
+      settleRanges({
         startIndex: commandIndex + 1,
         endIndex: runtimeCommands.length,
-        lineNumber,
         line: patternSpace.text,
-        isLastLine,
+        reason: "cycleTermination",
       });
       break;
     }
@@ -4439,22 +4729,32 @@ export const sedCommandDefinition: WeshCommandDefinition = {
       if (occurrence.key !== "scriptFile") continue;
       const scriptFile = occurrence.value;
       try {
-        const bytes =
-          scriptFile === "-"
-            ? await readAllHandleBytes({ handle: context.stdin })
-            : await readAllFileBytes({
-              files: context.files,
-              path: scriptFile.startsWith("/")
-                ? scriptFile
-                : `${context.cwd}/${scriptFile}`,
-            });
+        const bytes = scriptFile === "-"
+          ? await readAllHandleBytes({ handle: context.stdin })
+          : await (async (): Promise<Uint8Array> => {
+            const path = resolveSedCommandPath({ context, path: scriptFile });
+            const stat = await context.files.stat({ path });
+            switch (stat.type) {
+            case "directory":
+              return new Uint8Array();
+            case "file":
+            case "symlink":
+            case "fifo":
+            case "chardev":
+              return await readAllFileBytes({ files: context.files, path });
+            default: {
+              const _ex: never = stat.type;
+              throw new Error(`Unhandled sed script source type: ${_ex}`);
+            }
+            }
+          })();
         scripts.push(decodeCommandDataBytes({ bytes }));
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         await context
           .text()
           .error({ text: `sed: ${scriptFile}: ${message}\n` });
-        return { exitCode: 2 };
+        return { exitCode: 4 };
       }
     }
 
@@ -4473,6 +4773,15 @@ export const sedCommandDefinition: WeshCommandDefinition = {
       scripts.push(expression);
     }
 
+    const joinedScript = scripts.join("\n");
+    const sourceBoundaryIndices = new Set<number>();
+    let sourceOffset = 0;
+    for (let sourceIndex = 0; sourceIndex < scripts.length - 1; sourceIndex += 1) {
+      sourceOffset += scripts[sourceIndex]!.length;
+      sourceBoundaryIndices.add(sourceOffset);
+      sourceOffset += 1;
+    }
+
     const nullData = parsed.optionValues.nullData === true;
     const characterLocaleMode = resolveCharacterLocaleMode({ env: context.env });
     const parseState: SedParseState = {
@@ -4480,11 +4789,12 @@ export const sedCommandDefinition: WeshCommandDefinition = {
         parsed.optionValues.extendedRegexp === true ? "extended" : "basic",
       characterLocaleMode,
       nullData,
+      sourceBoundaryIndices,
       previousRegex: undefined,
       previousCaptureCount: 0,
     };
     const parsedScript = parseSedScript({
-      script: scripts.join("\n"),
+      script: joinedScript,
       state: parseState,
     });
     if (!parsedScript.ok) {
@@ -4625,7 +4935,9 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           delimiterByte,
           characterLocaleMode,
         });
-        return await finish({ exitCode: quitExitCode ?? exitCode });
+        return await finish({
+          exitCode: exitCode !== 0 ? exitCode : (quitExitCode ?? 0),
+        });
       }
 
       if (!inPlace) {
@@ -4650,7 +4962,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
               characterLocaleMode,
             });
             if (quitExitCode !== undefined) {
-              exitCode = quitExitCode;
+              if (exitCode === 0) exitCode = quitExitCode;
               break;
             }
           } catch (error: unknown) {
@@ -4696,11 +5008,42 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           }
 
           const originalStat = await context.files.stat({ path: fullPath });
-          const temporary = await createSedTemporaryFile({
-            context,
-            targetPath: fullPath,
-            mode: originalStat.mode,
-          });
+          switch (originalStat.type) {
+          case "file":
+            break;
+          case "directory":
+          case "fifo":
+          case "chardev":
+          case "symlink":
+            exitCode = 4;
+            await context.text().error({
+              text: `sed: couldn't edit ${file}: not a regular file
+`,
+            });
+            break;
+          default: {
+            const _ex: never = originalStat.type;
+            throw new Error(`Unhandled sed in-place input type: ${_ex}`);
+          }
+          }
+          if (exitCode === 4) break;
+
+          let temporary: Awaited<ReturnType<typeof createSedTemporaryFile>>;
+          try {
+            temporary = await createSedTemporaryFile({
+              context,
+              targetPath: fullPath,
+              mode: originalStat.mode,
+            });
+          } catch (error: unknown) {
+            exitCode = 4;
+            const message = error instanceof Error ? error.message : String(error);
+            await context.text().error({
+              text: `sed: couldn't edit ${file}: ${message}
+`,
+            });
+            break;
+          }
           let temporaryExists = true;
           try {
             const temporaryWriter = createBufferedCommandDataWriter({
@@ -4772,7 +5115,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
               }
 
               if (quitExitCode !== undefined) {
-                exitCode = quitExitCode;
+                if (exitCode === 0) exitCode = quitExitCode;
                 break;
               }
             } catch (error: unknown) {
@@ -4786,7 +5129,13 @@ export const sedCommandDefinition: WeshCommandDefinition = {
                   // Preserve the original replacement error.
                 }
               }
-              throw error;
+              exitCode = 4;
+              const message = error instanceof Error ? error.message : String(error);
+              await context.text().error({
+                text: `sed: cannot rename ${file}: ${message}
+`,
+              });
+              break;
             }
           } finally {
             await temporary.handle.close();
