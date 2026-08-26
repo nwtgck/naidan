@@ -212,7 +212,7 @@ describe("file-protocol standalone representative artifact contract", () => {
     expect(entryChunk.code).toContain("__representativeWorkerFactories");
   });
 
-  it("shares one physical module chunk across the UI and all Worker entry graphs", () => {
+  it("shares one physical static module chunk across the UI and all Worker entry graphs", () => {
     const { output } = getFixture();
     const uiWorkerShared = findOutputFileContaining({
       output,
@@ -224,20 +224,72 @@ describe("file-protocol standalone representative artifact contract", () => {
       marker: "representative-worker-shared",
       extension: ".js",
     });
-    const lazySharedUiWorker = findOutputFileContaining({
-      output,
-      marker: "representative-lazy-ui-worker-shared",
-      extension: ".js",
-    });
 
     expect(requireUiEntryChunk({ output }).imports).toContain(uiWorkerShared);
     for (const workerName of REPRESENTATIVE_WORKER_NAMES) {
       expect(requireWorkerChunk({ output, workerName }).imports).toEqual(expect.arrayContaining([
         uiWorkerShared,
         workerShared,
-        lazySharedUiWorker,
       ]));
     }
+  });
+
+  it("shares one CSS-owning lazy module across UI and Worker Dynamic Imports without making its CSS eager", () => {
+    const { output } = getFixture();
+    const html = requireAssetText({ output, fileName: "index.html" });
+    const lazyFeatureChunk = requireChunk({
+      output,
+      predicate: chunk => chunk.fileName.startsWith("assets/lazy-feature-systemjs-"),
+      description: "representative lazy UI chunk",
+    });
+    const lazySharedUiWorker = findOutputFileContaining({
+      output,
+      marker: "representative-lazy-ui-worker-shared",
+      extension: ".js",
+    });
+    const lazySharedUiWorkerCss = findOutputFileContaining({
+      output,
+      marker: "--representative-lazy-shared: applied",
+      extension: ".css",
+    });
+
+    expect(html).not.toContain(lazySharedUiWorkerCss);
+    expect(lazyFeatureChunk.imports).toContain(lazySharedUiWorker);
+    for (const workerName of REPRESENTATIVE_WORKER_NAMES) {
+      const workerChunk = requireWorkerChunk({ output, workerName });
+      expect(workerChunk.dynamicImports).toContain(lazySharedUiWorker);
+      expect(workerChunk.code).toContain(basename({ fileName: lazySharedUiWorkerCss }));
+    }
+  });
+
+  it("shares static and lazy chunks only across the Worker subset that reaches them", () => {
+    const { output } = getFixture();
+    const uiEntry = requireUiEntryChunk({ output });
+    const subsetShared = findOutputFileContaining({
+      output,
+      marker: "representative-worker-subset-shared",
+      extension: ".js",
+    });
+    const subsetLazy = requireChunk({
+      output,
+      predicate: chunk => chunk.fileName.startsWith("assets/worker-subset-lazy-systemjs-"),
+      description: "representative Worker-subset lazy chunk",
+    });
+    const subsetWorkerNames = new Set<typeof REPRESENTATIVE_WORKER_NAMES[number]>(["wesh", "explorer"]);
+
+    expect(uiEntry.imports).not.toContain(subsetShared);
+    expect(uiEntry.dynamicImports).not.toContain(subsetLazy.fileName);
+    for (const workerName of REPRESENTATIVE_WORKER_NAMES) {
+      const workerChunk = requireWorkerChunk({ output, workerName });
+      if (subsetWorkerNames.has(workerName)) {
+        expect(workerChunk.imports).toContain(subsetShared);
+        expect(workerChunk.dynamicImports).toContain(subsetLazy.fileName);
+      } else {
+        expect(workerChunk.imports).not.toContain(subsetShared);
+        expect(workerChunk.dynamicImports).not.toContain(subsetLazy.fileName);
+      }
+    }
+    expect(subsetLazy.code).toContain("representative-worker-subset-lazy");
   });
 
   it("keeps a Worker-side Dynamic Import lazy and scoped to the Worker that owns it", () => {
@@ -248,10 +300,10 @@ describe("file-protocol standalone representative artifact contract", () => {
       description: "representative Worker lazy chunk",
     });
 
-    expect(requireWorkerChunk({ output, workerName: "editor" }).dynamicImports).toEqual([workerLazyChunk.fileName]);
+    expect(requireWorkerChunk({ output, workerName: "editor" }).dynamicImports).toContain(workerLazyChunk.fileName);
     for (const workerName of REPRESENTATIVE_WORKER_NAMES) {
       if (workerName === "editor") continue;
-      expect(requireWorkerChunk({ output, workerName }).dynamicImports).toEqual([]);
+      expect(requireWorkerChunk({ output, workerName }).dynamicImports).not.toContain(workerLazyChunk.fileName);
     }
     expect(workerLazyChunk.code).toContain("representative-worker-lazy");
   });

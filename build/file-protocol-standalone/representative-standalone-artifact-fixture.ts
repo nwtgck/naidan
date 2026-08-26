@@ -136,6 +136,20 @@ export const workerSharedMarker = "representative-worker-shared";
   });
   writeFixtureFile({
     root,
+    relativePath: "src/worker-subset-shared.js",
+    contents: `\
+export const workerSubsetSharedMarker = "representative-worker-subset-shared";
+`,
+  });
+  writeFixtureFile({
+    root,
+    relativePath: "src/worker-subset-lazy.js",
+    contents: `\
+export const workerSubsetLazyMarker = "representative-worker-subset-lazy";
+`,
+  });
+  writeFixtureFile({
+    root,
     relativePath: "src/worker-lazy.js",
     contents: `\
 export const workerLazyMarker = "representative-worker-lazy";
@@ -144,15 +158,24 @@ export const workerLazyMarker = "representative-worker-lazy";
 
   for (const workerName of REPRESENTATIVE_WORKER_NAMES) {
     let editorLazy: string;
+    let subsetShared: string;
     switch (workerName) {
-    case "editor":
-      editorLazy = "\nglobalThis.__representativeWorkerLazyLoader = () => import(\"./worker-lazy.js\");";
-      break;
-    case "highlight":
     case "wesh":
-    case "search":
     case "explorer":
       editorLazy = "";
+      subsetShared = `\
+import { workerSubsetSharedMarker } from "./worker-subset-shared.js";
+globalThis.__representativeWorkerSubsetStaticMarker = workerSubsetSharedMarker;
+globalThis.__representativeWorkerSubsetLazyLoader = () => import("./worker-subset-lazy.js");`;
+      break;
+    case "editor":
+      editorLazy = "\nglobalThis.__representativeWorkerLazyLoader = () => import(\"./worker-lazy.js\");";
+      subsetShared = "";
+      break;
+    case "highlight":
+    case "search":
+      editorLazy = "";
+      subsetShared = "";
       break;
     default: {
       const _ex: never = workerName;
@@ -165,8 +188,8 @@ export const workerLazyMarker = "representative-worker-lazy";
       contents: `\
 import { sharedUiMarker } from "./ui-worker-shared.js";
 import { workerSharedMarker } from "./worker-shared.js";
-import { lazySharedUiWorkerMarker } from "./lazy-ui-worker-shared.js";
-globalThis.__representativeWorkerMarker = "representative-${workerName}:" + sharedUiMarker + ":" + workerSharedMarker + ":" + lazySharedUiWorkerMarker;${editorLazy}
+globalThis.__representativeWorkerMarker = "representative-${workerName}:" + sharedUiMarker + ":" + workerSharedMarker;
+globalThis.__representativeLazyUiWorkerLoader = () => import("./lazy-ui-worker-shared.js");${subsetShared}${editorLazy}
 `,
     });
   }
