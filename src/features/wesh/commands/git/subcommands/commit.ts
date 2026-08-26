@@ -11,33 +11,40 @@ import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repo
 import { writeTreeFromIndex } from "@/features/wesh/commands/git/tree";
 import { stageWorktreePaths } from "@/features/wesh/commands/git/stage";
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
-import { firstLine } from "@/features/wesh/commands/git/commit-message";
+import { appendMessageParagraph, cleanupMessage, firstLine } from "@/features/wesh/commands/git/commit-message";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
 
 export async function runCommit({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];
 }): Promise<WeshCommandResult> {
-  if (args.includes('-a') || args.includes('--all')) await assertSupportedRepositoryContentPolicy({ context, cleanMutation: true });
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['a'], valueOptions: ['m', 'F'] });
+  if (normalizedArgs.includes('-a') || normalizedArgs.includes('--all')) await assertSupportedRepositoryContentPolicy({ context, cleanMutation: true });
   let message: string | undefined;
   let messageFile: string | undefined;
   let allowEmpty = false;
   let all = false;
   let amend = false;
   let noEdit = false;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]!;
+  for (let index = 0; index < normalizedArgs.length; index += 1) {
+    const arg = normalizedArgs[index]!;
+    if (arg === '--') {
+      if (index !== normalizedArgs.length - 1)
+        throw new Error('commit pathspecs are not supported yet');
+      break;
+    }
     if (arg === '-m' || arg === '--message') {
-      const value = args[index + 1];
+      const value = normalizedArgs[index + 1];
       if (value === undefined)
         throw new Error(`option '${arg}' requires a value`);
-      message = message === undefined ? value : `${message}\n\n${value}`;
+      message = appendMessageParagraph({ current: message, value });
       index += 1;
     } else if (arg.startsWith('--message=')) {
       const value = arg.slice('--message='.length);
-      message = message === undefined ? value : `${message}\n\n${value}`;
+      message = appendMessageParagraph({ current: message, value });
     } else if (arg === '-F' || arg === '--file') {
-      const value = args[index + 1];
+      const value = normalizedArgs[index + 1];
       if (value === undefined)
         throw new Error(`option '${arg}' requires a value`);
       messageFile = value;
@@ -80,10 +87,16 @@ export async function runCommit({ context, args }: {
     : await readCommit({ files: context.files, repository, objectId: head.objectId });
   if (amend && previousCommit === undefined)
     throw new Error('You have nothing to amend.');
-  if (message === undefined && amend && noEdit)
+  const reusePreviousMessage = message === undefined && amend && noEdit;
+  if (reusePreviousMessage)
     message = previousCommit!.message;
   if (message === undefined)
     throw new Error('no commit message specified');
+  if (!reusePreviousMessage) {
+    message = cleanupMessage({ text: message });
+    if (message.length === 0)
+      throw new Error('Aborting commit due to empty commit message.');
+  }
   const authorOverride = amend ? parseCommitAuthor({ value: previousCommit!.author }) : undefined;
   if (authorOverride === undefined)
     resolveGitIdentity({ env: context.env, config, role: 'AUTHOR' });

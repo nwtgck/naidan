@@ -264,11 +264,12 @@ export async function pushLocalBranch({ files, repository, remoteName, sourceBra
   };
 }
 
-export async function deleteLocalRemoteBranch({ files, repository, remoteName, branchName, config }: {
+export async function deleteLocalRemoteBranch({ files, repository, remoteName, branchName, forceWithLease, config }: {
   files: GitFiles,
   repository: GitRepository,
   remoteName: string,
   branchName: string,
+  forceWithLease: boolean,
   config: GitConfig,
 }): Promise<{ remotePath: string, oldObjectId: string }> {
   const { remotePath, remoteRepository, bare } = await resolveLocalRemote({ files, repository, remoteName, config });
@@ -279,6 +280,14 @@ export async function deleteLocalRemoteBranch({ files, repository, remoteName, b
   }
   const oldObjectId = await readRef({ files, repository: remoteRepository, refName });
   if (oldObjectId === undefined) throw new Error(`remote ref does not exist: ${branchName}`);
+  if (forceWithLease) {
+    const expectedLease = await readRef({
+      files,
+      repository,
+      refName: `refs/remotes/${remoteName}/${branchName}`,
+    });
+    if (oldObjectId !== expectedLease) throw new Error(`stale info: ${refName}`);
+  }
   await applyLocalRefMutationsWithRollback({
     files,
     mutations: [

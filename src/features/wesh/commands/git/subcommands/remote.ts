@@ -42,8 +42,9 @@ export async function runRemote({ context, args }: {
 }): Promise<WeshCommandResult> {
   const repository = await discoverRepositoryFromContext({ context });
   const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
-  if (args.length === 0 || (args.length === 1 && args[0] === '-v')) {
-    const verbose = args.length === 1;
+  const listArgs = args.at(-1) === '--' ? args.slice(0, -1) : args;
+  if (listArgs.length === 0 || (listArgs.length === 1 && listArgs[0] === '-v')) {
+    const verbose = listArgs.length === 1;
     for (const name of remoteNames({ config })) {
       if (!verbose) {
         await context.text().print({ text: `${name}\n` });
@@ -55,15 +56,16 @@ export async function runRemote({ context, args }: {
     return { exitCode: 0 };
   }
 
-  const subcommand = args[0]!;
+  const commandArgs = args[1] === '--' ? [args[0]!, ...args.slice(2)] : args;
+  const subcommand = commandArgs[0]!;
   switch (subcommand) {
   case 'add': {
-    if (args.length !== 3) throw new Error('usage: git remote add <name> <url>');
-    const name = args[1]!;
+    if (commandArgs.length !== 3) throw new Error('usage: git remote add <name> <url>');
+    const name = commandArgs[1]!;
     if (getConfigValue({ config, key: `remote.${name}.url` }) !== undefined) {
       throw new Error(`remote ${name} already exists.`);
     }
-    await setLocalConfigValue({ files: context.files, repository, key: `remote.${name}.url`, value: args[2]! });
+    await setLocalConfigValue({ files: context.files, repository, key: `remote.${name}.url`, value: commandArgs[2]! });
     await setLocalConfigValue({
       files: context.files,
       repository,
@@ -73,25 +75,25 @@ export async function runRemote({ context, args }: {
     return { exitCode: 0 };
   }
   case 'get-url': {
-    if (args.length !== 2) throw new Error('usage: git remote get-url <name>');
-    const url = getConfigValue({ config, key: `remote.${args[1]!}.url` });
-    if (url === undefined) throw new Error(`No such remote '${args[1]!}'`);
+    if (commandArgs.length !== 2) throw new Error('usage: git remote get-url <name>');
+    const url = getConfigValue({ config, key: `remote.${commandArgs[1]!}.url` });
+    if (url === undefined) throw new Error(`No such remote '${commandArgs[1]!}'`);
     await context.text().print({ text: `${url}\n` });
     return { exitCode: 0 };
   }
   case 'set-url': {
-    if (args.length !== 3) throw new Error('usage: git remote set-url <name> <newurl>');
-    const name = args[1]!;
+    if (commandArgs.length !== 3) throw new Error('usage: git remote set-url <name> <newurl>');
+    const name = commandArgs[1]!;
     if (getConfigValue({ config, key: `remote.${name}.url` }) === undefined) {
       throw new Error(`No such remote '${name}'`);
     }
-    await setLocalConfigValue({ files: context.files, repository, key: `remote.${name}.url`, value: args[2]! });
+    await setLocalConfigValue({ files: context.files, repository, key: `remote.${name}.url`, value: commandArgs[2]! });
     return { exitCode: 0 };
   }
   case 'remove':
   case 'rm': {
-    if (args.length !== 2) throw new Error(`usage: git remote ${subcommand} <name>`);
-    const name = args[1]!;
+    if (commandArgs.length !== 2) throw new Error(`usage: git remote ${subcommand} <name>`);
+    const name = commandArgs[1]!;
     if (!await removeLocalConfigSection({ files: context.files, repository, section: 'remote', subsection: name })) {
       throw new Error(`No such remote: '${name}'`);
     }

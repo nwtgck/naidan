@@ -125,7 +125,7 @@ cat topic.txt`,
       script: `\
 printf 'resolved\n' > a
 git add a
-git cherry-pick --continue
+git cherry-pick --continue --no-edit
 git rev-parse HEAD^
 git show HEAD:a
 git show HEAD:topic.txt
@@ -262,7 +262,7 @@ cat a`,
       script: `\
 printf 'resolved\n' > a
 git add a
-git revert --continue
+git revert --continue --no-edit
 git rev-parse HEAD^
 git show HEAD:a
 git log -1 --oneline

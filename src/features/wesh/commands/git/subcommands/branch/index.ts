@@ -69,7 +69,7 @@ export async function runBranch({ context, args }: {
   const currentBranch = branchNameFromHead({ head });
   const { showCurrent, move, deleteMode, listMode, listOnly, operands } = parseBranchArguments({ args });
   if (showCurrent) {
-    if (operands.length > 0 || isBranchDeleteMode({ mode: deleteMode }) || listMode !== 'local') {
+    if (operands.length > 0 || move || listOnly || isBranchDeleteMode({ mode: deleteMode }) || listMode !== 'local') {
       throw new Error('options are incompatible');
     }
     if (currentBranch !== undefined)
@@ -77,7 +77,7 @@ export async function runBranch({ context, args }: {
     return { exitCode: 0 };
   }
   if (move) {
-    if (showCurrent || isBranchDeleteMode({ mode: deleteMode }))
+    if (showCurrent || listOnly || isBranchDeleteMode({ mode: deleteMode }))
       throw new Error('options are incompatible');
     if (operands.length === 0 || operands.length > 2)
       throw new Error('branch name required');
@@ -141,37 +141,98 @@ export async function runBranch({ context, args }: {
     return { exitCode: 0 };
   }
   if (isBranchDeleteMode({ mode: deleteMode })) {
+    if (listOnly)
+      throw new Error('options are incompatible');
+    const deletingRemoteTrackingBranches = (() => {
+      switch (listMode) {
+      case 'local':
+        return false;
+      case 'remote':
+        return true;
+      case 'all':
+        throw new Error("cannot use -a with branch deletion");
+      default: {
+        const _ex: never = listMode;
+        throw new Error(`Unhandled branch list mode: ${_ex}`);
+      }
+      }
+    })();
     if (operands.length === 0)
       throw new Error('branch name required');
+    const deleteConfig = !deletingRemoteTrackingBranches && requiresMergedBranch({ mode: deleteMode })
+      ? await readEffectiveConfig({
+        files: context.files,
+        repository,
+        homePath: context.env.get('HOME') ?? '/',
+        env: context.env,
+      })
+      : undefined;
     let exitCode = 0;
     for (const name of operands) {
-      if (name === currentBranch) {
+      if (!deletingRemoteTrackingBranches && name === currentBranch) {
         await context.text().error({
           text: `error: cannot delete branch '${name}' used by worktree at '${repository.worktreePath}'\n`,
         });
         exitCode = 1;
         continue;
       }
-      const refName = branchRefName({ name });
+      const refName = deletingRemoteTrackingBranches ? `refs/remotes/${name}` : branchRefName({ name });
       const objectId = await readRef({ files: context.files, repository, refName });
       if (objectId === undefined) {
-        await context.text().error({ text: `error: branch '${name}' not found.\n` });
+        const kind = deletingRemoteTrackingBranches ? 'remote-tracking branch' : 'branch';
+        await context.text().error({ text: `error: ${kind} '${name}' not found.\n` });
         exitCode = 1;
         continue;
       }
-      if (requiresMergedBranch({ mode: deleteMode }) && (head.objectId === undefined || !await isAncestor({
-        files: context.files,
-        repository,
-        ancestorObjectId: objectId,
-        descendantObjectId: head.objectId,
-      }))) {
-        await context.text().error({ text: `error: the branch '${name}' is not fully merged\n` });
-        exitCode = 1;
-        continue;
+      if (!deletingRemoteTrackingBranches && requiresMergedBranch({ mode: deleteMode })) {
+        const headMerged = head.objectId !== undefined && await isAncestor({
+          files: context.files,
+          repository,
+          ancestorObjectId: objectId,
+          descendantObjectId: head.objectId,
+        });
+        const remoteName = deleteConfig === undefined
+          ? undefined
+          : getConfigValue({ config: deleteConfig, key: `branch.${name}.remote` });
+        const mergeRefName = deleteConfig === undefined
+          ? undefined
+          : getConfigValue({ config: deleteConfig, key: `branch.${name}.merge` });
+        const upstreamRefName = remoteName !== undefined && mergeRefName?.startsWith('refs/heads/') === true
+          ? remoteName === '.'
+            ? mergeRefName
+            : `refs/remotes/${remoteName}/${mergeRefName.slice('refs/heads/'.length)}`
+          : undefined;
+        const upstreamObjectId = upstreamRefName === undefined
+          ? undefined
+          : await readRef({ files: context.files, repository, refName: upstreamRefName });
+        const mergedIntoDeleteBase = upstreamObjectId === undefined
+          ? headMerged
+          : await isAncestor({
+            files: context.files,
+            repository,
+            ancestorObjectId: objectId,
+            descendantObjectId: upstreamObjectId,
+          });
+        if (!mergedIntoDeleteBase) {
+          if (upstreamObjectId !== undefined && headMerged) {
+            await context.text().error({
+              text: `warning: not deleting branch '${name}' that is not yet merged to\n         '${upstreamRefName}', even though it is merged to HEAD\n`,
+            });
+          }
+          await context.text().error({ text: `error: the branch '${name}' is not fully merged\n` });
+          exitCode = 1;
+          continue;
+        }
+        if (upstreamObjectId !== undefined && !headMerged) {
+          await context.text().error({
+            text: `warning: deleting branch '${name}' that has been merged to\n         '${upstreamRefName}', but not yet merged to HEAD\n`,
+          });
+        }
       }
       await deleteRef({ files: context.files, repository, refName });
       await deleteBranchReflog({ context, repository, refName });
-      await context.text().print({ text: `Deleted branch ${name} (was ${objectId.slice(0, 7)}).\n` });
+      const kind = deletingRemoteTrackingBranches ? 'remote-tracking branch' : 'branch';
+      await context.text().print({ text: `Deleted ${kind} ${name} (was ${objectId.slice(0, 7)}).\n` });
     }
     return { exitCode };
   }

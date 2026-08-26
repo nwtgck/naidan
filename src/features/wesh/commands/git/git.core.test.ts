@@ -112,6 +112,8 @@ git commit -m initial >/dev/null
 git rev-parse HEAD
 git rev-parse master
 git rev-parse --short HEAD
+git rev-parse --short=12 HEAD
+git rev-parse --short=1 HEAD
 git rev-parse HEAD:hello.txt
 mkdir subdir
 cd subdir
@@ -125,6 +127,8 @@ git rev-parse --git-dir`,
 7cac307b38298843a48a70fb0489f3618383cba1
 7cac307b38298843a48a70fb0489f3618383cba1
 7cac307
+7cac307b3829
+7cac
 ce013625030ba8dba906f756967f9e9ca394464a
 /repo
 /repo/.git
@@ -520,6 +524,56 @@ git rev-parse --verify HEAD`,
     expect(lines[1]).toMatch(/^[0-9a-f]{40}$/u);
   });
 
+  it('preserves rev-parse -- delimiter semantics without treating following paths as revisions', async () => {
+    const setup = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf base > tracked.txt
+git add tracked.txt
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m base >/dev/null`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const plain = await execute({ script: `git rev-parse HEAD -- path --literal` });
+    expect(plain.result.exitCode).toBe(0);
+    expect(plain.stderr.text).toBe('');
+    const plainLines = plain.stdout.text.trimEnd().split('\n');
+    expect(plainLines[0]).toMatch(/^[0-9a-f]{40}$/u);
+    expect(plainLines.slice(1)).toEqual(['--', 'path', '--literal']);
+
+    const verify = await execute({ script: `git rev-parse --verify HEAD -- ignored` });
+    expect(verify.result.exitCode).toBe(0);
+    expect(verify.stderr.text).toBe('');
+    expect(verify.stdout.text).toMatch(/^[0-9a-f]{40}\n$/u);
+
+    const shortened = await execute({ script: `git rev-parse --short=8 HEAD -- ignored` });
+    expect(shortened.result.exitCode).toBe(0);
+    expect(shortened.stderr.text).toBe('');
+    expect(shortened.stdout.text).toMatch(/^[0-9a-f]{8}\n$/u);
+  });
+
+  it('requires one revision when --short is active', async () => {
+    const setup = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf base > tracked.txt
+git add tracked.txt
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m base >/dev/null`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const { result, stdout, stderr } = await execute({ script: `git rev-parse --short HEAD HEAD` });
+    expect(result.exitCode).not.toBe(0);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('Needed a single revision');
+  });
+
   it('continues deleting later branches when an earlier safe deletion fails', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -552,6 +606,64 @@ git branch -d unmerged merged`,
   unmerged
 `);
   });
+  it('uses an existing upstream ref as the safe-delete merge base', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > tracked.txt
+git add tracked.txt
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m base >/dev/null
+git checkout -b topic >/dev/null 2>/dev/null
+printf 'topic\n' >> tracked.txt
+git commit -am topic >/dev/null
+git checkout master >/dev/null 2>/dev/null
+git merge --ff-only topic >/dev/null
+mkdir -p .git/refs/remotes/origin
+git rev-parse HEAD~1 > .git/refs/remotes/origin/topic
+git config branch.topic.remote origin
+git config branch.topic.merge refs/heads/topic
+git branch -d topic
+git branch --list topic`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toContain("warning: not deleting branch 'topic' that is not yet merged to\n");
+    expect(stderr.text).toContain("'refs/remotes/origin/topic', even though it is merged to HEAD\n");
+    expect(stderr.text).toContain("error: the branch 'topic' is not fully merged\n");
+    expect(stdout.text).toBe('  topic\n');
+  });
+
+  it('allows safe deletion when the upstream contains the branch even if HEAD does not', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > tracked.txt
+git add tracked.txt
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m base >/dev/null
+git checkout -b topic >/dev/null 2>/dev/null
+printf 'topic\n' >> tracked.txt
+git commit -am topic >/dev/null
+mkdir -p .git/refs/remotes/origin
+cat .git/refs/heads/topic > .git/refs/remotes/origin/topic
+git config branch.topic.remote origin
+git config branch.topic.merge refs/heads/topic
+git checkout master >/dev/null 2>/dev/null
+git branch -d topic
+git branch --list topic`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toContain("warning: deleting branch 'topic' that has been merged to\n");
+    expect(stderr.text).toContain("'refs/remotes/origin/topic', but not yet merged to HEAD\n");
+    expect(stdout.text).toMatch(/Deleted branch topic \(was [0-9a-f]{7}\)\.\n$/u);
+  });
+
   it('filters local and remote branch listings with Git wildcard patterns', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

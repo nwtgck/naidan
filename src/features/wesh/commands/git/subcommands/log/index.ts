@@ -96,7 +96,7 @@ export async function runLog({ context, args }: {
     showPatch,
     sinceTimestamp,
     untilTimestamp,
-    grepPattern,
+    grepPatterns,
     pickaxeString,
     pickaxeRegex,
     revisionTerms,
@@ -244,7 +244,9 @@ export async function runLog({ context, args }: {
       continue;
     if (untilTimestamp !== undefined && committerTimestamp > untilTimestamp)
       continue;
-    if (grepPattern !== undefined && !grepPattern.test(entry.commit.message))
+    if (grepPatterns.length > 0 && !entry.commit.message.split('\n').some(
+      line => grepPatterns.some(pattern => pattern.test(line)),
+    ))
       continue;
     if (pickaxeString !== undefined || pickaxeRegex !== undefined) {
       if (entry.commit.parentObjectIds.length > 1)
@@ -269,7 +271,8 @@ export async function runLog({ context, args }: {
       const formatted = oneline
         ? `${entry.objectId.slice(0, 7)}${decoration} ${commitSubject({ commit: entry.commit })}`
         : formatCommitTemplate({ objectId: entry.objectId, commit: entry.commit, format });
-      await context.text().print({ text: `${formatted}\n` });
+      if (format !== '')
+        await context.text().print({ text: `${formatted}\n` });
     } else {
       const author = parseAuthorForLog({ author: entry.commit.author });
       const message = entry.commit.message.replace(/\n+$/u, '').split('\n').map(line => `    ${line}`).join('\n');

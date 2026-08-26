@@ -16,7 +16,6 @@ export const FILE_PROTOCOL_STANDALONE_ELEMENT_IDS = {
   systemJsRuntime: 'file-protocol-standalone-systemjs-runtime',
   systemJsFilePatch: 'file-protocol-standalone-systemjs-file-patch',
   systemJsRetryHook: 'file-protocol-standalone-systemjs-retry-hook',
-  workerManifest: 'file-protocol-standalone-worker-manifest',
   entryBootstrap: 'file-protocol-standalone-entry',
 } as const;
 
@@ -24,7 +23,6 @@ export const FILE_PROTOCOL_STANDALONE_GENERATED_ELEMENT_IDS = [
   FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRuntime,
   FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsFilePatch,
   FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRetryHook,
-  FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.workerManifest,
   FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.entryBootstrap,
 ] as const;
 

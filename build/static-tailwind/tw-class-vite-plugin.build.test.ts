@@ -1,15 +1,16 @@
 import fs from 'node:fs';
 import os from 'node:os';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import vue from '@vitejs/plugin-vue';
 import { afterEach, describe, expect, it } from 'vitest';
 import { build } from 'vite';
-import { fileProtocolStandalone } from '../file-protocol-standalone';
-import { fileProtocolSystemJs } from '../file-protocol-systemjs';
+import { createNaidanStandalonePlugin } from '../file-protocol-standalone/plugin.js';
 import { serializeCssOwnershipPlan } from './css-ownership-planner';
 import { createTwClassNodeTransform } from './tw-class-core';
 import { createTwClassVitePlugin } from './tw-class-vite-plugin';
 
+const require = createRequire(import.meta.url);
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
@@ -382,6 +383,12 @@ document.querySelector('#broker')?.classList.add(tw('text-sm'));
   it('preserves lazy CSS splitting in the file-protocol standalone output', async () => {
     const root = createFixture();
     const outputDirectory = path.join(root, 'dist-standalone');
+    const workerEntry = path.join(root, 'src/standalone-test-worker.ts');
+    writeFile({
+      root,
+      relativePath: 'src/standalone-test-worker.ts',
+      content: 'self.addEventListener("message", () => undefined);\n',
+    });
     await build({
       root,
       base: './',
@@ -390,13 +397,14 @@ document.querySelector('#broker')?.classList.add(tw('text-sm'));
       plugins: [
         createPlugin({ root, debugOutputDirectory: path.join(outputDirectory, 'debug-tailwind') }),
         createVuePlugin(),
-        fileProtocolSystemJs({ diagnostics: 'omit' }),
-        fileProtocolStandalone({
-          debugBuildReportFile: undefined,
-          workerTarget: 'chrome140',
-          workers: [],
-          budgets: undefined,
-          onAdditionalLicenseDependencies: undefined,
+        createNaidanStandalonePlugin({
+          workers: [{
+            name: 'tailwind-test-worker',
+            entry: workerEntry,
+            virtualId: 'virtual:file-protocol-standalone/worker/tailwind-test-worker',
+          }],
+          systemRuntimePath: require.resolve('systemjs/dist/system.min.js'),
+          sourceAudit: { mode: 'inline' },
         }),
       ],
       build: {

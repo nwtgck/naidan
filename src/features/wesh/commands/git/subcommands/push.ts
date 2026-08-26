@@ -3,6 +3,7 @@ import { getConfigValue, readEffectiveConfig, setLocalConfigValue } from "@/feat
 import { deleteLocalRemoteBranch, pushLocalBranch } from "@/features/wesh/commands/git/local-transport";
 import { branchNameFromHead, readHead } from "@/features/wesh/commands/git/refs";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
 
 export async function runPush({ context, args }: {
   context: WeshCommandContext,
@@ -13,12 +14,18 @@ export async function runPush({ context, args }: {
   let deleteBranch = false;
   let quiet = false;
   const operands: string[] = [];
-  for (const arg of args) {
-    if (arg === '-u' || arg === '--set-upstream') setUpstream = true;
-    else if (arg === '--force-with-lease') forceWithLease = true;
-    else if (arg === '--delete') deleteBranch = true;
-    else if (arg === '-q' || arg === '--quiet') quiet = true;
-    else if (arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
+  let parsingOptions = true;
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['u', 'q'], valueOptions: [] });
+  for (const arg of normalizedArgs) {
+    if (parsingOptions && arg === '--') {
+      parsingOptions = false;
+      continue;
+    }
+    if (parsingOptions && (arg === '-u' || arg === '--set-upstream')) setUpstream = true;
+    else if (parsingOptions && arg === '--force-with-lease') forceWithLease = true;
+    else if (parsingOptions && arg === '--delete') deleteBranch = true;
+    else if (parsingOptions && (arg === '-q' || arg === '--quiet')) quiet = true;
+    else if (parsingOptions && arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
     else operands.push(arg);
   }
   const repository = await discoverRepositoryFromContext({ context });
@@ -34,7 +41,14 @@ export async function runPush({ context, args }: {
   if (deleteBranch) {
     if (operands.length !== 2) throw new Error('usage: git push --delete <remote> <branch>');
     const branchName = operands[1]!;
-    const result = await deleteLocalRemoteBranch({ files: context.files, repository, remoteName, branchName, config });
+    const result = await deleteLocalRemoteBranch({
+      files: context.files,
+      repository,
+      remoteName,
+      branchName,
+      forceWithLease,
+      config,
+    });
     if (!quiet) {
       await context.text().error({ text: `To ${result.remotePath}\n - [deleted]         ${branchName}\n` });
     }

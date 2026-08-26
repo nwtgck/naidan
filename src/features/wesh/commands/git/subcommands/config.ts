@@ -7,18 +7,35 @@ export async function runConfig({ context, args }: {
   args: readonly string[],
 }): Promise<WeshCommandResult> {
   let scope: 'effective' | 'global' | 'local' = 'effective';
-  let commandArgs = [...args];
-  switch (commandArgs[0]) {
-  case '--global':
-    scope = 'global';
-    commandArgs = commandArgs.slice(1);
-    break;
-  case '--local':
-    scope = 'local';
-    commandArgs = commandArgs.slice(1);
-    break;
-  default:
-    break;
+  const commandArgs: string[] = [];
+  let parsingOptions = true;
+  for (const arg of args) {
+    if (parsingOptions && arg === '--') {
+      parsingOptions = false;
+      continue;
+    }
+    if (parsingOptions && (arg === '--global' || arg === '--local')) {
+      let nextScope: 'global' | 'local';
+      switch (arg) {
+      case '--global':
+        nextScope = 'global';
+        break;
+      case '--local':
+        nextScope = 'local';
+        break;
+      default: {
+        const _ex: never = arg;
+        throw new Error(`Unhandled config scope option: ${_ex}`);
+      }
+      }
+      if (scope !== 'effective' && scope !== nextScope)
+        throw new Error('only one config file at a time');
+      scope = nextScope;
+      continue;
+    }
+    commandArgs.push(arg);
+    if (!arg.startsWith('-'))
+      parsingOptions = false;
   }
   const homePath = context.env.get('HOME') ?? '/';
   const access = await (async () => {

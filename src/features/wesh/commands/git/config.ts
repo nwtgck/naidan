@@ -5,6 +5,8 @@ import { joinPath } from "./repository";
 
 export type GitConfig = Map<string, string>;
 
+export const COMMAND_CONFIG_IMPLICIT_BOOLEAN_SENTINEL = '\0wesh-git-implicit-boolean\0';
+
 export interface GitConfigEntry {
   key: string,
   value: string,
@@ -98,8 +100,9 @@ export async function readGlobalConfig({ files, homePath }: {
   return result;
 }
 
-export function readCommandConfigEntries({ env }: {
+export function readCommandConfigEntries({ env, resolveImplicitBoolean = false }: {
   env: ReadonlyMap<string, string>,
+  resolveImplicitBoolean?: boolean,
 }): GitConfigEntry[] {
   const rawCount = env.get('GIT_CONFIG_COUNT');
   if (rawCount === undefined) return [];
@@ -111,21 +114,27 @@ export function readCommandConfigEntries({ env }: {
     const value = env.get(`GIT_CONFIG_VALUE_${index}`);
     if (key === undefined || value === undefined) throw new Error(`missing command config entry ${index}`);
     const { section, subsection, name } = parseConfigKey({ key });
-    result.push({ key: normalizeConfigKey({ section, subsection, name }), value });
+    result.push({
+      key: normalizeConfigKey({ section, subsection, name }),
+      value: value === COMMAND_CONFIG_IMPLICIT_BOOLEAN_SENTINEL
+        ? resolveImplicitBoolean ? 'true' : ''
+        : value,
+    });
   }
   return result;
 }
 
-export async function readEffectiveConfigEntries({ files, repository, homePath, env }: {
+export async function readEffectiveConfigEntries({ files, repository, homePath, env, resolveImplicitBoolean = false }: {
   files: GitFiles,
   repository: GitRepository,
   homePath: string,
   env: ReadonlyMap<string, string>,
+  resolveImplicitBoolean?: boolean,
 }): Promise<GitConfigEntry[]> {
   return [
     ...await readGlobalConfigEntries({ files, homePath }),
     ...await readLocalConfigEntries({ files, repository }),
-    ...readCommandConfigEntries({ env }),
+    ...readCommandConfigEntries({ env, resolveImplicitBoolean }),
   ];
 }
 
@@ -136,7 +145,7 @@ export async function readEffectiveConfig({ files, repository, homePath, env }: 
   env: ReadonlyMap<string, string>,
 }): Promise<GitConfig> {
   const result: GitConfig = new Map();
-  for (const entry of await readEffectiveConfigEntries({ files, repository, homePath, env })) {
+  for (const entry of await readEffectiveConfigEntries({ files, repository, homePath, env, resolveImplicitBoolean: true })) {
     result.set(entry.key, entry.value);
   }
   return result;

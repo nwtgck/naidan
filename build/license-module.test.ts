@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { build as viteBuild, createServer as createViteServer } from 'vite';
 import type { OutputAsset, OutputChunk, RolldownOutput } from 'rolldown';
 
-import { fileProtocolStandalone } from './file-protocol-standalone';
-import { fileProtocolSystemJs } from './file-protocol-systemjs';
+import { createNaidanStandalonePlugin } from './file-protocol-standalone/plugin.js';
+import { readSystemJsLicenseDependency } from './file-protocol-standalone/systemjs';
 import type { BuildLicenseDependency } from './license-dependencies';
 import {
   createLicenseModulePlugins,
@@ -272,8 +272,14 @@ globalThis.loadLicenses = async () => (await import('${NAIDAN_LICENSE_MODULE_ID}
 
   it('emits the same generated license module as a lazy SystemJS chunk for standalone', async () => {
     const root = await createFixture();
-    let additionalDependencies: readonly BuildLicenseDependency[] = [];
+    const systemRuntimePath = require.resolve('systemjs/dist/system.min.js');
+    const systemJsLicense = readSystemJsLicenseDependency({
+      packageJsonPath: require.resolve('systemjs/package.json'),
+    });
+    const additionalDependencies: readonly BuildLicenseDependency[] = [systemJsLicense];
     const outDir = path.join(root, 'dist/standalone');
+    const workerEntry = path.join(root, 'src/standalone-test-worker.ts');
+    await fs.writeFile(workerEntry, 'self.addEventListener("message", () => undefined);\n');
 
     await viteBuild({
       root,
@@ -282,18 +288,17 @@ globalThis.loadLicenses = async () => (await import('${NAIDAN_LICENSE_MODULE_ID}
       logLevel: 'silent',
       base: './',
       plugins: [
-        fileProtocolSystemJs({ diagnostics: 'omit' }),
         ...createLicenseModulePlugins({
           getAdditionalDependencies: () => additionalDependencies,
         }),
-        fileProtocolStandalone({
-          debugBuildReportFile: undefined,
-          workerTarget: ['firefox140', 'chrome140'],
-          workers: [],
-          budgets: undefined,
-          onAdditionalLicenseDependencies({ dependencies }) {
-            additionalDependencies = dependencies;
-          },
+        createNaidanStandalonePlugin({
+          workers: [{
+            name: 'license-test-worker',
+            entry: workerEntry,
+            virtualId: 'virtual:file-protocol-standalone/worker/license-test-worker',
+          }],
+          systemRuntimePath,
+          sourceAudit: { mode: 'inline' },
         }),
       ],
       resolve: {

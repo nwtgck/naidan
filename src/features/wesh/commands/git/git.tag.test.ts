@@ -160,4 +160,40 @@ git tag`,
     expect(stdout.text).toBe('\uE000\n\u{10000}\n');
   });
 
+  it('drops empty repeated -m paragraphs from annotated tag messages', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+export GIT_COMMITTER_DATE='1000000100 +0000'
+git tag -a ann -m '' -m one -m '' -mtwo -m ''
+git show --no-patch ann`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain(`\
+one
+
+two
+
+commit `);
+  });
+
+  it('joins repeated -m values as message paragraphs', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+export GIT_COMMITTER_DATE='1000000100 +0000'
+git tag -a ann -m one -mtwo
+git show --no-patch ann`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain(`\
+one
+
+two
+
+commit `);
+  });
+
 });

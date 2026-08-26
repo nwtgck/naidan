@@ -7,6 +7,7 @@ import type { OutputChunk } from 'rolldown';
 import type { Plugin, ResolvedConfig } from 'vite';
 
 import { serializeLicenseDependencies } from './license-payload';
+import { collectRenderedModuleLicenseDependencies } from './rendered-module-license-dependencies';
 import {
   collectDevelopmentLicenseDependencies,
   convertRollupLicenseDependency,
@@ -60,8 +61,9 @@ function replaceLicensePayload({ chunk, serializedDependencies }: {
   chunk.map = null;
 }
 
-export function createLicenseModulePlugins({ getAdditionalDependencies }: {
+export function createLicenseModulePlugins({ getAdditionalDependencies, onBuildDependenciesCollected }: {
   getAdditionalDependencies: () => readonly BuildLicenseDependency[],
+  onBuildDependenciesCollected?: (input: { dependencies: readonly BuildLicenseDependency[] }) => void,
 }): readonly Plugin[] {
   let resolvedConfig: ResolvedConfig | undefined;
   let mainDependencies: readonly BuildLicenseDependency[] = [];
@@ -145,13 +147,15 @@ export function createLicenseModulePlugins({ getAdditionalDependencies }: {
         }))
         .digest('hex');
     },
-    generateBundle(_outputOptions, bundle) {
+    async generateBundle(_outputOptions, bundle) {
       if (!mainDependenciesCollected) {
         throw new Error(`[${pluginName}] Main build license dependencies were not collected.`);
       }
+      const renderedDependencies = await collectRenderedModuleLicenseDependencies({ moduleIds: renderedModuleIds });
       const dependencies = mergeBuildLicenseDependencies({
-        dependencyGroups: [mainDependencies, getAdditionalDependencies()],
+        dependencyGroups: [mainDependencies, renderedDependencies, getAdditionalDependencies()],
       });
+      onBuildDependenciesCollected?.({ dependencies });
       // generateBundle runs after rendering and identifier renaming, so inject
       // one self-contained expression rather than separate dictionary variables
       // that could refer to a pre-render name. The serializer derives sharing

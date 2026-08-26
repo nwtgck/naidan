@@ -128,4 +128,39 @@ Local Tester <global@example.com>
 `);
   });
 
+  it('accepts scope options before or after an action option', async () => {
+    const result = await execute({
+      script: `\
+export HOME=/home/tester
+mkdir -p /home/tester
+git config --global user.name Global
+git init -q repo
+cd repo
+git config user.name Local
+git config --get --local user.name
+git config --global --get user.name
+git config --list --local`,
+    });
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stderr.text).toBe('');
+    expect(result.stdout.text).toContain(`\
+Local
+Global
+`);
+    expect(result.stdout.text).toContain('user.name=Local\n');
+  });
+
+  it('honors -- as an option terminator for config operands', async () => {
+    const result = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Local
+git config --get -- user.name`,
+    });
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stderr.text).toBe('');
+    expect(result.stdout.text).toBe('Local\n');
+  });
+
 });

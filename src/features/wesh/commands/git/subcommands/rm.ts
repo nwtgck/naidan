@@ -6,6 +6,7 @@ import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repo
 import { removeWorktreePaths } from "@/features/wesh/commands/git/worktree";
 import { collectStatus } from "@/features/wesh/commands/git/status";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
 
 export async function runRm({ context, args }: {
     context: WeshCommandContext;
@@ -17,7 +18,8 @@ export async function runRm({ context, args }: {
   let recursive = false;
   let parsingOptions = true;
   const operands: string[] = [];
-  for (const arg of args) {
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['f', 'r'], valueOptions: [] });
+  for (const arg of normalizedArgs) {
     if (parsingOptions && arg === '--') {
       parsingOptions = false;
       continue;
@@ -26,11 +28,9 @@ export async function runRm({ context, args }: {
       force = true;
     else if (parsingOptions && arg === '--cached')
       cached = true;
-    else if (parsingOptions && (arg === '-r' || arg === '-rf' || arg === '-fr')) {
+    else if (parsingOptions && arg === '-r')
       recursive = true;
-      if (arg.includes('f'))
-        force = true;
-    } else if (parsingOptions && arg.startsWith('-'))
+    else if (parsingOptions && arg.startsWith('-'))
       throw new Error(`unknown option: ${arg}`);
     else
       operands.push(arg);
@@ -66,13 +66,22 @@ export async function runRm({ context, args }: {
       const entry = statusByPath.get(path);
       if (entry === undefined)
         return false;
-      return cached ? entry.indexStatus !== ' ' : entry.indexStatus !== ' ' || entry.worktreeStatus !== ' ';
+      if (cached)
+        return entry.indexStatus !== ' ' && entry.worktreeStatus !== ' ';
+      return entry.indexStatus !== ' ' || entry.worktreeStatus !== ' ';
     });
     if (changed.length > 0) {
-      await context.text().error({ text: 'error: the following files have local modifications:\n' });
-      for (const path of sortGitPaths({ paths: changed }))
-        await context.text().error({ text: `    ${path}\n` });
-      await context.text().error({ text: '(use --cached to keep the file, or -f to force removal)\n' });
+      if (cached) {
+        await context.text().error({ text: 'error: the following files have staged content different from both the file and the HEAD:\n' });
+        for (const path of sortGitPaths({ paths: changed }))
+          await context.text().error({ text: `    ${path}\n` });
+        await context.text().error({ text: '(use -f to force removal)\n' });
+      } else {
+        await context.text().error({ text: 'error: the following files have local modifications:\n' });
+        for (const path of sortGitPaths({ paths: changed }))
+          await context.text().error({ text: `    ${path}\n` });
+        await context.text().error({ text: '(use --cached to keep the file, or -f to force removal)\n' });
+      }
       return { exitCode: 1 };
     }
   }

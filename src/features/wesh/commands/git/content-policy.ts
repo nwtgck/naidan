@@ -22,7 +22,7 @@ async function readCloneContentPolicyConfig({ context }: {
   for (const entry of await readGlobalConfigEntries({ files: context.files, homePath: context.env.get('HOME') ?? '/' })) {
     config.set(entry.key, entry.value);
   }
-  for (const entry of readCommandConfigEntries({ env: context.env })) config.set(entry.key, entry.value);
+  for (const entry of readCommandConfigEntries({ env: context.env, resolveImplicitBoolean: true })) config.set(entry.key, entry.value);
   return config;
 }
 

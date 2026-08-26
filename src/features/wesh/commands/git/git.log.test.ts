@@ -84,13 +84,18 @@ git add b
 GIT_AUTHOR_DATE='981259506 +0000' GIT_COMMITTER_DATE='981259506 +0000' git commit -m main-change >/dev/null
 git log -1 --format='%H|%h|%P|%an|%ae|%cn|%ce|%at|%ct|%s|%%'
 printf '%s\n' ---
-git log --format='%s' --grep='^main'`,
+git log --format='%s' --grep='^main'
+printf '%s\n' ---repeated
+git log --format='%s' --grep='^base$' --grep='^main'`,
     });
     expect(result.exitCode).toBe(0);
     expect(stderr.text).toBe('');
-    const [metadata, separator, filtered, trailing] = stdout.text.split('\n');
+    const [metadata, separator, filtered, repeatedSeparator, repeatedMain, repeatedBase, trailing] = stdout.text.split('\n');
     expect(separator).toBe('---');
     expect(filtered).toBe('main-change');
+    expect(repeatedSeparator).toBe('---repeated');
+    expect(repeatedMain).toBe('main-change');
+    expect(repeatedBase).toBe('base');
     expect(trailing).toBe('');
     const fields = metadata!.split('|');
     expect(fields[0]).toMatch(/^[0-9a-f]{40}$/u);
@@ -106,6 +111,58 @@ git log --format='%s' --grep='^main'`,
       'main-change',
       '%',
     ]);
+  });
+
+  it('matches --grep against individual commit message lines', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Test
+git config user.email test@example.invalid
+printf content > f
+git add f
+git commit -m subject -m body-match >/dev/null
+git log --format='%s' --grep='^body-match$'`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('subject\n');
+  });
+
+  it('treats negative max-count values as unlimited like Git', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Test
+git config user.email test@example.invalid
+printf one > f
+git add f
+git commit -m one >/dev/null
+printf two > f
+git add f
+git commit -m two >/dev/null
+printf '%s\n' LONG
+git log --format='%s' --max-count=-1
+printf '%s\n' SHORT
+git log --format='%s' -n-2
+printf '%s\n' SEPARATE
+git log --format='%s' -n -3`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+LONG
+two
+one
+SHORT
+two
+one
+SEPARATE
+two
+one
+`);
   });
 
   it('simplifies merge history for path-limited traversal', async () => {
@@ -445,6 +502,31 @@ git log --graph --format='%s'`,
   });
 
 
+  it('distinguishes --oneline from the oneline pretty format', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > a
+git add a
+export GIT_AUTHOR_DATE='981173106 +0000'
+export GIT_COMMITTER_DATE='981173106 +0000'
+git commit -m base >/dev/null
+printf 'SHORT='; git log -1 --oneline
+printf 'PRETTY='; git log -1 --pretty=oneline
+printf 'FORMAT='; git log -1 --format=oneline`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    const lines = stdout.text.trimEnd().split('\n');
+    expect(lines[0]).toMatch(/^SHORT=[0-9a-f]{7} base$/u);
+    expect(lines[1]).toMatch(/^PRETTY=[0-9a-f]{40} base$/u);
+    expect(lines[2]).toMatch(/^FORMAT=[0-9a-f]{40} base$/u);
+  });
+
   it('renders exact rename metadata in revision stat and patch output', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -464,10 +546,8 @@ git log -1 --format= -p HEAD`,
     expect(result.exitCode).toBe(0);
     expect(stderr.text).toBe('');
     expect(stdout.text).toBe(`\
-
  a => b | 0
  1 file changed, 0 insertions(+), 0 deletions(-)
-
 diff --git a/a b/b
 similarity index 100%
 rename from a

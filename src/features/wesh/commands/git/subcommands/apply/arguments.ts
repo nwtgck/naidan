@@ -1,3 +1,5 @@
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+
 interface ApplyArguments {
   cached: boolean,
   check: boolean,
@@ -13,7 +15,7 @@ export function parseApplyArguments({ args }: { args: readonly string[] }): Appl
   let index = false;
   let inputPath: string | undefined;
   let parseOptions = true;
-  for (const arg of args) {
+  for (const arg of expandGitShortOptions({ args, flagOptions: ['R'], valueOptions: [] })) {
     if (parseOptions && arg === '--') {
       parseOptions = false;
       continue;

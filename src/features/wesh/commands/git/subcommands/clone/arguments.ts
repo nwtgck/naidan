@@ -1,3 +1,5 @@
+import { expandGitShortOptions } from '@/features/wesh/commands/git/short-options';
+
 export interface CloneArguments {
   quiet: boolean;
   branchOption: string | undefined;
@@ -11,8 +13,9 @@ export function parseCloneArguments({ args }: { args: readonly string[] }): Clon
   let depthOption: number | undefined;
   const operands: string[] = [];
   let parsingOptions = true;
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]!;
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['q'], valueOptions: ['b'] });
+  for (let index = 0; index < normalizedArgs.length; index += 1) {
+    const arg = normalizedArgs[index]!;
     if (parsingOptions && arg === '--') {
       parsingOptions = false;
       continue;
@@ -22,7 +25,7 @@ export function parseCloneArguments({ args }: { args: readonly string[] }): Clon
       continue;
     }
     if (parsingOptions && (arg === '-b' || arg === '--branch')) {
-      const value = args[index + 1];
+      const value = normalizedArgs[index + 1];
       if (value === undefined)
         throw new Error(`option '${arg}' requires a value`);
       branchOption = value;
@@ -36,10 +39,10 @@ export function parseCloneArguments({ args }: { args: readonly string[] }): Clon
       continue;
     }
     if (parsingOptions && arg === '--depth') {
-      const value = args[index + 1];
+      const value = normalizedArgs[index + 1];
       if (value === undefined)
         throw new Error("option '--depth' requires a value");
-      if (!/^[1-9][0-9]*$/u.test(value))
+      if (!/^[0-9]+$/u.test(value) || Number.parseInt(value, 10) <= 0)
         throw new Error(`depth ${value} is not a positive number`);
       depthOption = Number.parseInt(value, 10);
       index += 1;
@@ -47,7 +50,7 @@ export function parseCloneArguments({ args }: { args: readonly string[] }): Clon
     }
     if (parsingOptions && arg.startsWith('--depth=')) {
       const value = arg.slice('--depth='.length);
-      if (!/^[1-9][0-9]*$/u.test(value))
+      if (!/^[0-9]+$/u.test(value) || Number.parseInt(value, 10) <= 0)
         throw new Error(`depth ${value} is not a positive number`);
       depthOption = Number.parseInt(value, 10);
       continue;

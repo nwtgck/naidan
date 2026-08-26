@@ -1,6 +1,6 @@
 import { JSDOM } from 'jsdom';
 import { describe, expect, it, vi } from 'vitest';
-import { createFileProtocolStandaloneEntryBootstrapSource } from './file-protocol-standalone/systemjs';
+import { createFileProtocolStandaloneEntryBootstrapSource } from './file-protocol-standalone/file-protocol-startup-support';
 
 type StartupState = Readonly<{
   checkpoint: string,
@@ -49,7 +49,7 @@ function executeEntryBootstrap({
   const consoleWarn = vi.fn();
   const source = createFileProtocolStandaloneEntryBootstrapSource({
     entryFileName: 'assets/index-systemjs.js',
-    debugSlowStartupNoticeDelayMs: slowStartupNoticeDelayMs,
+    slowStartupNoticeDelayMs,
   });
   const execute = new Function(
     'globalThis',

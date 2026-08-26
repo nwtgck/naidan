@@ -8,6 +8,7 @@ import { stageWorktreePaths } from "@/features/wesh/commands/git/stage";
 import { collectPathsForAdd, listWorktreeEntries, worktreeAbsolutePath } from "@/features/wesh/commands/git/worktree";
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
 
 export async function runAdd({ context, args }: {
     context: WeshCommandContext;
@@ -16,19 +17,28 @@ export async function runAdd({ context, args }: {
   await assertSupportedRepositoryContentPolicy({ context, cleanMutation: true });
   const repository = await discoverRepositoryFromContext({ context });
   let mode: 'paths' | 'all' | 'update' = 'paths';
+  let allModeSeen = false;
+  let updateModeSeen = false;
   let force = false;
   let parsingOptions = true;
   const operands: string[] = [];
-  for (const arg of args) {
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['A', 'u', 'f'], valueOptions: [] });
+  for (const arg of normalizedArgs) {
     if (parsingOptions && arg === '--') {
       parsingOptions = false;
       continue;
     }
     if (parsingOptions && (arg === '-A' || arg === '--all')) {
+      if (updateModeSeen)
+        throw new Error("options '-A' and '-u' cannot be used together");
+      allModeSeen = true;
       mode = 'all';
       continue;
     }
     if (parsingOptions && (arg === '-u' || arg === '--update')) {
+      if (allModeSeen)
+        throw new Error("options '-A' and '-u' cannot be used together");
+      updateModeSeen = true;
       mode = 'update';
       continue;
     }

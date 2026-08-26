@@ -1,10 +1,15 @@
 import * as Comlink from 'comlink';
 import type { StorageType } from '@/01-models/types';
 
-import { createFileProtocolStandaloneWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub-standalone-loader';
-import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub.types';
+import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/global-search';
+import {
+  createStandaloneWorkerSession,
+  disposeStandaloneWorkerSession,
+  STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+} from '@/features/file-protocol-standalone/worker/standalone-worker-session';
 import {
   globalSearchWorkerSearchChatContentResponseSchema,
+  type IGlobalSearchWorker,
   type GlobalSearchWorkerClient,
 } from './types';
 import { createGlobalSearchRemoteContentReader } from './content-reader';
@@ -14,9 +19,6 @@ export async function createGlobalSearchWorkerClient({
 }: {
   storageType: StorageType,
 }): Promise<GlobalSearchWorkerClient> {
-  const worker = await createFileProtocolStandaloneWorkerHub();
-  const remote = Comlink.wrap<IWorkerHub>(worker);
-  const globalSearch = await remote.globalSearch;
   const remoteContentReader = (() => {
     switch (storageType) {
     case 'opfs':
@@ -30,23 +32,23 @@ export async function createGlobalSearchWorkerClient({
     }
     }
   })();
+  const session = await createStandaloneWorkerSession<IGlobalSearchWorker>({ createWorker: createStandaloneWorker });
+  const { remote } = session;
 
   try {
-    await globalSearch.configureStorage(storageType, remoteContentReader);
+    await remote.configureStorage(storageType, remoteContentReader);
   } catch (error) {
-    try {
-      await remote[Comlink.releaseProxy]();
-    } catch {
-      // Preserve the storage configuration error.
-    } finally {
-      worker.terminate();
-    }
+    await disposeStandaloneWorkerSession({
+      session,
+      beforeRelease: undefined,
+      cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+    }).catch(() => undefined);
     throw error;
   }
 
   return {
     async searchChatContent({ request }) {
-      const response = await globalSearch.searchChatContent({
+      const response = await remote.searchChatContent({
         request: {
           ...request,
           storageType,
@@ -55,11 +57,11 @@ export async function createGlobalSearchWorkerClient({
       return globalSearchWorkerSearchChatContentResponseSchema.parse(response);
     },
     async dispose() {
-      try {
-        await remote[Comlink.releaseProxy]();
-      } finally {
-        worker.terminate();
-      }
+      await disposeStandaloneWorkerSession({
+        session,
+        beforeRelease: undefined,
+        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+      });
     },
   };
 }

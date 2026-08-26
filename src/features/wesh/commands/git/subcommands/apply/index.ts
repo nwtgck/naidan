@@ -52,7 +52,7 @@ export async function runApply({ context, args }: {
     }
 
     const plan = await planIndexChanges({ context, repository, sections, reverse: parsedArgs.reverse });
-    if (parsedArgs.index) {
+    if (parsedArgs.index && !parsedArgs.cached) {
       await validateIndexMatchesWorktree({
         context,
         repository,
@@ -64,7 +64,7 @@ export async function runApply({ context, args }: {
     if (parsedArgs.check) return { exitCode: 0 };
 
     const written = await writePlannedObjects({ context, repository, plan });
-    if (parsedArgs.index) {
+    if (parsedArgs.index && !parsedArgs.cached) {
       await replaceTrackedWorktreePaths({
         files: context.files,
         repository,

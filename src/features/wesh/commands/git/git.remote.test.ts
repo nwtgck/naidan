@@ -282,6 +282,55 @@ cat .git/refs/heads/master`,
   });
 
 
+  it('enforces force-with-lease when deleting a stale remote branch', async () => {
+    const setup = await execute({
+      script: `\
+git init -q source
+cd source
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > a.txt
+git add a.txt
+export GIT_AUTHOR_DATE='981173106 +0000'
+export GIT_COMMITTER_DATE='981173106 +0000'
+git commit -m base >/dev/null
+cd /
+git init -q --bare remote.git
+cd /source
+git remote add origin /remote.git
+git push -q -u origin master
+cd /
+git clone -q remote.git other
+cd /other
+git config user.name Tester
+git config user.email tester@example.com
+printf 'other\n' >> a.txt
+git add a.txt
+export GIT_AUTHOR_DATE='981259506 +0000'
+export GIT_COMMITTER_DATE='981259506 +0000'
+git commit -m other >/dev/null
+git push -q origin master`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const before = await execute({ script: 'cat /remote.git/refs/heads/master' });
+    expect(before.result.exitCode).toBe(0);
+
+    const rejected = await execute({ script: 'cd /source; git push --delete --force-with-lease origin master' });
+    expect(rejected.result.exitCode).toBe(128);
+    expect(rejected.stdout.text).toBe('');
+    expect(rejected.stderr.text).toContain('stale info');
+
+    const after = await execute({
+      script: `\
+cat /remote.git/refs/heads/master
+cat /source/.git/refs/remotes/origin/master`,
+    });
+    expect(after.result.exitCode).toBe(0);
+    expect(after.stdout.text.split('\n')[0]).toBe(before.stdout.text.trimEnd());
+    expect(after.stdout.text.split('\n')[1]).not.toBe(before.stdout.text.trimEnd());
+  });
+
   it('reports upstream identity and divergence in porcelain branch status', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -324,6 +373,62 @@ git status --porcelain=v1 --branch`,
     expect(lines[2]).toBe('# branch.upstream origin/master');
     expect(lines[3]).toBe('# branch.ab +1 -1');
     expect(lines[4]).toBe('## master...origin/master [ahead 1, behind 1]');
+  });
+
+  it('accepts --ff-only with --rebase and lets ff-only reject divergence after fetch', async () => {
+    const setup = await execute({
+      script: `\
+git init -q source
+cd source
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > base.txt
+git add base.txt
+export GIT_AUTHOR_DATE='981173106 +0000'
+export GIT_COMMITTER_DATE='981173106 +0000'
+git commit -m base >/dev/null
+cd /
+git init -q --bare remote.git
+cd /source
+git remote add origin /remote.git
+git push -q -u origin master
+cd /
+git clone -q remote.git other
+cd /other
+git config user.name Tester
+git config user.email tester@example.com
+printf 'remote\n' > remote.txt
+git add remote.txt
+export GIT_AUTHOR_DATE='981259506 +0000'
+export GIT_COMMITTER_DATE='981259506 +0000'
+git commit -m remote >/dev/null
+git push -q origin master
+cd /source
+printf 'local\n' > local.txt
+git add local.txt
+export GIT_AUTHOR_DATE='981345906 +0000'
+export GIT_COMMITTER_DATE='981345906 +0000'
+git commit -m local >/dev/null`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const headBefore = await execute({ script: 'cd /source; git rev-parse HEAD' });
+    expect(headBefore.result.exitCode).toBe(0);
+
+    const rejected = await execute({ script: 'cd /source; git pull --ff-only --rebase origin master' });
+    expect(rejected.result.exitCode).toBe(128);
+    expect(rejected.stderr.text).toContain('Not possible to fast-forward');
+
+    const verify = await execute({
+      script: `\
+cd /source
+git rev-parse HEAD
+git rev-parse refs/remotes/origin/master`,
+    });
+    expect(verify.result.exitCode).toBe(0);
+    const [headAfter, fetchedRemote] = verify.stdout.text.trimEnd().split('\n');
+    expect(headAfter).toBe(headBefore.stdout.text.trimEnd());
+    expect(fetchedRemote).not.toBe(headAfter);
   });
 
   it('pulls a local tracking branch by fast-forwarding through the shared primitive', async () => {
