@@ -13,8 +13,11 @@ export function parseResetArguments({ args }: {
   let pathOperands: readonly string[] | undefined;
   const separatorIndex = args.indexOf('--');
   const optionAndRevisionArgs = separatorIndex < 0 ? args : args.slice(0, separatorIndex);
-  if (separatorIndex >= 0)
-    pathOperands = args.slice(separatorIndex + 1);
+  if (separatorIndex >= 0) {
+    const operands = args.slice(separatorIndex + 1);
+    if (operands.length > 0)
+      pathOperands = operands;
+  }
   for (const arg of optionAndRevisionArgs) {
     if (arg === '--soft')
       mode = 'soft';

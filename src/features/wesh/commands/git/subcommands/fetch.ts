@@ -3,6 +3,7 @@ import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { sortGitUtf8Strings } from "@/features/wesh/commands/git/utf8-order";
 import { fetchLocalRemote } from "@/features/wesh/commands/git/local-transport";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
 
 export async function runFetch({ context, args }: {
   context: WeshCommandContext,
@@ -12,11 +13,17 @@ export async function runFetch({ context, args }: {
   let all = false;
   let prune = false;
   const operands: string[] = [];
-  for (const arg of args) {
-    if (arg === '-q' || arg === '--quiet') quiet = true;
-    else if (arg === '--all') all = true;
-    else if (arg === '--prune' || arg === '-p') prune = true;
-    else if (arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
+  let parsingOptions = true;
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['p', 'q'], valueOptions: [] });
+  for (const arg of normalizedArgs) {
+    if (parsingOptions && arg === '--') {
+      parsingOptions = false;
+      continue;
+    }
+    if (parsingOptions && (arg === '-q' || arg === '--quiet')) quiet = true;
+    else if (parsingOptions && arg === '--all') all = true;
+    else if (parsingOptions && (arg === '--prune' || arg === '-p')) prune = true;
+    else if (parsingOptions && arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
     else operands.push(arg);
   }
   if (operands.length > 1) throw new Error('too many arguments');

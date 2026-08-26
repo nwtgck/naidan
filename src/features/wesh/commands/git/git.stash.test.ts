@@ -139,6 +139,37 @@ git stash show --no-color`,
 `);
   });
 
+  it('accepts repeated -p short flags as a Git short-option cluster', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${base}
+printf 'changed-a\n' > a
+git stash push -m show-patch >/dev/null
+git stash show -pp --no-color`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain('diff --git a/a b/a\n');
+    expect(stdout.text).toContain(`\
+-base-a
++changed-a
+`);
+  });
+
+  it('combines --stat with an explicitly requested patch like Git', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${base}
+printf 'changed-a\n' > a
+git stash push -m combined >/dev/null
+git stash show --stat -p --no-color`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain(' a | 2 +-\n');
+    expect(stdout.text).toContain('diff --git a/a b/a\n');
+  });
+
   it('shows stash diffstat through the shared diff stat primitive', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -341,6 +372,34 @@ git stash list`,
     expect(result.exitCode).toBe(0);
     expect(stderr.text).toBe('');
     expect(stdout.text).toBe(' M a\n');
+  });
+
+
+  it('honors -- as an option terminator across existing stash subcommands', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${base}
+printf 'first\n' > a
+git stash push -m first -- >/dev/null
+git stash list -- >/dev/null
+git stash show -- stash@{0} >/dev/null
+git stash apply -- stash@{0} >/dev/null
+git reset --hard HEAD >/dev/null
+git stash drop stash@{0} -- >/dev/null
+printf 'second\n' > a
+git stash push -- >/dev/null
+git stash pop -- stash@{0} >/dev/null
+git reset --hard HEAD >/dev/null
+printf 'third\n' > a
+git stash push -m clear-me >/dev/null
+git stash clear --
+git stash list --
+printf 'ok\n'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('ok\n');
   });
 
 });

@@ -233,6 +233,8 @@ export async function runDiff({ context, args }: {
     revisions,
     pathOperands,
   } = parseDiffArguments({ args });
+  if ((nameOnly && nameStatus) || (check && (nameOnly || nameStatus)))
+    throw new Error("options '--name-only', '--name-status', '--check', and '-s' cannot be used together");
 
   const repository = await discoverRepositoryFromContext({ context });
   if (!repositoryHasWorktree({ repository }) && !cached && revisions.length < 2) {
@@ -295,15 +297,16 @@ export async function runDiff({ context, args }: {
   const exactRenames = exactRenamesForPaths({ paths, left, right });
   const exactRenameSources = new Set(exactRenames.map(rename => rename.sourcePath));
   const exactRenameDestinations = new Set(exactRenames.map(rename => rename.destinationPath));
+  const hasDifferences = paths.length > 0 || unmergedPaths.length > 0;
+  const differenceExitCode = exitCode && hasDifferences ? 1 : 0;
+  if (quiet) return { exitCode: hasDifferences ? 1 : 0 };
   if (check) {
     const hasErrors = await checkWhitespaceErrors({ context, paths, left, right });
-    return { exitCode: hasErrors ? 2 : 0 };
+    return { exitCode: (hasErrors ? 2 : 0) | differenceExitCode };
   }
-  if (quiet) return { exitCode: paths.length === 0 && unmergedPaths.length === 0 ? 0 : 1 };
-  if (stat) {
-    if (nameOnly || nameStatus) throw new Error('combined diff stat/name output is not supported yet');
+  if (stat && !nameOnly && !nameStatus) {
     await writeDiffStat({ context, paths, left, right, quoteNonAscii, unmergedPaths });
-    return { exitCode: 0 };
+    return { exitCode: differenceExitCode };
   }
   if (nameOnly) {
     const separator = nul ? '\0' : '\n';
@@ -326,7 +329,7 @@ export async function runDiff({ context, args }: {
       });
       await context.text().print({ text: outputPaths.map(path => `${renderPath({ path })}${separator}`).join('') });
     }
-    return { exitCode: 0 };
+    return { exitCode: differenceExitCode };
   }
   if (nameStatus) {
     const normal = new Map(paths.map(path => {
@@ -375,7 +378,7 @@ export async function runDiff({ context, args }: {
         }).join(''),
       });
     }
-    return { exitCode: 0 };
+    return { exitCode: differenceExitCode };
   }
   const outputRows = [
     ...paths
@@ -403,7 +406,7 @@ export async function runDiff({ context, args }: {
     }
     }
   }
-  return { exitCode: exitCode && outputRows.length > 0 ? 1 : 0 };
+  return { exitCode: differenceExitCode };
 }
 
 export const TEST_ONLY = {

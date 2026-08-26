@@ -1,6 +1,8 @@
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { joinPath, discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { readReflog } from "@/features/wesh/commands/git/reflog";
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { parseGitMaxCount } from "@/features/wesh/commands/git/max-count";
 
 export async function runReflog({ context, args }: {
   context: WeshCommandContext,
@@ -8,14 +10,23 @@ export async function runReflog({ context, args }: {
 }): Promise<WeshCommandResult> {
   const repository = await discoverRepositoryFromContext({ context });
   let maxCount = Number.POSITIVE_INFINITY;
+  let optionTerminated = false;
   const operands: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]!;
-    if (arg === '-n' || arg === '--max-count') {
-      const value = args[index + 1];
-      if (value === undefined || !/^[0-9]+$/u.test(value)) throw new Error(`option '${arg}' requires a numeric value`);
-      maxCount = Number.parseInt(value, 10);
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: [], valueOptions: ['n'] });
+  for (let index = 0; index < normalizedArgs.length; index += 1) {
+    const arg = normalizedArgs[index]!;
+    if (optionTerminated)
+      throw new Error('reflog pathspecs are not supported yet');
+    if (arg === '--') {
+      optionTerminated = true;
+    } else if (arg === '-n' || arg === '--max-count') {
+      const value = normalizedArgs[index + 1];
+      if (value === undefined) throw new Error(`option '${arg}' requires a numeric value`);
+      maxCount = parseGitMaxCount({ value, option: arg });
       index += 1;
+    } else if (arg.startsWith('--max-count=')) {
+      const value = arg.slice('--max-count='.length);
+      maxCount = parseGitMaxCount({ value, option: '--max-count' });
     } else if (/^-[0-9]+$/u.test(arg)) {
       maxCount = Number.parseInt(arg.slice(1), 10);
     } else if (arg.startsWith('-')) {

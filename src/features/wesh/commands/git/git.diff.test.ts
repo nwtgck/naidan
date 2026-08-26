@@ -69,6 +69,43 @@ index 2d030d7..0000000
 `);
   });
 
+  it('preserves --exit-code across supported summary output modes', async () => {
+    for (const mode of ['--stat', '--name-only', '--name-status']) {
+      const { result, stdout, stderr } = await execute({
+        script: `\
+${setup}
+printf 'changed\n' > a.txt
+git diff ${mode} --exit-code`,
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(stderr.text).toBe('');
+      expect(stdout.text.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('combines --check and --exit-code exit bits like Git', async () => {
+    const cleanDifference = await execute({
+      script: `\
+${setup}
+printf 'changed\n' > a.txt
+git diff --check --exit-code`,
+    });
+    expect(cleanDifference.result.exitCode).toBe(1);
+    expect(cleanDifference.stderr.text).toBe('');
+    expect(cleanDifference.stdout.text).toBe('');
+
+    const whitespaceError = await execute({
+      script: `\
+${setup}
+printf 'changed \n' > a.txt
+git diff --check --exit-code`,
+    });
+    expect(whitespaceError.result.exitCode).toBe(3);
+    expect(whitespaceError.stderr.text).toBe('');
+    expect(whitespaceError.stdout.text).toContain('a.txt:1: trailing whitespace.\n');
+  });
+
   it('uses the preceding non-indented line as the partial hunk heading', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -239,6 +276,19 @@ git diff --exit-code --no-color`,
     expect(visible.result.exitCode).toBe(1);
     expect(visible.stderr.text).toBe('');
     expect(visible.stdout.text).toContain('diff --git a/a.txt b/a.txt\n');
+  });
+
+  it('lets --quiet suppress --check diagnostics and use diff exit status', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+printf 'alpha\nbeta\nbad   \n' > a.txt
+git diff --quiet --check`,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('');
   });
 
   it('reports newly introduced trailing whitespace with --check', async () => {
@@ -867,6 +917,40 @@ rename to b
 A\tb
 D\ta
 R100\ta\tb
+`);
+  });
+
+
+  it('rejects incompatible diff name output modes instead of silently choosing one', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+printf changed > a.txt
+git diff --name-only --name-status`,
+    });
+
+    expect(result.exitCode).toBe(128);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("options '--name-only', '--name-status', '--check', and '-s' cannot be used together");
+  });
+
+  it('lets name output modes take precedence over --stat like Git', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+printf changed > a.txt
+rm del.txt
+git diff --stat --name-only
+git diff --stat --name-status`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+a.txt
+del.txt
+M\ta.txt
+D\tdel.txt
 `);
   });
 

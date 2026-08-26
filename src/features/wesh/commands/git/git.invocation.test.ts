@@ -83,19 +83,23 @@ pwd`,
     expect(lines[2]).toBe('/');
   });
 
-  it('resolves --git-dir and --work-tree relative to the current global -C position', async () => {
+  it('resolves --git-dir and --work-tree relative to the effective -C directory regardless of option order', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q /repo
 cd /
 git -C /repo --git-dir=.git --work-tree=. rev-parse --show-toplevel
-git -C /repo --git-dir=.git rev-parse --git-dir`,
+git --git-dir=.git --work-tree=. -C /repo rev-parse --show-toplevel
+git -C /repo --git-dir=.git rev-parse --git-dir
+git --git-dir=.git -C /repo rev-parse --git-dir`,
     });
 
     expect(result.exitCode).toBe(0);
     expect(stderr.text).toBe('');
     expect(stdout.text).toBe(`\
 /repo
+/repo
+.git
 .git
 `);
   });
@@ -273,4 +277,19 @@ git -C /repo config --get remote.origin.url || printf 'missing\n'`,
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe("fatal: cannot change to '/missing': No such file or directory\n");
   });
+  it('treats valueless -c assignments as implicit true without changing raw config output', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q /repo
+printf 'one\r\n' > /repo/a
+git -C /repo -c core.autocrlf add a
+git -C /repo status --short
+git -C /repo -c demo.flag config demo.flag`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('AM a\n\n');
+  });
+
 });

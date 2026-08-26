@@ -11,6 +11,7 @@ import { integrateDivergentMerge } from "@/features/wesh/commands/git/merge-oper
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
 import { printCheckoutConflicts } from "@/features/wesh/commands/git/checkout-like";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
 
 export async function runPull({ context, args }: {
     context: WeshCommandContext;
@@ -21,22 +22,26 @@ export async function runPull({ context, args }: {
   let rebase = false;
   let quiet = false;
   const operands: string[] = [];
-  for (const arg of args) {
-    if (arg === '--ff-only')
+  let parsingOptions = true;
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['q'], valueOptions: [] });
+  for (const arg of normalizedArgs) {
+    if (parsingOptions && arg === '--') {
+      parsingOptions = false;
+      continue;
+    }
+    if (parsingOptions && arg === '--ff-only')
       ffOnly = true;
-    else if (arg === '--rebase')
+    else if (parsingOptions && arg === '--rebase')
       rebase = true;
-    else if (arg === '--no-rebase')
+    else if (parsingOptions && arg === '--no-rebase')
       rebase = false;
-    else if (arg === '-q' || arg === '--quiet')
+    else if (parsingOptions && (arg === '-q' || arg === '--quiet'))
       quiet = true;
-    else if (arg.startsWith('-'))
+    else if (parsingOptions && arg.startsWith('-'))
       throw new Error(`unknown option: ${arg}`);
     else
       operands.push(arg);
   }
-  if (ffOnly && rebase)
-    throw new Error('cannot combine --ff-only and --rebase');
   if (operands.length > 2)
     throw new Error('too many arguments');
   const repository = await discoverRepositoryFromContext({ context });

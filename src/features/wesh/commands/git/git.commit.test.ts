@@ -57,6 +57,97 @@ two
 `);
   });
 
+  it('joins repeated -m messages as separate paragraphs', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+printf 'two\n' > a.txt
+git add a.txt
+GIT_AUTHOR_DATE='981259506 +0000' GIT_COMMITTER_DATE='981259506 +0000' git commit -m one -m two >/dev/null
+git log -1 --format='%B'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+one
+
+two
+`);
+  });
+
+  it('joins repeated attached -m messages as separate paragraphs', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+printf 'two\n' > a.txt
+git add a.txt
+GIT_AUTHOR_DATE='981259506 +0000' GIT_COMMITTER_DATE='981259506 +0000' git commit -mone -mtwo >/dev/null
+git log -1 --format='%B'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+one
+
+two
+`);
+  });
+
+  it('drops empty repeated -m paragraphs and keeps one blank line between messages', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+printf 'two\n' > a.txt
+git add a.txt
+GIT_AUTHOR_DATE='981259506 +0000' GIT_COMMITTER_DATE='981259506 +0000' git commit -m '' -m one -m '' -m two -m '' >/dev/null
+git log -1 --format='%B'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+one
+
+two
+`);
+  });
+
+  it('rejects a commit message that is empty after cleanup without moving HEAD', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+printf 'two\n' > a.txt
+git add a.txt
+git commit -m '   '
+git log -1 --format='%s'
+git status --porcelain=v1`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toContain('Aborting commit due to empty commit message.\n');
+    expect(stdout.text).toBe(`\
+initial
+M  a.txt
+`);
+  });
+
+  it('accepts a bare -- after commit options', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+printf 'two\n' > a.txt
+git add a.txt
+GIT_AUTHOR_DATE='981259506 +0000' GIT_COMMITTER_DATE='981259506 +0000' git commit -m second -- >/dev/null
+git log -1 --format=%s`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('second\n');
+  });
+
   it('amends with the previous author and parents while updating the reflog', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -104,6 +195,51 @@ git log --oneline`,
     expect(result.exitCode).toBe(0);
     expect(stderr.text).toBe('');
     expect(stdout.text).toContain('message from file\n');
+  });
+
+  it('cleans message files using Git whitespace paragraph rules', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'hello\n' > a.txt
+git add a.txt
+printf '\n one  \n\n\n two \n\n' > message.txt
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -F message.txt >/dev/null
+git log -1 --format='%B'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+ one
+
+ two
+`);
+  });
+
+  it('rejects an empty -F message after cleanup without creating a commit', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'hello\n' > a.txt
+git add a.txt
+printf '  \n\n' > message.txt
+git commit -F message.txt
+git status --porcelain=v1`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toContain('Aborting commit due to empty commit message.\n');
+    expect(stdout.text).toBe(`\
+A  a.txt
+?? message.txt
+`);
   });
 
   it('reads a commit message from stdin with -F -', async () => {

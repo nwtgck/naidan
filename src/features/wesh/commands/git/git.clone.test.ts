@@ -324,7 +324,7 @@ export GIT_AUTHOR_DATE='981345906 +0000'
 export GIT_COMMITTER_DATE='981345906 +0000'
 git commit -m three >/dev/null
 cd /
-git clone --depth 1 source cloned
+git clone --depth=01 source cloned
 cd cloned
 git log --oneline
 test ! -e .git/shallow`,

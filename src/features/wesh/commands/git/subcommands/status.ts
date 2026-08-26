@@ -2,6 +2,7 @@ import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/type
 import { collectStatus } from "@/features/wesh/commands/git/status";
 import { formatPorcelainV1Branch, printLongStatus, renderPorcelainV1, renderPorcelainV2, renderShortStatus } from "@/features/wesh/commands/git/status-output";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
 
 export async function runStatus({ context, args }: {
     context: WeshCommandContext;
@@ -11,7 +12,12 @@ export async function runStatus({ context, args }: {
   let format: 'long' | 'short' | 'porcelain-v1' | 'porcelain-v2' = 'long';
   let branch = false;
   let nul = false;
-  for (const arg of args) {
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['s', 'b', 'z'], valueOptions: [] });
+  const separatorIndex = normalizedArgs.indexOf('--');
+  const optionArgs = separatorIndex < 0 ? normalizedArgs : normalizedArgs.slice(0, separatorIndex);
+  if (separatorIndex >= 0 && separatorIndex !== normalizedArgs.length - 1)
+    throw new Error('status pathspecs are not supported yet');
+  for (const arg of optionArgs) {
     switch (arg) {
     case '-s':
     case '--short':
@@ -36,7 +42,7 @@ export async function runStatus({ context, args }: {
     }
   }
   if (nul && format === 'long')
-    throw new Error('option -z requires --porcelain or --short');
+    format = 'porcelain-v1';
   const status = await collectStatus({ context });
   const text = context.text();
   const separator = nul ? '\0' : '\n';

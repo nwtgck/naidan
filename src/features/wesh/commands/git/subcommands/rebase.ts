@@ -10,6 +10,54 @@ import { readReplayState } from "@/features/wesh/commands/git/replay-state";
 import { abortRebase, checkoutRebaseTargetBranch, continueRebase, skipRebase, startRebaseSequence, validateRebaseStartWorktree } from "@/features/wesh/commands/git/rebase-operation";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
 
+
+type RebaseStartArguments = {
+  upstreamExpression: string;
+  ontoExpression: string;
+  branchExpression: string | undefined;
+  explicitOnto: boolean;
+};
+
+function parseRebaseStartArguments({ args }: { args: readonly string[] }): RebaseStartArguments {
+  let parsingOptions = true;
+  let ontoExpression: string | undefined;
+  const operands: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    if (parsingOptions && arg === '--') {
+      parsingOptions = false;
+      continue;
+    }
+    if (parsingOptions && arg === '--onto') {
+      const value = args[index + 1];
+      if (value === undefined)
+        throw new Error('git rebase --onto requires <newbase> <upstream> [<branch>]');
+      ontoExpression = value;
+      index += 1;
+      continue;
+    }
+    if (parsingOptions && arg.startsWith('--onto=')) {
+      ontoExpression = arg.slice('--onto='.length);
+      continue;
+    }
+    if (parsingOptions && arg.startsWith('-'))
+      throw new Error(`unknown option: ${arg}`);
+    operands.push(arg);
+  }
+  if (operands.length !== 1 && operands.length !== 2) {
+    if (ontoExpression !== undefined)
+      throw new Error('git rebase --onto requires <newbase> <upstream> [<branch>]');
+    throw new Error('git rebase requires <upstream> [<branch>]');
+  }
+  const upstreamExpression = operands[0]!;
+  return {
+    upstreamExpression,
+    ontoExpression: ontoExpression ?? upstreamExpression,
+    branchExpression: operands[1],
+    explicitOnto: ontoExpression !== undefined,
+  };
+}
+
 export async function runRebase({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];
@@ -21,26 +69,12 @@ export async function runRebase({ context, args }: {
     return abortRebase({ context });
   if (args.length === 1 && args[0] === '--skip')
     return skipRebase({ context });
-  let upstreamExpression: string;
-  let ontoExpression: string;
-  let branchExpression: string | undefined;
-  let explicitOnto = false;
-  if (args[0] === '--onto') {
-    if (args.length !== 3 && args.length !== 4) {
-      throw new Error('git rebase --onto requires <newbase> <upstream> [<branch>]');
-    }
-    ontoExpression = args[1]!;
-    upstreamExpression = args[2]!;
-    branchExpression = args[3];
-    explicitOnto = true;
-  } else {
-    if ((args.length !== 1 && args.length !== 2) || args[0]!.startsWith('-')) {
-      throw new Error('git rebase requires <upstream> [<branch>]');
-    }
-    upstreamExpression = args[0]!;
-    ontoExpression = upstreamExpression;
-    branchExpression = args[1];
-  }
+  const {
+    upstreamExpression,
+    ontoExpression,
+    branchExpression,
+    explicitOnto,
+  } = parseRebaseStartArguments({ args });
   const repository = await discoverRepositoryFromContext({ context });
   if (await readRebaseState({ files: context.files, repository }) !== undefined) {
     await context.text().error({ text: 'fatal: It seems that there is already a rebase-merge directory\n' });

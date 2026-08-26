@@ -117,6 +117,88 @@ hello
 `);
   });
 
+  it('uses --hard to resolve an unmerged index and clear merge state', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > conflict.txt
+git add conflict.txt
+git commit -m base >/dev/null
+git checkout -b topic >/dev/null
+printf 'topic\n' > conflict.txt
+git commit -am topic >/dev/null
+git checkout master >/dev/null
+printf 'master\n' > conflict.txt
+git commit -am master >/dev/null
+git merge topic
+git status --short
+git reset --hard HEAD
+git status --short
+cat conflict.txt
+test ! -e .git/MERGE_HEAD
+git status --short
+git log -1 --format=%s`,
+    });
+
+    expect(stderr.text).toContain("Switched to a new branch 'topic'\n");
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toMatch(/UU conflict\.txt\nHEAD is now at [0-9a-f]{7} master\nmaster\nmaster\n$/u);
+  });
+
+  it('uses mixed reset to clear merge state while preserving conflicted worktree content', async () => {
+    const { result, stdout } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > conflict.txt
+git add conflict.txt
+git commit -m base >/dev/null
+git checkout -b topic >/dev/null
+printf 'topic\n' > conflict.txt
+git commit -am topic >/dev/null
+git checkout master >/dev/null
+printf 'master\n' > conflict.txt
+git commit -am master >/dev/null
+git merge topic
+git reset HEAD
+test ! -e .git/MERGE_HEAD
+git status --short
+head -n 1 conflict.txt`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toMatch(/Unstaged changes after reset:\nM\tconflict\.txt\n M conflict\.txt\n<<<<<<< HEAD\n$/u);
+  });
+
+  it('rejects --soft without mutating merge state during a merge conflict', async () => {
+    const { result, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > conflict.txt
+git add conflict.txt
+git commit -m base >/dev/null
+git checkout -b topic >/dev/null
+printf 'topic\n' > conflict.txt
+git commit -am topic >/dev/null
+git checkout master >/dev/null
+printf 'master\n' > conflict.txt
+git commit -am master >/dev/null
+git merge topic
+git reset --soft HEAD`,
+    });
+
+    expect(result.exitCode).toBe(128);
+    expect(stderr.text).toContain('fatal: Cannot do a soft reset in the middle of a merge.\n');
+  });
+
   it('resets selected index paths from a revision without moving HEAD', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -157,6 +239,25 @@ git status --short`,
     expect(result.exitCode).toBe(0);
     expect(stdout.text).toBe(`\
 ?? new.txt
+`);
+  });
+
+
+  it('treats a trailing -- without paths as an option terminator for whole-tree resets', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+git reset --hard HEAD~1 --
+git rev-parse HEAD
+cat hello.txt`,
+    });
+
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+HEAD is now at 7cac307 initial
+7cac307b38298843a48a70fb0489f3618383cba1
+hello
 `);
   });
 

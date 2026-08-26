@@ -6,6 +6,8 @@ import { createRef, deleteRef, listRefs, readRef } from '@/features/wesh/command
 import { discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
 import { resolveRevision } from '@/features/wesh/commands/git/revision';
 import { compareGitUtf8Strings } from '@/features/wesh/commands/git/utf8-order';
+import { expandGitShortOptions } from '@/features/wesh/commands/git/short-options';
+import { appendMessageParagraph, cleanupMessage } from '@/features/wesh/commands/git/commit-message';
 
 const textEncoder = new TextEncoder();
 
@@ -55,8 +57,9 @@ export async function runTag({ context, args }: {
   let message: string | undefined;
   let parsingOptions = true;
   const operands: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]!;
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['a', 'd'], valueOptions: ['m'] });
+  for (let index = 0; index < normalizedArgs.length; index += 1) {
+    const arg = normalizedArgs[index]!;
     if (parsingOptions && arg === '--') {
       parsingOptions = false;
       continue;
@@ -64,14 +67,19 @@ export async function runTag({ context, args }: {
     if (parsingOptions && (arg === '-a' || arg === '--annotate')) annotated = true;
     else if (parsingOptions && (arg === '-d' || arg === '--delete')) deleteMode = true;
     else if (parsingOptions && (arg === '-m' || arg === '--message')) {
-      const value = args[index + 1];
+      const value = normalizedArgs[index + 1];
       if (value === undefined) throw new Error(`option '${arg}' requires a value`);
-      message = value;
+      message = appendMessageParagraph({ current: message, value });
       annotated = true;
       index += 1;
+    } else if (parsingOptions && arg.startsWith('--message=')) {
+      message = appendMessageParagraph({ current: message, value: arg.slice('--message='.length) });
+      annotated = true;
     } else if (parsingOptions && arg.startsWith('-')) throw new Error(`unsupported tag argument: ${arg}`);
     else operands.push(arg);
   }
+
+  if (message !== undefined) message = cleanupMessage({ text: message });
 
   const repository = await discoverRepositoryFromContext({ context });
   if (deleteMode) {

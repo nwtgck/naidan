@@ -227,6 +227,34 @@ test ! -e middle.txt`,
     expect(rebased.stderr.text).toBe('Successfully rebased and updated refs/heads/topic.\n');
   });
 
+  it('accepts -- before the upstream operand', async () => {
+    await setupDiverged({ conflictingFirstCommit: false });
+    const rebased = await execute({
+      script: `\
+git rebase -- master
+git show HEAD:master.txt`,
+    });
+    expect(rebased.result.exitCode).toBe(0);
+    expect(rebased.stdout.text).toBe('master-only\n');
+    expect(rebased.stderr.text).toBe('Successfully rebased and updated refs/heads/topic.\n');
+  });
+
+  it('accepts an attached --onto value with -- before operands', async () => {
+    await setupDiverged({ conflictingFirstCommit: false });
+    const rebased = await execute({
+      script: `\
+git rebase --onto=master -- topic^ topic
+git show HEAD:master.txt
+git show HEAD:b`,
+    });
+    expect(rebased.result.exitCode).toBe(0);
+    expect(rebased.stdout.text).toBe(`\
+master-only
+topic-two
+`);
+    expect(rebased.stderr.text).toBe('Successfully rebased and updated refs/heads/topic.\n');
+  });
+
   it('refuses to start when tracked changes are dirty', async () => {
     await setupDiverged({ conflictingFirstCommit: false });
     const dirty = await execute({

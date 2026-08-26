@@ -5,6 +5,7 @@ import { matchRepositoryPaths } from '@/features/wesh/commands/git/pathspec';
 import { quoteGitPath, quoteNonAsciiFromConfig } from '@/features/wesh/commands/git/path-output';
 import { relativeToWorktree, discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
 import { writeHandleBytes } from '@/features/wesh/commands/git/files';
+import { expandGitShortOptions } from '@/features/wesh/commands/git/short-options';
 
 const textEncoder = new TextEncoder();
 
@@ -25,7 +26,8 @@ export async function runLsFiles({ context, args }: {
   let fullName = false;
   let parsingOptions = true;
   const operands: string[] = [];
-  for (const arg of args) {
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['s', 'c', 'z'], valueOptions: [] });
+  for (const arg of normalizedArgs) {
     if (parsingOptions && arg === '--') {
       parsingOptions = false;
       continue;
