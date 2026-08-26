@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createBlobZipSource,
+  createWebZipCompressionCodec,
+  iterateZipStreamChunks,
+  StreamingZipReader,
+} from './index';
+import {
   createMemoryZipCentralDirectoryStore,
   createReadableZipOutput,
+  createSingleFileZipBlob,
 } from './memory';
 
 describe('ZIP memory adapters', () => {
@@ -50,5 +57,38 @@ describe('ZIP memory adapters', () => {
     expect(await reader.read()).toEqual({ done: false, value: new Uint8Array([5, 6, 7, 8]) });
     expect(await reader.read()).toEqual({ done: false, value: new Uint8Array([9, 10, 11, 12]) });
     expect(await reader.read()).toEqual({ done: true, value: undefined });
+  });
+
+  it('creates a compressed single-file archive with exact bytes', async () => {
+    const bytes = new TextEncoder().encode('{"status":"complete"}\n');
+    const blob = await createSingleFileZipBlob({
+      fileName: 'benchmark.json',
+      bytes,
+      modifiedAt: new Date('2026-08-26T00:00:00Z'),
+      compression: 'deflate',
+    });
+    const source = createBlobZipSource({ blob });
+    const reader = new StreamingZipReader({
+      source,
+      compressionCodec: createWebZipCompressionCodec(),
+    });
+    const entries = [];
+    for await (const entry of reader.entries()) entries.push(entry);
+
+    expect(blob.type).toBe('application/zip');
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      name: 'benchmark.json',
+      compression: 'deflate',
+      uncompressedSize: bytes.byteLength,
+    });
+    const entry = entries[0];
+    if (entry === undefined) throw new Error('Single-file ZIP entry is missing');
+    const chunks = [];
+    for await (const chunk of iterateZipStreamChunks({ stream: await reader.openEntry({ entry }) })) {
+      chunks.push(...chunk);
+    }
+    expect(chunks).toEqual([...bytes]);
+    await reader.close();
   });
 });

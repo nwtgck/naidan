@@ -1,6 +1,10 @@
-import type {
-  ZipByteSink,
-  ZipCentralDirectoryStore,
+import {
+  createWebZipCompressionCodec,
+  iterateZipStreamChunks,
+  StreamingZipWriter,
+  type ZipCompression,
+  type ZipByteSink,
+  type ZipCentralDirectoryStore,
 } from './index';
 
 /**
@@ -103,6 +107,64 @@ export function createReadableZipOutput({
       await writer.abort(reason);
     },
   };
+}
+
+export async function createSingleFileZipBlob({
+  fileName,
+  bytes,
+  modifiedAt,
+  compression,
+}: {
+  fileName: string,
+  bytes: Uint8Array,
+  modifiedAt: Date,
+  compression: ZipCompression,
+}): Promise<Blob> {
+  const output = createReadableZipOutput({ highWaterMarkBytes: 512 * 1024 });
+  const centralDirectoryStore = createMemoryZipCentralDirectoryStore();
+  const writer = new StreamingZipWriter({
+    output: output.sink,
+    centralDirectoryStore,
+    compressionCodec: createWebZipCompressionCodec(),
+  });
+  const archiveChunksPromise = (async (): Promise<Uint8Array<ArrayBuffer>[]> => {
+    const chunks: Uint8Array<ArrayBuffer>[] = [];
+    for await (const chunk of iterateZipStreamChunks({ stream: output.stream })) {
+      const copy = new Uint8Array(new ArrayBuffer(chunk.byteLength));
+      copy.set(chunk);
+      chunks.push(copy);
+    }
+    return chunks;
+  })();
+  let emitted = false;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (emitted) {
+        controller.close();
+        return;
+      }
+      emitted = true;
+      controller.enqueue(bytes);
+    },
+  });
+
+  try {
+    await writer.addFile({
+      name: fileName,
+      modifiedAt,
+      compression,
+      stream,
+    });
+    await writer.finalize();
+    await output.close();
+    return new Blob(await archiveChunksPromise, { type: 'application/zip' });
+  } catch (error: unknown) {
+    await output.abort({ reason: error }).catch(() => undefined);
+    await archiveChunksPromise.catch(() => undefined);
+    throw error;
+  } finally {
+    await centralDirectoryStore.dispose();
+  }
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

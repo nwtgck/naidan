@@ -504,14 +504,12 @@ async function downloadFullJsonZip(): Promise<void> {
   const download = currentFullJsonDownload();
   if (download === undefined) return;
   try {
-    const { default: JSZip } = await import('jszip');
-    const archive = new JSZip();
-    archive.file(download.fileName, download.text);
-    const blob = await archive.generateAsync({
-      type: 'blob',
-      compression: 'DEFLATE',
-      compressionOptions: { level: 6 },
-      mimeType: 'application/zip',
+    const { createSingleFileZipBlob } = await import('@/utils/zip-stream/memory');
+    const blob = await createSingleFileZipBlob({
+      fileName: download.fileName,
+      bytes: new TextEncoder().encode(download.text),
+      modifiedAt: new Date(),
+      compression: 'deflate',
     });
     downloadBlob({
       blob,
