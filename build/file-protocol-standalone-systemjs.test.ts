@@ -5,11 +5,11 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
+import { assertSupportedSystemJsRuntime } from './file-protocol-standalone/systemjs';
 import {
   createSystemJsFileScriptLoaderPatchSource,
   createSystemJsPhysicalLoadRecoverySource,
-  assertSupportedSystemJsRuntime,
-} from './file-protocol-standalone/systemjs';
+} from './file-protocol-standalone/file-protocol-startup-support';
 
 const require = createRequire(import.meta.url);
 
@@ -81,7 +81,14 @@ async function captureUnhandledRejections({ action }: {
   const listener = (reason: unknown): void => {
     rejections.push(reason);
   };
+  const rejectionHandledListener = (): void => {
+    // SystemJS can attach a handler to an internal child Promise one task after
+    // Node first reports it. Observing rejectionHandled keeps this deliberate
+    // test scenario from producing PromiseRejectionHandledWarning noise while
+    // the unhandledRejection listener above still captures the actual failure.
+  };
   process.on('unhandledRejection', listener);
+  process.on('rejectionHandled', rejectionHandledListener);
   try {
     await action();
     // SystemJS can report the child load rejection on the following task even
@@ -91,6 +98,7 @@ async function captureUnhandledRejections({ action }: {
     return rejections;
   } finally {
     process.off('unhandledRejection', listener);
+    process.off('rejectionHandled', rejectionHandledListener);
   }
 }
 

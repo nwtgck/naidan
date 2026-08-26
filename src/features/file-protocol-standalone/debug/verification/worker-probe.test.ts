@@ -1,239 +1,128 @@
 import * as Comlink from 'comlink';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub.types';
+import type { IHighlightWorker } from '@/features/highlight/worker/types';
 import type { IWeshWorker } from '@/features/wesh/worker/types';
-import type { DebugFileProtocolStandaloneWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub';
+import type { StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
 import {
-  type DebugFileProtocolStandaloneWorkerHubSession,
-  type DebugFileProtocolStandaloneHighlightProbeResult,
-  type DebugFileProtocolStandaloneWeshFileProbeResult,
-  TEST_ONLY as VERIFICATION_WORKER_PROBE_TEST_ONLY,
+  type DebugFileProtocolStandaloneWorkerSession,
+  TEST_ONLY,
 } from './worker-probe';
 
-type MutableDiagnostics = {
+type MutableNameDiagnostics = {
   workersCreated: number,
   workersTerminated: number,
   activeWorkers: number,
+  initializationAttempts: number,
+  initializationSuccesses: number,
+  initializationFailures: number,
+  initializationTimeouts: number,
 };
 
-type TrackedSession = DebugFileProtocolStandaloneWorkerHubSession & Readonly<{
+type MutableRuntime = MutableNameDiagnostics & {
+  workersByName: Record<string, MutableNameDiagnostics>,
+};
+
+type TrackedSession<Api> = DebugFileProtocolStandaloneWorkerSession<Api> & Readonly<{
   testId: number,
+  workerName: string,
 }>;
 
-function createDiagnostics({
-  mutable,
-}: {
-  mutable: MutableDiagnostics,
-}): DebugFileProtocolStandaloneWorkerDiagnostics {
+function zeroName(): MutableNameDiagnostics {
   return {
-    workerId: 'file-protocol-standalone-worker-hub',
-    registryScriptLoads: 1,
-    registryScriptLoadFailures: 0,
-    blobRegistrations: 1,
-    objectUrlsCreated: 1,
-    workersCreated: mutable.workersCreated,
-    workersTerminated: mutable.workersTerminated,
-    activeWorkers: mutable.activeWorkers,
-    terminateInstrumentationFailures: 0,
-    runtimeDigestCalls: 0,
-    sourceStoredAsGlobalString: false,
-    objectUrlLifetime: 'page',
-    registryEntryReleased: true,
-    registryEntryPresent: false,
-    blobUrlStatus: 'ready',
-    blobBytes: 1024,
-    sourcePartCount: 2,
-    sha256: 'diagnostic-sha256',
-    timingsMs: {},
+    workersCreated: 0,
+    workersTerminated: 0,
+    activeWorkers: 0,
+    initializationAttempts: 0,
+    initializationSuccesses: 0,
+    initializationFailures: 0,
+    initializationTimeouts: 0,
   };
 }
 
-function createTrackedSessionFactory({
-  mutable,
-  events,
-}: {
-  mutable: MutableDiagnostics,
+function createMutableRuntime(): MutableRuntime {
+  return { ...zeroName(), workersByName: {} };
+}
+
+function snapshot(runtime: MutableRuntime): StandaloneWorkerRuntimeDiagnostics {
+  return {
+    bootstrapObjectUrlStatus: 'ready',
+    bootstrapObjectUrlsCreated: 1,
+    bootstrapObjectUrlsRevoked: 0,
+    warmupSchedules: 1,
+    warmupRuns: 1,
+    workerConstructorFailures: 0,
+    workersCreated: runtime.workersCreated,
+    workersTerminated: runtime.workersTerminated,
+    activeWorkers: runtime.activeWorkers,
+    terminateInstrumentationFailures: 0,
+    initializationAttempts: runtime.initializationAttempts,
+    initializationSuccesses: runtime.initializationSuccesses,
+    initializationFailures: runtime.initializationFailures,
+    initializationTimeouts: runtime.initializationTimeouts,
+    workersByName: Object.fromEntries(Object.entries(runtime.workersByName).map(([name, value]) => [name, { ...value }])),
+  };
+}
+
+function createTrackedFactory<Api>({ runtime, workerName, events }: {
+  runtime: MutableRuntime,
+  workerName: string,
   events: string[],
-}): () => Promise<DebugFileProtocolStandaloneWorkerHubSession> {
+}): () => Promise<DebugFileProtocolStandaloneWorkerSession<Api>> {
   let nextId = 0;
-
   return async () => {
-    const testId = nextId;
-    nextId += 1;
-    mutable.workersCreated += 1;
-    mutable.activeWorkers += 1;
+    const testId = nextId++;
+    const byName = runtime.workersByName[workerName] ?? (runtime.workersByName[workerName] = zeroName());
+    for (const target of [runtime, byName]) {
+      target.workersCreated += 1;
+      target.activeWorkers += 1;
+      target.initializationAttempts += 1;
+      target.initializationSuccesses += 1;
+    }
     let active = true;
-
     const worker = {
-      terminate: () => {
+      terminate() {
         if (!active) return;
         active = false;
-        mutable.workersTerminated += 1;
-        mutable.activeWorkers -= 1;
-        events.push(`terminate:${testId}`);
+        for (const target of [runtime, byName]) {
+          target.workersTerminated += 1;
+          target.activeWorkers -= 1;
+        }
+        events.push(`terminate:${workerName}:${testId}`);
       },
     } as unknown as Worker;
-
     return {
       testId,
+      workerName,
       worker,
-      remote: {} as TrackedSession['remote'],
-    } satisfies TrackedSession;
+      remote: {} as Comlink.Remote<Api>,
+    } satisfies TrackedSession<Api>;
   };
 }
 
-function getTestId({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }): number {
-  return (session as TrackedSession).testId;
+function idOf<Api>(session: DebugFileProtocolStandaloneWorkerSession<Api>): number {
+  return (session as TrackedSession<Api>).testId;
 }
 
-function createReleaseSession({ events }: { events: string[] }) {
-  return vi.fn(async ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => {
-    const testId = getTestId({ session });
-    events.push(`release:${testId}`);
+function createRelease<Api>({ events }: { events: string[] }) {
+  return vi.fn(async ({ session }: { session: DebugFileProtocolStandaloneWorkerSession<Api> }) => {
+    const tracked = session as TrackedSession<Api>;
+    events.push(`release:${tracked.workerName}:${tracked.testId}`);
     session.worker.terminate();
   });
 }
 
-function createDeferred<Result>() {
-  let resolve!: (value: Result) => void;
+function deferred<Value>() {
+  let resolve!: (value: Value) => void;
   let reject!: (reason?: unknown) => void;
-  const promise = new Promise<Result>((resolvePromise, rejectPromise) => {
+  const promise = new Promise<Value>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
 }
 
-type MessageListener = (event: MessageEvent) => void;
-
-class LocalMessageEndpoint {
-  private readonly listeners = new Set<MessageListener>();
-  private peer: LocalMessageEndpoint | undefined;
-
-  connect({ peer }: { peer: LocalMessageEndpoint }): void {
-    this.peer = peer;
-  }
-
-  postMessage(message: unknown): void {
-    queueMicrotask(() => {
-      this.peer?.dispatchMessage({ data: message } as MessageEvent);
-    });
-  }
-
-  addEventListener(type: string, listener: EventListenerOrEventListenerObject): void {
-    if (type === 'message') {
-      this.listeners.add(listener as MessageListener);
-    }
-  }
-
-  removeEventListener(type: string, listener: EventListenerOrEventListenerObject): void {
-    if (type === 'message') {
-      this.listeners.delete(listener as MessageListener);
-    }
-  }
-
-  start(): void {}
-
-  close(): void {
-    this.listeners.clear();
-  }
-
-  listenerCount(): number {
-    return this.listeners.size;
-  }
-
-  private dispatchMessage(event: MessageEvent): void {
-    for (const listener of this.listeners) {
-      listener(event);
-    }
-  }
-}
-
-function createRealComlinkSessionFactory({
-  mutable,
-  events,
-  sessions,
-}: {
-  mutable: MutableDiagnostics,
-  events: string[],
-  sessions: DebugFileProtocolStandaloneWorkerHubSession[],
-}): () => Promise<DebugFileProtocolStandaloneWorkerHubSession> {
-  let nextId = 0;
-
-  return async () => {
-    const testId = nextId;
-    nextId += 1;
-    const clientEndpoint = new LocalMessageEndpoint();
-    const workerEndpoint = new LocalMessageEndpoint();
-    clientEndpoint.connect({ peer: workerEndpoint });
-    workerEndpoint.connect({ peer: clientEndpoint });
-
-    const stdout = new TextEncoder().encode('/bin/sh: text/x-shellscript\n').buffer as ArrayBuffer;
-    const hub = {
-      highlight: {
-        highlight: async ({ request }: { request: { code: string } }) => {
-          events.push(`highlight:${testId}`);
-          return {
-            resolvedLanguage: 'json',
-            html: `<pre>${request.code}</pre>`,
-          };
-        },
-      },
-      wesh: {
-        init: async () => {
-          events.push(`wesh-init:${testId}`);
-        },
-        startExecution: async (_request: unknown, onEvent?: (event: unknown) => void | Promise<void>) => {
-          events.push(`wesh-start:${testId}`);
-          await onEvent?.({ type: 'stdout', buffer: stdout });
-          return { executionId: `execution-${testId}` };
-        },
-        awaitExecution: async () => {
-          events.push(`wesh-await:${testId}`);
-          return { exitCode: 0 };
-        },
-        disposeExecution: async () => {
-          events.push(`wesh-dispose-execution:${testId}`);
-        },
-        dispose: async () => {
-          events.push(`wesh-dispose:${testId}`);
-        },
-      },
-    } as unknown as IWorkerHub;
-    Comlink.expose(hub, workerEndpoint as unknown as MessagePort);
-
-    mutable.workersCreated += 1;
-    mutable.activeWorkers += 1;
-    let active = true;
-    const worker = {
-      postMessage: (message: unknown) => clientEndpoint.postMessage(message),
-      addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
-        clientEndpoint.addEventListener(type, listener);
-      },
-      removeEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
-        clientEndpoint.removeEventListener(type, listener);
-      },
-      terminate: () => {
-        if (!active) return;
-        active = false;
-        events.push(`terminate:${testId}:worker-listeners=${workerEndpoint.listenerCount()}`);
-        mutable.workersTerminated += 1;
-        mutable.activeWorkers -= 1;
-        clientEndpoint.close();
-        workerEndpoint.close();
-      },
-    } as unknown as Worker;
-    const session = {
-      worker,
-      remote: Comlink.wrap<IWorkerHub>(worker),
-    };
-    sessions.push(session);
-    return session;
-  };
-}
-
-function asRemoteWesh({ worker }: { worker: IWeshWorker }): Comlink.Remote<IWeshWorker> {
+function asRemoteWesh(worker: IWeshWorker): Comlink.Remote<IWeshWorker> {
   return worker as Comlink.Remote<IWeshWorker>;
 }
 
@@ -242,360 +131,211 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies', () => {
-  it('keeps a real Comlink root endpoint alive through highlight and Wesh before release', async () => {
-    const mutable: MutableDiagnostics = {
-      workersCreated: 0,
-      workersTerminated: 0,
-      activeWorkers: 0,
-    };
+describe('standalone Worker verification lifecycle', () => {
+  it('runs three Highlight sessions and one independent Wesh session without leaks', async () => {
+    const runtime = createMutableRuntime();
     const events: string[] = [];
-    const sessions: DebugFileProtocolStandaloneWorkerHubSession[] = [];
+    const createHighlightSession = createTrackedFactory<IHighlightWorker>({ runtime, workerName: 'naidan-highlight-worker', events });
+    const createWeshSession = createTrackedFactory<IWeshWorker>({ runtime, workerName: 'file-protocol-compatible-wesh-worker', events });
+    const releaseHighlightSession = createRelease<IHighlightWorker>({ events });
+    const releaseWeshSession = createRelease<IWeshWorker>({ events });
 
-    const result = await VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
-      createSession: createRealComlinkSessionFactory({ mutable, events, sessions }),
-      readDiagnostics: () => createDiagnostics({ mutable }),
-      runRoundTrip: VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneHighlightProbe,
-      runFileProbe: VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneWeshFileProbe,
-      releaseSession: VERIFICATION_WORKER_PROBE_TEST_ONLY.debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession,
-      sessionCreationTimeoutMs: 1_000,
-      operationTimeoutMs: 1_000,
-      cleanupTimeoutMs: 1_000,
-    });
-
-    expect(result.weshFileProbe).toEqual({
-      exitCode: 0,
-      stdout: '/bin/sh: text/x-shellscript\n',
-      stderr: '',
-    });
-    expect(sessions).toHaveLength(3);
-    const recreatedHighlight = events.indexOf('highlight:2');
-    const recreatedWesh = events.indexOf('wesh-init:2');
-    const recreatedTerminate = events.indexOf('terminate:2:worker-listeners=0');
-    expect(recreatedHighlight).toBeGreaterThanOrEqual(0);
-    expect(recreatedWesh).toBeGreaterThan(recreatedHighlight);
-    expect(recreatedTerminate).toBeGreaterThan(recreatedWesh);
-    expect(mutable).toEqual({
-      workersCreated: 3,
-      workersTerminated: 3,
-      activeWorkers: 0,
-    });
-  });
-
-  it('uses one recreated Comlink session for highlight and Wesh before releasing it', async () => {
-    const mutable: MutableDiagnostics = {
-      workersCreated: 4,
-      workersTerminated: 4,
-      activeWorkers: 0,
-    };
-    const events: string[] = [];
-    const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }));
-    const releaseSession = createReleaseSession({ events });
-    const roundTripSessions: DebugFileProtocolStandaloneWorkerHubSession[] = [];
-    const runRoundTrip = vi.fn(async ({ session, source }: {
-      session: DebugFileProtocolStandaloneWorkerHubSession,
-      source: string,
-    }): Promise<DebugFileProtocolStandaloneHighlightProbeResult> => {
-      roundTripSessions.push(session);
-      events.push(`highlight:${getTestId({ session })}`);
-      return {
-        resolvedLanguage: 'json',
-        htmlLength: source.length,
-      };
-    });
-    const fileProbeSessions: DebugFileProtocolStandaloneWorkerHubSession[] = [];
-    const runFileProbe = vi.fn(async ({ session }: {
-      session: DebugFileProtocolStandaloneWorkerHubSession,
-    }): Promise<DebugFileProtocolStandaloneWeshFileProbeResult> => {
-      fileProbeSessions.push(session);
-      events.push(`wesh:${getTestId({ session })}`);
-      return {
-        exitCode: 0,
-        stdout: '/bin/sh: text/x-shellscript\n',
-        stderr: '',
-      };
-    });
-
-    const result = await VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
-      createSession,
-      readDiagnostics: () => createDiagnostics({ mutable }),
-      runRoundTrip,
-      runFileProbe,
-      releaseSession,
-      sessionCreationTimeoutMs: 1_000,
-      operationTimeoutMs: 1_000,
-      cleanupTimeoutMs: 1_000,
-    });
-
-    expect(createSession).toHaveBeenCalledTimes(3);
-    expect(runRoundTrip).toHaveBeenCalledTimes(3);
-    expect(runFileProbe).toHaveBeenCalledOnce();
-    expect(roundTripSessions[2]).toBe(fileProbeSessions[0]);
-    expect(events).toEqual([
-      'highlight:0',
-      'highlight:1',
-      'release:0',
-      'terminate:0',
-      'release:1',
-      'terminate:1',
-      'highlight:2',
-      'wesh:2',
-      'release:2',
-      'terminate:2',
-    ]);
-    expect(result.diagnosticDeltas).toEqual({
-      workersCreated: 3,
-      workersTerminated: 3,
-      activeWorkers: 0,
-      registryScriptLoads: 0,
-      blobRegistrations: 0,
-      objectUrlsCreated: 0,
-    });
-  });
-
-  it('waits for both concurrent cleanups before reporting one round-trip failure', async () => {
-    const mutable: MutableDiagnostics = {
-      workersCreated: 0,
-      workersTerminated: 0,
-      activeWorkers: 0,
-    };
-    const events: string[] = [];
-    const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }));
-    const releaseSession = createReleaseSession({ events });
-    const sibling = createDeferred<DebugFileProtocolStandaloneHighlightProbeResult>();
-    const runRoundTrip = vi.fn(async ({ source }: {
-      session: DebugFileProtocolStandaloneWorkerHubSession,
-      source: string,
-    }): Promise<DebugFileProtocolStandaloneHighlightProbeResult> => {
-      if (source.includes('concurrent-a')) {
-        throw new Error('synthetic round-trip failure');
-      }
-      return sibling.promise;
-    });
-
-    let settled = false;
-    const verification = VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
-      createSession,
-      readDiagnostics: () => createDiagnostics({ mutable }),
-      runRoundTrip,
-      runFileProbe: vi.fn(),
-      releaseSession,
-      sessionCreationTimeoutMs: 1_000,
-      operationTimeoutMs: 1_000,
-      cleanupTimeoutMs: 1_000,
-    }).finally(() => {
-      settled = true;
-    });
-
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(settled).toBe(false);
-    sibling.resolve({ resolvedLanguage: 'json', htmlLength: 1 });
-
-    await expect(verification).rejects.toThrow('synthetic round-trip failure');
-    expect(releaseSession).toHaveBeenCalledTimes(2);
-    expect(mutable).toEqual({
-      workersCreated: 2,
-      workersTerminated: 2,
-      activeWorkers: 0,
-    });
-  });
-
-  it('releases a fulfilled sibling and preserves a concurrent session creation failure', async () => {
-    const events: string[] = [];
-    const mutable: MutableDiagnostics = {
-      workersCreated: 0,
-      workersTerminated: 0,
-      activeWorkers: 0,
-    };
-    const firstSession = await createTrackedSessionFactory({ mutable, events })();
-    const createSession = vi.fn()
-      .mockResolvedValueOnce(firstSession)
-      .mockRejectedValueOnce(new Error('synthetic worker creation failure'));
-    const releaseSession = createReleaseSession({ events });
-
-    await expect(VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
-      createSession,
-      readDiagnostics: () => createDiagnostics({ mutable }),
-      runRoundTrip: vi.fn(),
-      runFileProbe: vi.fn(),
-      releaseSession,
-      sessionCreationTimeoutMs: 1_000,
-      operationTimeoutMs: 1_000,
-      cleanupTimeoutMs: 1_000,
-    })).rejects.toThrow('synthetic worker creation failure');
-
-    expect(releaseSession).toHaveBeenCalledOnce();
-    expect(events).toEqual(['release:0', 'terminate:0']);
-  });
-
-  it('releases a session that resolves after its creation deadline', async () => {
-    vi.useFakeTimers();
-    const events: string[] = [];
-    const mutable: MutableDiagnostics = {
-      workersCreated: 0,
-      workersTerminated: 0,
-      activeWorkers: 0,
-    };
-    const trackedFactory = createTrackedSessionFactory({ mutable, events });
-    const firstSession = await trackedFactory();
-    const lateSession = createDeferred<DebugFileProtocolStandaloneWorkerHubSession>();
-    const createSession = vi.fn()
-      .mockResolvedValueOnce(firstSession)
-      .mockImplementationOnce(async () => lateSession.promise);
-    const releaseSession = createReleaseSession({ events });
-
-    const verification = VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
-      createSession,
-      readDiagnostics: () => createDiagnostics({ mutable }),
-      runRoundTrip: vi.fn(),
-      runFileProbe: vi.fn(),
-      releaseSession,
-      sessionCreationTimeoutMs: 25,
-      operationTimeoutMs: 25,
-      cleanupTimeoutMs: 25,
-    });
-    const rejection = expect(verification).rejects.toThrow(
-      'Second standalone Worker session creation timed out after 25 ms.',
-    );
-
-    await vi.advanceTimersByTimeAsync(25);
-    await rejection;
-    expect(releaseSession).toHaveBeenCalledOnce();
-    expect(mutable.activeWorkers).toBe(0);
-
-    const resolvedLateSession = await trackedFactory();
-    lateSession.resolve(resolvedLateSession);
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(releaseSession).toHaveBeenCalledTimes(2);
-    expect(events).toEqual([
-      'release:0',
-      'terminate:0',
-      'release:1',
-      'terminate:1',
-    ]);
-    expect(mutable.activeWorkers).toBe(0);
-  });
-
-  it('releases the recreated session when the Wesh file probe fails', async () => {
-    const mutable: MutableDiagnostics = {
-      workersCreated: 0,
-      workersTerminated: 0,
-      activeWorkers: 0,
-    };
-    const events: string[] = [];
-    const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }));
-    const releaseSession = createReleaseSession({ events });
-
-    await expect(VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
-      createSession,
-      readDiagnostics: () => createDiagnostics({ mutable }),
-      runRoundTrip: async ({ session, source }) => {
-        events.push(`highlight:${getTestId({ session })}`);
+    const result = await TEST_ONLY.verifyWithDependencies({
+      createHighlightSession,
+      createWeshSession,
+      readDiagnostics: () => snapshot(runtime),
+      runHighlightProbe: async ({ session, source }) => {
+        events.push(`highlight:${idOf(session)}`);
         return { resolvedLanguage: 'json', htmlLength: source.length };
       },
-      runFileProbe: async ({ session }) => {
-        events.push(`wesh:${getTestId({ session })}`);
-        throw new Error('synthetic Wesh file probe failure');
+      runWeshProbe: async ({ session }) => {
+        events.push(`wesh:${idOf(session)}`);
+        return { exitCode: 0, stdout: `\
+bin
+home
+`, stderr: '' };
       },
-      releaseSession,
-      sessionCreationTimeoutMs: 1_000,
+      releaseHighlightSession,
+      releaseWeshSession,
+      creationTimeoutMs: 1_000,
       operationTimeoutMs: 1_000,
       cleanupTimeoutMs: 1_000,
-    })).rejects.toThrow('synthetic Wesh file probe failure');
-
-    expect(events.slice(-4)).toEqual([
-      'highlight:2',
-      'wesh:2',
-      'release:2',
-      'terminate:2',
-    ]);
-    expect(mutable.activeWorkers).toBe(0);
-  });
-
-  it('times out a pending Wesh probe and still releases the recreated session', async () => {
-    vi.useFakeTimers();
-    const mutable: MutableDiagnostics = {
-      workersCreated: 0,
-      workersTerminated: 0,
-      activeWorkers: 0,
-    };
-    const events: string[] = [];
-    const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }));
-    const releaseSession = createReleaseSession({ events });
-
-    const verification = VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
-      createSession,
-      readDiagnostics: () => createDiagnostics({ mutable }),
-      runRoundTrip: async ({ source }) => ({ resolvedLanguage: 'json', htmlLength: source.length }),
-      runFileProbe: async () => new Promise<DebugFileProtocolStandaloneWeshFileProbeResult>(() => {}),
-      releaseSession,
-      sessionCreationTimeoutMs: 25,
-      operationTimeoutMs: 25,
-      cleanupTimeoutMs: 25,
     });
 
-    const rejection = expect(verification).rejects.toThrow(
-      'Recreated standalone Worker Wesh file probe timed out after 25 ms.',
-    );
-    await vi.advanceTimersByTimeAsync(25);
-    await rejection;
-    expect(releaseSession).toHaveBeenCalledTimes(3);
-    expect(mutable.activeWorkers).toBe(0);
+    expect(result.diagnosticDeltas).toMatchObject({ workersCreated: 4, workersTerminated: 4, activeWorkers: 0 });
+    expect(result.workerDeltas.highlight).toMatchObject({ workersCreated: 3, workersTerminated: 3, activeWorkers: 0 });
+    expect(result.workerDeltas.wesh).toMatchObject({ workersCreated: 1, workersTerminated: 1, activeWorkers: 0 });
+    expect(runtime.activeWorkers).toBe(0);
+    expect(events.filter(event => event.startsWith('release:'))).toHaveLength(4);
   });
 
-  it('forces termination when session cleanup itself never settles', async () => {
-    vi.useFakeTimers();
-    const mutable: MutableDiagnostics = {
-      workersCreated: 0,
-      workersTerminated: 0,
-      activeWorkers: 0,
-    };
+  it('waits for both concurrent Highlight cleanups before preserving one operation failure', async () => {
+    const runtime = createMutableRuntime();
     const events: string[] = [];
-    const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }));
-    let releaseCount = 0;
-    const releaseSession = vi.fn(async ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => {
-      releaseCount += 1;
-      if (releaseCount < 3) {
-        session.worker.terminate();
-        return;
+    const releaseGate = deferred<void>();
+    const secondReleaseStarted = deferred<void>();
+    const createHighlightSession = createTrackedFactory<IHighlightWorker>({ runtime, workerName: 'naidan-highlight-worker', events });
+    const releaseHighlightSession = vi.fn(async ({ session }: { session: DebugFileProtocolStandaloneWorkerSession<IHighlightWorker> }) => {
+      events.push(`release-start:${idOf(session)}`);
+      if (idOf(session) === 1) {
+        secondReleaseStarted.resolve();
+        await releaseGate.promise;
       }
-      await new Promise<void>(() => {});
+      session.worker.terminate();
+      events.push(`release-end:${idOf(session)}`);
     });
 
-    const verification = VERIFICATION_WORKER_PROBE_TEST_ONLY.debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
-      createSession,
-      readDiagnostics: () => createDiagnostics({ mutable }),
-      runRoundTrip: async ({ source }) => ({ resolvedLanguage: 'json', htmlLength: source.length }),
-      runFileProbe: async () => ({ exitCode: 0, stdout: '/bin/sh: text/x-shellscript\n', stderr: '' }),
-      releaseSession,
-      sessionCreationTimeoutMs: 25,
+    const verification = TEST_ONLY.verifyWithDependencies({
+      createHighlightSession,
+      createWeshSession: vi.fn(),
+      readDiagnostics: () => snapshot(runtime),
+      runHighlightProbe: async ({ session, source }) => {
+        if (idOf(session) === 0) throw new Error('synthetic first Highlight failure');
+        return { resolvedLanguage: 'json', htmlLength: source.length };
+      },
+      runWeshProbe: vi.fn(),
+      releaseHighlightSession,
+      releaseWeshSession: vi.fn(),
+      creationTimeoutMs: 1_000,
+      operationTimeoutMs: 1_000,
+      cleanupTimeoutMs: 1_000,
+    });
+
+    await secondReleaseStarted.promise;
+    expect(events).toContain('release-start:1');
+    let settled = false;
+    void verification.finally(() => {
+      settled = true;
+    }).catch(() => undefined);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    releaseGate.resolve();
+    await expect(verification).rejects.toThrow('synthetic first Highlight failure');
+    expect(events).toEqual(expect.arrayContaining(['release-end:0', 'release-end:1']));
+    expect(runtime.activeWorkers).toBe(0);
+  });
+
+  it('releases a fulfilled Highlight sibling when the other creation fails', async () => {
+    const runtime = createMutableRuntime();
+    const events: string[] = [];
+    const tracked = createTrackedFactory<IHighlightWorker>({ runtime, workerName: 'naidan-highlight-worker', events });
+    const first = await tracked();
+    const createHighlightSession = vi.fn()
+      .mockResolvedValueOnce(first)
+      .mockRejectedValueOnce(new Error('synthetic second creation failure'));
+    const releaseHighlightSession = createRelease<IHighlightWorker>({ events });
+
+    await expect(TEST_ONLY.verifyWithDependencies({
+      createHighlightSession,
+      createWeshSession: vi.fn(),
+      readDiagnostics: () => snapshot(runtime),
+      runHighlightProbe: vi.fn(),
+      runWeshProbe: vi.fn(),
+      releaseHighlightSession,
+      releaseWeshSession: vi.fn(),
+      creationTimeoutMs: 1_000,
+      operationTimeoutMs: 1_000,
+      cleanupTimeoutMs: 1_000,
+    })).rejects.toThrow('synthetic second creation failure');
+    expect(releaseHighlightSession).toHaveBeenCalledOnce();
+    expect(runtime.activeWorkers).toBe(0);
+  });
+
+  it('reclaims a Highlight session that resolves after its creation deadline', async () => {
+    vi.useFakeTimers();
+    const runtime = createMutableRuntime();
+    const events: string[] = [];
+    const tracked = createTrackedFactory<IHighlightWorker>({ runtime, workerName: 'naidan-highlight-worker', events });
+    const first = await tracked();
+    const late = deferred<DebugFileProtocolStandaloneWorkerSession<IHighlightWorker>>();
+    const createHighlightSession = vi.fn().mockResolvedValueOnce(first).mockImplementationOnce(() => late.promise);
+    const releaseHighlightSession = createRelease<IHighlightWorker>({ events });
+
+    const verification = TEST_ONLY.verifyWithDependencies({
+      createHighlightSession,
+      createWeshSession: vi.fn(),
+      readDiagnostics: () => snapshot(runtime),
+      runHighlightProbe: vi.fn(),
+      runWeshProbe: vi.fn(),
+      releaseHighlightSession,
+      releaseWeshSession: vi.fn(),
+      creationTimeoutMs: 25,
       operationTimeoutMs: 25,
       cleanupTimeoutMs: 25,
     });
-
-    const rejection = expect(verification).rejects.toThrow(
-      'Standalone Worker session cleanup timed out after 25 ms.',
-    );
+    const rejection = expect(verification).rejects.toThrow('Second Highlight Worker session creation timed out after 25 ms.');
     await vi.advanceTimersByTimeAsync(25);
     await rejection;
-    expect(releaseSession).toHaveBeenCalledTimes(3);
-    expect(mutable).toEqual({
-      workersCreated: 3,
-      workersTerminated: 3,
-      activeWorkers: 0,
+    expect(runtime.activeWorkers).toBe(0);
+
+    const lateSession = await tracked();
+    late.resolve(lateSession);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(releaseHighlightSession).toHaveBeenCalledTimes(2);
+    expect(runtime.activeWorkers).toBe(0);
+  });
+
+  it('releases the independent Wesh session when its probe fails', async () => {
+    const runtime = createMutableRuntime();
+    const events: string[] = [];
+    const createHighlightSession = createTrackedFactory<IHighlightWorker>({ runtime, workerName: 'naidan-highlight-worker', events });
+    const createWeshSession = createTrackedFactory<IWeshWorker>({ runtime, workerName: 'file-protocol-compatible-wesh-worker', events });
+    const releaseWeshSession = createRelease<IWeshWorker>({ events });
+
+    await expect(TEST_ONLY.verifyWithDependencies({
+      createHighlightSession,
+      createWeshSession,
+      readDiagnostics: () => snapshot(runtime),
+      runHighlightProbe: async ({ source }) => ({ resolvedLanguage: 'json', htmlLength: source.length }),
+      runWeshProbe: async () => {
+        throw new Error('synthetic Wesh failure');
+      },
+      releaseHighlightSession: createRelease<IHighlightWorker>({ events }),
+      releaseWeshSession,
+      creationTimeoutMs: 1_000,
+      operationTimeoutMs: 1_000,
+      cleanupTimeoutMs: 1_000,
+    })).rejects.toThrow('synthetic Wesh failure');
+    expect(releaseWeshSession).toHaveBeenCalledOnce();
+    expect(runtime.activeWorkers).toBe(0);
+  });
+
+  it('forces physical termination when injected Wesh cleanup never settles', async () => {
+    vi.useFakeTimers();
+    const runtime = createMutableRuntime();
+    const events: string[] = [];
+    const createHighlightSession = createTrackedFactory<IHighlightWorker>({ runtime, workerName: 'naidan-highlight-worker', events });
+    const createWeshSession = createTrackedFactory<IWeshWorker>({ runtime, workerName: 'file-protocol-compatible-wesh-worker', events });
+
+    const verification = TEST_ONLY.verifyWithDependencies({
+      createHighlightSession,
+      createWeshSession,
+      readDiagnostics: () => snapshot(runtime),
+      runHighlightProbe: async ({ source }) => ({ resolvedLanguage: 'json', htmlLength: source.length }),
+      runWeshProbe: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
+      releaseHighlightSession: createRelease<IHighlightWorker>({ events }),
+      releaseWeshSession: async () => new Promise<void>(() => {}),
+      creationTimeoutMs: 25,
+      operationTimeoutMs: 25,
+      cleanupTimeoutMs: 25,
     });
+    const rejection = expect(verification).rejects.toThrow('Split Worker session cleanup timed out after 25 ms.');
+    await vi.advanceTimersByTimeAsync(25);
+    await rejection;
+    expect(runtime.activeWorkers).toBe(0);
   });
 });
 
-describe('debugRunFileProtocolStandaloneWeshFileProbeWithRemote', () => {
-  it('runs the real file command probe and disposes its execution and remote', async () => {
+describe('Wesh file probe cleanup', () => {
+  it('disposes the execution and remote after a successful real command lifecycle', async () => {
     const events: string[] = [];
-    const stdout = new TextEncoder().encode('/bin/sh: text/x-shellscript\n').buffer as ArrayBuffer;
-    const worker: IWeshWorker = {
+    const stdout = new TextEncoder().encode(`\
+bin
+home
+`).buffer as ArrayBuffer;
+    const worker = {
       init: vi.fn(async () => {
         events.push('init');
       }),
@@ -605,8 +345,7 @@ describe('debugRunFileProtocolStandaloneWeshFileProbeWithRemote', () => {
         return { executionId: 'execution-1' };
       }),
       awaitExecution: vi.fn(async () => {
-        events.push('await');
-        return { exitCode: 0 };
+        events.push('await'); return { exitCode: 0 };
       }),
       disposeExecution: vi.fn(async () => {
         events.push('dispose-execution');
@@ -616,46 +355,23 @@ describe('debugRunFileProtocolStandaloneWeshFileProbeWithRemote', () => {
       }),
     } as unknown as IWeshWorker;
 
-    const result = await VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
-      wesh: asRemoteWesh({ worker }),
-    });
-
-    expect(result).toEqual({
+    await expect(TEST_ONLY.runWeshCommandProbeWithRemote({ wesh: asRemoteWesh(worker) })).resolves.toEqual({
       exitCode: 0,
-      stdout: '/bin/sh: text/x-shellscript\n',
+      stdout: `\
+bin
+home
+`,
       stderr: '',
     });
     expect(events).toEqual(['init', 'start', 'await', 'dispose-execution', 'dispose']);
   });
 
-  it('collects stdout and stderr while ignoring lifecycle events', async () => {
-    const stdout = new TextEncoder().encode('out').buffer as ArrayBuffer;
-    const stderr = new TextEncoder().encode('err').buffer as ArrayBuffer;
-    const worker: IWeshWorker = {
-      init: vi.fn(async () => {}),
-      startExecution: vi.fn(async (_request, onEvent) => {
-        await onEvent?.({ type: 'started' });
-        await onEvent?.({ type: 'stdout', buffer: stdout });
-        await onEvent?.({ type: 'stderr', buffer: stderr });
-        await onEvent?.({ type: 'exit', exitCode: 7 });
-        return { executionId: 'execution-2' };
-      }),
-      awaitExecution: vi.fn(async () => ({ exitCode: 7 })),
-      disposeExecution: vi.fn(async () => {}),
-      dispose: vi.fn(async () => {}),
-    } as unknown as IWeshWorker;
-
-    await expect(VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
-      wesh: asRemoteWesh({ worker }),
-    })).resolves.toEqual({ exitCode: 7, stdout: 'out', stderr: 'err' });
-  });
-
-  it('disposes the execution and remote when awaiting completion fails', async () => {
+  it('preserves an await failure while still disposing execution and remote', async () => {
     const disposeExecution = vi.fn(async () => {});
     const dispose = vi.fn(async () => {});
-    const worker: IWeshWorker = {
+    const worker = {
       init: vi.fn(async () => {}),
-      startExecution: vi.fn(async () => ({ executionId: 'execution-3' })),
+      startExecution: vi.fn(async () => ({ executionId: 'execution-2' })),
       awaitExecution: vi.fn(async () => {
         throw new Error('synthetic await failure');
       }),
@@ -663,30 +379,8 @@ describe('debugRunFileProtocolStandaloneWeshFileProbeWithRemote', () => {
       dispose,
     } as unknown as IWeshWorker;
 
-    await expect(VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
-      wesh: asRemoteWesh({ worker }),
-    })).rejects.toThrow('synthetic await failure');
-    expect(disposeExecution).toHaveBeenCalledWith({ request: { executionId: 'execution-3' } });
-    expect(dispose).toHaveBeenCalledOnce();
-  });
-
-  it('still disposes the remote when execution startup fails', async () => {
-    const disposeExecution = vi.fn(async () => {});
-    const dispose = vi.fn(async () => {});
-    const worker: IWeshWorker = {
-      init: vi.fn(async () => {}),
-      startExecution: vi.fn(async () => {
-        throw new Error('synthetic start failure');
-      }),
-      awaitExecution: vi.fn(),
-      disposeExecution,
-      dispose,
-    } as unknown as IWeshWorker;
-
-    await expect(VERIFICATION_WORKER_PROBE_TEST_ONLY.debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
-      wesh: asRemoteWesh({ worker }),
-    })).rejects.toThrow('synthetic start failure');
-    expect(disposeExecution).not.toHaveBeenCalled();
+    await expect(TEST_ONLY.runWeshCommandProbeWithRemote({ wesh: asRemoteWesh(worker) })).rejects.toThrow('synthetic await failure');
+    expect(disposeExecution).toHaveBeenCalledWith({ request: { executionId: 'execution-2' } });
     expect(dispose).toHaveBeenCalledOnce();
   });
 });
