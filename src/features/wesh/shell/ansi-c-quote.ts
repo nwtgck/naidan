@@ -1,10 +1,47 @@
 import { isAsciiHexDigit, isAsciiOctalDigit } from './ascii';
 import { shellByteValueToText } from './byte-text';
 
-function decodeCodePoint({ value, fallback }: { value: number; fallback: string }): string {
-  if (!Number.isSafeInteger(value) || value < 0 || value > 0x10ffff) return fallback;
-  if (value >= 0xd800 && value <= 0xdfff) return fallback;
-  return String.fromCodePoint(value);
+function encodeLegacyUtf8Bytes({ value }: { value: number }): readonly number[] {
+  if (!Number.isSafeInteger(value) || value < 0 || value > 0x7fffffff) return [];
+  if (value <= 0x7f) return [value];
+
+  let continuationCount: 1 | 2 | 3 | 4 | 5;
+  let prefix: number;
+  if (value <= 0x7ff) {
+    continuationCount = 1;
+    prefix = 0xc0;
+  } else if (value <= 0xffff) {
+    continuationCount = 2;
+    prefix = 0xe0;
+  } else if (value <= 0x1fffff) {
+    continuationCount = 3;
+    prefix = 0xf0;
+  } else if (value <= 0x3ffffff) {
+    continuationCount = 4;
+    prefix = 0xf8;
+  } else {
+    continuationCount = 5;
+    prefix = 0xfc;
+  }
+
+  const output = new Array<number>(continuationCount + 1);
+  let remaining = value;
+  for (let index = continuationCount; index >= 1; index -= 1) {
+    output[index] = 0x80 | (remaining & 0x3f);
+    remaining >>= 6;
+  }
+  output[0] = prefix | remaining;
+  return output;
+}
+
+function decodeUnicodeEscape({ value }: { value: number }): string {
+  if (!Number.isSafeInteger(value) || value < 0 || value > 0x7fffffff) return '';
+  if (value <= 0x10ffff && !(value >= 0xd800 && value <= 0xdfff)) {
+    return String.fromCodePoint(value);
+  }
+  return encodeLegacyUtf8Bytes({ value })
+    .map((byte) => shellByteValueToText({ byte }))
+    .join('');
 }
 
 export function decodeShellAnsiCQuote({ text }: { text: string }): string {
@@ -53,7 +90,9 @@ export function decodeShellAnsiCQuote({ text }: { text: string }): string {
         continue;
       }
       const codePoint = control.codePointAt(0)!;
-      result += String.fromCharCode(control === '?' ? 0x7f : codePoint & 0x1f);
+      const controlValue = control === '?' ? 0x7f : codePoint & 0x1f;
+      if (controlValue === 0) return result;
+      result += String.fromCharCode(controlValue);
       index += 2;
       continue;
     }
@@ -70,7 +109,9 @@ export function decodeShellAnsiCQuote({ text }: { text: string }): string {
         index += 1;
         continue;
       }
-      result += shellByteValueToText({ byte: Number.parseInt(digits, 16) });
+      const byte = Number.parseInt(digits, 16);
+      if (byte === 0) return result;
+      result += shellByteValueToText({ byte });
       index = cursor - 1;
       continue;
     }
@@ -97,8 +138,9 @@ export function decodeShellAnsiCQuote({ text }: { text: string }): string {
         index += 1;
         continue;
       }
-      const literal = text.slice(index, cursor);
-      result += decodeCodePoint({ value: Number.parseInt(digits, 16), fallback: literal });
+      const value = Number.parseInt(digits, 16);
+      if (value === 0) return result;
+      result += decodeUnicodeEscape({ value });
       index = cursor - 1;
       continue;
     }
@@ -110,16 +152,18 @@ export function decodeShellAnsiCQuote({ text }: { text: string }): string {
         digits += text[cursor]!;
         cursor += 1;
       }
-      result += shellByteValueToText({ byte: Number.parseInt(digits, 8) & 0xff });
+      const byte = Number.parseInt(digits, 8) & 0xff;
+      if (byte === 0) return result;
+      result += shellByteValueToText({ byte });
       index = cursor - 1;
       continue;
     }
 
     if (escaped === '\n') {
+      result += '\\' + '\n';
       index += 1;
       continue;
     }
-
     result += `\\${escaped}`;
     index += 1;
   }

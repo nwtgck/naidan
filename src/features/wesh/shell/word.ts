@@ -328,7 +328,7 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
       }
       if (
         nextCharacter !== undefined &&
-        ['\\', '"', '$', '`'].includes(nextCharacter)
+        ['\\', '"', '$', '`', '}'].includes(nextCharacter)
       ) {
         appendLiteral({ text: nextCharacter });
         index += 1;

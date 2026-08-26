@@ -1,4 +1,10 @@
 import { isAsciiShellIdentifierPart, isAsciiShellIdentifierStart } from './ascii';
+import {
+  findBackquoteSubstitution,
+  findBalancedArithmeticExpression,
+  findBalancedParenthesizedExpression,
+  findBracedParameterEnd,
+} from './scan';
 
 type ParameterValueOperator = ':-' | '-' | ':=' | '=' | ':?' | '?' | ':+' | '+';
 type ParameterPatternOperator = '##' | '#' | '%%' | '%';
@@ -138,9 +144,57 @@ function findUnescapedSlash({ text, startIndex }: { text: string, startIndex: nu
       index += 1;
       continue;
     }
+    if (text[index] === '`') {
+      const substitution = findBackquoteSubstitution({ text, startIndex: index });
+      if (substitution !== undefined) {
+        index = substitution.endIndex;
+        continue;
+      }
+    }
+    if (text[index] === '$' && text[index + 1] === '{') {
+      const endIndex = findBracedParameterEnd({ text, startIndex: index });
+      if (endIndex >= 0) {
+        index = endIndex;
+        continue;
+      }
+    }
+    if (text[index] === '$' && text[index + 1] === '(') {
+      const expression = text[index + 2] === '('
+        ? findBalancedArithmeticExpression({ text, startIndex: index })
+        : findBalancedParenthesizedExpression({ text, startIndex: index + 1 });
+      if (expression !== undefined) {
+        index = expression.endIndex;
+        continue;
+      }
+    }
     if (text[index] === '/') return index;
   }
   return -1;
+}
+
+function unescapeSubstitutionReplacementSlashes({ replacement }: { replacement: string }): string {
+  let result = '';
+  for (let index = 0; index < replacement.length;) {
+    if (replacement[index] !== '\\') {
+      result += replacement[index] ?? '';
+      index += 1;
+      continue;
+    }
+
+    let runEnd = index;
+    while (replacement[runEnd] === '\\') runEnd += 1;
+    if (replacement[runEnd] !== '/') {
+      result += replacement.slice(index, runEnd);
+      index = runEnd;
+      continue;
+    }
+
+    const backslashCount = runEnd - index;
+    result += '\\'.repeat(Math.floor(backslashCount / 2));
+    result += '/';
+    index = runEnd + 1;
+  }
+  return result;
 }
 
 function parseSubstitutionOperator({ rest }: { rest: string }): {
@@ -173,7 +227,9 @@ function parseSubstitutionOperator({ rest }: { rest: string }): {
   return {
     operator,
     pattern: separator < 0 ? rest.slice(patternStart) : rest.slice(patternStart, separator),
-    replacement: separator < 0 ? '' : rest.slice(separator + 1),
+    replacement: separator < 0
+      ? ''
+      : unescapeSubstitutionReplacementSlashes({ replacement: rest.slice(separator + 1) }),
   };
 }
 

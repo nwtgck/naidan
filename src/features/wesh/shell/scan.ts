@@ -48,6 +48,7 @@ export function findBalancedParenthesizedExpression({
 
   let depth = 0;
   let mode: ShellQuoteMode = 'unquoted';
+  let atWordStart = true;
   for (let index = startIndex; index < text.length; index += 1) {
     const character = text[index];
     if (character === undefined) continue;
@@ -68,6 +69,7 @@ export function findBalancedParenthesizedExpression({
       if (character === '`') {
         const substitution = findBackquoteSubstitution({ text, startIndex: index });
         if (substitution !== undefined) index = substitution.endIndex;
+        continue;
       }
       if (character === '$' && text[index + 1] === '{') {
         const endIndex = findBracedParameterEnd({
@@ -75,6 +77,13 @@ export function findBalancedParenthesizedExpression({
           startIndex: index,
         });
         if (endIndex >= 0) index = endIndex;
+        continue;
+      }
+      if (character === '$' && text[index + 1] === '(') {
+        const expression = text[index + 2] === '('
+          ? findBalancedArithmeticExpression({ text, startIndex: index })
+          : findBalancedParenthesizedExpression({ text, startIndex: index + 1 });
+        if (expression !== undefined) index = expression.endIndex;
       }
       continue;
     case 'unquoted':
@@ -85,10 +94,23 @@ export function findBalancedParenthesizedExpression({
     }
     }
 
+    if (character === '#') {
+      if (atWordStart) {
+        while (index + 1 < text.length) {
+          const nextCharacter = text[index + 1];
+          if (nextCharacter === '\n' || nextCharacter === '\r') break;
+          index += 1;
+        }
+        atWordStart = true;
+        continue;
+      }
+      atWordStart = false;
+    }
     if (character === '`') {
       const substitution = findBackquoteSubstitution({ text, startIndex: index });
       if (substitution !== undefined) {
         index = substitution.endIndex;
+        atWordStart = false;
         continue;
       }
     }
@@ -99,23 +121,43 @@ export function findBalancedParenthesizedExpression({
       });
       if (endIndex >= 0) {
         index = endIndex;
+        atWordStart = false;
         continue;
       }
     }
     if (character === "'") {
       mode = 'single';
+      atWordStart = false;
       continue;
     }
     if (character === '"') {
       mode = 'double';
+      atWordStart = false;
       continue;
     }
     if (character === '\\') {
-      index += 1;
+      const nextCharacter = text[index + 1];
+      if (nextCharacter === '\r' && text[index + 2] === '\n') {
+        index += 2;
+        continue;
+      }
+      if (nextCharacter === '\n') {
+        index += 1;
+        continue;
+      }
+      if (nextCharacter !== undefined) {
+        atWordStart = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (character === ' ' || character === '\t' || character === '\n' || character === '\r') {
+      atWordStart = true;
       continue;
     }
     if (character === '(') {
       depth += 1;
+      atWordStart = true;
       continue;
     }
     if (character === ')') {
@@ -126,7 +168,14 @@ export function findBalancedParenthesizedExpression({
           endIndex: index,
         };
       }
+      atWordStart = true;
+      continue;
     }
+    if (character === ';' || character === '&' || character === '|' || character === '<' || character === '>') {
+      atWordStart = true;
+      continue;
+    }
+    atWordStart = false;
   }
   return undefined;
 }
@@ -233,6 +282,7 @@ export function findBracedParameterEnd({
           continue;
         }
       }
+      if (character !== '$') continue;
       break;
     case 'unquoted':
       if (character === '`') {
