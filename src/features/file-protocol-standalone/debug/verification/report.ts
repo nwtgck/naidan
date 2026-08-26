@@ -314,9 +314,9 @@ function debugAssertValidFileProtocolStandaloneWorkerVerificationResult({ result
     condition: [...result.concurrentHighlights, result.recreatedWorkerHighlight].every((roundTrip) => roundTrip.htmlLength > 0 && roundTrip.resolvedLanguage.length > 0),
     message: 'A Worker highlight round trip returned an empty result.',
   });
-  assertCondition({ condition: result.weshFileProbe.exitCode === 0, message: `Wesh file verification exited with ${result.weshFileProbe.exitCode}.` });
-  assertCondition({ condition: result.weshFileProbe.stdout === '/bin/sh: text/x-shellscript\n', message: `Unexpected Wesh file verification output: ${JSON.stringify(result.weshFileProbe.stdout)}` });
-  assertCondition({ condition: result.weshFileProbe.stderr === '', message: `Wesh file verification wrote stderr: ${result.weshFileProbe.stderr}` });
+  assertCondition({ condition: result.weshCommandProbe.exitCode === 0, message: `Wesh command verification exited with ${result.weshCommandProbe.exitCode}.` });
+  assertCondition({ condition: result.weshCommandProbe.stdout.trim().length > 0, message: 'Wesh command verification returned an empty root listing.' });
+  assertCondition({ condition: result.weshCommandProbe.stderr === '', message: `Wesh command verification wrote stderr: ${result.weshCommandProbe.stderr}` });
   assertCondition({ condition: diagnosticsBefore.activeWorkers === diagnosticsAfter.activeWorkers, message: 'Verification leaked an active Worker.' });
 }
 

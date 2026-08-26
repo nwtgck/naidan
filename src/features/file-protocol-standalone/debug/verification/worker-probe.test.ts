@@ -150,7 +150,10 @@ describe('standalone Worker verification lifecycle', () => {
       },
       runWeshProbe: async ({ session }) => {
         events.push(`wesh:${idOf(session)}`);
-        return { exitCode: 0, stdout: '/bin/sh: text/x-shellscript\n', stderr: '' };
+        return { exitCode: 0, stdout: `\
+bin
+home
+`, stderr: '' };
       },
       releaseHighlightSession,
       releaseWeshSession,
@@ -328,7 +331,10 @@ describe('standalone Worker verification lifecycle', () => {
 describe('Wesh file probe cleanup', () => {
   it('disposes the execution and remote after a successful real command lifecycle', async () => {
     const events: string[] = [];
-    const stdout = new TextEncoder().encode('/bin/sh: text/x-shellscript\n').buffer as ArrayBuffer;
+    const stdout = new TextEncoder().encode(`\
+bin
+home
+`).buffer as ArrayBuffer;
     const worker = {
       init: vi.fn(async () => {
         events.push('init');
@@ -349,9 +355,12 @@ describe('Wesh file probe cleanup', () => {
       }),
     } as unknown as IWeshWorker;
 
-    await expect(TEST_ONLY.runWeshFileProbeWithRemote({ wesh: asRemoteWesh(worker) })).resolves.toEqual({
+    await expect(TEST_ONLY.runWeshCommandProbeWithRemote({ wesh: asRemoteWesh(worker) })).resolves.toEqual({
       exitCode: 0,
-      stdout: '/bin/sh: text/x-shellscript\n',
+      stdout: `\
+bin
+home
+`,
       stderr: '',
     });
     expect(events).toEqual(['init', 'start', 'await', 'dispose-execution', 'dispose']);
@@ -370,7 +379,7 @@ describe('Wesh file probe cleanup', () => {
       dispose,
     } as unknown as IWeshWorker;
 
-    await expect(TEST_ONLY.runWeshFileProbeWithRemote({ wesh: asRemoteWesh(worker) })).rejects.toThrow('synthetic await failure');
+    await expect(TEST_ONLY.runWeshCommandProbeWithRemote({ wesh: asRemoteWesh(worker) })).rejects.toThrow('synthetic await failure');
     expect(disposeExecution).toHaveBeenCalledWith({ request: { executionId: 'execution-2' } });
     expect(dispose).toHaveBeenCalledOnce();
   });

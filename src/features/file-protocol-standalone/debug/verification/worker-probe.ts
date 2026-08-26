@@ -20,7 +20,7 @@ export type DebugFileProtocolStandaloneHighlightProbeResult = Readonly<{
   htmlLength: number,
 }>;
 
-export type DebugFileProtocolStandaloneWeshFileProbeResult = Readonly<{
+export type DebugFileProtocolStandaloneWeshCommandProbeResult = Readonly<{
   exitCode: number,
   stdout: string,
   stderr: string,
@@ -46,7 +46,7 @@ export type DebugFileProtocolStandaloneWorkerVerificationResult = Readonly<{
   }>,
   concurrentHighlights: readonly DebugFileProtocolStandaloneHighlightProbeResult[],
   recreatedWorkerHighlight: DebugFileProtocolStandaloneHighlightProbeResult,
-  weshFileProbe: DebugFileProtocolStandaloneWeshFileProbeResult,
+  weshCommandProbe: DebugFileProtocolStandaloneWeshCommandProbeResult,
 }>;
 
 export type DebugFileProtocolStandaloneWorkerSession<Api> = Readonly<{
@@ -281,14 +281,14 @@ async function runHighlightProbeAndCleanup({
 }
 
 /** @internal Exported for Wesh lifecycle regression tests. */
-async function runWeshFileProbeWithRemote({ wesh }: {
+async function runWeshCommandProbeWithRemote({ wesh }: {
   wesh: Comlink.Remote<IWeshWorker>,
-}): Promise<DebugFileProtocolStandaloneWeshFileProbeResult> {
+}): Promise<DebugFileProtocolStandaloneWeshCommandProbeResult> {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const decoder = new TextDecoder();
   let executionId: string | undefined;
-  let result: DebugFileProtocolStandaloneWeshFileProbeResult | undefined;
+  let result: DebugFileProtocolStandaloneWeshCommandProbeResult | undefined;
   let operationError: unknown;
   try {
     await wesh.init({
@@ -299,7 +299,7 @@ async function runWeshFileProbeWithRemote({ wesh }: {
       initialCwd: '/',
     });
     const started = await wesh.startExecution(
-      { script: 'file --mime-type /bin/sh' },
+      { script: 'ls -1 /' },
       Comlink.proxy((event: WeshWorkerRemoteExecutionEvent) => {
         switch (event.type) {
         case 'started':
@@ -353,12 +353,12 @@ async function runWeshProbeAndCleanup({
   cleanupTimeoutMs,
 }: {
   session: DebugFileProtocolStandaloneWorkerSession<IWeshWorker>,
-  runProbe: ({ session }: { session: DebugFileProtocolStandaloneWorkerSession<IWeshWorker> }) => Promise<DebugFileProtocolStandaloneWeshFileProbeResult>,
+  runProbe: ({ session }: { session: DebugFileProtocolStandaloneWorkerSession<IWeshWorker> }) => Promise<DebugFileProtocolStandaloneWeshCommandProbeResult>,
   releaseSession: ReleaseSession<IWeshWorker>,
   operationTimeoutMs: number,
   cleanupTimeoutMs: number,
-}): Promise<DebugFileProtocolStandaloneWeshFileProbeResult> {
-  let result: DebugFileProtocolStandaloneWeshFileProbeResult | undefined;
+}): Promise<DebugFileProtocolStandaloneWeshCommandProbeResult> {
+  let result: DebugFileProtocolStandaloneWeshCommandProbeResult | undefined;
   let operationError: unknown;
   try {
     result = await waitForOperationUntilDeadline({
@@ -424,7 +424,7 @@ async function verifyWithDependencies({
   createWeshSession: () => Promise<DebugFileProtocolStandaloneWorkerSession<IWeshWorker>>,
   readDiagnostics: () => StandaloneWorkerRuntimeDiagnostics,
   runHighlightProbe: typeof runHighlightProbeWithSession,
-  runWeshProbe: ({ session }: { session: DebugFileProtocolStandaloneWorkerSession<IWeshWorker> }) => Promise<DebugFileProtocolStandaloneWeshFileProbeResult>,
+  runWeshProbe: ({ session }: { session: DebugFileProtocolStandaloneWorkerSession<IWeshWorker> }) => Promise<DebugFileProtocolStandaloneWeshCommandProbeResult>,
   releaseHighlightSession: ReleaseSession<IHighlightWorker>,
   releaseWeshSession: ReleaseSession<IWeshWorker>,
   creationTimeoutMs: number,
@@ -484,7 +484,7 @@ async function verifyWithDependencies({
     cleanupTimeoutMs,
     label: 'Wesh Worker session creation',
   });
-  const weshFileProbe = await runWeshProbeAndCleanup({
+  const weshCommandProbe = await runWeshProbeAndCleanup({
     session: weshSession,
     runProbe: runWeshProbe,
     releaseSession: releaseWeshSession,
@@ -508,7 +508,7 @@ async function verifyWithDependencies({
     },
     concurrentHighlights,
     recreatedWorkerHighlight,
-    weshFileProbe,
+    weshCommandProbe,
   };
 }
 
@@ -524,7 +524,7 @@ export async function debugVerifyFileProtocolStandaloneWorkerFactory(): Promise<
     }),
     readDiagnostics: debugGetStandaloneWorkerRuntimeDiagnostics,
     runHighlightProbe: runHighlightProbeWithSession,
-    runWeshProbe: ({ session }) => runWeshFileProbeWithRemote({ wesh: session.remote }),
+    runWeshProbe: ({ session }) => runWeshCommandProbeWithRemote({ wesh: session.remote }),
     releaseHighlightSession: releaseAndTerminateSession,
     releaseWeshSession: releaseAndTerminateSession,
     creationTimeoutMs: sessionCreationDeadlineMs,
@@ -539,6 +539,6 @@ export const TEST_ONLY = {
   createSessionUntilDeadline,
   createConcurrentHighlightSessions,
   releaseAndTerminateSession,
-  runWeshFileProbeWithRemote,
+  runWeshCommandProbeWithRemote,
   verifyWithDependencies,
 };

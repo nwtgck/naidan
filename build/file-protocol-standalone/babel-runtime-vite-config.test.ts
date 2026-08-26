@@ -33,12 +33,22 @@ async function loadStandalonePlugins(): Promise<Plugin[]> {
 async function createSystemJsOutputHarness(): Promise<Readonly<{
   generateBundle: (bundle: unknown) => Promise<void>;
 }>> {
+  const plugins = await loadStandalonePlugins();
+  const pruningPlugin = requirePlugin(
+    plugins,
+    'naidan-file-protocol-standalone-empty-css-pruning',
+  );
   const plugin = requirePlugin(
-    await loadStandalonePlugins(),
+    plugins,
     'naidan-file-protocol-standalone-systemjs-output',
   );
+  const pruningGenerateBundle = pruningPlugin.generateBundle;
   const buildStart = plugin.buildStart;
-  const generateBundle = plugin.generateBundle;
+  const generateBundleHook = plugin.generateBundle;
+  const generateBundle = typeof generateBundleHook === 'function'
+    ? generateBundleHook
+    : generateBundleHook?.handler;
+  if (typeof pruningGenerateBundle !== 'function') throw new Error('Expected empty CSS pruning generateBundle hook');
   if (typeof buildStart !== 'function') throw new Error('Expected SystemJS buildStart hook');
   if (typeof generateBundle !== 'function') throw new Error('Expected SystemJS generateBundle hook');
 
@@ -60,6 +70,7 @@ async function createSystemJsOutputHarness(): Promise<Readonly<{
   await buildStart.call(context as never, {} as never);
   return {
     async generateBundle(bundle: unknown): Promise<void> {
+      await pruningGenerateBundle.call(context as never, {} as never, bundle as never, false);
       await generateBundle.call(context as never, {} as never, bundle as never, false);
     },
   };
@@ -430,7 +441,7 @@ describe('file protocol standalone Vite config Babel interop', () => {
     expect(bundle['index.html'].source).not.toContain('empty.css');
   });
 
-  it('links CSS from the complete UI dynamic closure in Vite cascade order before file runtime loading', async () => {
+  it('links only the initial UI CSS closure and leaves dynamic-only CSS lazy', async () => {
     const { generateBundle } = await createSystemJsOutputHarness();
     const bundle = {
       'index.html': {
@@ -536,9 +547,6 @@ describe('file protocol standalone Vite config Babel interop', () => {
       expect(stylesheetLinks.map(link => link.getAttribute('href'))).toEqual([
         './public-theme.css',
         './assets/base.css',
-        './assets/shared.css',
-        './assets/lazy.css',
-        './assets/nested%20%23%20%25%20%E6%97%A5%E6%9C%AC%E8%AA%9E.css',
       ]);
       expect(stylesheetLinks.every(link => !link.hasAttribute('crossorigin'))).toBe(true);
     } finally {
@@ -548,7 +556,7 @@ describe('file protocol standalone Vite config Babel interop', () => {
   });
 
 
-  it('preserves Vite importedCss insertion order and dynamic import declaration order instead of sorting file names', async () => {
+  it('preserves Vite importedCss insertion order for the initial static closure without eager dynamic CSS', async () => {
     const { generateBundle } = await createSystemJsOutputHarness();
     const bundle = {
       'index.html': {
@@ -610,9 +618,6 @@ describe('file protocol standalone Vite config Babel interop', () => {
         .map(link => link.getAttribute('href'))).toEqual([
         './assets/z-entry.css',
         './assets/a-entry.css',
-        './assets/z-first.css',
-        './assets/a-second.css',
-        './assets/middle.css',
       ]);
     } finally {
       dom.window.close();
@@ -661,7 +666,7 @@ describe('file protocol standalone Vite config Babel interop', () => {
     );
   });
 
-  it('fails closed when existing UI-owned stylesheets are not a prefix of the Vite cascade order', async () => {
+  it('fails closed when dynamic-only UI CSS is linked from initial HTML', async () => {
     const { generateBundle } = await createSystemJsOutputHarness();
     const bundle = {
       'index.html': {
@@ -700,7 +705,7 @@ describe('file protocol standalone Vite config Babel interop', () => {
     };
 
     await expect(generateBundle(bundle)).rejects.toThrow(
-      'Existing UI stylesheet order does not match the Vite cascade prefix',
+      'Dynamic-only UI stylesheets must not be linked from initial HTML: assets/lazy.css',
     );
   });
 

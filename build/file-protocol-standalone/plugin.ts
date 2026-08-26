@@ -188,7 +188,7 @@ type StandaloneBuildDiagnostics = Record<string, unknown> & {
   lazyCssDependencyMetadataEnabled?: boolean;
   vitePreloadHelperRealmNeutral?: boolean;
   vitePreloadHelperSkipsDomOutsideUiRealm?: boolean;
-  vitePreloadHelperSkipsFileDomPreloads?: boolean;
+  vitePreloadHelperSkipsFileScriptPreloads?: boolean;
   vitePreloadHelperOmitsFileCrossorigin?: boolean;
 };
 
@@ -1898,12 +1898,14 @@ function collectChunkClosure({ chunkByFileName, entryFileNames }: Readonly<{
   return visited;
 }
 
-function collectUiStylesheetFileNamesInEagerOrder({
+function collectUiStylesheetFileNamesInViteOrder({
   chunkByFileName,
   entryFileName,
+  traversal,
 }: Readonly<{
   chunkByFileName: ReadonlyMap<string, OutputChunk>;
   entryFileName: string;
+  traversal: 'static-closure' | 'complete-ui-closure';
 }>): string[] {
   const visitedChunks = new Set<string>();
   const seenCss = new Set<string>();
@@ -1918,12 +1920,10 @@ function collectUiStylesheetFileNamesInEagerOrder({
       throw new Error(`UI chunk graph references a missing emitted chunk: ${fileName}`);
     }
 
-    // Match Vite's initial HTML CSS cascade: static imports are traversed
-    // depth-first before the importing chunk's own importedCss Set. file://
-    // cannot use Vite's runtime CSS preload for Dynamic Import, so dynamic
-    // branches are appended later in stable discovery order rather than by
-    // output file name. This preserves Vite's meaningful static cascade order
-    // while making the unavoidable eager extension deterministic.
+    // Match Vite's CSS cascade order: static imports are traversed depth-first
+    // before the importing chunk's own importedCss Set. Dynamic branches are
+    // visited only when validating the complete UI closure; initial HTML must
+    // contain only the static closure so lazy CSS keeps its import-time semantics.
     for (const importedFileName of chunk.imports) visitStaticClosure({ fileName: importedFileName });
 
     const importedCss = chunk.viteMetadata?.importedCss;
@@ -1943,7 +1943,17 @@ function collectUiStylesheetFileNamesInEagerOrder({
       }
     }
 
-    pendingDynamicImports.push(...chunk.dynamicImports);
+    switch (traversal) {
+    case 'static-closure':
+      break;
+    case 'complete-ui-closure':
+      pendingDynamicImports.push(...chunk.dynamicImports);
+      break;
+    default: {
+      const _ex: never = traversal;
+      throw new Error(`Unhandled UI stylesheet traversal: ${_ex}`);
+    }
+    }
   };
 
   visitStaticClosure({ fileName: entryFileName });
@@ -2055,12 +2065,10 @@ function createStandaloneBuildConfigPlugin({ diagnostics }: Readonly<{diagnostic
           // executes DOM-only preload code in the Worker Realm.
           modulePreload: false,
 
-          // Keep CSS split during bundling. The output plugin links every stylesheet
-          // reachable from the UI graph directly from index.html because Vite does not
-          // reliably attach a CSS asset to a Dynamic Import when its JavaScript chunk
-          // is shared by the UI and a Worker. This avoids a custom runtime CSS loader
-          // while also avoiding the high generateBundle memory cost of merging all
-          // application CSS into one asset.
+          // Keep CSS split during bundling. Initial/static CSS stays in HTML, while
+          // Vite Dynamic Import metadata owns lazy CSS timing. The final SystemJS
+          // transform runs after Vite build import analysis so those CSS dependencies
+          // survive even though JavaScript dependency loading belongs to SystemJS.
           cssCodeSplit: true,
         },
       };
@@ -2077,7 +2085,7 @@ function createStandaloneBuildConfigPlugin({ diagnostics }: Readonly<{diagnostic
       }
       diagnostics.modulePreloadDisabled = true;
       diagnostics.cssCodeSplitEnabled = true;
-      diagnostics.lazyCssDependencyMetadataEnabled = false;
+      diagnostics.lazyCssDependencyMetadataEnabled = true;
     },
   };
 }
@@ -2103,29 +2111,27 @@ function createVitePreloadHelperCompatibilityPlugin({ diagnostics }: Readonly<{d
         'if (__VITE_IS_MODERN__ && deps && deps.length > 0)',
         'if (__VITE_IS_MODERN__ && typeof document !== "undefined" && deps && deps.length > 0)',
       );
-      // Vite resolves each dependency before it decides whether the dependency is
-      // CSS. SystemJS exposes import.meta.resolve through _context.meta.resolve,
-      // which is asynchronous, so that native-ESM assumption can turn dep into a
-      // Promise before Vite calls endsWith(). For file: output, JavaScript loading
-      // belongs to SystemJS and physical CSS is already linked from the final HTML.
-      // Return before both meta resolution and DOM preload creation for the entire
-      // file-protocol UI runtime instead of emulating Vite's HTTP-oriented preload
-      // machinery.
+      // Vite resolves each dependency before deciding whether it is CSS. SystemJS
+      // exposes import.meta.resolve through _context.meta.resolve, which is async,
+      // so file: dependencies must not pass through that native-ESM assumption.
+      // JavaScript dependency loading belongs to SystemJS, while CSS must retain
+      // Vite's Dynamic Import timing and be linked by the UI Realm on demand.
       transformed = transformed.replace(
         importMetaResolveCall,
-        'const fileProtocol = new URL(document.baseURI).protocol === "file:"; if (fileProtocol) return; dep = importMetaResolve(dep);',
+        'const fileProtocol = new URL(document.baseURI).protocol === "file:"; if (fileProtocol && (!dep.endsWith(".css") || new URL(dep).protocol !== "file:")) return; if (!fileProtocol) dep = importMetaResolve(dep);',
       );
+      transformed = transformed.replace('link.crossOrigin = "";', 'if (!fileProtocol) link.crossOrigin = "";');
       if (
         transformed.includes('window.dispatchEvent')
         || transformed.includes('if (__VITE_IS_MODERN__ && deps && deps.length > 0)')
-        || !transformed.includes('const fileProtocol = new URL(document.baseURI).protocol === "file:"; if (fileProtocol) return; dep = importMetaResolve(dep);')
-        || transformed.includes('if (fileProtocol && !isCss) return')
+        || !transformed.includes('const fileProtocol = new URL(document.baseURI).protocol === "file:"; if (fileProtocol && (!dep.endsWith(".css") || new URL(dep).protocol !== "file:")) return; if (!fileProtocol) dep = importMetaResolve(dep);')
+        || !transformed.includes('if (!fileProtocol) link.crossOrigin = "";')
       ) {
         throw new Error('Vite preload helper compatibility transform did not replace every expected construct');
       }
       diagnostics.vitePreloadHelperRealmNeutral = true;
       diagnostics.vitePreloadHelperSkipsDomOutsideUiRealm = true;
-      diagnostics.vitePreloadHelperSkipsFileDomPreloads = true;
+      diagnostics.vitePreloadHelperSkipsFileScriptPreloads = true;
       diagnostics.vitePreloadHelperOmitsFileCrossorigin = true;
       return { code: transformed, map: null };
     },
@@ -2175,18 +2181,105 @@ function removeHtmlSourceRanges({
   }
   return rewritten;
 }
+function createEffectFreeEmptyCssPruningPlugin({
+  effectFreeEmptyCssFileNames,
+}: Readonly<{effectFreeEmptyCssFileNames: Set<string>}>): Plugin {
+  return {
+    name: 'naidan-file-protocol-standalone-empty-css-pruning',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+    // Split CSS planners can move all meaningful CSS into JavaScript runtime
+    // registrations while Vite still leaves an empty physical CSS placeholder and
+    // importedCss metadata behind. Keeping that placeholder makes the manifest and
+    // final distribution look eager even though there is no stylesheet content.
+    // Prune only empty assets that are stylesheet side effects. An empty .css file
+    // imported through ?url (or another asset URL path) is still observable data and
+    // must remain physically present even though its contents are empty.
+      const chunkOutputs = Object.values(bundle).filter(
+        (output): output is OutputChunk => output.type === 'chunk',
+      );
+      const stylesheetReferencedCss = new Set<string>();
+      for (const output of chunkOutputs) {
+        const importedCss = output.viteMetadata?.importedCss;
+        if (!(importedCss instanceof Set)) continue;
+        for (const fileName of importedCss) {
+          if (typeof fileName === 'string') stylesheetReferencedCss.add(fileName);
+        }
+      }
+
+      effectFreeEmptyCssFileNames.clear();
+      for (const output of Object.values(bundle)) {
+        if (
+          output.type !== 'asset'
+        || !/\.css$/iu.test(output.fileName)
+        || !stylesheetReferencedCss.has(output.fileName)
+        ) continue;
+        const source = typeof output.source === 'string'
+          ? output.source
+          : Buffer.from(output.source).toString('utf8');
+        if (source.trim() === '') effectFreeEmptyCssFileNames.add(output.fileName);
+      }
+      if (effectFreeEmptyCssFileNames.size > 0) {
+      // importedAssets only matters when deciding whether an effect-free CSS
+      // placeholder is still observable as data (for example through ?url).
+      // Do not couple ordinary non-empty CSS builds to this Vite-internal shape.
+        const dataReferencedAssets = new Set<string>();
+        for (const output of chunkOutputs) {
+          const importedAssets = output.viteMetadata?.importedAssets;
+          if (importedAssets !== undefined && !(importedAssets instanceof Set)) {
+            throw new Error(`Unexpected Vite importedAssets metadata shape for ${output.fileName}`);
+          }
+          if (!(importedAssets instanceof Set)) continue;
+          for (const fileName of importedAssets) {
+            if (typeof fileName !== 'string') {
+              throw new Error(`Unexpected Vite importedAssets metadata entry for ${output.fileName}: ${String(fileName)}`);
+            }
+            dataReferencedAssets.add(fileName);
+          }
+        }
+        for (const [bundleKey, output] of Object.entries(bundle)) {
+          if (
+            output.type === 'asset'
+          && effectFreeEmptyCssFileNames.has(output.fileName)
+          && !dataReferencedAssets.has(output.fileName)
+          ) delete bundle[bundleKey];
+        }
+        for (const output of Object.values(bundle)) {
+          switch (output.type) {
+          case 'asset':
+            continue;
+          case 'chunk': {
+            const importedCss = output.viteMetadata?.importedCss;
+            if (!(importedCss instanceof Set)) continue;
+            for (const fileName of effectFreeEmptyCssFileNames) importedCss.delete(fileName);
+            break;
+          }
+          default: {
+            const _ex: never = output;
+            throw new Error(`Unhandled Rollup output type: ${((_ex satisfies never) as { readonly type: string }).type}`);
+          }
+          }
+        }
+      }
+
+    },
+  };
+}
+
 function createSystemJsOutputPlugin({
   diagnostics,
   systemRuntimeFileName,
   systemJsFileScriptLoaderPatchFileName,
   systemJsRetryHookFileName,
   startupSlowNoticeDelayMs,
+  effectFreeEmptyCssFileNames,
 }: Readonly<{
   diagnostics: StandaloneBuildDiagnostics;
   systemRuntimeFileName: string;
   systemJsFileScriptLoaderPatchFileName: string;
   systemJsRetryHookFileName: string;
   startupSlowNoticeDelayMs: number;
+  effectFreeEmptyCssFileNames: Set<string>;
 }>): Plugin {
   let systemJsFileScriptLoaderPatchReferenceId: string | undefined;
   let systemJsRetryHookReferenceId: string | undefined;
@@ -2213,255 +2306,202 @@ function createSystemJsOutputPlugin({
         outputFileName: systemJsRetryHookFileName,
       });
     },
-    async generateBundle(_options, bundle) {
-      if (systemJsFileScriptLoaderPatchReferenceId === undefined || systemJsRetryHookReferenceId === undefined) {
-        throw new Error('SystemJS support assets were not emitted before generateBundle');
-      }
-      const emittedPatch = this.getFileName(systemJsFileScriptLoaderPatchReferenceId);
-      const emittedRetry = this.getFileName(systemJsRetryHookReferenceId);
-      if (emittedPatch !== systemJsFileScriptLoaderPatchFileName) {
-        throw new Error(`Unexpected SystemJS file loader patch file name: ${emittedPatch}`);
-      }
-      if (emittedRetry !== systemJsRetryHookFileName) {
-        throw new Error(`Unexpected SystemJS retry hook file name: ${emittedRetry}`);
-      }
-
-      // Split CSS planners can move all meaningful CSS into JavaScript runtime
-      // registrations while Vite still leaves an empty physical CSS placeholder and
-      // importedCss metadata behind. Keeping that placeholder makes the manifest and
-      // final distribution look eager even though there is no stylesheet content.
-      // Prune only empty assets that are stylesheet side effects. An empty .css file
-      // imported through ?url (or another asset URL path) is still observable data and
-      // must remain physically present even though its contents are empty.
-      const chunkOutputs = Object.values(bundle).filter(
-        (output): output is OutputChunk => output.type === 'chunk',
-      );
-      const stylesheetReferencedCss = new Set<string>();
-      for (const output of chunkOutputs) {
-        const importedCss = output.viteMetadata?.importedCss;
-        if (!(importedCss instanceof Set)) continue;
-        for (const fileName of importedCss) {
-          if (typeof fileName === 'string') stylesheetReferencedCss.add(fileName);
+    generateBundle: {
+      order: 'post',
+      async handler(_options, bundle) {
+        if (systemJsFileScriptLoaderPatchReferenceId === undefined || systemJsRetryHookReferenceId === undefined) {
+          throw new Error('SystemJS support assets were not emitted before generateBundle');
         }
-      }
+        const emittedPatch = this.getFileName(systemJsFileScriptLoaderPatchReferenceId);
+        const emittedRetry = this.getFileName(systemJsRetryHookReferenceId);
+        if (emittedPatch !== systemJsFileScriptLoaderPatchFileName) {
+          throw new Error(`Unexpected SystemJS file loader patch file name: ${emittedPatch}`);
+        }
+        if (emittedRetry !== systemJsRetryHookFileName) {
+          throw new Error(`Unexpected SystemJS retry hook file name: ${emittedRetry}`);
+        }
 
-      const effectFreeEmptyCssFileNames = new Set<string>();
-      for (const output of Object.values(bundle)) {
-        if (
-          output.type !== 'asset'
-          || !/\.css$/iu.test(output.fileName)
-          || !stylesheetReferencedCss.has(output.fileName)
-        ) continue;
-        const source = typeof output.source === 'string'
-          ? output.source
-          : Buffer.from(output.source).toString('utf8');
-        if (source.trim() === '') effectFreeEmptyCssFileNames.add(output.fileName);
-      }
-      if (effectFreeEmptyCssFileNames.size > 0) {
-        // importedAssets only matters when deciding whether an effect-free CSS
-        // placeholder is still observable as data (for example through ?url).
-        // Do not couple ordinary non-empty CSS builds to this Vite-internal shape.
-        const dataReferencedAssets = new Set<string>();
+        const outputs = Object.values(bundle);
+        const chunkOutputs = outputs.filter(
+          (output): output is OutputChunk => output.type === 'chunk',
+        );
+        const outputByFileName = new Map(outputs.map(output => [output.fileName, output]));
+        const chunkByFileName = new Map(chunkOutputs.map(output => [output.fileName, output]));
         for (const output of chunkOutputs) {
-          const importedAssets = output.viteMetadata?.importedAssets;
-          if (importedAssets !== undefined && !(importedAssets instanceof Set)) {
-            throw new Error(`Unexpected Vite importedAssets metadata shape for ${output.fileName}`);
+          const chunkRecord: ChunkDiagnostic = {
+            fileName: output.fileName,
+            name: output.name,
+            isEntry: output.isEntry,
+            facadeModuleId: output.facadeModuleId,
+            imports: [...output.imports],
+            dynamicImports: [...output.dynamicImports],
+            moduleIds: Object.keys(output.modules),
+            beforeBytes: Buffer.byteLength(output.code),
+          };
+          const transformed = await transformAsync(output.code, {
+            filename: output.fileName,
+            babelrc: false,
+            configFile: false,
+            ast: false,
+            code: true,
+            compact: true,
+            minified: true,
+            comments: false,
+            sourceType: 'module',
+            sourceMaps: false,
+            plugins: [babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin],
+          });
+          if (!transformed?.code) throw new Error(`No SystemJS transform output for ${output.fileName}`);
+          if (!transformed.code.includes('System.register(')) {
+            throw new Error(`SystemJS transform did not emit System.register for ${output.fileName}`);
           }
-          if (!(importedAssets instanceof Set)) continue;
-          for (const fileName of importedAssets) {
-            if (typeof fileName !== 'string') {
-              throw new Error(`Unexpected Vite importedAssets metadata entry for ${output.fileName}: ${String(fileName)}`);
-            }
-            dataReferencedAssets.add(fileName);
-          }
+          output.code = `${transformed.code}\n`;
+          output.map = null;
+          chunkRecord.afterBytes = Buffer.byteLength(output.code);
+          diagnostics.chunks.push(chunkRecord);
         }
-        for (const [bundleKey, output] of Object.entries(bundle)) {
-          if (
-            output.type === 'asset'
-            && effectFreeEmptyCssFileNames.has(output.fileName)
-            && !dataReferencedAssets.has(output.fileName)
-          ) delete bundle[bundleKey];
-        }
-        for (const output of Object.values(bundle)) {
-          switch (output.type) {
-          case 'asset':
-            continue;
-          case 'chunk': {
-            const importedCss = output.viteMetadata?.importedCss;
-            if (!(importedCss instanceof Set)) continue;
-            for (const fileName of effectFreeEmptyCssFileNames) importedCss.delete(fileName);
-            break;
-          }
-          default: {
-            const _ex: never = output;
-            throw new Error(`Unhandled Rollup output type: ${((_ex satisfies never) as { readonly type: string }).type}`);
-          }
-          }
-        }
-      }
 
-      const outputs = Object.values(bundle);
-      const outputByFileName = new Map(outputs.map(output => [output.fileName, output]));
-      const chunkByFileName = new Map(chunkOutputs.map(output => [output.fileName, output]));
-      for (const output of chunkOutputs) {
-        const chunkRecord: ChunkDiagnostic = {
-          fileName: output.fileName,
-          name: output.name,
-          isEntry: output.isEntry,
-          facadeModuleId: output.facadeModuleId,
-          imports: [...output.imports],
-          dynamicImports: [...output.dynamicImports],
-          moduleIds: Object.keys(output.modules),
-          beforeBytes: Buffer.byteLength(output.code),
-        };
-        const transformed = await transformAsync(output.code, {
-          filename: output.fileName,
-          babelrc: false,
-          configFile: false,
-          ast: false,
-          code: true,
-          compact: true,
-          minified: true,
-          comments: false,
-          sourceType: 'module',
-          sourceMaps: false,
-          plugins: [babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin],
-        });
-        if (!transformed?.code) throw new Error(`No SystemJS transform output for ${output.fileName}`);
-        if (!transformed.code.includes('System.register(')) {
-          throw new Error(`SystemJS transform did not emit System.register for ${output.fileName}`);
+        const htmlOutputs = Object.values(bundle).filter(
+          (output): output is OutputAsset => output.type === 'asset' && output.fileName.endsWith('.html'),
+        );
+        if (htmlOutputs.length !== 1) {
+          throw new Error(`Naidan standalone output requires exactly one HTML entry; found ${htmlOutputs.length}`);
         }
-        output.code = `${transformed.code}\n`;
-        output.map = null;
-        chunkRecord.afterBytes = Buffer.byteLength(output.code);
-        diagnostics.chunks.push(chunkRecord);
-      }
-
-      const htmlOutputs = Object.values(bundle).filter(
-        (output): output is OutputAsset => output.type === 'asset' && output.fileName.endsWith('.html'),
-      );
-      if (htmlOutputs.length !== 1) {
-        throw new Error(`Naidan standalone output requires exactly one HTML entry; found ${htmlOutputs.length}`);
-      }
-      for (const output of htmlOutputs) {
-        let html = typeof output.source === 'string'
-          ? output.source
-          : Buffer.from(output.source).toString('utf8');
-        const {
-          stylesheetReferences,
-          applicationEntry,
-        } = assertFileProtocolStandaloneHtmlBeforeRewrite({
-          html,
-          htmlFileName: output.fileName,
-        });
-        // The validator already parses HTML with JSDOM. Reuse its source locations
-        // instead of reparsing attributes with regexes, otherwise valid HTML syntax
-        // such as unquoted attributes can pass validation but fail during rewriting.
-        const prunedStylesheetReferences = stylesheetReferences.filter(({ fileName }) => (
-          effectFreeEmptyCssFileNames.has(fileName)
-        ));
-        const stylesheetCrossoriginRangesToRemove = stylesheetReferences
-          .filter(({ fileName }) => !effectFreeEmptyCssFileNames.has(fileName))
-          .flatMap(({ crossoriginAttributeRange }) => (
-            crossoriginAttributeRange === undefined ? [] : [crossoriginAttributeRange]
-          ));
-        html = removeHtmlSourceRanges({
-          html,
-          ranges: [
+        for (const output of htmlOutputs) {
+          let html = typeof output.source === 'string'
+            ? output.source
+            : Buffer.from(output.source).toString('utf8');
+          const {
+            stylesheetReferences,
             applicationEntry,
-            ...prunedStylesheetReferences,
-            ...stylesheetCrossoriginRangesToRemove,
-          ],
-        });
+          } = assertFileProtocolStandaloneHtmlBeforeRewrite({
+            html,
+            htmlFileName: output.fileName,
+          });
+          // The validator already parses HTML with JSDOM. Reuse its source locations
+          // instead of reparsing attributes with regexes, otherwise valid HTML syntax
+          // such as unquoted attributes can pass validation but fail during rewriting.
+          const prunedStylesheetReferences = stylesheetReferences.filter(({ fileName }) => (
+            effectFreeEmptyCssFileNames.has(fileName)
+          ));
+          const stylesheetCrossoriginRangesToRemove = stylesheetReferences
+            .filter(({ fileName }) => !effectFreeEmptyCssFileNames.has(fileName))
+            .flatMap(({ crossoriginAttributeRange }) => (
+              crossoriginAttributeRange === undefined ? [] : [crossoriginAttributeRange]
+            ));
+          html = removeHtmlSourceRanges({
+            html,
+            ranges: [
+              applicationEntry,
+              ...prunedStylesheetReferences,
+              ...stylesheetCrossoriginRangesToRemove,
+            ],
+          });
 
-        const effectiveStylesheetReferences = stylesheetReferences
-          .filter(({ fileName }) => !effectFreeEmptyCssFileNames.has(fileName));
-        const existingStylesheetFileNameList = effectiveStylesheetReferences
-          .filter(({ unconditional }) => unconditional)
-          .map(({ fileName }) => fileName);
-        const moduleEntryFileName = localHtmlReferenceToBundleFileName(applicationEntry.source, output.fileName);
-        if (!chunkByFileName.has(moduleEntryFileName)) {
-          throw new Error(`HTML module entry does not resolve to an emitted chunk: ${applicationEntry.source} in ${output.fileName}`);
-        }
-        const existingStylesheetFileNames = new Set(existingStylesheetFileNameList);
-        // UI and Worker code can share a JavaScript module that imports CSS. Workers
-        // cannot apply that CSS, so every stylesheet reachable from the UI graph is
-        // linked once from the parent HTML while JavaScript remains lazy.
-        const uiCssFileNames = collectUiStylesheetFileNamesInEagerOrder({
-          chunkByFileName,
-          entryFileName: moduleEntryFileName,
-        });
-        for (const cssFileName of uiCssFileNames) {
-          const cssOutput = outputByFileName.get(cssFileName);
-          if (cssOutput?.type !== 'asset' || !/\.css$/iu.test(cssOutput.fileName)) {
-            throw new Error(`UI stylesheet metadata references a missing output asset: ${cssFileName}`);
+          const effectiveStylesheetReferences = stylesheetReferences
+            .filter(({ fileName }) => !effectFreeEmptyCssFileNames.has(fileName));
+          const existingStylesheetFileNameList = effectiveStylesheetReferences
+            .filter(({ unconditional }) => unconditional)
+            .map(({ fileName }) => fileName);
+          const moduleEntryFileName = localHtmlReferenceToBundleFileName(applicationEntry.source, output.fileName);
+          if (!chunkByFileName.has(moduleEntryFileName)) {
+            throw new Error(`HTML module entry does not resolve to an emitted chunk: ${applicationEntry.source} in ${output.fileName}`);
           }
-        }
-        const uiCssFileNameSet = new Set(uiCssFileNames);
-        const invalidExistingUiStylesheets = effectiveStylesheetReferences
-          .filter(({ fileName, unconditional, inHead }) => uiCssFileNameSet.has(fileName) && (!unconditional || !inHead))
-          .map(({ fileName }) => fileName);
-        if (invalidExistingUiStylesheets.length > 0) {
-          throw new Error(`UI-owned stylesheet links must apply unconditionally from <head>: ${invalidExistingUiStylesheets.join(', ')}`);
-        }
-        const existingUiCssFileNames = existingStylesheetFileNameList
-          .filter(fileName => uiCssFileNameSet.has(fileName));
-        const expectedExistingUiCssPrefix = uiCssFileNames.slice(0, existingUiCssFileNames.length);
-        if (existingUiCssFileNames.some((fileName, index) => fileName !== expectedExistingUiCssPrefix[index])) {
-          throw new Error(
-            `Existing UI stylesheet order does not match the Vite cascade prefix: expected ${JSON.stringify(expectedExistingUiCssPrefix)}, got ${JSON.stringify(existingUiCssFileNames)}`,
+          const existingStylesheetFileNames = new Set(existingStylesheetFileNameList);
+          // Vite owns lazy CSS timing through Dynamic Import preload metadata. Keep
+          // only the entry/static CSS closure in initial HTML; dynamic-only CSS must
+          // remain absent until the corresponding module is requested.
+          const initialUiCssFileNames = collectUiStylesheetFileNamesInViteOrder({
+            chunkByFileName,
+            entryFileName: moduleEntryFileName,
+            traversal: 'static-closure',
+          });
+          const completeUiCssFileNames = collectUiStylesheetFileNamesInViteOrder({
+            chunkByFileName,
+            entryFileName: moduleEntryFileName,
+            traversal: 'complete-ui-closure',
+          });
+          for (const cssFileName of completeUiCssFileNames) {
+            const cssOutput = outputByFileName.get(cssFileName);
+            if (cssOutput?.type !== 'asset' || !/\.css$/iu.test(cssOutput.fileName)) {
+              throw new Error(`UI stylesheet metadata references a missing output asset: ${cssFileName}`);
+            }
+          }
+          const completeUiCssFileNameSet = new Set(completeUiCssFileNames);
+          const initialUiCssFileNameSet = new Set(initialUiCssFileNames);
+          const dynamicOnlyUiCssFileNameSet = new Set(
+            completeUiCssFileNames.filter(fileName => !initialUiCssFileNameSet.has(fileName)),
           );
-        }
-        const uiPreloadedCssFileNames = uiCssFileNames
-          .filter(fileName => !existingStylesheetFileNames.has(fileName));
-        const uiPreloadedCssUrls = uiPreloadedCssFileNames.map(fileName => (
-          bundleFileNameToHtmlReference({ fileName, htmlFileName: output.fileName })
-        ));
-        const cssLinks = uiPreloadedCssUrls
-          .map(url => `<link rel="stylesheet" href=${JSON.stringify(url)}>`)
-          .join('');
+          const prematurelyLinkedDynamicCss = existingStylesheetFileNameList
+            .filter(fileName => dynamicOnlyUiCssFileNameSet.has(fileName));
+          if (prematurelyLinkedDynamicCss.length > 0) {
+            throw new Error(`Dynamic-only UI stylesheets must not be linked from initial HTML: ${prematurelyLinkedDynamicCss.join(', ')}`);
+          }
+          const invalidExistingUiStylesheets = effectiveStylesheetReferences
+            .filter(({ fileName, unconditional, inHead }) => completeUiCssFileNameSet.has(fileName) && (!unconditional || !inHead))
+            .map(({ fileName }) => fileName);
+          if (invalidExistingUiStylesheets.length > 0) {
+            throw new Error(`UI-owned stylesheet links must apply unconditionally from <head>: ${invalidExistingUiStylesheets.join(', ')}`);
+          }
+          const existingUiCssFileNames = existingStylesheetFileNameList
+            .filter(fileName => initialUiCssFileNameSet.has(fileName));
+          const expectedExistingUiCssPrefix = initialUiCssFileNames.slice(0, existingUiCssFileNames.length);
+          if (existingUiCssFileNames.some((fileName, index) => fileName !== expectedExistingUiCssPrefix[index])) {
+            throw new Error(
+              `Existing UI stylesheet order does not match the Vite cascade prefix: expected ${JSON.stringify(expectedExistingUiCssPrefix)}, got ${JSON.stringify(existingUiCssFileNames)}`,
+            );
+          }
+          const uiPreloadedCssFileNames = initialUiCssFileNames
+            .filter(fileName => !existingStylesheetFileNames.has(fileName));
+          const uiPreloadedCssUrls = uiPreloadedCssFileNames.map(fileName => (
+            bundleFileNameToHtmlReference({ fileName, htmlFileName: output.fileName })
+          ));
+          const cssLinks = uiPreloadedCssUrls
+            .map(url => `<link rel="stylesheet" href=${JSON.stringify(url)}>`)
+            .join('');
 
-        const normalizedSystemUrl = bundleFileNameToHtmlReference({ fileName: systemRuntimeFileName, htmlFileName: output.fileName });
-        const normalizedPatchUrl = bundleFileNameToHtmlReference({ fileName: systemJsFileScriptLoaderPatchFileName, htmlFileName: output.fileName });
-        const normalizedRetryUrl = bundleFileNameToHtmlReference({ fileName: systemJsRetryHookFileName, htmlFileName: output.fileName });
-        const entryReference = bundleFileNameToHtmlReference({ fileName: moduleEntryFileName, htmlFileName: output.fileName });
-        const entryBootstrap = createFileProtocolStandaloneEntryBootstrapSource({
-          entryFileName: entryReference.replace(/^\.\//u, ''),
-          slowStartupNoticeDelayMs: startupSlowNoticeDelayMs,
-        });
-        // This is the one proven UI loading path. SystemJS appends only requested
-        // Classic Scripts; the external patch removes crossorigin only for file: URLs.
-        // Keeping one path avoids carrying historical fallback loaders into Naidan.
-        const bootstrap = `${cssLinks}`
+          const normalizedSystemUrl = bundleFileNameToHtmlReference({ fileName: systemRuntimeFileName, htmlFileName: output.fileName });
+          const normalizedPatchUrl = bundleFileNameToHtmlReference({ fileName: systemJsFileScriptLoaderPatchFileName, htmlFileName: output.fileName });
+          const normalizedRetryUrl = bundleFileNameToHtmlReference({ fileName: systemJsRetryHookFileName, htmlFileName: output.fileName });
+          const entryReference = bundleFileNameToHtmlReference({ fileName: moduleEntryFileName, htmlFileName: output.fileName });
+          const entryBootstrap = createFileProtocolStandaloneEntryBootstrapSource({
+            entryFileName: entryReference.replace(/^\.\//u, ''),
+            slowStartupNoticeDelayMs: startupSlowNoticeDelayMs,
+          });
+          // This is the one proven UI loading path. SystemJS appends only requested
+          // Classic Scripts; the external patch removes crossorigin only for file: URLs.
+          // Keeping one path avoids carrying historical fallback loaders into Naidan.
+          const bootstrap = `${cssLinks}`
           + `<script id=${JSON.stringify(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRuntime)} src=${JSON.stringify(normalizedSystemUrl)}></script>`
           + `<script id=${JSON.stringify(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsFilePatch)} src=${JSON.stringify(normalizedPatchUrl)}></script>`
           + `<script id=${JSON.stringify(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRetryHook)} src=${JSON.stringify(normalizedRetryUrl)}></script>`
           + `<script id=${JSON.stringify(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.entryBootstrap)}>${entryBootstrap}</script>`;
-        html = insertFileProtocolStandaloneBootstrap({ html, bootstrap });
-        assertFileProtocolStandaloneHtmlAfterRewrite({ html, htmlFileName: output.fileName });
-        output.source = html;
-        diagnostics.html.push({
-          fileName: output.fileName,
-          moduleEntryUrls: [applicationEntry.source],
-          systemRuntimeUrl: normalizedSystemUrl,
-          uiPreloadedCssFileNames,
-          uiPreloadedCssUrls,
-          startupScriptElementIds: [
-            FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRuntime,
-            FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsFilePatch,
-            FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRetryHook,
-            FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.entryBootstrap,
-          ],
-        });
-      }
+          html = insertFileProtocolStandaloneBootstrap({ html, bootstrap });
+          assertFileProtocolStandaloneHtmlAfterRewrite({ html, htmlFileName: output.fileName });
+          output.source = html;
+          diagnostics.html.push({
+            fileName: output.fileName,
+            moduleEntryUrls: [applicationEntry.source],
+            systemRuntimeUrl: normalizedSystemUrl,
+            uiPreloadedCssFileNames,
+            uiPreloadedCssUrls,
+            startupScriptElementIds: [
+              FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRuntime,
+              FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsFilePatch,
+              FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRetryHook,
+              FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.entryBootstrap,
+            ],
+          });
+        }
 
-      diagnostics.chunks.sort((left, right) => left.fileName.localeCompare(right.fileName));
-      diagnostics.classicScriptAssets.sort((left, right) => left.outputFileName.localeCompare(right.outputFileName));
-      diagnostics.virtualModules.sort((left, right) => left.workerName.localeCompare(right.workerName));
-      diagnostics.rawWorkerSourceCandidates.sort((left, right) => left.moduleId.localeCompare(right.moduleId) || left.start - right.start);
-      diagnostics.rawWorkerConstructors.sort((left, right) => left.outputFileName.localeCompare(right.outputFileName) || left.start - right.start);
-      diagnostics.viteWorkerQueryImports.sort((left, right) => left.moduleId.localeCompare(right.moduleId) || left.start - right.start);
-      diagnostics.html.sort((left, right) => left.fileName.localeCompare(right.fileName));
+        diagnostics.chunks.sort((left, right) => left.fileName.localeCompare(right.fileName));
+        diagnostics.classicScriptAssets.sort((left, right) => left.outputFileName.localeCompare(right.outputFileName));
+        diagnostics.virtualModules.sort((left, right) => left.workerName.localeCompare(right.workerName));
+        diagnostics.rawWorkerSourceCandidates.sort((left, right) => left.moduleId.localeCompare(right.moduleId) || left.start - right.start);
+        diagnostics.rawWorkerConstructors.sort((left, right) => left.outputFileName.localeCompare(right.outputFileName) || left.start - right.start);
+        diagnostics.viteWorkerQueryImports.sort((left, right) => left.moduleId.localeCompare(right.moduleId) || left.start - right.start);
+        diagnostics.html.sort((left, right) => left.fileName.localeCompare(right.fileName));
+      },
     },
   };
 }
@@ -2590,6 +2630,7 @@ export function createNaidanStandalonePlugin({
     ? undefined
     : path.resolve(systemRuntimeSourceMapPath);
   const systemRuntimeFileName = 'file-protocol-standalone/system.min.js';
+  const effectFreeEmptyCssFileNames = new Set<string>();
   const sourcePolicyPlugins = createSourcePolicyPlugins({
     sourceAudit,
     diagnostics: buildDiagnostics,
@@ -2628,12 +2669,14 @@ export function createNaidanStandalonePlugin({
       allowExternalWasmAssets: policies.allowExternalWasmAssets === true,
     }),
     createVitePreloadHelperCompatibilityPlugin({ diagnostics: buildDiagnostics }),
+    createEffectFreeEmptyCssPruningPlugin({ effectFreeEmptyCssFileNames }),
     createSystemJsOutputPlugin({
       diagnostics: buildDiagnostics,
       systemRuntimeFileName,
       systemJsFileScriptLoaderPatchFileName: 'file-protocol-standalone/systemjs-file-protocol-patch.js',
       systemJsRetryHookFileName: 'file-protocol-standalone/systemjs-physical-load-retry.js',
       startupSlowNoticeDelayMs,
+      effectFreeEmptyCssFileNames,
     }),
     ...(releaseValidation === undefined ? [] : [createFileProtocolStandaloneReleaseValidationPlugin({
       ...releaseValidation,

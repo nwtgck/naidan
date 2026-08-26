@@ -99,7 +99,10 @@ function createValidWorkerResult(): DebugFileProtocolStandaloneWorkerVerificatio
       { resolvedLanguage: 'json', htmlLength: 21 },
     ],
     recreatedWorkerHighlight: { resolvedLanguage: 'json', htmlLength: 22 },
-    weshFileProbe: { exitCode: 0, stdout: '/bin/sh: text/x-shellscript\n', stderr: '' },
+    weshCommandProbe: { exitCode: 0, stdout: `\
+bin
+home
+`, stderr: '' },
   };
 }
 

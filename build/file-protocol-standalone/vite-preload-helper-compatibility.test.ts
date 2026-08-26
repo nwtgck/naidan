@@ -469,10 +469,10 @@ describe('Vite preload helper file-protocol compatibility', () => {
     expect(diagnostics).toMatchObject({
       modulePreloadDisabled: true,
       cssCodeSplitEnabled: true,
-      lazyCssDependencyMetadataEnabled: false,
+      lazyCssDependencyMetadataEnabled: true,
       vitePreloadHelperRealmNeutral: true,
       vitePreloadHelperSkipsDomOutsideUiRealm: true,
-      vitePreloadHelperSkipsFileDomPreloads: true,
+      vitePreloadHelperSkipsFileScriptPreloads: true,
       vitePreloadHelperOmitsFileCrossorigin: true,
     });
   });
@@ -512,17 +512,17 @@ export { preload as testPreload };
     const code = typeof result === 'string' ? result : result?.code;
 
     expect(code).toContain('typeof document !== "undefined"');
-    expect(code).toContain('new URL(document.baseURI).protocol === "file:"; if (fileProtocol) return; dep = importMetaResolve(dep);');
+    expect(code).toContain('new URL(document.baseURI).protocol === "file:"; if (fileProtocol && (!dep.endsWith(".css") || new URL(dep).protocol !== "file:")) return; if (!fileProtocol) dep = importMetaResolve(dep);');
     expect(code).toContain('globalThis.dispatchEvent(e);');
     expect(code).not.toContain('window.dispatchEvent(e);');
   });
 
-  it('skips file dependencies before SystemJS-style asynchronous meta resolution', async () => {
+  it('loads local file CSS without SystemJS-style asynchronous meta resolution and skips JavaScript preloads', async () => {
     const code = await transformFixture();
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///tmp/naidan/index.html',
     });
-    const linkEvents = dispatchLinkEventAfterAppend({ dom, eventType: 'error' });
+    const linkEvents = dispatchLinkEventAfterAppend({ dom, eventType: 'load' });
     let resolveCalls = 0;
     const preload = evaluatePreload({
       code,
@@ -540,11 +540,13 @@ export { preload as testPreload };
       'file:///tmp/naidan/assets/endpoint-systemjs.js',
     ))).resolves.toBe('loaded');
     expect(resolveCalls).toBe(0);
-    expect(linkEvents.appendedLinks()).toBe(0);
+    expect(linkEvents.appendedLinks()).toBe(1);
+    const stylesheet = dom.window.document.querySelector('link[rel="stylesheet"]');
+    expect(stylesheet?.getAttribute('crossorigin')).toBeNull();
   });
 
 
-  it('disables Vite dependency preloads for the entire file-protocol UI runtime', async () => {
+  it('skips non-file dependencies for the file-protocol UI runtime', async () => {
     const code = await transformFixture();
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///tmp/naidan/index.html',
@@ -570,12 +572,12 @@ export { preload as testPreload };
     expect(linkEvents.appendedLinks()).toBe(0);
   });
 
-  it('does not depend on file stylesheet load events', async () => {
+  it('waits for local file stylesheet load before continuing the dynamic import', async () => {
     const code = await transformFixture();
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///tmp/naidan/index.html',
     });
-    const linkEvents = dispatchLinkEventAfterAppend({ dom, eventType: 'error' });
+    const linkEvents = dispatchLinkEventAfterAppend({ dom, eventType: 'load' });
     const preload = evaluatePreload({
       code,
       document: dom.window.document,
@@ -588,7 +590,7 @@ export { preload as testPreload };
       ['./assets/MainApp.css'],
       'file:///tmp/naidan/assets/endpoint-systemjs.js',
     )).resolves.toBe('loaded');
-    expect(linkEvents.appendedLinks()).toBe(0);
+    expect(linkEvents.appendedLinks()).toBe(1);
   });
 
   it('preserves stylesheet preloading for HTTP resources', async () => {
@@ -749,12 +751,12 @@ export { preload as testPreload };
       .toThrow('Unexpected Vite preload helper shape');
   });
 
-  it('skips local preload dependencies under special-character file paths', async () => {
+  it('loads local CSS under special-character file paths without resolving JavaScript preloads', async () => {
     const code = await transformFixture();
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///tmp/Naidan%20%E6%97%A5%E6%9C%AC%E8%AA%9E%20%23%20%25%20%5B%20%5D/index.html',
     });
-    const linkEvents = dispatchLinkEventAfterAppend({ dom, eventType: 'error' });
+    const linkEvents = dispatchLinkEventAfterAppend({ dom, eventType: 'load' });
     let resolveCalls = 0;
     const preload = evaluatePreload({
       code,
@@ -772,7 +774,7 @@ export { preload as testPreload };
       'file:///tmp/Naidan%20%E6%97%A5%E6%9C%AC%E8%AA%9E%20%23%20%25%20%5B%20%5D/assets/endpoint-systemjs.js',
     )).resolves.toBe('loaded');
     expect(resolveCalls).toBe(0);
-    expect(linkEvents.appendedLinks()).toBe(0);
+    expect(linkEvents.appendedLinks()).toBe(1);
   });
 
   it('keeps Worker dynamic-import failures observable without a document', async () => {
@@ -872,7 +874,7 @@ export { preload as testPreload };
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///tmp/naidan/index.html',
     });
-    const linkEvents = dispatchLinkEventAfterAppend({ dom, eventType: 'error' });
+    const linkEvents = dispatchLinkEventAfterAppend({ dom, eventType: 'load' });
     let resolveCalls = 0;
     const preload = await evaluateSystemJsPreload({
       code,
@@ -891,7 +893,7 @@ export { preload as testPreload };
       'file:///tmp/naidan/assets/endpoint-systemjs.js',
     )).resolves.toBe('systemjs-loaded');
     expect(resolveCalls).toBe(0);
-    expect(linkEvents.appendedLinks()).toBe(0);
+    expect(linkEvents.appendedLinks()).toBe(1);
   });
 
 });
