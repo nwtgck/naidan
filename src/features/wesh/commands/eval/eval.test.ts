@@ -42,13 +42,13 @@ describe('wesh eval', () => {
     expect(help.stdout.text).toContain('usage: eval [arg...]');
     expect(help.stdout.text).toContain('--help');
     expect(help.stderr.text).toBe('');
-    expect(help.result.exitCode).toBe(0);
+    expect(help.result.exitCode).toBe(2);
 
     expect(invalid.stdout.text).toBe('');
     expect(invalid.stderr.text).toContain("eval: unrecognized option '--bogus'");
     expect(invalid.stderr.text).toContain('usage: eval [arg...]');
     expect(invalid.stderr.text).toContain('try:');
-    expect(invalid.result.exitCode).toBe(1);
+    expect(invalid.result.exitCode).toBe(2);
   });
 
   it('evaluates joined positional arguments and honors --', async () => {
@@ -63,4 +63,15 @@ describe('wesh eval', () => {
     expect(dashed.stderr.text).toBe('');
     expect(dashed.result.exitCode).toBe(0);
   });
+
+  it('treats option-like arguments after the first eval operand as evaluated text', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `eval echo -n hi; status=$?; printf '|%s\\n' "$status"`,
+    });
+
+    expect(stdout.text).toBe('hi|0\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
 });

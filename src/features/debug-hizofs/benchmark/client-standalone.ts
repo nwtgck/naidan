@@ -1,17 +1,36 @@
 import * as Comlink from 'comlink';
+import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/hizofs-benchmark';
 import { createHizoFSBenchmarkWorkerClientBoundary } from '@/features/debug-hizofs/benchmark/worker-client';
 import type { HizoFSBenchmarkWorkerClient, IHizoFSBenchmarkWorker } from '@/features/debug-hizofs/benchmark/worker-client';
-import { createFileProtocolStandaloneWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub-standalone-loader';
-import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub.types';
+import {
+  createStandaloneWorkerSession,
+  disposeStandaloneWorkerSession,
+  STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+} from '@/features/file-protocol-standalone/worker/standalone-worker-session';
 
 export async function createHizoFSBenchmarkWorkerClient(): Promise<HizoFSBenchmarkWorkerClient> {
-  const worker = await createFileProtocolStandaloneWorkerHub();
-  const remoteHub = Comlink.wrap<IWorkerHub>(worker);
-  const remote = await remoteHub.hizoFSBenchmark as Comlink.Remote<IHizoFSBenchmarkWorker>;
+  const session = await createStandaloneWorkerSession<IHizoFSBenchmarkWorker>({
+    createWorker: createStandaloneWorker,
+  });
+  let physicallyTerminated = false;
   return createBenchmarkClient({
-    remote,
-    release: async () => await remoteHub[Comlink.releaseProxy](),
-    terminate: () => worker.terminate(),
+    remote: session.remote,
+    release: async () => {
+      try {
+        await disposeStandaloneWorkerSession({
+          session,
+          beforeRelease: undefined,
+          cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+        });
+      } finally {
+        physicallyTerminated = true;
+      }
+    },
+    terminate: () => {
+      if (physicallyTerminated) return;
+      physicallyTerminated = true;
+      session.worker.terminate();
+    },
   });
 }
 

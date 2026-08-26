@@ -6,7 +6,7 @@ import { routes } from 'vue-router/auto-routes';
 import { useSettings } from './composables/useSettings';
 import { initializeThemeController } from './features/theme/composables/useTheme';
 import type { StartupState } from './logic/startup/types';
-import { scheduleFileProtocolStandaloneWorkerHubWarmup } from './features/file-protocol-standalone/worker/worker-hub-standalone-loader';
+import { scheduleStandaloneWorkerBootstrapWarmup } from 'virtual:naidan-standalone-worker-runtime';
 import { scheduleAppBootstrap } from './logic/startup/app-bootstrap';
 import {
   recordAppStartupFailure,
@@ -132,7 +132,7 @@ async function bootstrapApp(): Promise<void> {
   }
 
   if (__BUILD_MODE_IS_STANDALONE__) {
-    scheduleFileProtocolStandaloneWorkerHubWarmup();
+    scheduleStandaloneWorkerBootstrapWarmup();
   }
 }
 

@@ -40,7 +40,8 @@ export function buildShellDescription({
 
   return (
     'Execute shell scripts to perform file operations, system exploration, and data processing. ' +
-    'You can use standard Unix-like commands (ls, cat, grep, etc.). Run `help` to see available utilities.' +
+    'You can use standard Unix-like commands (ls, cat, grep, etc.). For file edits, `sed` and `patch` are available. ' +
+    'Run `help` to see available utilities.' +
     mountList +
     fileTypeSection
   );

@@ -33,6 +33,83 @@ describe('wesh du options', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('preserves GNU help ordering across nonfatal and fatal option diagnostics', async () => {
+    const unknownThenHelp = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du --definitely-invalid-option --help',
+      stdin: '',
+    });
+    const invalidDepthThenHelp = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du --max-depth=bogus --help',
+      stdin: '',
+    });
+    const invalidBlockSizeThenHelp = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du --block-size=bogus --help',
+      stdin: '',
+    });
+    const helpBeforeInvalid = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du --help --block-size=bogus',
+      stdin: '',
+    });
+
+    expect(unknownThenHelp.stdout.text).toContain('Estimate logical file size usage');
+    expect(unknownThenHelp.stderr.text).toContain("du: unrecognized option '--definitely-invalid-option'");
+    expect(unknownThenHelp.result.exitCode).toBe(0);
+    expect(invalidDepthThenHelp.stdout.text).toContain('Estimate logical file size usage');
+    expect(invalidDepthThenHelp.stderr.text).toContain("du: invalid maximum depth 'bogus'");
+    expect(invalidDepthThenHelp.result.exitCode).toBe(0);
+    expect(invalidBlockSizeThenHelp.stdout.text).toBe('');
+    expect(invalidBlockSizeThenHelp.stderr.text).toContain("du: invalid size suffix in 'bogus'");
+    expect(invalidBlockSizeThenHelp.result.exitCode).toBe(1);
+    expect(helpBeforeInvalid.stdout.text).toContain('Estimate logical file size usage');
+    expect(helpBeforeInvalid.stderr.text).toBe('');
+    expect(helpBeforeInvalid.result.exitCode).toBe(0);
+  });
+
+  it('suppresses runtime warnings when help wins', async () => {
+    const summarize = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du -s --max-depth=0 --help',
+      stdin: '',
+    });
+    const inodes = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du --inodes -b --help',
+      stdin: '',
+    });
+
+    expect(summarize.result.exitCode).toBe(0);
+    expect(summarize.stdout.text).toContain('Estimate logical file size usage');
+    expect(summarize.stderr.text).toBe('');
+    expect(inodes.result.exitCode).toBe(0);
+    expect(inodes.stdout.text).toContain('Estimate logical file size usage');
+    expect(inodes.stderr.text).toBe('');
+  });
+
+  it('lets help bypass post-parse conflicts while retaining pre-help exclude-file diagnostics', async () => {
+    const conflicting = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du -a -s --help',
+      stdin: '',
+    });
+    const missingExclude = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du -X missing-file --help',
+      stdin: '',
+    });
+
+    expect(conflicting.stdout.text).toContain('Estimate logical file size usage');
+    expect(conflicting.stderr.text).toBe('');
+    expect(conflicting.result.exitCode).toBe(0);
+    expect(missingExclude.stdout.text).toContain('Estimate logical file size usage');
+    expect(missingExclude.stderr.text).toContain('du:');
+    expect(missingExclude.stderr.text).toContain('missing-file');
+    expect(missingExclude.result.exitCode).toBe(0);
+  });
+
   it('rejects incompatible --all and --summarize options', async () => {
     const { result, stdout, stderr } = await executeDuTest({
       wesh: testContext.wesh,
@@ -380,4 +457,42 @@ describe('wesh du options', () => {
     expect(stderr.text).toContain('file operands cannot be combined with --files0-from');
     expect(result.exitCode).toBe(1);
   });
+
+  it('accepts only leading C-locale whitespace in maximum depth', async () => {
+    for (const whitespace of [' ', '\t', '\n', '\v', '\f', '\r']) {
+      const execution = await executeDuTest({
+        wesh: testContext.wesh,
+        script: `du -b --max-depth='${whitespace}0' file.txt`,
+        stdin: '',
+      });
+      expect(execution.stdout.text).toBe('3\tfile.txt\n');
+      expect(execution.stderr.text).toBe('');
+      expect(execution.result.exitCode).toBe(0);
+    }
+
+    for (const operand of ['0 ', '\u00a00', '\u20030', '\ufeff0']) {
+      const execution = await executeDuTest({
+        wesh: testContext.wesh,
+        script: `du -b --max-depth='${operand}' file.txt`,
+        stdin: '',
+      });
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).toContain('invalid maximum depth');
+      expect(execution.result.exitCode).toBe(1);
+    }
+  });
+
+
+  it('accepts an explicit positive sign in maximum depth', async () => {
+    const execution = await executeDuTest({
+      wesh: testContext.wesh,
+      script: 'du -b --max-depth=+0 file.txt',
+      stdin: '',
+    });
+
+    expect(execution.stdout.text).toBe('3\tfile.txt\n');
+    expect(execution.stderr.text).toBe('');
+    expect(execution.result.exitCode).toBe(0);
+  });
+
 });

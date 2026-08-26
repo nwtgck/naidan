@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StorageService } from './index';
 import { SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
-import { toBinaryObjectId, toChatGroupId, toChatId } from '@/01-models/ids';
+import { toBinaryObjectId, toChatGroupId, toChatId, toVolumeId } from '@/01-models/ids';
 
 // We mock the synchronizer to track calls to withLock and notify
 const {
@@ -75,6 +75,9 @@ const mockProvider = {
   loadChat: vi.fn().mockResolvedValue(null),
   listChats: vi.fn().mockResolvedValue([]),
   listChatGroups: vi.fn().mockResolvedValue([]),
+  hasVolumeMountReference: vi.fn().mockResolvedValue(false),
+  openVolume: vi.fn().mockResolvedValue(null),
+  deleteVolume: vi.fn().mockResolvedValue(undefined),
   getSidebarStructure: vi.fn().mockResolvedValue([]),
   loadSettings: vi.fn().mockResolvedValue(null),
   getFile: vi.fn().mockResolvedValue(null),
@@ -142,6 +145,10 @@ describe('StorageService Synchronization Wrapper', () => {
     mockExternalTransitionStarting.mockResolvedValue(undefined);
     mockPrepareExternalTransition.mockResolvedValue(undefined);
     mockSuspendStorageSession.mockResolvedValue(undefined);
+    mockProvider.listChatGroups.mockResolvedValue([]);
+    mockProvider.hasVolumeMountReference.mockResolvedValue(false);
+    mockProvider.openVolume.mockResolvedValue(null);
+    mockProvider.deleteVolume.mockResolvedValue(undefined);
 
     service = new StorageService();
     await service.init({ type: 'local' });
@@ -937,6 +944,137 @@ describe('StorageService Synchronization Wrapper', () => {
     }));
     expect(mockProvider.clearAll).toHaveBeenCalled();
     expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'migration' }) });
+  });
+
+  it('does not add a chat mount when its chat group already uses the same path', async () => {
+    const chatId = toChatId({ raw: 'c1' });
+    const groupId = toChatGroupId({ raw: 'g1' });
+    const volumeId = toVolumeId({ raw: 'v1' });
+    mockProvider.loadChatMeta.mockResolvedValue({ id: chatId, groupId, mounts: [] });
+    mockProvider.loadSettings.mockResolvedValue({ mounts: [] });
+    mockProvider.loadChatGroup.mockResolvedValue({
+      id: groupId,
+      mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'existing' }), mountPath: '/workspace', readOnly: false }],
+    });
+    mockWithLock.mockClear();
+    mockProvider.saveChatMeta.mockClear();
+
+    await expect(service.addMountToChatIfPathAvailable({
+      chatId,
+      mount: { type: 'volume', volumeId, mountPath: '/workspace', readOnly: false },
+    })).resolves.toBe('path_occupied');
+
+    expect(mockProvider.saveChatMeta).not.toHaveBeenCalled();
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({ lockKey: LOCK_METADATA }));
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({ lockKey: SYNC_LOCK_KEY }));
+  });
+
+  it('does not add a chat mount when global settings already use the same path', async () => {
+    const chatId = toChatId({ raw: 'c1' });
+    const volumeId = toVolumeId({ raw: 'v1' });
+    mockProvider.loadChatMeta.mockResolvedValue({ id: chatId, mounts: [] });
+    mockProvider.loadSettings.mockResolvedValue({
+      mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'existing' }), mountPath: '/workspace', readOnly: false }],
+    });
+    mockProvider.saveChatMeta.mockClear();
+
+    await expect(service.addMountToChatIfPathAvailable({
+      chatId,
+      mount: { type: 'volume', volumeId, mountPath: '/workspace', readOnly: false },
+    })).resolves.toBe('path_occupied');
+
+    expect(mockProvider.loadChatGroup).not.toHaveBeenCalled();
+    expect(mockProvider.saveChatMeta).not.toHaveBeenCalled();
+  });
+
+  it('treats lexically equivalent inherited mount paths as occupied', async () => {
+    const chatId = toChatId({ raw: 'c1' });
+    const groupId = toChatGroupId({ raw: 'g1' });
+    const volumeId = toVolumeId({ raw: 'v1' });
+    mockProvider.loadChatMeta.mockResolvedValue({ id: chatId, groupId, mounts: [] });
+    mockProvider.loadSettings.mockResolvedValue({ mounts: [] });
+    mockProvider.loadChatGroup.mockResolvedValue({
+      id: groupId,
+      mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'existing' }), mountPath: '/workspace/./', readOnly: false }],
+    });
+    mockProvider.saveChatMeta.mockClear();
+
+    await expect(service.addMountToChatIfPathAvailable({
+      chatId,
+      mount: { type: 'volume', volumeId, mountPath: '/workspace', readOnly: false },
+    })).resolves.toBe('path_occupied');
+
+    expect(mockProvider.saveChatMeta).not.toHaveBeenCalled();
+  });
+
+  it('atomically adds a chat mount when the effective path is unused', async () => {
+    const chatId = toChatId({ raw: 'c1' });
+    const volumeId = toVolumeId({ raw: 'v1' });
+    mockProvider.loadChatMeta.mockResolvedValue({ id: chatId, mounts: [] });
+    mockProvider.loadSettings.mockResolvedValue({ mounts: [] });
+    mockProvider.saveChatMeta.mockClear();
+
+    const mount = { type: 'volume' as const, volumeId, mountPath: '/workspace', readOnly: false };
+    await expect(service.addMountToChatIfPathAvailable({ chatId, mount })).resolves.toBe('added');
+
+    expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({
+      meta: expect.objectContaining({ mounts: [mount] }),
+    });
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'c1' }) });
+  });
+
+  it('skips volume reference locks when a detached volume is not empty', async () => {
+    const volumeId = toVolumeId({ raw: 'v1' });
+    mockProvider.openVolume.mockResolvedValue({
+      type: 'direct_directory',
+      handle: {
+        async *values() {
+          yield { kind: 'file', name: 'keep.txt' };
+        },
+      },
+    });
+    mockWithLock.mockClear();
+
+    await expect(service.deleteVolumeIfEmptyAndUnreferenced({ volumeId })).resolves.toBe('kept');
+
+    expect(mockProvider.hasVolumeMountReference).not.toHaveBeenCalled();
+    expect(mockProvider.deleteVolume).not.toHaveBeenCalled();
+    expect(mockWithLock).not.toHaveBeenCalled();
+  });
+
+  it('rechecks volume references while holding metadata and settings locks before deletion', async () => {
+    const volumeId = toVolumeId({ raw: 'v1' });
+    const emptyAccess = {
+      type: 'direct_directory',
+      handle: { async *values() {} },
+    };
+    mockProvider.openVolume.mockResolvedValue(emptyAccess);
+    mockProvider.loadSettings.mockResolvedValue({ mounts: [] });
+    mockProvider.hasVolumeMountReference
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    mockWithLock.mockClear();
+
+    await expect(service.deleteVolumeIfEmptyAndUnreferenced({ volumeId })).resolves.toBe('kept');
+
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({ lockKey: LOCK_METADATA }));
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({ lockKey: SYNC_LOCK_KEY }));
+    expect(mockProvider.deleteVolume).not.toHaveBeenCalled();
+  });
+
+  it('deletes an empty unreferenced volume after the locked final recheck', async () => {
+    const volumeId = toVolumeId({ raw: 'v1' });
+    mockProvider.openVolume.mockResolvedValue({
+      type: 'storage_directory',
+      handle: { async *entries() {} },
+    });
+    mockProvider.loadSettings.mockResolvedValue({ mounts: [] });
+    mockWithLock.mockClear();
+
+    await expect(service.deleteVolumeIfEmptyAndUnreferenced({ volumeId })).resolves.toBe('deleted');
+
+    expect(mockProvider.deleteVolume).toHaveBeenCalledWith({ volumeId });
+    expect(mockProvider.hasVolumeMountReference).toHaveBeenCalledTimes(2);
   });
 
   it('should wrap saveFile with lock but not notify (tied to chat)', async () => {

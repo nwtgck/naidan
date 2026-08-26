@@ -94,6 +94,72 @@ printf '%s' world | tee -a output.txt`,
     expect(await readTextFile({ path: 'output.txt' })).toBe('helloworld');
   });
 
+  it('accepts repeated append flags in a short option bundle', async () => {
+    const first = await execute({
+      script: `printf '%s' first | tee output.txt`,
+    });
+    const second = await execute({
+      script: `printf '%s' second | tee -aa output.txt`,
+    });
+
+    expect(first.result.exitCode).toBe(0);
+    expect(second.stdout.text).toBe('second');
+    expect(second.stderr.text).toBe('');
+    expect(second.result.exitCode).toBe(0);
+    expect(await readTextFile({ path: 'output.txt' })).toBe('firstsecond');
+  });
+
+  it('writes once per repeated truncate output and once per repeated append output', async () => {
+    const truncated = await execute({
+      script: `printf '%s' payload | tee output.txt output.txt`,
+    });
+    const appended = await execute({
+      script: `printf '%s' next | tee -a output.txt output.txt`,
+    });
+
+    expect(truncated.stdout.text).toBe('payload');
+    expect(truncated.stderr.text).toBe('');
+    expect(truncated.result.exitCode).toBe(0);
+    expect(appended.stdout.text).toBe('next');
+    expect(appended.stderr.text).toBe('');
+    expect(appended.result.exitCode).toBe(0);
+    expect(await readTextFile({ path: 'output.txt' })).toBe('payloadnextnext');
+  });
+
+  it('appends once per operand when output paths alias the same file through a symlink', async () => {
+    await execute({
+      script: `printf '%s' old | tee output.txt`,
+    });
+    await wesh.vfs.symlink({ path: '/output-link', targetPath: 'output.txt' });
+
+    const twoAliases = await execute({
+      script: `printf '%s' next | tee -a output.txt output-link`,
+    });
+    const threeAliases = await execute({
+      script: `printf '%s' more | tee -a output.txt output-link ./output.txt`,
+    });
+
+    expect(twoAliases.stdout.text).toBe('next');
+    expect(twoAliases.stderr.text).toBe('');
+    expect(twoAliases.result.exitCode).toBe(0);
+    expect(threeAliases.stdout.text).toBe('more');
+    expect(threeAliases.stderr.text).toBe('');
+    expect(threeAliases.result.exitCode).toBe(0);
+    expect(await readTextFile({ path: 'output.txt' })).toBe('oldnextnextmoremoremore');
+  });
+
+  it('treats a single dash operand as an ordinary output file', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `printf '%s\n' payload | tee - out.txt`,
+    });
+
+    expect(stdout.text).toBe('payload\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(await readTextFile({ path: '-' })).toBe('payload\n');
+    expect(await readTextFile({ path: 'out.txt' })).toBe('payload\n');
+  });
+
   it('continues writing to other outputs when one file fails', async () => {
     await mkdir({ path: 'blocked' });
 
@@ -107,4 +173,16 @@ printf '%s' alpha | tee good.txt blocked`,
     expect(result.exitCode).toBe(1);
     expect(await readTextFile({ path: 'good.txt' })).toBe('alpha');
   });
+  it('stops argv processing when --help is reached before a later invalid option', async () => {
+    const helpFirst = await execute({ script: 'tee --help --definitely-invalid-option' });
+    const invalidFirst = await execute({ script: 'tee --definitely-invalid-option --help' });
+
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(helpFirst.stdout.text).not.toBe('');
+    expect(helpFirst.stderr.text).toBe('');
+
+    expect(invalidFirst.result.exitCode).not.toBe(0);
+    expect(invalidFirst.stderr.text).not.toBe('');
+  });
+
 });

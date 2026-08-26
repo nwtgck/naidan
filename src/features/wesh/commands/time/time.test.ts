@@ -39,7 +39,7 @@ describe('wesh time', () => {
   it('prints help and usage errors', async () => {
     const help = await execute({ script: 'time --help' });
     const missing = await execute({ script: 'time' });
-    const invalid = await execute({ script: 'time --nope true' });
+    const optionLikeCommand = await execute({ script: 'time --nope true' });
 
     expect(help.stdout.text).toContain('Measure command execution time');
     expect(help.stdout.text).toContain('usage: time [-p] COMMAND [ARG]...');
@@ -52,10 +52,42 @@ describe('wesh time', () => {
     expect(missing.stderr.text).toContain('usage: time [-p] COMMAND [ARG]...');
     expect(missing.result.exitCode).toBe(1);
 
-    expect(invalid.stdout.text).toBe('');
-    expect(invalid.stderr.text).toContain("time: unrecognized option '--nope'");
-    expect(invalid.stderr.text).toContain('usage: time [-p] COMMAND [ARG]...');
-    expect(invalid.result.exitCode).toBe(1);
+    expect(optionLikeCommand.stdout.text).toBe('');
+    expect(optionLikeCommand.stderr.text).toContain('time: cannot run --nope: No such file or directory');
+    expect(optionLikeCommand.stderr.text).toContain('real');
+    expect(optionLikeCommand.result.exitCode).toBe(127);
+  });
+
+  it('passes option-like arguments to the timed command', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `time -p printf '%s\n' --help`,
+    });
+
+    expect(stdout.text).toBe('--help\n');
+    expect(stderr.text).toMatch(/^real \d+\.\d{2}\nuser 0\.00\nsys 0\.00\n$/);
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('reports command-not-found after timing the failed launch', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'time -p definitely-missing-time-command',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toMatch(
+      /^time: cannot run definitely-missing-time-command: No such file or directory\nreal \d+\.\d{2}\nuser 0\.00\nsys 0\.00\n$/,
+    );
+    expect(result.exitCode).toBe(127);
+  });
+
+  it('supports -- before the command operand', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'time -p -- false',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toMatch(/^real \d+\.\d{2}\nuser 0\.00\nsys 0\.00\n$/);
+    expect(result.exitCode).toBe(1);
   });
 
   it('passes stdout through and writes timing to stderr', async () => {
@@ -90,4 +122,18 @@ describe('wesh time', () => {
     expect(stderr.text).toContain('sys');
     expect(result.exitCode).toBe(0);
   });
+
+  it('treats only one leading -p as a time option', async () => {
+    const repeated = await execute({ script: 'time -p -p true' });
+    const unknown = await execute({ script: 'time -x' });
+
+    expect(repeated.stdout.text).toBe('');
+    expect(repeated.stderr.text).toContain('time: cannot run -p: No such file or directory');
+    expect(repeated.result.exitCode).toBe(127);
+
+    expect(unknown.stdout.text).toBe('');
+    expect(unknown.stderr.text).toContain('time: cannot run -x: No such file or directory');
+    expect(unknown.result.exitCode).toBe(127);
+  });
+
 });

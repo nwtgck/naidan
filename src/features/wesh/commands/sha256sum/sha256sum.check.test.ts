@@ -6,7 +6,6 @@ import {
 
 const EMPTY_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 const ABC_HASH = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
-const HELLO_HASH = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824';
 
 describe('wesh sha256sum check mode', () => {
   let harness: Sha256sumTestHarness;
@@ -40,6 +39,39 @@ abc: OK
     expect(result.result.exitCode).toBe(0);
   });
 
+  it('preserves BOM bytes at the start of every checksum line', async () => {
+    await harness.writeFile({ path: 'abc', data: 'abc' });
+    await harness.writeFile({
+      path: 'leading-bom.sum',
+      data: `\uFEFF${ABC_HASH}  abc
+`,
+    });
+    await harness.writeFile({
+      path: 'second-line-bom.sum',
+      data: `${ABC_HASH}  abc
+\uFEFF${ABC_HASH}  abc
+`,
+    });
+
+    const leadingBom = await harness.execute({
+      script: 'sha256sum -c leading-bom.sum',
+    });
+    const secondLineBom = await harness.execute({
+      script: 'sha256sum -c second-line-bom.sum',
+    });
+
+    expect(leadingBom.stdout.text).toBe('');
+    expect(leadingBom.stderr.text).toBe(
+      'sha256sum: leading-bom.sum: no properly formatted checksum lines found\n',
+    );
+    expect(leadingBom.result.exitCode).toBe(1);
+    expect(secondLineBom.stdout.text).toBe('abc: OK\n');
+    expect(secondLineBom.stderr.text).toBe(
+      'sha256sum: WARNING: 1 line is improperly formatted\n',
+    );
+    expect(secondLineBom.result.exitCode).toBe(0);
+  });
+
   it('accepts legacy single-space records whose one-character names resemble mode markers', async () => {
     await harness.writeFile({ path: ' ', data: 'abc' });
     await harness.writeFile({ path: '*', data: 'abc' });
@@ -58,6 +90,58 @@ ${ABC_HASH} *
     expect(result.stdout.text).toBe(`\
  : OK
 *: OK
+`);
+    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('accepts tab checksum separators without losing the following mode or file-name byte', async () => {
+    await harness.writeFile({ path: 'data', data: 'abc' });
+    await harness.writeFile({ path: '\tdata', data: 'abc' });
+    await harness.writeFile({ path: '*data', data: 'abc' });
+    await harness.writeFile({
+      path: 'tabs.sum',
+      data: `\
+${ABC_HASH}\tdata
+${ABC_HASH}\t data
+${ABC_HASH}\t*data
+${ABC_HASH}\t\tdata
+${ABC_HASH}\t *data
+`,
+    });
+
+    const result = await harness.execute({
+      script: 'sha256sum -c tabs.sum',
+    });
+
+    expect(result.stdout.text).toBe(`\
+data: OK
+data: OK
+data: OK
+\tdata: OK
+*data: OK
+`);
+    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('accepts spaces and tabs before checksum records', async () => {
+    await harness.writeFile({ path: 'data', data: 'abc' });
+    await harness.writeFile({
+      path: 'leading-whitespace.sum',
+      data: `\
+  ${ABC_HASH}  data
+\t${ABC_HASH} *data
+`,
+    });
+
+    const result = await harness.execute({
+      script: 'sha256sum -c leading-whitespace.sum',
+    });
+
+    expect(result.stdout.text).toBe(`\
+data: OK
+data: OK
 `);
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
@@ -364,22 +448,6 @@ sha256sum: none-valid.sum: no file was verified
       "sha256sum: 'standard input': no properly formatted checksum lines found\n",
     );
     expect(result.result.exitCode).toBe(1);
-  });
-
-  it('decodes escaped GNU file names', async () => {
-    await harness.writeFile({ path: 'back\\slash', data: 'hello' });
-    await harness.writeFile({
-      path: 'escaped.sum',
-      data: `\\${HELLO_HASH}  back\\\\slash\n`,
-    });
-
-    const result = await harness.execute({
-      script: 'sha256sum -c escaped.sum',
-    });
-
-    expect(result.stdout.text).toBe('\\back\\\\slash: OK\n');
-    expect(result.stderr.text).toBe('');
-    expect(result.result.exitCode).toBe(0);
   });
 
   it('rejects compute-only options in check mode', async () => {

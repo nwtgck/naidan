@@ -134,11 +134,12 @@ beta
       stdinText: undefined,
     });
 
-    expect(stdout.text).toBe(`\
-     1  alpha
-     2  
-     3  beta
-`);
+    expect(stdout.text).toBe([
+      '     1\talpha',
+      '     2\t',
+      '     3\tbeta',
+      '',
+    ].join('\n'));
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -156,9 +157,9 @@ beta
     });
 
     expect(stdout.text).toBe(`\
-     1  alpha
+     1	alpha
 
-     2  beta
+     2	beta
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
@@ -205,6 +206,54 @@ beta$
     });
 
     expect(stdout.text).toBe('^AA\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('renders DEL and high-bit UTF-8 bytes with GNU visible notation', async () => {
+    await writeFile({
+      name: 'visible-bytes.txt',
+      data: new Uint8Array([0x7f, 0xc3, 0xa9, 0x0a]),
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cat -v visible-bytes.txt',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('^?M-CM-)\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('preserves line state and bytes across file boundaries', async () => {
+    await writeFile({ name: 'left.txt', data: new Uint8Array([0x78, 0x0d]) });
+    await writeFile({ name: 'right.txt', data: new Uint8Array([0x0a, 0x79, 0x0a]) });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cat -nE left.txt missing.txt right.txt',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('     1\tx^M$\n     2\ty$\n');
+    expect(stderr.text).toContain('cat: missing.txt:');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('squeezes blank lines continuously across inputs', async () => {
+    await writeFile({ name: 'left.txt', data: 'alpha\n\n' });
+    await writeFile({ name: 'right.txt', data: '\n\nbeta\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cat -s left.txt right.txt',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe(`\
+alpha
+
+beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -292,8 +341,8 @@ beta
     });
 
     expect(stdout.text).toBe(`\
-     1  ^A^I$
-     2  $
+     1	^A^I$
+     2	$
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
@@ -306,13 +355,13 @@ beta
       script: 'cat --number long-individual.txt',
       stdinText: undefined,
     });
-    expect(numberAll.stdout.text).toBe('     1  \u0001\t\n     2  \n');
+    expect(numberAll.stdout.text).toBe('     1\t\u0001\t\n     2\t\n');
 
     const numberNonblank = await execute({
       script: 'cat --number-nonblank long-individual.txt',
       stdinText: undefined,
     });
-    expect(numberNonblank.stdout.text).toBe('     1  \u0001\t\n\n');
+    expect(numberNonblank.stdout.text).toBe('     1\t\u0001\t\n\n');
 
     const showEnds = await execute({
       script: 'cat --show-ends long-individual.txt',
@@ -371,6 +420,24 @@ beta
     expect(stdout.text).toContain('--show-all');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('stops argv processing when --help is reached before a later invalid option', async () => {
+    const helpFirst = await execute({
+      script: 'cat --help --unknown',
+      stdinText: undefined,
+    });
+    const invalidFirst = await execute({
+      script: 'cat --unknown --help',
+      stdinText: undefined,
+    });
+
+    expect(helpFirst.stdout.text).toContain('usage: cat [OPTION]... [FILE]...');
+    expect(helpFirst.stderr.text).toBe('');
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(invalidFirst.stdout.text).toBe('');
+    expect(invalidFirst.stderr.text).toContain("cat: unrecognized option '--unknown'");
+    expect(invalidFirst.result.exitCode).toBe(1);
   });
 
   it('prints usage guidance for invalid short options', async () => {

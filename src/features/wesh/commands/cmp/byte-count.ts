@@ -1,36 +1,39 @@
+import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
+
 const MAX_CMP_BYTE_COUNT = (1n << 63n) - 1n;
 
-const DECIMAL_SUFFIX_MULTIPLIERS: Readonly<Record<string, bigint>> = {
-  kB: 1000n,
-  KB: 1000n,
-  MB: 1000n ** 2n,
-  GB: 1000n ** 3n,
-  TB: 1000n ** 4n,
-  PB: 1000n ** 5n,
-  EB: 1000n ** 6n,
-  ZB: 1000n ** 7n,
-  YB: 1000n ** 8n,
-};
-
-const BINARY_SUFFIX_MULTIPLIERS: Readonly<Record<string, bigint>> = {
-  k: 1024n,
-  K: 1024n,
-  KiB: 1024n,
-  M: 1024n ** 2n,
-  MiB: 1024n ** 2n,
-  G: 1024n ** 3n,
-  GiB: 1024n ** 3n,
-  T: 1024n ** 4n,
-  TiB: 1024n ** 4n,
-  P: 1024n ** 5n,
-  PiB: 1024n ** 5n,
-  E: 1024n ** 6n,
-  EiB: 1024n ** 6n,
-  Z: 1024n ** 7n,
-  ZiB: 1024n ** 7n,
-  Y: 1024n ** 8n,
-  YiB: 1024n ** 8n,
-};
+function getCmpByteCountSuffixMultiplier({ suffix }: { suffix: string }): bigint | undefined {
+  switch (suffix) {
+  case '': return 1n;
+  case 'kB':
+  case 'KB': return 1000n;
+  case 'MB': return 1000n ** 2n;
+  case 'GB': return 1000n ** 3n;
+  case 'TB': return 1000n ** 4n;
+  case 'PB': return 1000n ** 5n;
+  case 'EB': return 1000n ** 6n;
+  case 'ZB': return 1000n ** 7n;
+  case 'YB': return 1000n ** 8n;
+  case 'k':
+  case 'K':
+  case 'KiB': return 1024n;
+  case 'M':
+  case 'MiB': return 1024n ** 2n;
+  case 'G':
+  case 'GiB': return 1024n ** 3n;
+  case 'T':
+  case 'TiB': return 1024n ** 4n;
+  case 'P':
+  case 'PiB': return 1024n ** 5n;
+  case 'E':
+  case 'EiB': return 1024n ** 6n;
+  case 'Z':
+  case 'ZiB': return 1024n ** 7n;
+  case 'Y':
+  case 'YiB': return 1024n ** 8n;
+  default: return undefined;
+  }
+}
 
 type CmpByteCountParseResult =
   | { ok: true, value: bigint }
@@ -56,7 +59,8 @@ export function parseCmpByteCount({
   value: string,
   option: '--bytes' | '--ignore-initial',
 }): CmpByteCountParseResult {
-  const match = /^\+?(0[xX][0-9a-fA-F]+|0[0-7]*|[1-9][0-9]*)([A-Za-z]*)$/.exec(value);
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  const match = /^\+?(0[xX][0-9a-fA-F]+|0[0-7]*|[1-9][0-9]*)([A-Za-z]*)$/.exec(numericText);
   if (match === null) {
     return invalidByteCount({ option, value });
   }
@@ -67,9 +71,7 @@ export function parseCmpByteCount({
     return invalidByteCount({ option, value });
   }
 
-  const multiplier = suffix.length === 0
-    ? 1n
-    : DECIMAL_SUFFIX_MULTIPLIERS[suffix] ?? BINARY_SUFFIX_MULTIPLIERS[suffix];
+  const multiplier = getCmpByteCountSuffixMultiplier({ suffix });
   if (multiplier === undefined) {
     return invalidByteCount({ option, value });
   }

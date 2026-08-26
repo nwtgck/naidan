@@ -110,6 +110,30 @@ describe('wesh diff', () => {
     );
   });
 
+  it('accepts only leading C-locale whitespace in numeric options', async () => {
+    await writeFile({ path: 'left.txt', data: 'alpha\n' });
+    await writeFile({ path: 'right.txt', data: 'beta\n' });
+
+    for (const whitespace of [' ', '\t', '\n', '\v', '\f', '\r']) {
+      for (const option of ['-U', '-C', '-W', '--tabsize']) {
+        const execution = await execute({
+          script: `diff ${option} '${whitespace}1' left.txt right.txt`,
+        });
+        expect(execution.stderr.text).toBe('');
+        expect(execution.result.exitCode).toBe(1);
+      }
+    }
+
+    for (const operand of ['1 ', '\u00a01', '\u20031', '\ufeff1']) {
+      const execution = await execute({
+        script: `diff -U '${operand}' left.txt right.txt`,
+      });
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).toContain('invalid numeric value');
+      expect(execution.result.exitCode).toBe(2);
+    }
+  });
+
   it('emits normal diffs and reports identical files', async () => {
     await writeFile({ path: 'left.txt', data: `\
 alpha
@@ -204,6 +228,22 @@ c
     const maximumContext = await execute({ script: "diff -U0 -U1 --label old --label new a b" });
     expect(maximumContext.result.exitCode).toBe(1);
     expect(maximumContext.stdout.text).toContain('@@ -1,3 +1,3 @@');
+
+    const attachedContext = await execute({ script: "diff -c1 --label old --label new a b" });
+    const explicitContext = await execute({ script: "diff -C1 --label old --label new a b" });
+    expect(attachedContext.result.exitCode).toBe(explicitContext.result.exitCode);
+    expect(attachedContext.stdout.text).toBe(explicitContext.stdout.text);
+    expect(attachedContext.stderr.text).toBe(explicitContext.stderr.text);
+
+    const attachedUnified = await execute({ script: "diff -u1 --label old --label new a b" });
+    const explicitUnified = await execute({ script: "diff -U1 --label old --label new a b" });
+    expect(attachedUnified.result.exitCode).toBe(explicitUnified.result.exitCode);
+    expect(attachedUnified.stdout.text).toBe(explicitUnified.stdout.text);
+    expect(attachedUnified.stderr.text).toBe(explicitUnified.stderr.text);
+
+    const bundledContext = await execute({ script: "diff -ic1 --label old --label new a b" });
+    expect(bundledContext.result.exitCode).toBe(1);
+    expect(bundledContext.stdout.text).toBe(explicitContext.stdout.text);
   });
 
   it('adds function headings to unified and context hunks', async () => {
@@ -249,6 +289,55 @@ int foo(void)
 *** old
 --- new
 *************** int foo(void)`);
+  });
+
+  it('matches function headings with locale byte semantics and preserves their bytes', async () => {
+    const suffix = new TextEncoder().encode(`\
+-old
++new
+`);
+    const header = new TextEncoder().encode(`\
+--- left
++++ right
+@@ -2 +2 @@`);
+
+    await writeFile({ path: 'function-invalid-left', data: Uint8Array.of(0xff, 0x0a, 0x6f, 0x6c, 0x64, 0x0a) });
+    await writeFile({ path: 'function-invalid-right', data: Uint8Array.of(0xff, 0x0a, 0x6e, 0x65, 0x77, 0x0a) });
+
+    const unicodeDot = await execute({
+      script: "LC_ALL=C.utf8 diff -a -U0 --label left --label right -F '.' function-invalid-left function-invalid-right",
+    });
+    expect(unicodeDot.result.exitCode).toBe(1);
+    expect([...unicodeDot.stdout.buffer]).toEqual([...header, 0x0a, ...suffix]);
+
+    const byteDot = await execute({
+      script: "LC_ALL=C diff -a -U0 --label left --label right -F '.' function-invalid-left function-invalid-right",
+    });
+    expect(byteDot.result.exitCode).toBe(1);
+    expect([...byteDot.stdout.buffer]).toEqual([...header, 0x20, 0xff, 0x0a, ...suffix]);
+
+    await writeFile({ path: 'function-cr-left', data: Uint8Array.of(0x0d, 0x0a, 0x6f, 0x6c, 0x64, 0x0a) });
+    await writeFile({ path: 'function-cr-right', data: Uint8Array.of(0x0d, 0x0a, 0x6e, 0x65, 0x77, 0x0a) });
+    const carriageReturn = await execute({
+      script: "LC_ALL=C.utf8 diff -a -U0 --label left --label right -F '^.$' function-cr-left function-cr-right",
+    });
+    expect(carriageReturn.result.exitCode).toBe(1);
+    expect([...carriageReturn.stdout.buffer]).toEqual([...header, 0x20, 0x0a, ...suffix]);
+
+    await writeFile({ path: 'function-mixed-left', data: Uint8Array.of(0xff, 0x61, 0x20, 0x0a, 0x6f, 0x6c, 0x64, 0x0a) });
+    await writeFile({ path: 'function-mixed-right', data: Uint8Array.of(0xff, 0x61, 0x20, 0x0a, 0x6e, 0x65, 0x77, 0x0a) });
+    const literalAfterInvalid = await execute({
+      script: "LC_ALL=C.utf8 diff -a -U0 --label left --label right -F 'a' function-mixed-left function-mixed-right",
+    });
+    expect(literalAfterInvalid.result.exitCode).toBe(1);
+    expect([...literalAfterInvalid.stdout.buffer]).toEqual([
+      ...header,
+      0x20,
+      0xff,
+      0x61,
+      0x0a,
+      ...suffix,
+    ]);
   });
 
   it('formats empty ranges and boundary insertions like GNU diff', async () => {
@@ -449,6 +538,30 @@ end
     expect(allIgnored.result.exitCode).toBe(0);
     expect(allIgnored.stdout.text).toBe('');
 
+    await writeFile({ path: 'bom-ignore-a', data: '\uFEFFalpha-one\n' });
+    await writeFile({ path: 'bom-ignore-b', data: '\uFEFFalpha-two\n' });
+    const asciiBom = await execute({ script: "diff -I '^alpha' bom-ignore-a bom-ignore-b" });
+    const literalBom = await execute({ script: "diff -I '^\uFEFFalpha' bom-ignore-a bom-ignore-b" });
+    expect(asciiBom.result.exitCode).toBe(1);
+    expect(asciiBom.stdout.text).toContain('\uFEFFalpha-one');
+    expect(literalBom.result.exitCode).toBe(0);
+    expect(literalBom.stdout.text).toBe('');
+
+    await writeFile({ path: 'mixed-ignore-a', data: `\
+VERSION=1
+Alpha
+` });
+    await writeFile({ path: 'mixed-ignore-b', data: `\
+VERSION=2
+alpha
+` });
+    const mixedIgnorePatterns = await execute({
+      script: "diff -I '^VERSION=' -I '^[Aa]lpha$' mixed-ignore-a mixed-ignore-b",
+    });
+    expect(mixedIgnorePatterns.result.exitCode).toBe(1);
+    expect(mixedIgnorePatterns.stdout.text).toContain('< VERSION=1');
+    expect(mixedIgnorePatterns.stdout.text).toContain('> VERSION=2');
+
     await writeFile({ path: 'blank-a', data: `\
 a
 
@@ -462,6 +575,43 @@ end
     const blank = await execute({ script: 'diff -B blank-a blank-b' });
     expect(blank.result.exitCode).toBe(0);
     expect(blank.stdout.text).toBe('');
+  });
+
+  it('uses locale byte semantics for ignore-matching-line patterns', async () => {
+    await writeFile({ path: 'invalid-left', data: Uint8Array.of(0xff, 0x0a) });
+    await writeFile({ path: 'invalid-right', data: Uint8Array.of(0xfe, 0x0a) });
+
+    const unicodeDot = await execute({
+      script: "LC_ALL=C.utf8 diff -a -I '.' invalid-left invalid-right",
+    });
+    expect(unicodeDot.result.exitCode).toBe(1);
+    expect(unicodeDot.stderr.text).toBe('');
+    expect([...unicodeDot.stdout.buffer]).toContain(0xff);
+    expect([...unicodeDot.stdout.buffer]).toContain(0xfe);
+
+    const byteDot = await execute({
+      script: "LC_ALL=C diff -a -I '.' invalid-left invalid-right",
+    });
+    expect(byteDot.result.exitCode).toBe(0);
+    expect(byteDot.stdout.text).toBe('');
+    expect(byteDot.stderr.text).toBe('');
+
+    await writeFile({ path: 'invalid-ascii-left', data: Uint8Array.of(0xff, 0x61, 0x0a) });
+    await writeFile({ path: 'invalid-ascii-right', data: Uint8Array.of(0xfe, 0x62, 0x0a) });
+    const anchored = await execute({
+      script: "LC_ALL=C.utf8 diff -a -I '^..$' invalid-ascii-left invalid-ascii-right",
+    });
+    expect(anchored.result.exitCode).toBe(1);
+    expect(anchored.stderr.text).toBe('');
+
+    await writeFile({ path: 'carriage-return-left', data: Uint8Array.of(0x0d, 0x0a) });
+    await writeFile({ path: 'carriage-return-right', data: Uint8Array.of(0x61, 0x0a) });
+    const carriageReturn = await execute({
+      script: "LC_ALL=C.utf8 diff -a -I '^.$' carriage-return-left carriage-return-right",
+    });
+    expect(carriageReturn.result.exitCode).toBe(0);
+    expect(carriageReturn.stdout.text).toBe('');
+    expect(carriageReturn.stderr.text).toBe('');
   });
 
   it('supports ed, RCS, ifdef, and side-by-side output modes', async () => {
@@ -616,6 +766,162 @@ old   <
 `);
   });
 
+  it('renders identical and blank common lines in side-by-side mode', async () => {
+    await writeFile({ path: 'side-identical-a', data: `\
+alpha
+
+omega
+` });
+    await writeFile({ path: 'side-identical-b', data: `\
+alpha
+
+omega
+` });
+
+    const identical = await execute({
+      script: 'diff -y -W20 side-identical-a side-identical-b',
+    });
+    expect(identical.result.exitCode).toBe(0);
+    expect(identical.stdout.text).toBe(`\
+alpha\talpha
+
+omega\tomega
+`);
+
+    const leftColumn = await execute({
+      script: 'diff -y -W20 --left-column side-identical-a side-identical-b',
+    });
+    expect(leftColumn.result.exitCode).toBe(0);
+    expect(leftColumn.stdout.text).toBe(`\
+alpha (
+      (
+omega (
+`);
+  });
+
+  it('preserves side-by-side missing-final-newline markers and row termination', async () => {
+    await writeFile({ path: 'side-newline-left-lf', data: 'A\n' });
+    await writeFile({ path: 'side-newline-right-no-lf', data: 'B' });
+    const leftLineFeedOnly = await execute({
+      script: 'diff -y -W20 side-newline-left-lf side-newline-right-no-lf',
+    });
+    expect(leftLineFeedOnly.result.exitCode).toBe(1);
+    expect(leftLineFeedOnly.stdout.text).toBe('A     /\tB\n');
+
+    await writeFile({ path: 'side-newline-left-no-lf', data: 'A' });
+    await writeFile({ path: 'side-newline-right-lf', data: 'B\n' });
+    const rightLineFeedOnly = await execute({
+      script: 'diff -y -W20 side-newline-left-no-lf side-newline-right-lf',
+    });
+    expect(rightLineFeedOnly.result.exitCode).toBe(1);
+    expect(rightLineFeedOnly.stdout.text).toBe('A     \\\tB\n');
+
+    await writeFile({ path: 'side-newline-left-none', data: 'A' });
+    await writeFile({ path: 'side-newline-right-none', data: 'B' });
+    const neitherLineFeed = await execute({
+      script: 'diff -y -W20 side-newline-left-none side-newline-right-none',
+    });
+    expect(neitherLineFeed.result.exitCode).toBe(1);
+    expect(neitherLineFeed.stdout.text).toBe('A     |\tB');
+
+    await writeFile({ path: 'side-newline-identical-none-a', data: 'A' });
+    await writeFile({ path: 'side-newline-identical-none-b', data: 'A' });
+    const identicalWithoutLineFeed = await execute({
+      script: 'diff -y -W20 side-newline-identical-none-a side-newline-identical-none-b',
+    });
+    expect(identicalWithoutLineFeed.result.exitCode).toBe(0);
+    expect(identicalWithoutLineFeed.stdout.text).toBe('A\tA');
+  });
+
+  it('uses field-local tabs and symmetric half-width clipping in side-by-side output', async () => {
+    await writeFile({ path: 'side-tab-empty', data: '' });
+    await writeFile({ path: 'side-tab-expanded', data: 'tab\tvalue\n' });
+    const expanded = await execute({
+      script: 'diff -y -t -W27 side-tab-empty side-tab-expanded',
+    });
+    expect(expanded.result.exitCode).toBe(1);
+    expect(expanded.stdout.text).toBe('             > tab     valu\n');
+
+    await writeFile({ path: 'side-tab-left', data: 'BETA\n' });
+    await writeFile({ path: 'side-tab-right', data: '\t\t\t\n' });
+    const literal = await execute({
+      script: 'diff -y -W24 side-tab-left side-tab-right',
+    });
+    expect(literal.result.exitCode).toBe(1);
+    expect(literal.stdout.text).toBe('BETA\t   |\t\n');
+
+    await writeFile({ path: 'side-zero-left', data: 'x y\r\n' });
+    await writeFile({ path: 'side-zero-right', data: '\t\tlead\t\t\n' });
+    const zeroWidthFields = await execute({
+      script: 'diff -y -W1 --suppress-common-lines side-zero-left side-zero-right',
+    });
+    expect(zeroWidthFields.result.exitCode).toBe(1);
+    expect(zeroWidthFields.stdout.text).toBe('\r|\n');
+  });
+
+  it('tracks carriage returns while laying out side-by-side columns', async () => {
+    await writeFile({ path: 'side-cr-left', data: 'A\rB\n' });
+    await writeFile({ path: 'side-cr-right', data: 'X\rY\n' });
+    const changed = await execute({ script: 'diff -y -W20 side-cr-left side-cr-right' });
+    expect(changed.result.exitCode).toBe(1);
+    expect(changed.stdout.text).toBe('A\rB     |\tX\r\tY\n');
+
+    await writeFile({ path: 'side-cr-copy', data: 'A\rB\n' });
+    const common = await execute({ script: 'diff -y -W20 side-cr-left side-cr-copy' });
+    expect(common.result.exitCode).toBe(0);
+    expect(common.stdout.text).toBe('A\rB\tA\r\tB\n');
+
+    await writeFile({ path: 'side-cr-clipped-left', data: '\tgamma\t\t\r\n' });
+    await writeFile({ path: 'side-cr-clipped-right', data: ' gamma \r\n' });
+    const clipped = await execute({
+      script: 'diff -y -W48 side-cr-clipped-left side-cr-clipped-right',
+    });
+    expect(clipped.result.exitCode).toBe(1);
+    expect(clipped.stdout.text).toBe('\tgamma\t\r\t\t      |\t gamma \r\t\t\t\n');
+  });
+
+  it('uses locale-aware display columns in side-by-side output', async () => {
+    await writeFile({ path: 'unicode-left', data: 'é\n😀\ne\u0301\n漢\n' });
+    await writeFile({ path: 'unicode-right', data: `\
+X
+Y
+Z
+Q
+` });
+
+    const cLocale = await execute({
+      script: 'export LC_ALL=C; diff -y -t -W20 unicode-left unicode-right',
+    });
+    expect(cLocale.stdout.text).toBe([
+      `é${' '.repeat(9)}|  X`,
+      `😀${' '.repeat(9)}|  Y`,
+      `e\u0301${' '.repeat(8)}|  Z`,
+      `漢${' '.repeat(9)}|  Q`,
+      '',
+    ].join('\n'));
+
+    const utf8Locale = await execute({
+      script: 'export LC_ALL=C.utf8; diff -y -t -W20 unicode-left unicode-right',
+    });
+    expect(utf8Locale.stdout.text).toBe([
+      `é${' '.repeat(8)}|  X`,
+      `😀${' '.repeat(7)}|  Y`,
+      `e\u0301${' '.repeat(8)}|  Z`,
+      `漢${' '.repeat(7)}|  Q`,
+      '',
+    ].join('\n'));
+    expect(cLocale.result.exitCode).toBe(1);
+    expect(utf8Locale.result.exitCode).toBe(1);
+
+    await writeFile({ path: 'unicode-boundary-left', data: 'e\u0301\n' });
+    await writeFile({ path: 'unicode-boundary-right', data: 'Ωmega\n' });
+    const zeroWidthBoundary = await execute({
+      script: 'export LC_ALL=C.utf8; diff -y -W9 unicode-boundary-left unicode-boundary-right',
+    });
+    expect(zeroWidthBoundary.result.exitCode).toBe(1);
+    expect(zeroWidthBoundary.stdout.text).toBe('e\u0301   |\tΩ\n');
+  });
+
   it('uses basic regular expressions and emits the left input when ignored ifdef changes disappear', async () => {
     await writeFile({ path: 'bre-a', data: 'a\n' });
     await writeFile({ path: 'bre-b', data: 'aa\n' });
@@ -743,6 +1049,18 @@ real new
     );
   });
 
+  it('uses the first help or version early exit in argv order', async () => {
+    const versionThenInvalid = await execute({ script: 'diff --version --definitely-invalid-option' });
+    const versionThenHelp = await execute({ script: 'diff --version --help' });
+
+    expect(versionThenInvalid.stdout.text).toContain('diff (Wesh diffutils)');
+    expect(versionThenInvalid.stderr.text).toBe('');
+    expect(versionThenInvalid.result.exitCode).toBe(0);
+    expect(versionThenHelp.stdout.text).toContain('diff (Wesh diffutils)');
+    expect(versionThenHelp.stderr.text).toBe('');
+    expect(versionThenHelp.result.exitCode).toBe(0);
+  });
+
   it('compares directories recursively and honors new-file and exclusion rules', async () => {
     await writeFile({ path: 'left/common.txt', data: 'same\n' });
     await writeFile({ path: 'right/common.txt', data: 'same\n' });
@@ -763,7 +1081,7 @@ real new
     expect(recursive.stdout.text).not.toContain('skip.log');
 
     const recursiveUnified = await execute({ script: "diff -ru -x '*.log' left right" });
-    expect(recursiveUnified.stdout.text).toContain("diff -r -u -x '*.log' left/sub/value.txt right/sub/value.txt");
+    expect(recursiveUnified.stdout.text).toContain("diff -ru -x '*.log' left/sub/value.txt right/sub/value.txt");
 
     await writeFile({ path: 'glob-left/a', data: 'left\n' });
     await writeFile({ path: 'glob-right/b', data: 'right\n' });
@@ -777,6 +1095,16 @@ real new
     const classGlob = await execute({ script: "diff -r -x '[[:digit:]]' class-left class-right" });
     expect(classGlob.stdout.text).toBe('Only in class-left: a\n');
 
+    await makeDirectory({ path: 'inherited-class-left' });
+    await makeDirectory({ path: 'inherited-class-right' });
+    await writeFile({ path: 'inherited-class-left/o', data: 'left\n' });
+    const inheritedClassNameGlob = await execute({
+      script: "diff -r -x '[[:__proto__:]]' inherited-class-left inherited-class-right",
+    });
+    expect(inheritedClassNameGlob.stdout.text).toBe('Only in inherited-class-left: o\n');
+    expect(inheritedClassNameGlob.stderr.text).toBe('');
+    expect(inheritedClassNameGlob.result.exitCode).toBe(1);
+
     await writeFile({ path: 'start-left/a/file', data: 'ignored-left\n' });
     await writeFile({ path: 'start-right/a/file', data: 'ignored-right\n' });
     await writeFile({ path: 'start-left/z/a', data: 'left\n' });
@@ -788,12 +1116,67 @@ real new
     await writeFile({ path: 'space left/sub dir/file name', data: 'old\n' });
     await writeFile({ path: 'space right/sub dir/file name', data: 'new\n' });
     const spacedPaths = await execute({ script: "diff -ru 'space left' 'space right'" });
-    expect(spacedPaths.stdout.text).toContain('diff -r -u "space left/sub dir/file name" "space right/sub dir/file name"');
+    expect(spacedPaths.stdout.text).toContain('diff -ru "space left/sub dir/file name" "space right/sub dir/file name"');
+
+    await writeFile({ path: 'quoted-left/a\rb', data: 'old\n' });
+    await writeFile({ path: 'quoted-right/a\rb', data: 'new\n' });
+    await writeFile({ path: 'quoted-left/あ', data: 'old\n' });
+    await writeFile({ path: 'quoted-right/あ', data: 'new\n' });
+    await writeFile({ path: 'quoted-left/a$b', data: 'old\n' });
+    await writeFile({ path: 'quoted-right/a$b', data: 'new\n' });
+    const quotedPaths = await execute({ script: 'diff -r quoted-left quoted-right' });
+    expect(quotedPaths.stdout.text).toContain(
+      'diff -r "quoted-left/a\\rb" "quoted-right/a\\rb"\n',
+    );
+    expect(quotedPaths.stdout.text).toContain(
+      'diff -r "quoted-left/\\343\\201\\202" "quoted-right/\\343\\201\\202"\n',
+    );
+    expect(quotedPaths.stdout.text).toContain(
+      'diff -r quoted-left/a$b quoted-right/a$b\n',
+    );
+
+    await writeFile({ path: 'header-left\r', data: 'old\n' });
+    await writeFile({ path: 'header-right\r', data: 'new\n' });
+    const carriageReturnHeaders = await execute({
+      script: "diff -u 'header-left\r' 'header-right\r'",
+    });
+    expect(carriageReturnHeaders.stdout.text).toContain('--- "header-left\\r"\t');
+    expect(carriageReturnHeaders.stdout.text).toContain('+++ "header-right\\r"\t');
+
+    await writeFile({ path: 'header-あ-left', data: 'old\n' });
+    await writeFile({ path: 'header-あ-right', data: 'new\n' });
+    const unicodeHeaders = await execute({
+      script: "diff -c 'header-あ-left' 'header-あ-right'",
+    });
+    expect(unicodeHeaders.stdout.text).toContain(
+      '*** "header-\\343\\201\\202-left"\t',
+    );
+    expect(unicodeHeaders.stdout.text).toContain(
+      '--- "header-\\343\\201\\202-right"\t',
+    );
 
     await writeFile({ path: 'exclude-patterns', data: '*.log\n' });
     const excludeFrom = await execute({ script: 'diff -r -X exclude-patterns left right' });
     expect(excludeFrom.result.exitCode).toBe(1);
     expect(excludeFrom.stdout.text).not.toContain('skip.log');
+
+    await writeFile({ path: 'cr-pattern-left/foo', data: 'left\n' });
+    await writeFile({ path: 'cr-pattern-right/foo', data: 'right\n' });
+    await writeFile({ path: 'cr-final-exclude-pattern', data: 'foo\r' });
+    const finalCarriageReturnPattern = await execute({
+      script: 'diff -r -X cr-final-exclude-pattern cr-pattern-left cr-pattern-right',
+    });
+    expect(finalCarriageReturnPattern.result.exitCode).toBe(0);
+    expect(finalCarriageReturnPattern.stdout.text).toBe('');
+
+    await writeFile({ path: 'bom-left/skip.txt', data: 'left\n' });
+    await writeFile({ path: 'bom-right/skip.txt', data: 'right\n' });
+    await writeFile({ path: 'bom-exclude-patterns', data: '\uFEFFskip.txt\n' });
+    const bomExclude = await execute({
+      script: 'diff -r -X bom-exclude-patterns bom-left bom-right',
+    });
+    expect(bomExclude.result.exitCode).toBe(1);
+    expect(bomExclude.stdout.text).toContain('bom-left/skip.txt');
 
     const newFile = await execute({ script: 'diff -rN left right' });
     expect(newFile.result.exitCode).toBe(1);
@@ -806,7 +1189,7 @@ real new
 
     const oneWayWrongSide = await execute({ script: 'diff --unidirectional-new-file left/only.txt missing.txt' });
     expect(oneWayWrongSide.result.exitCode).toBe(2);
-    expect(oneWayWrongSide.stderr.text).toContain('not found');
+    expect(oneWayWrongSide.stderr.text).toContain('No such file or directory');
 
     const bothMissing = await execute({ script: 'diff -N missing-a missing-b' });
     expect(bothMissing.result.exitCode).toBe(2);
@@ -829,6 +1212,23 @@ real new
     });
     expect(result.result.exitCode).toBe(1);
     expect(result.stdout.text).toBe('Only in case-left: A\n');
+  });
+
+  it('only folds ASCII file-name case with --ignore-file-name-case', async () => {
+    for (const locale of ['C', 'C.utf8']) {
+      const left = `${locale}-case-left`;
+      const right = `${locale}-case-right`;
+      await writeFile({ path: `${left}/É`, data: 'same\n' });
+      await writeFile({ path: `${right}/é`, data: 'same\n' });
+
+      const result = await execute({
+        script: `LC_ALL=${locale} diff -r --ignore-file-name-case ${left} ${right}`,
+      });
+
+      expect(result.result.exitCode).toBe(1);
+      expect(result.stdout.text).toBe(`Only in ${left}: É\nOnly in ${right}: é\n`);
+      expect(result.stderr.text).toBe('');
+    }
   });
 
   it('keeps common subdirectories neutral without recursion and compares symlinks by policy', async () => {
@@ -867,4 +1267,107 @@ real new
     expect(physicalLoop.result.exitCode).toBe(0);
     expect(physicalLoop.stderr.text).toBe('');
   });
+
+  it('uses GNU basic regular expressions for ignored matching lines', async () => {
+    await writeFile({ path: 'left', data: `\
+keep
+111
+xx
+end
+` });
+    await writeFile({ path: 'right', data: `\
+keep
+222
+xxx
+end
+` });
+
+    const posixClass = await execute({
+      script: String.raw`diff -I '[[:digit:]]\+' left right`,
+    });
+    const escapedPlus = await execute({
+      script: String.raw`diff -I '^x\+$' left right`,
+    });
+
+    expect(posixClass.stdout.text).toContain('< xx');
+    expect(posixClass.stdout.text).toContain('> xxx');
+    expect(posixClass.stderr.text).toBe('');
+    expect(posixClass.result.exitCode).toBe(1);
+    expect(escapedPlus.stdout.text).toContain('< 111');
+    expect(escapedPlus.stdout.text).toContain('> 222');
+    expect(escapedPlus.stderr.text).toBe('');
+    expect(escapedPlus.result.exitCode).toBe(1);
+  });
+
+  it('uses locale-sensitive POSIX character classes for ignored lines', async () => {
+    await writeFile({ path: 'locale-left', data: 'é\n' });
+    await writeFile({ path: 'locale-right', data: 'É\n' });
+
+    const cLocale = await execute({
+      script: "LC_ALL=C diff -I '[[:alpha:]]' locale-left locale-right",
+    });
+    const utf8Locale = await execute({
+      script: "LC_ALL=C.utf8 diff -I '[[:alpha:]]' locale-left locale-right",
+    });
+
+    expect(cLocale.stdout.text).toContain('< é');
+    expect(cLocale.stdout.text).toContain('> É');
+    expect(cLocale.stderr.text).toBe('');
+    expect(cLocale.result.exitCode).toBe(1);
+    expect(utf8Locale.stdout.text).toBe('');
+    expect(utf8Locale.stderr.text).toBe('');
+    expect(utf8Locale.result.exitCode).toBe(0);
+  });
+
+  it('formats zero-context insertions and preserves recursive short-option bundles', async () => {
+    await writeFile({ path: 'left', data: `\
+alpha
+beta
+gamma
+` });
+    await writeFile({ path: 'right', data: `\
+alpha
+BETA
+gamma
+delta
+` });
+
+    const context = await execute({
+      script: 'diff -C0 --label LEFT --label RIGHT left right',
+    });
+    expect(context.result.exitCode).toBe(1);
+    expect(context.stdout.text).toContain(`\
+*** 3 ****
+--- 4 ----
++ delta
+`);
+
+    await makeDirectory({ path: 'left-dir' });
+    await makeDirectory({ path: 'right-dir' });
+    await writeFile({ path: 'left-dir/a', data: 'a\n' });
+    await writeFile({ path: 'right-dir/b', data: 'b\n' });
+
+    const bundled = await execute({ script: 'diff -rN left-dir right-dir' });
+    const separate = await execute({ script: 'diff -r -N left-dir right-dir' });
+    expect(bundled.stdout.text).toContain('diff -rN left-dir/a right-dir/a\n');
+    expect(separate.stdout.text).toContain('diff -r -N left-dir/a right-dir/a\n');
+    expect(bundled.result.exitCode).toBe(1);
+    expect(separate.result.exitCode).toBe(1);
+  });
+
+
+
+  it('accepts explicit positive signs in numeric options', async () => {
+    await writeFile({ path: 'plus-left.txt', data: 'alpha\n' });
+    await writeFile({ path: 'plus-right.txt', data: 'beta\n' });
+
+    for (const option of ['-U', '-C', '-W', '--tabsize']) {
+      const execution = await execute({
+        script: `diff ${option} +1 plus-left.txt plus-right.txt`,
+      });
+      expect(execution.stderr.text).toBe('');
+      expect(execution.result.exitCode).toBe(1);
+    }
+  });
+
 });

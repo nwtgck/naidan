@@ -1,3 +1,12 @@
+import {
+  findBackquoteSubstitution,
+  findBalancedParenthesizedExpression,
+  findBracedParameterEnd,
+} from './shell/scan';
+
+export class ShellLexerIncompleteError extends Error {
+}
+
 export type TokenType =
   | 'WORD'
   | 'DLPAREN' // ((
@@ -46,6 +55,26 @@ export class Lexer {
     const char = this.input[this.position];
     const nextChar = this.input[this.position + 1];
 
+    if (char === '#') {
+      while (this.position < this.length) {
+        const commentChar = this.input[this.position];
+        if (commentChar === '\n' || commentChar === '\r') break;
+        this.position += 1;
+      }
+
+      if (this.position >= this.length) {
+        return { type: 'EOF', value: '', position: this.position };
+      }
+
+      const newlinePosition = this.position;
+      if (this.input[this.position] === '\r' && this.input[this.position + 1] === '\n') {
+        this.position += 2;
+      } else {
+        this.position += 1;
+      }
+      return { type: 'SEMI', value: '\n', position: newlinePosition };
+    }
+
     // Parentheses
     if (char === '(' && nextChar === '(') {
       this.position += 2;
@@ -75,6 +104,14 @@ export class Lexer {
         this.position += 2;
         return { type: 'AND', value: '&&', position: this.position - 2 };
       }
+      if (nextChar === '>') {
+        if (this.input[this.position + 2] === '>') {
+          this.position += 3;
+          return { type: 'GTGT', value: '&>>', position: this.position - 3 };
+        }
+        this.position += 2;
+        return { type: 'GT', value: '&>', position: this.position - 2 };
+      }
       this.position++;
       return { type: 'AMP', value: '&', position: this.position - 1 };
     }
@@ -86,7 +123,7 @@ export class Lexer {
 
     if (char === '\n' || char === '\r') {
       this.position++;
-      return { type: 'SEMI', value: ';', position: this.position - 1 };
+      return { type: 'SEMI', value: '\n', position: this.position - 1 };
     }
 
     if (char === '>') {
@@ -125,6 +162,10 @@ export class Lexer {
           this.position += 3;
           return { type: 'HERESTRING', value: '<<<', position: this.position - 3 };
         }
+        if (thirdChar === '-') {
+          this.position += 3;
+          return { type: 'HEREDOC', value: '<<-', position: this.position - 3 };
+        }
         this.position += 2;
         return { type: 'HEREDOC', value: '<<', position: this.position - 2 };
       }
@@ -147,12 +188,38 @@ export class Lexer {
 
   private readWord(): Token {
     const start = this.position;
-    let inQuote: "'" | '"' | null = null;
+    let inQuote: "'" | '"' | 'ansi-c' | null = null;
     let escaped = false;
     let extglobDepth = 0;
 
     while (this.position < this.length) {
       const char = this.input[this.position];
+
+      switch (inQuote) {
+      case "'":
+        if (char === "'") {
+          inQuote = null;
+        }
+        this.position++;
+        continue;
+      case 'ansi-c':
+        if (char === '\\') {
+          this.position += Math.min(2, this.length - this.position);
+          continue;
+        }
+        if (char === "'") {
+          inQuote = null;
+        }
+        this.position++;
+        continue;
+      case '"':
+      case null:
+        break;
+      default: {
+        const _ex: never = inQuote;
+        throw new Error(`Unhandled quote mode: ${_ex}`);
+      }
+      }
 
       if (escaped) {
         escaped = false;
@@ -166,6 +233,24 @@ export class Lexer {
         continue;
       }
 
+      if (char === '`') {
+        const substitution = findBackquoteSubstitution({
+          text: this.input,
+          startIndex: this.position,
+        });
+        if (substitution === undefined) {
+          throw new ShellLexerIncompleteError('Unterminated command substitution');
+        }
+        this.position = substitution.endIndex + 1;
+        continue;
+      }
+
+      if (char === '$' && this.input[this.position + 1] === "'") {
+        inQuote = 'ansi-c';
+        this.position += 2;
+        continue;
+      }
+
       if (char === '$' && this.input[this.position + 1] === '(') {
         const nextNextChar = this.input[this.position + 2];
         if (nextNextChar === '(') {
@@ -176,12 +261,31 @@ export class Lexer {
         continue;
       }
 
-      if (inQuote) {
-        if (char === inQuote) {
+      if (char === '$' && this.input[this.position + 1] === '{') {
+        const endIndex = findBracedParameterEnd({
+          text: this.input,
+          startIndex: this.position,
+        });
+        if (endIndex < 0) {
+          throw new ShellLexerIncompleteError('Unterminated parameter expansion');
+        }
+        this.position = endIndex + 1;
+        continue;
+      }
+
+      switch (inQuote) {
+      case '"':
+        if (char === '"') {
           inQuote = null;
         }
         this.position++;
         continue;
+      case null:
+        break;
+      default: {
+        const _ex: never = inQuote;
+        throw new Error(`Unhandled quote mode: ${_ex}`);
+      }
       }
 
       if (char === "'" || char === '"') {
@@ -228,73 +332,32 @@ export class Lexer {
       this.position++;
     }
 
+    switch (inQuote) {
+    case null:
+      break;
+    case '"':
+      throw new ShellLexerIncompleteError('Unterminated double quote');
+    case "'":
+    case 'ansi-c':
+      throw new ShellLexerIncompleteError('Unterminated single quote');
+    default: {
+      const _ex: never = inQuote;
+      throw new Error(`Unhandled quote mode: ${_ex}`);
+    }
+    }
+
     return { type: 'WORD', value: this.input.slice(start, this.position), position: start };
   }
 
   private consumeCommandSubstitution(): void {
-    let depth = 0;
-    let inQuote: "'" | '"' | null = null;
-    let escaped = false;
-
-    while (this.position < this.length) {
-      const char = this.input[this.position];
-      if (char === undefined) {
-        break;
-      }
-
-      if (escaped) {
-        escaped = false;
-        this.position += 1;
-        continue;
-      }
-
-      if (char === '\\') {
-        escaped = true;
-        this.position += 1;
-        continue;
-      }
-
-      if (inQuote !== null) {
-        if (char === inQuote) {
-          inQuote = null;
-        }
-        this.position += 1;
-        continue;
-      }
-
-      if (char === "'" || char === '"') {
-        inQuote = char;
-        this.position += 1;
-        continue;
-      }
-
-      if (char === '$' && this.input[this.position + 1] === '(') {
-        depth += 1;
-        this.position += this.input[this.position + 2] === '(' ? 3 : 2;
-        continue;
-      }
-
-      if (char === '(') {
-        depth += 1;
-        this.position += 1;
-        continue;
-      }
-
-      if (char === ')') {
-        if (depth === 0) {
-          this.position += 1;
-          return;
-        }
-        depth -= 1;
-        this.position += 1;
-        if (depth === 0) {
-          return;
-        }
-        continue;
-      }
-
-      this.position += 1;
+    const expression = findBalancedParenthesizedExpression({
+      text: this.input,
+      startIndex: this.position + 1,
+    });
+    if (expression === undefined) {
+      throw new ShellLexerIncompleteError('Unterminated command substitution');
     }
+    this.position = expression.endIndex + 1;
   }
 
   private consumeArithmeticExpansion(): void {
@@ -342,17 +405,26 @@ export class Lexer {
         continue;
       }
 
-      if (char === ')' && nextChar === ')') {
-        depth -= 1;
-        this.position += 2;
-        if (depth === 0) {
+      if (char === ')') {
+        if (depth > 1) {
+          depth -= 1;
+          this.position += 1;
+          continue;
+        }
+        if (nextChar === ')') {
+          this.position += 2;
           return;
         }
-        continue;
       }
 
       this.position += 1;
     }
+
+    throw new ShellLexerIncompleteError('Unterminated arithmetic expansion');
+  }
+
+  getPosition(): number {
+    return this.position;
   }
 
   peek(): Token {
@@ -362,7 +434,10 @@ export class Lexer {
     return token;
   }
 
-  readHereDoc({ delimiter }: { delimiter: string }): string {
+  readHereDoc({ delimiter, tabHandling }: {
+    delimiter: string,
+    tabHandling: 'preserve' | 'strip-leading',
+  }): string {
     let content = '';
 
     // Simple line-based scanner
@@ -371,7 +446,19 @@ export class Lexer {
       let lineEnd = this.input.indexOf('\n', lineStart);
       if (lineEnd === -1) lineEnd = this.length;
 
-      const line = this.input.slice(lineStart, lineEnd);
+      const rawLine = this.input.slice(lineStart, lineEnd);
+      const line = (() => {
+        switch (tabHandling) {
+        case 'preserve':
+          return rawLine;
+        case 'strip-leading':
+          return rawLine.replace(/^\t+/u, '');
+        default: {
+          const _ex: never = tabHandling;
+          throw new Error(`Unhandled here-document tab handling: ${_ex}`);
+        }
+        }
+      })();
 
       if (line === delimiter) {
         this.position = lineEnd + (lineEnd < this.length ? 1 : 0); // Skip delimiter line and newline
@@ -387,7 +474,7 @@ export class Lexer {
       this.position = lineEnd + (lineEnd < this.length ? 1 : 0);
     }
 
-    throw new Error(`Here-document delimiter '${delimiter}' not found`);
+    throw new ShellLexerIncompleteError(`Here-document delimiter '${delimiter}' not found`);
   }
 }
 

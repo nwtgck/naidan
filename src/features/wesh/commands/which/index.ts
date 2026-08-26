@@ -1,11 +1,13 @@
-import { parseStandardArgv } from '@/features/wesh/argv';
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import { formatResolvedCommand, resolveCommand } from '@/features/wesh/command-resolution';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { formatResolvedCommand, resolveCommands } from '@/features/wesh/command-resolution';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
+import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
 
 const whichArgvSpec: StandardArgvParserSpec = {
   options: [
+    { kind: 'flag', short: 'a', long: undefined, effects: [{ key: 'all', value: true }], help: { summary: 'print all matching command locations', category: 'common' } },
+    { kind: 'flag', short: 's', long: undefined, effects: [{ key: 'silent', value: true }], help: { summary: 'return status only without printing locations', category: 'common' } },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
   ],
   allowShortFlagBundles: true,
@@ -18,11 +20,14 @@ export const whichCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'which',
     description: 'Locate a command',
-    usage: 'which command...',
+    usage: 'which [-as] command...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardOptionParsingAtFirstPositional({
+        args: context.args,
+        spec: whichArgvSpec,
+      }),
       spec: whichArgvSpec,
     });
 
@@ -34,7 +39,7 @@ export const whichCommandDefinition: WeshCommandDefinition = {
         message: `which: ${diagnostic.message}`,
         argvSpec: whichArgvSpec,
       });
-      return { exitCode: 1 };
+      return { exitCode: 2 };
     }
 
     if (parsed.optionValues.help === true) {
@@ -47,33 +52,37 @@ export const whichCommandDefinition: WeshCommandDefinition = {
     }
 
     if (parsed.positionals.length === 0) {
-      await writeCommandUsageError({
-        context,
-        command: 'which',
-        message: 'which: missing operand',
-        argvSpec: whichArgvSpec,
-      });
       return { exitCode: 1 };
     }
 
     const text = context.text();
+    const includeAll = parsed.optionValues.all === true;
+    const silent = parsed.optionValues.silent === true;
     let foundAll = true;
 
     for (const name of parsed.positionals) {
-      const resolved = resolveCommand({
+      const matches = (await resolveCommands({
         context,
         name,
-      });
-      const formatted = formatResolvedCommand({
-        resolved,
-        mode: 'which',
-      });
-
-      if (formatted !== undefined) {
-        await text.print({ text: `${formatted}\n` });
-      } else {
-        await text.error({ text: `${name} not found\n` });
+      })).filter(resolved => resolved.kind !== 'file' || resolved.executable);
+      if (matches.length === 0) {
         foundAll = false;
+        continue;
+      }
+
+      if (silent) {
+        continue;
+      }
+
+      const selectedMatches = includeAll ? matches : matches.slice(0, 1);
+      for (const resolved of selectedMatches) {
+        const formatted = formatResolvedCommand({
+          resolved,
+          mode: 'which',
+        });
+        if (formatted !== undefined) {
+          await text.print({ text: `${formatted}\n` });
+        }
       }
     }
 

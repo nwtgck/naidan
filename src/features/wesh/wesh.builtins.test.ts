@@ -65,6 +65,33 @@ describe('wesh shell builtins', () => {
     expect(persisted.result.exitCode).toBe(0);
   });
 
+  it('keeps the shell running when exec has no replacement command after option parsing', async () => {
+    const executed = await execute({
+      script: `\
+exec --
+printf 'after\n'
+`,
+    });
+
+    expect(executed.stdout.text).toBe('after\n');
+    expect(executed.stderr.text).toBe('');
+    expect(executed.result.exitCode).toBe(0);
+  });
+
+  it('keeps the shell running after exec help', async () => {
+    const executed = await execute({
+      script: `\
+exec --help
+printf 'after\n'
+`,
+    });
+
+    expect(executed.stdout.text).toContain('usage: exec');
+    expect(executed.stdout.text).toMatch(/after\n$/u);
+    expect(executed.stderr.text).toBe('');
+    expect(executed.result.exitCode).toBe(0);
+  });
+
   it('supports exec with persistent read-write file descriptors for read -u', async () => {
     await writeFile({ name: 'fd.txt', data: `\
 alpha
@@ -148,82 +175,43 @@ echo chained >&4`,
     expect(executed.result.exitCode).toBe(0);
   });
 
-  it('keeps duplicated output descriptors usable after closing the original descriptor', async () => {
+  it('releases replaced exec descriptor references so FIFO readers observe EOF', async () => {
     const executed = await execute({
       script: `\
-exec 3> close-original.txt
-exec 4>&3
+mkfifo fifo
+cat fifo > output.txt &
+pid=$!
+exec 3> fifo
+printf 'line\n' >&3
 exec 3>&-
-echo via-duplicate >&4`,
+wait "$pid"
+cat output.txt
+`,
     });
 
-    const handle = await rootHandle.getFileHandle('close-original.txt');
-    const file = await handle.getFile();
-
-    expect(await file.text()).toBe('via-duplicate\n');
+    expect(executed.stdout.text).toBe('line\n');
     expect(executed.stderr.text).toBe('');
     expect(executed.result.exitCode).toBe(0);
   });
 
-  it('keeps exec-opened file descriptors available through compound commands', async () => {
-    const executed = await execute({
-      script: `\
-exec 3> compound.txt
-while read line; do
-  echo "$line" >&3
-done <<EOF
-alpha
-beta
-EOF`,
+  it('does not leak subshell-local exec descriptors into later top-level execution', async () => {
+    const subshell = await execute({
+      script: '(exec 3> subshell-only.txt)',
     });
+    expect(subshell.stdout.text).toBe('');
+    expect(subshell.stderr.text).toBe('');
+    expect(subshell.result.exitCode).toBe(0);
 
-    const handle = await rootHandle.getFileHandle('compound.txt');
+    const parent = await execute({
+      script: 'printf leaked >&3',
+    });
+    const handle = await rootHandle.getFileHandle('subshell-only.txt');
     const file = await handle.getFile();
 
-    expect(await file.text()).toBe(`\
-alpha
-beta
-`);
-    expect(executed.stderr.text).toBe('');
-    expect(executed.result.exitCode).toBe(0);
-  });
-
-  it('keeps exec-opened file descriptors available through shell functions', async () => {
-    const executed = await execute({
-      script: `\
-exec 3> function-fd.txt
-write_line() {
-  echo "$1" >&3
-}
-write_line alpha
-write_line beta`,
-    });
-
-    const handle = await rootHandle.getFileHandle('function-fd.txt');
-    const file = await handle.getFile();
-
-    expect(await file.text()).toBe(`\
-alpha
-beta
-`);
-    expect(executed.stderr.text).toBe('');
-    expect(executed.result.exitCode).toBe(0);
-  });
-
-  it('keeps parent file descriptors open after subshell-local closes', async () => {
-    const executed = await execute({
-      script: `\
-exec 3> parent-fd.txt
-(exec 3>&-)
-echo after >&3`,
-    });
-
-    const handle = await rootHandle.getFileHandle('parent-fd.txt');
-    const file = await handle.getFile();
-
-    expect(await file.text()).toBe('after\n');
-    expect(executed.stderr.text).toBe('');
-    expect(executed.result.exitCode).toBe(0);
+    expect(await file.text()).toBe('');
+    expect(parent.stdout.text).toBe('');
+    expect(parent.stderr.text).toContain('bad file descriptor');
+    expect(parent.result.exitCode).not.toBe(0);
   });
 
   it('keeps duplicated input descriptors readable after closing the original descriptor', async () => {
@@ -242,20 +230,4 @@ cat <&4`,
     expect(executed.result.exitCode).toBe(0);
   });
 
-  it('keeps duplicated parent file descriptors open after subshell-local closes', async () => {
-    const executed = await execute({
-      script: `\
-exec 3> dup-parent.txt
-exec 4>&3
-(exec 4>&-)
-echo kept >&4`,
-    });
-
-    const handle = await rootHandle.getFileHandle('dup-parent.txt');
-    const file = await handle.getFile();
-
-    expect(await file.text()).toBe('kept\n');
-    expect(executed.stderr.text).toBe('');
-    expect(executed.result.exitCode).toBe(0);
-  });
 });

@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import * as Comlink from 'comlink';
 
-import { createFileProtocolStandaloneWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub-standalone-loader';
+import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/wesh';
+import {
+  createStandaloneWorkerSession,
+  type StandaloneWorkerSession,
+} from '@/features/file-protocol-standalone/worker/standalone-worker-session';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
 import { createWeshStorageDirectoryRemoteForMounts } from '@/features/wesh/storage-directory/remote';
 import {
@@ -13,26 +17,20 @@ import {
   weshWorkerCommandEntrySchema,
   weshWorkerListDirectoryRequestSchema,
   weshWorkerDirectoryEntrySchema,
+  type IWeshWorker,
   type WeshWorkerClient,
   type WeshWorkerExecutionEventCallback,
   type WeshWorkerExecuteRequest,
   type WeshWorkerRemoteExecutionEvent,
 } from './types';
-import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub.types';
 import type { WeshMount } from '@/features/wesh/types';
 import { registerWeshWorkerClient } from './client-registry';
 import { createWeshWorkerExecutionTracker } from './execution-tracker';
 
 const WESH_WORKER_GRACEFUL_DISPOSE_TIMEOUT_MS = 1000;
 
-type StandaloneWeshWorkerTransport = {
-  readonly worker: Worker;
-  readonly remote: Comlink.Remote<IWorkerHub>;
+type StandaloneWeshWorkerRuntime = StandaloneWorkerSession<IWeshWorker> & {
   readonly storageDirectoryRemote: ReturnType<typeof createWeshStorageDirectoryRemoteForMounts>;
-};
-
-type StandaloneWeshWorkerRuntime = StandaloneWeshWorkerTransport & {
-  readonly wesh: Awaited<Comlink.Remote<IWorkerHub>['wesh']>;
 };
 
 export async function createFileProtocolCompatibleWeshWorkerClient({
@@ -60,11 +58,11 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     initialCwd,
   });
 
-  const liveRuntimes = new Set<StandaloneWeshWorkerTransport>();
-  const runtimeDestructionPromises = new WeakMap<StandaloneWeshWorkerTransport, Promise<void>>();
+  const liveRuntimes = new Set<StandaloneWeshWorkerRuntime>();
+  const runtimeDestructionPromises = new WeakMap<StandaloneWeshWorkerRuntime, Promise<void>>();
 
   const destroyRuntime = ({ runtime }: {
-    runtime: StandaloneWeshWorkerTransport;
+    runtime: StandaloneWeshWorkerRuntime;
   }): Promise<void> => {
     const existing = runtimeDestructionPromises.get(runtime);
     if (existing !== undefined) {
@@ -76,11 +74,11 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       // Worker-owned HizoFS Web Locks even when a cancelled execution never
       // settles or the graceful dispose RPC cannot run.
       const errors: unknown[] = [];
-      try {
-        runtime.remote[Comlink.releaseProxy]();
-      } catch (error) {
-        errors.push(error);
-      }
+      // Do not wait for a wedged Comlink endpoint before terminating the Worker.
+      // Release is best-effort once the physical lifecycle boundary is required.
+      void Promise.resolve()
+        .then(() => runtime.remote[Comlink.releaseProxy]())
+        .catch(() => undefined);
       try {
         runtime.worker.terminate();
       } catch (error) {
@@ -104,7 +102,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   }): Promise<'completed' | 'timed_out'> => {
     const completion = Promise.resolve()
       .then(async () => {
-        await runtime.wesh.dispose();
+        await runtime.remote.dispose();
         return { status: 'completed' as const };
       })
       .catch(error => ({ status: 'failed' as const, error }));
@@ -134,29 +132,21 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     }
   };
 
-  const createRuntime = async () => {
+  const createRuntime = async (): Promise<StandaloneWeshWorkerRuntime> => {
     const storageDirectoryRemote = createWeshStorageDirectoryRemoteForMounts({
       mounts,
       storageDirectoryExecution: 'worker_local',
     });
-    const worker = await createFileProtocolStandaloneWorkerHub();
-    const remote = Comlink.wrap<IWorkerHub>(worker);
-    const transport: StandaloneWeshWorkerTransport = {
-      worker,
-      remote,
-      storageDirectoryRemote,
-    };
+    let session: StandaloneWorkerSession<IWeshWorker> | undefined;
     try {
-      const wesh = await remote.wesh;
+      session = await createStandaloneWorkerSession<IWeshWorker>({ createWorker: createStandaloneWorker });
       const runtime: StandaloneWeshWorkerRuntime = {
-        worker,
-        remote,
-        wesh,
+        ...session,
         storageDirectoryRemote,
       };
       // Keep the proxied reader as a separate top-level argument.
       // Putting it inside the init request object can fail structured clone in browsers.
-      await wesh.init(
+      await runtime.remote.init(
         initRequest,
         naidanSysfsRemoteReader
           ? Comlink.proxy(naidanSysfsRemoteReader)
@@ -168,11 +158,23 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       liveRuntimes.add(runtime);
       return runtime;
     } catch (initializationError: unknown) {
-      try {
-        await destroyRuntime({ runtime: transport });
-      } catch (cleanupError: unknown) {
+      const cleanupErrors: unknown[] = [];
+      if (session !== undefined) {
+        try {
+          await destroyRuntime({ runtime: { ...session, storageDirectoryRemote } });
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      } else {
+        try {
+          await storageDirectoryRemote?.dispose();
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      }
+      if (cleanupErrors.length > 0) {
         throw new AggregateError(
-          [initializationError, cleanupError],
+          [initializationError, ...cleanupErrors],
           'Wesh Worker initialization failed and its runtime could not be destroyed',
         );
       }
@@ -182,7 +184,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
 
   let runtime = await createRuntime();
   const executionTracker = createWeshWorkerExecutionTracker<StandaloneWeshWorkerRuntime>({
-    getRemote: ({ runtime: executionRuntime }) => executionRuntime.wesh,
+    getRemote: ({ runtime: executionRuntime }) => executionRuntime.remote,
   });
   const runtimeReplacementPromises = new WeakMap<StandaloneWeshWorkerRuntime, Promise<void>>();
   const pendingRuntimeReplacements = new Set<Promise<void>>();
@@ -234,7 +236,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       onEvent?: WeshWorkerExecutionEventCallback,
     }) {
       const executionRuntime = runtime;
-      const response = await executionRuntime.wesh.startExecution(
+      const response = await executionRuntime.remote.startExecution(
         request,
         onEvent ? Comlink.proxy(async (event: WeshWorkerRemoteExecutionEvent) => {
           await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) });
@@ -286,7 +288,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     async execute({ request }: { request: WeshWorkerExecuteRequest }) {
       const executionRuntime = runtime;
       const response = weshWorkerStartExecutionResponseSchema.parse(
-        await executionRuntime.wesh.startExecution(request, undefined),
+        await executionRuntime.remote.startExecution(request, undefined),
       );
       const executionId = executionTracker.registerExecution({
         runtime: executionRuntime,
@@ -299,20 +301,20 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       }
     },
     async getShellState() {
-      const response = await runtime.wesh.getShellState();
+      const response = await runtime.remote.getShellState();
       return weshWorkerShellStateSchema.parse(response);
     },
     async listCommands() {
-      const response = await runtime.wesh.listCommands();
+      const response = await runtime.remote.listCommands();
       return z.array(weshWorkerCommandEntrySchema).parse(response);
     },
     async listDirectory({ request }) {
       const validated = weshWorkerListDirectoryRequestSchema.parse(request);
-      const response = await runtime.wesh.listDirectory({ request: validated });
+      const response = await runtime.remote.listDirectory({ request: validated });
       return z.array(weshWorkerDirectoryEntrySchema).parse(response);
     },
     async interrupt() {
-      return runtime.wesh.interrupt();
+      return runtime.remote.interrupt();
     },
     async dispose() {
       disposeStarted = true;

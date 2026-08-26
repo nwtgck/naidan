@@ -1,6 +1,11 @@
 import * as Comlink from 'comlink';
 
-import { createFileProtocolStandaloneWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub-standalone-loader';
+import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/file-explorer';
+import {
+  createStandaloneWorkerSession,
+  disposeStandaloneWorkerSession,
+  STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+} from '@/features/file-protocol-standalone/worker/standalone-worker-session';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
 import { createWeshStorageDirectoryRemoteForMounts } from '@/features/wesh/storage-directory/remote';
 import { mapWeshMountsToWorkerMounts } from '@/features/wesh/worker/types';
@@ -19,7 +24,6 @@ import {
   type FileExplorerWorkerClient,
   type IFileExplorerWorker,
 } from './types';
-import type { IWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub.types';
 
 function createDirectoryArchiveJobId(): string {
   if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
@@ -55,35 +59,6 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })();
-  const storageDirectoryRemote = (() => {
-    switch (root.kind) {
-    case 'native-directory':
-    case 'opfs-root':
-      return undefined;
-    case 'storage-directory':
-      return createWeshStorageDirectoryRemoteForMounts({
-        mounts: [{
-          type: 'storage_directory',
-          path: '/',
-          handle: root.handle,
-          readOnly: root.readOnly,
-        }],
-        storageDirectoryExecution: 'ui_remote',
-      });
-    case 'wesh-mounts':
-      return createWeshStorageDirectoryRemoteForMounts({
-        mounts: root.mounts,
-        storageDirectoryExecution: 'ui_remote',
-      });
-    default: {
-      const _ex: never = root;
-      throw new Error(`Unhandled file explorer root kind: ${String(_ex)}`);
-    }
-    }
-  })();
-  const worker = await createFileProtocolStandaloneWorkerHub();
-  const remote = Comlink.wrap<IWorkerHub>(worker);
-  const fileExplorer = await remote.fileExplorer as Comlink.Remote<IFileExplorerWorker>;
   const requestRoot = await (async () => {
     switch (root.kind) {
     case 'native-directory':
@@ -110,36 +85,86 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })();
-  const prepareResponse = await fileExplorer.prepareSession(
-    { root: requestRoot },
-    naidanSysfsRemoteReader
-      ? Comlink.proxy(naidanSysfsRemoteReader)
-      : undefined,
-    storageDirectoryRemote
-      ? Comlink.proxy(storageDirectoryRemote)
-      : undefined,
-  );
-  const sessionId = fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId;
+  const storageDirectoryRemote = (() => {
+    switch (root.kind) {
+    case 'native-directory':
+    case 'opfs-root':
+      return undefined;
+    case 'storage-directory':
+      return createWeshStorageDirectoryRemoteForMounts({
+        mounts: [{
+          type: 'storage_directory',
+          path: '/',
+          handle: root.handle,
+          readOnly: root.readOnly,
+        }],
+        storageDirectoryExecution: 'ui_remote',
+      });
+    case 'wesh-mounts':
+      return createWeshStorageDirectoryRemoteForMounts({
+        mounts: root.mounts,
+        storageDirectoryExecution: 'ui_remote',
+      });
+    default: {
+      const _ex: never = root;
+      throw new Error(`Unhandled file explorer root kind: ${String(_ex)}`);
+    }
+    }
+  })();
+  let session: Awaited<ReturnType<typeof createStandaloneWorkerSession<IFileExplorerWorker>>> | undefined;
+  let remote: Comlink.Remote<IFileExplorerWorker> | undefined;
+  let sessionId: string;
+  try {
+    session = await createStandaloneWorkerSession<IFileExplorerWorker>({ createWorker: createStandaloneWorker });
+    remote = session.remote;
+    const prepareResponse = await remote.prepareSession(
+      { root: requestRoot },
+      naidanSysfsRemoteReader
+        ? Comlink.proxy(naidanSysfsRemoteReader)
+        : undefined,
+      storageDirectoryRemote
+        ? Comlink.proxy(storageDirectoryRemote)
+        : undefined,
+    );
+    sessionId = fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId;
+  } catch (error) {
+    const cleanup = [storageDirectoryRemote?.dispose()];
+    if (session !== undefined) {
+      cleanup.push(disposeStandaloneWorkerSession({
+        session,
+        beforeRelease: undefined,
+        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+      }));
+    }
+    await Promise.allSettled(cleanup);
+    throw error;
+  }
+
+  if (session === undefined || remote === undefined) {
+    throw new Error('Standalone File Explorer Worker initialization did not establish a session');
+  }
+  const activeSession = session;
+  const activeRemote = remote;
 
   return {
     async readDirectory({ path }) {
       return fileExplorerReadDirectoryResponseSchema.parse(
-        await fileExplorer.readDirectory({ request: { sessionId, path } }),
+        await activeRemote.readDirectory({ request: { sessionId, path } }),
       );
     },
     async readPreview({ path, mode }) {
       return fileExplorerReadPreviewResponseSchema.parse(
-        await fileExplorer.readPreview({ request: { sessionId, path, mode } }),
+        await activeRemote.readPreview({ request: { sessionId, path, mode } }),
       );
     },
     async readFile({ path }) {
       return fileExplorerReadFileResponseSchema.parse(
-        await fileExplorer.readFile({ request: { sessionId, path } }),
+        await activeRemote.readFile({ request: { sessionId, path } }),
       );
     },
     async suggestArchiveExclusions({ directoryPath, query, excludedRelativePaths }) {
       return fileExplorerSuggestArchiveExclusionsResponseSchema.parse(
-        await fileExplorer.suggestArchiveExclusions({
+        await activeRemote.suggestArchiveExclusions({
           request: { sessionId, directoryPath, query, excludedRelativePaths },
         }),
       );
@@ -147,35 +172,35 @@ export async function createFileExplorerWorkerClient({
     startDirectoryArchive({ directoryPath, excludedRelativePaths }) {
       const jobId = createDirectoryArchiveJobId();
       return {
-        result: fileExplorer.createDirectoryArchive({
+        result: activeRemote.createDirectoryArchive({
           request: { sessionId, jobId, directoryPath, excludedRelativePaths },
         }).then(response => fileExplorerCreateDirectoryArchiveResponseSchema.parse(response)),
         async cancel() {
-          await fileExplorer.cancelDirectoryArchive({ request: { sessionId, jobId } });
+          await activeRemote.cancelDirectoryArchive({ request: { sessionId, jobId } });
         },
       };
     },
     async createFile({ parentPath, name }) {
-      await fileExplorer.createFile({ request: { sessionId, parentPath, name } });
+      await activeRemote.createFile({ request: { sessionId, parentPath, name } });
     },
     async createFolder({ parentPath, name }) {
-      await fileExplorer.createFolder({ request: { sessionId, parentPath, name } });
+      await activeRemote.createFolder({ request: { sessionId, parentPath, name } });
     },
     async deleteEntries({ paths }) {
-      await fileExplorer.deleteEntries({ request: { sessionId, paths } });
+      await activeRemote.deleteEntries({ request: { sessionId, paths } });
     },
     async renameEntry({ path, newName }) {
-      await fileExplorer.renameEntry({ request: { sessionId, path, newName } });
+      await activeRemote.renameEntry({ request: { sessionId, path, newName } });
     },
     async copyEntries({ sourcePaths, targetDirectoryPath }) {
-      await fileExplorer.copyEntries({ request: { sessionId, sourcePaths, targetDirectoryPath } });
+      await activeRemote.copyEntries({ request: { sessionId, sourcePaths, targetDirectoryPath } });
     },
     async moveEntries({ sourcePaths, targetDirectoryPath }) {
-      await fileExplorer.moveEntries({ request: { sessionId, sourcePaths, targetDirectoryPath } });
+      await activeRemote.moveEntries({ request: { sessionId, sourcePaths, targetDirectoryPath } });
     },
     async analyzeZipUpload({ analysisId, targetDirectoryPath, fileName, blob }) {
       return fileExplorerAnalyzeZipUploadResponseSchema.parse(
-        await fileExplorer.analyzeZipUpload({
+        await activeRemote.analyzeZipUpload({
           request: { sessionId, analysisId, targetDirectoryPath, fileName, blob },
         }),
       );
@@ -183,7 +208,7 @@ export async function createFileExplorerWorkerClient({
     async readZipUploadPreviewDirectory({ analysisId, placement, relativePath }) {
       const plainPlacement = toPlainFileExplorerZipUploadPlacement({ placement });
       return fileExplorerReadZipUploadPreviewDirectoryResponseSchema.parse(
-        await fileExplorer.readZipUploadPreviewDirectory({
+        await activeRemote.readZipUploadPreviewDirectory({
           request: { sessionId, analysisId, placement: plainPlacement, relativePath },
         }),
       );
@@ -192,31 +217,45 @@ export async function createFileExplorerWorkerClient({
       const jobId = createZipUploadJobId();
       const plainPlacement = toPlainFileExplorerZipUploadPlacement({ placement });
       return {
-        result: fileExplorer.executeZipUpload({
+        result: activeRemote.executeZipUpload({
           request: { sessionId, analysisId, jobId, placement: plainPlacement },
         }).then(response => fileExplorerExecuteZipUploadResponseSchema.parse(response)),
         async cancel() {
-          await fileExplorer.cancelZipUpload({ request: { sessionId, jobId } });
+          await activeRemote.cancelZipUpload({ request: { sessionId, jobId } });
         },
       };
     },
     async disposeZipUploadAnalysis({ analysisId }) {
-      await fileExplorer.disposeZipUploadAnalysis({ request: { sessionId, analysisId } });
+      await activeRemote.disposeZipUploadAnalysis({ request: { sessionId, analysisId } });
     },
     async uploadFiles({ targetDirectoryPath, files }) {
-      await fileExplorer.uploadFiles({ request: { sessionId, targetDirectoryPath, files } });
+      await activeRemote.uploadFiles({ request: { sessionId, targetDirectoryPath, files } });
     },
     async dispose() {
-      try {
-        await fileExplorer.disposeSession({ request: { sessionId } });
-        await storageDirectoryRemote?.dispose();
-      } finally {
-        try {
-          await remote[Comlink.releaseProxy]();
-        } finally {
-          worker.terminate();
-        }
-      }
+      await disposeStandaloneWorkerSession({
+        session: activeSession,
+        beforeRelease: async () => {
+          const results = await Promise.allSettled([
+            activeRemote.disposeSession({ request: { sessionId } }),
+            storageDirectoryRemote?.dispose(),
+          ]);
+          const failures = results.flatMap(result => {
+            switch (result.status) {
+            case 'fulfilled':
+              return [];
+            case 'rejected':
+              return [result.reason];
+            default: {
+              const _ex: never = result;
+              throw new Error(`Unhandled File Explorer cleanup result: ${String(_ex)}`);
+            }
+            }
+          });
+          if (failures.length === 1) throw failures[0];
+          if (failures.length > 1) throw new AggregateError(failures, 'File Explorer session cleanup failed');
+        },
+        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+      });
     },
   };
 }

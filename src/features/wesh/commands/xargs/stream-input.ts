@@ -1,9 +1,23 @@
 import {
+  isXargsLogicalBlankLine,
   parseXargsInsertInput,
   parseXargsStandardInput,
 } from '@/features/wesh/commands/xargs/parse-input';
+import { CommandDataStreamDecoder } from '@/features/wesh/commands/_shared/data-codec';
 
 export class XargsInputError extends Error {}
+
+function hasUnescapedTrailingBackslash({
+  text,
+}: {
+  text: string,
+}): boolean {
+  let count = 0;
+  for (let index = text.length - 1; index >= 0 && text[index] === '\\'; index -= 1) {
+    count += 1;
+  }
+  return count % 2 === 1;
+}
 
 export async function* iterateReadableStreamChunks({
   stream,
@@ -29,21 +43,121 @@ export async function* iterateReadableStreamChunks({
   }
 }
 
-export async function* iterateUtf8TextChunks({
+export async function* iterateCommandDataTextChunks({
   chunks,
 }: {
   chunks: AsyncIterable<Uint8Array>,
 }): AsyncIterable<string> {
-  const decoder = new TextDecoder();
+  const decoder = new CommandDataStreamDecoder();
   for await (const chunk of chunks) {
-    const text = decoder.decode(chunk, { stream: true });
+    const text = decoder.write({ bytes: chunk });
     if (text.length > 0) {
       yield text;
     }
   }
-  const finalText = decoder.decode();
+  const finalText = decoder.finish();
   if (finalText.length > 0) {
     yield finalText;
+  }
+}
+
+export type XargsIgnoredNulBoundary =
+  | { readonly kind: 'whitespace' }
+  | { readonly kind: 'line' }
+  | { readonly kind: 'delimiter', readonly delimiter: string };
+
+function isIgnoredNulBoundary({
+  char,
+  boundary,
+}: {
+  char: string,
+  boundary: XargsIgnoredNulBoundary,
+}): boolean {
+  switch (boundary.kind) {
+  case 'whitespace':
+    return char === ' ' || char === '\t' || char === '\n' || char === '\r';
+  case 'line':
+    return char === '\n' || char === '\r';
+  case 'delimiter':
+    return char === boundary.delimiter;
+  default: {
+    const _exhaustive: never = boundary;
+    return _exhaustive;
+  }
+  }
+}
+
+export async function* iterateXargsTextIgnoringNulSuffixes({
+  textChunks,
+  boundary,
+  onIgnoredNul,
+  preserveNul = false,
+}: {
+  textChunks: AsyncIterable<string>,
+  boundary: XargsIgnoredNulBoundary,
+  onIgnoredNul?: () => Promise<void>,
+  preserveNul?: boolean,
+}): AsyncIterable<string> {
+  let discarding = false;
+
+  for await (const text of textChunks) {
+    const output: string[] = [];
+    for (const char of text) {
+      if (discarding) {
+        if (isIgnoredNulBoundary({ char, boundary })) {
+          output.push(char);
+          discarding = false;
+        }
+        continue;
+      }
+
+      if (char === '\0') {
+        if (preserveNul) {
+          output.push(char);
+        }
+        discarding = true;
+        await onIgnoredNul?.();
+        continue;
+      }
+
+      output.push(char);
+    }
+
+    if (output.length > 0) {
+      yield output.join('');
+    }
+  }
+}
+
+export async function* iterateXargsInputLines({
+  textChunks,
+}: {
+  textChunks: AsyncIterable<string>,
+}): AsyncIterable<string> {
+  let fragments: string[] = [];
+  let sawData = false;
+  let endedWithLineFeed = false;
+  for await (const text of textChunks) {
+    if (text.length === 0) continue;
+    sawData = true;
+    let start = 0;
+    while (true) {
+      const separator = text.indexOf('\n', start);
+      if (separator === -1) {
+        fragments.push(text.slice(start));
+        endedWithLineFeed = false;
+        break;
+      }
+      fragments.push(text.slice(start, separator));
+      yield fragments.join('');
+      fragments = [];
+      start = separator + 1;
+      endedWithLineFeed = start === text.length;
+      if (start === text.length) break;
+    }
+  }
+  if (fragments.length > 0 || (sawData && !endedWithLineFeed)) {
+    yield fragments.join('');
   }
 }
 
@@ -71,6 +185,7 @@ export async function* iterateXargsStandardItems({
   let tokenStarted = false;
   let quote: '"' | '\'' | undefined;
   let escaping = false;
+  let sawItemOnCurrentLine = false;
 
   const emitCurrent = (): { item: string | undefined, stopped: boolean } => {
     const item = finalizeStandardItem({ fragments, tokenStarted });
@@ -96,6 +211,8 @@ export async function* iterateXargsStandardItems({
           quote = undefined;
         } else if (char === '\\' && quote === '"') {
           escaping = true;
+        } else if (char === '\n' || char === '\r') {
+          throw new XargsInputError('xargs: unmatched quote in input');
         } else {
           fragments.push(char);
           tokenStarted = true;
@@ -123,6 +240,10 @@ export async function* iterateXargsStandardItems({
         }
         if (emitted.item !== undefined) {
           yield emitted.item;
+          sawItemOnCurrentLine = true;
+        }
+        if (char === '\n' || char === '\r') {
+          sawItemOnCurrentLine = false;
         }
         break;
       }
@@ -134,16 +255,16 @@ export async function* iterateXargsStandardItems({
     }
   }
 
-  if (escaping) {
-    throw new XargsInputError('xargs: unmatched backslash in input');
-  }
   if (quote !== undefined) {
     throw new XargsInputError('xargs: unmatched quote in input');
   }
 
-  const emitted = emitCurrent();
-  if (!emitted.stopped && emitted.item !== undefined) {
-    yield emitted.item;
+  const finalItem = finalizeStandardItem({ fragments, tokenStarted });
+  if (
+    finalItem !== undefined
+    && !(eofString !== undefined && finalItem === eofString && !sawItemOnCurrentLine)
+  ) {
+    yield finalItem;
   }
 }
 
@@ -155,9 +276,13 @@ export async function* iterateXargsDelimitedItems({
   delimiter: string,
 }): AsyncIterable<string> {
   const fragments: string[] = [];
+  let sawData = false;
   let endedWithDelimiter = false;
 
   for await (const text of textChunks) {
+    if (text.length > 0) {
+      sawData = true;
+    }
     for (const char of text) {
       if (char === delimiter) {
         yield fragments.join('');
@@ -170,7 +295,7 @@ export async function* iterateXargsDelimitedItems({
     }
   }
 
-  if (!endedWithDelimiter) {
+  if (sawData && !endedWithDelimiter) {
     yield fragments.join('');
   }
 }
@@ -182,8 +307,15 @@ export async function* iterateXargsInsertItems({
   lines: AsyncIterable<string>,
   eofString: string | undefined,
 }): AsyncIterable<string> {
+  let continued = '';
   for await (const line of lines) {
-    const parsed = parseXargsInsertInput({ text: line });
+    if (hasUnescapedTrailingBackslash({ text: line })) {
+      continued += `${line.slice(0, -1)}\n`;
+      continue;
+    }
+
+    const parsed = parseXargsInsertInput({ text: `${continued}${line}` });
+    continued = '';
     if (!parsed.ok) {
       throw new XargsInputError(parsed.message);
     }
@@ -193,6 +325,10 @@ export async function* iterateXargsInsertItems({
       }
       yield item;
     }
+  }
+
+  if (continued.length > 0) {
+    throw new XargsInputError('xargs: unmatched backslash in input');
   }
 }
 
@@ -204,6 +340,11 @@ export async function* iterateXargsLogicalLines({
   let continuedParts: string[] = [];
 
   for await (const line of lines) {
+    if (hasUnescapedTrailingBackslash({ text: line })) {
+      continuedParts.push(line.slice(0, -1), '\n');
+      continue;
+    }
+
     const mergedParts = [...continuedParts, line];
     const mergedLine = mergedParts.join('');
     const hasContinuation = /[ \t]+$/.test(mergedLine);
@@ -217,11 +358,14 @@ export async function* iterateXargsLogicalLines({
     }
 
     continuedParts = [];
-    if (normalizedLine.trim().length === 0) {
+    if (isXargsLogicalBlankLine({ text: normalizedLine })) {
       continue;
     }
 
-    const parsed = parseXargsStandardInput({ text: normalizedLine });
+    const parsed = parseXargsStandardInput({
+      text: normalizedLine,
+      literalNewlines: true,
+    });
     if (!parsed.ok) {
       throw new XargsInputError(parsed.message);
     }
@@ -231,7 +375,10 @@ export async function* iterateXargsLogicalLines({
   }
 
   if (continuedParts.length > 0) {
-    const parsed = parseXargsStandardInput({ text: continuedParts.join('') });
+    const parsed = parseXargsStandardInput({
+      text: continuedParts.join(''),
+      literalNewlines: true,
+    });
     if (!parsed.ok) {
       throw new XargsInputError(parsed.message);
     }

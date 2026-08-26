@@ -1,5 +1,6 @@
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
 
@@ -12,7 +13,8 @@ interface SeqParsedArgs {
   diagnostic: string | undefined,
 }
 
-type SeqPrintfConversion = 'f' | 'F' | 'e' | 'E' | 'g' | 'G' | 'd' | 'i';
+type SeqPrintfConversion = 'f' | 'F' | 'e' | 'E' | 'g' | 'G';
+type SeqSignMode = 'minus-only' | 'always' | 'space';
 
 interface SeqPrintfSpec {
   kind: 'printf',
@@ -21,12 +23,47 @@ interface SeqPrintfSpec {
   conversion: SeqPrintfConversion,
   width: number | undefined,
   zeroPad: boolean,
+  leftAlign: boolean,
+  signMode: SeqSignMode,
   precision: number | undefined,
 }
 
 type SeqFormatSpec =
   | { kind: 'plain' }
   | SeqPrintfSpec;
+
+interface SeqDecimal {
+  coefficient: bigint,
+  scale: number,
+  negativeZero: boolean,
+  printWidth: number,
+}
+
+interface SeqPlan {
+  first: bigint,
+  increment: bigint,
+  last: bigint,
+  count: number,
+  scale: number,
+  outputPrecision: number,
+  firstInputWidth: number,
+  firstInputPrecision: number,
+  lastInputWidth: number,
+  lastInputPrecision: number,
+  firstIsNegativeZero: boolean,
+  lastIsNegativeZero: boolean,
+}
+
+interface SeqValue {
+  coefficient: bigint,
+  scale: number,
+  negativeZero: boolean,
+}
+
+const MAXIMUM_DECIMAL_SCALE = 10_000;
+const MAXIMUM_SEQUENCE_VALUES = 1_000_001;
+const DECIMAL_OPERAND_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u;
+const HEXADECIMAL_INTEGER_OPERAND_PATTERN = /^[+-]?0[xX][0-9a-fA-F]+$/u;
 
 const seqArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -46,28 +83,140 @@ function isNumericOperand({
 }: {
   value: string,
 }): boolean {
-  return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value);
+  return DECIMAL_OPERAND_PATTERN.test(value) || HEXADECIMAL_INTEGER_OPERAND_PATTERN.test(value);
 }
 
-function isFixedPointDecimal({
+function powerOfTen({
+  exponent,
+}: {
+  exponent: number,
+}): bigint {
+  return 10n ** BigInt(exponent);
+}
+
+function getSeqDecimalPrintWidth({
+  numericText,
+}: {
+  numericText: string,
+}): number {
+  const arg = numericText.startsWith('+') ? numericText.slice(1) : numericText;
+  if (HEXADECIMAL_INTEGER_OPERAND_PATTERN.test(arg)) {
+    return 0;
+  }
+
+  let width = arg.length;
+  const decimalPointIndex = arg.indexOf('.');
+  const lowerExponentIndex = arg.indexOf('e');
+  const upperExponentIndex = arg.indexOf('E');
+  const exponentIndex = lowerExponentIndex >= 0 ? lowerExponentIndex : upperExponentIndex;
+  const fractionLength = decimalPointIndex < 0
+    ? 0
+    : (exponentIndex >= 0 ? exponentIndex : arg.length) - decimalPointIndex - 1;
+
+  if (decimalPointIndex >= 0) {
+    if (fractionLength === 0) {
+      width -= 1;
+    } else if (decimalPointIndex === 0 || !/[0-9]/u.test(arg[decimalPointIndex - 1]!)) {
+      width += 1;
+    }
+  }
+
+  if (exponentIndex >= 0) {
+    let exponent = Number(arg.slice(exponentIndex + 1));
+    let precision = fractionLength;
+    precision += exponent < 0
+      ? -exponent
+      : -Math.min(precision, exponent);
+
+    width -= arg.length - exponentIndex;
+    if (exponent < 0) {
+      if (decimalPointIndex >= 0) {
+        if (exponentIndex === decimalPointIndex + 1) {
+          width += 1;
+        }
+      } else {
+        width += 1;
+      }
+      exponent = -exponent;
+    } else {
+      if (decimalPointIndex >= 0 && precision === 0 && fractionLength > 0) {
+        width -= 1;
+      }
+      exponent -= Math.min(fractionLength, exponent);
+    }
+    width += exponent;
+  }
+
+  return width;
+}
+
+function parseSeqDecimal({
   value,
 }: {
   value: string,
-}): boolean {
-  return /^[+-]?(?:\d+|\d+\.\d+|\.\d+)$/.test(value);
-}
+}): { ok: true, decimal: SeqDecimal } | { ok: false, message: string } {
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  const hexadecimalMatch = /^([+-]?)0[xX]([0-9a-fA-F]+)$/u.exec(numericText);
+  if (hexadecimalMatch !== null) {
+    const sign = hexadecimalMatch[1] ?? '';
+    const digits = hexadecimalMatch[2] ?? '0';
+    let coefficient = BigInt(`0x${digits}`);
+    if (sign === '-') {
+      coefficient = -coefficient;
+    }
+    return {
+      ok: true,
+      decimal: {
+        coefficient,
+        scale: 0,
+        negativeZero: sign === '-' && coefficient === 0n,
+        printWidth: 0,
+      },
+    };
+  }
 
-function parseSeqNumber({
-  value,
-}: {
-  value: string,
-}): { ok: true, number: number } | { ok: false, message: string } {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
+  const match = /^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/u.exec(numericText);
+  if (match === null) {
     return { ok: false, message: `invalid floating point argument: '${value}'` };
   }
 
-  return { ok: true, number: parsed };
+  const sign = match[1] ?? '';
+  const integerPart = match[2] ?? '';
+  const fractionPart = match[2] === undefined ? (match[4] ?? '') : (match[3] ?? '');
+  const exponentText = match[5] ?? '0';
+  const exponent = Number(exponentText);
+  if (!Number.isSafeInteger(exponent)) {
+    return { ok: false, message: `invalid floating point argument: '${value}'` };
+  }
+
+  let scale = fractionPart.length - exponent;
+  if (Math.abs(scale) > MAXIMUM_DECIMAL_SCALE) {
+    return { ok: false, message: `invalid floating point argument: '${value}'` };
+  }
+
+  const digits = `${integerPart}${fractionPart}`.replace(/^0+(?=\d)/u, '') || '0';
+  if (digits.length + Math.max(0, -scale) > MAXIMUM_DECIMAL_SCALE) {
+    return { ok: false, message: `invalid floating point argument: '${value}'` };
+  }
+
+  let coefficient = BigInt(digits);
+  if (scale < 0) {
+    coefficient *= powerOfTen({ exponent: -scale });
+    scale = 0;
+  }
+  if (sign === '-') {
+    coefficient = -coefficient;
+  }
+
+  return {
+    ok: true,
+    decimal: {
+      coefficient,
+      scale,
+      negativeZero: sign === '-' && coefficient === 0n,
+      printWidth: getSeqDecimalPrintWidth({ numericText }),
+    },
+  };
 }
 
 function parseSeqArgs({
@@ -96,34 +245,18 @@ function parseSeqArgs({
 
     if (!optionsDone && token === '--help') {
       parsed.help = true;
-      continue;
+      return parsed;
     }
 
-    if (!optionsDone && (token === '-w' || token === '--equal-width')) {
+    if (!optionsDone && token === '--equal-width') {
       parsed.equalWidth = true;
-      continue;
-    }
-
-    if (!optionsDone && (token === '-s' || /^-s.+$/u.test(token))) {
-      const value = token.length > 2 ? token.slice(2) : undefined;
-      if (value !== undefined) {
-        parsed.separator = value;
-      } else {
-        const next = args[index + 1];
-        if (next === undefined) {
-          parsed.diagnostic = "seq: option requires a value for STRING";
-          break;
-        }
-        parsed.separator = next;
-        index += 1;
-      }
       continue;
     }
 
     if (!optionsDone && (token === '--separator' || token.startsWith('--separator='))) {
       const value = token.startsWith('--separator=') ? token.slice('--separator='.length) : args[index + 1];
       if (value === undefined) {
-        parsed.diagnostic = "seq: option requires a value for STRING";
+        parsed.diagnostic = 'seq: option requires a value for STRING';
         break;
       }
       parsed.separator = value;
@@ -133,23 +266,10 @@ function parseSeqArgs({
       continue;
     }
 
-    if (!optionsDone && (token === '-f' || /^-f.+$/u.test(token))) {
-      const value = token.length > 2 ? token.slice(2) : args[index + 1];
-      if (value === undefined) {
-        parsed.diagnostic = "seq: option requires a value for FORMAT";
-        break;
-      }
-      parsed.format = value;
-      if (token === '-f') {
-        index += 1;
-      }
-      continue;
-    }
-
     if (!optionsDone && (token === '--format' || token.startsWith('--format='))) {
       const value = token.startsWith('--format=') ? token.slice('--format='.length) : args[index + 1];
       if (value === undefined) {
-        parsed.diagnostic = "seq: option requires a value for FORMAT";
+        parsed.diagnostic = 'seq: option requires a value for FORMAT';
         break;
       }
       parsed.format = value;
@@ -164,12 +284,76 @@ function parseSeqArgs({
       break;
     }
 
-    if (!optionsDone && token.startsWith('-') && !isNumericOperand({ value: token })) {
-      parsed.diagnostic = `seq: invalid option -- '${token.slice(1, 2)}'`;
-      break;
+    if (
+      !optionsDone
+      && token.length > 1
+      && token.startsWith('-')
+      && !isNumericOperand({ value: token })
+    ) {
+      let optionIndex = 1;
+      let consumedFollowingArgument = false;
+      while (optionIndex < token.length) {
+        const option = token[optionIndex]!;
+        switch (option) {
+        case 'w':
+          parsed.equalWidth = true;
+          optionIndex += 1;
+          break;
+        case 's':
+        case 'f': {
+          const attachedValue = token.slice(optionIndex + 1);
+          const value = attachedValue.length > 0
+            ? attachedValue
+            : args[index + 1];
+          if (value === undefined) {
+            switch (option) {
+            case 's':
+              parsed.diagnostic = 'seq: option requires a value for STRING';
+              break;
+            case 'f':
+              parsed.diagnostic = 'seq: option requires a value for FORMAT';
+              break;
+            default: {
+              const _ex: never = option;
+              throw new Error(`Unhandled seq value option: ${_ex}`);
+            }
+            }
+            optionIndex = token.length;
+            break;
+          }
+          switch (option) {
+          case 's':
+            parsed.separator = value;
+            break;
+          case 'f':
+            parsed.format = value;
+            break;
+          default: {
+            const _ex: never = option;
+            throw new Error(`Unhandled seq value option: ${_ex}`);
+          }
+          }
+          consumedFollowingArgument = attachedValue.length === 0;
+          optionIndex = token.length;
+          break;
+        }
+        default:
+          parsed.diagnostic = `seq: invalid option -- '${option}'`;
+          optionIndex = token.length;
+          break;
+        }
+      }
+      if (parsed.diagnostic !== undefined) {
+        break;
+      }
+      if (consumedFollowingArgument) {
+        index += 1;
+      }
+      continue;
     }
 
     parsed.positionals.push(token);
+    optionsDone = true;
   }
 
   return parsed;
@@ -221,13 +405,26 @@ function parseSeqFormatSpec({
 
     let cursor = index + 1;
     let zeroPad = false;
-    if (format[cursor] === '0') {
-      zeroPad = true;
+    let leftAlign = false;
+    let signMode: SeqSignMode = 'minus-only';
+    while (cursor < format.length) {
+      const flag = format[cursor];
+      if (flag === '0') {
+        zeroPad = true;
+      } else if (flag === '-') {
+        leftAlign = true;
+      } else if (flag === '+') {
+        signMode = 'always';
+      } else if (flag === ' ' && signMode !== 'always') {
+        signMode = 'space';
+      } else {
+        break;
+      }
       cursor += 1;
     }
 
     let widthText = '';
-    while (cursor < format.length && /[0-9]/.test(format[cursor] ?? '')) {
+    while (cursor < format.length && /[0-9]/u.test(format[cursor] ?? '')) {
       widthText += format[cursor];
       cursor += 1;
     }
@@ -236,29 +433,33 @@ function parseSeqFormatSpec({
     if (format[cursor] === '.') {
       cursor += 1;
       let precisionText = '';
-      while (cursor < format.length && /[0-9]/.test(format[cursor] ?? '')) {
+      while (cursor < format.length && /[0-9]/u.test(format[cursor] ?? '')) {
         precisionText += format[cursor];
         cursor += 1;
       }
-      if (precisionText.length === 0) {
-        return { ok: false, message: 'seq: invalid format string: missing precision digits' };
+      precision = precisionText.length === 0 ? 0 : Number(precisionText);
+      if (!Number.isSafeInteger(precision) || precision > 100) {
+        return { ok: false, message: 'seq: invalid format string: precision out of range' };
       }
-      precision = Number(precisionText);
     }
 
     const conversion = format[cursor];
-    if (
-      conversion === undefined
-      || !['f', 'F', 'e', 'E', 'g', 'G', 'd', 'i'].includes(conversion)
-    ) {
+    if (conversion === undefined || !['f', 'F', 'e', 'E', 'g', 'G'].includes(conversion)) {
       return { ok: false, message: `seq: invalid format string: unsupported conversion '${conversion ?? '%'}'` };
+    }
+
+    const width = widthText.length > 0 ? Number(widthText) : undefined;
+    if (width !== undefined && (!Number.isSafeInteger(width) || width > 1_000_000)) {
+      return { ok: false, message: 'seq: invalid format string: width out of range' };
     }
 
     placeholder = {
       kind: 'printf',
       conversion: conversion as SeqPrintfConversion,
-      width: widthText.length > 0 ? Number(widthText) : undefined,
-      zeroPad,
+      width,
+      zeroPad: zeroPad && !leftAlign,
+      leftAlign,
+      signMode,
       precision,
     };
     readingSuffix = true;
@@ -272,38 +473,459 @@ function parseSeqFormatSpec({
   return { ok: true, spec: { prefix, suffix, ...placeholder } };
 }
 
-function formatSeqValue({
+function applyPrintfSign({
+  text,
+  negative,
+  signMode,
+}: {
+  text: string,
+  negative: boolean,
+  signMode: SeqSignMode,
+}): string {
+  if (negative) {
+    return text.startsWith('-') ? text : `-${text}`;
+  }
+  if (text.startsWith('+')) {
+    return text;
+  }
+  switch (signMode) {
+  case 'minus-only':
+    return text;
+  case 'always':
+    return `+${text}`;
+  case 'space':
+    return ` ${text}`;
+  default: {
+    const _ex: never = signMode;
+    throw new Error(`Unhandled seq sign mode: ${_ex}`);
+  }
+  }
+}
+
+function applyPrintfWidth({
+  text,
+  spec,
+}: {
+  text: string,
+  spec: SeqPrintfSpec,
+}): string {
+  if (spec.width === undefined || text.length >= spec.width) {
+    return text;
+  }
+  if (spec.leftAlign) {
+    return text.padEnd(spec.width, ' ');
+  }
+  if (!spec.zeroPad) {
+    return text.padStart(spec.width, ' ');
+  }
+  if (text.startsWith('-') || text.startsWith('+') || text.startsWith(' ')) {
+    return `${text[0]}${text.slice(1).padStart(spec.width - 1, '0')}`;
+  }
+  return text.padStart(spec.width, '0');
+}
+
+interface BinaryRational {
+  numerator: bigint,
+  denominator: bigint,
+}
+
+interface LongDoubleValue {
+  numerator: bigint,
+  denominator: bigint,
+  negativeZero: boolean,
+}
+
+function bitLength({ value }: { value: bigint }): number {
+  return value === 0n ? 0 : value.toString(2).length;
+}
+
+function compareRationalToPowerOfTwo({
+  numerator,
+  denominator,
+  exponent,
+}: {
+  numerator: bigint,
+  denominator: bigint,
+  exponent: number,
+}): number {
+  const left = exponent >= 0 ? numerator : numerator << BigInt(-exponent);
+  const right = exponent >= 0 ? denominator << BigInt(exponent) : denominator;
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function divideRoundedToEven({
+  numerator,
+  denominator,
+}: {
+  numerator: bigint,
+  denominator: bigint,
+}): bigint {
+  const quotient = numerator / denominator;
+  const remainder = numerator % denominator;
+  const doubledRemainder = remainder * 2n;
+  if (doubledRemainder > denominator || (doubledRemainder === denominator && quotient % 2n !== 0n)) {
+    return quotient + 1n;
+  }
+  return quotient;
+}
+
+function quantizeLongDoubleRational({
+  numerator: signedNumerator,
+  denominator,
+  negativeZero = false,
+}: {
+  numerator: bigint,
+  denominator: bigint,
+  negativeZero?: boolean,
+}): LongDoubleValue {
+  const negative = signedNumerator < 0n;
+  const numerator = negative ? -signedNumerator : signedNumerator;
+  if (numerator === 0n) {
+    return { numerator: 0n, denominator: 1n, negativeZero };
+  }
+  let exponent = bitLength({ value: numerator }) - bitLength({ value: denominator });
+  while (compareRationalToPowerOfTwo({ numerator, denominator, exponent }) < 0) exponent -= 1;
+  while (compareRationalToPowerOfTwo({ numerator, denominator, exponent: exponent + 1 }) >= 0) exponent += 1;
+
+  const minimumNormalExponent = -16_382;
+  const effectiveExponent = Math.max(exponent, minimumNormalExponent);
+  const shift = 63 - effectiveExponent;
+  const scaledNumerator = shift >= 0 ? numerator << BigInt(shift) : numerator;
+  const scaledDenominator = shift >= 0 ? denominator : denominator << BigInt(-shift);
+  let significand = divideRoundedToEven({
+    numerator: scaledNumerator,
+    denominator: scaledDenominator,
+  });
+  let roundedExponent = effectiveExponent;
+  if (significand >= 1n << 64n) {
+    significand >>= 1n;
+    roundedExponent += 1;
+  }
+  if (roundedExponent > 16_383) {
+    throw new Error('seq: value is too large for the selected format');
+  }
+  const binaryExponent = roundedExponent - 63;
+  const roundedNumerator = binaryExponent >= 0
+    ? significand << BigInt(binaryExponent)
+    : significand;
+  return {
+    numerator: negative ? -roundedNumerator : roundedNumerator,
+    denominator: binaryExponent >= 0 ? 1n : 1n << BigInt(-binaryExponent),
+    negativeZero: false,
+  };
+}
+
+function seqValueToLongDouble({ value }: { value: SeqValue }): LongDoubleValue {
+  return quantizeLongDoubleRational({
+    numerator: value.coefficient,
+    denominator: powerOfTen({ exponent: value.scale }),
+    negativeZero: value.negativeZero,
+  });
+}
+
+function seqDecimalToLongDouble({ decimal }: { decimal: SeqDecimal }): LongDoubleValue {
+  return quantizeLongDoubleRational({
+    numerator: decimal.coefficient,
+    denominator: powerOfTen({ exponent: decimal.scale }),
+    negativeZero: decimal.negativeZero,
+  });
+}
+
+function addLongDoubleValues({
+  left,
+  right,
+}: {
+  left: LongDoubleValue,
+  right: LongDoubleValue,
+}): LongDoubleValue {
+  return quantizeLongDoubleRational({
+    numerator: left.numerator * right.denominator + right.numerator * left.denominator,
+    denominator: left.denominator * right.denominator,
+    negativeZero: left.negativeZero && right.negativeZero,
+  });
+}
+
+function multiplyLongDoubleByInteger({
+  value,
+  multiplier,
+}: {
+  value: LongDoubleValue,
+  multiplier: number,
+}): LongDoubleValue {
+  return quantizeLongDoubleRational({
+    numerator: value.numerator * BigInt(multiplier),
+    denominator: value.denominator,
+    negativeZero: multiplier === 0 && (value.numerator < 0n || value.negativeZero),
+  });
+}
+
+function compareLongDoubleValues({
+  left,
+  right,
+}: {
+  left: LongDoubleValue,
+  right: LongDoubleValue,
+}): number {
+  const leftScaled = left.numerator * right.denominator;
+  const rightScaled = right.numerator * left.denominator;
+  return leftScaled < rightScaled ? -1 : leftScaled > rightScaled ? 1 : 0;
+}
+
+function formattedLongDoubleNumericValue({
+  rendered,
+  spec,
+}: {
+  rendered: string,
+  spec: SeqPrintfSpec,
+}): LongDoubleValue | undefined {
+  const suffixStart = rendered.length - spec.suffix.length;
+  const numericText = rendered.slice(spec.prefix.length, suffixStart);
+  const parsed = parseSeqDecimal({ value: numericText });
+  return parsed.ok ? seqDecimalToLongDouble({ decimal: parsed.decimal }) : undefined;
+}
+
+function shouldPrintOutOfRangeValue({
+  value,
+  previousValue,
+  lastValue,
+  spec,
+}: {
+  value: LongDoubleValue,
+  previousValue: LongDoubleValue,
+  lastValue: LongDoubleValue,
+  spec: SeqPrintfSpec,
+}): boolean {
+  const rendered = formatLongDoubleValue({ value, spec });
+  const parsed = formattedLongDoubleNumericValue({ rendered, spec });
+  return parsed !== undefined
+    && compareLongDoubleValues({ left: parsed, right: lastValue }) === 0
+    && formatLongDoubleValue({ value: previousValue, spec }) !== rendered;
+}
+
+function* iterateLongDoubleSeqValues({
+  first,
+  increment,
+  last,
+  spec,
+}: {
+  first: SeqDecimal,
+  increment: SeqDecimal,
+  last: SeqDecimal,
+  spec: SeqPrintfSpec,
+}): Iterable<LongDoubleValue> {
+  const firstValue = seqDecimalToLongDouble({ decimal: first });
+  const incrementValue = seqDecimalToLongDouble({ decimal: increment });
+  const lastValue = seqDecimalToLongDouble({ decimal: last });
+  if (incrementValue.numerator === 0n) {
+    throw new Error('seq: invalid zero increment');
+  }
+  const increasing = incrementValue.numerator > 0n;
+  let previousValue: LongDoubleValue | undefined;
+  for (let index = 0; index < MAXIMUM_SEQUENCE_VALUES; index++) {
+    const value = index === 0
+      ? firstValue
+      : addLongDoubleValues({
+        left: firstValue,
+        right: multiplyLongDoubleByInteger({ value: incrementValue, multiplier: index }),
+      });
+    const comparison = compareLongDoubleValues({ left: value, right: lastValue });
+    if (increasing ? comparison > 0 : comparison < 0) {
+      if (previousValue !== undefined && shouldPrintOutOfRangeValue({
+        value,
+        previousValue,
+        lastValue,
+        spec,
+      })) {
+        yield value;
+      }
+      return;
+    }
+    yield value;
+    previousValue = value;
+  }
+  throw new Error('seq: sequence contains too many values');
+}
+
+function compareRationalToPowerOfTen({
+  rational,
+  exponent,
+}: {
+  rational: BinaryRational,
+  exponent: number,
+}): number {
+  const left = exponent >= 0
+    ? rational.numerator
+    : rational.numerator * powerOfTen({ exponent: -exponent });
+  const right = exponent >= 0
+    ? rational.denominator * powerOfTen({ exponent })
+    : rational.denominator;
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function decimalExponent({
+  rational,
+}: {
+  rational: BinaryRational,
+}): number {
+  let exponent = rational.numerator.toString().length - rational.denominator.toString().length;
+  while (compareRationalToPowerOfTen({ rational, exponent }) < 0) {
+    exponent -= 1;
+  }
+  while (compareRationalToPowerOfTen({ rational, exponent: exponent + 1 }) >= 0) {
+    exponent += 1;
+  }
+  return exponent;
+}
+
+function roundBinaryRational({
+  rational,
+  decimalShift,
+}: {
+  rational: BinaryRational,
+  decimalShift: number,
+}): bigint {
+  const numerator = decimalShift >= 0
+    ? rational.numerator * powerOfTen({ exponent: decimalShift })
+    : rational.numerator;
+  const denominator = decimalShift >= 0
+    ? rational.denominator
+    : rational.denominator * powerOfTen({ exponent: -decimalShift });
+  return divideRoundedToEven({ numerator, denominator });
+}
+
+function formatFixedRational({
+  rational,
+  precision,
+}: {
+  rational: BinaryRational,
+  precision: number,
+}): string {
+  const rounded = roundBinaryRational({ rational, decimalShift: precision });
+  const digits = rounded.toString().padStart(precision + 1, '0');
+  return precision === 0
+    ? digits
+    : `${digits.slice(0, -precision)}.${digits.slice(-precision)}`;
+}
+
+interface RoundedSignificantDigits {
+  digits: string,
+  exponent: number,
+}
+
+function roundToSignificantDigits({
+  rational,
+  precision,
+}: {
+  rational: BinaryRational,
+  precision: number,
+}): RoundedSignificantDigits {
+  if (rational.numerator === 0n) {
+    return { digits: '0'.repeat(precision), exponent: 0 };
+  }
+  let exponent = decimalExponent({ rational });
+  let rounded = roundBinaryRational({
+    rational,
+    decimalShift: precision - 1 - exponent,
+  });
+  const overflowThreshold = powerOfTen({ exponent: precision });
+  if (rounded >= overflowThreshold) {
+    rounded /= 10n;
+    exponent += 1;
+  }
+  return {
+    digits: rounded.toString().padStart(precision, '0'),
+    exponent,
+  };
+}
+
+function formatExponentialRational({
+  rational,
+  precision,
+}: {
+  rational: BinaryRational,
+  precision: number,
+}): string {
+  const rounded = roundToSignificantDigits({ rational, precision: precision + 1 });
+  const fraction = precision === 0 ? '' : `.${rounded.digits.slice(1).padEnd(precision, '0')}`;
+  const exponentSign = rounded.exponent < 0 ? '-' : '+';
+  const exponentDigits = Math.abs(rounded.exponent).toString().padStart(2, '0');
+  return `${rounded.digits[0]}${fraction}e${exponentSign}${exponentDigits}`;
+}
+
+function trimFixedFraction({ text }: { text: string }): string {
+  return text.includes('.')
+    ? text.replace(/0+$/u, '').replace(/\.$/u, '')
+    : text;
+}
+
+function formatGeneralNumber({
+  rational,
+  precision,
+}: {
+  rational: BinaryRational,
+  precision: number,
+}): string {
+  if (rational.numerator === 0n) {
+    return '0';
+  }
+  const rounded = roundToSignificantDigits({ rational, precision });
+  if (rounded.exponent < -4 || rounded.exponent >= precision) {
+    const mantissa = trimFixedFraction({
+      text: precision === 1
+        ? rounded.digits[0]!
+        : `${rounded.digits[0]}.${rounded.digits.slice(1)}`,
+    });
+    const exponentSign = rounded.exponent < 0 ? '-' : '+';
+    const exponentDigits = Math.abs(rounded.exponent).toString().padStart(2, '0');
+    return `${mantissa}e${exponentSign}${exponentDigits}`;
+  }
+
+  const decimalPosition = rounded.exponent + 1;
+  if (decimalPosition <= 0) {
+    return trimFixedFraction({
+      text: `0.${'0'.repeat(-decimalPosition)}${rounded.digits}`,
+    });
+  }
+  if (decimalPosition >= rounded.digits.length) {
+    return `${rounded.digits}${'0'.repeat(decimalPosition - rounded.digits.length)}`;
+  }
+  return trimFixedFraction({
+    text: `${rounded.digits.slice(0, decimalPosition)}.${rounded.digits.slice(decimalPosition)}`,
+  });
+}
+
+function formatLongDoubleValue({
   value,
   spec,
 }: {
-  value: number,
+  value: LongDoubleValue,
   spec: SeqFormatSpec,
 }): string {
+  const negative = value.numerator < 0n || (value.numerator === 0n && value.negativeZero);
+  const rational: BinaryRational = {
+    numerator: value.numerator < 0n ? -value.numerator : value.numerator,
+    denominator: value.denominator,
+  };
   switch (spec.kind) {
   case 'plain':
-    return Number.isInteger(value) ? String(value) : String(value);
+    throw new Error('seq: plain formatting must use exact decimal values');
   case 'printf': {
     let text: string;
     switch (spec.conversion) {
-    case 'd':
-    case 'i':
-      text = String(Math.trunc(value));
-      break;
     case 'f':
     case 'F':
-      text = value.toFixed(spec.precision ?? 6);
+      text = formatFixedRational({ rational, precision: spec.precision ?? 6 });
       break;
     case 'e':
     case 'E':
-      text = value.toExponential(spec.precision ?? 6);
+      text = formatExponentialRational({ rational, precision: spec.precision ?? 6 });
       break;
     case 'g':
-    case 'G':
-      text = value.toPrecision(spec.precision ?? 6);
-      if (!/[eE]/.test(text)) {
-        text = text.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '').replace(/\.$/, '');
-      }
+    case 'G': {
+      const precision = spec.precision === 0 ? 1 : (spec.precision ?? 6);
+      text = formatGeneralNumber({ rational, precision });
       break;
+    }
     default: {
       const _ex: never = spec.conversion;
       throw new Error(`Unhandled seq conversion: ${_ex}`);
@@ -314,18 +936,8 @@ function formatSeqValue({
       text = text.toUpperCase();
     }
 
-    if (spec.width !== undefined && text.length < spec.width) {
-      if (spec.zeroPad) {
-        if (text.startsWith('-') || text.startsWith('+')) {
-          text = `${text[0]}${text.slice(1).padStart(spec.width - 1, '0')}`;
-        } else {
-          text = text.padStart(spec.width, '0');
-        }
-      } else {
-        text = text.padStart(spec.width, ' ');
-      }
-    }
-
+    text = applyPrintfSign({ text, negative, signMode: spec.signMode });
+    text = applyPrintfWidth({ text, spec });
     return `${spec.prefix}${text}${spec.suffix}`;
   }
   default: {
@@ -335,36 +947,102 @@ function formatSeqValue({
   }
 }
 
-function computeDefaultPrecision({
-  operands,
+function alignDecimal({
+  decimal,
+  scale,
 }: {
-  operands: string[],
-}): number | undefined {
-  if (!operands.every((operand) => isFixedPointDecimal({ value: operand }))) {
-    return undefined;
-  }
-
-  return operands.reduce((max, operand) => {
-    const decimalIndex = operand.indexOf('.');
-    if (decimalIndex < 0) {
-      return max;
-    }
-    return Math.max(max, operand.length - decimalIndex - 1);
-  }, 0);
+  decimal: SeqDecimal,
+  scale: number,
+}): bigint {
+  return decimal.coefficient * powerOfTen({ exponent: scale - decimal.scale });
 }
 
-function formatDefaultNumber({
+function createSeqPlan({
+  first,
+  increment,
+  last,
+}: {
+  first: SeqDecimal,
+  increment: SeqDecimal,
+  last: SeqDecimal,
+}): { ok: true, plan: SeqPlan } | { ok: false, message: string } {
+  const scale = Math.max(first.scale, increment.scale, last.scale);
+  const outputPrecision = Math.max(first.scale, increment.scale);
+  const alignedFirst = alignDecimal({ decimal: first, scale });
+  const alignedIncrement = alignDecimal({ decimal: increment, scale });
+  const alignedLast = alignDecimal({ decimal: last, scale });
+  if (alignedIncrement === 0n) {
+    return { ok: false, message: 'seq: invalid zero increment' };
+  }
+
+  const distance = alignedIncrement > 0n
+    ? alignedLast - alignedFirst
+    : alignedFirst - alignedLast;
+  if (distance < 0n) {
+    return {
+      ok: true,
+      plan: {
+        first: alignedFirst,
+        increment: alignedIncrement,
+        last: alignedLast,
+        count: 0,
+        scale,
+        outputPrecision,
+        firstInputWidth: first.printWidth,
+        firstInputPrecision: first.scale,
+        lastInputWidth: last.printWidth,
+        lastInputPrecision: last.scale,
+        firstIsNegativeZero: first.negativeZero,
+        lastIsNegativeZero: last.negativeZero,
+      },
+    };
+  }
+
+  const positiveIncrement = alignedIncrement > 0n ? alignedIncrement : -alignedIncrement;
+  const count = distance / positiveIncrement + 1n;
+  if (count > BigInt(MAXIMUM_SEQUENCE_VALUES)) {
+    return { ok: false, message: 'seq: sequence contains too many values' };
+  }
+
+  return {
+    ok: true,
+    plan: {
+      first: alignedFirst,
+      increment: alignedIncrement,
+      last: alignedLast,
+      count: Number(count),
+      scale,
+      outputPrecision,
+      firstInputWidth: first.printWidth,
+      firstInputPrecision: first.scale,
+      lastInputWidth: last.printWidth,
+      lastInputPrecision: last.scale,
+      firstIsNegativeZero: first.negativeZero,
+      lastIsNegativeZero: last.negativeZero,
+    },
+  };
+}
+
+function formatExactDecimal({
   value,
   precision,
 }: {
-  value: number,
-  precision: number | undefined,
+  value: SeqValue,
+  precision: number,
 }): string {
-  if (precision !== undefined) {
-    return value.toFixed(precision);
+  const negative = value.coefficient < 0n || (value.coefficient === 0n && value.negativeZero);
+  const absolute = value.coefficient < 0n ? -value.coefficient : value.coefficient;
+  const scaleDifference = precision - value.scale;
+  const scaled = scaleDifference >= 0
+    ? absolute * powerOfTen({ exponent: scaleDifference })
+    : absolute / powerOfTen({ exponent: -scaleDifference });
+  const digits = scaled.toString();
+  const sign = negative ? '-' : '';
+  if (precision === 0) {
+    return `${sign}${digits}`;
   }
-
-  return Number.isInteger(value) ? String(value) : String(value);
+  const padded = digits.padStart(precision + 1, '0');
+  return `${sign}${padded.slice(0, -precision)}.${padded.slice(-precision)}`;
 }
 
 function padEqualWidth({
@@ -385,29 +1063,87 @@ function padEqualWidth({
   return value.padStart(width, '0');
 }
 
-function* iterateSeqValues({
-  first,
-  increment,
-  last,
+function equalWidthForSeqPlan({
+  plan,
 }: {
-  first: number,
-  increment: number,
-  last: number,
-}): Iterable<number> {
-  const epsilon = 1e-12;
-  const maximumValues = 1_000_001;
-  let count = 0;
-  if (increment > 0) {
-    for (let current = first; current <= last + epsilon && count < maximumValues; current += increment) {
-      yield current;
-      count += 1;
-    }
-    return;
+  plan: SeqPlan,
+}): number {
+  if (plan.count === 0) {
+    return 0;
   }
 
-  for (let current = first; current >= last - epsilon && count < maximumValues; current += increment) {
-    yield current;
-    count += 1;
+  let firstWidth = plan.firstInputWidth + (plan.outputPrecision - plan.firstInputPrecision);
+  let lastWidth = plan.lastInputWidth + (plan.outputPrecision - plan.lastInputPrecision);
+  if (plan.lastInputPrecision > 0 && plan.outputPrecision === 0) {
+    lastWidth -= 1;
+  }
+  if (plan.lastInputPrecision === 0 && plan.outputPrecision > 0) {
+    lastWidth += 1;
+  }
+  if (plan.firstInputPrecision === 0 && plan.outputPrecision > 0) {
+    firstWidth += 1;
+  }
+
+  return Math.max(firstWidth, lastWidth);
+}
+
+function exactZeroIndexForSeqPlan({
+  plan,
+}: {
+  plan: SeqPlan,
+}): number | undefined {
+  const distanceToZero = -plan.first;
+  if (distanceToZero % plan.increment !== 0n) {
+    return undefined;
+  }
+  const index = distanceToZero / plan.increment;
+  return index >= 0n && index < BigInt(plan.count)
+    ? Number(index)
+    : undefined;
+}
+
+function generatedExactZeroIsNegative({
+  plan,
+  index,
+}: {
+  plan: SeqPlan,
+  index: number,
+}): boolean {
+  if (index === 0) {
+    return plan.firstIsNegativeZero;
+  }
+
+  const firstValue = quantizeLongDoubleRational({
+    numerator: plan.first,
+    denominator: powerOfTen({ exponent: plan.scale }),
+    negativeZero: plan.firstIsNegativeZero,
+  });
+  const incrementValue = quantizeLongDoubleRational({
+    numerator: plan.increment,
+    denominator: powerOfTen({ exponent: plan.scale }),
+  });
+  const generatedValue = addLongDoubleValues({
+    left: firstValue,
+    right: multiplyLongDoubleByInteger({ value: incrementValue, multiplier: index }),
+  });
+  return generatedValue.numerator < 0n
+    || (generatedValue.numerator === 0n && generatedValue.negativeZero);
+}
+
+function* iterateSeqValues({
+  plan,
+}: {
+  plan: SeqPlan,
+}): Iterable<SeqValue> {
+  const exactZeroIndex = exactZeroIndexForSeqPlan({ plan });
+  let coefficient = plan.first;
+  for (let index = 0; index < plan.count; index++) {
+    yield {
+      coefficient,
+      scale: plan.scale,
+      negativeZero: index === exactZeroIndex && generatedExactZeroIsNegative({ plan, index }),
+    };
+    coefficient += plan.increment;
   }
 }
 
@@ -459,9 +1195,9 @@ export const seqCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const numericOperands = operands.map((operand) => parseSeqNumber({ value: operand }));
-    const failedOperand = numericOperands.find((operand) => !operand.ok);
-    if (failedOperand !== undefined) {
+    const parsedOperands = operands.map((operand) => parseSeqDecimal({ value: operand }));
+    const failedOperand = parsedOperands.find((operand) => !operand.ok);
+    if (failedOperand !== undefined && !failedOperand.ok) {
       await writeCommandUsageError({
         context,
         command: 'seq',
@@ -471,34 +1207,37 @@ export const seqCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const firstOperand = numericOperands[0];
-    const secondOperand = numericOperands[1];
-    const thirdOperand = numericOperands[2];
+    const decimals = parsedOperands.map((operand) => {
+      if (!operand.ok) {
+        throw new Error('Validated seq operand unexpectedly failed');
+      }
+      return operand.decimal;
+    });
+    const one: SeqDecimal = { coefficient: 1n, scale: 0, negativeZero: false, printWidth: 1 };
+    const first = operands.length > 1 ? (decimals[0] ?? one) : one;
+    const increment = operands.length > 2 ? (decimals[1] ?? one) : one;
+    const last = operands.length === 1
+      ? (decimals[0] ?? one)
+      : operands.length === 2
+        ? (decimals[1] ?? one)
+        : (decimals[2] ?? one);
 
-    let first = 1;
-    if (operands.length > 1 && firstOperand?.ok === true) {
-      first = firstOperand.number;
-    }
-
-    let increment = 1;
-    if (operands.length > 2 && secondOperand?.ok === true) {
-      increment = secondOperand.number;
-    }
-
-    let last = 1;
-    if (operands.length === 1 && firstOperand?.ok === true) {
-      last = firstOperand.number;
-    } else if (operands.length === 2 && secondOperand?.ok === true) {
-      last = secondOperand.number;
-    } else if (operands.length === 3 && thirdOperand?.ok === true) {
-      last = thirdOperand.number;
-    }
-
-    if (increment === 0) {
+    const planned = createSeqPlan({ first, increment, last });
+    if (!planned.ok) {
       await writeCommandUsageError({
         context,
         command: 'seq',
-        message: 'seq: invalid zero increment',
+        message: planned.message,
+        argvSpec: seqArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (parsed.equalWidth && parsed.format !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'seq',
+        message: 'seq: format string may not be specified when printing equal width strings',
         argvSpec: seqArgvSpec,
       });
       return { exitCode: 1 };
@@ -519,21 +1258,16 @@ export const seqCommandDefinition: WeshCommandDefinition = {
       formatSpec = parsedFormat.spec;
     }
 
-    const defaultPrecision = parsed.format === undefined ? computeDefaultPrecision({ operands }) : undefined;
-    const renderValue = ({ value }: { value: number }): string => {
-      if (parsed.format !== undefined) {
-        return formatSeqValue({ value, spec: formatSpec });
+    const renderValue = ({ value }: { value: SeqValue }): string => {
+      if (parsed.format === undefined) {
+        return formatExactDecimal({ value, precision: planned.plan.outputPrecision });
       }
-      return formatDefaultNumber({ value, precision: defaultPrecision });
+      return formatLongDoubleValue({ value: seqValueToLongDouble({ value }), spec: formatSpec });
     };
 
-    let equalWidth: number | undefined;
-    if (parsed.equalWidth) {
-      equalWidth = 0;
-      for (const value of iterateSeqValues({ first, increment, last })) {
-        equalWidth = Math.max(equalWidth, renderValue({ value }).length);
-      }
-    }
+    const equalWidth = parsed.equalWidth
+      ? equalWidthForSeqPlan({ plan: planned.plan })
+      : undefined;
 
     const writer = createBufferedTextWriter({
       handle: context.stdout,
@@ -541,19 +1275,42 @@ export const seqCommandDefinition: WeshCommandDefinition = {
     });
     let wroteValue = false;
     try {
-      for (const value of iterateSeqValues({ first, increment, last })) {
-        if (wroteValue) {
-          await writer.write({ text: parsed.separator });
+      if (parsed.format === undefined) {
+        for (const value of iterateSeqValues({ plan: planned.plan })) {
+          if (wroteValue) await writer.write({ text: parsed.separator });
+          const rendered = renderValue({ value });
+          await writer.write({
+            text: equalWidth === undefined
+              ? rendered
+              : padEqualWidth({ value: rendered, width: equalWidth }),
+          });
+          wroteValue = true;
         }
-        const rendered = renderValue({ value });
-        await writer.write({
-          text: equalWidth === undefined
-            ? rendered
-            : padEqualWidth({ value: rendered, width: equalWidth }),
-        });
-        wroteValue = true;
+      } else {
+        const printfSpec = (() => {
+          switch (formatSpec.kind) {
+          case 'printf':
+            return formatSpec;
+          case 'plain':
+            throw new Error('seq: formatted iteration requires printf format');
+          default: {
+            const _ex: never = formatSpec;
+            throw new Error(`Unhandled seq format: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+          }
+          }
+        })();
+        for (const value of iterateLongDoubleSeqValues({
+          first,
+          increment,
+          last,
+          spec: printfSpec,
+        })) {
+          if (wroteValue) await writer.write({ text: parsed.separator });
+          await writer.write({ text: formatLongDoubleValue({ value, spec: printfSpec }) });
+          wroteValue = true;
+        }
       }
-      if (wroteValue && parsed.separator === '\n') {
+      if (wroteValue) {
         await writer.write({ text: '\n' });
       }
     } finally {
@@ -567,4 +1324,5 @@ export const seqCommandDefinition: WeshCommandDefinition = {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  equalWidthForSeqPlan,
 };

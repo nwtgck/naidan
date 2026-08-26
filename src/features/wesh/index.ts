@@ -21,8 +21,41 @@ import type {
 import { weshWaitStatusToExitCode } from './types';
 import { WeshVFS } from './vfs';
 import { WeshKernel } from './kernel';
-import { parseCommandLine } from './parser';
-import { createTextIoHelpers } from './utils/io';
+import { parseCommandLine, parseNextShellUnit } from './parser';
+import { createHandleShellSource, createShebangStrippedShellSource, createShellSourceReader, createTextShellSource, readShellSourceToText } from './shell/source';
+import type { ShellSource } from './shell/source';
+import {
+  isAsciiDecimalDigit,
+  isAsciiShellIdentifierPart,
+  isAsciiShellIdentifierStart,
+  isShellWhitespaceCharacter,
+} from './shell/ascii';
+import { parseShellShebangLine, splitEnvShebangArguments } from './shell/shebang';
+import { parseDoubleQuotedParameterOperandParts, parseShellWordParts } from './shell/word';
+import { decodeShellBytesToText, encodeShellTextToBytes } from './shell/byte-text';
+import { createShellTextIoHelpers } from './shell/io';
+import {
+  compileShellPattern,
+  containsShellPatternMeta,
+  escapeShellPatternLiteral,
+  matchesCompiledShellPattern,
+  matchesShellPattern,
+  type WeshCompiledShellPattern,
+} from './shell/pattern';
+import { parseParameterExpression } from './shell/parameter-expression';
+import {
+  splitExpandedFields,
+  type WeshExpandedField,
+  type WeshExpansionContext,
+} from './shell/field-split';
+import {
+  findBackquoteSubstitution,
+  findBalancedArithmeticExpression,
+  findBalancedParenthesizedExpression,
+  findBracedParameterEnd,
+  nextShellCharacterIndex,
+  previousShellCharacterIndex,
+} from './shell/scan';
 import { normalizePath, resolvePath } from './path';
 import { createWriteHandleFromStream } from './utils/stream';
 import { WeshOverlayMap } from './utils/overlay-map';
@@ -37,8 +70,80 @@ interface WeshJob {
   status: 'running' | 'done',
 }
 
+type WeshShellControlFlow =
+  | { kind: 'break', levels: number }
+  | { kind: 'continue', levels: number }
+  | { kind: 'return', exitCode: number }
+  | { kind: 'exit', exitCode: number };
+
+type WeshShellExecutionResult = Omit<WeshCommandResult, 'controlFlow'> & {
+  controlFlow?: WeshShellControlFlow,
+};
+
+type WeshExecutionOptions = {
+  errexit: boolean,
+  nounset: boolean,
+  pipefail: boolean,
+};
+
+type WeshExpandedWordPart = {
+  text: string,
+  quoted: boolean,
+  fieldSplitEligible: boolean,
+};
+
+function toWeshCommandResult({ result }: {
+  result: WeshShellExecutionResult,
+}): WeshCommandResult {
+  const controlFlow = result.controlFlow;
+  if (controlFlow === undefined) {
+    return {
+      exitCode: result.exitCode,
+      waitStatus: result.waitStatus,
+    };
+  }
+  switch (controlFlow.kind) {
+  case 'break':
+  case 'continue':
+  case 'return':
+    return {
+      exitCode: result.exitCode,
+      waitStatus: result.waitStatus,
+      controlFlow,
+    };
+  case 'exit':
+    return {
+      exitCode: result.exitCode,
+      waitStatus: result.waitStatus,
+    };
+  default: {
+    const _ex: never = controlFlow;
+    throw new Error(`Unhandled shell control flow conversion: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
+class WeshShellExecutionError extends Error {
+  readonly exitCode: number;
+  readonly disposition: 'continue' | 'abort-shell';
+
+  constructor({ message, exitCode, disposition }: {
+    message: string,
+    exitCode: number,
+    disposition: 'continue' | 'abort-shell',
+  }) {
+    super(message);
+    this.name = 'WeshShellExecutionError';
+    this.exitCode = exitCode;
+    this.disposition = disposition;
+  }
+}
+
+type WeshStdinReferenceOwnership = 'borrowed' | 'command-local';
+
 interface WeshExecutionEnvironment {
   shellPid: number,
+  shellRootPid: number,
   pgid: number,
   env: Map<string, string>,
   aliases: Map<string, string>,
@@ -47,19 +152,33 @@ interface WeshExecutionEnvironment {
   fds: Map<number, WeshFileHandle>,
   traps: Map<string, WeshTrapDisposition>,
   shellOptions: Map<WeshShellOption, boolean>,
+  executionOptions: WeshExecutionOptions,
   positionalArgs: string[],
+  getoptsState: {
+    argumentSignature: string,
+    optind: number,
+    characterOffset: number,
+  } | undefined,
   lastBackgroundPid: number | undefined,
+  waitableChildren: Map<number, Promise<WeshCommandResult>>,
+  commandSubstitutionSequence: number,
+  lastCommandSubstitutionExitCode: number,
+  localVariableScopes: Array<Map<string,
+    | { kind: 'unset' }
+    | { kind: 'value', value: string }
+  >>,
+  ownedPersistentFds: Set<number>,
 }
 
-type WeshExpansionMode = 'argv' | 'assignment' | 'redirection';
-
-interface WeshExpandedField {
-  text: string,
-  parts: Array<{
-    text: string,
-    quoted: boolean,
-  }>,
-}
+type WeshGlobComponentMatcher =
+  | {
+    kind: 'shell-pattern',
+    pattern: WeshCompiledShellPattern,
+  }
+  | {
+    kind: 'extglob-regexp',
+    pattern: RegExp,
+  };
 
 const WESH_SHELL_SPECIAL_FILES = {
   sh: '/bin/sh',
@@ -76,22 +195,6 @@ const WESH_SHELL_SPECIAL_FILE_CONTENT = {
 # virtual bash entrypoint provided by wesh
 `,
 } as const;
-
-function stripShebangLine({
-  script,
-}: {
-  script: string,
-}): string {
-  if (!script.startsWith('#!')) {
-    return script;
-  }
-
-  const newlineIndex = script.indexOf('\n');
-  if (newlineIndex < 0) {
-    return '';
-  }
-  return script.slice(newlineIndex + 1);
-}
 
 class StaticTextFileHandle implements WeshFileHandle {
   private readonly bytes: Uint8Array;
@@ -156,6 +259,69 @@ class StaticTextFileHandle implements WeshFileHandle {
   async ioctl(): Promise<{ ret: number }> {
     return { ret: 0 };
   }
+}
+
+function createShellSourceConsumerHandle({
+  handle,
+  readRetainedBytes,
+}: {
+  handle: WeshFileHandle,
+  readRetainedBytes: ({ buffer, offset, length }: {
+    buffer: Uint8Array,
+    offset: number,
+    length: number,
+  }) => number,
+}): WeshFileHandle {
+  const baseHandle: WeshFileHandle = {
+    async read({ buffer, offset, length: requestedLength, position }) {
+      const bufferOffset = offset ?? 0;
+      const length = requestedLength ?? (buffer.length - bufferOffset);
+      if (position !== undefined || length <= 0) {
+        return handle.read({ buffer, offset, length, position });
+      }
+
+      const retainedBytesRead = readRetainedBytes({
+        buffer,
+        offset: bufferOffset,
+        length,
+      });
+      if (retainedBytesRead > 0) {
+        return { bytesRead: retainedBytesRead };
+      }
+      return handle.read({
+        buffer,
+        offset: bufferOffset,
+        length,
+        position: undefined,
+      });
+    },
+    write: ({ buffer, offset, length, position }) => handle.write({
+      buffer,
+      offset,
+      length,
+      position,
+    }),
+    close: () => handle.close(),
+    stat: () => handle.stat(),
+    truncate: ({ size }) => handle.truncate({ size }),
+    ioctl: ({ request, arg }) => handle.ioctl({ request, arg }),
+  };
+
+  const cloneReference = handle.cloneReference;
+  if (cloneReference === undefined) {
+    return baseHandle;
+  }
+
+  return {
+    ...baseHandle,
+    cloneReference: () => createShellSourceConsumerHandle({
+      handle: cloneReference.call(handle),
+      readRetainedBytes,
+    }),
+    getCloseSemantics: handle.getCloseSemantics === undefined
+      ? undefined
+      : () => handle.getCloseSemantics?.() ?? 'hard',
+  };
 }
 
 class SharedFileHandle implements WeshFileHandle {
@@ -283,6 +449,7 @@ export class Wesh {
   private nextJobId: number = 1;
   private shellFds: Map<number, WeshFileHandle> = new Map();
   private traps: Map<string, WeshTrapDisposition> = new Map();
+  private readonly activeErrTrapEnvironments = new WeakSet<WeshExecutionEnvironment>();
   private shellOptions: Map<WeshShellOption, boolean> = new Map([
     ['dotglob', false],
     ['extglob', false],
@@ -290,6 +457,11 @@ export class Wesh {
     ['globstar', false],
     ['nullglob', false],
   ]);
+  private executionOptions: WeshExecutionOptions = {
+    errexit: false,
+    nounset: false,
+    pipefail: false,
+  };
   private readonly foregroundProcessGroupScopes: Array<{
     id: number,
     pgid: number,
@@ -447,30 +619,90 @@ usage: ${name} [-c command] [file [argument...]]
           return { exitCode: 0 };
         }
 
-        if (context.args[0] === '-c') {
-          const script = context.args[1];
+        let argumentIndex = 0;
+        let noExec = false;
+        let stdinMode = false;
+        const executionOptions: WeshExecutionOptions = {
+          errexit: false,
+          nounset: false,
+          pipefail: false,
+        };
+        while (argumentIndex < context.args.length) {
+          const argument = context.args[argumentIndex];
+          if (argument === '-e' || argument === '+e') {
+            executionOptions.errexit = argument === '-e';
+            argumentIndex += 1;
+            continue;
+          }
+          if (argument === '-u' || argument === '+u') {
+            executionOptions.nounset = argument === '-u';
+            argumentIndex += 1;
+            continue;
+          }
+          if ((argument === '-o' || argument === '+o') && context.args[argumentIndex + 1] === 'pipefail') {
+            executionOptions.pipefail = argument === '-o';
+            argumentIndex += 2;
+            continue;
+          }
+          if (argument === '-n') {
+            noExec = true;
+            argumentIndex += 1;
+            continue;
+          }
+          if (argument === '-s') {
+            stdinMode = true;
+            argumentIndex += 1;
+            break;
+          }
+          if (name === 'bash' && (argument === '--noprofile' || argument === '--norc')) {
+            argumentIndex += 1;
+            continue;
+          }
+          break;
+        }
+
+        if (context.args[argumentIndex] === '-c') {
+          const script = context.args[argumentIndex + 1];
           if (script === undefined) {
             await context.text().error({
               text: `${name}: option requires an argument -- 'c'\n`,
             });
             return { exitCode: 2 };
           }
-          return context.executeShell({
-            script,
-            stdin: context.stdin,
-            stdout: context.stdout,
-            stderr: context.stderr,
+          const zero = context.args[argumentIndex + 2] ?? name;
+          return this.executeShellAliasSource({
+            name,
+            context,
+            source: createTextShellSource({ text: script }),
+            zero,
+            positionalArgs: context.args.slice(argumentIndex + 3),
+            noExec,
+            executionOptions,
           });
         }
 
-        const scriptPath = context.args[0];
+        if (stdinMode) {
+          return this.executeShellAliasSource({
+            name,
+            context,
+            source: createHandleShellSource({ handle: context.stdin }),
+            zero: name,
+            positionalArgs: context.args.slice(argumentIndex),
+            noExec,
+            executionOptions,
+          });
+        }
+
+        const scriptPath = context.args[argumentIndex];
         if (scriptPath === undefined) {
-          const scriptBytes = await this.readHandleToBytes({ handle: context.stdin });
-          return context.executeShell({
-            script: new TextDecoder().decode(scriptBytes),
-            stdin: context.stdin,
-            stdout: context.stdout,
-            stderr: context.stderr,
+          return this.executeShellAliasSource({
+            name,
+            context,
+            source: createHandleShellSource({ handle: context.stdin }),
+            zero: name,
+            positionalArgs: [],
+            noExec,
+            executionOptions,
           });
         }
 
@@ -479,7 +711,7 @@ usage: ${name} [-c command] [file [argument...]]
             cwd: context.cwd,
             path: scriptPath,
           });
-          const bytes = await this.kernel.open({
+          const handle = await this.kernel.open({
             path,
             flags: {
               access: 'read',
@@ -487,44 +719,22 @@ usage: ${name} [-c command] [file [argument...]]
               truncate: 'preserve',
               append: 'preserve',
             },
-          }).then(async (handle) => {
-            try {
-              return await this.readHandleToBytes({ handle });
-            } finally {
-              await handle.close();
-            }
           });
-          const childEnvironment = await this.spawnChildExecutionEnvironment({
-            parentEnvironment: this.createExecutionEnvironment({
-              shellPid: context.pid,
-              pgid: context.process.getGroupId(),
-              env: new Map(context.env),
-              aliases: new Map(context.getAliases().map(({ name: aliasName, value }) => [aliasName, value])),
-              functions: new Map(),
-              cwd: context.cwd,
-              fds: new Map(),
-              traps: new Map(),
-              shellOptions: new Map(context.getShellOptions()),
-              positionalArgs: context.args.slice(1),
-              lastBackgroundPid: undefined,
-            }),
-            pgid: context.process.getGroupId(),
-          });
-          childEnvironment.positionalArgs = context.args.slice(1);
-          childEnvironment.env.set('0', scriptPath);
-          this.syncSpecialParameters({ environment: childEnvironment });
-          return this.runChildExecutionEnvironment({
-            environment: childEnvironment,
-            execute: () => this.executeShellInState({
-              script: stripShebangLine({
-                script: new TextDecoder().decode(bytes),
+          try {
+            return await this.executeShellAliasSource({
+              name,
+              context,
+              source: createShebangStrippedShellSource({
+                source: createHandleShellSource({ handle }),
               }),
-              environment: childEnvironment,
-              stdin: context.stdin,
-              stdout: context.stdout,
-              stderr: context.stderr,
-            }),
-          });
+              zero: scriptPath,
+              positionalArgs: context.args.slice(argumentIndex + 1),
+              noExec,
+              executionOptions,
+            });
+          } finally {
+            await handle.close();
+          }
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
           await context.text().error({ text: `${name}: ${scriptPath}: ${message}\n` });
@@ -532,6 +742,78 @@ usage: ${name} [-c command] [file [argument...]]
         }
       },
     };
+  }
+
+  private async executeShellAliasSource({
+    name,
+    context,
+    source,
+    zero,
+    positionalArgs,
+    noExec,
+    executionOptions,
+  }: {
+    name: 'sh' | 'bash',
+    context: WeshCommandContext,
+    source: ShellSource,
+    zero: string,
+    positionalArgs: string[],
+    noExec: boolean,
+    executionOptions: WeshExecutionOptions,
+  }): Promise<WeshCommandResult> {
+    if (noExec) {
+      try {
+        const script = await readShellSourceToText({ source });
+        parseCommandLine({
+          commandLine: script,
+          env: new Map(context.env),
+        });
+        return { exitCode: 0 };
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        await context.text().error({ text: `${name}: ${message}\n` });
+        return { exitCode: 2 };
+      }
+    }
+
+    const childEnvironment = await this.spawnChildExecutionEnvironment({
+      parentEnvironment: this.createExecutionEnvironment({
+        shellPid: context.pid,
+        pgid: context.process.getGroupId(),
+        env: new Map(context.env),
+        aliases: new Map(context.getAliases().map(({ name: aliasName, value }) => [aliasName, value])),
+        functions: new Map(),
+        cwd: context.cwd,
+        fds: new Map([
+          [0, context.stdin],
+          [1, context.stdout],
+          [2, context.stderr],
+        ]),
+        traps: new Map(),
+        shellOptions: new Map(context.getShellOptions()),
+        executionOptions: { ...executionOptions },
+        positionalArgs: [],
+        lastBackgroundPid: undefined,
+        waitableChildren: new Map(),
+      }),
+      pgid: context.process.getGroupId(),
+    });
+    childEnvironment.shellRootPid = childEnvironment.shellPid;
+    childEnvironment.positionalArgs = [...positionalArgs];
+    this.syncSpecialParameters({ environment: childEnvironment });
+    childEnvironment.env.set('0', zero);
+    return this.runChildExecutionEnvironment({
+      environment: childEnvironment,
+      execute: () => this.executeShellInState({
+        source,
+        environment: childEnvironment,
+        stdin: context.stdin,
+        stdout: context.stdout,
+        stderr: context.stderr,
+        history: 'ignore',
+        allowReturn: false,
+      }),
+    });
   }
 
   private resolveBuiltinCommand({
@@ -667,9 +949,15 @@ usage: ${name} [-c command] [file [argument...]]
     cwd: string,
     env: Map<string, string>,
   }): Promise<{ scriptPath: string, interpreter: string, interpreterArgs: string[] } | undefined> {
-    const candidatePaths = (() => {
+    const candidatePaths: Array<{
+      openPath: string,
+      invocationPath: string,
+    }> = (() => {
       if (name.includes('/')) {
-        return [resolvePath({ cwd, path: name })];
+        return [{
+          openPath: resolvePath({ cwd, path: name }),
+          invocationPath: name,
+        }];
       }
 
       const pathValue = env.get('PATH') ?? '';
@@ -679,14 +967,17 @@ usage: ${name} [-c command] [file [argument...]]
           cwd,
           path: entry,
         });
-        return base === '/' ? `/${name}` : `${base}/${name}`;
+        return {
+          openPath: base === '/' ? `/${name}` : `${base}/${name}`,
+          invocationPath: entry === '/' ? `/${name}` : `${entry}/${name}`,
+        };
       });
     })();
 
-    for (const candidatePath of candidatePaths) {
+    for (const candidate of candidatePaths) {
       try {
         const handle = await this.kernel.open({
-          path: candidatePath,
+          path: candidate.openPath,
           flags: {
             access: 'read',
             creation: 'never',
@@ -699,33 +990,46 @@ usage: ${name} [-c command] [file [argument...]]
         const text = new TextDecoder().decode(bytes);
         const firstLine = text.split('\n', 1)[0] ?? '';
         if (!firstLine.startsWith('#!')) {
+          return {
+            scriptPath: candidate.invocationPath,
+            interpreter: 'bash',
+            interpreterArgs: [],
+          };
+        }
+        const shebang = parseShellShebangLine({ firstLine });
+        if (shebang === undefined) {
+          return {
+            scriptPath: candidate.invocationPath,
+            interpreter: 'bash',
+            interpreterArgs: [],
+          };
+        }
+        const { interpreter, optionalArgument } = shebang;
+        if (!interpreter.startsWith('/')) {
           continue;
         }
-        const shebang = firstLine.slice(2).trim();
-        if (shebang.length === 0) {
-          continue;
-        }
-        const parts = shebang.split(/\s+/u);
-        const interpreter = parts[0];
-        if (interpreter === undefined) {
-          continue;
-        }
-        const interpreterArgs = parts.slice(1);
         if (interpreter === '/usr/bin/env') {
-          const envInterpreter = interpreterArgs[0];
-          if (envInterpreter === undefined) {
+          if (optionalArgument === undefined || optionalArgument.length === 0) {
+            continue;
+          }
+          const envArguments = splitEnvShebangArguments({ optionalArgument });
+          if (envArguments === undefined) {
+            continue;
+          }
+          const envInterpreter = envArguments[0];
+          if (envInterpreter === undefined || envInterpreter.length === 0) {
             continue;
           }
           return {
-            scriptPath: candidatePath,
+            scriptPath: candidate.invocationPath,
             interpreter: envInterpreter,
-            interpreterArgs: interpreterArgs.slice(1),
+            interpreterArgs: envArguments.slice(1),
           };
         }
         return {
-          scriptPath: candidatePath,
+          scriptPath: candidate.invocationPath,
           interpreter,
-          interpreterArgs,
+          interpreterArgs: optionalArgument === undefined ? [] : [optionalArgument],
         };
       } catch {
         continue;
@@ -803,144 +1107,6 @@ usage: ${name} [-c command] [file [argument...]]
     });
   }
 
-  private parseWordParts({
-    raw,
-  }: {
-    raw: string,
-  }): Array<{
-    text: string,
-    quoted: boolean,
-    expandVariables: boolean,
-  }> {
-    const parts: Array<{
-      text: string,
-      quoted: boolean,
-      expandVariables: boolean,
-    }> = [];
-
-    let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
-    let current = '';
-
-    const toPartMeta = ({
-      currentMode,
-    }: {
-      currentMode: 'unquoted' | 'single' | 'double',
-    }): {
-      quoted: boolean,
-      expandVariables: boolean,
-    } => {
-      switch (currentMode) {
-      case 'unquoted':
-        return {
-          quoted: false,
-          expandVariables: true,
-        };
-      case 'single':
-        return {
-          quoted: true,
-          expandVariables: false,
-        };
-      case 'double':
-        return {
-          quoted: true,
-          expandVariables: true,
-        };
-      default: {
-        const _ex: never = currentMode;
-        throw new Error(`Unhandled mode: ${_ex}`);
-      }
-      }
-    };
-
-    const pushCurrent = ({
-      nextMode,
-    }: {
-      nextMode: 'unquoted' | 'single' | 'double',
-    }) => {
-      if (current.length === 0 && mode === nextMode) {
-        return;
-      }
-
-      const meta = toPartMeta({ currentMode: mode });
-      parts.push({
-        text: current,
-        quoted: meta.quoted,
-        expandVariables: meta.expandVariables,
-      });
-      current = '';
-      mode = nextMode;
-    };
-
-    for (let index = 0; index < raw.length; index++) {
-      const char = raw[index];
-      if (char === undefined) {
-        continue;
-      }
-
-      const currentMode: string = mode;
-      switch (currentMode) {
-      case 'single':
-        if (char === "'") {
-          pushCurrent({ nextMode: 'unquoted' });
-        } else {
-          current += char;
-        }
-        continue;
-      case 'double':
-        if (char === '"') {
-          pushCurrent({ nextMode: 'unquoted' });
-          continue;
-        }
-
-        if (char === '\\') {
-          const nextChar = raw[index + 1];
-          if (nextChar !== undefined && ['\\', '"', '$'].includes(nextChar)) {
-            current += nextChar;
-            index += 1;
-            continue;
-          }
-        }
-
-        current += char;
-        continue;
-      case 'unquoted':
-        break;
-      default:
-        throw new Error(`Unhandled mode: ${currentMode}`);
-      }
-
-      if (char === "'") {
-        pushCurrent({ nextMode: 'single' });
-        continue;
-      }
-
-      if (char === '"') {
-        pushCurrent({ nextMode: 'double' });
-        continue;
-      }
-
-      if (char === '\\') {
-        const nextChar = raw[index + 1];
-        if (nextChar !== undefined) {
-          current += nextChar;
-          index += 1;
-          continue;
-        }
-      }
-
-      current += char;
-    }
-
-    const meta = toPartMeta({ currentMode: mode });
-    parts.push({
-      text: current,
-      quoted: meta.quoted,
-      expandVariables: meta.expandVariables,
-    });
-
-    return parts;
-  }
-
   private findBraceExpansion({
     raw,
   }: {
@@ -993,6 +1159,10 @@ usage: ${name} [-c command] [file [argument...]]
       }
 
       if (char !== '{') {
+        continue;
+      }
+
+      if (raw[index - 1] === '$') {
         continue;
       }
 
@@ -1302,6 +1472,16 @@ usage: ${name} [-c command] [file [argument...]]
 
     for (let index = 0; index < text.length; index++) {
       const char = text[index];
+      if (char === '`') {
+        const expansion = await this.expandBackquoteCommandSubstitution({
+          text,
+          startIndex: index,
+          environment,
+        });
+        result += expansion.value;
+        index = expansion.endIndex;
+        continue;
+      }
       if (char !== '$') {
         result += char ?? '';
         continue;
@@ -1338,8 +1518,12 @@ usage: ${name} [-c command] [file [argument...]]
         continue;
       }
 
-      if (nextChar !== undefined && /[1-9]/.test(nextChar)) {
-        result += env.get(nextChar) ?? '';
+      if (nextChar !== undefined && nextChar !== '0' && isAsciiDecimalDigit({ value: nextChar })) {
+        result += this.getParameterValue({
+          name: nextChar,
+          env,
+          nounset: environment.executionOptions.nounset,
+        });
         index += 1;
         continue;
       }
@@ -1378,9 +1562,9 @@ usage: ${name} [-c command] [file [argument...]]
         continue;
       }
 
-      if (nextChar !== undefined && /[A-Za-z_]/.test(nextChar)) {
+      if (isAsciiShellIdentifierStart({ value: nextChar })) {
         let endIndex = index + 2;
-        while (endIndex < text.length && /[A-Za-z0-9_]/.test(text[endIndex] ?? '')) {
+        while (endIndex < text.length && isAsciiShellIdentifierPart({ value: text[endIndex] })) {
           endIndex += 1;
         }
 
@@ -1388,7 +1572,11 @@ usage: ${name} [-c command] [file [argument...]]
         if (key === 'RANDOM') {
           result += Math.floor(Math.random() * 32768).toString();
         } else {
-          result += env.get(key) ?? '';
+          result += this.getParameterValue({
+            name: key,
+            env,
+            nounset: environment.executionOptions.nounset,
+          });
         }
         index = endIndex - 1;
         continue;
@@ -1400,72 +1588,159 @@ usage: ${name} [-c command] [file [argument...]]
     return result;
   }
 
-  private async expandInlineSubstitutions({
+  private async expandPartVariablesToParts({
     text,
+    env,
     environment,
+    quoted,
+    literalFieldSplitEligible,
   }: {
     text: string,
+    env: Map<string, string>,
     environment: WeshExecutionEnvironment,
-  }): Promise<string> {
-    let result = '';
-    let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
+    quoted: boolean,
+    literalFieldSplitEligible: boolean,
+  }): Promise<WeshExpandedWordPart[]> {
+    const parts: WeshExpandedWordPart[] = [];
+    let literal = '';
+
+    const flushLiteral = (): void => {
+      if (literal.length === 0) return;
+      parts.push({
+        text: literal,
+        quoted,
+        fieldSplitEligible: !quoted && literalFieldSplitEligible,
+      });
+      literal = '';
+    };
+    const appendExpansion = ({ value }: { value: string }): void => {
+      flushLiteral();
+      parts.push({
+        text: value,
+        quoted,
+        fieldSplitEligible: !quoted,
+      });
+    };
 
     for (let index = 0; index < text.length; index += 1) {
       const char = text[index];
-      if (char === undefined) {
+      if (char === '`') {
+        const expansion = await this.expandBackquoteCommandSubstitution({
+          text,
+          startIndex: index,
+          environment,
+        });
+        appendExpansion({ value: expansion.value });
+        index = expansion.endIndex;
+        continue;
+      }
+      if (char !== '$') {
+        literal += char ?? '';
         continue;
       }
 
-      switch (mode) {
-      case 'single':
-        result += char;
-        if (char === "'") {
-          mode = 'unquoted';
-        }
-        continue;
-      case 'double':
-        if (char === '"') {
-          mode = 'unquoted';
-          result += char;
-          continue;
-        }
-        break;
-      case 'unquoted':
-        if (char === "'") {
-          mode = 'single';
-          result += char;
-          continue;
-        }
-        if (char === '"') {
-          mode = 'double';
-          result += char;
-          continue;
-        }
-        break;
-      default: {
-        const _ex: never = mode;
-        throw new Error(`Unhandled mode: ${_ex}`);
-      }
-      }
-
-      if (char === '\\') {
-        result += char;
-        const nextChar = text[index + 1];
-        if (nextChar !== undefined) {
-          result += nextChar;
-          index += 1;
-        }
+      const nextChar = text[index + 1];
+      if (nextChar === '?') {
+        appendExpansion({ value: env.get('?') ?? '0' });
+        index += 1;
         continue;
       }
 
-      if (char === '$' && text[index + 1] === '(') {
-        if (text[index + 2] === '(') {
+      if (nextChar === '$') {
+        appendExpansion({ value: env.get('$$') ?? '' });
+        index += 1;
+        continue;
+      }
+
+      if (nextChar === '#') {
+        appendExpansion({ value: env.get('#') ?? '0' });
+        index += 1;
+        continue;
+      }
+
+      if (nextChar === '!') {
+        appendExpansion({ value: env.get('!') ?? '' });
+        index += 1;
+        continue;
+      }
+
+      if (nextChar === '0') {
+        appendExpansion({ value: env.get('0') ?? '' });
+        index += 1;
+        continue;
+      }
+
+      if (nextChar !== undefined && nextChar !== '0' && isAsciiDecimalDigit({ value: nextChar })) {
+        appendExpansion({
+          value: this.getParameterValue({
+            name: nextChar,
+            env,
+            nounset: environment.executionOptions.nounset,
+          }),
+        });
+        index += 1;
+        continue;
+      }
+
+      if (nextChar === '{') {
+        const endIndex = findBracedParameterEnd({
+          text,
+          startIndex: index,
+        });
+        if (endIndex === -1) {
+          literal += '$';
+          continue;
+        }
+
+        const expression = text.slice(index + 2, endIndex);
+        const parsedExpression = parseParameterExpression({ expression });
+        if (parsedExpression !== undefined) {
+          switch (parsedExpression.kind) {
+          case 'value-operator':
+            flushLiteral();
+            parts.push(...await this.evaluateParameterOperatorParts({
+              name: parsedExpression.name,
+              operator: parsedExpression.operator,
+              operand: parsedExpression.operand,
+              env,
+              environment,
+              quoted,
+            }));
+            index = endIndex;
+            continue;
+          case 'indirect':
+          case 'substring':
+          case 'pattern-operator':
+          case 'case-operator':
+          case 'substitution':
+            break;
+          default: {
+            const exhaustiveCheck = parsedExpression satisfies never;
+            throw new Error(`Unhandled parameter expression: ${String(exhaustiveCheck)}`);
+          }
+          }
+        }
+
+        appendExpansion({
+          value: await this.evaluateParameterExpansion({
+            expression,
+            env,
+            environment,
+          }),
+        });
+        index = endIndex;
+        continue;
+      }
+
+      if (nextChar === '(') {
+        const thirdChar = text[index + 2];
+        if (thirdChar === '(') {
           const expansion = this.expandArithmeticExpansion({
             text,
             startIndex: index,
-            env: environment.env,
+            env,
           });
-          result += expansion.value;
+          appendExpansion({ value: expansion.value });
           index = expansion.endIndex;
           continue;
         }
@@ -1474,15 +1749,175 @@ usage: ${name} [-c command] [file [argument...]]
           startIndex: index,
           environment,
         });
-        result += expansion.value;
+        appendExpansion({ value: expansion.value });
         index = expansion.endIndex;
         continue;
       }
 
-      result += char;
+      if (isAsciiShellIdentifierStart({ value: nextChar })) {
+        let endIndex = index + 2;
+        while (endIndex < text.length && isAsciiShellIdentifierPart({ value: text[endIndex] })) {
+          endIndex += 1;
+        }
+
+        const key = text.slice(index + 1, endIndex);
+        appendExpansion({
+          value: key === 'RANDOM'
+            ? Math.floor(Math.random() * 32768).toString()
+            : this.getParameterValue({
+              name: key,
+              env,
+              nounset: environment.executionOptions.nounset,
+            }),
+        });
+        index = endIndex - 1;
+        continue;
+      }
+
+      literal += '$';
     }
 
-    return result;
+    flushLiteral();
+    if (parts.length === 0 && quoted) {
+      parts.push({
+        text: '',
+        quoted: true,
+        fieldSplitEligible: false,
+      });
+    }
+    return parts;
+  }
+
+  private async expandParameterOperandParts({
+    operand,
+    env,
+    environment,
+    quoted,
+  }: {
+    operand: string,
+    env: Map<string, string>,
+    environment: WeshExecutionEnvironment,
+    quoted: boolean,
+  }): Promise<WeshExpandedWordPart[]> {
+    const parsedParts = quoted
+      ? parseDoubleQuotedParameterOperandParts({ raw: operand })
+      : parseShellWordParts({ raw: operand });
+    const tildeExpandedParts = parsedParts.flatMap((part, index) => {
+      if (
+        quoted ||
+        index !== 0 ||
+        part.quoted ||
+        !part.text.startsWith('~') ||
+        (part.text.length !== 1 && part.text[1] !== '/')
+      ) {
+        return [part];
+      }
+
+      const tilde = this.splitTildePrefix({
+        text: part.text,
+        env,
+      });
+      if (tilde === undefined) {
+        throw new Error('Expected leading parameter-operand tilde expansion');
+      }
+      return [
+        {
+          text: tilde.prefix,
+          quoted: true,
+          expandVariables: false,
+        },
+        {
+          ...part,
+          text: tilde.suffix,
+        },
+      ];
+    });
+
+    const expanded: WeshExpandedWordPart[] = [];
+    for (const part of tildeExpandedParts) {
+      if (part.expandVariables) {
+        expanded.push(...await this.expandPartVariablesToParts({
+          text: part.text,
+          env,
+          environment,
+          quoted: quoted || part.quoted,
+          literalFieldSplitEligible: !quoted && !part.quoted,
+        }));
+      } else {
+        expanded.push({
+          text: part.text,
+          quoted: quoted || part.quoted,
+          fieldSplitEligible: false,
+        });
+      }
+    }
+    return expanded;
+  }
+
+  private async evaluateParameterOperatorParts({
+    name,
+    operator,
+    operand,
+    env,
+    environment,
+    quoted,
+  }: {
+    name: string,
+    operator: string,
+    operand: string,
+    env: Map<string, string>,
+    environment: WeshExecutionEnvironment,
+    quoted: boolean,
+  }): Promise<WeshExpandedWordPart[]> {
+    const currentValue = env.get(name);
+    const isSet = currentValue !== undefined;
+    const isNull = currentValue === '';
+    const requireNonNull = operator.startsWith(':');
+    const shouldUseOperand = requireNonNull ? !isSet || isNull : !isSet;
+    const currentParts = (): WeshExpandedWordPart[] => [{
+      text: currentValue ?? '',
+      quoted,
+      fieldSplitEligible: !quoted,
+    }];
+    const expandOperand = () => this.expandParameterOperandParts({
+      operand,
+      env,
+      environment,
+      quoted,
+    });
+
+    switch (operator) {
+    case ':-':
+    case '-':
+      return shouldUseOperand ? expandOperand() : currentParts();
+    case ':=':
+    case '=':
+      if (shouldUseOperand) {
+        const expandedOperand = await expandOperand();
+        env.set(name, expandedOperand.map((part) => part.text).join(''));
+        return expandedOperand;
+      }
+      return currentParts();
+    case ':+':
+    case '+':
+      return shouldUseOperand ? [] : expandOperand();
+    case ':?':
+    case '?':
+      if (shouldUseOperand) {
+        const expandedOperand = await expandOperand();
+        const message = expandedOperand.map((part) => part.text).join('');
+        throw new WeshShellExecutionError({
+          message: message.length > 0
+            ? `${name}: ${message}`
+            : `${name}: parameter null or not set`,
+          exitCode: 127,
+          disposition: 'abort-shell',
+        });
+      }
+      return currentParts();
+    default:
+      return currentParts();
+    }
   }
 
   private async expandBracedParameter({
@@ -1499,7 +1934,10 @@ usage: ${name} [-c command] [file [argument...]]
     value: string,
     endIndex: number,
   }> {
-    const endIndex = text.indexOf('}', startIndex + 2);
+    const endIndex = findBracedParameterEnd({
+      text,
+      startIndex,
+    });
     if (endIndex === -1) {
       return {
         value: '$',
@@ -1531,7 +1969,7 @@ usage: ${name} [-c command] [file [argument...]]
     value: string,
     endIndex: number,
   }> {
-    const parsed = this.findBalancedParenthesizedExpression({
+    const parsed = findBalancedParenthesizedExpression({
       text,
       startIndex: startIndex + 1,
     });
@@ -1542,6 +1980,68 @@ usage: ${name} [-c command] [file [argument...]]
       };
     }
 
+    return {
+      value: await this.executeCommandSubstitutionScript({
+        script: parsed.content,
+        environment,
+      }),
+      endIndex: parsed.endIndex,
+    };
+  }
+
+  private async expandBackquoteCommandSubstitution({
+    text,
+    startIndex,
+    environment,
+  }: {
+    text: string,
+    startIndex: number,
+    environment: WeshExecutionEnvironment,
+  }): Promise<{
+    value: string,
+    endIndex: number,
+  }> {
+    const parsed = findBackquoteSubstitution({ text, startIndex });
+    if (parsed === undefined) {
+      return {
+        value: '`',
+        endIndex: startIndex,
+      };
+    }
+
+    let script = '';
+    for (let index = 0; index < parsed.content.length; index += 1) {
+      const character = parsed.content[index];
+      if (character !== '\\') {
+        script += character ?? '';
+        continue;
+      }
+      const nextCharacter = parsed.content[index + 1];
+      if (nextCharacter === '$' || nextCharacter === '`' || nextCharacter === '\\') {
+        script += nextCharacter;
+        index += 1;
+        continue;
+      }
+      if (nextCharacter === '\n') {
+        index += 1;
+        continue;
+      }
+      script += '\\';
+    }
+
+    return {
+      value: await this.executeCommandSubstitutionScript({ script, environment }),
+      endIndex: parsed.endIndex,
+    };
+  }
+
+  private async executeCommandSubstitutionScript({
+    script,
+    environment,
+  }: {
+    script: string,
+    environment: WeshExecutionEnvironment,
+  }): Promise<string> {
     const chunks: Uint8Array[] = [];
     const captureHandle = createWriteHandleFromStream({
       target: new WritableStream<Uint8Array>({
@@ -1563,11 +2063,13 @@ usage: ${name} [-c command] [file [argument...]]
       environment: childEnvironment,
       execute: async () => {
         const rawResult = await this.executeShellInState({
-          script: parsed.content,
+          source: createTextShellSource({ text: script }),
           environment: childEnvironment,
           stdin,
           stdout: captureHandle,
           stderr,
+          history: 'ignore',
+          allowReturn: false,
         });
         return this.runExitTrapIfNeeded({
           result: rawResult,
@@ -1578,9 +2080,8 @@ usage: ${name} [-c command] [file [argument...]]
         });
       },
     });
-    if (result.exitCode !== 0) {
-      environment.env.set('?', result.exitCode.toString());
-    }
+    environment.commandSubstitutionSequence += 1;
+    environment.lastCommandSubstitutionExitCode = result.exitCode;
 
     let totalLength = 0;
     for (const chunk of chunks) {
@@ -1592,11 +2093,7 @@ usage: ${name} [-c command] [file [argument...]]
       bytes.set(chunk, offset);
       offset += chunk.length;
     }
-    const value = new TextDecoder().decode(bytes).replace(/\n+$/u, '');
-    return {
-      value,
-      endIndex: parsed.endIndex,
-    };
+    return decodeShellBytesToText({ bytes }).replace(/\n+$/u, '');
   }
 
   private expandArithmeticExpansion({
@@ -1611,7 +2108,7 @@ usage: ${name} [-c command] [file [argument...]]
     value: string,
     endIndex: number,
   } {
-    const parsed = this.findBalancedArithmeticExpression({
+    const parsed = findBalancedArithmeticExpression({
       text,
       startIndex,
     });
@@ -1631,150 +2128,6 @@ usage: ${name} [-c command] [file [argument...]]
     };
   }
 
-  private findBalancedParenthesizedExpression({
-    text,
-    startIndex,
-  }: {
-    text: string,
-    startIndex: number,
-  }): {
-    content: string,
-    endIndex: number,
-  } | undefined {
-    if (text[startIndex] !== '(') {
-      return undefined;
-    }
-    let depth = 0;
-    let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
-    for (let index = startIndex; index < text.length; index += 1) {
-      const char = text[index];
-      if (char === undefined) {
-        continue;
-      }
-      switch (mode) {
-      case 'single':
-        if (char === "'") {
-          mode = 'unquoted';
-        }
-        continue;
-      case 'double':
-        if (char === '"') {
-          mode = 'unquoted';
-          continue;
-        }
-        if (char === '\\') {
-          index += 1;
-        }
-        continue;
-      case 'unquoted':
-        break;
-      default: {
-        const _ex: never = mode;
-        throw new Error(`Unhandled mode: ${_ex}`);
-      }
-      }
-      if (char === "'") {
-        mode = 'single';
-        continue;
-      }
-      if (char === '"') {
-        mode = 'double';
-        continue;
-      }
-      if (char === '\\') {
-        index += 1;
-        continue;
-      }
-      if (char === '(') {
-        depth += 1;
-        continue;
-      }
-      if (char === ')') {
-        depth -= 1;
-        if (depth === 0) {
-          return {
-            content: text.slice(startIndex + 1, index),
-            endIndex: index,
-          };
-        }
-      }
-    }
-    return undefined;
-  }
-
-  private findBalancedArithmeticExpression({
-    text,
-    startIndex,
-  }: {
-    text: string,
-    startIndex: number,
-  }): {
-    content: string,
-    endIndex: number,
-  } | undefined {
-    if (text.slice(startIndex, startIndex + 3) !== '$((') {
-      return undefined;
-    }
-    let depth = 1;
-    let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
-    for (let index = startIndex + 3; index < text.length; index += 1) {
-      const char = text[index];
-      const nextChar = text[index + 1];
-      if (char === undefined) {
-        continue;
-      }
-      switch (mode) {
-      case 'single':
-        if (char === "'") {
-          mode = 'unquoted';
-        }
-        continue;
-      case 'double':
-        if (char === '"') {
-          mode = 'unquoted';
-          continue;
-        }
-        if (char === '\\') {
-          index += 1;
-        }
-        continue;
-      case 'unquoted':
-        break;
-      default: {
-        const _ex: never = mode;
-        throw new Error(`Unhandled mode: ${_ex}`);
-      }
-      }
-      if (char === "'") {
-        mode = 'single';
-        continue;
-      }
-      if (char === '"') {
-        mode = 'double';
-        continue;
-      }
-      if (char === '\\') {
-        index += 1;
-        continue;
-      }
-      if (char === '(') {
-        depth += 1;
-        continue;
-      }
-      if (char === ')' && nextChar === ')') {
-        depth -= 1;
-        if (depth === 0) {
-          return {
-            content: text.slice(startIndex + 3, index),
-            endIndex: index + 1,
-          };
-        }
-        index += 1;
-      }
-    }
-    return undefined;
-  }
-
   private async evaluateParameterExpansion({
     expression,
     env,
@@ -1790,49 +2143,155 @@ usage: ${name} [-c command] [file [argument...]]
 
     if (expression.startsWith('#')) {
       const name = expression.slice(1);
-      return this.getParameterValue({
+      if (name === '@' || name === '*') {
+        return environment.positionalArgs.length.toString();
+      }
+      return Array.from(this.getParameterValue({
         name,
         env,
-      }).length.toString();
+        nounset: environment.executionOptions.nounset,
+      })).length.toString();
     }
 
-    const patternOperatorMatch = expression.match(/^([A-Za-z_][A-Za-z0-9_]*)(##|#|%%|%)(.*)$/);
-    if (patternOperatorMatch !== null) {
-      const name = patternOperatorMatch[1]!;
-      const operator = patternOperatorMatch[2] as '##' | '#' | '%%' | '%';
-      const pattern = patternOperatorMatch[3] ?? '';
-      return this.applyParameterPatternOperator({
-        value: this.getParameterValue({
-          name,
-          env,
-        }),
-        operator,
-        pattern: await this.expandPartVariables({
-          text: pattern,
-          env,
-          environment,
-        }),
+    const parsedExpression = parseParameterExpression({ expression });
+    if (parsedExpression === undefined) {
+      return this.getParameterValue({
+        name: expression,
+        env,
+        nounset: environment.executionOptions.nounset,
       });
     }
 
-    const operatorMatch = expression.match(/^([A-Za-z_][A-Za-z0-9_]*)(:?[-=?+])(.*)$/);
-    if (operatorMatch !== null) {
-      const name = operatorMatch[1]!;
-      const operator = operatorMatch[2]!;
-      const operand = operatorMatch[3] ?? '';
+    switch (parsedExpression.kind) {
+    case 'indirect': {
+      const targetName = this.getParameterValue({
+        name: parsedExpression.name,
+        env,
+        nounset: environment.executionOptions.nounset,
+      });
+      return this.getParameterValue({
+        name: targetName,
+        env,
+        nounset: environment.executionOptions.nounset,
+      });
+    }
+    case 'value-operator':
       return this.evaluateParameterOperator({
-        name,
-        operator,
-        operand,
+        name: parsedExpression.name,
+        operator: parsedExpression.operator,
+        operand: parsedExpression.operand,
         env,
         environment,
       });
+    case 'substring': {
+      const value = this.getParameterValue({
+        name: parsedExpression.name,
+        env,
+        nounset: environment.executionOptions.nounset,
+      });
+      const characters = Array.from(value);
+      const offset = this.evaluateArithmeticExpression({
+        expression: parsedExpression.offsetExpression,
+        env,
+      });
+      const start = offset < 0
+        ? Math.max(characters.length + offset, 0)
+        : Math.min(offset, characters.length);
+      if (parsedExpression.lengthExpression === undefined) {
+        return characters.slice(start).join('');
+      }
+      const length = this.evaluateArithmeticExpression({
+        expression: parsedExpression.lengthExpression,
+        env,
+      });
+      if (length < 0) {
+        const end = characters.length + length;
+        if (end < start) {
+          throw new WeshShellExecutionError({
+            message: `${length}: substring expression < 0`,
+            exitCode: 1,
+            disposition: 'continue',
+          });
+        }
+        return characters.slice(start, end).join('');
+      }
+      return characters.slice(start, start + length).join('');
     }
-
-    return this.getParameterValue({
-      name: expression,
-      env,
-    });
+    case 'case-operator': {
+      const value = this.getParameterValue({
+        name: parsedExpression.name,
+        env,
+        nounset: environment.executionOptions.nounset,
+      });
+      const operator = parsedExpression.operator;
+      switch (operator) {
+      case '^^':
+        return value.toUpperCase();
+      case ',,':
+        return value.toLowerCase();
+      case '^': {
+        const [first = '', ...rest] = Array.from(value);
+        return first.toUpperCase() + rest.join('');
+      }
+      case ',': {
+        const [first = '', ...rest] = Array.from(value);
+        return first.toLowerCase() + rest.join('');
+      }
+      default: {
+        const _ex: never = operator;
+        throw new Error(`Unhandled parameter case operator: ${_ex}`);
+      }
+      }
+    }
+    case 'substitution': {
+      const pattern = await this.expandPartVariables({
+        text: parsedExpression.pattern,
+        env,
+        environment,
+      });
+      const replacement = await this.expandPartVariables({
+        text: parsedExpression.replacement,
+        env,
+        environment,
+      });
+      return this.applyParameterSubstitution({
+        value: this.getParameterValue({
+          name: parsedExpression.name,
+          env,
+          nounset: environment.executionOptions.nounset,
+        }),
+        operator: parsedExpression.operator,
+        pattern,
+        replacement,
+      });
+    }
+    case 'pattern-operator':
+      return this.applyParameterPatternOperator({
+        value: this.getParameterValue({
+          name: parsedExpression.name,
+          env,
+          nounset: environment.executionOptions.nounset,
+        }),
+        operator: parsedExpression.operator,
+        pattern: await (() => {
+          const tilde = this.splitTildePrefix({
+            text: parsedExpression.pattern,
+            env,
+          });
+          return this.expandPartVariables({
+            text: tilde === undefined
+              ? parsedExpression.pattern
+              : this.escapeGlobLiteral({ text: tilde.prefix }) + tilde.suffix,
+            env,
+            environment,
+          });
+        })(),
+      });
+    default: {
+      const _ex: never = parsedExpression;
+      throw new Error(`Unhandled parsed parameter expression: ${String(_ex)}`);
+    }
+    }
   }
 
   private evaluateArithmeticExpression({
@@ -1841,6 +2300,22 @@ usage: ${name} [-c command] [file [argument...]]
   }: {
     expression: string,
     env: Map<string, string>,
+  }): number {
+    return this.evaluateArithmeticExpressionInternal({
+      expression,
+      env,
+      resolvingVariableNames: new Set(),
+    });
+  }
+
+  private evaluateArithmeticExpressionInternal({
+    expression,
+    env,
+    resolvingVariableNames,
+  }: {
+    expression: string,
+    env: Map<string, string>,
+    resolvingVariableNames: Set<string>,
   }): number {
     type ArithmeticToken =
       | { kind: 'number', value: number }
@@ -1857,39 +2332,82 @@ usage: ${name} [-c command] [file [argument...]]
       if (char === undefined) {
         break;
       }
-      if (/\s/u.test(char)) {
+      if (isShellWhitespaceCharacter({ value: char })) {
         index += 1;
         continue;
       }
       const multiCharacterOperator = [
-        '++', '--', '+=', '-=', '*=', '/=', '%=',
-        '==', '!=', '<=', '>=', '&&', '||',
+        '++', '--', '**', '+=', '-=', '*=', '/=', '%=',
+        '==', '!=', '<=', '>=', '<<', '>>', '&&', '||',
       ].find((candidate) => expression.startsWith(candidate, index));
       if (multiCharacterOperator !== undefined) {
         tokens.push({ kind: 'operator', value: multiCharacterOperator });
         index += multiCharacterOperator.length;
         continue;
       }
-      if ('()+-*/%!<=>'.includes(char)) {
+      if ('()+-*/%!<=>,'.includes(char)) {
         tokens.push({ kind: 'operator', value: char });
         index += 1;
         continue;
       }
-      if (/\d/u.test(char)) {
+      if (isAsciiDecimalDigit({ value: char })) {
         let endIndex = index + 1;
-        while (endIndex < expression.length && /\d/u.test(expression[endIndex] ?? '')) {
+        while (endIndex < expression.length && isAsciiDecimalDigit({ value: expression[endIndex] })) {
           endIndex += 1;
+        }
+        const radixText = expression.slice(index, endIndex);
+        if (expression[endIndex] === '#') {
+          const radix = Number.parseInt(radixText, 10);
+          if (!Number.isSafeInteger(radix) || radix < 2 || radix > 64) {
+            throw new Error(`Invalid arithmetic base: ${radixText}`);
+          }
+          const digitsStart = endIndex + 1;
+          endIndex = digitsStart;
+          while (endIndex < expression.length && /[0-9A-Za-z@_]/u.test(expression[endIndex] ?? '')) {
+            endIndex += 1;
+          }
+          const digits = expression.slice(digitsStart, endIndex);
+          if (digits.length === 0) {
+            throw new Error(`Missing digits for arithmetic base ${radix}`);
+          }
+          const digitValue = ({ digit }: { digit: string }): number => {
+            if (digit >= '0' && digit <= '9') return digit.codePointAt(0)! - '0'.codePointAt(0)!;
+            if (digit >= 'a' && digit <= 'z') return digit.codePointAt(0)! - 'a'.codePointAt(0)! + 10;
+            if (digit >= 'A' && digit <= 'Z') {
+              const upperValue = digit.codePointAt(0)! - 'A'.codePointAt(0)! + 10;
+              return radix <= 36 ? upperValue : upperValue + 26;
+            }
+            if (digit === '@') return 62;
+            if (digit === '_') return 63;
+            throw new Error(`Invalid arithmetic digit: ${digit}`);
+          };
+          let value = 0;
+          for (const digit of digits) {
+            const numericDigit = digitValue({ digit });
+            if (numericDigit >= radix) {
+              throw new Error(`Invalid digit '${digit}' for arithmetic base ${radix}`);
+            }
+            value = value * radix + numericDigit;
+          }
+          tokens.push({ kind: 'number', value });
+          index = endIndex;
+          continue;
+        }
+        const numberText = radixText;
+        const hasOctalPrefix = numberText.length > 1 && numberText.startsWith('0');
+        if (hasOctalPrefix && [...numberText].some((digit) => digit === '8' || digit === '9')) {
+          throw new Error(`Invalid octal arithmetic literal: ${numberText}`);
         }
         tokens.push({
           kind: 'number',
-          value: Number.parseInt(expression.slice(index, endIndex), 10),
+          value: Number.parseInt(numberText, hasOctalPrefix ? 8 : 10),
         });
         index = endIndex;
         continue;
       }
-      if (/[A-Za-z_]/u.test(char)) {
+      if (isAsciiShellIdentifierStart({ value: char })) {
         let endIndex = index + 1;
-        while (endIndex < expression.length && /[A-Za-z0-9_]/u.test(expression[endIndex] ?? '')) {
+        while (endIndex < expression.length && isAsciiShellIdentifierPart({ value: expression[endIndex] })) {
           endIndex += 1;
         }
         tokens.push({
@@ -1921,8 +2439,19 @@ usage: ${name} [-c command] [file [argument...]]
       if (raw === undefined || raw.length === 0) {
         return 0;
       }
-      const parsed = Number.parseInt(raw, 10);
-      return Number.isNaN(parsed) ? 0 : parsed;
+      if (resolvingVariableNames.has(name)) {
+        throw new Error(`Recursive arithmetic variable reference: ${name}`);
+      }
+      resolvingVariableNames.add(name);
+      try {
+        return this.evaluateArithmeticExpressionInternal({
+          expression: raw,
+          env,
+          resolvingVariableNames,
+        });
+      } finally {
+        resolvingVariableNames.delete(name);
+      }
     };
     const writeVariable = ({
       name,
@@ -1968,7 +2497,7 @@ usage: ${name} [-c command] [file [argument...]]
         };
       case 'operator':
         if (token.value === '(') {
-          const value = parseAssignment();
+          const value = parseComma();
           const endToken = consume();
           if (endToken.kind !== 'operator' || endToken.value !== ')') {
             throw new Error("Expected ')' in arithmetic expression");
@@ -2015,6 +2544,7 @@ usage: ${name} [-c command] [file [argument...]]
         case '+':
         case '-':
         case '*':
+        case '**':
         case '/':
         case '%':
         case '==':
@@ -2023,6 +2553,8 @@ usage: ${name} [-c command] [file [argument...]]
         case '<=':
         case '>':
         case '>=':
+        case '<<':
+        case '>>':
         case '&&':
         case '||':
         case '=':
@@ -2034,6 +2566,7 @@ usage: ${name} [-c command] [file [argument...]]
         case '!':
         case '(':
         case ')':
+        case ',':
           break;
         default: {
           throw new Error(`Unhandled arithmetic operator: ${token.value}`);
@@ -2079,7 +2612,18 @@ usage: ${name} [-c command] [file [argument...]]
         }
         }
       }
-      return parsePostfix();
+      return parsePower();
+    };
+
+    const parsePower = (): ArithmeticValue => {
+      const left = parsePostfix();
+      const token = peek();
+      if (token?.kind !== 'operator' || token.value !== '**') {
+        return left;
+      }
+      consume();
+      const right = parseUnary();
+      return toPlain({ value: left.value ** right.value });
     };
 
     const parseMultiplicative = (): ArithmeticValue => {
@@ -2125,15 +2669,38 @@ usage: ${name} [-c command] [file [argument...]]
       }
     };
 
-    const parseComparison = (): ArithmeticValue => {
+    const parseShift = (): ArithmeticValue => {
       let left = parseAdditive();
+      while (true) {
+        const token = peek();
+        if (token?.kind !== 'operator' || !['<<', '>>'].includes(token.value)) {
+          return left;
+        }
+        consume();
+        const right = parseAdditive();
+        const shiftCount = Math.trunc(right.value);
+        if (!Number.isSafeInteger(shiftCount) || shiftCount < 0 || shiftCount > 52) {
+          throw new Error(`Arithmetic shift count is outside the safe integer range: ${right.value}`);
+        }
+        const integerValue = Math.trunc(left.value);
+        const factor = 2 ** shiftCount;
+        left = toPlain({
+          value: token.value === '<<'
+            ? integerValue * factor
+            : Math.floor(integerValue / factor),
+        });
+      }
+    };
+
+    const parseComparison = (): ArithmeticValue => {
+      let left = parseShift();
       while (true) {
         const token = peek();
         if (token?.kind !== 'operator' || !['<', '<=', '>', '>='].includes(token.value)) {
           return left;
         }
         consume();
-        const right = parseAdditive();
+        const right = parseShift();
         switch (token.value) {
         case '<':
           left = toPlain({ value: left.value < right.value ? 1 : 0 });
@@ -2224,11 +2791,44 @@ usage: ${name} [-c command] [file [argument...]]
       }
     };
 
-    const result = parseAssignment();
+    const parseComma = (): ArithmeticValue => {
+      let value = parseAssignment();
+      while (peek()?.kind === 'operator' && peek()?.value === ',') {
+        consume();
+        value = parseAssignment();
+      }
+      return value;
+    };
+
+    const result = parseComma();
     if (position !== tokens.length) {
       throw new Error('Unexpected trailing arithmetic tokens');
     }
     return result.value;
+  }
+
+  private splitTildePrefix({ text, env }: {
+    text: string,
+    env: Map<string, string>,
+  }): {
+    prefix: string,
+    suffix: string,
+  } | undefined {
+    if (!text.startsWith('~') || (text.length !== 1 && text[1] !== '/')) {
+      return undefined;
+    }
+
+    const prefix = env.get('HOME') ?? '/home';
+    const rawSuffix = text.slice(1);
+    if (prefix !== '/') {
+      return { prefix, suffix: rawSuffix };
+    }
+
+    let suffixStart = 0;
+    while (rawSuffix[suffixStart] === '/') {
+      suffixStart += 1;
+    }
+    return { prefix, suffix: rawSuffix.slice(suffixStart) };
   }
 
   private async evaluateParameterOperator({
@@ -2249,7 +2849,7 @@ usage: ${name} [-c command] [file [argument...]]
     const isNull = currentValue === '';
     const requireNonNull = operator.startsWith(':');
     const shouldUseOperand = requireNonNull ? !isSet || isNull : !isSet;
-    const expandedOperand = await this.expandPartVariables({
+    const expandOperand = () => this.expandPartVariables({
       text: operand,
       env,
       environment,
@@ -2258,25 +2858,126 @@ usage: ${name} [-c command] [file [argument...]]
     switch (operator) {
     case ':-':
     case '-':
-      return shouldUseOperand ? expandedOperand : currentValue ?? '';
+      return shouldUseOperand ? await expandOperand() : currentValue ?? '';
     case ':=':
     case '=':
       if (shouldUseOperand) {
+        const expandedOperand = await expandOperand();
         env.set(name, expandedOperand);
         return expandedOperand;
       }
       return currentValue ?? '';
     case ':+':
     case '+':
-      return shouldUseOperand ? '' : expandedOperand;
+      return shouldUseOperand ? '' : await expandOperand();
     case ':?':
     case '?':
       if (shouldUseOperand) {
-        throw new Error(expandedOperand.length > 0 ? `${name}: ${expandedOperand}` : `${name}: parameter null or not set`);
+        const expandedOperand = await expandOperand();
+        throw new WeshShellExecutionError({
+          message: expandedOperand.length > 0
+            ? `${name}: ${expandedOperand}`
+            : `${name}: parameter null or not set`,
+          exitCode: 127,
+          disposition: 'abort-shell',
+        });
       }
       return currentValue ?? '';
     default:
       return currentValue ?? '';
+    }
+  }
+
+
+  private applyParameterSubstitution({
+    value,
+    operator,
+    pattern,
+    replacement,
+  }: {
+    value: string,
+    operator: 'first' | 'all' | 'prefix' | 'suffix',
+    pattern: string,
+    replacement: string,
+  }): string {
+    if (pattern.length === 0 && (operator === 'first' || operator === 'all')) return value;
+
+    const compiledPattern = compileShellPattern({ pattern });
+    const matchesRange = ({ start, end }: { start: number, end: number }): boolean =>
+      matchesCompiledShellPattern({
+        compiledPattern,
+        text: value.slice(start, end),
+      });
+
+    const longestMatchFrom = ({ start }: { start: number }): number | undefined => {
+      for (let end = value.length;;) {
+        if (end >= start && matchesRange({ start, end })) return end;
+        if (end <= start) break;
+        end = previousShellCharacterIndex({ text: value, index: end });
+      }
+      return undefined;
+    };
+
+    switch (operator) {
+    case 'prefix': {
+      const end = longestMatchFrom({ start: 0 });
+      return end === undefined ? value : replacement + value.slice(end);
+    }
+    case 'suffix': {
+      for (let start = 0;;) {
+        if (matchesRange({ start, end: value.length })) {
+          return value.slice(0, start) + replacement;
+        }
+        if (start === value.length) break;
+        start = nextShellCharacterIndex({ text: value, index: start });
+      }
+      return value;
+    }
+    case 'first': {
+      for (let start = 0;;) {
+        const end = longestMatchFrom({ start });
+        if (end !== undefined) {
+          return value.slice(0, start) + replacement + value.slice(end);
+        }
+        if (start === value.length) break;
+        start = nextShellCharacterIndex({ text: value, index: start });
+      }
+      return value;
+    }
+    case 'all': {
+      let result = '';
+      let cursor = 0;
+      while (cursor <= value.length) {
+        let matched = false;
+        for (let start = cursor;;) {
+          const end = longestMatchFrom({ start });
+          if (end !== undefined) {
+            result += value.slice(cursor, start) + replacement;
+            if (end === start) {
+              if (start === value.length) return result;
+              const next = nextShellCharacterIndex({ text: value, index: start });
+              result += value.slice(start, next);
+              cursor = next;
+            } else {
+              cursor = end;
+            }
+            matched = true;
+            break;
+          }
+          if (start === value.length) break;
+          start = nextShellCharacterIndex({ text: value, index: start });
+        }
+        if (!matched) {
+          result += value.slice(cursor);
+          break;
+        }
+      }
+      return result;
+    }
+    default: {
+      const _ex: never = operator;
+      throw new Error(`Unhandled parameter substitution operator: ${_ex}`);
+    }
     }
   }
 
@@ -2289,103 +2990,77 @@ usage: ${name} [-c command] [file [argument...]]
     operator: '##' | '#' | '%%' | '%',
     pattern: string,
   }): string {
-    const compileParameterPattern = ({
-      pattern,
-    }: {
-      pattern: string,
-    }): RegExp => {
-      let source = '^';
-
-      for (let index = 0; index < pattern.length; index++) {
-        const char = pattern[index];
-        if (char === undefined) {
-          continue;
-        }
-
-        if (char === '\\') {
-          const nextChar = pattern[index + 1];
-          if (nextChar !== undefined) {
-            source += nextChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            index += 1;
-            continue;
-          }
-          source += '\\\\';
-          continue;
-        }
-
-        if (char === '*') {
-          source += '.*';
-          continue;
-        }
-
-        if (char === '?') {
-          source += '.';
-          continue;
-        }
-
-        if (char === '[') {
-          const endIndex = pattern.indexOf(']', index + 1);
-          if (endIndex !== -1) {
-            let classContent = pattern.slice(index + 1, endIndex);
-            if (classContent.startsWith('!')) {
-              classContent = '^' + classContent.slice(1);
-            }
-            source += `[${classContent}]`;
-            index = endIndex;
-            continue;
-          }
-        }
-
-        source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      }
-
-      source += '$';
-      return new RegExp(source);
-    };
-
-    const matcher = compileParameterPattern({ pattern });
+    const compiledPattern = compileShellPattern({ pattern });
     const matchesPattern = ({
       text,
     }: {
       text: string,
     }): boolean => {
-      return matcher.test(text);
+      return matchesCompiledShellPattern({ compiledPattern, text });
     };
 
     switch (operator) {
     case '#': {
-      for (let prefixLength = 0; prefixLength <= value.length; prefixLength++) {
-        const prefix = value.slice(0, prefixLength);
+      for (let prefixEnd = 0;;) {
+        const prefix = value.slice(0, prefixEnd);
         if (matchesPattern({ text: prefix })) {
-          return value.slice(prefixLength);
+          return value.slice(prefixEnd);
         }
+        if (prefixEnd === value.length) {
+          break;
+        }
+        prefixEnd = nextShellCharacterIndex({
+          text: value,
+          index: prefixEnd,
+        });
       }
       return value;
     }
     case '##': {
-      for (let prefixLength = value.length; prefixLength >= 0; prefixLength--) {
-        const prefix = value.slice(0, prefixLength);
+      for (let prefixEnd = value.length;;) {
+        const prefix = value.slice(0, prefixEnd);
         if (matchesPattern({ text: prefix })) {
-          return value.slice(prefixLength);
+          return value.slice(prefixEnd);
         }
+        if (prefixEnd === 0) {
+          break;
+        }
+        prefixEnd = previousShellCharacterIndex({
+          text: value,
+          index: prefixEnd,
+        });
       }
       return value;
     }
     case '%': {
-      for (let suffixStart = value.length; suffixStart >= 0; suffixStart--) {
+      for (let suffixStart = value.length;;) {
         const suffix = value.slice(suffixStart);
         if (matchesPattern({ text: suffix })) {
           return value.slice(0, suffixStart);
         }
+        if (suffixStart === 0) {
+          break;
+        }
+        suffixStart = previousShellCharacterIndex({
+          text: value,
+          index: suffixStart,
+        });
       }
       return value;
     }
     case '%%': {
-      for (let suffixStart = 0; suffixStart <= value.length; suffixStart++) {
+      for (let suffixStart = 0;;) {
         const suffix = value.slice(suffixStart);
         if (matchesPattern({ text: suffix })) {
           return value.slice(0, suffixStart);
         }
+        if (suffixStart === value.length) {
+          break;
+        }
+        suffixStart = nextShellCharacterIndex({
+          text: value,
+          index: suffixStart,
+        });
       }
       return value;
     }
@@ -2399,92 +3074,24 @@ usage: ${name} [-c command] [file [argument...]]
   private getParameterValue({
     name,
     env,
+    nounset = false,
   }: {
     name: string,
     env: Map<string, string>,
+    nounset?: boolean,
   }): string {
     if (name === 'RANDOM') {
       return Math.floor(Math.random() * 32768).toString();
     }
-    return env.get(name) ?? '';
-  }
-
-  private splitExpandedFields({
-    parts,
-    mode,
-  }: {
-    parts: Array<{
-      text: string,
-      quoted: boolean,
-    }>,
-    mode: WeshExpansionMode,
-  }): WeshExpandedField[] {
-    switch (mode) {
-    case 'assignment':
-    case 'redirection':
-      return [{
-        text: parts.map((part) => part.text).join(''),
-        parts,
-      }];
-    case 'argv':
-      break;
-    default: {
-      const _ex: never = mode;
-      throw new Error(`Unhandled expansion mode: ${_ex}`);
-    }
-    }
-
-    const fields: WeshExpandedField[] = [];
-    let currentText = '';
-    let currentParts: Array<{ text: string, quoted: boolean }> = [];
-    let hasContent = false;
-
-    const flush = () => {
-      if (!hasContent) {
-        return;
-      }
-
-      fields.push({
-        text: currentText,
-        parts: currentParts,
+    const value = env.get(name);
+    if (value === undefined && nounset) {
+      throw new WeshShellExecutionError({
+        message: `${name}: unbound variable`,
+        exitCode: 127,
+        disposition: 'abort-shell',
       });
-      currentText = '';
-      currentParts = [];
-      hasContent = false;
-    };
-
-    for (const part of parts) {
-      if (part.quoted) {
-        currentText += part.text;
-        currentParts.push(part);
-        hasContent = true;
-        continue;
-      }
-
-      let chunk = '';
-      for (const char of part.text) {
-        if (/\s/.test(char)) {
-          if (chunk.length > 0) {
-            currentText += chunk;
-            currentParts.push({ text: chunk, quoted: false });
-            hasContent = true;
-            chunk = '';
-          }
-          flush();
-          continue;
-        }
-        chunk += char;
-      }
-
-      if (chunk.length > 0) {
-        currentText += chunk;
-        currentParts.push({ text: chunk, quoted: false });
-        hasContent = true;
-      }
     }
-
-    flush();
-    return fields;
+    return value ?? '';
   }
 
   private escapeGlobLiteral({
@@ -2509,20 +3116,16 @@ usage: ${name} [-c command] [file [argument...]]
     field: WeshExpandedField,
     shellOptions: Map<WeshShellOption, boolean>,
   }): boolean {
+    const extglob = shellOptions.get('extglob') === true ? 'enabled' : 'disabled';
     return field.parts.some((part) => {
       if (part.quoted) {
         return false;
       }
 
-      if (/[[*?]/.test(part.text)) {
-        return true;
-      }
-
-      if (shellOptions.get('extglob') === true) {
-        return /(^|[^\\])[?*@!+]\(/.test(part.text);
-      }
-
-      return false;
+      return containsShellPatternMeta({
+        pattern: part.text,
+        extglob,
+      });
     });
   }
 
@@ -2534,6 +3137,48 @@ usage: ${name} [-c command] [file [argument...]]
     return field.parts
       .map((part) => part.quoted ? this.escapeGlobLiteral({ text: part.text }) : part.text)
       .join('');
+  }
+
+  private createGlobComponentMatcher({
+    pattern,
+    shellOptions,
+  }: {
+    pattern: string,
+    shellOptions: Map<WeshShellOption, boolean>,
+  }): WeshGlobComponentMatcher {
+    if (shellOptions.get('extglob') === true) {
+      return {
+        kind: 'extglob-regexp',
+        pattern: this.compileGlobComponent({ pattern, shellOptions }),
+      };
+    }
+
+    return {
+      kind: 'shell-pattern',
+      pattern: compileShellPattern({ pattern }),
+    };
+  }
+
+  private globComponentMatches({
+    matcher,
+    text,
+  }: {
+    matcher: WeshGlobComponentMatcher,
+    text: string,
+  }): boolean {
+    switch (matcher.kind) {
+    case 'shell-pattern':
+      return matchesCompiledShellPattern({
+        compiledPattern: matcher.pattern,
+        text,
+      });
+    case 'extglob-regexp':
+      return matcher.pattern.test(text);
+    default: {
+      const _ex: never = matcher;
+      throw new Error(`Unhandled glob component matcher: ${String(_ex)}`);
+    }
+    }
   }
 
   private compileGlobComponent({
@@ -2741,11 +3386,10 @@ usage: ${name} [-c command] [file [argument...]]
     segment: string,
     shellOptions: Map<WeshShellOption, boolean>,
   }): boolean {
-    if (/(^|[^\\])[[*?]/.test(segment)) {
-      return true;
-    }
-
-    return shellOptions.get('extglob') === true && /(^|[^\\])[?*@!+]\(/.test(segment);
+    return containsShellPatternMeta({
+      pattern: segment,
+      extglob: shellOptions.get('extglob') === true ? 'enabled' : 'disabled',
+    });
   }
 
   private isGlobStarSegment({
@@ -2766,6 +3410,19 @@ usage: ${name} [-c command] [file [argument...]]
     shellOptions: Map<WeshShellOption, boolean>,
   }): boolean {
     return patternSegment.startsWith('.') || shellOptions.get('dotglob') === true;
+  }
+
+  private async readSortedGlobDirectoryEntries({
+    path,
+  }: {
+    path: string,
+  }): Promise<WeshDirEntry[]> {
+    const entries: WeshDirEntry[] = [];
+    for await (const entry of this.kernel.readDir({ path })) {
+      entries.push(entry);
+    }
+    entries.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+    return entries;
   }
 
   private async expandGlobSegments({
@@ -2807,7 +3464,7 @@ usage: ${name} [-c command] [file [argument...]]
       });
 
       for (const base of bases) {
-        for await (const entry of this.kernel.readDir({ path: base })) {
+        for (const entry of await this.readSortedGlobDirectoryEntries({ path: base })) {
           switch (entry.type) {
           case 'directory':
             break;
@@ -2849,7 +3506,9 @@ usage: ${name} [-c command] [file [argument...]]
 
     const nextBases: string[] = [];
     const segmentHasGlob = this.isGlobPatternSegment({ segment, shellOptions });
-    const matcher = segmentHasGlob ? this.compileGlobComponent({ pattern: segment, shellOptions }) : undefined;
+    const matcher = segmentHasGlob
+      ? this.createGlobComponentMatcher({ pattern: segment, shellOptions })
+      : undefined;
     const includeHiddenEntries = this.shouldIncludeHiddenGlobEntry({
       patternSegment: segment,
       shellOptions,
@@ -2867,11 +3526,11 @@ usage: ${name} [-c command] [file [argument...]]
         continue;
       }
 
-      for await (const entry of this.kernel.readDir({ path: base })) {
+      for (const entry of await this.readSortedGlobDirectoryEntries({ path: base })) {
         if (!includeHiddenEntries && entry.name.startsWith('.')) {
           continue;
         }
-        if (!matcher?.test(entry.name)) {
+        if (matcher === undefined || !this.globComponentMatches({ matcher, text: entry.name })) {
           continue;
         }
         nextBases.push(entry.fullPath);
@@ -3001,58 +3660,98 @@ usage: ${name} [-c command] [file [argument...]]
     raw,
     env,
     cwd,
-    mode,
+    context,
     shellOptions,
     environment,
   }: {
     raw: string,
     env: Map<string, string>,
     cwd: string,
-    mode: WeshExpansionMode,
+    context: WeshExpansionContext,
     shellOptions: Map<WeshShellOption, boolean>,
     environment: WeshExecutionEnvironment,
   }): Promise<string[]> {
+    const aggregatePositionals = await this.expandAggregatePositionalWord({
+      raw,
+      context,
+      cwd,
+      shellOptions,
+      environment,
+    });
+    if (aggregatePositionals !== undefined) {
+      return aggregatePositionals;
+    }
+
     const expandedFields: string[] = [];
 
     for (const braceExpandedRaw of this.expandBraceExpressions({ raw })) {
-      const substitutionExpandedRaw = await this.expandInlineSubstitutions({
-        text: braceExpandedRaw,
-        environment,
-      });
-      const parsedParts = this.parseWordParts({ raw: substitutionExpandedRaw });
-      const homeDirectory = env.get('HOME') ?? '/home';
-      const tildeExpandedParts = parsedParts.map((part, index) => {
+      const parsedParts = parseShellWordParts({ raw: braceExpandedRaw });
+      const tildeExpandedParts = parsedParts.flatMap((part, index) => {
         if (
-          index === 0 &&
-          !part.quoted &&
-          part.text.startsWith('~') &&
-          (part.text.length === 1 || part.text[1] === '/')
+          index !== 0 ||
+          part.quoted ||
+          !part.text.startsWith('~') ||
+          (part.text.length !== 1 && part.text[1] !== '/')
         ) {
-          const suffix = part.text.slice(1);
-          return {
-            ...part,
-            text: homeDirectory === '/' ? `/${suffix.replace(/^\/+/, '')}` : `${homeDirectory}${suffix}`,
-          };
+          return [part];
         }
 
-        return part;
+        const tilde = this.splitTildePrefix({
+          text: part.text,
+          env,
+        });
+        if (tilde === undefined) {
+          throw new Error('Expected leading tilde expansion');
+        }
+        return [
+          {
+            text: tilde.prefix,
+            quoted: true,
+            expandVariables: false,
+          },
+          {
+            ...part,
+            text: tilde.suffix,
+          },
+        ];
       });
-      const expandedParts: Array<{ text: string, quoted: boolean }> = [];
+      const expandedParts: WeshExpandedWordPart[] = [];
       for (const part of tildeExpandedParts) {
+        if (part.expandVariables) {
+          expandedParts.push(...await this.expandPartVariablesToParts({
+            text: part.text,
+            env,
+            environment,
+            quoted: part.quoted,
+            literalFieldSplitEligible: false,
+          }));
+          continue;
+        }
         expandedParts.push({
-          text: part.expandVariables
-            ? await this.expandPartVariables({
-              text: part.text,
-              env,
-              environment,
-            })
-            : part.text,
+          text: part.text,
           quoted: part.quoted,
+          fieldSplitEligible: false,
         });
       }
 
-      const fields = this.splitExpandedFields({ parts: expandedParts, mode });
+      const fields = splitExpandedFields({
+        parts: expandedParts,
+        context,
+        ifs: environment.env.get('IFS'),
+      });
       for (const field of fields) {
+        switch (context) {
+        case 'assignment':
+          expandedFields.push(field.text);
+          continue;
+        case 'argv':
+        case 'redirection':
+          break;
+        default: {
+          const _ex: never = context;
+          throw new Error(`Unhandled expansion context: ${_ex}`);
+        }
+        }
         const globbed = await this.globField({ field, cwd, shellOptions });
         expandedFields.push(...globbed);
       }
@@ -3061,18 +3760,169 @@ usage: ${name} [-c command] [file [argument...]]
     return expandedFields;
   }
 
+  private async expandAggregatePositionalWord({
+    raw,
+    context,
+    cwd,
+    shellOptions,
+    environment,
+  }: {
+    raw: string,
+    context: WeshExpansionContext,
+    cwd: string,
+    shellOptions: Map<WeshShellOption, boolean>,
+    environment: WeshExecutionEnvironment,
+  }): Promise<string[] | undefined> {
+    switch (context) {
+    case 'argv':
+      break;
+    case 'assignment':
+    case 'redirection':
+      return undefined;
+    default: {
+      const _ex: never = context;
+      throw new Error(`Unhandled expansion context: ${_ex}`);
+    }
+    }
+
+    const aggregate = this.parseAggregatePositionalWord({ raw });
+    if (aggregate === undefined) {
+      return undefined;
+    }
+
+    const { prefix, suffix, form, quoting } = aggregate;
+    prefix satisfies string;
+    suffix satisfies string;
+
+    switch (quoting) {
+    case 'quoted': {
+      switch (form) {
+      case 'at': {
+        if (environment.positionalArgs.length === 0) {
+          if (prefix.length === 0 && suffix.length === 0) {
+            return [];
+          }
+          return [`${prefix}${suffix}`];
+        }
+        const values = [...environment.positionalArgs];
+        values[0] = `${prefix}${values[0] ?? ''}`;
+        const lastIndex = values.length - 1;
+        values[lastIndex] = `${values[lastIndex] ?? ''}${suffix}`;
+        return values;
+      }
+      case 'star': {
+        const ifs = environment.env.get('IFS');
+        const separator = ifs === undefined ? ' ' : (ifs[0] ?? '');
+        return [`${prefix}${environment.positionalArgs.join(separator)}${suffix}`];
+      }
+      default: {
+        const _ex: never = form;
+        throw new Error(`Unhandled quoted aggregate positional form: ${_ex}`);
+      }
+      }
+    }
+    case 'unquoted':
+      break;
+    default: {
+      const _ex: never = quoting;
+      throw new Error(`Unhandled aggregate positional quoting: ${_ex}`);
+    }
+    }
+
+    const sourceValues = (() => {
+      switch (form) {
+      case 'at': {
+        if (environment.positionalArgs.length === 0) {
+          return [`${prefix}${suffix}`];
+        }
+        const values = [...environment.positionalArgs];
+        values[0] = `${prefix}${values[0] ?? ''}`;
+        const lastIndex = values.length - 1;
+        values[lastIndex] = `${values[lastIndex] ?? ''}${suffix}`;
+        return values;
+      }
+      case 'star': {
+        const separator = environment.env.get('IFS')?.[0] ?? ' ';
+        return [`${prefix}${environment.positionalArgs.join(separator)}${suffix}`];
+      }
+      default: {
+        const _ex: never = form;
+        throw new Error(`Unhandled unquoted aggregate positional form: ${_ex}`);
+      }
+      }
+    })();
+    const expanded: string[] = [];
+    for (const value of sourceValues) {
+      const fields = splitExpandedFields({
+        parts: [{
+          text: value,
+          quoted: false,
+          fieldSplitEligible: true,
+        }],
+        context: 'argv',
+        ifs: environment.env.get('IFS'),
+      });
+      for (const field of fields) {
+        expanded.push(...await this.globField({
+          field,
+          cwd,
+          shellOptions,
+        }));
+      }
+    }
+    return expanded;
+  }
+
+  private parseAggregatePositionalWord({ raw }: {
+    raw: string,
+  }): {
+    prefix: string,
+    suffix: string,
+    form: 'at' | 'star',
+    quoting: 'quoted' | 'unquoted',
+  } | undefined {
+    const candidates = [
+      { marker: '"${@}"', form: 'at', quoting: 'quoted' },
+      { marker: '"${*}"', form: 'star', quoting: 'quoted' },
+      { marker: '"$@"', form: 'at', quoting: 'quoted' },
+      { marker: '"$*"', form: 'star', quoting: 'quoted' },
+      { marker: '${@}', form: 'at', quoting: 'unquoted' },
+      { marker: '${*}', form: 'star', quoting: 'unquoted' },
+      { marker: '$@', form: 'at', quoting: 'unquoted' },
+      { marker: '$*', form: 'star', quoting: 'unquoted' },
+    ] as const;
+
+    for (const candidate of candidates) {
+      const markerIndex = raw.indexOf(candidate.marker);
+      if (markerIndex < 0) {
+        continue;
+      }
+      if (raw.indexOf(candidate.marker, markerIndex + candidate.marker.length) >= 0) {
+        return undefined;
+      }
+      return {
+        prefix: raw.slice(0, markerIndex),
+        suffix: raw.slice(markerIndex + candidate.marker.length),
+        form: candidate.form,
+        quoting: candidate.quoting,
+      };
+    }
+
+    return undefined;
+  }
+
   private async expandSingleWord({
     raw,
     env,
     cwd,
-    mode,
+    context,
     shellOptions,
     environment,
   }: {
     raw: string,
     env: Map<string, string>,
     cwd: string,
-    mode: Exclude<WeshExpansionMode, 'argv'>,
+    context: Exclude<WeshExpansionContext, 'argv'>,
     shellOptions: Map<WeshShellOption, boolean>,
     environment: WeshExecutionEnvironment,
   }): Promise<string> {
@@ -3080,10 +3930,13 @@ usage: ${name} [-c command] [file [argument...]]
       raw,
       env,
       cwd,
-      mode,
+      context,
       shellOptions,
       environment,
     });
+    if (context === 'redirection' && expanded.length !== 1) {
+      throw new Error(`${raw}: ambiguous redirect`);
+    }
     return expanded[0] ?? '';
   }
 
@@ -3181,11 +4034,12 @@ usage: ${name} [-c command] [file [argument...]]
     fd: number,
     handle: WeshFileHandle,
   }): Promise<void> {
+    const persistentHandle = this.cloneFileHandleReference({ handle });
     const previous = this.shellFds.get(fd);
-    if (previous !== undefined && previous !== handle) {
+    if (previous !== undefined) {
       await previous.close();
     }
-    this.shellFds.set(fd, handle);
+    this.shellFds.set(fd, persistentHandle);
   }
 
   private async closePersistentFd({
@@ -3203,10 +4057,12 @@ usage: ${name} [-c command] [file [argument...]]
   private async openRedirectionTarget({
     redirection,
     environment,
+    fdTable,
     trackBackgroundTask,
   }: {
     redirection: WeshCommandNode['redirections'][number],
     environment: WeshExecutionEnvironment,
+    fdTable: Map<number, WeshFileHandle>,
     trackBackgroundTask: ({ task }: { task: Promise<unknown> }) => void,
   }): Promise<WeshFileHandle | undefined> {
     if (redirection.type === 'heredoc' || redirection.type === 'herestring') {
@@ -3215,15 +4071,41 @@ usage: ${name} [-c command] [file [argument...]]
       }
 
       const { read, write } = await this.kernel.pipe();
-      const encoder = new TextEncoder();
-      const content = redirection.type === 'heredoc' && redirection.contentExpansion === 'variables'
-        ? await this.expandPartVariables({
-          text: redirection.content,
+      let content: string;
+      switch (redirection.type) {
+      case 'herestring':
+        content = await this.expandSingleWord({
+          raw: redirection.content,
           env: environment.env,
+          cwd: environment.cwd,
+          context: 'assignment',
+          shellOptions: environment.shellOptions,
           environment,
-        })
-        : redirection.content;
-      await write.write({ buffer: encoder.encode(content + '\n') });
+        });
+        break;
+      case 'heredoc':
+        switch (redirection.contentExpansion) {
+        case 'variables':
+          content = await this.expandPartVariables({
+            text: redirection.content,
+            env: environment.env,
+            environment,
+          });
+          break;
+        case 'literal':
+        case undefined:
+          content = redirection.content;
+          break;
+        default: {
+          const _ex: never = redirection.contentExpansion;
+          throw new Error(`Unhandled heredoc expansion mode: ${_ex}`);
+        }
+        }
+        break;
+      default:
+        throw new Error(`Unhandled inline redirection: ${redirection.type}`);
+      }
+      await write.write({ buffer: encodeShellTextToBytes({ text: content + '\n' }) });
       await write.close();
       return read;
     }
@@ -3237,7 +4119,7 @@ usage: ${name} [-c command] [file [argument...]]
         throw new Error(`Missing target fd for redirection ${redirection.type}`);
       }
 
-      const duplicated = environment.fds.get(redirection.targetFd);
+      const duplicated = fdTable.get(redirection.targetFd);
       if (duplicated === undefined) {
         throw new Error(`${redirection.targetFd}: bad file descriptor`);
       }
@@ -3247,9 +4129,9 @@ usage: ${name} [-c command] [file [argument...]]
 
     if (redirection.target !== undefined && typeof redirection.target !== 'string') {
       const processSubstitution = redirection.target;
-      const redirectedStdin = environment.fds.get(0);
-      const redirectedStdout = environment.fds.get(1);
-      const redirectedStderr = environment.fds.get(2);
+      const redirectedStdin = fdTable.get(0);
+      const redirectedStdout = fdTable.get(1);
+      const redirectedStderr = fdTable.get(2);
       if (redirectedStdin === undefined || redirectedStdout === undefined || redirectedStderr === undefined) {
         throw new Error('Missing standard file descriptor after redirection');
       }
@@ -3259,36 +4141,42 @@ usage: ${name} [-c command] [file [argument...]]
         parentEnvironment: environment,
         pgid: environment.pgid,
       });
+      this.publishLastBackgroundPid({
+        environment,
+        pid: subEnvironment.shellPid,
+      });
 
       switch (redirection.target.type) {
-      case 'input':
-        trackBackgroundTask({
-          task: this.runChildExecutionEnvironment({
+      case 'input': {
+        const task = this.runChildExecutionEnvironment({
+          environment: subEnvironment,
+          execute: () => this.executeNode({
+            node: processSubstitution.list,
             environment: subEnvironment,
-            execute: () => this.executeNode({
-              node: processSubstitution.list,
-              environment: subEnvironment,
-              stdin: redirectedStdin,
-              stdout: write,
-              stderr: redirectedStderr,
-            }),
-          }).finally(() => write.close()),
-        });
+            stdin: redirectedStdin,
+            stdout: write,
+            stderr: redirectedStderr,
+          }),
+        }).finally(() => write.close());
+        environment.waitableChildren.set(subEnvironment.shellPid, task);
+        trackBackgroundTask({ task });
         return this.createPrimaryFileHandleReference({ handle: read });
-      case 'output':
-        trackBackgroundTask({
-          task: this.runChildExecutionEnvironment({
+      }
+      case 'output': {
+        const task = this.runChildExecutionEnvironment({
+          environment: subEnvironment,
+          execute: () => this.executeNode({
+            node: processSubstitution.list,
             environment: subEnvironment,
-            execute: () => this.executeNode({
-              node: processSubstitution.list,
-              environment: subEnvironment,
-              stdin: read,
-              stdout: redirectedStdout,
-              stderr: redirectedStderr,
-            }),
-          }).finally(() => read.close()),
-        });
+            stdin: read,
+            stdout: redirectedStdout,
+            stderr: redirectedStderr,
+          }),
+        }).finally(() => read.close());
+        environment.waitableChildren.set(subEnvironment.shellPid, task);
+        trackBackgroundTask({ task });
         return this.createPrimaryFileHandleReference({ handle: write });
+      }
       default: {
         const _ex: never = redirection.target.type;
         throw new Error(`Unhandled redirection process substitution type: ${_ex}`);
@@ -3300,7 +4188,7 @@ usage: ${name} [-c command] [file [argument...]]
       raw: redirection.target,
       env: environment.env,
       cwd: environment.cwd,
-      mode: 'redirection',
+      context: 'redirection',
       shellOptions: environment.shellOptions,
       environment,
     }) : undefined;
@@ -3348,19 +4236,23 @@ usage: ${name} [-c command] [file [argument...]]
     environment,
     fdTable,
     trackOpenedHandle,
+    releaseOpenedHandle,
     trackBackgroundTask,
   }: {
     redirections: WeshCommandNode['redirections'],
     environment: WeshExecutionEnvironment,
     fdTable: Map<number, WeshFileHandle>,
     trackOpenedHandle: ({ handle }: { handle: WeshFileHandle }) => void,
+    releaseOpenedHandle: ({ handle }: { handle: WeshFileHandle }) => Promise<void>,
     trackBackgroundTask: ({ task }: { task: Promise<unknown> }) => void,
   }): Promise<void> {
+    const ownedFds = new Set<number>();
     for (const redirection of redirections) {
       if (redirection.closeTarget) {
         const current = fdTable.get(redirection.fd);
-        if (current !== undefined) {
-          await current.close();
+        if (current !== undefined && ownedFds.has(redirection.fd)) {
+          await releaseOpenedHandle({ handle: current });
+          ownedFds.delete(redirection.fd);
         }
         fdTable.delete(redirection.fd);
         continue;
@@ -3369,44 +4261,70 @@ usage: ${name} [-c command] [file [argument...]]
       const handle = await this.openRedirectionTarget({
         redirection,
         environment,
+        fdTable,
         trackBackgroundTask,
       });
       if (handle === undefined) {
         continue;
       }
 
-      if (
-        redirection.type !== 'dup_output' &&
-        redirection.type !== 'dup_input'
-      ) {
+      if (redirection.type === 'dup_output' || redirection.type === 'dup_input') {
+        const sourceHandle = redirection.targetFd === undefined
+          ? undefined
+          : fdTable.get(redirection.targetFd);
+        if (sourceHandle !== handle) {
+          trackOpenedHandle({ handle });
+        }
+      } else {
         trackOpenedHandle({ handle });
       }
 
+      const previous = fdTable.get(redirection.fd);
+      if (previous !== undefined && ownedFds.has(redirection.fd)) {
+        await releaseOpenedHandle({ handle: previous });
+      }
       fdTable.set(redirection.fd, handle);
+      ownedFds.add(redirection.fd);
     }
   }
 
   /**
-   * Execute a shell script.
+   * Execute shell source.
    * Low-level: All I/O goes to provided handles. Returns only exit status.
    */
-  async execute({ script: rawScript, stdin, stdout, stderr }: {
-    script: string,
+  async execute({
+    source,
+    script,
+    stdin,
+    stdout,
+    stderr,
+  }: {
+    // TODO(wesh-shell-source-migration): This field is temporarily optional and accepts text
+    // while out-of-boundary callers still use the legacy `script` field. Once those owners can
+    // migrate, remove `script`, remove `string | undefined`, and require `source: ShellSource`.
+    source?: ShellSource | string,
+    script?: string,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
     stderr: WeshFileHandle,
   }): Promise<WeshCommandResult> {
     if (this.shellPid === 0) await this.init();
 
-    const script = rawScript.trim();
-    if (!script) {
-      return { exitCode: 0 };
-    }
-
-    this.history.push(script);
-
     try {
-      const rootNode = parseCommandLine({ commandLine: script, env: this.env });
+      const resolvedSource = (() => {
+        if (source !== undefined && script !== undefined) {
+          throw new Error('Specify either source or script, not both');
+        }
+        if (source !== undefined) {
+          return typeof source === 'string'
+            ? createTextShellSource({ text: source })
+            : source;
+        }
+        if (script !== undefined) {
+          return createTextShellSource({ text: script });
+        }
+        throw new Error('Missing shell source');
+      })();
       const environment = this.createExecutionEnvironment({
         shellPid: this.shellPid,
         pgid: this.shellPid,
@@ -3415,14 +4333,16 @@ usage: ${name} [-c command] [file [argument...]]
         functions: new Map(),
         cwd: this.cwd,
         fds: this.createShellFdTable({
-          stdin: stdin,
-          stdout: stdout,
-          stderr: stderr,
+          stdin,
+          stdout,
+          stderr,
         }),
         traps: this.traps,
         shellOptions: this.shellOptions,
+        executionOptions: { ...this.executionOptions },
         positionalArgs: [],
         lastBackgroundPid: undefined,
+        waitableChildren: new Map(),
       });
       const shellStdin = environment.fds.get(0);
       const shellStdout = environment.fds.get(1);
@@ -3431,24 +4351,53 @@ usage: ${name} [-c command] [file [argument...]]
         throw new Error('Missing shell standard file descriptors');
       }
 
-      const result = await this.executeNode({
-        node: rootNode,
+      const result = await this.executeShellInState({
+        source: resolvedSource,
         environment,
         stdin: shellStdin,
         stdout: shellStdout,
         stderr: shellStderr,
+        history: 'record',
+        allowReturn: false,
       });
 
       this.cwd = environment.cwd;
       this.aliases = environment.aliases;
       this.shellOptions = environment.shellOptions;
-      return await this.runExitTrapIfNeeded({
+      this.executionOptions = { ...environment.executionOptions };
+      const trappedResult = await this.runExitTrapIfNeeded({
         result,
         environment,
         stdin: shellStdin,
         stdout: shellStdout,
         stderr: shellStderr,
       });
+      const controlFlow = trappedResult.controlFlow;
+      if (controlFlow === undefined) {
+        return {
+          exitCode: trappedResult.exitCode,
+          waitStatus: trappedResult.waitStatus,
+        };
+      }
+      switch (controlFlow.kind) {
+      case 'exit':
+        return {
+          exitCode: trappedResult.exitCode,
+          waitStatus: trappedResult.waitStatus,
+        };
+      case 'break':
+      case 'continue':
+      case 'return':
+        return {
+          exitCode: trappedResult.exitCode,
+          waitStatus: trappedResult.waitStatus,
+          controlFlow,
+        };
+      default: {
+        const _ex: never = controlFlow;
+        throw new Error(`Unhandled top-level control flow: ${JSON.stringify(_ex)}`);
+      }
+      }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       const encoder = new TextEncoder();
@@ -3465,6 +4414,8 @@ usage: ${name} [-c command] [file [argument...]]
     stderr,
     loopDepth = 0,
     functionDepth = 0,
+    errexitSuppressed = false,
+    stdinReferenceOwnership = 'borrowed',
   }: {
     node: WeshASTNode,
     environment: WeshExecutionEnvironment,
@@ -3473,13 +4424,26 @@ usage: ${name} [-c command] [file [argument...]]
     stderr: WeshFileHandle,
     loopDepth?: number,
     functionDepth?: number,
-  }): Promise<WeshCommandResult> {
-    const options = { node, environment, stdin, stdout, stderr, loopDepth, functionDepth };
-    let result: WeshCommandResult;
+    errexitSuppressed?: boolean,
+    stdinReferenceOwnership?: WeshStdinReferenceOwnership,
+  }): Promise<WeshShellExecutionResult> {
+    const options = {
+      node,
+      environment,
+      stdin,
+      stdout,
+      stderr,
+      loopDepth,
+      functionDepth,
+      errexitSuppressed,
+      stdinReferenceOwnership,
+    };
+    let result: WeshShellExecutionResult;
+    let suppressErrexitForResult = errexitSuppressed;
 
     switch (node.kind) {
     case 'list': {
-      let lastResult: WeshCommandResult = { exitCode: 0 };
+      let lastResult: WeshShellExecutionResult = { exitCode: 0 };
       let previousOperator: ';' | '&&' | '||' | '&' = ';';
 
       for (const part of node.parts) {
@@ -3501,7 +4465,7 @@ usage: ${name} [-c command] [file [argument...]]
             pgid: undefined,
           });
 
-          void this.runChildExecutionEnvironment({
+          const jobTask = this.runChildExecutionEnvironment({
             environment: jobEnvironment,
             execute: () => this.executeNode({
               node: part.node,
@@ -3512,7 +4476,9 @@ usage: ${name} [-c command] [file [argument...]]
               loopDepth,
               functionDepth,
             }),
-          }).then(res => {
+          });
+          environment.waitableChildren.set(jobEnvironment.shellPid, jobTask);
+          void jobTask.then(res => {
             const job = this.jobs.get(jobId);
             if (job) job.status = 'done';
             return res;
@@ -3524,14 +4490,10 @@ usage: ${name} [-c command] [file [argument...]]
             pid: jobEnvironment.shellPid,
             status: 'running',
           });
-          environment.lastBackgroundPid = jobEnvironment.shellPid;
-          this.syncSpecialParameters({
+          this.publishLastBackgroundPid({
             environment,
+            pid: jobEnvironment.shellPid,
           });
-
-          // Job notification to stderr (simulating bash)
-          const encoder = new TextEncoder();
-          await stderr.write({ buffer: encoder.encode(`[${jobId}] background\n`) });
 
           lastResult = { exitCode: 0 };
           previousOperator = '&';
@@ -3540,18 +4502,31 @@ usage: ${name} [-c command] [file [argument...]]
         case ';':
         case '&&':
         case '||': {
-          lastResult = await this.executeNode({
-            node: part.node,
-            environment,
-            stdin, stdout, stderr,
-            loopDepth,
-            functionDepth,
-          });
+          const suppressForPart = errexitSuppressed || part.operator === '&&' || part.operator === '||';
+          try {
+            lastResult = await this.executeNode({
+              node: part.node,
+              environment,
+              stdin, stdout, stderr,
+              loopDepth,
+              functionDepth,
+              errexitSuppressed: suppressForPart,
+            });
+          } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            await this.writeErrorText({
+              stderr,
+              text: `wesh: ${message}\n`,
+            });
+            lastResult = { exitCode: 1 };
+          }
           if (lastResult.controlFlow !== undefined) {
             result = lastResult;
             environment.env.set('?', result.exitCode.toString());
             return result;
           }
+          environment.env.set('?', lastResult.exitCode.toString());
+          suppressErrexitForResult = suppressForPart;
           previousOperator = part.operator;
           break;
         }
@@ -3619,8 +4594,11 @@ usage: ${name} [-c command] [file [argument...]]
         environment, stdin, stdout, stderr,
         loopDepth,
         functionDepth,
+        errexitSuppressed: true,
       });
-      if (conditionResult.exitCode === 0) {
+      if (conditionResult.controlFlow !== undefined) {
+        result = conditionResult;
+      } else if (conditionResult.exitCode === 0) {
         result = await this.executeNode({
           node: node.thenBody,
           environment, stdin, stdout, stderr,
@@ -3641,14 +4619,14 @@ usage: ${name} [-c command] [file [argument...]]
     }
 
     case 'for': {
-      let lastForRes: WeshCommandResult = { exitCode: 0 };
+      let lastForRes: WeshShellExecutionResult = { exitCode: 0 };
       const expandedItems: string[] = [];
       for (const item of node.items) {
         const itemFields = await this.expandWord({
           raw: item,
           env: environment.env,
           cwd: environment.cwd,
-          mode: 'argv',
+          context: 'argv',
           shellOptions: environment.shellOptions,
           environment,
         });
@@ -3678,6 +4656,7 @@ usage: ${name} [-c command] [file [argument...]]
               environment.env.set('?', result.exitCode.toString());
               return result;
             }
+            lastForRes = { exitCode: lastForRes.exitCode };
             continue;
           case 'break':
             if (controlFlow.levels > 1) {
@@ -3695,6 +4674,7 @@ usage: ${name} [-c command] [file [argument...]]
             environment.env.set('?', result.exitCode.toString());
             return result;
           case 'return':
+          case 'exit':
             environment.env.set('?', lastForRes.exitCode.toString());
             return lastForRes;
           default: {
@@ -3711,7 +4691,7 @@ usage: ${name} [-c command] [file [argument...]]
     case 'while':
     case 'until': {
       const loopKind = node.kind;
-      let lastLoopResult: WeshCommandResult = { exitCode: 0 };
+      let lastLoopResult: WeshShellExecutionResult = { exitCode: 0 };
       while (true) {
         const conditionResult = await this.executeNode({
           node: node.condition,
@@ -3721,6 +4701,7 @@ usage: ${name} [-c command] [file [argument...]]
           stderr,
           loopDepth,
           functionDepth,
+          errexitSuppressed: true,
         });
         if (conditionResult.controlFlow !== undefined) {
           result = conditionResult;
@@ -3765,6 +4746,7 @@ usage: ${name} [-c command] [file [argument...]]
               };
               break;
             }
+            lastLoopResult = { exitCode: lastLoopResult.exitCode };
             continue;
           case 'break':
             if (controlFlow.levels > 1) {
@@ -3780,6 +4762,7 @@ usage: ${name} [-c command] [file [argument...]]
             result = { exitCode: lastLoopResult.exitCode };
             break;
           case 'return':
+          case 'exit':
             result = lastLoopResult;
             break;
           default: {
@@ -3800,11 +4783,11 @@ usage: ${name} [-c command] [file [argument...]]
         raw: node.word,
         env: environment.env,
         cwd: environment.cwd,
-        mode: 'assignment',
+        context: 'assignment',
         shellOptions: environment.shellOptions,
         environment,
       });
-      let caseResult: WeshCommandResult = { exitCode: 0 };
+      let caseResult: WeshShellExecutionResult = { exitCode: 0 };
       let matched = false;
       for (const clause of node.clauses) {
         const clauseMatched = await this.caseClauseMatches({
@@ -3847,17 +4830,36 @@ usage: ${name} [-c command] [file [argument...]]
       const redirectedFds = new Map(environment.fds);
       const openHandles: WeshFileHandle[] = [];
       const backgroundTasks: Promise<unknown>[] = [];
-      await this.applyRedirectionsToFdTable({
-        redirections: node.redirections,
-        environment,
-        fdTable: redirectedFds,
-        trackOpenedHandle: ({ handle }) => {
-          openHandles.push(handle);
-        },
-        trackBackgroundTask: ({ task }) => {
-          backgroundTasks.push(task);
-        },
-      });
+      const cleanupRedirectedResources = async (): Promise<void> => {
+        for (const handle of openHandles) {
+          await handle.close();
+        }
+        openHandles.length = 0;
+        await Promise.allSettled(backgroundTasks);
+      };
+      try {
+        await this.applyRedirectionsToFdTable({
+          redirections: node.redirections,
+          environment,
+          fdTable: redirectedFds,
+          trackOpenedHandle: ({ handle }) => {
+            openHandles.push(handle);
+          },
+          releaseOpenedHandle: async ({ handle }) => {
+            const handleIndex = openHandles.lastIndexOf(handle);
+            if (handleIndex >= 0) {
+              openHandles.splice(handleIndex, 1);
+            }
+            await handle.close();
+          },
+          trackBackgroundTask: ({ task }) => {
+            backgroundTasks.push(task);
+          },
+        });
+      } catch (error: unknown) {
+        await cleanupRedirectedResources();
+        throw error;
+      }
       const redirectedStdin = redirectedFds.get(0);
       const redirectedStdout = redirectedFds.get(1);
       const redirectedStderr = redirectedFds.get(2);
@@ -3873,35 +4875,67 @@ usage: ${name} [-c command] [file [argument...]]
           stderr: redirectedStderr,
           loopDepth,
           functionDepth,
+          errexitSuppressed,
         });
       } finally {
-        for (const handle of openHandles) {
-          await handle.close();
-        }
-        await Promise.allSettled(backgroundTasks);
+        await cleanupRedirectedResources();
       }
       break;
     }
 
-    case 'assignment':
+    case 'assignment': {
+      const commandSubstitutionSequenceBefore = environment.commandSubstitutionSequence;
       for (const assign of node.assignments) {
         environment.env.set(assign.key, await this.expandSingleWord({
           raw: assign.value,
           env: environment.env,
           cwd: environment.cwd,
-          mode: 'assignment',
+          context: 'assignment',
           shellOptions: environment.shellOptions,
           environment,
         }));
       }
-      result = { exitCode: 0 };
+      result = {
+        exitCode: environment.commandSubstitutionSequence === commandSubstitutionSequenceBefore
+          ? 0
+          : environment.lastCommandSubstitutionExitCode,
+      };
       break;
+    }
     default: {
       const _ex: never = node;
       throw new Error(`Unhandled AST node kind: ${JSON.stringify(_ex)}`);
     }
     }
 
+    if (
+      result.controlFlow === undefined
+      && !suppressErrexitForResult
+      && result.exitCode !== 0
+    ) {
+      await this.runErrTrapIfNeeded({
+        result,
+        environment,
+        stdin,
+        stdout,
+        stderr,
+      });
+    }
+
+    if (
+      result.controlFlow === undefined
+      && environment.executionOptions.errexit
+      && !suppressErrexitForResult
+      && result.exitCode !== 0
+    ) {
+      result = {
+        ...result,
+        controlFlow: {
+          kind: 'exit',
+          exitCode: result.exitCode,
+        },
+      };
+    }
     environment.env.set('?', result.exitCode.toString());
     return result;
   }
@@ -3914,6 +4948,7 @@ usage: ${name} [-c command] [file [argument...]]
     stderr,
     loopDepth = 0,
     functionDepth = 0,
+    stdinReferenceOwnership = 'borrowed',
   }: {
     node: { commands: WeshASTNode[] },
     environment: WeshExecutionEnvironment,
@@ -3922,6 +4957,7 @@ usage: ${name} [-c command] [file [argument...]]
     stderr: WeshFileHandle,
     loopDepth?: number,
     functionDepth?: number,
+    stdinReferenceOwnership: WeshStdinReferenceOwnership,
   }): Promise<WeshCommandResult> {
     const commands = node.commands;
     if (commands.length === 0) return { exitCode: 0 };
@@ -3960,6 +4996,9 @@ usage: ${name} [-c command] [file [argument...]]
             stderr: stderr,
             loopDepth,
             functionDepth,
+            stdinReferenceOwnership: i > 0 && cmd.kind === 'command'
+              ? 'command-local'
+              : stdinReferenceOwnership,
           }),
         }).then(async res => {
           if (i < commands.length - 1) {
@@ -3984,6 +5023,14 @@ usage: ${name} [-c command] [file [argument...]]
       pgid: pipelinePgid ?? environment.pgid,
       fn: async () => Promise.all(promises),
     });
+    if (environment.executionOptions.pipefail) {
+      for (let index = results.length - 1; index >= 0; index -= 1) {
+        const result = results[index];
+        if (result !== undefined && result.exitCode !== 0) {
+          return result;
+        }
+      }
+    }
     return results[results.length - 1]!;
   }
 
@@ -3997,6 +5044,7 @@ usage: ${name} [-c command] [file [argument...]]
     directInvocation,
     loopDepth = 0,
     functionDepth = 0,
+    stdinReferenceOwnership,
   }: {
     node: WeshCommandNode,
     environment: WeshExecutionEnvironment,
@@ -4008,10 +5056,12 @@ usage: ${name} [-c command] [file [argument...]]
       command: string,
       args: string[],
       argumentEntryRefs: readonly (WeshEntryRef | undefined)[] | undefined,
+      functionLookup: 'allow' | 'bypass',
     },
     loopDepth?: number,
     functionDepth?: number,
-  }): Promise<WeshCommandResult> {
+    stdinReferenceOwnership?: WeshStdinReferenceOwnership,
+  }): Promise<WeshShellExecutionResult> {
     const aliasExpandedNode = directInvocation !== undefined || ignoreAliases === true
       ? node
       : this.expandAliasCommandNode({
@@ -4030,13 +5080,38 @@ usage: ${name} [-c command] [file [argument...]]
     const cmdFds = new Map(environment.fds);
 
     if (directInvocation === undefined) {
-      for (const arg of aliasExpandedNode.args) {
+      for (const [argumentIndex, arg] of aliasExpandedNode.args.entries()) {
         if (typeof arg === 'string') {
+          if (aliasExpandedNode.name === '[[') {
+            const previousArgument = aliasExpandedNode.args[argumentIndex - 1];
+            const isPatternOperand = typeof previousArgument === 'string'
+              && (previousArgument === '==' || previousArgument === '=' || previousArgument === '!=');
+            const isRegexOperand = previousArgument === '=~';
+            expandedArgs.push(isPatternOperand
+              ? await this.expandPatternWord({
+                raw: arg,
+                environment,
+              })
+              : isRegexOperand
+                ? await this.expandRegexWord({
+                  raw: arg,
+                  environment,
+                })
+                : await this.expandSingleWord({
+                  raw: arg,
+                  env: environment.env,
+                  cwd: environment.cwd,
+                  context: 'assignment',
+                  shellOptions: environment.shellOptions,
+                  environment,
+                }));
+            continue;
+          }
           const fields = await this.expandWord({
             raw: arg,
             env: environment.env,
             cwd: environment.cwd,
-            mode: 'argv',
+            context: 'argv',
             shellOptions: environment.shellOptions,
             environment,
           });
@@ -4052,7 +5127,11 @@ usage: ${name} [-c command] [file [argument...]]
               parentEnvironment: environment,
               pgid: environment.pgid,
             });
-            procSubTasks.push(this.runChildExecutionEnvironment({
+            this.publishLastBackgroundPid({
+              environment,
+              pid: subEnvironment.shellPid,
+            });
+            const task = this.runChildExecutionEnvironment({
               environment: subEnvironment,
               execute: () => this.executeNode({
                 node: arg.list,
@@ -4061,7 +5140,9 @@ usage: ${name} [-c command] [file [argument...]]
                 stdout: write,
                 stderr,
               }),
-            }).finally(() => write.close()));
+            }).finally(() => write.close());
+            environment.waitableChildren.set(subEnvironment.shellPid, task);
+            procSubTasks.push(task);
 
             this.vfs.registerSpecialFile({
               path,
@@ -4080,7 +5161,11 @@ usage: ${name} [-c command] [file [argument...]]
               parentEnvironment: environment,
               pgid: environment.pgid,
             });
-            procSubTasks.push(this.runChildExecutionEnvironment({
+            this.publishLastBackgroundPid({
+              environment,
+              pid: subEnvironment.shellPid,
+            });
+            const task = this.runChildExecutionEnvironment({
               environment: subEnvironment,
               execute: () => this.executeNode({
                 node: arg.list,
@@ -4089,7 +5174,9 @@ usage: ${name} [-c command] [file [argument...]]
                 stdout,
                 stderr,
               }),
-            }).finally(() => read.close()));
+            }).finally(() => read.close());
+            environment.waitableChildren.set(subEnvironment.shellPid, task);
+            procSubTasks.push(task);
 
             this.vfs.registerSpecialFile({
               path,
@@ -4119,54 +5206,177 @@ usage: ${name} [-c command] [file [argument...]]
       raw: aliasExpandedNode.name,
       env: environment.env,
       cwd: environment.cwd,
-      mode: 'assignment',
+      context: 'assignment',
       shellOptions: environment.shellOptions,
       environment,
     });
 
-    const controlFlowResult = await this.tryExecuteShellControlCommand({
-      commandName: cmdName,
-      args: expandedArgs,
-      stderr,
-      loopDepth,
-      functionDepth,
-      environment,
-    });
+    const currentEnv = new WeshOverlayMap({ source: environment.env });
+    const temporaryShellAssignments = new Map<string, string>();
+    for (const assign of aliasExpandedNode.assignments) {
+      const value = await this.expandSingleWord({
+        raw: assign.value,
+        env: currentEnv,
+        cwd: environment.cwd,
+        context: 'assignment',
+        shellOptions: environment.shellOptions,
+        environment,
+      });
+      currentEnv.set(assign.key, value);
+      temporaryShellAssignments.set(assign.key, value);
+    }
+
+    const executeWithTemporaryShellAssignments = async <T>({ execute }: {
+      execute: () => Promise<T>,
+    }): Promise<T> => {
+      if (temporaryShellAssignments.size === 0) {
+        return execute();
+      }
+      const previousValues = new Map<string,
+        | { kind: 'unset' }
+        | { kind: 'value', value: string }
+      >();
+      for (const [key, value] of temporaryShellAssignments) {
+        const previousValue = environment.env.get(key);
+        previousValues.set(key, previousValue === undefined
+          ? { kind: 'unset' }
+          : { kind: 'value', value: previousValue });
+        environment.env.set(key, value);
+      }
+      try {
+        return await execute();
+      } finally {
+        for (const [key, previousValue] of previousValues) {
+          switch (previousValue.kind) {
+          case 'unset':
+            environment.env.delete(key);
+            break;
+          case 'value':
+            environment.env.set(key, previousValue.value);
+            break;
+          default: {
+            previousValue satisfies never;
+          }
+          }
+        }
+      }
+    };
+
+    const cleanupCommandResources = async (): Promise<void> => {
+      for (const handle of openHandles) {
+        await handle.close();
+      }
+      for (const cleanup of procSubPreTaskCleanups) {
+        cleanup();
+      }
+      await Promise.allSettled(procSubTasks);
+      for (const cleanup of procSubPostTaskCleanups) {
+        cleanup();
+      }
+    };
+
+    cmdFds.set(0, stdin);
+    cmdFds.set(1, stdout);
+    cmdFds.set(2, stderr);
+    try {
+      await this.applyRedirectionsToFdTable({
+        redirections: aliasExpandedNode.redirections,
+        environment,
+        fdTable: cmdFds,
+        trackOpenedHandle: ({ handle }) => {
+          openHandles.push(handle);
+        },
+        releaseOpenedHandle: async ({ handle }) => {
+          const handleIndex = openHandles.lastIndexOf(handle);
+          if (handleIndex >= 0) {
+            openHandles.splice(handleIndex, 1);
+          }
+          await handle.close();
+        },
+        trackBackgroundTask: ({ task }) => {
+          procSubTasks.push(task);
+        },
+      });
+    } catch (error: unknown) {
+      await cleanupCommandResources();
+      throw error;
+    }
+
+    const cmdStdin = cmdFds.get(0);
+    const cmdStdout = cmdFds.get(1);
+    const cmdStderr = cmdFds.get(2);
+    if (cmdStdin === undefined || cmdStdout === undefined || cmdStderr === undefined) {
+      await cleanupCommandResources();
+      throw new Error('Missing standard file descriptor after redirection');
+    }
+
+    let controlFlowResult: WeshShellExecutionResult | undefined;
+    try {
+      controlFlowResult = await executeWithTemporaryShellAssignments({
+        execute: () => this.tryExecuteShellBuiltin({
+          commandName: cmdName,
+          args: expandedArgs,
+          stdin: cmdStdin,
+          stdout: cmdStdout,
+          stderr: cmdStderr,
+          loopDepth,
+          functionDepth,
+          environment,
+        }),
+      });
+    } catch (error: unknown) {
+      await cleanupCommandResources();
+      throw error;
+    }
     if (controlFlowResult !== undefined) {
+      await cleanupCommandResources();
       return controlFlowResult;
     }
 
     if (cmdName === '[[') {
-      return this.executeExtendedTestCommand({
-        args: expandedArgs,
-      });
+      try {
+        return this.executeExtendedTestCommand({
+          args: expandedArgs,
+          environment,
+        });
+      } finally {
+        await cleanupCommandResources();
+      }
     }
 
-    const currentEnv = new WeshOverlayMap({ source: environment.env });
-    for (const assign of aliasExpandedNode.assignments) {
-      currentEnv.set(assign.key, await this.expandSingleWord({
-        raw: assign.value,
-        env: environment.env,
-        cwd: environment.cwd,
-        mode: 'assignment',
-        shellOptions: environment.shellOptions,
-        environment,
-      }));
-    }
-
-    const shellFunctionBody = environment.functions.get(cmdName);
+    const shellFunctionBody = (() => {
+      if (directInvocation === undefined) {
+        return environment.functions.get(cmdName);
+      }
+      switch (directInvocation.functionLookup) {
+      case 'allow':
+        return environment.functions.get(cmdName);
+      case 'bypass':
+        return undefined;
+      default: {
+        const _ex: never = directInvocation.functionLookup;
+        throw new Error(`Unhandled function lookup mode: ${_ex}`);
+      }
+      }
+    })();
     if (shellFunctionBody !== undefined) {
-      return this.executeShellFunction({
-        name: cmdName,
-        body: shellFunctionBody,
-        args: expandedArgs,
-        environment,
-        stdin,
-        stdout,
-        stderr,
-        loopDepth,
-        functionDepth,
-      });
+      try {
+        return await executeWithTemporaryShellAssignments({
+          execute: () => this.executeShellFunction({
+            name: cmdName,
+            body: shellFunctionBody,
+            args: expandedArgs,
+            environment,
+            stdin: cmdStdin,
+            stdout: cmdStdout,
+            stderr: cmdStderr,
+            loopDepth,
+            functionDepth,
+          }),
+        });
+      } finally {
+        await cleanupCommandResources();
+      }
     }
 
     const resolvedCommand = this.resolveBuiltinCommand({
@@ -4182,54 +5392,40 @@ usage: ${name} [-c command] [file [argument...]]
         env: environment.env,
       });
       if (shebangScript !== undefined) {
-        return this.executeArgv({
-          command: shebangScript.interpreter,
-          args: [
-            ...shebangScript.interpreterArgs,
-            shebangScript.scriptPath,
-            ...expandedArgs,
-          ],
-          environment,
-          stdin,
-          stdout,
-          stderr,
-          argumentEntryRefs: directInvocation === undefined
-            ? undefined
-            : [
-              ...new Array<WeshEntryRef | undefined>(
-                shebangScript.interpreterArgs.length + 1,
-              ).fill(undefined),
-              ...(directInvocation.argumentEntryRefs ?? []),
+        try {
+          return await this.executeArgv({
+            command: shebangScript.interpreter,
+            args: [
+              ...shebangScript.interpreterArgs,
+              shebangScript.scriptPath,
+              ...expandedArgs,
             ],
-        });
+            environment,
+            stdin: cmdStdin,
+            stdout: cmdStdout,
+            stderr: cmdStderr,
+            argumentEntryRefs: directInvocation === undefined
+              ? undefined
+              : [
+                ...new Array<WeshEntryRef | undefined>(
+                  shebangScript.interpreterArgs.length + 1,
+                ).fill(undefined),
+                ...(directInvocation.argumentEntryRefs ?? []),
+              ],
+            functionLookup: 'allow',
+          });
+        } finally {
+          await cleanupCommandResources();
+        }
       }
-      throw new Error(`Command not found: ${cmdName}`);
+      await cleanupCommandResources();
+      throw new WeshShellExecutionError({
+        message: `Command not found: ${cmdName}`,
+        exitCode: 127,
+        disposition: 'continue',
+      });
     }
     const definition = resolvedCommand.definition;
-
-    cmdFds.set(0, stdin);
-    cmdFds.set(1, stdout);
-    cmdFds.set(2, stderr);
-
-    await this.applyRedirectionsToFdTable({
-      redirections: aliasExpandedNode.redirections,
-      environment,
-      fdTable: cmdFds,
-      trackOpenedHandle: ({ handle }) => {
-        openHandles.push(handle);
-      },
-      trackBackgroundTask: ({ task }) => {
-        procSubTasks.push(task);
-      },
-    });
-
-    const cmdStdin = cmdFds.get(0);
-    const cmdStdout = cmdFds.get(1);
-    const cmdStderr = cmdFds.get(2);
-
-    if (cmdStdin === undefined || cmdStdout === undefined || cmdStderr === undefined) {
-      throw new Error('Missing standard file descriptor after redirection');
-    }
 
     const { pid, process: proc } = await this.kernel.spawn({
       image: resolvedCommand.resolved.invocationPath ?? cmdName,
@@ -4257,12 +5453,20 @@ usage: ${name} [-c command] [file [argument...]]
       throw new Error('Missing standard file descriptor after process binding');
     }
 
-    const inheritedStdin = environment.fds.get(0);
-    if (cmdStdin !== undefined && cmdStdin !== inheritedStdin && this.isFileHandleReferenceCloneable({ handle: cmdStdin })) {
+    if (
+      cmdStdin !== undefined
+      && (cmdStdin !== stdin || stdinReferenceOwnership === 'command-local')
+      && this.isFileHandleReferenceCloneable({ handle: cmdStdin })
+    ) {
       await cmdStdin.close();
     }
 
-    const context: WeshCommandContext = {
+    let fileDescriptorSnapshotRequested = false;
+    let replacementCommandExecuted = false;
+
+    const context: WeshCommandContext & {
+      hasFunction({ name }: { name: string }): boolean,
+    } = {
       args: expandedArgs,
       env: currentEnv,
       cwd: environment.cwd,
@@ -4294,6 +5498,7 @@ usage: ${name} [-c command] [file [argument...]]
       },
       getWeshCommandMeta: ({ name }: { name: string }) => this.commands.get(name)?.meta,
       getCommandNames: () => Array.from(this.commands.keys()),
+      hasFunction: ({ name }: { name: string }) => environment.functions.has(name),
       resolveCommand: ({ name }) => {
         const resolved = this.resolveBuiltinCommand({
           name,
@@ -4326,23 +5531,61 @@ usage: ${name} [-c command] [file [argument...]]
       },
       getShellOptions: () => Array.from(environment.shellOptions.entries())
         .sort(([leftName], [rightName]) => leftName.localeCompare(rightName)),
-      executeCommand: ({ command, args, argumentEntryRefs, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr, ignoreAliases: nextIgnoreAliases }) => this.executeArgv({
-        command,
-        args,
-        argumentEntryRefs,
-        environment,
-        stdin: nextStdin ?? boundStdin,
-        stdout: nextStdout ?? boundStdout,
-        stderr: nextStderr ?? boundStderr,
-        ignoreAliases: nextIgnoreAliases,
-      }),
-      executeShell: ({ script, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr }) => this.executeShellInState({
-        script,
-        environment,
-        stdin: nextStdin ?? boundStdin,
-        stdout: nextStdout ?? boundStdout,
-        stderr: nextStderr ?? boundStderr,
-      }),
+      executeCommand: async ({ command, args, argumentEntryRefs, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr, ignoreAliases: nextIgnoreAliases }) => {
+        if (definition.meta.name === 'exec') {
+          replacementCommandExecuted = true;
+        }
+        return toWeshCommandResult({
+          result: await this.executeArgv({
+            command,
+            args,
+            argumentEntryRefs,
+            environment,
+            stdin: nextStdin ?? boundStdin,
+            stdout: nextStdout ?? boundStdout,
+            stderr: nextStderr ?? boundStderr,
+            ignoreAliases: nextIgnoreAliases,
+            functionLookup: definition.meta.name === 'command' ? 'bypass' : 'allow',
+          }),
+        });
+      },
+      executeShell: async ({ script, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr }) => {
+        const result = await this.executeShellInState({
+          source: createTextShellSource({ text: script }),
+          environment,
+          stdin: nextStdin ?? boundStdin,
+          stdout: nextStdout ?? boundStdout,
+          stderr: nextStderr ?? boundStderr,
+          history: 'ignore',
+          allowReturn: functionDepth > 0,
+        });
+        const controlFlow = result.controlFlow;
+        if (controlFlow === undefined) {
+          return {
+            exitCode: result.exitCode,
+            waitStatus: result.waitStatus,
+          };
+        }
+        switch (controlFlow.kind) {
+        case 'break':
+        case 'continue':
+        case 'return':
+          return {
+            exitCode: result.exitCode,
+            waitStatus: result.waitStatus,
+            controlFlow,
+          };
+        case 'exit':
+          return {
+            exitCode: result.exitCode,
+            waitStatus: result.waitStatus,
+          };
+        default: {
+          const _ex: never = controlFlow;
+          throw new Error(`Unhandled command-context shell control flow: ${JSON.stringify(_ex)}`);
+        }
+        }
+      },
       files: {
         open: async ({ path, flags, mode }) => {
           const handle = await this.kernel.open({
@@ -4397,7 +5640,10 @@ usage: ${name} [-c command] [file [argument...]]
           pollIntervalMs,
         }),
       },
-      getFileDescriptors: () => Array.from(proc.fds.entries()),
+      getFileDescriptors: () => {
+        fileDescriptorSnapshotRequested = true;
+        return Array.from(proc.fds.entries());
+      },
       getFileDescriptor: ({ fd }) => proc.fds.get(fd),
       setFileDescriptor: async ({ fd, handle, persist }) => {
         const boundHandle = this.kernel.bindFileHandle({
@@ -4405,9 +5651,23 @@ usage: ${name} [-c command] [file [argument...]]
           handle,
           trackOwnership: false,
         });
+        const previousProcessHandle = proc.fds.get(fd);
         proc.fds.set(fd, boundHandle);
-        environment.fds.set(fd, boundHandle);
-        if (persist) {
+        if (previousProcessHandle !== undefined) {
+          await previousProcessHandle.close();
+        }
+        if (persist && environment.shellPid !== environment.shellRootPid) {
+          const environmentHandle = this.cloneFileHandleReference({ handle: boundHandle });
+          const previousEnvironmentHandle = environment.fds.get(fd);
+          if (previousEnvironmentHandle !== undefined && environment.ownedPersistentFds.has(fd)) {
+            await previousEnvironmentHandle.close();
+          }
+          environment.fds.set(fd, environmentHandle);
+          environment.ownedPersistentFds.add(fd);
+        } else {
+          environment.fds.set(fd, boundHandle);
+        }
+        if (persist && environment.shellPid === environment.shellRootPid) {
           await this.setPersistentFd({ fd, handle: boundHandle });
         }
       },
@@ -4436,17 +5696,37 @@ usage: ${name} [-c command] [file [argument...]]
         return Array.from(environment.traps.entries())
           .sort(([leftCondition], [rightCondition]) => leftCondition.localeCompare(rightCondition));
       },
-      text: () => createTextIoHelpers({ stdin: boundStdin, stdout: boundStdout, stderr: boundStderr }),
+      text: () => createShellTextIoHelpers({ stdin: boundStdin, stdout: boundStdout, stderr: boundStderr }),
     };
 
     try {
       const result = await definition.fn({ context });
+      if (fileDescriptorSnapshotRequested) {
+        const activeFds = new Set(proc.fds.keys());
+        for (const fd of Array.from(environment.fds.keys())) {
+          if (!activeFds.has(fd)) {
+            const handle = environment.fds.get(fd);
+            if (handle !== undefined && environment.ownedPersistentFds.has(fd)) {
+              await handle.close();
+              environment.ownedPersistentFds.delete(fd);
+            }
+            environment.fds.delete(fd);
+          }
+        }
+        if (environment.shellPid === environment.shellRootPid) {
+          for (const fd of Array.from(this.shellFds.keys())) {
+            if (!activeFds.has(fd)) {
+              await this.closePersistentFd({ fd });
+            }
+          }
+        }
+      }
       const signalResult = await this.buildSignalCommandResultIfAny({
         pid,
         environment,
-        stdin: boundStdin,
-        stdout: boundStdout,
-        stderr: boundStderr,
+        stdin: cmdStdin,
+        stdout: cmdStdout,
+        stderr: cmdStderr,
       });
       if (signalResult !== undefined) {
         return signalResult;
@@ -4464,9 +5744,9 @@ usage: ${name} [-c command] [file [argument...]]
         await this.runSignalTrapIfNeeded({
           signal: proc.waitStatus.signal,
           environment,
-          stdin: boundStdin,
-          stdout: boundStdout,
-          stderr: boundStderr,
+          stdin: cmdStdin,
+          stdout: cmdStdout,
+          stderr: cmdStderr,
         });
         break;
       case 'exited':
@@ -4478,20 +5758,32 @@ usage: ${name} [-c command] [file [argument...]]
       }
       }
 
+      const exitCode = weshWaitStatusToExitCode({
+        waitStatus: proc.waitStatus,
+      });
+      if (cmdName === 'exec' && replacementCommandExecuted) {
+        return {
+          ...result,
+          exitCode,
+          waitStatus: proc.waitStatus,
+          controlFlow: {
+            kind: 'exit',
+            exitCode,
+          },
+        };
+      }
       return {
         ...result,
-        exitCode: weshWaitStatusToExitCode({
-          waitStatus: proc.waitStatus,
-        }),
+        exitCode,
         waitStatus: proc.waitStatus,
       };
     } catch (error: unknown) {
       const signalResult = await this.buildSignalCommandResultIfAny({
         pid,
         environment,
-        stdin: boundStdin,
-        stdout: boundStdout,
-        stderr: boundStderr,
+        stdin: cmdStdin,
+        stdout: cmdStdout,
+        stderr: cmdStderr,
       });
       if (signalResult !== undefined) {
         return signalResult;
@@ -4506,16 +5798,7 @@ usage: ${name} [-c command] [file [argument...]]
     } finally {
       await this.kernel.closeProcessResources({ pid });
       this.kernel.reapProcess({ pid });
-      for (const h of openHandles) {
-        await h.close();
-      }
-      for (const cleanup of procSubPreTaskCleanups) {
-        cleanup();
-      }
-      await Promise.allSettled(procSubTasks);
-      for (const cleanup of procSubPostTaskCleanups) {
-        cleanup();
-      }
+      await cleanupCommandResources();
     }
   }
 
@@ -4531,9 +5814,11 @@ usage: ${name} [-c command] [file [argument...]]
     });
   }
 
-  private async tryExecuteShellControlCommand({
+  private async tryExecuteShellBuiltin({
     commandName,
     args,
+    stdin,
+    stdout,
     stderr,
     loopDepth,
     functionDepth,
@@ -4541,12 +5826,24 @@ usage: ${name} [-c command] [file [argument...]]
   }: {
     commandName: string,
     args: string[],
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
     stderr: WeshFileHandle,
     loopDepth: number,
     functionDepth: number,
     environment: WeshExecutionEnvironment,
-  }): Promise<WeshCommandResult | undefined> {
+  }): Promise<WeshShellExecutionResult | undefined> {
     switch (commandName) {
+    case 'builtin':
+      return this.executeBuiltinBuiltin({
+        args,
+        stdin,
+        stdout,
+        stderr,
+        loopDepth,
+        functionDepth,
+        environment,
+      });
     case 'break':
       return this.buildLoopControlCommandResult({
         commandName,
@@ -4561,13 +5858,166 @@ usage: ${name} [-c command] [file [argument...]]
         stderr,
         loopDepth,
       });
+    case 'exec': {
+      const firstArgument = args[0];
+      if (
+        firstArgument === undefined
+        || firstArgument === '--help'
+        || (firstArgument !== '--' && firstArgument.startsWith('-'))
+      ) {
+        return undefined;
+      }
+
+      const replacementCommand = firstArgument === '--' ? args[1] : firstArgument;
+      if (replacementCommand === undefined) {
+        return undefined;
+      }
+      const replacementArgs = firstArgument === '--' ? args.slice(2) : args.slice(1);
+
+      try {
+        const result = await this.executeArgv({
+          command: replacementCommand,
+          args: replacementArgs,
+          argumentEntryRefs: undefined,
+          environment,
+          stdin,
+          stdout,
+          stderr,
+          functionLookup: 'allow',
+        });
+        return {
+          ...result,
+          controlFlow: {
+            kind: 'exit',
+            exitCode: result.exitCode,
+          },
+        };
+      } catch (error: unknown) {
+        if (error instanceof WeshShellExecutionError) {
+          throw new WeshShellExecutionError({
+            message: error.message,
+            exitCode: error.exitCode,
+            disposition: 'abort-shell',
+          });
+        }
+        throw error;
+      }
+    }
+    case 'eval': {
+      const firstArgument = args[0];
+      if (
+        firstArgument === '--help'
+        || (
+          firstArgument !== undefined
+          && firstArgument !== '-'
+          && firstArgument !== '--'
+          && firstArgument.startsWith('-')
+        )
+      ) {
+        return undefined;
+      }
+      return this.executeShellInState({
+        source: createTextShellSource({
+          text: (firstArgument === '--' ? args.slice(1) : args).join(' '),
+        }),
+        environment,
+        stdin,
+        stdout,
+        stderr,
+        history: 'ignore',
+        allowReturn: functionDepth > 0,
+      });
+    }
+    case 'getopts':
+      return this.executeGetoptsBuiltin({ args, stderr, environment });
+    case 'set':
+      return this.executeSetBuiltin({ args, stderr, environment });
+    case 'shift':
+      return this.executeShiftBuiltin({
+        args,
+        stderr,
+        environment,
+      });
+    case 'local':
+      return this.executeLocalBuiltin({
+        args,
+        stderr,
+        functionDepth,
+        environment,
+      });
+    case 'let':
+      return this.executeLetBuiltin({ args, environment });
+    case 'unset':
+      if (!this.shouldExecuteUnsetAsShellIntrinsic({ args })) {
+        return undefined;
+      }
+      return this.executeUnsetBuiltin({
+        args,
+        stderr,
+        environment,
+      });
+    case 'source':
+    case '.':
+      return this.executeSourceCommand({
+        commandName,
+        args,
+        environment,
+        stdin,
+        stdout,
+        stderr,
+      });
+    case 'wait':
+      return this.executeWaitCommand({
+        args,
+        stderr,
+        environment,
+      });
+    case 'exit': {
+      if (args.length > 1) {
+        await this.writeErrorText({
+          stderr,
+          text: 'wesh: exit: too many arguments\n',
+        });
+        return { exitCode: 1 };
+      }
+      const parsedExitCode = await this.parseNumericExitStatus({
+        commandName,
+        args,
+        stderr,
+      });
+      switch (parsedExitCode.kind) {
+      case 'error':
+        return {
+          exitCode: 2,
+          controlFlow: {
+            kind: 'exit',
+            exitCode: 2,
+          },
+        };
+      case 'ok':
+        break;
+      default: {
+        const _ex: never = parsedExitCode;
+        throw new Error(`Unhandled parsed exit code: ${JSON.stringify(_ex)}`);
+      }
+      }
+      const rawExitCode = parsedExitCode.value ?? Number.parseInt(environment.env.get('?') ?? '0', 10);
+      const exitCode = ((rawExitCode % 256) + 256) % 256;
+      return {
+        exitCode,
+        controlFlow: {
+          kind: 'exit',
+          exitCode,
+        },
+      };
+    }
     case 'return': {
       if (functionDepth <= 0) {
         await this.writeErrorText({
           stderr,
           text: 'wesh: return: can only `return\' from a function or sourced script\n',
         });
-        return { exitCode: 1 };
+        return { exitCode: 2 };
       }
       const parsedExitCode = await this.parseNumericExitStatus({
         commandName,
@@ -4598,6 +6048,558 @@ usage: ${name} [-c command] [file [argument...]]
     }
   }
 
+  private async executeBuiltinBuiltin({
+    args,
+    stdin,
+    stdout,
+    stderr,
+    loopDepth,
+    functionDepth,
+    environment,
+  }: {
+    args: string[],
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
+    loopDepth: number,
+    functionDepth: number,
+    environment: WeshExecutionEnvironment,
+  }): Promise<WeshShellExecutionResult> {
+    const commandName = args[0];
+    if (commandName === undefined) {
+      return { exitCode: 0 };
+    }
+    if (!this.isWeshBuiltinName({ name: commandName })) {
+      await this.writeErrorText({
+        stderr,
+        text: `wesh: builtin: ${commandName}: not a shell builtin\n`,
+      });
+      return { exitCode: 1 };
+    }
+
+    return this.executeCommand({
+      node: {
+        kind: 'command',
+        assignments: [],
+        name: commandName,
+        args: args.slice(1),
+        redirections: [],
+      },
+      environment,
+      stdin,
+      stdout,
+      stderr,
+      loopDepth,
+      functionDepth,
+      ignoreAliases: true,
+      directInvocation: {
+        command: commandName,
+        args: args.slice(1),
+        argumentEntryRefs: undefined,
+        functionLookup: 'bypass',
+      },
+    });
+  }
+
+  private async executeGetoptsBuiltin({ args, stderr, environment }: {
+    args: string[],
+    stderr: WeshFileHandle,
+    environment: WeshExecutionEnvironment,
+  }): Promise<WeshCommandResult> {
+    const optstring = args[0];
+    const variableName = args[1];
+    if (optstring === undefined || variableName === undefined) {
+      await this.writeErrorText({
+        stderr,
+        text: 'wesh: getopts: usage: getopts optstring name [arg ...]\n',
+      });
+      return { exitCode: 2 };
+    }
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(variableName)) {
+      await this.writeErrorText({
+        stderr,
+        text: `wesh: getopts: ${variableName}: not a valid identifier\n`,
+      });
+      return { exitCode: 2 };
+    }
+
+    const optionArguments = args.length > 2 ? args.slice(2) : environment.positionalArgs;
+    const silentErrors = optstring.startsWith(':');
+    const optionSpec = silentErrors ? optstring.slice(1) : optstring;
+    const argumentSignature = JSON.stringify([optstring, ...optionArguments]);
+    const parsedOptind = Number.parseInt(environment.env.get('OPTIND') ?? '1', 10);
+    let optind = Number.isSafeInteger(parsedOptind) && parsedOptind >= 1 ? parsedOptind : 1;
+    let characterOffset = 1;
+
+    if (
+      environment.getoptsState !== undefined
+      && environment.getoptsState.argumentSignature === argumentSignature
+      && environment.getoptsState.optind === optind
+    ) {
+      characterOffset = environment.getoptsState.characterOffset;
+    }
+
+    const finish = ({ nextOptind, nextCharacterOffset }: {
+      nextOptind: number,
+      nextCharacterOffset: number,
+    }): void => {
+      environment.env.set('OPTIND', nextOptind.toString());
+      environment.getoptsState = {
+        argumentSignature,
+        optind: nextOptind,
+        characterOffset: nextCharacterOffset,
+      };
+    };
+
+    while (true) {
+      const current = optionArguments[optind - 1];
+      if (current === undefined || current === '-' || !current.startsWith('-')) {
+        finish({ nextOptind: optind, nextCharacterOffset: 1 });
+        environment.env.delete('OPTARG');
+        return { exitCode: 1 };
+      }
+      if (current === '--') {
+        finish({ nextOptind: optind + 1, nextCharacterOffset: 1 });
+        environment.env.delete('OPTARG');
+        return { exitCode: 1 };
+      }
+
+      const option = current[characterOffset];
+      if (option === undefined) {
+        optind += 1;
+        characterOffset = 1;
+        continue;
+      }
+
+      const specIndex = optionSpec.indexOf(option);
+      const requiresArgument = specIndex >= 0 && optionSpec[specIndex + 1] === ':';
+      let nextOptind = optind;
+      let nextCharacterOffset = characterOffset + 1;
+      if (nextCharacterOffset >= current.length) {
+        nextOptind += 1;
+        nextCharacterOffset = 1;
+      }
+
+      if (specIndex < 0 || option === ':') {
+        environment.env.set(variableName, '?');
+        if (silentErrors) {
+          environment.env.set('OPTARG', option);
+        } else {
+          environment.env.delete('OPTARG');
+          await this.writeErrorText({
+            stderr,
+            text: `wesh: getopts: illegal option -- ${option}\n`,
+          });
+        }
+        finish({ nextOptind, nextCharacterOffset });
+        return { exitCode: 0 };
+      }
+
+      if (requiresArgument) {
+        const attached = current.slice(characterOffset + 1);
+        if (attached.length > 0) {
+          environment.env.set('OPTARG', attached);
+          nextOptind = optind + 1;
+          nextCharacterOffset = 1;
+        } else {
+          const value = optionArguments[optind];
+          if (value === undefined) {
+            environment.env.set(variableName, silentErrors ? ':' : '?');
+            if (silentErrors) {
+              environment.env.set('OPTARG', option);
+            } else {
+              environment.env.delete('OPTARG');
+              await this.writeErrorText({
+                stderr,
+                text: `wesh: getopts: option requires an argument -- ${option}\n`,
+              });
+            }
+            finish({ nextOptind: optind + 1, nextCharacterOffset: 1 });
+            return { exitCode: 0 };
+          }
+          environment.env.set('OPTARG', value);
+          nextOptind = optind + 2;
+          nextCharacterOffset = 1;
+        }
+      } else {
+        environment.env.delete('OPTARG');
+      }
+
+      environment.env.set(variableName, option);
+      finish({ nextOptind, nextCharacterOffset });
+      return { exitCode: 0 };
+    }
+  }
+
+  private executeLetBuiltin({ args, environment }: {
+    args: string[],
+    environment: WeshExecutionEnvironment,
+  }): WeshCommandResult {
+    if (args.length === 0) {
+      return { exitCode: 1 };
+    }
+    let value = 0;
+    for (const expression of args) {
+      value = this.evaluateArithmeticExpression({
+        expression,
+        env: environment.env,
+      });
+    }
+    return { exitCode: value === 0 ? 1 : 0 };
+  }
+
+  private async executeSetBuiltin({ args, stderr: _stderr, environment }: {
+    args: string[],
+    stderr: WeshFileHandle,
+    environment: WeshExecutionEnvironment,
+  }): Promise<WeshShellExecutionResult | undefined> {
+    if (args.length === 0) {
+      return undefined;
+    }
+
+    const executionOptions = { ...environment.executionOptions };
+    let positionalStart: number | undefined;
+
+    for (let index = 0; index < args.length; index += 1) {
+      const arg = args[index]!;
+      if (arg === '--') {
+        positionalStart = index + 1;
+        break;
+      }
+      if (arg.length < 2 || (arg[0] !== '-' && arg[0] !== '+')) {
+        positionalStart = index;
+        break;
+      }
+
+      const enabled = arg[0] === '-';
+      const flags = arg.slice(1);
+      for (let flagIndex = 0; flagIndex < flags.length; flagIndex += 1) {
+        const flag = flags[flagIndex]!;
+        switch (flag) {
+        case 'e':
+          executionOptions.errexit = enabled;
+          break;
+        case 'u':
+          executionOptions.nounset = enabled;
+          break;
+        case 'o': {
+          if (flagIndex !== flags.length - 1) {
+            return undefined;
+          }
+          const optionName = args[index + 1];
+          if (optionName !== 'pipefail') {
+            return undefined;
+          }
+          executionOptions.pipefail = enabled;
+          index += 1;
+          break;
+        }
+        default:
+          return undefined;
+        }
+      }
+    }
+
+    environment.executionOptions = executionOptions;
+    if (positionalStart !== undefined) {
+      environment.positionalArgs = args.slice(positionalStart);
+      this.syncSpecialParameters({ environment });
+    }
+    return { exitCode: 0 };
+  }
+
+  private async executeLocalBuiltin({ args, stderr, functionDepth, environment }: {
+    args: string[],
+    stderr: WeshFileHandle,
+    functionDepth: number,
+    environment: WeshExecutionEnvironment,
+  }): Promise<WeshCommandResult> {
+    if (functionDepth <= 0) {
+      await this.writeErrorText({
+        stderr,
+        text: 'wesh: local: can only be used in a function\n',
+      });
+      return { exitCode: 1 };
+    }
+
+    const scope = environment.localVariableScopes.at(-1);
+    if (scope === undefined) {
+      throw new Error('Missing shell local-variable scope inside function');
+    }
+
+    for (const argument of args) {
+      if (argument.startsWith('-') && argument !== '-') {
+        await this.writeErrorText({
+          stderr,
+          text: `wesh: local: ${argument}: unsupported option\n`,
+        });
+        return { exitCode: 2 };
+      }
+      const equalsIndex = argument.indexOf('=');
+      const name = equalsIndex < 0 ? argument : argument.slice(0, equalsIndex);
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) {
+        await this.writeErrorText({
+          stderr,
+          text: `wesh: local: ${argument}: not a valid identifier\n`,
+        });
+        return { exitCode: 1 };
+      }
+      if (!scope.has(name)) {
+        const previousValue = environment.env.get(name);
+        scope.set(name, previousValue === undefined
+          ? { kind: 'unset' }
+          : { kind: 'value', value: previousValue });
+      }
+      if (equalsIndex >= 0) {
+        environment.env.set(name, argument.slice(equalsIndex + 1));
+      }
+    }
+
+    return { exitCode: 0 };
+  }
+
+  private shouldExecuteUnsetAsShellIntrinsic({ args }: { args: string[] }): boolean {
+    return args[0] === '-v' || args[0] === '-f';
+  }
+
+  private async executeUnsetBuiltin({ args, stderr, environment }: {
+    args: string[],
+    stderr: WeshFileHandle,
+    environment: WeshExecutionEnvironment,
+  }): Promise<WeshCommandResult> {
+    let mode: 'variable' | 'function' = 'variable';
+    let parseOptions = true;
+
+    for (const argument of args) {
+      if (parseOptions) {
+        switch (argument) {
+        case '--':
+          parseOptions = false;
+          continue;
+        case '-v':
+          mode = 'variable';
+          continue;
+        case '-f':
+          mode = 'function';
+          continue;
+        default:
+          if (argument.startsWith('-') && argument !== '-') {
+            await this.writeErrorText({
+              stderr,
+              text: `wesh: unset: ${argument}: invalid option\n`,
+            });
+            return { exitCode: 2 };
+          }
+          parseOptions = false;
+          break;
+        }
+      }
+
+      switch (mode) {
+      case 'variable':
+        environment.env.delete(argument);
+        break;
+      case 'function':
+        environment.functions.delete(argument);
+        break;
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled unset mode: ${_ex}`);
+      }
+      }
+    }
+
+    return { exitCode: 0 };
+  }
+
+  private async executeShiftBuiltin({ args, stderr, environment }: {
+    args: string[],
+    stderr: WeshFileHandle,
+    environment: WeshExecutionEnvironment,
+  }): Promise<WeshCommandResult> {
+    if (args.length > 1 || (args[0] !== undefined && !/^\d+$/u.test(args[0]))) {
+      await this.writeErrorText({
+        stderr,
+        text: 'wesh: shift: numeric argument required\n',
+      });
+      return { exitCode: 2 };
+    }
+
+    const count = args[0] === undefined ? 1 : Number.parseInt(args[0], 10);
+    if (!Number.isSafeInteger(count) || count > environment.positionalArgs.length) {
+      await this.writeErrorText({
+        stderr,
+        text: 'wesh: shift: shift count out of range\n',
+      });
+      return { exitCode: 1 };
+    }
+
+    environment.positionalArgs = environment.positionalArgs.slice(count);
+    this.syncSpecialParameters({ environment });
+    return { exitCode: 0 };
+  }
+
+  private isWeshBuiltinName({ name }: { name: string }): boolean {
+    if (this.commands.has(name)) {
+      return true;
+    }
+    switch (name) {
+    case 'builtin':
+    case 'break':
+    case 'continue':
+    case 'getopts':
+    case 'exit':
+    case 'return':
+    case 'set':
+    case 'shift':
+    case 'local':
+    case 'let':
+    case 'source':
+    case '.':
+    case 'wait':
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  private async executeSourceCommand({
+    commandName,
+    args,
+    environment,
+    stdin,
+    stdout,
+    stderr,
+  }: {
+    commandName: 'source' | '.',
+    args: string[],
+    environment: WeshExecutionEnvironment,
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
+  }): Promise<WeshShellExecutionResult> {
+    const path = args[0];
+    if (path === undefined) {
+      await this.writeErrorText({
+        stderr,
+        text: `wesh: ${commandName}: filename argument required\n`,
+      });
+      return { exitCode: 2 };
+    }
+
+    const resolvedPath = resolvePath({ cwd: environment.cwd, path });
+    let handle: WeshFileHandle;
+    try {
+      handle = await this.kernel.open({
+        path: resolvedPath,
+        flags: {
+          access: 'read',
+          creation: 'never',
+          truncate: 'preserve',
+          append: 'preserve',
+        },
+        mode: 0o644,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.writeErrorText({
+        stderr,
+        text: `wesh: ${path}: ${message}\n`,
+      });
+      return { exitCode: 1 };
+    }
+
+    const previousPositionalArgs = environment.positionalArgs;
+    if (args.length > 1) {
+      environment.positionalArgs = args.slice(1);
+      this.syncSpecialParameters({ environment });
+    }
+    try {
+      const result = await this.executeShellInState({
+        source: createHandleShellSource({ handle }),
+        environment,
+        stdin,
+        stdout,
+        stderr,
+        history: 'ignore',
+        allowReturn: true,
+      });
+      const controlFlow = result.controlFlow;
+      if (controlFlow === undefined) {
+        return result;
+      }
+      switch (controlFlow.kind) {
+      case 'return':
+        return { exitCode: controlFlow.exitCode };
+      case 'break':
+      case 'continue':
+      case 'exit':
+        return result;
+      default: {
+        const _ex: never = controlFlow;
+        throw new Error(`Unhandled sourced-shell control flow: ${JSON.stringify(_ex)}`);
+      }
+      }
+    } finally {
+      await handle.close();
+      if (args.length > 1) {
+        environment.positionalArgs = previousPositionalArgs;
+        this.syncSpecialParameters({ environment });
+      }
+    }
+  }
+
+  private async executeWaitCommand({ args, stderr, environment }: {
+    args: string[],
+    stderr: WeshFileHandle,
+    environment: WeshExecutionEnvironment,
+  }): Promise<WeshCommandResult> {
+    const rawPids = args.length === 0
+      ? Array.from(environment.waitableChildren.keys(), pid => pid.toString())
+      : args;
+
+    if (rawPids.length === 0) {
+      return { exitCode: 0 };
+    }
+
+    let lastExitCode = 0;
+    for (const rawPid of rawPids) {
+      if (!/^\d+$/u.test(rawPid)) {
+        await this.writeErrorText({
+          stderr,
+          text: `wesh: wait: ${rawPid}: not a pid or valid job spec\n`,
+        });
+        lastExitCode = 127;
+        continue;
+      }
+      const pid = Number.parseInt(rawPid, 10);
+      if (!Number.isSafeInteger(pid) || pid <= 0) {
+        await this.writeErrorText({
+          stderr,
+          text: `wesh: wait: ${rawPid}: not a pid or valid job spec\n`,
+        });
+        lastExitCode = 127;
+        continue;
+      }
+
+      const task = environment.waitableChildren.get(pid);
+      if (task === undefined) {
+        await this.writeErrorText({
+          stderr,
+          text: `wesh: wait: ${pid}: pid is not a child of this shell\n`,
+        });
+        lastExitCode = 127;
+        continue;
+      }
+
+      const childResult = await task;
+      environment.waitableChildren.delete(pid);
+      lastExitCode = childResult.exitCode;
+    }
+
+    return { exitCode: lastExitCode };
+  }
+
   private async buildLoopControlCommandResult({
     commandName,
     args,
@@ -4608,13 +6610,13 @@ usage: ${name} [-c command] [file [argument...]]
     args: string[],
     stderr: WeshFileHandle,
     loopDepth: number,
-  }): Promise<WeshCommandResult> {
+  }): Promise<WeshShellExecutionResult> {
     if (loopDepth <= 0) {
       await this.writeErrorText({
         stderr,
         text: `wesh: ${commandName}: only meaningful in a \`for', \`while', or \`until' loop\n`,
       });
-      return { exitCode: 1 };
+      return { exitCode: 0 };
     }
 
     const levels = await this.parseNumericExitStatus({
@@ -4647,7 +6649,7 @@ usage: ${name} [-c command] [file [argument...]]
     args,
     stderr,
   }: {
-    commandName: 'break' | 'continue' | 'return',
+    commandName: 'break' | 'continue' | 'exit' | 'return',
     args: string[],
     stderr: WeshFileHandle,
   }): Promise<{
@@ -4704,9 +6706,14 @@ usage: ${name} [-c command] [file [argument...]]
     stderr: WeshFileHandle,
     loopDepth: number,
     functionDepth: number,
-  }): Promise<WeshCommandResult> {
+  }): Promise<WeshShellExecutionResult> {
     const previousArgs = [...environment.positionalArgs];
     const previousZero = environment.env.get('0');
+    const localVariableScope = new Map<string,
+      | { kind: 'unset' }
+      | { kind: 'value', value: string }
+    >();
+    environment.localVariableScopes.push(localVariableScope);
     environment.positionalArgs = [...args];
     environment.env.set('0', name);
     this.syncSpecialParameters({ environment });
@@ -4726,6 +6733,7 @@ usage: ${name} [-c command] [file [argument...]]
           return { exitCode: result.controlFlow.exitCode };
         case 'break':
         case 'continue':
+        case 'exit':
           return result;
         default: {
           const _ex: never = result.controlFlow;
@@ -4735,6 +6743,20 @@ usage: ${name} [-c command] [file [argument...]]
       }
       return result;
     } finally {
+      environment.localVariableScopes.pop();
+      for (const [variableName, previousValue] of localVariableScope) {
+        switch (previousValue.kind) {
+        case 'unset':
+          environment.env.delete(variableName);
+          break;
+        case 'value':
+          environment.env.set(variableName, previousValue.value);
+          break;
+        default: {
+          previousValue satisfies never;
+        }
+        }
+      }
       environment.positionalArgs = previousArgs;
       if (previousZero === undefined) {
         environment.env.delete('0');
@@ -4743,53 +6765,6 @@ usage: ${name} [-c command] [file [argument...]]
       }
       this.syncSpecialParameters({ environment });
     }
-  }
-
-  private compileStringPattern({
-    pattern,
-  }: {
-    pattern: string,
-  }): RegExp {
-    let source = '^';
-    for (let index = 0; index < pattern.length; index += 1) {
-      const char = pattern[index];
-      if (char === undefined) {
-        continue;
-      }
-      if (char === '\\') {
-        const nextChar = pattern[index + 1];
-        if (nextChar !== undefined) {
-          source += nextChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          index += 1;
-          continue;
-        }
-        source += '\\\\';
-        continue;
-      }
-      if (char === '*') {
-        source += '.*';
-        continue;
-      }
-      if (char === '?') {
-        source += '.';
-        continue;
-      }
-      if (char === '[') {
-        const endIndex = pattern.indexOf(']', index + 1);
-        if (endIndex !== -1) {
-          let classContent = pattern.slice(index + 1, endIndex);
-          if (classContent.startsWith('!')) {
-            classContent = '^' + classContent.slice(1);
-          }
-          source += `[${classContent}]`;
-          index = endIndex;
-          continue;
-        }
-      }
-      source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-    source += '$';
-    return new RegExp(source);
   }
 
   private async caseClauseMatches({
@@ -4806,7 +6781,7 @@ usage: ${name} [-c command] [file [argument...]]
         raw: rawPattern,
         environment,
       });
-      if (this.compileStringPattern({ pattern: expandedPattern }).test(value)) {
+      if (matchesShellPattern({ pattern: expandedPattern, text: value })) {
         return true;
       }
     }
@@ -4820,20 +6795,43 @@ usage: ${name} [-c command] [file [argument...]]
     raw: string,
     environment: WeshExecutionEnvironment,
   }): Promise<string> {
-    const substitutionExpandedRaw = await this.expandInlineSubstitutions({
-      text: raw,
-      environment,
-    });
-    const parsedParts = this.parseWordParts({ raw: substitutionExpandedRaw });
+    const parsedParts = parseShellWordParts({ raw });
     let text = '';
     for (const part of parsedParts) {
-      text += part.expandVariables
+      const expandedPart = part.expandVariables
         ? await this.expandPartVariables({
           text: part.text,
           env: environment.env,
           environment,
         })
         : part.text;
+      text += part.quoted
+        ? escapeShellPatternLiteral({ text: expandedPart })
+        : expandedPart;
+    }
+    return text;
+  }
+
+  private async expandRegexWord({
+    raw,
+    environment,
+  }: {
+    raw: string,
+    environment: WeshExecutionEnvironment,
+  }): Promise<string> {
+    const parsedParts = parseShellWordParts({ raw });
+    let text = '';
+    for (const part of parsedParts) {
+      const expandedPart = part.expandVariables
+        ? await this.expandPartVariables({
+          text: part.text,
+          env: environment.env,
+          environment,
+        })
+        : part.text;
+      text += part.quoted
+        ? expandedPart.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
+        : expandedPart;
     }
     return text;
   }
@@ -4856,8 +6854,10 @@ usage: ${name} [-c command] [file [argument...]]
 
   private executeExtendedTestCommand({
     args,
+    environment,
   }: {
     args: string[],
+    environment: WeshExecutionEnvironment,
   }): WeshCommandResult {
     const tokens = args[args.length - 1] === ']]'
       ? args.slice(0, -1)
@@ -4897,6 +6897,10 @@ usage: ${name} [-c command] [file [argument...]]
         consume();
         return (consume() ?? '').length === 0;
       }
+      if (token === '-v') {
+        consume();
+        return environment.env.has(consume());
+      }
 
       const left = consume();
       const operator = peek();
@@ -4906,12 +6910,21 @@ usage: ${name} [-c command] [file [argument...]]
       if (operator === '==' || operator === '=') {
         consume();
         const right = consume();
-        return this.compileStringPattern({ pattern: right }).test(left);
+        return matchesShellPattern({ pattern: right, text: left });
       }
       if (operator === '!=') {
         consume();
         const right = consume();
-        return !this.compileStringPattern({ pattern: right }).test(left);
+        return !matchesShellPattern({ pattern: right, text: left });
+      }
+      if (operator === '=~') {
+        consume();
+        const right = consume();
+        try {
+          return new RegExp(right).test(left);
+        } catch {
+          return false;
+        }
       }
       if (operator === '<') {
         consume();
@@ -4947,7 +6960,7 @@ usage: ${name} [-c command] [file [argument...]]
     };
   }
 
-  private async executeArgv({ command, args, argumentEntryRefs, environment, stdin, stdout, stderr, ignoreAliases }: {
+  private async executeArgv({ command, args, argumentEntryRefs, environment, stdin, stdout, stderr, ignoreAliases, functionLookup }: {
     command: string,
     args: string[],
     argumentEntryRefs?: readonly (WeshEntryRef | undefined)[],
@@ -4956,7 +6969,8 @@ usage: ${name} [-c command] [file [argument...]]
     stdout: WeshFileHandle,
     stderr: WeshFileHandle,
     ignoreAliases?: boolean,
-  }): Promise<WeshCommandResult> {
+    functionLookup: 'allow' | 'bypass',
+  }): Promise<WeshShellExecutionResult> {
     // argv is already separated, so an intermediate shell process would only
     // duplicate state and leave another process to reap. Keep command-local
     // mutations isolated with a cloned environment while parenting the actual
@@ -4985,6 +6999,7 @@ usage: ${name} [-c command] [file [argument...]]
         command,
         args,
         argumentEntryRefs,
+        functionLookup,
       },
     });
   }
@@ -4999,8 +7014,10 @@ usage: ${name} [-c command] [file [argument...]]
     fds,
     traps,
     shellOptions,
+    executionOptions,
     positionalArgs,
     lastBackgroundPid,
+    waitableChildren,
   }: {
     shellPid: number,
     pgid: number,
@@ -5011,11 +7028,14 @@ usage: ${name} [-c command] [file [argument...]]
     fds: Map<number, WeshFileHandle>,
     traps: Map<string, WeshTrapDisposition>,
     shellOptions: Map<WeshShellOption, boolean>,
+    executionOptions: WeshExecutionOptions,
     positionalArgs: string[],
     lastBackgroundPid: number | undefined,
+    waitableChildren: Map<number, Promise<WeshCommandResult>>,
   }): WeshExecutionEnvironment {
     const environment: WeshExecutionEnvironment = {
       shellPid,
+      shellRootPid: shellPid,
       pgid,
       env,
       aliases,
@@ -5024,8 +7044,15 @@ usage: ${name} [-c command] [file [argument...]]
       fds,
       traps,
       shellOptions,
+      executionOptions,
       positionalArgs,
+      getoptsState: undefined,
       lastBackgroundPid,
+      waitableChildren,
+      commandSubstitutionSequence: 0,
+      lastCommandSubstitutionExitCode: 0,
+      localVariableScopes: [],
+      ownedPersistentFds: new Set(),
     };
     this.syncSpecialParameters({
       environment,
@@ -5059,6 +7086,7 @@ usage: ${name} [-c command] [file [argument...]]
 
     return {
       shellPid: shellPid ?? environment.shellPid,
+      shellRootPid: environment.shellRootPid,
       pgid: pgid ?? environment.pgid,
       env: cloneMap({ source: environment.env }),
       aliases: cloneMap({ source: environment.aliases }),
@@ -5067,8 +7095,26 @@ usage: ${name} [-c command] [file [argument...]]
       fds: new Map(environment.fds),
       traps: cloneMap({ source: environment.traps }),
       shellOptions: cloneMap({ source: environment.shellOptions }),
+      executionOptions: { ...environment.executionOptions },
       positionalArgs: [...environment.positionalArgs],
+      getoptsState: environment.getoptsState === undefined ? undefined : { ...environment.getoptsState },
       lastBackgroundPid: environment.lastBackgroundPid,
+      commandSubstitutionSequence: environment.commandSubstitutionSequence,
+      lastCommandSubstitutionExitCode: environment.lastCommandSubstitutionExitCode,
+      localVariableScopes: [],
+      ownedPersistentFds: new Set(),
+      waitableChildren: (() => {
+        switch (mapStrategy) {
+        case 'snapshot_copy':
+          return new Map();
+        case 'synchronous_overlay':
+          return environment.waitableChildren;
+        default: {
+          const _ex: never = mapStrategy;
+          throw new Error(`Unhandled waitable-child map strategy: ${_ex}`);
+        }
+        }
+      })(),
     };
   }
 
@@ -5077,12 +7123,17 @@ usage: ${name} [-c command] [file [argument...]]
     execute,
   }: {
     environment: WeshExecutionEnvironment,
-    execute: () => Promise<WeshCommandResult>,
+    execute: () => Promise<WeshShellExecutionResult>,
   }): Promise<WeshCommandResult> {
     let result: WeshCommandResult | undefined;
     try {
-      result = await execute();
-      return result;
+      const childResult = await execute();
+      const commandResult: WeshCommandResult = {
+        exitCode: childResult.exitCode,
+        waitStatus: childResult.waitStatus,
+      };
+      result = commandResult;
+      return commandResult;
     } finally {
       await this.finishChildExecutionEnvironment({
         environment,
@@ -5119,6 +7170,13 @@ usage: ${name} [-c command] [file [argument...]]
       process.state = 'terminated';
       process.waitStatus = waitStatus;
       process.exitCode = weshWaitStatusToExitCode({ waitStatus });
+      for (const fd of environment.ownedPersistentFds) {
+        const handle = environment.fds.get(fd);
+        if (handle !== undefined) {
+          await handle.close();
+        }
+      }
+      environment.ownedPersistentFds.clear();
       await this.kernel.closeProcessResources({ pid: process.pid });
       this.kernel.reapProcess({ pid: process.pid });
       return;
@@ -5164,13 +7222,47 @@ usage: ${name} [-c command] [file [argument...]]
     return childEnvironment;
   }
 
-  private async runExitTrapIfNeeded({ result, environment, stdin, stdout, stderr }: {
-    result: WeshCommandResult,
+  private async runErrTrapIfNeeded({ result, environment, stdin, stdout, stderr }: {
+    result: WeshShellExecutionResult,
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
     stderr: WeshFileHandle,
-  }): Promise<WeshCommandResult> {
+  }): Promise<void> {
+    const errTrap = environment.traps.get('ERR');
+    if (
+      errTrap === undefined
+      || errTrap.kind !== 'run'
+      || this.activeErrTrapEnvironments.has(environment)
+    ) {
+      return;
+    }
+
+    this.activeErrTrapEnvironments.add(environment);
+    try {
+      await this.runTrapScript({
+        script: errTrap.action,
+        trapStatus: result.waitStatus ?? {
+          kind: 'exited',
+          exitCode: result.exitCode,
+        },
+        environment,
+        stdin,
+        stdout,
+        stderr,
+      });
+    } finally {
+      this.activeErrTrapEnvironments.delete(environment);
+    }
+  }
+
+  private async runExitTrapIfNeeded({ result, environment, stdin, stdout, stderr }: {
+    result: WeshShellExecutionResult,
+    environment: WeshExecutionEnvironment,
+    stdin: WeshFileHandle,
+    stdout: WeshFileHandle,
+    stderr: WeshFileHandle,
+  }): Promise<WeshShellExecutionResult> {
     const exitTrap = environment.traps.get('EXIT');
     if (exitTrap === undefined || exitTrap.kind !== 'run') {
       return result;
@@ -5244,11 +7336,13 @@ usage: ${name} [-c command] [file [argument...]]
     );
     try {
       await this.executeShellInState({
-        script: script,
+        source: createTextShellSource({ text: script }),
         environment: environment,
         stdin: stdin,
         stdout: stdout,
         stderr: stderr,
+        history: 'ignore',
+        allowReturn: false,
       });
     } finally {
       if (previousQuestionMark === undefined) {
@@ -5347,14 +7441,26 @@ usage: ${name} [-c command] [file [argument...]]
     return signalDispositions;
   }
 
+  private publishLastBackgroundPid({ environment, pid }: {
+    environment: WeshExecutionEnvironment,
+    pid: number,
+  }): void {
+    environment.lastBackgroundPid = pid;
+    this.syncSpecialParameters({ environment });
+  }
+
   private syncSpecialParameters({ environment }: {
     environment: WeshExecutionEnvironment,
   }): void {
-    environment.env.set('$$', environment.shellPid.toString());
+    const previousPositionalCount = Number.parseInt(environment.env.get('#') ?? '0', 10);
+    environment.env.set('$$', environment.shellRootPid.toString());
+    environment.env.set('BASHPID', environment.shellPid.toString());
+    environment.env.set('PPID', (this.kernel.getProcess({ pid: environment.shellPid })?.ppid ?? 0).toString());
     environment.env.set('#', environment.positionalArgs.length.toString());
     environment.env.set('0', environment.env.get('SHELL') ?? 'wesh');
 
-    for (let index = 1; index <= 9; index++) {
+    const positionalSlots = Math.max(previousPositionalCount, environment.positionalArgs.length, 9);
+    for (let index = 1; index <= positionalSlots; index++) {
       const value = environment.positionalArgs[index - 1];
       if (value === undefined) {
         environment.env.delete(index.toString());
@@ -5370,26 +7476,207 @@ usage: ${name} [-c command] [file [argument...]]
     }
   }
 
-  private async executeShellInState({ script, environment, stdin, stdout, stderr }: {
-    script: string,
+  private async executeShellInState({ source, environment, stdin, stdout, stderr, history, allowReturn }: {
+    source: ShellSource,
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
     stderr: WeshFileHandle,
-  }): Promise<WeshCommandResult> {
-    const rootNode = parseCommandLine({
-      commandLine: script,
-      env: environment.env,
-    });
+    history: 'record' | 'ignore',
+    allowReturn: boolean,
+  }): Promise<WeshShellExecutionResult> {
+    if (history === 'record' && source.kind === 'text') {
+      const normalizedScript = source.text.trim();
+      if (normalizedScript.length > 0) {
+        this.history.push(normalizedScript);
+      }
+    }
 
-    return this.executeNode({
-      node: rootNode,
-      environment: environment,
-      stdin: stdin,
-      stdout: stdout,
-      stderr: stderr,
-    });
+    const reader = createShellSourceReader({ source });
+    let bufferedSource = '';
+    let sourceCompletion: 'complete' | 'may-continue' = 'may-continue';
+    let result: WeshShellExecutionResult = { exitCode: 0 };
+    const sourceConsumerStdin = source.kind === 'handle' && source.handle === stdin
+      ? createShellSourceConsumerHandle({
+        handle: stdin,
+        readRetainedBytes: ({ buffer, offset, length }) => {
+          const bytesRead = reader.readRetainedBytes({ buffer, offset, length });
+          bufferedSource = reader.getRetainedText();
+          return bytesRead;
+        },
+      })
+      : stdin;
+
+    const readMoreSource = async (): Promise<
+      | {
+          kind: 'read',
+          completion: 'complete' | 'may-continue',
+        }
+      | {
+          kind: 'error',
+        }
+    > => {
+      try {
+        const next = await reader.read();
+        bufferedSource = reader.getRetainedText();
+        return {
+          kind: 'read',
+          completion: next.completion,
+        };
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        await this.writeErrorText({
+          stderr,
+          text: `wesh: ${message}\n`,
+        });
+        result = { exitCode: 1 };
+        environment.env.set('?', result.exitCode.toString());
+        return { kind: 'error' };
+      }
+    };
+
+    while (true) {
+      if (bufferedSource.length === 0) {
+        switch (sourceCompletion) {
+        case 'complete':
+          return result;
+        case 'may-continue':
+          break;
+        default: {
+          const _ex: never = sourceCompletion;
+          throw new Error(`Unhandled shell source completion: ${_ex}`);
+        }
+        }
+        const readResult = await readMoreSource();
+        switch (readResult.kind) {
+        case 'error':
+          return result;
+        case 'read':
+          sourceCompletion = readResult.completion;
+          break;
+        default: {
+          const _ex: never = readResult;
+          throw new Error(
+            `Unhandled shell source read result: ${JSON.stringify(_ex)}`,
+          );
+        }
+        }
+        if (bufferedSource.length === 0) {
+          switch (sourceCompletion) {
+          case 'complete':
+            return result;
+          case 'may-continue':
+            continue;
+          default: {
+            const _ex: never = sourceCompletion;
+            throw new Error(`Unhandled shell source completion: ${_ex}`);
+          }
+          }
+        }
+      }
+
+      let parsedUnit: ReturnType<typeof parseNextShellUnit>;
+      try {
+        parsedUnit = parseNextShellUnit({
+          commandLine: bufferedSource,
+          env: environment.env,
+          sourceCompletion,
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        await this.writeErrorText({
+          stderr,
+          text: `wesh: ${message}\n`,
+        });
+        return { exitCode: 2 };
+      }
+
+      switch (parsedUnit.kind) {
+      case 'needs-more-source': {
+        switch (sourceCompletion) {
+        case 'complete':
+          throw new Error('Shell parser requested more source after end of source');
+        case 'may-continue':
+          break;
+        default: {
+          const _ex: never = sourceCompletion;
+          throw new Error(`Unhandled shell source completion: ${_ex}`);
+        }
+        }
+        const readResult = await readMoreSource();
+        switch (readResult.kind) {
+        case 'error':
+          return result;
+        case 'read':
+          sourceCompletion = readResult.completion;
+          continue;
+        default: {
+          const _ex: never = readResult;
+          throw new Error(
+            `Unhandled shell source read result: ${JSON.stringify(_ex)}`,
+          );
+        }
+        }
+      }
+      case 'parsed':
+        break;
+      default: {
+        const _ex: never = parsedUnit;
+        throw new Error(`Unhandled shell unit parse result: ${JSON.stringify(_ex)}`);
+      }
+      }
+
+      if (parsedUnit.consumedCharacters <= 0) {
+        throw new Error('Shell parser did not consume source input');
+      }
+      reader.consumeText({ characters: parsedUnit.consumedCharacters });
+      bufferedSource = reader.getRetainedText();
+
+      if (parsedUnit.node.kind === 'list' && parsedUnit.node.parts.length === 0) {
+        continue;
+      }
+
+      try {
+        result = await this.executeNode({
+          node: parsedUnit.node,
+          environment,
+          stdin: sourceConsumerStdin,
+          stdout,
+          stderr,
+          functionDepth: allowReturn ? 1 : 0,
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        await this.writeErrorText({
+          stderr,
+          text: `wesh: ${message}\n`,
+        });
+        result = {
+          exitCode: error instanceof WeshShellExecutionError
+            ? error.exitCode
+            : 1,
+        };
+        environment.env.set('?', result.exitCode.toString());
+        if (error instanceof WeshShellExecutionError) {
+          switch (error.disposition) {
+          case 'continue':
+            break;
+          case 'abort-shell':
+            return result;
+          default: {
+            const _ex: never = error.disposition;
+            throw new Error(`Unhandled shell error disposition: ${_ex}`);
+          }
+          }
+        }
+      }
+
+      if (result.controlFlow !== undefined) {
+        return result;
+      }
+    }
   }
+
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

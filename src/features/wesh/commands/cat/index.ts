@@ -2,24 +2,78 @@ import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } fro
 import { parseStandardArgv } from '@/features/wesh/argv';
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { openHandleReadStream, openFileReadStream, writeAllStreamToHandle } from '@/features/wesh/utils/fs';
-import { createBufferedTextWriter } from '@/features/wesh/utils/io';
+import { openHandleReadStream, openFileReadStream, writeAllBytesToHandle, writeAllStreamToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
-import { getWeshTextRecordTerminator, iterateUtf8LineRecords } from '@/features/wesh/utils/text-records';
+import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 
-function renderVisibleAscii({ char }: { char: string }): string {
-  if (char === '\t') return char;
+const CAT_OUTPUT_BUFFER_LENGTH = 64 * 1024;
+const NEWLINE_BYTE = 0x0a;
+const TAB_BYTE = 0x09;
+const DELETE_BYTE = 0x7f;
+const HIGH_BIT = 0x80;
+const textEncoder = new TextEncoder();
 
-  const code = char.charCodeAt(0);
-  if ((code >= 0 && code <= 8) || (code >= 11 && code <= 12) || (code >= 14 && code <= 31) || code === 127) {
-    return '^' + String.fromCharCode(code + 64);
+function appendAsciiText({
+  output,
+  text,
+}: {
+  output: number[],
+  text: string,
+}): void {
+  output.push(...textEncoder.encode(text));
+}
+
+function appendCaretNotation({
+  output,
+  byte,
+}: {
+  output: number[],
+  byte: number,
+}): void {
+  output.push(0x5e);
+  output.push(byte === DELETE_BYTE ? 0x3f : byte + 0x40);
+}
+
+function appendVisibleByte({
+  output,
+  byte,
+  showTabs,
+  showNonPrinting,
+}: {
+  output: number[],
+  byte: number,
+  showTabs: boolean,
+  showNonPrinting: boolean,
+}): void {
+  if (byte === TAB_BYTE) {
+    if (showTabs) {
+      appendCaretNotation({ output, byte });
+    } else {
+      output.push(byte);
+    }
+    return;
   }
 
-  return char;
+  if (!showNonPrinting) {
+    output.push(byte);
+    return;
+  }
+
+  let visibleByte = byte;
+  if (byte >= HIGH_BIT) {
+    output.push(0x4d, 0x2d);
+    visibleByte = byte & 0x7f;
+  }
+
+  if (visibleByte < 0x20 || visibleByte === DELETE_BYTE) {
+    appendCaretNotation({ output, byte: visibleByte });
+    return;
+  }
+  output.push(visibleByte);
 }
 
 function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
-  return path.startsWith('/') ? path : `${cwd}/${path}`;
+  return path.startsWith('/') ? path : cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
 const catArgvSpec: StandardArgvParserSpec = {
@@ -78,7 +132,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: catArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
       spec: catArgvSpec,
     });
 
@@ -110,11 +164,26 @@ export const catCommandDefinition: WeshCommandDefinition = {
     const showNonPrinting = parsed.optionValues.showNonPrinting === true;
     const squeezeBlank = parsed.optionValues.squeezeBlank === true;
     const text = context.text();
+    const numberBlankLines = numberAllLines && !numberNonBlankLines;
     let lineNumber = 1;
-    let lastWasEmpty = false;
+    let atLineStart = true;
+    let previousLineWasBlank = false;
+    let pendingCarriageReturn = false;
     let hadError = false;
     const applyNumbering = numberAllLines || numberNonBlankLines;
     const hasTransform = applyNumbering || showEnds || showTabs || showNonPrinting || squeezeBlank;
+
+    const appendLineNumber = ({
+      output,
+    }: {
+      output: number[],
+    }): void => {
+      appendAsciiText({
+        output,
+        text: `${String(lineNumber).padStart(6, ' ')}\t`,
+      });
+      lineNumber += 1;
+    };
 
     const processRawStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       await writeAllStreamToHandle({
@@ -124,48 +193,89 @@ export const catCommandDefinition: WeshCommandDefinition = {
       });
     };
 
-    const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
-      const writer = createBufferedTextWriter({
-        handle: context.stdout,
-        maxBufferLength: 16 * 1024,
-      });
-      for await (const record of iterateUtf8LineRecords({
-        chunks: iterateReadableStreamChunks({ stream }),
-      })) {
-        const isEmpty = record.text.length === 0;
-        if (squeezeBlank && isEmpty && lastWasEmpty) {
-          continue;
+    const processTransformedStream = async ({
+      stream,
+    }: {
+      stream: ReadableStream<Uint8Array>,
+    }): Promise<void> => {
+      let output: number[] = [];
+      const flushOutput = async (): Promise<void> => {
+        if (output.length === 0) {
+          return;
         }
-
-        let output = '';
-        const shouldNumberLine = numberNonBlankLines ? !isEmpty : numberAllLines;
-        if (shouldNumberLine) {
-          output += `${String(lineNumber++).padStart(6, ' ')}  `;
-        }
-
-        let processedLine = record.text;
-        if (showTabs) {
-          processedLine = processedLine.replace(/\t/g, '^I');
-        }
-        if (showNonPrinting) {
-          processedLine = Array.from(processedLine, char => renderVisibleAscii({ char })).join('');
-        }
-        if (showEnds) {
-          processedLine += '$';
-        }
-        await writer.write({
-          text: output + processedLine + getWeshTextRecordTerminator({
-            termination: record.termination,
-          }),
+        await writeAllBytesToHandle({
+          handle: context.stdout,
+          data: Uint8Array.from(output),
         });
-        lastWasEmpty = isEmpty;
+        output = [];
+      };
+
+      for await (const chunk of iterateReadableStreamChunks({ stream })) {
+        for (const byte of chunk) {
+          if (pendingCarriageReturn) {
+            if (byte === NEWLINE_BYTE) {
+              appendCaretNotation({ output, byte: 0x0d });
+            } else {
+              output.push(0x0d);
+            }
+            pendingCarriageReturn = false;
+          }
+
+          if (byte === NEWLINE_BYTE) {
+            const currentLineIsBlank = atLineStart;
+            if (squeezeBlank && currentLineIsBlank && previousLineWasBlank) {
+              continue;
+            }
+            if (atLineStart && numberBlankLines) {
+              appendLineNumber({ output });
+            }
+            if (showEnds) {
+              output.push(0x24);
+            }
+            output.push(NEWLINE_BYTE);
+            atLineStart = true;
+            previousLineWasBlank = currentLineIsBlank;
+          } else {
+            if (atLineStart) {
+              if (numberAllLines || numberNonBlankLines) {
+                appendLineNumber({ output });
+              }
+              atLineStart = false;
+            }
+            if (byte === 0x0d && showEnds && !showNonPrinting) {
+              pendingCarriageReturn = true;
+            } else {
+              appendVisibleByte({
+                output,
+                byte,
+                showTabs,
+                showNonPrinting,
+              });
+            }
+          }
+
+          if (output.length >= CAT_OUTPUT_BUFFER_LENGTH) {
+            await flushOutput();
+          }
+        }
       }
-      await writer.flush();
+      await flushOutput();
+    };
+
+    const flushPendingCarriageReturn = async (): Promise<void> => {
+      if (!pendingCarriageReturn) {
+        return;
+      }
+      pendingCarriageReturn = false;
+      await writeAllBytesToHandle({
+        handle: context.stdout,
+        data: Uint8Array.of(0x0d),
+      });
     };
 
     const processInputStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       if (hasTransform) {
-        await processStream({ stream });
+        await processTransformedStream({ stream });
         return;
       }
       await processRawStream({ stream });
@@ -208,12 +318,16 @@ export const catCommandDefinition: WeshCommandDefinition = {
           if (shouldForwardSignal) {
             throw e;
           }
-          const message = e instanceof Error ? e.message : String(e);
+          const rawMessage = e instanceof Error ? e.message : String(e);
+          const message = rawMessage.includes('NotFoundError')
+            ? 'No such file or directory'
+            : rawMessage;
           await text.error({ text: `cat: ${f}: ${message}\n` });
           hadError = true;
         }
       }
     }
+    await flushPendingCarriageReturn();
 
     return { exitCode: hadError ? 1 : 0 };
   },

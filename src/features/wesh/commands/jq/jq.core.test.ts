@@ -100,6 +100,7 @@ jq -c '.items[] | values'`,
 
     expect(values.stdout.text).toBe(`\
 1
+false
 "x"
 `);
     expect(values.stderr.text).toBe('');
@@ -236,6 +237,161 @@ jq -c -- '-.n'`,
     expect(unaryMinus.result.exitCode).toBe(0);
   });
 
+  it('matches jq unary-minus precedence across multiplication', async () => {
+    const ungrouped = await execute({
+      script: `\
+jq -nc -- '-1 * "x"'`,
+    });
+    expect(ungrouped.stdout.text).toBe('');
+    expect(ungrouped.stderr.text).toContain('string ("x") cannot be negated');
+    expect(ungrouped.result.exitCode).toBe(5);
+
+    const grouped = await execute({
+      script: `\
+jq -nc -- '(-1) * "x"'`,
+    });
+    expect(grouped.stdout.text).toBe('null\n');
+    expect(grouped.stderr.text).toBe('');
+    expect(grouped.result.exitCode).toBe(0);
+  });
+
+  it('limits newly materialized jq strings and ranges', async () => {
+    const string = await execute({
+      script: `\
+jq -nc '"xx" * 500001'`,
+    });
+    expect(string.stdout.text).toBe('');
+    expect(string.stderr.text).toContain('string multiplication exceeds materialization limit 1000000');
+    expect(string.result.exitCode).toBe(5);
+
+    const emptyString = await execute({
+      script: `\
+jq -nc '"" * 999999999999'`,
+    });
+    expect(emptyString.stdout.text).toBe('""\n');
+    expect(emptyString.stderr.text).toBe('');
+    expect(emptyString.result.exitCode).toBe(0);
+
+    const range = await execute({
+      script: `\
+jq -nc 'range(0; 1000001)'`,
+    });
+    expect(range.stdout.text).toBe('');
+    expect(range.stderr.text).toContain('range materialization exceeds limit 1000000');
+    expect(range.result.exitCode).toBe(5);
+
+    const combinations = await execute({
+      script: `\
+jq -nc '[0, 1] | combinations(20)'`,
+    });
+    expect(combinations.stdout.text).toBe('');
+    expect(combinations.stderr.text).toContain('combinations materialization exceeds limit 1000000');
+    expect(combinations.result.exitCode).toBe(5);
+
+    const emptyCombinations = await execute({
+      script: `\
+jq -nc '[] | combinations(999999999)'`,
+    });
+    expect(emptyCombinations.stdout.text).toBe('');
+    expect(emptyCombinations.stderr.text).toBe('');
+    expect(emptyCombinations.result.exitCode).toBe(0);
+
+    const transposeInput = [
+      Array.from({ length: 1_000 }, () => 0),
+      ...Array.from({ length: 1_000 }, () => []),
+    ];
+    const transpose = await execute({
+      script: 'jq -c transpose',
+      stdinText: JSON.stringify(transposeInput),
+    });
+    expect(transpose.stdout.text).toBe('');
+    expect(transpose.stderr.text).toContain('transpose materialization exceeds limit 1000000');
+    expect(transpose.result.exitCode).toBe(5);
+
+    const join = await execute({
+      script: `\
+jq -nc '["a", "b"] | join("x" * 1000000)'`,
+    });
+    expect(join.stdout.text).toBe('');
+    expect(join.stderr.text).toContain('join materialization exceeds limit 1000000');
+    expect(join.result.exitCode).toBe(5);
+
+    const replacement = await execute({
+      script: `\
+jq -nc '"aa" | gsub("a"; "x" * 600000)'`,
+    });
+    expect(replacement.stdout.text).toBe('');
+    expect(replacement.stderr.text).toContain('regular expression replacement materialization exceeds limit 1000000');
+    expect(replacement.result.exitCode).toBe(5);
+
+    let pathsInput: unknown = Array.from({ length: 8_000 }, () => 0);
+    for (let depth = 0; depth < 125; depth += 1) {
+      pathsInput = { nested: pathsInput };
+    }
+    const paths = await execute({
+      script: 'jq -c paths',
+      stdinText: JSON.stringify(pathsInput),
+    });
+    // `paths` is a streaming generator. Its safety cap is allowed to retain the
+    // already-emitted prefix when the cumulative path-segment budget is reached.
+    expect(paths.stdout.text).not.toBe('');
+    expect(paths.stderr.text).toContain('paths materialization exceeds limit 1000000');
+    expect(paths.result.exitCode).toBe(5);
+
+    const map = await execute({
+      script: `\
+jq -nc '[0, 1] | map(range(0; 500001))'`,
+    });
+    expect(map.stdout.text).toBe('');
+    expect(map.stderr.text).toContain('map materialization exceeds limit 1000000');
+    expect(map.result.exitCode).toBe(5);
+  }, 30_000);
+
+  it('allows bounded large jq generator materializations', async () => {
+    const largeArray = await execute({
+      script: `\
+jq -nc '[range(0; 500001) | .] | length'`,
+    });
+    expect(largeArray.stdout.text).toBe('500001\n');
+    expect(largeArray.stderr.text).toBe('');
+    expect(largeArray.result.exitCode).toBe(0);
+
+    const comma = await execute({
+      script: `\
+jq -nc '[(range(0; 250001)), (range(0; 250001))] | length'`,
+    });
+    expect(comma.stdout.text).toBe('500002\n');
+    expect(comma.stderr.text).toBe('');
+    expect(comma.result.exitCode).toBe(0);
+
+    const tryCatch = await execute({
+      script: `\
+jq -nc '[try (range(0; 250001), error("stop")) catch .] | length'`,
+    });
+    expect(tryCatch.stdout.text).toBe('250002\n');
+    expect(tryCatch.stderr.text).toBe('');
+    expect(tryCatch.result.exitCode).toBe(0);
+  }, 30_000);
+
+  it('limits with_entries and consumes large raw input streams', async () => {
+    const withEntries = await execute({
+      script: `\
+jq -nc '[0, 1] | with_entries(range(0; 500001) | {key: tostring, value: .})'`,
+    });
+    expect(withEntries.stdout.text).toBe('');
+    expect(withEntries.stderr.text).toContain('with_entries materialization exceeds limit 1000000');
+    expect(withEntries.result.exitCode).toBe(5);
+
+    const rawInputs = await execute({
+      script: `\
+jq -Rnc 'inputs | empty'`,
+      stdinText: 'x\n'.repeat(200_000),
+    });
+    expect(rawInputs.stdout.text).toBe('');
+    expect(rawInputs.stderr.text).toBe('');
+    expect(rawInputs.result.exitCode).toBe(0);
+  }, 30_000);
+
   it('supports empty and bracket field/index access', async () => {
     const bracketField = await execute({
       script: `\
@@ -363,7 +519,7 @@ jq -c -- '-.name'`,
       stdinText: `\
 {"name":"alice"}`,
     });
-    expect(unaryMinusType.stderr.text).toContain('jq: error: unary - expects a number');
+    expect(unaryMinusType.stderr.text).toContain('jq: error: string ("alice") cannot be negated');
     expect(unaryMinusType.result.exitCode).toBe(5);
 
     const conditionalElse = await execute({
@@ -399,7 +555,7 @@ jq -c 'any'`,
 jq -c 'reverse'`,
       stdinText: '1',
     });
-    expect(reverseType.stderr.text).toContain('jq: error: reverse input must be an array or string');
+    expect(reverseType.stderr.text).toContain('jq: error: reverse input must be an array');
     expect(reverseType.result.exitCode).toBe(5);
 
     const startswithType = await execute({
@@ -525,6 +681,49 @@ jq -c 'tonumber'`,
     });
     expect(tonumberParse.stderr.text).toContain('jq: error: cannot parse number from string "not-a-number"');
     expect(tonumberParse.result.exitCode).toBe(5);
+
+    const validNumberStrings = [
+      ' 1 ',
+      '\t1\n',
+      '\r1\r',
+      '\uFEFF1',
+      '\uFEFF 1',
+    ];
+    for (const value of validNumberStrings) {
+      const result = await execute({
+        script: `\
+jq -c 'tonumber'`,
+        stdinText: JSON.stringify(value),
+      });
+      expect(result.stdout.text).toBe('1\n');
+      expect(result.stderr.text).toBe('');
+      expect(result.result.exitCode).toBe(0);
+    }
+
+    const invalidNumberStrings = [
+      '\v1',
+      '1\v',
+      '\f1',
+      '1\f',
+      '\u00A01',
+      '1\u00A0',
+      '1\u2003',
+      '1\uFEFF',
+      '\uFEFF\uFEFF1',
+      ' \uFEFF1',
+      '\u20281',
+      '\u20291',
+    ];
+    for (const value of invalidNumberStrings) {
+      const result = await execute({
+        script: `\
+jq -c 'tonumber'`,
+        stdinText: JSON.stringify(value),
+      });
+      expect(result.stdout.text).toBe('');
+      expect(result.stderr.text).toContain('jq: error: cannot parse number from string');
+      expect(result.result.exitCode).toBe(5);
+    }
 
     const errorBuiltin = await execute({
       script: `\

@@ -6,6 +6,7 @@ import vue from '@vitejs/plugin-vue';
 import VueDevTools from 'vite-plugin-vue-devtools';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream';
 import { promisify } from 'node:util';
@@ -13,11 +14,13 @@ import { JSDOM } from 'jsdom';
 import JSZip from 'jszip';
 import pkg from './package.json';
 import { createStandaloneFacadeAliases } from './build/standalone-facades.js';
-import { fileProtocolStandalone } from './build/file-protocol-standalone/index.js';
-import { fileProtocolSystemJs } from './build/file-protocol-systemjs.js';
-import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/constants';
+import { createNaidanStandalonePlugin } from './build/file-protocol-standalone/plugin.js';
+import {
+  createFileProtocolStandaloneWorkerDefinitions,
+  FILE_PROTOCOL_STANDALONE_WORKERS,
+} from './build/file-protocol-standalone/worker-definitions';
+import { readSystemJsLicenseDependency } from './build/file-protocol-standalone/systemjs';
 import { createLicenseModulePlugins } from './build/license-module';
-import { omitBuildOutputFilesPlugin } from './build/omit-build-output-files';
 import { createBoundaryStringsPlugin } from './build/boundary-strings';
 import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core';
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
@@ -39,7 +42,14 @@ function setCrossOriginModuleHeaders({ res }: {
   res.setHeader('Access-Control-Allow-Origin', '*');
 }
 
-const standaloneWorkerTarget = ['firefox140', 'chrome140'] as const;
+const require = createRequire(import.meta.url);
+const standaloneSystemJsRuntimePath = require.resolve('systemjs/dist/system.min.js');
+const standaloneSystemJsSourceMapPath = require.resolve('systemjs/dist/system.min.js.map');
+const standaloneSystemJsPackageJsonPath = require.resolve('systemjs/package.json');
+const standaloneWorkerRuntimeUnavailablePath = path.resolve(
+  __dirname,
+  'src/features/file-protocol-standalone/worker/standalone-worker-runtime-unavailable.ts',
+);
 
 const standaloneBuildBudgets = {
   // The attached baseline report measured 631,232 entry bytes and 1,033,893
@@ -193,7 +203,8 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
               console.log(`  \u2713 Compressed and deleted original: ${entry.name}`);
             }
           } catch (err) {
-            console.error(`  \u26A0 Failed to compress ${entry.name}:`, err);
+            await fs.promises.rm(gzPath, { force: true });
+            throw new Error(`Failed to compress WASM asset: ${entry.name}`, { cause: err });
           }
         }
       }
@@ -226,7 +237,17 @@ export default defineConfig(({ mode }) => {
       resolvePath: ensureExistingPath,
     })
     : [];
-  let standaloneAdditionalLicenseDependencies: readonly BuildLicenseDependency[] = [];
+  const standaloneSystemJsLicenseDependency = isStandalone
+    ? readSystemJsLicenseDependency({ packageJsonPath: standaloneSystemJsPackageJsonPath })
+    : undefined;
+  const standaloneAdditionalLicenseDependencies: readonly BuildLicenseDependency[] = standaloneSystemJsLicenseDependency === undefined
+    ? []
+    : [standaloneSystemJsLicenseDependency];
+  let standaloneCollectedLicenseDependencies: readonly BuildLicenseDependency[] = [];
+  const standaloneWorkerDefinitions = isStandalone
+    ? createFileProtocolStandaloneWorkerDefinitions({ resolvePath: ensureExistingPath })
+    : [];
+  const standaloneWorkerDiagnostics: Record<string, unknown> = {};
   return {
     base: './',
     server: {
@@ -255,14 +276,21 @@ export default defineConfig(({ mode }) => {
       alias: [
         ...standaloneAliases,
         ...(!isStandalone ? [{
-          find: `virtual:file-protocol-standalone/worker/${FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID}`,
-          replacement: path.resolve(
-            __dirname,
-            mode === 'test'
-              ? 'src/test-mocks/file-protocol-standalone-worker.ts'
-              : 'src/features/file-protocol-standalone/worker/file-protocol-standalone-worker-unavailable.ts',
-          ),
+          find: 'virtual:naidan-standalone-worker-runtime',
+          replacement: standaloneWorkerRuntimeUnavailablePath,
         }] : []),
+        ...(mode === 'test' ? FILE_PROTOCOL_STANDALONE_WORKERS.map(({ virtualId }) => ({
+          find: virtualId,
+          replacement: path.resolve(__dirname, 'src/test-mocks/standalone-worker.ts'),
+        })) : []),
+        // The standalone verification route is present in hosted/development
+        // route graphs, and Vite resolves its static virtual Worker imports
+        // before compile-time mode guards can remove calls. Alias only registered
+        // Worker IDs so accidental/typoed virtual imports still fail resolution.
+        ...(!isStandalone ? FILE_PROTOCOL_STANDALONE_WORKERS.map(({ virtualId }) => ({
+          find: virtualId,
+          replacement: standaloneWorkerRuntimeUnavailablePath,
+        })) : []),
         {
           find: '@',
           replacement: path.resolve(__dirname, 'src'),
@@ -298,47 +326,59 @@ export default defineConfig(({ mode }) => {
           },
         },
       }),
-      isStandalone && fileProtocolSystemJs({ diagnostics: 'omit' }),
       stripPrivacyFetchBrokerDevInjectedScriptsPlugin(),
       privacyFetchBrokerDevHeadersPlugin(),
       !isStandalone && viteStaticCopy({
         targets: [
           {
-            src: 'node_modules/@huggingface/transformers/dist/ort-wasm*',
+            src: 'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded{,.asyncify}.{mjs,wasm}',
             dest: 'transformers',
-          },
-          {
-            src: 'node_modules/onnxruntime-web/dist/ort-wasm*',
-            dest: 'transformers',
+            rename: { stripBase: true },
           },
         ],
       }),
       ...createLicenseModulePlugins({
         getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
-      }),
-      !isStandalone && manualGzipWasmPlugin({ outDir }),
-      isStandalone && fileProtocolStandalone({
-        workerTarget: [...standaloneWorkerTarget],
-        debugBuildReportFile: 'dist/debug-file-protocol-standalone-build-report.json',
-        workers: [{
-          id: FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID,
-          entry: 'src/features/file-protocol-standalone/worker/worker-hub-standalone.worker.ts',
-        }],
-        budgets: standaloneBuildBudgets,
-        onAdditionalLicenseDependencies({ dependencies }) {
-          standaloneAdditionalLicenseDependencies = dependencies;
+        onBuildDependenciesCollected({ dependencies }) {
+          if (isStandalone) standaloneCollectedLicenseDependencies = dependencies;
         },
       }),
-      // Vite copies publicDir for every mode, but robots.txt has no meaning in
-      // the file:// standalone package. Run this before ZIP packaging so both
-      // the directory and archive omit it while hosted output keeps it.
-      isStandalone && omitBuildOutputFilesPlugin({ fileNames: ['robots.txt'] }),
-      // Packaging remains separate from file-protocol transformation so the
-      // plugin can be reused without assuming Naidan's ZIP layout.
-      isStandalone && zipPackagerPlugin({
-        outDir,
-        zipFileName: 'naidan-standalone.zip',
-        folderName: `naidan-standalone-${pkg.version}`,
+      !isStandalone && manualGzipWasmPlugin({ outDir }),
+      isStandalone && createNaidanStandalonePlugin({
+        workers: standaloneWorkerDefinitions,
+        systemRuntimePath: standaloneSystemJsRuntimePath,
+        systemRuntimeSourceMapPath: standaloneSystemJsSourceMapPath,
+        diagnostics: standaloneWorkerDiagnostics,
+        sourceAudit: {
+          // The full source AST audit is kept outside this already memory-heavy build.
+          // Renew this evidence whenever the standalone Worker/source graph or its
+          // policy assumptions change; output-level guards remain enabled below.
+          mode: 'external',
+          evidence: 'Reviewed the configured standalone Worker source graph for Worker-reachable UI-only globals '
+            + 'and source-candidate Raw Worker constructors; renew when the Worker/source graph or these assumptions change.',
+        },
+        releaseValidation: {
+          outputDirectory: path.resolve(__dirname, outDir),
+          omitFileNames: ['robots.txt'],
+          budgets: standaloneBuildBudgets,
+          getCollectedLicenseDependencies: () => standaloneCollectedLicenseDependencies,
+          requiredExternalLicenseIdentities: standaloneSystemJsLicenseDependency === undefined
+            ? []
+            : [`${standaloneSystemJsLicenseDependency.name}@${standaloneSystemJsLicenseDependency.version}`],
+          debugReportFile: path.resolve(__dirname, 'dist/debug-file-protocol-standalone-build-report.json'),
+          releaseReportFile: path.resolve(__dirname, 'dist/debug-file-protocol-standalone-release-validation.json'),
+          sanitizeModuleId(moduleId) {
+            const relative = path.relative(__dirname, moduleId).replaceAll('\\', '/');
+            return relative === '' || relative.startsWith('../') || path.isAbsolute(relative)
+              ? moduleId
+              : `<naidan>/${relative}`;
+          },
+          createArchive: () => createZipPackage({
+            outDir,
+            zipFileName: 'naidan-standalone.zip',
+            folderName: `naidan-standalone-${pkg.version}`,
+          }),
+        },
       }),
       // Hosted: Zip the hosted build output
       isHosted && zipPackagerPlugin({
@@ -386,6 +426,7 @@ export default defineConfig(({ mode }) => {
       // application chunk to System.register for direct file:// loading. Hosted
       // output continues to use Vite's normal ES-module pipeline.
       rollupOptions: {
+        preserveEntrySignatures: isStandalone ? 'allow-extension' : undefined,
         input: rollupInput,
         output: {
           entryFileNames: (chunkInfo) => {
@@ -393,8 +434,8 @@ export default defineConfig(({ mode }) => {
               return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`;
             }
             // The semantic marker describes the emitted System.register format.
-            // fileProtocolSystemJs explicitly inlines finalized split CSS into
-            // each owning chunk, so this no longer relies on Vite's legacy-name
+            // The standalone integration explicitly owns finalized split CSS and
+            // each emitted System.register chunk, so this no longer relies on Vite's legacy-name
             // compatibility branch.
             return isStandalone
               ? 'assets/[name]-systemjs-[hash].js'
@@ -512,6 +553,8 @@ async function createZipPackage({ outDir, zipFileName, folderName }: {
   const zipDir = path.dirname(zipPath);
   if (!fs.existsSync(zipDir)) fs.mkdirSync(zipDir, { recursive: true });
 
-  fs.writeFileSync(zipPath, content);
+  const temporaryZipPath = `${zipPath}.tmp-${process.pid}`;
+  fs.writeFileSync(temporaryZipPath, content);
+  fs.renameSync(temporaryZipPath, zipPath);
   console.log(`  \u2713 Created package: ${zipPath}`);
 }

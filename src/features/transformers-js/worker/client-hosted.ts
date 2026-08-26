@@ -9,6 +9,7 @@ import type {
   TransformersJsProgressCallback,
   TransformersJsChunkCallback,
   TransformersJsToolCallsCallback,
+  TransformersJsPrefetchResult,
 } from '@/features/transformers-js/types';
 
 function createUnavailableEnvironmentError(): Error {
@@ -50,7 +51,6 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
   );
 
   const remote = Comlink.wrap<ITransformersJsWorker>(worker);
-
   return {
     async downloadModel({ modelId, progressCallback }: {
       modelId: string,
@@ -61,7 +61,7 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
     async prefetchUrls({ urls, progressCallback }: {
       urls: string[],
       progressCallback: TransformersJsProgressCallback,
-    }): Promise<void> {
+    }): Promise<TransformersJsPrefetchResult> {
       return remote.prefetchUrls(urls, Comlink.proxy((info: ProgressInfo) => progressCallback({ info })));
     },
     async loadModel({ modelId, progressCallback }: {

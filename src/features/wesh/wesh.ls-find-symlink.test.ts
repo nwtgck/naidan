@@ -25,7 +25,7 @@ describe('wesh ls/find symlink semantics', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      script: script,
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -34,7 +34,7 @@ describe('wesh ls/find symlink semantics', () => {
     return { result, stdout, stderr };
   }
 
-  it('ls switches symlink treatment with -P, -H, and -L', async () => {
+  it('ls rejects -P while -H and -L follow command-line symlinks', async () => {
     const realDir = await rootHandle.getDirectoryHandle('real', { create: true });
     const child = await realDir.getFileHandle('child.txt', { create: true });
     const writable = await child.createWritable();
@@ -47,9 +47,9 @@ describe('wesh ls/find symlink semantics', () => {
     });
 
     const physical = await execute({ script: 'ls -lP dir.link' });
-    expect(physical.stdout.text).toBe('l          5 dir.link -> /real\n');
-    expect(physical.stderr.text).toBe('');
-    expect(physical.result.exitCode).toBe(0);
+    expect(physical.stdout.text).toBe('');
+    expect(physical.stderr.text).toContain("ls: invalid option -- 'P'");
+    expect(physical.result.exitCode).toBe(2);
 
     const commandLine = await execute({ script: 'ls -lH dir.link' });
     expect(commandLine.stdout.text).toContain('child.txt');

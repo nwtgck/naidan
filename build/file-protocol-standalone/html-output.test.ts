@@ -1,107 +1,73 @@
-import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
+
 import {
   FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS,
   FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE,
   FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE,
-} from '../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol';
-import {
-  assertValidFileProtocolStandaloneHtml,
-  replaceViteBootstrapWithFileProtocolStandaloneScripts,
-} from './html-output';
+} from '../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol.js';
+import { assertFileProtocolStandaloneHtmlAfterRewrite } from './html-validation.js';
+import { insertFileProtocolStandaloneBootstrap } from './html-output.js';
 
-function createViteHtml({ preservedScript }: {
-  preservedScript: string,
-}): string {
-  return `\
-<!doctype html>
-<html>
-  <head>
-    ${preservedScript}
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" crossorigin src="./assets/index.js"></script>
-  </body>
-</html>
-`;
+function generatedScripts(): string {
+  return FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS.map((id, index) => (
+    index < 3
+      ? `<script id="${id}" src="./file-protocol-standalone/runtime-${index}.js"></script>`
+      : `<script id="${id}">globalThis.started = true</script>`
+  )).join('');
 }
 
-function transformStandaloneHtml({ preservedScript }: {
-  preservedScript: string,
-}): string {
-  return replaceViteBootstrapWithFileProtocolStandaloneScripts({
-    html: createViteHtml({ preservedScript }),
-    entryFileName: 'assets/index.js',
-    runtimeFileName: 'assets/system.js',
-    patchFileName: 'assets/file-patch.js',
-    retryFileName: 'assets/retry.js',
-    workers: [],
-  });
-}
+describe('insertFileProtocolStandaloneBootstrap', () => {
+  it('keeps the normal explicit-head output path minimal', () => {
+    const bootstrap = generatedScripts();
+    const html = '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="app"></div></body></html>';
 
-describe('file protocol standalone preserved pre-runtime scripts', () => {
-  it('keeps an explicitly marked inline head script before generated runtime scripts', () => {
-    const html = transformStandaloneHtml({
-      preservedScript: `<script id="initial-theme" ${FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE}="${FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE}">globalThis.initialThemeApplied = true</script>`,
-    });
-    const dom = new JSDOM(html);
-    const executableScripts = Array.from(dom.window.document.querySelectorAll('script')).filter((script) => (
-      script.getAttribute('type') !== 'application/json'
-    ));
-
-    expect(executableScripts.map((script) => script.id)).toEqual([
-      'initial-theme',
-      ...FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS,
-    ]);
-    expect(dom.window.document.getElementById('initial-theme')?.parentElement?.tagName).toBe('HEAD');
-    expect(() => assertValidFileProtocolStandaloneHtml({ html })).not.toThrow();
-  });
-
-
-  it('rejects stylesheet and preload links after SystemJS CSS inlining', () => {
-    const stylesheetHtml = createViteHtml({ preservedScript: '' }).replace(
-      '</head>',
-      '<link rel="stylesheet" href="./assets/index.css"></head>',
+    expect(insertFileProtocolStandaloneBootstrap({ html, bootstrap })).toBe(
+      `<!doctype html><html><head><meta charset="utf-8">${bootstrap}</head><body><div id="app"></div></body></html>`,
     );
-    expect(() => replaceViteBootstrapWithFileProtocolStandaloneScripts({
-      html: stylesheetHtml,
-      entryFileName: 'assets/index.js',
-      runtimeFileName: 'assets/system.js',
-      patchFileName: 'assets/file-patch.js',
-      retryFileName: 'assets/retry.js',
-      workers: [],
-    })).toThrow('must not contain fetch-dependent stylesheet or preload links');
-
-    const validHtml = transformStandaloneHtml({ preservedScript: '' });
-    const preloadHtml = validHtml.replace(
-      '</head>',
-      '<link rel="preload" href="./assets/index.js" as="script"></head>',
-    );
-    expect(() => assertValidFileProtocolStandaloneHtml({ html: preloadHtml }))
-      .toThrow('must not contain fetch-dependent stylesheet or preload links');
   });
 
-  it('rejects a marked external script because it could delay or reorder pre-runtime execution', () => {
-    expect(() => transformStandaloneHtml({
-      preservedScript: `<script id="initial-theme" ${FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE}="${FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE}" src="./theme.js"></script>`,
-    })).toThrow('must be inline');
+  it('uses the parsed head boundary instead of a </head> token inside a comment', () => {
+    const bootstrap = generatedScripts();
+    const html = '<!doctype html><html><head><!-- literal </head> token --><meta charset="utf-8"></head><body></body></html>';
+
+    const rewritten = insertFileProtocolStandaloneBootstrap({ html, bootstrap });
+
+    expect(rewritten).toContain('<!-- literal </head> token -->');
+    expect(() => assertFileProtocolStandaloneHtmlAfterRewrite({
+      html: rewritten,
+      htmlFileName: 'index.html',
+    })).not.toThrow();
   });
 
-  it('rejects a marked body script because it would no longer protect the first paint', () => {
-    const preservedScript = `<script id="initial-theme" ${FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE}="${FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE}">globalThis.initialThemeApplied = true</script>`;
-    const html = createViteHtml({ preservedScript: '' }).replace(
+  it('does not mistake </head> text inside an allowed pre-runtime script for the head boundary', () => {
+    const bootstrap = generatedScripts();
+    const preRuntime = `<script id="theme-init" ${FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE}="${FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE}">globalThis.marker = "</head>";</script>`;
+    const html = `<!doctype html><html><head>${preRuntime}<meta charset="utf-8"></head><body></body></html>`;
+
+    const rewritten = insertFileProtocolStandaloneBootstrap({ html, bootstrap });
+
+    expect(rewritten).toContain(preRuntime);
+    expect(() => assertFileProtocolStandaloneHtmlAfterRewrite({
+      html: rewritten,
+      htmlFileName: 'index.html',
+    })).not.toThrow();
+  });
+
+  it('injects into the parser-created head when valid HTML omits an explicit head', () => {
+    const bootstrap = generatedScripts();
+    const inputs = [
+      '<!doctype html><html><body><div id="app"></div></body></html>',
       '<div id="app"></div>',
-      `<div id="app"></div>${preservedScript}`,
-    );
+    ];
 
-    expect(() => replaceViteBootstrapWithFileProtocolStandaloneScripts({
-      html,
-      entryFileName: 'assets/index.js',
-      runtimeFileName: 'assets/system.js',
-      patchFileName: 'assets/file-patch.js',
-      retryFileName: 'assets/retry.js',
-      workers: [],
-    })).toThrow('must be in <head>');
+    for (const html of inputs) {
+      const rewritten = insertFileProtocolStandaloneBootstrap({ html, bootstrap });
+
+      expect(() => assertFileProtocolStandaloneHtmlAfterRewrite({
+        html: rewritten,
+        htmlFileName: 'index.html',
+      })).not.toThrow();
+      expect(FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS.every(id => rewritten.includes(`id="${id}"`))).toBe(true);
+    }
   });
 });

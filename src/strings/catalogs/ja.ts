@@ -173,7 +173,6 @@ import { ChatInput__maximize_input } from '@/strings/messages/ChatInput__maximiz
 import { ChatInput__minimize_input } from '@/strings/messages/ChatInput__minimize_input/ja';
 import { ChatInput__open_advanced_editor } from '@/strings/messages/ChatInput__open_advanced_editor/ja';
 import { ChatInput__remove } from '@/strings/messages/ChatInput__remove/ja';
-import { ChatInput__remove_browser_copy } from '@/strings/messages/ChatInput__remove_browser_copy/ja';
 import { ChatInput__remove_folder } from '@/strings/messages/ChatInput__remove_folder/ja';
 import { ChatInput__send_message_with_shortcut } from '@/strings/messages/ChatInput__send_message_with_shortcut/ja';
 import { ChatInput__show_input } from '@/strings/messages/ChatInput__show_input/ja';
@@ -1113,6 +1112,74 @@ import { TransformersJsLoadingIndicator__loading_model_weights_into_browser_memo
 import { TransformersJsLoadingIndicator__model } from '@/strings/messages/TransformersJsLoadingIndicator__model/ja';
 import { TransformersJsLoadingIndicator__on_device_execution } from '@/strings/messages/TransformersJsLoadingIndicator__on_device_execution/ja';
 import { TransformersJsLoadingIndicator__transformers_js_error } from '@/strings/messages/TransformersJsLoadingIndicator__transformers_js_error/ja';
+import { ModelSupportInvestigationModal__blocked } from '@/strings/messages/ModelSupportInvestigationModal__blocked/ja';
+import { ModelSupportInvestigationModal__candidate_eligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_eligible/ja';
+import { ModelSupportInvestigationModal__candidate_ineligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_ineligible/ja';
+import { ModelSupportInvestigationModal__candidate_plan_summary } from '@/strings/messages/ModelSupportInvestigationModal__candidate_plan_summary/ja';
+import { ModelSupportInvestigationModal__candidate_registry_failed } from '@/strings/messages/ModelSupportInvestigationModal__candidate_registry_failed/ja';
+import { ModelSupportInvestigationModal__model_file_plan } from '@/strings/messages/ModelSupportInvestigationModal__model_file_plan/ja';
+import { ModelSupportInvestigationModal__model_file_plan_summary } from '@/strings/messages/ModelSupportInvestigationModal__model_file_plan_summary/ja';
+import { ModelSupportInvestigationModal__cache_revision_unknown } from '@/strings/messages/ModelSupportInvestigationModal__cache_revision_unknown/ja';
+import { ModelSupportInvestigationModal__checking_same_origin_runtime_assets } from '@/strings/messages/ModelSupportInvestigationModal__checking_same_origin_runtime_assets/ja';
+import { ModelSupportInvestigationModal__close } from '@/strings/messages/ModelSupportInvestigationModal__close/ja';
+import { ModelSupportInvestigationModal__current_operation } from '@/strings/messages/ModelSupportInvestigationModal__current_operation/ja';
+import { ModelSupportInvestigationModal__declaration_files_summary } from '@/strings/messages/ModelSupportInvestigationModal__declaration_files_summary/ja';
+import { ModelSupportInvestigationModal__download_partial_evidence } from '@/strings/messages/ModelSupportInvestigationModal__download_partial_evidence/ja';
+import { ModelSupportInvestigationModal__evidence_export } from '@/strings/messages/ModelSupportInvestigationModal__evidence_export/ja';
+import { ModelSupportInvestigationModal__environment_evidence_disclosure } from '@/strings/messages/ModelSupportInvestigationModal__environment_evidence_disclosure/ja';
+import { ModelSupportInvestigationModal__evidence_readiness } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness/ja';
+import { ModelSupportInvestigationModal__evidence_readiness_summary } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness_summary/ja';
+import { ModelSupportInvestigationModal__existing_model_data } from '@/strings/messages/ModelSupportInvestigationModal__existing_model_data/ja';
+import { ModelSupportInvestigationModal__failed } from '@/strings/messages/ModelSupportInvestigationModal__failed/ja';
+import { ModelSupportInvestigationModal__findings } from '@/strings/messages/ModelSupportInvestigationModal__findings/ja';
+import { ModelSupportInvestigationModal__loading_investigation } from '@/strings/messages/ModelSupportInvestigationModal__loading_investigation/ja';
+import { ModelSupportInvestigationModal__lane_comparison } from '@/strings/messages/ModelSupportInvestigationModal__lane_comparison/ja';
+import { ModelSupportInvestigationModal__lane_continuity_failed } from '@/strings/messages/ModelSupportInvestigationModal__lane_continuity_failed/ja';
+import { ModelSupportInvestigationModal__lane_continuity_summary } from '@/strings/messages/ModelSupportInvestigationModal__lane_continuity_summary/ja';
+import { ModelSupportInvestigationModal__lane_failed } from '@/strings/messages/ModelSupportInvestigationModal__lane_failed/ja';
+import { ModelSupportInvestigationModal__lane_input_match } from '@/strings/messages/ModelSupportInvestigationModal__lane_input_match/ja';
+import { ModelSupportInvestigationModal__lane_input_mismatch } from '@/strings/messages/ModelSupportInvestigationModal__lane_input_mismatch/ja';
+import { ModelSupportInvestigationModal__lane_route_summary } from '@/strings/messages/ModelSupportInvestigationModal__lane_route_summary/ja';
+import { ModelSupportInvestigationModal__multimodal_failed } from '@/strings/messages/ModelSupportInvestigationModal__multimodal_failed/ja';
+import { ModelSupportInvestigationModal__multimodal_observed } from '@/strings/messages/ModelSupportInvestigationModal__multimodal_observed/ja';
+import { ModelSupportInvestigationModal__multimodal_unavailable } from '@/strings/messages/ModelSupportInvestigationModal__multimodal_unavailable/ja';
+import { ModelSupportInvestigationModal__reasoning_differential_failed } from '@/strings/messages/ModelSupportInvestigationModal__reasoning_differential_failed/ja';
+import { ModelSupportInvestigationModal__reasoning_differential_observed } from '@/strings/messages/ModelSupportInvestigationModal__reasoning_differential_observed/ja';
+import { ModelSupportInvestigationModal__reasoning_differential_unavailable } from '@/strings/messages/ModelSupportInvestigationModal__reasoning_differential_unavailable/ja';
+import { ModelSupportInvestigationModal__model_declarations } from '@/strings/messages/ModelSupportInvestigationModal__model_declarations/ja';
+import { ModelSupportInvestigationModal__model_support_investigation } from '@/strings/messages/ModelSupportInvestigationModal__model_support_investigation/ja';
+import { ModelSupportInvestigationModal__missing_model_type } from '@/strings/messages/ModelSupportInvestigationModal__missing_model_type/ja';
+import { ModelSupportInvestigationModal__model_type } from '@/strings/messages/ModelSupportInvestigationModal__model_type/ja';
+import { ModelSupportInvestigationModal__no_supported_auto_classes } from '@/strings/messages/ModelSupportInvestigationModal__no_supported_auto_classes/ja';
+import { ModelSupportInvestigationModal__not_run } from '@/strings/messages/ModelSupportInvestigationModal__not_run/ja';
+import { ModelSupportInvestigationModal__opfs_inventory } from '@/strings/messages/ModelSupportInvestigationModal__opfs_inventory/ja';
+import { ModelSupportInvestigationModal__opfs_inventory_summary } from '@/strings/messages/ModelSupportInvestigationModal__opfs_inventory_summary/ja';
+import { ModelSupportInvestigationModal__passed } from '@/strings/messages/ModelSupportInvestigationModal__passed/ja';
+import { ModelSupportInvestigationModal__repository } from '@/strings/messages/ModelSupportInvestigationModal__repository/ja';
+import { ModelSupportInvestigationModal__repository_information } from '@/strings/messages/ModelSupportInvestigationModal__repository_information/ja';
+import { ModelSupportInvestigationModal__repository_summary } from '@/strings/messages/ModelSupportInvestigationModal__repository_summary/ja';
+import { ModelSupportInvestigationModal__running } from '@/strings/messages/ModelSupportInvestigationModal__running/ja';
+import { ModelSupportInvestigationModal__runtime_assets } from '@/strings/messages/ModelSupportInvestigationModal__runtime_assets/ja';
+import { ModelSupportInvestigationModal__runtime_control_webgpu } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control_webgpu/ja';
+import { ModelSupportInvestigationModal__runtime_no_output } from '@/strings/messages/ModelSupportInvestigationModal__runtime_no_output/ja';
+import { ModelSupportInvestigationModal__runtime_bytes } from '@/strings/messages/ModelSupportInvestigationModal__runtime_bytes/ja';
+import { ModelSupportInvestigationModal__runtime_control } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control/ja';
+import { ModelSupportInvestigationModal__runtime_environment } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment/ja';
+import { ModelSupportInvestigationModal__runtime_environment_summary } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment_summary/ja';
+import { ModelSupportInvestigationModal__runtime_mjs } from '@/strings/messages/ModelSupportInvestigationModal__runtime_mjs/ja';
+import { ModelSupportInvestigationModal__runtime_variant } from '@/strings/messages/ModelSupportInvestigationModal__runtime_variant/ja';
+import { ModelSupportInvestigationModal__runtime_wasm } from '@/strings/messages/ModelSupportInvestigationModal__runtime_wasm/ja';
+import { ModelSupportInvestigationModal__supported_auto_classes } from '@/strings/messages/ModelSupportInvestigationModal__supported_auto_classes/ja';
+import { ModelSupportInvestigationModal__support_boundary } from '@/strings/messages/ModelSupportInvestigationModal__support_boundary/ja';
+import { ModelSupportInvestigationModal__support_boundary_summary } from '@/strings/messages/ModelSupportInvestigationModal__support_boundary_summary/ja';
+import { ModelSupportInvestigationModal__template_behavior } from '@/strings/messages/ModelSupportInvestigationModal__template_behavior/ja';
+import { ModelSupportInvestigationModal__template_behavior_summary } from '@/strings/messages/ModelSupportInvestigationModal__template_behavior_summary/ja';
+import { ModelSupportInvestigationModal__tool_protocol_probe_summary } from '@/strings/messages/ModelSupportInvestigationModal__tool_protocol_probe_summary/ja';
+import { ModelSupportInvestigationModal__tool_result_production_continuation_failed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_failed/ja';
+import { ModelSupportInvestigationModal__tool_result_production_continuation_passed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_passed/ja';
+import { ModelSupportInvestigationModal__tool_template_provenance_summary } from '@/strings/messages/ModelSupportInvestigationModal__tool_template_provenance_summary/ja';
+import { ModelSupportInvestigationModal__this_is_partial_evidence } from '@/strings/messages/ModelSupportInvestigationModal__this_is_partial_evidence/ja';
+import { TransformersJsManager__investigate } from '@/strings/messages/TransformersJsManager__investigate/ja';
 import { TransformersJsManager__active } from '@/strings/messages/TransformersJsManager__active/ja';
 import { TransformersJsManager__active_model } from '@/strings/messages/TransformersJsManager__active_model/ja';
 import { TransformersJsManager__add_new_models } from '@/strings/messages/TransformersJsManager__add_new_models/ja';
@@ -1830,7 +1897,6 @@ export const ja = {
   ChatInput__minimize_input,
   ChatInput__open_advanced_editor,
   ChatInput__remove,
-  ChatInput__remove_browser_copy,
   ChatInput__remove_folder,
   ChatInput__send_message_with_shortcut,
   ChatInput__show_input,
@@ -2770,6 +2836,74 @@ export const ja = {
   TransformersJsLoadingIndicator__model,
   TransformersJsLoadingIndicator__on_device_execution,
   TransformersJsLoadingIndicator__transformers_js_error,
+  ModelSupportInvestigationModal__blocked,
+  ModelSupportInvestigationModal__candidate_eligible,
+  ModelSupportInvestigationModal__candidate_ineligible,
+  ModelSupportInvestigationModal__candidate_plan_summary,
+  ModelSupportInvestigationModal__candidate_registry_failed,
+  ModelSupportInvestigationModal__model_file_plan,
+  ModelSupportInvestigationModal__model_file_plan_summary,
+  ModelSupportInvestigationModal__cache_revision_unknown,
+  ModelSupportInvestigationModal__checking_same_origin_runtime_assets,
+  ModelSupportInvestigationModal__close,
+  ModelSupportInvestigationModal__current_operation,
+  ModelSupportInvestigationModal__declaration_files_summary,
+  ModelSupportInvestigationModal__download_partial_evidence,
+  ModelSupportInvestigationModal__evidence_export,
+  ModelSupportInvestigationModal__environment_evidence_disclosure,
+  ModelSupportInvestigationModal__evidence_readiness,
+  ModelSupportInvestigationModal__evidence_readiness_summary,
+  ModelSupportInvestigationModal__existing_model_data,
+  ModelSupportInvestigationModal__failed,
+  ModelSupportInvestigationModal__findings,
+  ModelSupportInvestigationModal__loading_investigation,
+  ModelSupportInvestigationModal__lane_comparison,
+  ModelSupportInvestigationModal__lane_continuity_failed,
+  ModelSupportInvestigationModal__lane_continuity_summary,
+  ModelSupportInvestigationModal__lane_failed,
+  ModelSupportInvestigationModal__lane_input_match,
+  ModelSupportInvestigationModal__lane_input_mismatch,
+  ModelSupportInvestigationModal__lane_route_summary,
+  ModelSupportInvestigationModal__multimodal_failed,
+  ModelSupportInvestigationModal__multimodal_observed,
+  ModelSupportInvestigationModal__multimodal_unavailable,
+  ModelSupportInvestigationModal__reasoning_differential_failed,
+  ModelSupportInvestigationModal__reasoning_differential_observed,
+  ModelSupportInvestigationModal__reasoning_differential_unavailable,
+  ModelSupportInvestigationModal__model_declarations,
+  ModelSupportInvestigationModal__model_support_investigation,
+  ModelSupportInvestigationModal__missing_model_type,
+  ModelSupportInvestigationModal__model_type,
+  ModelSupportInvestigationModal__no_supported_auto_classes,
+  ModelSupportInvestigationModal__not_run,
+  ModelSupportInvestigationModal__opfs_inventory,
+  ModelSupportInvestigationModal__opfs_inventory_summary,
+  ModelSupportInvestigationModal__passed,
+  ModelSupportInvestigationModal__repository,
+  ModelSupportInvestigationModal__repository_information,
+  ModelSupportInvestigationModal__repository_summary,
+  ModelSupportInvestigationModal__running,
+  ModelSupportInvestigationModal__runtime_assets,
+  ModelSupportInvestigationModal__runtime_control_webgpu,
+  ModelSupportInvestigationModal__runtime_no_output,
+  ModelSupportInvestigationModal__runtime_bytes,
+  ModelSupportInvestigationModal__runtime_control,
+  ModelSupportInvestigationModal__runtime_environment,
+  ModelSupportInvestigationModal__runtime_environment_summary,
+  ModelSupportInvestigationModal__runtime_mjs,
+  ModelSupportInvestigationModal__runtime_variant,
+  ModelSupportInvestigationModal__runtime_wasm,
+  ModelSupportInvestigationModal__supported_auto_classes,
+  ModelSupportInvestigationModal__support_boundary,
+  ModelSupportInvestigationModal__support_boundary_summary,
+  ModelSupportInvestigationModal__template_behavior,
+  ModelSupportInvestigationModal__template_behavior_summary,
+  ModelSupportInvestigationModal__tool_protocol_probe_summary,
+  ModelSupportInvestigationModal__tool_result_production_continuation_failed,
+  ModelSupportInvestigationModal__tool_result_production_continuation_passed,
+  ModelSupportInvestigationModal__tool_template_provenance_summary,
+  ModelSupportInvestigationModal__this_is_partial_evidence,
+  TransformersJsManager__investigate,
   TransformersJsManager__active,
   TransformersJsManager__active_model,
   TransformersJsManager__add_new_models,

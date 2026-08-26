@@ -34,7 +34,14 @@ vi.mock('comlink', () => {
       return {
         [releaseProxy]: vi.fn(),
         scanModel: vi.fn().mockResolvedValue({ files: [] }),
-        prefetchUrls: vi.fn().mockResolvedValue(undefined),
+        prefetchUrls: vi.fn().mockResolvedValue({
+          requestedCount: 0,
+          cachedCount: 0,
+          downloadedCount: 0,
+          failedCount: 0,
+          complete: true,
+          files: [],
+        }),
       };
     }),
     proxy: vi.fn(x => x),

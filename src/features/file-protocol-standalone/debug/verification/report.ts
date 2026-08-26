@@ -3,6 +3,7 @@ import {
   FILE_PROTOCOL_STANDALONE_PRE_RUNTIME_SCRIPT_PHASE,
   FILE_PROTOCOL_STANDALONE_SCRIPT_PHASE_ATTRIBUTE,
 } from '@/features/file-protocol-standalone/logic/file-protocol-standalone-protocol';
+import type { DebugFileProtocolStandaloneGlobalDiagnostics } from '@/features/file-protocol-standalone/debug/runtime-state';
 import type { DebugFileProtocolStandaloneWorkerVerificationResult } from './worker-probe';
 
 export const DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH = '/debug/standalone';
@@ -294,38 +295,29 @@ function debugValidateAndReadFileProtocolStandaloneOutputScripts(): readonly Rea
 }
 
 function debugAssertValidFileProtocolStandaloneWorkerVerificationResult({ result }: { result: DebugFileProtocolStandaloneWorkerVerificationResult }): void {
-  const { diagnosticsAfter, diagnosticsBefore, diagnosticDeltas } = result;
-  assertCondition({ condition: diagnosticDeltas.workersCreated === 3, message: `Expected 3 verification Workers; created ${diagnosticDeltas.workersCreated}.` });
-  assertCondition({ condition: diagnosticDeltas.workersTerminated === 3, message: `Expected 3 verification Workers to terminate; terminated ${diagnosticDeltas.workersTerminated}.` });
+  const { diagnosticsAfter, diagnosticsBefore, diagnosticDeltas, workerDeltas } = result;
+  assertCondition({ condition: diagnosticDeltas.workersCreated === 4, message: `Expected 4 standalone verification Workers; created ${diagnosticDeltas.workersCreated}.` });
+  assertCondition({ condition: diagnosticDeltas.workersTerminated === 4, message: `Expected 4 standalone verification Workers to terminate; terminated ${diagnosticDeltas.workersTerminated}.` });
   assertCondition({ condition: diagnosticDeltas.activeWorkers === 0, message: 'Verification changed the number of active Workers.' });
-  assertCondition({ condition: diagnosticsAfter.registryScriptLoads === 1, message: `Expected one worker registry load; observed ${diagnosticsAfter.registryScriptLoads}.` });
-  assertCondition({ condition: diagnosticsAfter.blobRegistrations === 1, message: `Expected one worker Blob registration; observed ${diagnosticsAfter.blobRegistrations}.` });
-  assertCondition({ condition: diagnosticsAfter.objectUrlsCreated === 1, message: `Expected one worker object URL; observed ${diagnosticsAfter.objectUrlsCreated}.` });
-  assertCondition({ condition: diagnosticsAfter.runtimeDigestCalls === 0, message: 'Worker runtime unexpectedly calculated a digest.' });
-  assertCondition({ condition: diagnosticsAfter.sourceStoredAsGlobalString === false, message: 'Worker source is retained as a global string.' });
-  assertCondition({ condition: diagnosticsAfter.registryEntryReleased === true, message: 'Worker registry entry was not released.' });
-  assertCondition({ condition: diagnosticsAfter.registryEntryPresent === false, message: 'Worker registry entry is still present.' });
+  assertCondition({ condition: diagnosticDeltas.initializationAttempts === 4, message: 'Unexpected standalone Worker initialization attempt count.' });
+  assertCondition({ condition: diagnosticDeltas.initializationSuccesses === 4, message: 'Not every standalone Worker initialized successfully.' });
+  assertCondition({ condition: diagnosticDeltas.initializationFailures === 0, message: 'A standalone Worker initialization failed.' });
+  assertCondition({ condition: diagnosticDeltas.initializationTimeouts === 0, message: 'A standalone Worker initialization timed out.' });
+  assertCondition({ condition: workerDeltas.highlight.workersCreated === 3, message: 'Expected three Highlight Worker sessions.' });
+  assertCondition({ condition: workerDeltas.highlight.workersTerminated === 3, message: 'Expected three Highlight Worker terminations.' });
+  assertCondition({ condition: workerDeltas.wesh.workersCreated === 1, message: 'Expected one Wesh Worker session.' });
+  assertCondition({ condition: workerDeltas.wesh.workersTerminated === 1, message: 'Expected one Wesh Worker termination.' });
+  assertCondition({ condition: diagnosticsAfter.bootstrapObjectUrlsCreated === 1, message: `Expected one shared bootstrap Object URL; observed ${diagnosticsAfter.bootstrapObjectUrlsCreated}.` });
+  assertCondition({ condition: diagnosticsAfter.bootstrapObjectUrlStatus === 'ready', message: 'Split Worker bootstrap is not ready.' });
   assertCondition({ condition: result.concurrentHighlights.length === 2, message: 'Concurrent Worker verification did not return two results.' });
   assertCondition({
     condition: [...result.concurrentHighlights, result.recreatedWorkerHighlight].every((roundTrip) => roundTrip.htmlLength > 0 && roundTrip.resolvedLanguage.length > 0),
     message: 'A Worker highlight round trip returned an empty result.',
   });
-  assertCondition({
-    condition: result.weshFileProbe.exitCode === 0,
-    message: `Wesh file verification exited with ${result.weshFileProbe.exitCode}.`,
-  });
-  assertCondition({
-    condition: result.weshFileProbe.stdout === '/bin/sh: text/x-shellscript\n',
-    message: `Unexpected Wesh file verification output: ${JSON.stringify(result.weshFileProbe.stdout)}`,
-  });
-  assertCondition({
-    condition: result.weshFileProbe.stderr === '',
-    message: `Wesh file verification wrote stderr: ${result.weshFileProbe.stderr}`,
-  });
-  assertCondition({
-    condition: diagnosticsBefore.activeWorkers === diagnosticsAfter.activeWorkers,
-    message: 'Verification leaked an active Worker.',
-  });
+  assertCondition({ condition: result.weshCommandProbe.exitCode === 0, message: `Wesh command verification exited with ${result.weshCommandProbe.exitCode}.` });
+  assertCondition({ condition: result.weshCommandProbe.stdout.trim().length > 0, message: 'Wesh command verification returned an empty root listing.' });
+  assertCondition({ condition: result.weshCommandProbe.stderr === '', message: `Wesh command verification wrote stderr: ${result.weshCommandProbe.stderr}` });
+  assertCondition({ condition: diagnosticsBefore.activeWorkers === diagnosticsAfter.activeWorkers, message: 'Verification leaked an active Worker.' });
 }
 
 async function waitForStyleApplication({ signal }: { signal: AbortSignal }): Promise<void> {

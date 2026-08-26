@@ -1,154 +1,166 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Comlink from 'comlink';
-import { createFileProtocolStandaloneWorkerHub } from '@/features/file-protocol-standalone/worker/worker-hub-standalone-loader';
 
-vi.mock('comlink', () => {
-  const releaseProxy = Symbol('releaseProxy');
+const { createStandaloneWorkerMock } = vi.hoisted(() => ({
+  createStandaloneWorkerMock: vi.fn(),
+}));
+
+vi.mock('virtual:file-protocol-standalone/worker/wesh', () => ({
+  createStandaloneWorker: createStandaloneWorkerMock,
+}));
+
+vi.mock('comlink', async (importOriginal) => {
+  const original = await importOriginal<typeof import('comlink')>();
   return {
+    ...original,
     wrap: vi.fn(),
-    proxy: <T>(value: T) => value,
-    releaseProxy,
   };
 });
 
-vi.mock('@/features/file-protocol-standalone/worker/worker-hub-standalone-loader', () => ({
-  createFileProtocolStandaloneWorkerHub: vi.fn(),
-}));
+import { createFileProtocolCompatibleWeshWorkerClient } from './client-standalone';
+import type { IWeshWorker, WeshWorkerExecutionSummary } from './types';
+
+function createWorkerMock(): Worker {
+  return {
+    terminate: vi.fn(),
+  } as unknown as Worker;
+}
+
+function createRemote({
+  init,
+  startExecution,
+  awaitExecution,
+  dispose,
+}: {
+  init?: () => Promise<void>,
+  startExecution?: () => Promise<{ executionId: string }>,
+  awaitExecution?: () => Promise<WeshWorkerExecutionSummary>,
+  dispose?: () => Promise<void>,
+}): Comlink.Remote<IWeshWorker> {
+  return {
+    init: vi.fn(init ?? (async () => undefined)),
+    startExecution: vi.fn(startExecution ?? (async () => ({ executionId: 'remote-exec-1' }))),
+    awaitExecution: vi.fn(awaitExecution ?? (async () => ({ exitCode: 0 }))),
+    interruptExecution: vi.fn().mockResolvedValue(true),
+    disposeExecution: vi.fn().mockResolvedValue(undefined),
+    execute: vi.fn(),
+    getShellState: vi.fn(),
+    listCommands: vi.fn(),
+    listDirectory: vi.fn(),
+    interrupt: vi.fn().mockResolvedValue(true),
+    dispose: vi.fn(dispose ?? (async () => undefined)),
+    [Comlink.releaseProxy]: vi.fn().mockResolvedValue(undefined),
+  } as unknown as Comlink.Remote<IWeshWorker>;
+}
+
+async function createClient() {
+  return await createFileProtocolCompatibleWeshWorkerClient({
+    rootHandle: 'readonly',
+    mounts: [],
+    user: 'user',
+    initialEnv: {},
+    initialCwd: undefined,
+  });
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  createStandaloneWorkerMock.mockReset();
+  vi.mocked(Comlink.wrap).mockReset();
+});
 
 describe('standalone Wesh Worker client lifecycle', () => {
-  beforeEach(() => {
-    vi.resetModules();
-    vi.clearAllMocks();
+  it('releases and terminates a Worker when remote initialization fails', async () => {
+    const initializationError = new Error('init failed');
+    const worker = createWorkerMock();
+    const remote = createRemote({
+      init: async () => {
+        throw initializationError;
+      },
+    });
+    createStandaloneWorkerMock.mockResolvedValue(worker);
+    vi.mocked(Comlink.wrap).mockReturnValue(remote);
+
+    await expect(createClient()).rejects.toBe(initializationError);
+
+    expect(remote[Comlink.releaseProxy]).toHaveBeenCalledOnce();
+    expect(worker.terminate).toHaveBeenCalledOnce();
   });
 
-  it('does not retain a cancelled runtime whose execution never settles', async () => {
+  it('force-completes and terminates a cancelled runtime whose execution never settles', async () => {
     vi.useFakeTimers();
-    try {
-      const terminate1 = vi.fn();
-      const terminate2 = vi.fn();
-      const worker1 = { terminate: terminate1 } as unknown as Worker;
-      const worker2 = { terminate: terminate2 } as unknown as Worker;
-      vi.mocked(createFileProtocolStandaloneWorkerHub)
-        .mockResolvedValueOnce(worker1)
-        .mockResolvedValueOnce(worker2);
+    const firstWorker = createWorkerMock();
+    const replacementWorker = createWorkerMock();
+    const firstRemote = createRemote({
+      awaitExecution: () => new Promise(() => undefined),
+    });
+    const replacementRemote = createRemote({});
+    createStandaloneWorkerMock
+      .mockResolvedValueOnce(firstWorker)
+      .mockResolvedValueOnce(replacementWorker);
+    vi.mocked(Comlink.wrap)
+      .mockReturnValueOnce(firstRemote)
+      .mockReturnValueOnce(replacementRemote);
 
-      const release1 = vi.fn();
-      const release2 = vi.fn();
-      const wesh1 = {
-        init: vi.fn().mockResolvedValue(undefined),
-        startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
-        awaitExecution: vi.fn().mockImplementation(async () => await new Promise(() => {})),
-        interruptExecution: vi.fn().mockImplementation(async () => await new Promise(() => {})),
-        disposeExecution: vi.fn().mockResolvedValue(undefined),
-        execute: vi.fn().mockResolvedValue({ exitCode: 0 }),
-        interrupt: vi.fn().mockResolvedValue(true),
-        dispose: vi.fn().mockResolvedValue(undefined),
-      };
-      const wesh2 = {
-        init: vi.fn().mockResolvedValue(undefined),
-        startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-2' }),
-        awaitExecution: vi.fn().mockResolvedValue({ exitCode: 0 }),
-        interruptExecution: vi.fn().mockResolvedValue(true),
-        disposeExecution: vi.fn().mockResolvedValue(undefined),
-        execute: vi.fn().mockResolvedValue({ exitCode: 0 }),
-        interrupt: vi.fn().mockResolvedValue(true),
-        dispose: vi.fn().mockResolvedValue(undefined),
-      };
-      vi.mocked(Comlink.wrap)
-        .mockReturnValueOnce({
-          wesh: wesh1,
-          [Comlink.releaseProxy]: release1,
-        } as unknown as Comlink.Remote<import('@/features/file-protocol-standalone/worker/worker-hub.types').IWorkerHub>)
-        .mockReturnValueOnce({
-          wesh: wesh2,
-          [Comlink.releaseProxy]: release2,
-        } as unknown as Comlink.Remote<import('@/features/file-protocol-standalone/worker/worker-hub.types').IWorkerHub>);
+    const client = await createClient();
+    const started = await client.startExecution({ request: { script: 'sleep forever' } });
+    const completion = client.awaitExecution({ request: { executionId: started.executionId } });
+    const cancellation = client.cancelExecution({ request: { executionId: started.executionId } });
 
-      const { MockFileSystemDirectoryHandle } = await import('@/features/wesh/mocks/InMemoryFileSystem');
-      const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client-standalone');
-      const client = await createFileProtocolCompatibleWeshWorkerClient({
-        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
-        mounts: [],
-        user: 'user',
-        initialEnv: {},
-        initialCwd: undefined,
-      });
+    await vi.advanceTimersByTimeAsync(150);
+    await expect(cancellation).resolves.toBe(true);
+    await expect(completion).resolves.toEqual({ exitCode: 130 });
+    expect(firstRemote.awaitExecution).toHaveBeenCalledWith({
+      request: { executionId: 'remote-exec-1' },
+    });
+    expect(firstWorker.terminate).toHaveBeenCalledOnce();
 
-      const started = await client.startExecution({ request: { script: 'sleep forever' } });
-      const completion = client.awaitExecution({
-        request: { executionId: started.executionId },
-      });
-      const cancellation = client.cancelExecution({
-        request: { executionId: started.executionId },
-      });
-      await vi.advanceTimersByTimeAsync(150);
-      await expect(cancellation).resolves.toBe(true);
-      await expect(completion).resolves.toEqual({ exitCode: 130 });
-      expect(wesh1.awaitExecution).toHaveBeenCalledTimes(1);
-      expect(wesh1.awaitExecution).toHaveBeenCalledWith({
-        request: { executionId: 'exec-1' },
-      });
-      expect(release1).toHaveBeenCalledTimes(1);
-      expect(terminate1).toHaveBeenCalledTimes(1);
+    await client.dispose();
+    expect(replacementRemote.dispose).toHaveBeenCalledOnce();
+    expect(replacementWorker.terminate).toHaveBeenCalledOnce();
+  });
 
-      await client.dispose();
+  it('terminates the stalled Worker when cancellation replacement creation fails', async () => {
+    vi.useFakeTimers();
+    const replacementError = new Error('replacement failed');
+    const firstWorker = createWorkerMock();
+    const firstRemote = createRemote({
+      awaitExecution: () => new Promise(() => undefined),
+    });
+    createStandaloneWorkerMock
+      .mockResolvedValueOnce(firstWorker)
+      .mockRejectedValueOnce(replacementError);
+    vi.mocked(Comlink.wrap).mockReturnValue(firstRemote);
 
-      expect(release1).toHaveBeenCalledTimes(1);
-      expect(terminate1).toHaveBeenCalledTimes(1);
-      expect(release2).toHaveBeenCalledTimes(1);
-      expect(terminate2).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.useRealTimers();
-    }
+    const client = await createClient();
+    const started = await client.startExecution({ request: { script: 'sleep forever' } });
+    const cancellation = client.cancelExecution({ request: { executionId: started.executionId } });
+    const rejection = expect(cancellation).rejects.toBe(replacementError);
+
+    await vi.advanceTimersByTimeAsync(150);
+    await rejection;
+    expect(firstWorker.terminate).toHaveBeenCalledOnce();
   });
 
   it('force-terminates the active runtime when standalone graceful disposal stalls', async () => {
     vi.useFakeTimers();
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const terminate = vi.fn();
-      const worker = { terminate } as unknown as Worker;
-      vi.mocked(createFileProtocolStandaloneWorkerHub).mockResolvedValue(worker);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const worker = createWorkerMock();
+    const remote = createRemote({
+      dispose: () => new Promise(() => undefined),
+    });
+    createStandaloneWorkerMock.mockResolvedValue(worker);
+    vi.mocked(Comlink.wrap).mockReturnValue(remote);
 
-      const release = vi.fn();
-      const wesh = {
-        init: vi.fn().mockResolvedValue(undefined),
-        startExecution: vi.fn(),
-        awaitExecution: vi.fn(),
-        interruptExecution: vi.fn(),
-        disposeExecution: vi.fn(),
-        execute: vi.fn(),
-        interrupt: vi.fn(),
-        dispose: vi.fn().mockImplementation(async () => await new Promise(() => {})),
-      };
-      vi.mocked(Comlink.wrap).mockReturnValue({
-        wesh,
-        [Comlink.releaseProxy]: release,
-      } as unknown as Comlink.Remote<import('@/features/file-protocol-standalone/worker/worker-hub.types').IWorkerHub>);
+    const client = await createClient();
+    const disposal = client.dispose();
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(disposal).resolves.toBeUndefined();
 
-      const { MockFileSystemDirectoryHandle } = await import('@/features/wesh/mocks/InMemoryFileSystem');
-      const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client-standalone');
-      const client = await createFileProtocolCompatibleWeshWorkerClient({
-        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
-        mounts: [],
-        user: 'user',
-        initialEnv: {},
-        initialCwd: undefined,
-      });
-
-      const disposal = client.dispose();
-      await Promise.resolve();
-      await vi.advanceTimersByTimeAsync(1000);
-      await expect(disposal).resolves.toBeUndefined();
-
-      expect(release).toHaveBeenCalledTimes(1);
-      expect(terminate).toHaveBeenCalledTimes(1);
-      expect(warn).toHaveBeenCalledWith(
-        'Standalone Wesh Worker did not dispose in time and was terminated',
-      );
-    } finally {
-      warn.mockRestore();
-      vi.useRealTimers();
-    }
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      'Standalone Wesh Worker did not dispose in time and was terminated',
+    );
   });
 });

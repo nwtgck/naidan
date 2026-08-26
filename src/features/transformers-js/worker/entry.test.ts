@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { WorkerToolDefinition } from '@/features/transformers-js/types';
+import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
 
 // Hoisted spies for the module-level InterruptableStoppingCriteria singleton
 const mockInterruptFn = vi.hoisted(() => vi.fn());
@@ -55,6 +56,7 @@ vi.mock('comlink', () => ({
 vi.stubGlobal('self', {
   location: {
     origin: 'http://localhost:3000',
+    href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
   },
 });
 
@@ -89,20 +91,44 @@ function createMockDir(entries: Record<string, any> = {}) {
   return dir;
 }
 
-function createMockFile(size: number) {
-  const file = {
+function createMockFile(initialSize: number) {
+  let bytes = new Uint8Array(initialSize);
+  return {
     kind: 'file',
-    size,
-    getFile: vi.fn().mockResolvedValue({
-      size,
-      stream: vi.fn().mockReturnValue(new ReadableStream()),
+    get size() {
+      return bytes.byteLength;
+    },
+    getFile: vi.fn(async () => {
+      const snapshot = new Uint8Array(bytes);
+      return {
+        size: snapshot.byteLength,
+        stream: () => new ReadableStream<Uint8Array>({
+          start: controller => {
+            controller.enqueue(snapshot);
+            controller.close();
+          },
+        }),
+      };
     }),
-    createWritable: vi.fn().mockResolvedValue(new WritableStream({
-      write: vi.fn(),
-      close: vi.fn(),
-    })),
+    createWritable: vi.fn(async () => {
+      const chunks: Uint8Array[] = [];
+      return new WritableStream<Uint8Array>({
+        write: chunk => {
+          chunks.push(new Uint8Array(chunk));
+        },
+        close: () => {
+          const byteLength = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+          const merged = new Uint8Array(byteLength);
+          let offset = 0;
+          for (const chunk of chunks) {
+            merged.set(chunk, offset);
+            offset += chunk.byteLength;
+          }
+          bytes = merged;
+        },
+      });
+    }),
   };
-  return file;
 }
 
 describe('transformers-js.worker', () => {
@@ -118,7 +144,10 @@ describe('transformers-js.worker', () => {
     global.self = {
       ...global.self,
       fetch: originalFetchMock,
-      location: { origin: 'http://localhost:3000' } as any,
+      location: {
+        origin: 'http://localhost:3000',
+        href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+      } as any,
     } as any;
 
     mockRoot = createMockDir();
@@ -127,6 +156,8 @@ describe('transformers-js.worker', () => {
         getDirectory: vi.fn().mockResolvedValue(mockRoot),
       },
       hardwareConcurrency: 4,
+      userAgent: 'Mozilla/5.0 Chrome/140',
+      vendor: 'Google Inc.',
     });
 
     const { AutoModelForCausalLM, AutoModelForImageTextToText } = await import('@huggingface/transformers');
@@ -142,6 +173,11 @@ describe('transformers-js.worker', () => {
     expect(env.customCache).toBeDefined();
     expect(env.customCache).toHaveProperty('match');
     expect(env.customCache).toHaveProperty('put');
+    expect(env.backends.onnx.wasm).toBeDefined();
+    expect(env.backends.onnx.wasm?.wasmPaths).toEqual({
+      mjs: 'http://localhost:3000/transformers/ort-wasm-simd-threaded.asyncify.mjs',
+      wasm: 'http://localhost:3000/transformers/ort-wasm-simd-threaded.asyncify.wasm',
+    });
   }, 30000);
 
   it('opfsCache.match should return undefined for non-existent file', async () => {
@@ -250,7 +286,6 @@ describe('transformers-js.worker', () => {
     (AutoModelForCausalLM.from_pretrained as any)
       .mockRejectedValueOnce(new Error('WebGPU q4f16 error'))
       .mockRejectedValueOnce(new Error('WebGPU q4 error'))
-      .mockRejectedValueOnce(new Error('WebGPU default error'))
       .mockResolvedValueOnce({
         dispose: vi.fn(),
         device: 'wasm',
@@ -261,10 +296,208 @@ describe('transformers-js.worker', () => {
     const result = await workerObj.loadModel('org/repo', () => { });
 
     expect(result.device).toBe('wasm');
-    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(4);
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(3);
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenLastCalledWith('org/repo', expect.objectContaining({
       device: 'wasm',
+      dtype: 'q4',
     }));
+  });
+
+  it('preserves the base public load options apart from the intentional quantized-only fallback set', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    (AutoModelForCausalLM.from_pretrained as any)
+      .mockRejectedValueOnce(new Error('q4f16 failed'))
+      .mockResolvedValueOnce({ dispose: vi.fn(), config: { model_type: 'example' } });
+    (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
+
+    await workerObj.loadModel('org/repo', vi.fn());
+
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenNthCalledWith(1, 'org/repo', expect.objectContaining({
+      device: 'webgpu',
+      dtype: 'q4f16',
+      local_files_only: false,
+    }));
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenNthCalledWith(2, 'org/repo', expect.objectContaining({
+      device: 'webgpu',
+      dtype: 'q4',
+      local_files_only: false,
+    }));
+    const firstOptions = (AutoModelForCausalLM.from_pretrained as any).mock.calls[0][1];
+    const secondOptions = (AutoModelForCausalLM.from_pretrained as any).mock.calls[1][1];
+    expect(firstOptions).not.toHaveProperty('revision');
+    expect(secondOptions).not.toHaveProperty('revision');
+    const tokenizerOptions = (AutoTokenizer.from_pretrained as any).mock.calls[0][1];
+    expect(tokenizerOptions).toMatchObject({ local_files_only: false });
+    expect(tokenizerOptions).not.toHaveProperty('revision');
+  });
+
+  it('runs a fixed-revision Production Lane scenario with one explicit candidate', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const dispose = vi.fn();
+    const decode = vi.fn()
+      .mockReturnValueOnce('observed production output')
+      .mockReturnValueOnce('continued output')
+      .mockReturnValueOnce('tool result continuation output');
+    const generate = vi.fn()
+      .mockResolvedValueOnce({
+        past_key_values: { layer_0: {} },
+        sequences: { data: BigInt64Array.from([10n, 11n, 20n, 21n]) },
+      })
+      .mockResolvedValueOnce({
+        past_key_values: { layer_0: {}, layer_1: {} },
+        sequences: { data: BigInt64Array.from([10n, 11n, 20n, 21n, 30n, 40n]) },
+      })
+      .mockResolvedValueOnce({
+        past_key_values: { tool_layer: {} },
+        sequences: { data: BigInt64Array.from([50n, 51n, 52n, 60n]) },
+      });
+    (AutoModelForCausalLM.from_pretrained as any).mockResolvedValue({
+      dispose,
+      generate,
+      config: {
+        model_type: 'example',
+        is_encoder_decoder: false,
+      },
+    });
+    const applyChatTemplate = vi.fn()
+      .mockReturnValueOnce({
+        input_ids: { data: BigInt64Array.from([10n, 11n]) },
+        attention_mask: { data: BigInt64Array.from([1n, 1n]) },
+      })
+      .mockReturnValueOnce({
+        input_ids: { data: BigInt64Array.from([10n, 11n, 20n, 21n, 30n]) },
+        attention_mask: { data: BigInt64Array.from([1n, 1n, 1n, 1n, 1n]) },
+      })
+      .mockReturnValueOnce({
+        input_ids: { data: BigInt64Array.from([50n, 51n, 52n]) },
+        attention_mask: { data: BigInt64Array.from([1n, 1n, 1n]) },
+      });
+    (AutoTokenizer.from_pretrained as any).mockResolvedValue({
+      apply_chat_template: applyChatTemplate,
+      decode,
+    });
+
+    const observation = await workerObj.runModelSupportInvestigationScenario(
+      {
+        modelId: 'org/model',
+        resolvedRevision: 'a'.repeat(40),
+        candidate: { device: 'webgpu', dtype: 'q4' },
+        messages: [{ role: 'user', content: 'hello' }],
+        followUpMessage: { role: 'user', content: 'Continue with one short sentence.' },
+        toolResultContinuation: {
+          toolCall: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          toolResultContent: '{"temperatureC":20,"condition":"clear"}',
+          expectedInputTokenIds: [50, 51, 52],
+          maxNewTokens: 16,
+        },
+        maxNewTokens: 16,
+      },
+      vi.fn(),
+    );
+
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledWith('org/model', expect.objectContaining({
+      revision: 'a'.repeat(40),
+      device: 'webgpu',
+      dtype: 'q4',
+    }));
+    expect(AutoTokenizer.from_pretrained).toHaveBeenCalledWith('org/model', expect.objectContaining({
+      revision: 'a'.repeat(40),
+    }));
+    expect(generate).toHaveBeenCalledTimes(3);
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({
+      max_new_tokens: 16,
+      temperature: 0,
+      top_p: 1,
+      do_sample: false,
+    }));
+    expect(observation).toMatchObject({
+      candidate: { device: 'webgpu', dtype: 'q4' },
+      route: {
+        autoClass: 'AutoModelForCausalLM',
+        processor: 'tokenizer',
+        strategy: 'standard',
+        modelType: 'example',
+      },
+      inputTokenIds: [10, 11],
+      generatedSequenceTokenIds: [10, 11, 20, 21],
+      generatedTokenIds: [20, 21],
+      generatedText: 'observed production output',
+      pastKeyValuesProvided: false,
+      inputPastKeyValuesSummary: { kind: 'nullish' },
+      outputPastKeyValuesSummary: { kind: 'object', ownKeys: ['layer_0'] },
+      continuity: {
+        status: 'passed',
+        assistantMessage: { role: 'assistant', content: 'observed production output' },
+        followUpMessage: { role: 'user', content: 'Continue with one short sentence.' },
+        secondTurn: {
+          inputTokenIds: [10, 11, 20, 21, 30],
+          generatedSequenceTokenIds: [10, 11, 20, 21, 30, 40],
+          generatedTokenIds: [40],
+          generatedText: 'continued output',
+          pastKeyValuesProvided: false,
+          outputPastKeyValuesSummary: { kind: 'object', ownKeys: ['layer_0', 'layer_1'] },
+        },
+        prefixComparison: {
+          mode: 'full-input-prefix',
+          expectedPrefixTokenIds: [10, 11, 20, 21],
+          secondInputTokenIds: [10, 11, 20, 21, 30],
+          exactPrefixMatch: true,
+          firstMismatchIndex: undefined,
+        },
+      },
+      toolResultContinuation: {
+        status: 'passed',
+        source: 'reference-parser-roundtrip',
+        strategy: 'standard',
+        expectedInputTokenIds: [50, 51, 52],
+        inputTokenExactMatch: true,
+        firstInputMismatchIndex: undefined,
+        turn: {
+          inputTokenIds: [50, 51, 52],
+          generatedSequenceTokenIds: [50, 51, 52, 60],
+          generatedTokenIds: [60],
+          generatedText: 'tool result continuation output',
+          pastKeyValuesProvided: false,
+          outputPastKeyValuesSummary: { kind: 'object', ownKeys: ['tool_layer'] },
+        },
+      },
+    });
+    expect(applyChatTemplate).toHaveBeenNthCalledWith(2, [
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: 'observed production output' },
+      { role: 'user', content: 'Continue with one short sentence.' },
+    ], expect.objectContaining({ add_generation_prompt: true }));
+    expect(applyChatTemplate).toHaveBeenNthCalledWith(3, [
+      { role: 'user', content: 'Use the weather tool for Tokyo.' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: 'call_model_support_probe_1',
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+        }],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call_model_support_probe_1',
+        content: '{"temperatureC":20,"condition":"clear"}',
+      },
+    ], expect.objectContaining({
+      add_generation_prompt: true,
+      tools: expect.arrayContaining([expect.objectContaining({
+        function: expect.objectContaining({ name: 'lookup_weather' }),
+      })]),
+    }));
+    expect(dispose).toHaveBeenCalledOnce();
   });
 
   it('loadModel should load the Gemma 4 processor and use its tokenizer', async () => {
@@ -377,14 +610,77 @@ describe('transformers-js.worker', () => {
     const progressUpdates: any[] = [];
     const progressCallback = (info: any) => progressUpdates.push(info);
 
-    await workerObj.prefetchUrls(['https://huggingface.co/org/repo/model.onnx'], progressCallback);
+    const result = await workerObj.prefetchUrls(['https://huggingface.co/org/repo/model.onnx'], progressCallback);
 
+    expect(result).toEqual({
+      requestedCount: 1,
+      cachedCount: 0,
+      downloadedCount: 1,
+      failedCount: 0,
+      complete: true,
+      files: [{
+        status: 'downloaded',
+        url: 'https://huggingface.co/org/repo/model.onnx',
+        path: 'models/huggingface.co/org/repo/model.onnx',
+        byteLength: 4,
+        expectedByteLength: 4,
+      }],
+    });
     expect(originalFetchMock).toHaveBeenCalledWith('https://huggingface.co/org/repo/model.onnx');
     expect(mockRoot.getDirectoryHandle).toHaveBeenCalledWith('models', { create: true });
     expect(progressUpdates.length).toBeGreaterThan(0);
     expect(progressUpdates[0]).toMatchObject({
       status: 'progress',
       file: 'model.onnx',
+    });
+  });
+
+  it('prefetchUrls should report partial failures without exposing signed query parameters', async () => {
+    const comlink = await import('comlink');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    originalFetchMock
+      .mockResolvedValueOnce(new Response(Uint8Array.from([1]), {
+        status: 200,
+        headers: { 'Content-Length': '1' },
+      }))
+      .mockResolvedValueOnce(new Response(null, {
+        status: 503,
+        statusText: 'Unavailable',
+      }));
+
+    const result = await workerObj.prefetchUrls([
+      'https://huggingface.co/org/repo/a.onnx?token=secret',
+      'https://huggingface.co/org/repo/b.onnx?token=secret',
+    ], () => { });
+
+    expect(result).toEqual({
+      requestedCount: 2,
+      cachedCount: 0,
+      downloadedCount: 1,
+      failedCount: 1,
+      complete: false,
+      files: [
+        {
+          status: 'downloaded',
+          url: 'https://huggingface.co/org/repo/a.onnx',
+          path: 'models/huggingface.co/org/repo/a.onnx',
+          byteLength: 1,
+          expectedByteLength: 1,
+        },
+        {
+          status: 'failed',
+          url: 'https://huggingface.co/org/repo/b.onnx',
+          path: 'models/huggingface.co/org/repo/b.onnx',
+          failureStage: 'response-status',
+          httpStatus: 503,
+          error: {
+            name: 'Error',
+            message: 'HTTP 503 Unavailable',
+          },
+        },
+      ],
     });
   });
 
@@ -591,6 +887,7 @@ describe('transformers-js.worker', () => {
     let tokensToEmit: string[];
     let mockApplyTemplate: ReturnType<typeof vi.fn>;
     let mockCallableTokenizer: ReturnType<typeof vi.fn>;
+    let mockProcessor: ReturnType<typeof vi.fn>;
     let mockModel: {
       generate: ReturnType<typeof vi.fn>,
       dispose: ReturnType<typeof vi.fn>,
@@ -634,7 +931,7 @@ describe('transformers-js.worker', () => {
         vi.fn().mockReturnValue({ input_ids: [9, 9, 9] }),
         { apply_chat_template: mockApplyTemplate },
       );
-      (tfMock.AutoProcessor.from_pretrained as any).mockResolvedValue(Object.assign(
+      mockProcessor = Object.assign(
         vi.fn().mockResolvedValue({
           input_ids: [7, 8, 9],
           attention_mask: [1, 1, 1],
@@ -643,12 +940,83 @@ describe('transformers-js.worker', () => {
           tokenizer: mockCallableTokenizer,
           batch_decode: vi.fn().mockReturnValue(['prompt-history']),
         },
-      ));
+      );
+      (tfMock.AutoProcessor.from_pretrained as any).mockResolvedValue(mockProcessor);
 
       await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
       await workerObj.loadModel('onnx-community/Qwen3.5-2B-ONNX', vi.fn());
+    });
+
+    it('observes the existing Qwen3.5 reasoning effort prompt differential', async () => {
+      Object.assign(mockCallableTokenizer, {
+        decode: vi.fn(() => 'reasoning output'),
+      });
+      mockProcessor.mockImplementation(async (prompt: string) => {
+        if (prompt.includes(`\
+<think>
+
+</think>`)) {
+          return {
+            input_ids: { data: BigInt64Array.from([7n, 0n]) },
+            attention_mask: { data: BigInt64Array.from([1n, 1n]) },
+          };
+        }
+        if (prompt.includes('<think>\n')) {
+          return {
+            input_ids: { data: BigInt64Array.from([7n, 1n]) },
+            attention_mask: { data: BigInt64Array.from([1n, 1n]) },
+          };
+        }
+        return {
+          input_ids: { data: BigInt64Array.from([7n, 2n]) },
+          attention_mask: { data: BigInt64Array.from([1n, 1n]) },
+        };
+      });
+      mockModel.generate.mockImplementation(async (inputs: { input_ids: { data: BigInt64Array } }) => ({
+        past_key_values: { kv: true },
+        sequences: { data: BigInt64Array.from([...inputs.input_ids.data, 99n]) },
+      }));
+
+      const observation = await workerObj.runModelSupportInvestigationScenario(
+        {
+          modelId: 'onnx-community/Qwen3.5-2B-ONNX',
+          resolvedRevision: 'a'.repeat(40),
+          candidate: { device: 'webgpu', dtype: 'q4' },
+          messages: [{ role: 'user', content: 'Answer briefly.' }],
+          followUpMessage: { role: 'user', content: 'Continue.' },
+          toolResultContinuation: undefined,
+          maxNewTokens: 16,
+        },
+        vi.fn(),
+      );
+
+      expect(observation.reasoning).toMatchObject({
+        status: 'observed',
+        source: 'existing-production-strategy',
+        strategy: 'qwen3_5',
+        disabledEffort: 'none',
+        enabledEffort: 'high',
+        disabledTurn: {
+          inputTokenIds: [7, 0],
+          generatedTokenIds: [99],
+          effectiveGenerationConfig: expect.objectContaining({ maxNewTokens: 1 }),
+        },
+        enabledTurn: {
+          inputTokenIds: [7, 1],
+          generatedTokenIds: [99],
+          effectiveGenerationConfig: expect.objectContaining({ maxNewTokens: 1 }),
+        },
+        inputTokenExactMatch: false,
+        firstInputMismatchIndex: 1,
+      });
+      const prompts = mockProcessor.mock.calls.map(call => String(call[0]));
+      expect(prompts.some(prompt => prompt.includes(`\
+<think>
+
+</think>`))).toBe(true);
+      expect(prompts.some(prompt => prompt.includes('<think>\n') && !prompt.includes('</think>'))).toBe(true);
     });
 
     it('parses Qwen3.5 XML-like tool calls', async () => {
@@ -919,6 +1287,7 @@ file-a
     let mockProcessor: ReturnType<typeof vi.fn> & {
       tokenizer: {
         apply_chat_template: ReturnType<typeof vi.fn>,
+        decode: ReturnType<typeof vi.fn>,
       },
       apply_chat_template: ReturnType<typeof vi.fn>,
     };
@@ -928,6 +1297,7 @@ file-a
       device: string,
       config: {
         model_type: string,
+        is_encoder_decoder: boolean,
       },
     };
 
@@ -953,6 +1323,7 @@ file-a
         device: 'webgpu',
         config: {
           model_type: 'gemma4',
+          is_encoder_decoder: false,
         },
       };
 
@@ -966,6 +1337,7 @@ file-a
         {
           tokenizer: {
             apply_chat_template: vi.fn(),
+            decode: vi.fn(() => 'synthetic image output'),
           },
           apply_chat_template: vi.fn().mockReturnValue('gemma4 prompt'),
         },
@@ -1020,6 +1392,77 @@ file-a
         image_position_ids: ['positions'],
         past_key_values: null,
       }));
+    });
+
+    it('runs the fixed synthetic image through the existing Gemma 4 Production strategy', async () => {
+      const tfMock = await import('@huggingface/transformers');
+      const fixtureImageBytes = Uint8Array.from(
+        atob(MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.dataUrl.split(',')[1]!),
+        character => character.charCodeAt(0),
+      );
+      originalFetchMock.mockResolvedValue(new Response(fixtureImageBytes, {
+        status: 200,
+        headers: { 'Content-Type': 'image/png' },
+      }));
+      const tensor = ({ data, type, dims, location }: {
+        data: BigInt64Array | Float32Array,
+        type: string,
+        dims: number[],
+        location: string,
+      }) => ({ data, type, dims, location });
+      mockProcessor.mockResolvedValue({
+        input_ids: tensor({ data: BigInt64Array.from([7n, 8n]), type: 'int64', dims: [1, 2], location: 'cpu' }),
+        attention_mask: tensor({ data: BigInt64Array.from([1n, 1n]), type: 'int64', dims: [1, 2], location: 'cpu' }),
+        pixel_values: tensor({ data: Float32Array.from([0]), type: 'float32', dims: [1, 3, 1, 1], location: 'gpu-buffer' }),
+      });
+      mockModel.generate.mockImplementation(async (inputs: { input_ids: { data: BigInt64Array } }) => ({
+        past_key_values: {},
+        sequences: { data: BigInt64Array.from([...inputs.input_ids.data, 99n]) },
+      }));
+
+      const observation = await workerObj.runModelSupportInvestigationScenario(
+        {
+          modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
+          resolvedRevision: 'a'.repeat(40),
+          candidate: { device: 'webgpu', dtype: 'q4' },
+          messages: [{ role: 'user', content: 'Answer briefly.' }],
+          followUpMessage: { role: 'user', content: 'Continue.' },
+          toolResultContinuation: undefined,
+          multimodalFixture: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE,
+          maxNewTokens: 16,
+        },
+        vi.fn(),
+      );
+
+      expect(tfMock.RawImage.read).toHaveBeenCalledOnce();
+      const rawImageBlob = vi.mocked(tfMock.RawImage.read).mock.calls[0]?.[0];
+      expect(rawImageBlob).toBeDefined();
+      expect(rawImageBlob).toMatchObject({
+        size: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.byteLength,
+        type: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.mimeType,
+      });
+      expect(observation.multimodal).toMatchObject({
+        status: 'observed',
+        source: 'fixed-synthetic-fixture-and-existing-production-strategy',
+        strategy: 'gemma4',
+        fixture: {
+          fixtureId: 'single-transparent-pixel-png-v1',
+          sha256: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.sha256,
+          byteLength: 68,
+          maxNewTokens: 1,
+        },
+        turn: {
+          inputKeys: ['attention_mask', 'input_ids', 'pixel_values'],
+          inputTensors: [
+            { name: 'attention_mask', dtype: 'int64', dims: [1, 2], location: 'cpu' },
+            { name: 'input_ids', dtype: 'int64', dims: [1, 2], location: 'cpu' },
+            { name: 'pixel_values', dtype: 'float32', dims: [1, 3, 1, 1], location: 'gpu-buffer' },
+          ],
+          generatedTokenIds: [99],
+          effectiveGenerationConfig: { maxNewTokens: 1 },
+        },
+      });
+      expect(observation.multimodal).not.toHaveProperty('fixture.dataUrl');
     });
 
     it('does not inject tool definitions into the Gemma 4 chat template', async () => {

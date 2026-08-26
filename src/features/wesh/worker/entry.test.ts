@@ -269,7 +269,7 @@ worker-local grantshared runtime/mnt/search/a.txt:needle
       },
     });
 
-    expect(response.exitCode).toBe(1);
+    expect(response.exitCode).toBe(2);
   });
 
   it('can read naidan sysfs metadata through a local remote reader', async () => {

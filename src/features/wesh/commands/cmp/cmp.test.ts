@@ -57,6 +57,21 @@ describe('wesh cmp', () => {
     };
   }
 
+  it('validates option byte counts before a later help request', async () => {
+    const invalidIgnore = await execute({ script: 'cmp -i bad --help' });
+    const invalidLimit = await execute({ script: 'cmp -n bad --help' });
+    const helpFirst = await execute({ script: 'cmp --help -i bad -n bad' });
+
+    for (const execution of [invalidIgnore, invalidLimit]) {
+      expect(execution.result.exitCode).toBe(2);
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).not.toBe('');
+    }
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(helpFirst.stdout.text).not.toBe('');
+    expect(helpFirst.stderr.text).toBe('');
+  });
+
   it('prints help and version information', async () => {
     const help = await execute({ script: 'cmp --help' });
     const version = await execute({ script: 'cmp --version' });
@@ -71,6 +86,18 @@ describe('wesh cmp', () => {
     expect(version.stdout.text).toBe('cmp (wesh)\n');
     expect(version.stderr.text).toBe('');
     expect(version.result.exitCode).toBe(0);
+  });
+
+  it('uses the first help or version early exit in argv order', async () => {
+    const versionThenInvalid = await execute({ script: 'cmp --version --definitely-invalid-option' });
+    const versionThenHelp = await execute({ script: 'cmp --version --help' });
+
+    expect(versionThenInvalid.stdout.text).toBe('cmp (wesh)\n');
+    expect(versionThenInvalid.stderr.text).toBe('');
+    expect(versionThenInvalid.result.exitCode).toBe(0);
+    expect(versionThenHelp.stdout.text).toBe('cmp (wesh)\n');
+    expect(versionThenHelp.stderr.text).toBe('');
+    expect(versionThenHelp.result.exitCode).toBe(0);
   });
 
   it('reports usage errors with exit code 2', async () => {
@@ -264,12 +291,43 @@ c
     expect(repeated.result.exitCode).toBe(0);
   });
 
+  it('accepts only leading C-locale whitespace in byte counts', async () => {
+    await writeFile({ name: 'left.txt', data: 'abc' });
+    await writeFile({ name: 'right.txt', data: 'abc' });
+
+    for (const whitespace of [' ', '\t', '\n', '\v', '\f', '\r']) {
+      const limit = await execute({
+        script: `cmp -n '${whitespace}1' left.txt right.txt`,
+      });
+      expect(limit.stdout.text).toBe('');
+      expect(limit.stderr.text).toBe('');
+      expect(limit.result.exitCode).toBe(0);
+
+      const skip = await execute({
+        script: `cmp -i '${whitespace}1:${whitespace}1' left.txt right.txt`,
+      });
+      expect(skip.stdout.text).toBe('');
+      expect(skip.stderr.text).toBe('');
+      expect(skip.result.exitCode).toBe(0);
+    }
+
+    for (const operand of ['1 ', '\u00a01', '\u20031', '\ufeff1']) {
+      const execution = await execute({
+        script: `cmp -n '${operand}' left.txt right.txt`,
+      });
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).toContain('invalid --bytes value');
+      expect(execution.result.exitCode).toBe(2);
+    }
+  });
+
   it('validates byte counts and incompatible options', async () => {
     await writeFile({ name: 'left.txt', data: 'a' });
     await writeFile({ name: 'right.txt', data: 'a' });
 
     const invalidLimit = await execute({ script: 'cmp -n08 left.txt right.txt' });
     const unsupportedSuffix = await execute({ script: 'cmp -n0R left.txt right.txt' });
+    const inheritedSuffix = await execute({ script: 'cmp -n1constructor left.txt right.txt' });
     const invalidSkip = await execute({ script: 'cmp -i1: left.txt right.txt' });
     const incompatible = await execute({ script: 'cmp -ls left.txt right.txt' });
 
@@ -277,6 +335,8 @@ c
     expect(invalidLimit.result.exitCode).toBe(2);
     expect(unsupportedSuffix.stderr.text).toContain("cmp: invalid --bytes value '0R'");
     expect(unsupportedSuffix.result.exitCode).toBe(2);
+    expect(inheritedSuffix.stderr.text).toContain("cmp: invalid --bytes value '1constructor'");
+    expect(inheritedSuffix.result.exitCode).toBe(2);
     expect(invalidSkip.stderr.text).toContain("cmp: invalid --ignore-initial value ''");
     expect(invalidSkip.result.exitCode).toBe(2);
     expect(incompatible.stderr.text).toContain('cmp: options -l and -s are incompatible');
@@ -297,6 +357,19 @@ c
     expect(missing.stdout.text).toBe('');
     expect(missing.stderr.text).toBe('');
     expect(missing.result.exitCode).toBe(2);
+  });
+
+  it('reports read failures in quiet mode after an input was opened', async () => {
+    await rootHandle.getDirectoryHandle('dir', { create: true });
+    await writeFile({ name: 'file.txt', data: 'data' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cmp -s dir file.txt',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('cmp: dir:');
+    expect(result.exitCode).toBe(2);
   });
 
   it('closes an opened stdin stream when the second input cannot be opened', async () => {
@@ -492,7 +565,7 @@ c
       script: 'cmp -l left.bin right.bin',
     });
 
-    expect(stdout.text.startsWith('1   0   1\n')).toBe(true);
+    expect(stdout.text.startsWith('   1   0   1\n')).toBe(true);
     expect(stdout.text.endsWith('5000   0   1\n')).toBe(true);
     expect(stdout.text.split('\n')).toHaveLength(5001);
     expect(stdout.chunkCount).toBeLessThan(100);
@@ -532,4 +605,56 @@ c
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+  it('pads verbose byte positions from the known comparison span', async () => {
+    const left = new Uint8Array(200);
+    const right = new Uint8Array(200).fill(1);
+    await writeFile({ name: 'left.bin', data: left });
+    await writeFile({ name: 'right.bin', data: right });
+
+    const full = await execute({ script: 'cmp -l left.bin right.bin' });
+    const limited = await execute({ script: 'cmp -l -n 8 left.bin right.bin' });
+    const skipped = await execute({ script: 'cmp -l -i 150 left.bin right.bin' });
+
+    expect(full.stdout.text.split('\n')[0]).toBe('  1   0   1');
+    expect(limited.stdout.text.split('\n')[0]).toBe('1   0   1');
+    expect(skipped.stdout.text.split('\n')[0]).toBe(' 1   0   1');
+    expect(full.result.exitCode).toBe(1);
+    expect(limited.result.exitCode).toBe(1);
+    expect(skipped.result.exitCode).toBe(1);
+  });
+
+  it('pads verbose positions from the shorter known input span', async () => {
+    await writeFile({ name: 'long.bin', data: new Uint8Array(1_000).fill(1) });
+    await writeFile({ name: 'short.bin', data: new Uint8Array(10).fill(2) });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cmp -l long.bin short.bin',
+    });
+
+    expect(stdout.text.split('\n')[0]).toBe(' 1   1   2');
+    expect(stderr.text).toContain('cmp: EOF on short.bin after byte 10');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('reports EOF on a trailing newline as the line that ended', async () => {
+    await writeFile({ name: 'short.txt', data: 'x\n' });
+    await writeFile({
+      name: 'long.txt',
+      data: `\
+x
+y`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cmp short.txt long.txt',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe(`\
+cmp: EOF on short.txt after byte 2, line 1
+`);
+    expect(result.exitCode).toBe(1);
+  });
+
+
 });

@@ -67,7 +67,12 @@ export function basenamePath({
 
   const lastSlash = normalized.lastIndexOf('/');
   let name = lastSlash < 0 ? normalized : normalized.slice(lastSlash + 1);
-  if (suffix !== undefined && suffix.length > 0 && name.endsWith(suffix)) {
+  if (
+    suffix !== undefined
+    && suffix.length > 0
+    && suffix.length < name.length
+    && name.endsWith(suffix)
+  ) {
     name = name.slice(0, name.length - suffix.length);
   }
 

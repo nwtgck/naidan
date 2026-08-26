@@ -41,22 +41,37 @@ describe('wesh command', () => {
     const pathVerbose = await execute({ script: 'command -v /bin/env' });
 
     expect(help.stdout.text).toContain('Run command with arguments, ignoring any function or alias');
-    expect(help.stdout.text).toContain('usage: command [-vV] command [argument...]');
+    expect(help.stdout.text).toContain('usage: command [-pVv] command [argument...]');
     expect(help.stdout.text).toContain('--help');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
 
     expect(verbose.stdout.text).toBe('env\n');
     expect(verbose.stderr.text).toBe('');
-    expect(verbose.result.exitCode).toBe(1);
+    expect(verbose.result.exitCode).toBe(0);
 
     expect(described.stdout.text).toBe('env is a shell builtin\n');
-    expect(described.stderr.text).toBe('');
-    expect(described.result.exitCode).toBe(1);
+    expect(described.stderr.text).toBe('command: missing-command: not found\n');
+    expect(described.result.exitCode).toBe(0);
 
     expect(pathVerbose.stdout.text).toBe('/bin/env\n');
     expect(pathVerbose.stderr.text).toBe('');
     expect(pathVerbose.result.exitCode).toBe(0);
+  });
+
+
+  it('classifies registered Wesh commands as builtins independently of PATH', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `PATH= command -v cat env du`,
+    });
+
+    expect(stdout.text).toBe(`\
+cat
+env
+du
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('executes the resolved builtin command and reports unknown commands', async () => {
@@ -74,7 +89,7 @@ describe('wesh command', () => {
 
     expect(missing.stdout.text).toBe('');
     expect(missing.stderr.text).toContain('command: missing-command not found');
-    expect(missing.result.exitCode).toBe(1);
+    expect(missing.result.exitCode).toBe(127);
   });
 
   it('ignores shell aliases when executing commands', async () => {
@@ -99,4 +114,56 @@ describe('wesh command', () => {
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('resolves parser-owned control-flow builtins with command -v and command -V', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `command -v exit return
+command -V break continue`,
+    });
+
+    expect(stdout.text).toBe(`exit
+return
+break is a shell builtin
+continue is a shell builtin
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('prints a diagnostic for command -V misses while command -v remains silent', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `command -v missing
+printf 'v=%s\n' "$?"
+command -V missing
+printf 'V=%s\n' "$?"`,
+    });
+
+    expect(stdout.text).toBe(`v=1
+V=1
+`);
+    expect(stderr.text).toBe('command: missing: not found\n');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('returns status 2 for invalid options', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'command -x printf' });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('invalid option');
+    expect(result.exitCode).toBe(2);
+  });
+
+  it('passes option-like arguments after the command name to the command', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `command echo -v; status=$?; printf '|%s\\n' "$status"`,
+    });
+
+    expect(stdout.text).toBe(`\
+-v
+|0
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
 });

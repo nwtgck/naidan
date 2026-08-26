@@ -26,7 +26,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     const mockTool: Tool = {
       name: 'get_weather',
       description: 'Get weather',
-      parametersSchema: z.object({ location: z.string() }),
+      parametersSchema: z.object({ location: z.string(), units: z.string().default('metric') }),
       execute: vi.fn().mockResolvedValue({ status: 'success', content: 'Rainy, 15C' }),
     };
 
@@ -69,12 +69,17 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     });
 
     expect(result).toBe('It is rainy in London.');
-    expect(mockTool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { location: 'London' } }));
-    expect(onToolCall).toHaveBeenCalledWith({ id: 'c1', toolName: 'get_weather', args: { location: 'London' } });
+    expect(mockTool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { location: 'London', units: 'metric' } }));
+    expect(onToolCall).toHaveBeenCalledWith({
+      id: 'c1',
+      toolName: 'get_weather',
+      modelVisibleArguments: '{"location":"London"}',
+    });
 
     expect(serverInstance!.capturedRequests).toHaveLength(2);
     const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages).toHaveLength(3);
+    expect(secondReqBody.messages[1].tool_calls[0].function.arguments).toEqual({ location: 'London' });
     expect(secondReqBody.messages[2]).toEqual({
       role: 'tool',
       tool_call_id: 'c1',
@@ -177,14 +182,21 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
+    const onToolCall = vi.fn();
     await provider.chat({
       messages: [],
       model: 'llama3',
       onChunk: vi.fn(),
       tools: [mockTool],
+      onToolCall,
     });
 
     expect(mockTool.execute).not.toHaveBeenCalled();
+    expect(onToolCall).toHaveBeenCalledWith({
+      id: 'c1',
+      toolName: 'strict',
+      modelVisibleArguments: '{"hallucinated":true}',
+    });
     const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[1].content).toContain('Invalid arguments');
   });
@@ -290,13 +302,20 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
+    const onToolCall = vi.fn();
     await provider.chat({
       messages: [],
       model: 'llama3',
       onChunk: vi.fn(),
       tools: [mockTool],
+      onToolCall,
     });
 
+    expect(onToolCall).toHaveBeenCalledWith({
+      id: 'c1',
+      toolName: 't',
+      modelVisibleArguments: '{"a": 123}',
+    });
     expect(serverInstance!.capturedRequests).toHaveLength(2);
     const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
 

@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__lane_input_mismatch = ({ mismatchIndex }: { mismatchIndex: number | undefined }): string => `ReferenceとProductionの入力tokenが${mismatchIndex === undefined ? "短い側のprefix終端" : `index ${mismatchIndex}`}で不一致`;

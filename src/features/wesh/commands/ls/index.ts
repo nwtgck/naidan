@@ -8,8 +8,90 @@ import type {
 } from '@/features/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 
 type LsSymlinkMode = 'logical' | 'command-line' | 'physical';
+
+type LsClassifyMode = 'always' | 'never';
+
+const LS_CLASSIFY_ARGUMENTS: readonly {
+  readonly name: string,
+  readonly mode: LsClassifyMode,
+}[] = [
+  { name: 'always', mode: 'always' },
+  { name: 'yes', mode: 'always' },
+  { name: 'force', mode: 'always' },
+  { name: 'never', mode: 'never' },
+  { name: 'no', mode: 'never' },
+  { name: 'none', mode: 'never' },
+  { name: 'auto', mode: 'never' },
+  { name: 'tty', mode: 'never' },
+  { name: 'if-tty', mode: 'never' },
+];
+
+function parseClassifyArgument({ value }: { value: string }): LsClassifyMode | undefined {
+  const exact = LS_CLASSIFY_ARGUMENTS.find(entry => entry.name === value);
+  if (exact !== undefined) return exact.mode;
+  if (value.length === 0) return undefined;
+
+  const matchingModes = new Set(
+    LS_CLASSIFY_ARGUMENTS
+      .filter(entry => entry.name.startsWith(value))
+      .map(entry => entry.mode),
+  );
+  return matchingModes.size === 1 ? [...matchingModes][0] : undefined;
+}
+
+function parseClassifyLongOption({ token }: { token: string }) {
+  const prefix = '--classify=';
+  if (!token.startsWith(prefix)) return undefined;
+
+  const value = token.slice(prefix.length);
+  const mode = parseClassifyArgument({ value });
+  const effects = (() => {
+    if (mode === undefined) return [{ key: 'classifyParseError', value }];
+    switch (mode) {
+    case 'always':
+      return [{ key: 'classify', value: true }];
+    case 'never':
+      return [];
+    default: {
+      const _ex: never = mode;
+      return _ex;
+    }
+    }
+  })();
+  return {
+    kind: 'matched' as const,
+    consumeCount: 1,
+    effects,
+    occurrences: [{
+      kind: 'special' as const,
+      option: '--classify',
+      effects,
+    }],
+  };
+}
+
+function compareCStrings({ left, right }: { left: string, right: string }): number {
+  let leftOffset = 0;
+  let rightOffset = 0;
+  while (leftOffset < left.length && rightOffset < right.length) {
+    const leftCodePoint = left.codePointAt(leftOffset);
+    const rightCodePoint = right.codePointAt(rightOffset);
+    if (leftCodePoint === undefined || rightCodePoint === undefined) {
+      throw new Error('Failed to read filename code point');
+    }
+    if (leftCodePoint !== rightCodePoint) {
+      return leftCodePoint < rightCodePoint ? -1 : 1;
+    }
+    leftOffset += leftCodePoint > 0xffff ? 2 : 1;
+    rightOffset += rightCodePoint > 0xffff ? 2 : 1;
+  }
+  if (leftOffset < left.length) return 1;
+  if (rightOffset < right.length) return -1;
+  return 0;
+}
 
 function resolvePath({
   cwd,
@@ -27,32 +109,32 @@ function resolvePath({
 const lsArgvSpec: StandardArgvParserSpec = {
   options: [
     { kind: 'flag', short: 'l', long: 'l', effects: [{ key: 'l', value: true }], help: { summary: 'use a long listing format', category: 'common' } },
-    { kind: 'flag', short: 'a', long: 'a', effects: [{ key: 'a', value: true }], help: { summary: 'include directory entries whose names begin with .', category: 'common' } },
-    { kind: 'flag', short: 'R', long: 'R', effects: [{ key: 'R', value: true }], help: { summary: 'list subdirectories recursively', category: 'common' } },
+    { kind: 'flag', short: 'a', long: 'all', effects: [{ key: 'a', value: true }], help: { summary: 'include directory entries whose names begin with .', category: 'common' } },
+    { kind: 'flag', short: 'A', long: 'almost-all', effects: [{ key: 'almostAll', value: true }], help: { summary: 'include hidden entries except . and ..', category: 'common' } },
+    { kind: 'flag', short: 'R', long: 'recursive', effects: [{ key: 'R', value: true }], help: { summary: 'list subdirectories recursively', category: 'common' } },
     { kind: 'flag', short: 'd', long: 'directory', effects: [{ key: 'directory', value: true }], help: { summary: 'list directories themselves, not their contents', category: 'common' } },
     { kind: 'flag', short: 'F', long: 'classify', effects: [{ key: 'classify', value: true }], help: { summary: 'append indicator characters to entries', category: 'common' } },
     { kind: 'flag', short: '1', long: '1', effects: [{ key: '1', value: true }], help: { summary: 'list one file per line', category: 'advanced' } },
-    { kind: 'flag', short: 'h', long: 'h', effects: [{ key: 'h', value: true }], help: { summary: 'with -l, print sizes in human readable format', category: 'common' } },
-    { kind: 'flag', short: 'L', long: undefined, effects: [{ key: 'symlinkMode', value: 'logical' }], help: { summary: 'when listing symlinks, show the target type', category: 'advanced' } },
-    { kind: 'flag', short: 'H', long: undefined, effects: [{ key: 'symlinkMode', value: 'command-line' }], help: { summary: 'follow command-line symlinks', category: 'advanced' } },
-    { kind: 'flag', short: 'P', long: undefined, effects: [{ key: 'symlinkMode', value: 'physical' }], help: { summary: 'do not follow symlinks', category: 'advanced' } },
+    { kind: 'flag', short: 'h', long: 'human-readable', effects: [{ key: 'h', value: true }], help: { summary: 'with -l, print sizes in human readable format', category: 'common' } },
+    { kind: 'flag', short: 'L', long: 'dereference', effects: [{ key: 'symlinkMode', value: 'logical' }], help: { summary: 'when listing symlinks, show the target type', category: 'advanced' } },
+    { kind: 'flag', short: 'H', long: 'dereference-command-line', effects: [{ key: 'symlinkMode', value: 'command-line' }], help: { summary: 'follow command-line symlinks', category: 'advanced' } },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
   ],
   allowShortFlagBundles: true,
   stopAtDoubleDash: true,
   treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+  specialTokenParsers: [({ token }) => parseClassifyLongOption({ token })],
 };
 
 export const lsCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'ls',
     description: 'List directory contents',
-    usage: 'ls [path...] [-l] [-a] [-R] [-1] [-h] [-L] [-H] [-P]',
+    usage: 'ls [path...] [-l] [-a] [-A] [-R] [-1] [-h] [-L] [-H]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: lsArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
       spec: lsArgvSpec,
     });
 
@@ -63,6 +145,19 @@ export const lsCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'ls',
         message: `ls: ${diagnostic.message}`,
+        argvSpec: lsArgvSpec,
+      });
+      return { exitCode: 2 };
+    }
+
+    const classifyParseError = typeof parsed.optionValues.classifyParseError === 'string'
+      ? parsed.optionValues.classifyParseError
+      : undefined;
+    if (classifyParseError !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'ls',
+        message: `ls: invalid argument '${classifyParseError}' for '--classify'`,
         argvSpec: lsArgvSpec,
       });
       return { exitCode: 1 };
@@ -77,16 +172,26 @@ export const lsCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
-    const paths = parsed.positionals.length > 0 ? parsed.positionals : ['.'];
+    const pathOperands = parsed.positionals.length > 0 ? parsed.positionals : ['.'];
     const l = parsed.optionValues.l === true;
     const a = parsed.optionValues.a === true;
-    const one = parsed.optionValues['1'] === true;
+    const almostAll = parsed.optionValues.almostAll === true;
+    // Wesh command handles are not terminal-aware. Captured command output therefore
+    // follows GNU ls's non-terminal default of one entry per line.
+    const one = true;
     const h = parsed.optionValues.h === true;
     const d = parsed.optionValues.directory === true;
     const R = parsed.optionValues.R === true;
     const classify = parsed.optionValues.classify === true;
-    const symlinkMode = (parsed.optionValues.symlinkMode as LsSymlinkMode | undefined) ?? 'physical';
+    const explicitSymlinkMode = parsed.optionValues.symlinkMode as LsSymlinkMode | undefined;
+    const symlinkMode = explicitSymlinkMode ?? (
+      l || d || classify
+        ? 'physical'
+        : 'command-line'
+    );
     let exitCode = 0;
+    let listedTopLevelOperand = false;
+    const activeRecursiveDirectoryPaths = new Set<string>();
 
     const resolveListingEntry = async ({
       path,
@@ -111,13 +216,24 @@ export const lsCommandDefinition: WeshCommandDefinition = {
         }
         }
       })();
-      if (entry !== undefined && (!shouldFollow || entry.type !== 'symlink')) {
-        return entry;
-      }
-      return context.files.resolveEntry({
+      const directEntry = entry ?? await context.files.resolveEntry({
         path,
-        finalSymlinkTreatment: shouldFollow ? 'follow' : 'no-follow',
+        finalSymlinkTreatment: 'no-follow',
       });
+      if (!shouldFollow || directEntry.type !== 'symlink') {
+        return directEntry;
+      }
+      try {
+        return await context.files.resolveEntry({
+          path,
+          finalSymlinkTreatment: 'follow',
+        });
+      } catch (error: unknown) {
+        if (isCommandLineArgument && explicitSymlinkMode === undefined) {
+          return directEntry;
+        }
+        throw error;
+      }
     };
 
     async function listPath({
@@ -133,6 +249,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
       isCommandLineArgument: boolean,
       printHeader: boolean,
     }): Promise<void> {
+      let activeRecursiveDirectoryPath: string | undefined;
       try {
         const entry = await resolveListingEntry({
           path: fullPath,
@@ -154,6 +271,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
             getStat: () => context.files.statEntry({ entry }),
           });
           await text.print({ text: `${line}\n` });
+          if (isCommandLineArgument) listedTopLevelOperand = true;
           return;
         }
 
@@ -172,26 +290,93 @@ export const lsCommandDefinition: WeshCommandDefinition = {
           }
           }
         })();
+        if (R) {
+          if (activeRecursiveDirectoryPaths.has(directoryEntry.fullPath)) {
+            await text.error({
+              text: `ls: ${displayPath}: not listing already-listed directory\n`,
+            });
+            exitCode = 2;
+            return;
+          }
+          activeRecursiveDirectoryPaths.add(directoryEntry.fullPath);
+          activeRecursiveDirectoryPath = directoryEntry.fullPath;
+        }
+
         const allEntries: WeshEntryRef[] = [];
         for await (const child of context.files.readDirEntry({ entry: directoryEntry })) {
-          if (a || !child.name.startsWith('.')) {
+          if (a || almostAll || !child.name.startsWith('.')) {
             allEntries.push(child);
           }
         }
-        allEntries.sort((left, right) => left.name.localeCompare(right.name));
+        allEntries.sort((left, right) => compareCStrings({ left: left.name, right: right.name }));
 
         if (printHeader) {
+          if (isCommandLineArgument && listedTopLevelOperand) {
+            await text.print({ text: '\n' });
+          }
           await text.print({ text: `${displayPath}:\n` });
+          if (isCommandLineArgument) listedTopLevelOperand = true;
         }
 
-        const resolvedEntries: WeshEntryRef[] = [];
+        let renderedEntryCount = 0;
+        if (a) {
+          for (const dotName of ['.', '..'] as const) {
+            const dotPath = (() => {
+              switch (dotName) {
+              case '.':
+                return fullPath;
+              case '..':
+                return `${fullPath}/..`;
+              default: {
+                const _ex: never = dotName;
+                throw new Error(`Unhandled dot entry: ${_ex}`);
+              }
+              }
+            })();
+            const dotEntry = await resolveListingEntry({
+              path: dotPath,
+              entry: undefined,
+              isCommandLineArgument: false,
+            });
+            const line = await formatEntry({
+              context,
+              displayName: dotName,
+              fullPath: dotPath,
+              type: dotEntry.type,
+              longFormat: l,
+              humanReadable: h,
+              classify,
+              stat: undefined,
+              getStat: () => context.files.statEntry({ entry: dotEntry }),
+            });
+            await text.print({ text: line + (one || l ? '\n' : '  ') });
+            renderedEntryCount += 1;
+          }
+        }
+
+        const resolvedEntries: Array<{
+          child: WeshEntryRef,
+          resolvedChild: WeshEntryRef,
+        }> = [];
         for (const child of allEntries) {
-          const resolvedChild = await resolveListingEntry({
-            path: child.fullPath,
-            entry: child,
-            isCommandLineArgument: false,
-          });
-          resolvedEntries.push(resolvedChild);
+          let resolvedChild = child;
+          if (l || classify || R) {
+            try {
+              resolvedChild = await resolveListingEntry({
+                path: child.fullPath,
+                entry: child,
+                isCommandLineArgument: false,
+              });
+            } catch (error: unknown) {
+              const childDisplayPath = displayPath === '/'
+                ? `/${child.name}`
+                : `${displayPath}/${child.name}`;
+              const message = error instanceof Error ? error.message : String(error);
+              await text.error({ text: `ls: cannot access '${childDisplayPath}': ${message}\n` });
+              exitCode = Math.max(exitCode, 1);
+            }
+          }
+          resolvedEntries.push({ child, resolvedChild });
           const line = await formatEntry({
             context,
             displayName: child.name,
@@ -204,23 +389,39 @@ export const lsCommandDefinition: WeshCommandDefinition = {
             getStat: () => context.files.statEntry({ entry: resolvedChild }),
           });
           await text.print({ text: line + (one || l ? '\n' : '  ') });
+          renderedEntryCount += 1;
         }
 
-        if (!one && !l && resolvedEntries.length > 0) {
+        if (!one && !l && renderedEntryCount > 0) {
           await text.print({ text: '\n' });
         }
 
         if (R) {
-          for (let index = 0; index < resolvedEntries.length; index += 1) {
-            const child = allEntries[index];
-            const resolvedChild = resolvedEntries[index];
-            if (child === undefined || resolvedChild === undefined || resolvedChild.type !== 'directory') {
+          for (const { child, resolvedChild } of resolvedEntries) {
+            switch (resolvedChild.type) {
+            case 'directory':
+              break;
+            case 'file':
+            case 'fifo':
+            case 'chardev':
+            case 'symlink':
               continue;
+            default: {
+              const _ex: never = resolvedChild;
+              throw new Error(`Unhandled ls recursion entry: ${((_ex satisfies never) as { readonly type: string }).type}`);
+            }
             }
             if (child.name === '.' || child.name === '..') {
               continue;
             }
             const childDisplayPath = displayPath === '/' ? `/${child.name}` : `${displayPath}/${child.name}`;
+            if (activeRecursiveDirectoryPaths.has(resolvedChild.fullPath)) {
+              await text.error({
+                text: `ls: ${childDisplayPath}: not listing already-listed directory\n`,
+              });
+              exitCode = 2;
+              continue;
+            }
             await text.print({ text: '\n' });
             await listPath({
               displayPath: childDisplayPath,
@@ -231,27 +432,58 @@ export const lsCommandDefinition: WeshCommandDefinition = {
             });
           }
         }
+        if (activeRecursiveDirectoryPath !== undefined) {
+          activeRecursiveDirectoryPaths.delete(activeRecursiveDirectoryPath);
+          activeRecursiveDirectoryPath = undefined;
+        }
       } catch (error: unknown) {
+        if (activeRecursiveDirectoryPath !== undefined) {
+          activeRecursiveDirectoryPaths.delete(activeRecursiveDirectoryPath);
+        }
         const message = error instanceof Error ? error.message : String(error);
         await text.error({ text: `ls: ${displayPath}: ${message}\n` });
-        exitCode = 1;
+        exitCode = 2;
       }
     }
 
-    for (let index = 0; index < paths.length; index++) {
-      const path = paths[index];
-      if (path === undefined) {
+    const paths: Array<{ path: string, isDirectory: boolean }> = [];
+    for (const path of pathOperands) {
+      if (d) {
+        paths.push({ path, isDirectory: false });
         continue;
       }
-      if (index > 0) {
-        await text.print({ text: '\n' });
+      try {
+        const fullPath = resolvePath({ cwd: context.cwd, path });
+        const entry = await resolveListingEntry({
+          path: fullPath,
+          entry: undefined,
+          isCommandLineArgument: true,
+        });
+        const stat = await context.files.statEntry({ entry });
+        paths.push({ path, isDirectory: stat.type === 'directory' });
+      } catch {
+        paths.push({ path, isDirectory: false });
+      }
+    }
+    paths.sort((left, right) => {
+      if (left.isDirectory !== right.isDirectory) {
+        return left.isDirectory ? 1 : -1;
+      }
+      return compareCStrings({ left: left.path, right: right.path });
+    });
+
+    for (let index = 0; index < paths.length; index++) {
+      const pathInfo = paths[index];
+      const path = pathInfo?.path;
+      if (path === undefined) {
+        continue;
       }
       await listPath({
         displayPath: path,
         fullPath: resolvePath({ cwd: context.cwd, path }),
         entry: undefined,
         isCommandLineArgument: true,
-        printHeader: paths.length > 1,
+        printHeader: paths.length > 1 || R,
       });
     }
 

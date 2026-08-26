@@ -1,3 +1,5 @@
+import { foldAsciiCase } from '@/features/wesh/commands/_shared/locale';
+import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { resolvePath } from '@/features/wesh/path';
 import type {
   WeshCommandContext,
@@ -12,6 +14,7 @@ import { compareDiffInputs, type DiffCompareSettings } from './compare';
 import { createDiffInput } from './input';
 import type { DiffInput } from './model';
 import type { DiffByteWriter } from './output';
+import { quoteDiffFileName } from './quote';
 
 const BRIEF_COMPARE_CHUNK_SIZE = 64 * 1024;
 
@@ -42,11 +45,6 @@ type ComparisonStatResult =
   | { readonly kind: 'found', readonly stat: WeshStat }
   | { readonly kind: 'missing', readonly message: string };
 
-function isMissingPathError({ error }: { error: unknown }): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /(?:not found|no such file or directory)/iu.test(message);
-}
-
 async function tryGetComparisonStat({
   context,
   path,
@@ -62,12 +60,15 @@ async function tryGetComparisonStat({
       stat: await getComparisonStat({ context, path, noDereference }),
     };
   } catch (error) {
-    if (!isMissingPathError({ error })) {
+    if (!isPathNotFoundError({ error })) {
       throw error;
     }
     return {
       kind: 'missing',
-      message: error instanceof Error ? error.message : String(error),
+      // Browser OPFS error messages differ between engines. Once the error is
+      // semantically classified as a missing path, expose a stable shell-style
+      // diagnostic rather than leaking the browser-specific DOMException text.
+      message: `${path}: No such file or directory`,
     };
   }
 }
@@ -168,16 +169,6 @@ function parentPath({ path }: { path: string }): string {
   return index <= 0 ? '/' : path.slice(0, index);
 }
 
-function quoteRecursivePath({ value }: { value: string }): string {
-  if (/^[A-Za-z0-9_@%+=:,./-]+$/u.test(value)) return value;
-  return `"${value
-    .replaceAll('\\', '\\\\')
-    .replaceAll('"', '\\"')
-    .replaceAll('$', '\\$')
-    .replaceAll('`', '\\`')
-    .replaceAll('\n', '\\n')}"`;
-}
-
 function mergeStatus({
   current,
   next,
@@ -218,7 +209,7 @@ function normalizeEntryName({
   case 'sensitive':
     return name;
   case 'insensitive':
-    return name.toLowerCase();
+    return foldAsciiCase({ value: name });
   default: {
     const _ex: never = mode;
     throw new Error(`Unhandled file-name case mode: ${_ex}`);
@@ -435,10 +426,11 @@ function pairDirectoryEntries({
   const keys = new Set<string>([...leftEntries.keys(), ...rightEntries.keys()]);
   const pairs: DirectoryEntryPair[] = [];
   for (const key of [...keys].sort()) {
-    pairs.push(...pairEntryGroups({
+    const groupedPairs = pairEntryGroups({
       leftEntries: leftEntries.get(key) ?? [],
       rightEntries: rightEntries.get(key) ?? [],
-    }));
+    });
+    for (const pair of groupedPairs) pairs.push(pair);
   }
   return pairs;
 }
@@ -699,7 +691,7 @@ async function compareRegularFiles({
       beforeDetailedOutput: recursiveCommandPrefix === undefined || isBriefMode({ settings })
         ? undefined
         : async () => {
-          await stdout.writeText({ text: `${recursiveCommandPrefix} ${quoteRecursivePath({ value: left.displayPath })} ${quoteRecursivePath({ value: right.displayPath })}\n` });
+          await stdout.writeText({ text: `${recursiveCommandPrefix} ${quoteDiffFileName({ value: left.displayPath })} ${quoteDiffFileName({ value: right.displayPath })}\n` });
           await stdout.flush();
         },
     });

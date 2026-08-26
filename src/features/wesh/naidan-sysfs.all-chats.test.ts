@@ -90,7 +90,7 @@ version
 
     const currentChatGroupLink = await executeInWesh({ wesh: individualWesh, script: 'readlink /sys/fs/naidan/current-chat-group' });
     expect(currentChatGroupLink.stdout.text).toBe('');
-    expect(currentChatGroupLink.stderr.text).toBe('readlink: /sys/fs/naidan/current-chat-group: Path not found: /sys/fs/naidan/current-chat-group\n');
+    expect(currentChatGroupLink.stderr.text).toBe('');
     expect(currentChatGroupLink.result.exitCode).toBe(1);
   });
 });

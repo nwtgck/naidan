@@ -67,9 +67,40 @@ describe('wesh ls', () => {
       script: 'ls dir',
     });
 
-    expect(stdout.text).toBe('alpha.txt  mid.txt  zeta.txt  \n');
+    expect(stdout.text).toBe(`\
+alpha.txt
+mid.txt
+zeta.txt
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('uses C-locale ordering and lists file operands before directories', async () => {
+    for (const name of ['A', 'Z', '_', 'a', 'z', 'é', '\uE000', '😀']) {
+      await writeFile({ path: `ordering/${name}`, data: name });
+    }
+    const orderingDirectory = await rootHandle.getDirectoryHandle('ordering', {
+      create: true,
+    });
+    await orderingDirectory.getDirectoryHandle('a-dir', { create: true });
+    await writeFile({ path: 'ordering/z-file', data: 'z' });
+
+    const names = await execute({ script: 'ls -1 ordering' });
+    const operands = await execute({
+      script: 'ls -1 ordering/a-dir ordering/z-file',
+    });
+
+    expect(names.result.exitCode).toBe(0);
+    expect(names.stdout.text).toBe('A\nZ\n_\na\na-dir\nz\nz-file\né\n\uE000\n😀\n');
+    expect(names.stderr.text).toBe('');
+    expect(operands.result.exitCode).toBe(0);
+    expect(operands.stdout.text).toBe(`\
+ordering/z-file
+
+ordering/a-dir:
+`);
+    expect(operands.stderr.text).toBe('');
   });
 
   it('supports -d to list a directory itself rather than its contents', async () => {
@@ -101,26 +132,71 @@ describe('wesh ls', () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it('supports -P and -L for command-line symlinks', async () => {
+  it('supports GNU --classify optional values without clearing earlier -F', async () => {
+    await rootHandle.getDirectoryHandle('dir', { create: true });
+
+    const always = await execute({ script: 'ls -d --classify=always dir' });
+    const auto = await execute({ script: 'ls -d --classify=auto dir' });
+    const never = await execute({ script: 'ls -d --classify=never dir' });
+    const earlierClassify = await execute({ script: 'ls -d -F --classify=never dir' });
+    const invalid = await execute({ script: 'ls -d --classify=bogus dir' });
+
+    expect(always.stdout.text).toBe('dir/\n');
+    expect(always.result.exitCode).toBe(0);
+    expect(auto.stdout.text).toBe('dir\n');
+    expect(auto.result.exitCode).toBe(0);
+    expect(never.stdout.text).toBe('dir\n');
+    expect(never.result.exitCode).toBe(0);
+    expect(earlierClassify.stdout.text).toBe('dir/\n');
+    expect(earlierClassify.result.exitCode).toBe(0);
+    expect(invalid.stdout.text).toBe('');
+    expect(invalid.stderr.text).toContain("invalid argument 'bogus' for '--classify'");
+    expect(invalid.result.exitCode).toBe(1);
+  });
+
+  it('follows command-line directory symlinks by default unless the format describes the link', async () => {
     await writeFile({ path: 'target/file.txt', data: 'payload' });
     await wesh.vfs.symlink({
       path: '/target.link',
       targetPath: '/target',
     });
 
-    const physical = await execute({
-      script: 'ls -dF -P target.link',
+    const defaultListing = await execute({
+      script: 'ls -1 target.link',
     });
-    const logical = await execute({
-      script: 'ls -dF -L target.link',
+    const classified = await execute({
+      script: 'ls -1F target.link',
+    });
+    const logicalClassified = await execute({
+      script: 'ls -1FL target.link',
     });
 
-    expect(physical.stdout.text).toBe('target.link@\n');
-    expect(logical.stdout.text).toBe('target.link/\n');
-    expect(physical.stderr.text).toBe('');
-    expect(logical.stderr.text).toBe('');
-    expect(physical.result.exitCode).toBe(0);
-    expect(logical.result.exitCode).toBe(0);
+    expect(defaultListing.stdout.text).toBe('file.txt\n');
+    expect(classified.stdout.text).toBe('target.link@\n');
+    expect(logicalClassified.stdout.text).toBe('file.txt\n');
+    expect(defaultListing.stderr.text).toBe('');
+    expect(classified.stderr.text).toBe('');
+    expect(logicalClassified.stderr.text).toBe('');
+    expect(defaultListing.result.exitCode).toBe(0);
+    expect(classified.result.exitCode).toBe(0);
+    expect(logicalClassified.result.exitCode).toBe(0);
+  });
+
+  it('lists a broken command-line symlink by default but errors for explicit traversal', async () => {
+    await wesh.vfs.symlink({
+      path: '/broken.link',
+      targetPath: '/missing',
+    });
+
+    const defaultListing = await execute({ script: 'ls -1 broken.link' });
+    const commandLineTraversal = await execute({ script: 'ls -1H broken.link' });
+
+    expect(defaultListing.stdout.text).toBe('broken.link\n');
+    expect(defaultListing.stderr.text).toBe('');
+    expect(defaultListing.result.exitCode).toBe(0);
+    expect(commandLineTraversal.stdout.text).toBe('');
+    expect(commandLineTraversal.stderr.text).toContain('ls: broken.link:');
+    expect(commandLineTraversal.result.exitCode).toBe(2);
   });
 
   it('shows symlink targets in long format', async () => {
@@ -147,14 +223,14 @@ describe('wesh ls', () => {
     });
 
     const physical = await execute({
-      script: 'ls dir.link',
+      script: 'ls -1F dir.link',
     });
     const commandLine = await execute({
-      script: 'ls -H dir.link',
+      script: 'ls -1FH dir.link',
     });
 
-    expect(physical.stdout.text).toBe('dir.link\n');
-    expect(commandLine.stdout.text).toBe('file.txt  \n');
+    expect(physical.stdout.text).toBe('dir.link@\n');
+    expect(commandLine.stdout.text).toBe('file.txt\n');
     expect(physical.stderr.text).toBe('');
     expect(commandLine.stderr.text).toBe('');
     expect(physical.result.exitCode).toBe(0);
@@ -169,7 +245,7 @@ describe('wesh ls', () => {
     });
 
     const physical = await execute({
-      script: 'ls -lRP target.link',
+      script: 'ls -lR target.link',
     });
     const logical = await execute({
       script: 'ls -lRL target.link',
@@ -206,6 +282,32 @@ describe('wesh ls', () => {
     expect(all.result.exitCode).toBe(0);
   });
 
+  it('accepts canonical GNU long names for common short options', async () => {
+    await writeFile({ path: 'alias-dir/.hidden.txt', data: 'hidden' });
+    await writeFile({ path: 'alias-dir/sub/file.txt', data: 'file' });
+    await wesh.vfs.symlink({
+      path: '/alias-link',
+      targetPath: 'alias-dir',
+    });
+
+    const pairs = [
+      ['ls -a alias-dir', 'ls --all alias-dir'],
+      ['ls -R alias-dir', 'ls --recursive alias-dir'],
+      ['ls -h alias-dir', 'ls --human-readable alias-dir'],
+      ['ls -LF alias-link', 'ls --dereference -F alias-link'],
+      ['ls -HF alias-link', 'ls --dereference-command-line -F alias-link'],
+    ] as const;
+
+    for (const [shortScript, longScript] of pairs) {
+      const short = await execute({ script: shortScript });
+      const long = await execute({ script: longScript });
+      expect(long.stdout.text).toBe(short.stdout.text);
+      expect(long.stderr.text).toBe(short.stderr.text);
+      expect(long.result.exitCode).toBe(short.result.exitCode);
+      expect(long.result.exitCode).toBe(0);
+    }
+  });
+
   it('lists root-relative paths correctly from /', async () => {
     await writeFile({ path: 'root.txt', data: 'root' });
 
@@ -218,6 +320,25 @@ describe('wesh ls', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('continues listing after a broken symlink cannot be dereferenced', async () => {
+    await writeFile({ path: 'dir/visible.txt', data: 'visible' });
+    await wesh.vfs.symlink({
+      path: '/dir/broken.link',
+      targetPath: '/missing',
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'ls -1FL dir',
+    });
+
+    expect(stdout.text).toBe(`\
+broken.link@
+visible.txt
+`);
+    expect(stderr.text).toContain("ls: cannot access 'dir/broken.link':");
+    expect(result.exitCode).toBe(1);
+  });
+
   it('supports -R to list subdirectories recursively', async () => {
     await writeFile({ path: 'tree/root.txt', data: 'root' });
     await writeFile({ path: 'tree/nested/deep.txt', data: 'deep' });
@@ -227,13 +348,52 @@ describe('wesh ls', () => {
     });
 
     expect(stdout.text).toBe(`\
-nested  root.txt  
+tree:
+nested
+root.txt
 
 tree/nested:
-deep.txt  
+deep.txt
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('stops recursive logical traversal at a symbolic-link ancestor cycle', async () => {
+    await writeFile({ path: 'work/dir/file.txt', data: 'payload' });
+    await wesh.vfs.symlink({
+      path: '/work/dir/up',
+      targetPath: '..',
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'ls -1RL work/dir',
+    });
+
+    expect(stdout.text).toBe(`\
+work/dir:
+file.txt
+up
+
+work/dir/up:
+dir
+`);
+    expect(stderr.text).toContain(
+      'ls: work/dir/up/dir: not listing already-listed directory',
+    );
+    expect(result.exitCode).toBe(2);
+  });
+
+  it('rejects -P and other invalid options with exit code 2', async () => {
+    const physical = await execute({ script: 'ls -P' });
+    const unknown = await execute({ script: 'ls --definitely-invalid' });
+
+    expect(physical.stdout.text).toBe('');
+    expect(unknown.stdout.text).toBe('');
+    expect(physical.stderr.text).toContain("ls: invalid option -- 'P'");
+    expect(unknown.stderr.text).toContain("ls: unrecognized option '--definitely-invalid'");
+    expect(physical.result.exitCode).toBe(2);
+    expect(unknown.result.exitCode).toBe(2);
   });
 
   it('continues after missing operands but returns a non-zero exit code', async () => {
@@ -247,6 +407,6 @@ deep.txt
 dir:
 file.txt`);
     expect(stderr.text).toContain('ls: missing:');
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(2);
   });
 });

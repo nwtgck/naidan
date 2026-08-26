@@ -26,13 +26,9 @@ export type ColumnSelector =
   | { kind: 'range', start: number, end: number }
   | { kind: 'name', value: string };
 
-export interface TableRow {
-  fields: string[],
-}
-
 export interface TableModel {
   header: string[] | undefined,
-  rows: TableRow[],
+  rows: string[][],
 }
 
 export type OptionValues = Record<string, boolean | string | number>;

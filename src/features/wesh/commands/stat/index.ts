@@ -1,4 +1,6 @@
 import { parseStandardArgv, type ArgvOptionOccurrence, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import { resolveCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { resolvePath } from '@/features/wesh/path';
 import type {
@@ -164,7 +166,12 @@ async function loadOperandInput({
     ? await context.files.readlink({ path: resolvedPath })
     : undefined;
 
-  return { operand, stat, symlinkTarget };
+  return {
+    operand,
+    stat,
+    symlinkTarget,
+    characterLocaleMode: resolveCharacterLocaleMode({ env: context.env }),
+  };
 }
 
 function* renderOutputChunks({
@@ -275,7 +282,11 @@ export const statCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardArgvAtFirstEarlyExit({
+        args: context.args,
+        spec: statArgvSpec,
+        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+      }),
       spec: statArgvSpec,
     });
     const diagnostic = parsed.diagnostics[0];
@@ -332,7 +343,10 @@ export const statCommandDefinition: WeshCommandDefinition = {
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         await text.error({
-          text: `stat: cannot stat ${quoteStatName({ value: operand })}: ${message}\n`,
+          text: `stat: cannot stat ${quoteStatName({
+            value: operand,
+            characterLocaleMode: resolveCharacterLocaleMode({ env: context.env }),
+          })}: ${message}\n`,
         });
         exitCode = 1;
         continue;

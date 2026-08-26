@@ -6,6 +6,8 @@ import type {
   OptionValues,
 } from './types';
 
+const COLUMN_MAX_LAYOUT_SIZE = 1_000_000;
+
 function parsePositiveInteger({
   value,
   optionName,
@@ -17,7 +19,11 @@ function parsePositiveInteger({
     return { ok: false, message: `${optionName} requires a positive integer` };
   }
 
-  return { ok: true, value: Number.parseInt(value, 10) };
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isSafeInteger(parsed) || parsed > COLUMN_MAX_LAYOUT_SIZE) {
+    return { ok: false, message: `${optionName} exceeds safety limit ${COLUMN_MAX_LAYOUT_SIZE}` };
+  }
+  return { ok: true, value: parsed };
 }
 
 function parseOutputWidth({
@@ -33,7 +39,11 @@ function parseOutputWidth({
     return { ok: false, message: "--output-width requires a positive integer, 0, or 'unlimited'" };
   }
 
-  return { ok: true, value: Number.parseInt(value, 10) };
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isSafeInteger(parsed) || parsed > COLUMN_MAX_LAYOUT_SIZE) {
+    return { ok: false, message: `--output-width exceeds safety limit ${COLUMN_MAX_LAYOUT_SIZE}` };
+  }
+  return { ok: true, value: parsed };
 }
 
 function parseNonEmptySeparators({
@@ -241,7 +251,10 @@ function parseColumnsEnv({
     return undefined;
   }
 
-  return Number.parseInt(value, 10);
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) && parsed <= COLUMN_MAX_LAYOUT_SIZE
+    ? parsed
+    : undefined;
 }
 
 function parseSelectors({

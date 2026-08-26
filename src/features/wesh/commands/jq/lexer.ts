@@ -1,4 +1,5 @@
 import type { JqStringTokenPart, JqToken } from './ast';
+import { createJqNumberOrigin } from './number-origin';
 
 function isIdentifierStart({
   char,
@@ -278,20 +279,20 @@ export function lexJq({
       break;
     }
 
-    if (char === '-') {
-      const numberMatch = source.slice(index).match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/);
-      if (numberMatch?.[0] !== undefined && numberMatch[0] !== '-') {
-        tokens.push({ kind: 'number', value: Number(numberMatch[0]) });
-        index += numberMatch[0].length;
+    switch (char) {
+    case '.': {
+      const decimal = source.slice(index).match(/^\.\d+(?:[eE][+-]?\d+)?/u);
+      if (decimal?.[0] !== undefined) {
+        const origin = createJqNumberOrigin({ lexeme: decimal[0] });
+        if (origin === undefined) return { ok: false, message: `invalid number near '${source.slice(index)}'` };
+        tokens.push({ kind: 'number', value: Number(decimal[0]), origin });
+        index += decimal[0].length;
         continue;
       }
-    }
-
-    switch (char) {
-    case '.':
       tokens.push({ kind: 'dot' });
       index += 1;
       continue;
+    }
     case '|':
     case ',':
     case '<':
@@ -307,6 +308,22 @@ export function lexJq({
       tokens.push({ kind: 'operator', value: char });
       index += 1;
       continue;
+    case '@': {
+      const next = source[index + 1];
+      if (next === undefined || !isIdentifierStart({ char: next })) {
+        return { ok: false, message: "expected format name after '@'" };
+      }
+      let value = next;
+      index += 2;
+      while (index < source.length) {
+        const current = source[index];
+        if (current === undefined || !isIdentifierPart({ char: current })) break;
+        value += current;
+        index += 1;
+      }
+      tokens.push({ kind: 'identifier', value: `@${value}` });
+      continue;
+    }
     case '$': {
       const next = source[index + 1];
       if (next === undefined || !isIdentifierStart({ char: next })) {
@@ -349,7 +366,9 @@ export function lexJq({
       if (match?.[0] === undefined) {
         return { ok: false, message: `invalid number near '${source.slice(index)}'` };
       }
-      tokens.push({ kind: 'number', value: Number(match[0]) });
+      const origin = createJqNumberOrigin({ lexeme: match[0] });
+      if (origin === undefined) return { ok: false, message: `invalid number near '${source.slice(index)}'` };
+      tokens.push({ kind: 'number', value: Number(match[0]), origin });
       index += match[0].length;
       continue;
     }
@@ -378,6 +397,9 @@ export function lexJq({
       case 'end':
       case 'try':
       case 'catch':
+      case 'def':
+      case 'reduce':
+      case 'foreach':
       case 'as':
         tokens.push({ kind: 'keyword', value });
         break;

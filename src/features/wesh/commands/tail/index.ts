@@ -1,11 +1,23 @@
 import { createWeshOwnedBytes } from '@/features/wesh/types';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import {
+  parseStandardArgv,
+  type ArgvOptionOccurrence,
+  type StandardArgvParserSpec,
+} from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import {
+  parseCoreutilsLineOrByteCount,
+  selectLastLineOrByteCount,
+} from '@/features/wesh/commands/_shared/line-byte-count-selection';
 import { openHandleReadStream, openFileReadStream } from '@/features/wesh/utils/fs';
-import { createBufferedTextWriter } from '@/features/wesh/utils/io';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
-import { getWeshTextRecordTerminator, iterateUtf8LineRecords } from '@/features/wesh/utils/text-records';
+import {
+  iterateByteRecordEntries,
+  materializeByteRecord,
+  type WeshByteRecord,
+} from '@/features/wesh/utils/text-records';
 
 function parseSignedCount({
   value,
@@ -14,10 +26,61 @@ function parseSignedCount({
   value: string,
   label: string,
 }): { ok: true, value: string } | { ok: false, message: string } {
-  if (!/^[+-]?\d+$/.test(value)) {
-    return { ok: false, message: `invalid number of ${label}: '${value}'` };
+  return parseCoreutilsLineOrByteCount({
+    value,
+    errorPrefix: `invalid number of ${label}`,
+  });
+}
+
+function normalizeLeadingPositiveLegacyCount({
+  args,
+}: {
+  args: readonly string[],
+}): string[] {
+  const first = args[0];
+  if (first === undefined || !/^\+\d+$/.test(first)) {
+    return [...args];
   }
-  return { ok: true, value };
+
+  const rest = args.slice(1);
+  const explicitOperandBoundary = rest[0] === '--';
+  const operands = explicitOperandBoundary ? rest.slice(1) : rest;
+  const hasOption = !explicitOperandBoundary && rest.some(
+    token => token !== '-' && token.startsWith('-'),
+  );
+
+  if (hasOption || operands.length > 1) {
+    return [...args];
+  }
+
+  return ['-n', first, ...rest];
+}
+
+function findInvalidObsoleteTailCount({
+  originalArgs,
+  occurrences,
+  positionalCount,
+}: {
+  originalArgs: readonly string[],
+  occurrences: readonly ArgvOptionOccurrence[],
+  positionalCount: number,
+}): string | undefined {
+  const obsoleteOccurrence = occurrences.find(
+    occurrence => occurrence.kind === 'value' && /^-\d+$/.test(occurrence.option),
+  );
+  if (obsoleteOccurrence === undefined || obsoleteOccurrence.kind !== 'value') {
+    return undefined;
+  }
+
+  if (
+    originalArgs[0] !== obsoleteOccurrence.option
+    || occurrences.length !== 1
+    || positionalCount > 1
+  ) {
+    return obsoleteOccurrence.option.slice(1);
+  }
+
+  return undefined;
 }
 
 async function writeOwnedBytes({
@@ -119,29 +182,29 @@ async function writeTailByteQueue({
 }
 
 interface TailLineQueue {
-  lines: string[],
+  records: Uint8Array[],
   headIndex: number,
 }
 
 function appendTailLine({
   queue,
-  line,
+  record,
   maxLines,
 }: {
   queue: TailLineQueue,
-  line: string,
+  record: Uint8Array,
   maxLines: number,
 }): void {
   if (maxLines === 0) {
     return;
   }
 
-  queue.lines.push(line);
-  if (queue.lines.length - queue.headIndex > maxLines) {
+  queue.records.push(record);
+  if (queue.records.length - queue.headIndex > maxLines) {
     queue.headIndex += 1;
   }
-  if (queue.headIndex >= 1024 && queue.headIndex * 2 >= queue.lines.length) {
-    queue.lines = queue.lines.slice(queue.headIndex);
+  if (queue.headIndex >= 1024 && queue.headIndex * 2 >= queue.records.length) {
+    queue.records = queue.records.slice(queue.headIndex);
     queue.headIndex = 0;
   }
 }
@@ -191,6 +254,13 @@ const tailArgvSpec: StandardArgvParserSpec = {
     },
     {
       kind: 'flag',
+      short: 'z',
+      long: 'zero-terminated',
+      effects: [{ key: 'zeroTerminated', value: true }],
+      help: { summary: 'line delimiter is NUL, not newline', category: 'advanced' },
+    },
+    {
+      kind: 'flag',
       short: undefined,
       long: 'help',
       effects: [{ key: 'help', value: true }],
@@ -202,11 +272,12 @@ const tailArgvSpec: StandardArgvParserSpec = {
   treatSingleDashAsPositional: true,
   specialTokenParsers: [
     ({ token }) => {
-      if (!/^[+-]\d+$/.test(token)) return undefined;
+      if (!/^-\d+$/.test(token)) return undefined;
       return {
         kind: 'matched',
         consumeCount: 1,
-        effects: [{ key: 'lines', value: token }],
+        effects: [{ key: 'lines', value: token.slice(1) }],
+        occurrences: [{ kind: 'value', option: token, key: 'lines', value: token.slice(1) }],
       };
     },
   ],
@@ -219,8 +290,11 @@ export const tailCommandDefinition: WeshCommandDefinition = {
     usage: 'tail [OPTION]... [FILE]...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({
+    const normalizedArgs = normalizeLeadingPositiveLegacyCount({
       args: context.args,
+    });
+    const parsed = parseStandardArgv({
+      args: stopStandardArgvAtFirstEarlyExit({ args: normalizedArgs, spec: tailArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
       spec: tailArgvSpec,
     });
 
@@ -245,8 +319,36 @@ export const tailCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
-    const rawLineCount = typeof parsed.optionValues.lines === 'string' ? parsed.optionValues.lines : '10';
-    const rawByteCount = typeof parsed.optionValues.bytes === 'string' ? parsed.optionValues.bytes : undefined;
+    const invalidObsoleteCount = findInvalidObsoleteTailCount({
+      originalArgs: context.args,
+      occurrences: parsed.occurrences,
+      positionalCount: parsed.positionals.length,
+    });
+    if (invalidObsoleteCount !== undefined) {
+      await context.text().error({
+        text: `tail: option used in invalid context -- ${invalidObsoleteCount}\n`,
+      });
+      return { exitCode: 1 };
+    }
+
+    const countSelection = selectLastLineOrByteCount({
+      occurrences: parsed.occurrences,
+      defaultLineCount: '10',
+    });
+    const { rawLineCount, rawByteCount } = (() => {
+      switch (countSelection.kind) {
+      case 'lines':
+        return { rawLineCount: countSelection.value, rawByteCount: undefined };
+      case 'bytes':
+        return { rawLineCount: '10', rawByteCount: countSelection.value };
+      default: {
+        const _ex: never = countSelection;
+        throw new Error(
+          `Unhandled tail count selection: ${((_ex satisfies never) as { readonly kind: string }).kind}`,
+        );
+      }
+      }
+    })();
     const lineCount = parseInt(rawLineCount, 10);
     const countFromStart = rawLineCount.startsWith('+');
     const byteCount = rawByteCount === undefined ? undefined : parseInt(rawByteCount, 10);
@@ -256,7 +358,25 @@ export const tailCommandDefinition: WeshCommandDefinition = {
       : parsed.optionValues.headerMode === 'never'
         ? 'never'
         : 'auto';
+    const zeroTerminated = parsed.optionValues.zeroTerminated === true;
+    const recordDelimiterByte = zeroTerminated ? 0 : 0x0a;
+    const suppressesAllOutput = byteCount === undefined
+      ? !countFromStart && Math.abs(lineCount) === 0
+      : !byteCountFromStart && Math.abs(byteCount) === 0;
     let hadError = false;
+
+    if (suppressesAllOutput) {
+      return { exitCode: 0 };
+    }
+
+    const iterateRecords = ({
+      chunks,
+    }: {
+      chunks: AsyncIterable<Uint8Array>,
+    }): AsyncIterable<WeshByteRecord> => iterateByteRecordEntries({
+      chunks,
+      delimiterByte: recordDelimiterByte,
+    });
 
     const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       const chunks = iterateReadableStreamChunks({ stream });
@@ -300,78 +420,95 @@ export const tailCommandDefinition: WeshCommandDefinition = {
         return;
       }
 
-      const writer = createBufferedTextWriter({
-        handle: context.stdout,
-        maxBufferLength: 16 * 1024,
-      });
       if (countFromStart) {
         let currentLineNumber = 1;
-        for await (const record of iterateUtf8LineRecords({ chunks })) {
+        for await (const record of iterateRecords({ chunks })) {
           if (currentLineNumber >= lineCount) {
-            await writer.write({
-              text: record.text + getWeshTextRecordTerminator({
-                termination: record.termination,
+            await writeOwnedBytes({
+              handle: context.stdout,
+              data: materializeByteRecord({
+                record,
+                delimiterByte: recordDelimiterByte,
               }),
             });
           }
           currentLineNumber += 1;
         }
-        await writer.flush();
         return;
       }
 
       const maxLines = Math.max(Math.abs(lineCount), 0);
       const queue: TailLineQueue = {
-        lines: [],
+        records: [],
         headIndex: 0,
       };
-      for await (const record of iterateUtf8LineRecords({ chunks })) {
+      for await (const record of iterateRecords({ chunks })) {
         appendTailLine({
           queue,
-          line: record.text + getWeshTextRecordTerminator({
-            termination: record.termination,
+          record: materializeByteRecord({
+            record,
+            delimiterByte: recordDelimiterByte,
           }),
           maxLines,
         });
       }
-      for (let index = queue.headIndex; index < queue.lines.length; index++) {
-        await writer.write({ text: queue.lines[index]! });
+      for (let index = queue.headIndex; index < queue.records.length; index++) {
+        await writeOwnedBytes({
+          handle: context.stdout,
+          data: queue.records[index]!,
+        });
       }
-      await writer.flush();
     };
 
     if (parsed.positionals.length === 0) {
+      switch (headerMode) {
+      case 'always':
+        await text.print({ text: '==> standard input <==\n' });
+        break;
+      case 'auto':
+      case 'never':
+        break;
+      default: {
+        const _ex: never = headerMode;
+        throw new Error(`Unhandled tail header mode: ${_ex}`);
+      }
+      }
       await processStream({
         stream: openHandleReadStream({ handle: context.stdin }),
       });
     } else {
-      for (const [index, f] of parsed.positionals.entries()) {
+      let printedHeaderCount = 0;
+      for (const f of parsed.positionals) {
+        let stopAfterError = false;
         try {
-          const showHeader = headerMode === 'always' || (headerMode === 'auto' && parsed.positionals.length > 1);
+          const showHeader = headerMode === 'always'
+            || (headerMode === 'auto' && parsed.positionals.length > 1);
+          const path = f === '-' ? undefined : resolvePath({ cwd: context.cwd, path: f });
+          if (path !== undefined) {
+            const stat = await context.files.stat({ path });
+            stopAfterError = (byteCount !== undefined || countFromStart) && stat.type === 'directory';
+          }
           if (showHeader) {
-            if (index > 0) {
+            if (printedHeaderCount > 0) {
               await text.print({ text: '\n' });
             }
             await text.print({ text: `==> ${f === '-' ? 'standard input' : f} <==\n` });
+            printedHeaderCount += 1;
           }
-
-          if (f === '-') {
-            await processStream({
-              stream: openHandleReadStream({ handle: context.stdin }),
-            });
-            continue;
-          }
-
-          await processStream({
-            stream: await openFileReadStream({
+          const stream = f === '-'
+            ? openHandleReadStream({ handle: context.stdin })
+            : await openFileReadStream({
               files: context.files,
-              path: resolvePath({ cwd: context.cwd, path: f }),
-            }),
-          });
+              path: path!,
+            });
+          await processStream({ stream });
         } catch (e: unknown) {
           hadError = true;
           const message = e instanceof Error ? e.message : String(e);
           await text.error({ text: `tail: ${f}: ${message}\n` });
+          if (stopAfterError) {
+            break;
+          }
         }
       }
     }

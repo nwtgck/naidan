@@ -1,21 +1,72 @@
+import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
+import { encodeCommandDataText } from '@/features/wesh/commands/_shared/data-codec';
+import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { parseStandardArgv, type ArgvOptionOccurrence, type ArgvSpecialParseResult, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { parseXargsDelimiter } from '@/features/wesh/commands/xargs/parse-input';
 import {
   iterateReadableStreamChunks,
-  iterateUtf8TextChunks,
+  iterateCommandDataTextChunks,
+  iterateXargsInputLines,
   iterateXargsDelimitedItems,
   iterateXargsInsertItems,
   iterateXargsLogicalLines,
   iterateXargsStandardItems,
+  iterateXargsTextIgnoringNulSuffixes,
   XargsInputError,
 } from '@/features/wesh/commands/xargs/stream-input';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
 import { openFileReadStream, openHandleReadStream } from '@/features/wesh/utils/fs';
-import { iterateUtf8Lines } from '@/features/wesh/utils/text-records';
 
 const DEFAULT_MAX_CHARS = 131072;
+const MAX_AUTOMATIC_PARALLELISM = 32;
 const XARGS_VERSION = 'xargs (wesh) 0.25.1-dev';
+const XARGS_IGNORED_NUL_WARNING = 'xargs: WARNING: a NUL character occurred in the input.  It cannot be passed through in the argument list.  Did you mean to use the --null option?\n';
+
+function parseXargsInteger({
+  value,
+  minimum,
+  label,
+}: {
+  value: string,
+  minimum: number,
+  label: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  if (!/^\+?\d+$/u.test(numericText)) {
+    return { ok: false, message: `invalid ${label} value '${value}'` };
+  }
+
+  const parsed = Number(numericText);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
+    return { ok: false, message: `invalid ${label} value '${value}'` };
+  }
+
+  return { ok: true, value: parsed };
+}
+
+function parseXargsMaxProcs({
+  value,
+}: {
+  value: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
+  const parsed = parseXargsInteger({
+    value,
+    minimum: 0,
+    label: 'max-procs',
+  });
+  if (!parsed.ok) {
+    return parsed;
+  }
+  if (parsed.value > MAX_AUTOMATIC_PARALLELISM) {
+    return {
+      ok: false,
+      message: `max-procs value '${value}' exceeds safety limit ${MAX_AUTOMATIC_PARALLELISM}`,
+    };
+  }
+  return parsed;
+}
 
 function parseDeprecatedIOption({
   token,
@@ -66,7 +117,7 @@ function parseDeprecatedLOption({
     };
   }
 
-  if (/^-l\d+$/.test(token)) {
+  if (/^-l\+?\d+$/.test(token)) {
     return {
       kind: 'matched',
       consumeCount: 1,
@@ -139,9 +190,11 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       key: 'maxArgs',
       valueName: 'MAX',
       allowAttachedValue: true,
-      parseValue: ({ value }) => /^\d+$/.test(value) && Number(value) > 0
-        ? { ok: true, value: Number(value) }
-        : { ok: false, message: `invalid max-args value '${value}'` },
+      parseValue: ({ value }) => parseXargsInteger({
+        value,
+        minimum: 1,
+        label: 'max-args',
+      }),
       help: { summary: 'use at most MAX arguments per command line', valueName: 'MAX', category: 'common' },
     },
     {
@@ -151,9 +204,7 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       key: 'maxProcs',
       valueName: 'MAX',
       allowAttachedValue: true,
-      parseValue: ({ value }) => /^\d+$/.test(value)
-        ? { ok: true, value: Number(value) }
-        : { ok: false, message: `invalid max-procs value '${value}'` },
+      parseValue: ({ value }) => parseXargsMaxProcs({ value }),
       help: { summary: 'run up to MAX processes at a time', valueName: 'MAX', category: 'advanced' },
     },
     {
@@ -163,9 +214,11 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       key: 'maxLines',
       valueName: 'MAX',
       allowAttachedValue: true,
-      parseValue: ({ value }) => /^\d+$/.test(value) && Number(value) > 0
-        ? { ok: true, value: Number(value) }
-        : { ok: false, message: `invalid max-lines value '${value}'` },
+      parseValue: ({ value }) => parseXargsInteger({
+        value,
+        minimum: 1,
+        label: 'max-lines',
+      }),
       help: { summary: 'use at most MAX nonblank input lines per command line', valueName: 'MAX', category: 'common' },
     },
     {
@@ -175,9 +228,11 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       key: 'maxChars',
       valueName: 'MAX',
       allowAttachedValue: true,
-      parseValue: ({ value }) => /^\d+$/.test(value) && Number(value) > 0
-        ? { ok: true, value: Number(value) }
-        : { ok: false, message: `invalid max-chars value '${value}'` },
+      parseValue: ({ value }) => parseXargsInteger({
+        value,
+        minimum: 1,
+        label: 'max-chars',
+      }),
       help: { summary: 'use at most MAX characters per command line', valueName: 'MAX', category: 'common' },
     },
     {
@@ -280,12 +335,328 @@ const xargsArgvSpec: StandardArgvParserSpec = {
   ],
 };
 
+const XARGS_DEPRECATED_OPTIONAL_SHORT_OPTIONS = new Set(['e', 'i', 'l']);
+const XARGS_SHORT_OPTIONS = new Map(
+  xargsArgvSpec.options.flatMap((option) => option.short === undefined ? [] : [[option.short, option] as const]),
+);
+const XARGS_LONG_OPTIONS = new Map(
+  xargsArgvSpec.options.flatMap((option) => option.long === undefined ? [] : [[option.long, option] as const]),
+);
+
+function normalizeXargsDeprecatedOptionalShortBundles({
+  args,
+}: {
+  args: string[],
+}): string[] {
+  const normalized: string[] = [];
+
+  let index = 0;
+  while (index < args.length) {
+    const token = args[index];
+    if (token === undefined) break;
+
+    if (token === '--') {
+      normalized.push(...args.slice(index));
+      break;
+    }
+
+    let specialConsumeCount: number | undefined;
+    for (const specialParser of xargsArgvSpec.specialTokenParsers) {
+      const result = specialParser({
+        token,
+        nextToken: args[index + 1],
+      });
+      if (result === undefined) continue;
+      specialConsumeCount = result.consumeCount;
+      break;
+    }
+    if (specialConsumeCount !== undefined) {
+      normalized.push(...args.slice(index, index + specialConsumeCount));
+      index += specialConsumeCount;
+      continue;
+    }
+
+    if (token.startsWith('--') && token.length > 2) {
+      normalized.push(token);
+      const optionBody = token.slice(2);
+      const equalsIndex = optionBody.indexOf('=');
+      const key = equalsIndex >= 0 ? optionBody.slice(0, equalsIndex) : optionBody;
+      const option = XARGS_LONG_OPTIONS.get(key);
+      index += 1;
+      if (option?.kind === 'value' && equalsIndex < 0 && index < args.length) {
+        normalized.push(args[index]!);
+        index += 1;
+      }
+      continue;
+    }
+
+    if (token.startsWith('-') && token.length > 1 && token !== '-') {
+      const shortBody = token.slice(1);
+      let consumesNextValue = false;
+      let rewritten = false;
+
+      for (let shortIndex = 0; shortIndex < shortBody.length; shortIndex += 1) {
+        const short = shortBody[shortIndex];
+        if (short === undefined) continue;
+
+        if (shortIndex > 0 && XARGS_DEPRECATED_OPTIONAL_SHORT_OPTIONS.has(short)) {
+          normalized.push(
+            `-${shortBody.slice(0, shortIndex)}`,
+            `-${shortBody.slice(shortIndex)}`,
+          );
+          rewritten = true;
+          break;
+        }
+
+        const option = XARGS_SHORT_OPTIONS.get(short);
+        if (option === undefined) break;
+        switch (option.kind) {
+        case 'flag':
+          continue;
+        case 'value': {
+          const attachedValue = shortBody.slice(shortIndex + 1);
+          consumesNextValue = !(option.allowAttachedValue && attachedValue.length > 0);
+          shortIndex = shortBody.length;
+          break;
+        }
+        default: {
+          const _ex: never = option;
+          throw new Error(`Unhandled xargs option kind: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+        }
+        }
+      }
+
+      if (!rewritten) {
+        normalized.push(token);
+      }
+      index += 1;
+      if (!rewritten && consumesNextValue && index < args.length) {
+        normalized.push(args[index]!);
+        index += 1;
+      }
+      continue;
+    }
+
+    normalized.push(token);
+    index += 1;
+  }
+
+  return normalized;
+}
+
+function splitXargsArguments({
+  args,
+}: {
+  args: string[],
+}): { xargsArgs: string[], commandArgs: string[] } {
+  let index = 0;
+  while (index < args.length) {
+    const token = args[index];
+    if (token === undefined) break;
+
+    if (token === '--') {
+      return {
+        xargsArgs: args.slice(0, index + 1),
+        commandArgs: args.slice(index + 1),
+      };
+    }
+
+    let specialConsumeCount: number | undefined;
+    for (const specialParser of xargsArgvSpec.specialTokenParsers) {
+      const result = specialParser({
+        token,
+        nextToken: args[index + 1],
+      });
+      if (result === undefined) continue;
+      specialConsumeCount = result.consumeCount;
+      break;
+    }
+    if (specialConsumeCount !== undefined) {
+      index += specialConsumeCount;
+      continue;
+    }
+
+    if (token.startsWith('--') && token.length > 2) {
+      const optionBody = token.slice(2);
+      const equalsIndex = optionBody.indexOf('=');
+      const key = equalsIndex >= 0 ? optionBody.slice(0, equalsIndex) : optionBody;
+      const option = XARGS_LONG_OPTIONS.get(key);
+      index += 1;
+      if (option?.kind === 'value' && equalsIndex < 0 && index < args.length) {
+        index += 1;
+      }
+      continue;
+    }
+
+    if (token.startsWith('-') && token.length > 1 && token !== '-') {
+      const shortBody = token.slice(1);
+      index += 1;
+      for (let shortIndex = 0; shortIndex < shortBody.length; shortIndex += 1) {
+        const short = shortBody[shortIndex];
+        if (short === undefined) continue;
+        const option = XARGS_SHORT_OPTIONS.get(short);
+        if (option === undefined) break;
+        switch (option.kind) {
+        case 'flag':
+          continue;
+        case 'value': {
+          const attachedValue = shortBody.slice(shortIndex + 1);
+          if (!(option.allowAttachedValue && attachedValue.length > 0) && index < args.length) {
+            index += 1;
+          }
+          shortIndex = shortBody.length;
+          break;
+        }
+        default: {
+          const _ex: never = option;
+          throw new Error(`Unhandled xargs option kind: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+        }
+        }
+      }
+      continue;
+    }
+
+    return {
+      xargsArgs: args.slice(0, index),
+      commandArgs: args.slice(index),
+    };
+  }
+
+  return { xargsArgs: args, commandArgs: [] };
+}
+
 function shellQuote({
   text,
+  characterLocaleMode,
 }: {
   text: string,
+  characterLocaleMode: WeshCharacterLocaleMode,
 }): string {
-  return /^[A-Za-z0-9_./-]+$/.test(text) ? text : `'${text.replaceAll('\'', `'\\''`)}'`;
+  const isSafePrintableWord = ({ value }: { value: string }): boolean => {
+    if (value.length === 0) return false;
+    for (const char of value) {
+      const codePoint = char.codePointAt(0)!;
+      if (codePoint > 0x7f && characterLocaleMode === 'unicode') continue;
+      if (!/[A-Za-z0-9_+,./:@%-]/u.test(char)) return false;
+    }
+    return true;
+  };
+  const quotePrintable = ({ value }: { value: string }): string => {
+    if (value.length === 0) return "''";
+    if (isSafePrintableWord({ value })) return value;
+    if (
+      value.includes('\'')
+      && !value.includes('"')
+      && !value.includes('$')
+      && !value.includes('`')
+      && !value.includes('\\')
+    ) {
+      return `"${value}"`;
+    }
+    return `'${value.replaceAll('\'', `'\\''`)}'`;
+  };
+  const quotePrintableSegment = ({ value }: { value: string }): string => {
+    if (
+      value.includes('\'')
+      && !value.includes('"')
+      && !value.includes('$')
+      && !value.includes('`')
+      && !value.includes('\\')
+    ) {
+      return `"${value}"`;
+    }
+    return `'${value.replaceAll('\'', `'\\''`)}'`;
+  };
+  const escapeByte = ({ byte }: { byte: number }): string => {
+    switch (byte) {
+    case 0x07: return '\\a';
+    case 0x08: return '\\b';
+    case 0x09: return '\\t';
+    case 0x0a: return '\\n';
+    case 0x0b: return '\\v';
+    case 0x0c: return '\\f';
+    case 0x0d: return '\\r';
+    default: return `\\${byte.toString(8).padStart(3, '0')}`;
+    }
+  };
+  const isPrintableCharacter = ({ char }: { char: string }): boolean => {
+    const codePoint = char.codePointAt(0)!;
+    if (codePoint < 0x20 || codePoint === 0x7f) return false;
+    if (characterLocaleMode === 'ascii' && codePoint > 0x7f) return false;
+    return !/\p{C}/u.test(char);
+  };
+
+  type Segment = { readonly kind: 'printable', readonly value: string }
+    | { readonly kind: 'escaped', readonly bytes: readonly number[] };
+  const segments: Segment[] = [];
+  let printable = '';
+  let escaped: number[] = [];
+  const flushPrintable = (): void => {
+    if (printable.length === 0) return;
+    segments.push({ kind: 'printable', value: printable });
+    printable = '';
+  };
+  const flushEscaped = (): void => {
+    if (escaped.length === 0) return;
+    segments.push({ kind: 'escaped', bytes: escaped });
+    escaped = [];
+  };
+
+  for (let index = 0; index < text.length;) {
+    const codeUnit = text.charCodeAt(index);
+    if (codeUnit >= 0xdc80 && codeUnit <= 0xdcff) {
+      flushPrintable();
+      escaped.push(codeUnit - 0xdc00);
+      index += 1;
+      continue;
+    }
+    const codePoint = text.codePointAt(index)!;
+    const char = String.fromCodePoint(codePoint);
+    index += char.length;
+    if (isPrintableCharacter({ char })) {
+      flushEscaped();
+      printable += char;
+    } else {
+      flushPrintable();
+      escaped.push(...encodeCommandDataText({ text: char }));
+    }
+  }
+  flushPrintable();
+  flushEscaped();
+
+  if (segments.length === 0) return "''";
+  if (segments.every(segment => segment.kind === 'printable')) {
+    return quotePrintable({ value: text });
+  }
+
+  const output: string[] = [];
+  const firstSegment = segments[0]!;
+  switch (firstSegment.kind) {
+  case 'escaped':
+    output.push("''");
+    break;
+  case 'printable':
+    break;
+  default: {
+    const _exhaustive: never = firstSegment;
+    throw new Error(`Unhandled first shell quote segment: ${String(_exhaustive)}`);
+  }
+  }
+  for (const segment of segments) {
+    switch (segment.kind) {
+    case 'printable':
+      output.push(quotePrintableSegment({ value: segment.value }));
+      break;
+    case 'escaped':
+      output.push(`$'${segment.bytes.map(byte => escapeByte({ byte })).join('')}'`);
+      break;
+    default: {
+      const _exhaustive: never = segment;
+      throw new Error(`Unhandled shell quote segment: ${String(_exhaustive)}`);
+    }
+    }
+  }
+  return output.join('');
 }
 
 function createDevNullLikeHandle(): WeshFileHandle {
@@ -343,6 +714,77 @@ function getLastValueOccurrence({
   key: string,
 }): Extract<ArgvOptionOccurrence, { kind: 'value' }> | undefined {
   return [...occurrences].reverse().find((occurrence) => isValueOccurrence(occurrence, key));
+}
+
+type XargsInputMode =
+  | { kind: 'standard' }
+  | { kind: 'null' }
+  | { kind: 'delimiter', delimiter: string };
+
+type XargsExplicitDelimiterInputMode = Exclude<XargsInputMode, { kind: 'standard' }>;
+
+function resolveInputMode({
+  occurrences,
+}: {
+  occurrences: ArgvOptionOccurrence[],
+}): XargsInputMode {
+  let mode: XargsInputMode = { kind: 'standard' };
+  for (const occurrence of occurrences) {
+    if (
+      occurrence.kind === 'value'
+      && occurrence.key === 'delimiter'
+      && typeof occurrence.value === 'string'
+    ) {
+      mode = { kind: 'delimiter', delimiter: occurrence.value };
+      continue;
+    }
+    if (
+      (occurrence.kind === 'flag' || occurrence.kind === 'special')
+      && occurrence.effects.some((effect) => effect.key === 'nullDelimited' && effect.value === true)
+    ) {
+      mode = { kind: 'null' };
+    }
+  }
+  return mode;
+}
+
+function createExplicitlyDelimitedXargsItems({
+  textChunks,
+  inputMode,
+}: {
+  textChunks: AsyncIterable<string>,
+  inputMode: XargsExplicitDelimiterInputMode,
+}): AsyncIterable<string> {
+  switch (inputMode.kind) {
+  case 'null':
+    return iterateXargsDelimitedItems({ textChunks, delimiter: '\0' });
+  case 'delimiter': {
+    const filteredTextChunks = inputMode.delimiter === '\0'
+      ? textChunks
+      : iterateXargsTextIgnoringNulSuffixes({
+        textChunks,
+        boundary: { kind: 'delimiter', delimiter: inputMode.delimiter },
+      });
+    return iterateXargsDelimitedItems({
+      textChunks: filteredTextChunks,
+      delimiter: inputMode.delimiter,
+    });
+  }
+  default: {
+    const _ex: never = inputMode;
+    throw new Error(`Unhandled xargs explicit delimiter input mode: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+  }
+  }
+}
+
+async function* iterateXargsItemsAsLogicalLines({
+  items,
+}: {
+  items: AsyncIterable<string>,
+}): AsyncIterable<string[]> {
+  for await (const item of items) {
+    yield [item];
+  }
 }
 
 type XargsModeOccurrence = Extract<ArgvOptionOccurrence, { kind: 'value' }> & {
@@ -434,11 +876,8 @@ interface XargsInvocation {
   readonly args: string[],
 }
 
-const MAX_AUTOMATIC_PARALLELISM = 32;
-const argumentEncoder = new TextEncoder();
-
 function getArgumentBytes({ value }: { value: string }): number {
-  return argumentEncoder.encode(value).byteLength;
+  return encodeCommandDataText({ text: value }).byteLength;
 }
 
 function getCommandBytes({
@@ -448,7 +887,7 @@ function getCommandBytes({
   command: string,
   args: readonly string[],
 }): number {
-  let bytes = getArgumentBytes({ value: command });
+  let bytes = getArgumentBytes({ value: command }) + 1;
   for (const arg of args) {
     bytes += 1 + getArgumentBytes({ value: arg });
   }
@@ -478,13 +917,34 @@ async function* createBatchedInvocations({
   let batchBytes = getCommandBytes({ command, args: initialArgs });
   let sawItem = false;
 
-  for await (const item of items) {
+  const iterator = items[Symbol.asyncIterator]();
+  while (true) {
+    let next: IteratorResult<string>;
+    try {
+      next = await iterator.next();
+    } catch (error: unknown) {
+      if (batch.length > 0) {
+        yield { args: [...initialArgs, ...batch] };
+        batch = [];
+      }
+      throw error;
+    }
+    if (next.done) break;
+    const item = next.value;
     sawItem = true;
     const itemBytes = 1 + getArgumentBytes({ value: item });
+    const itemFitsEmptyBatch = getCommandBytes({ command, args: initialArgs }) + itemBytes <= maxChars;
     const exceedsMaxArgs = maxArgs !== undefined && batch.length + 1 > maxArgs;
     const exceedsMaxChars = batchBytes + itemBytes > maxChars;
 
-    if (batch.length > 0 && (exceedsMaxArgs || exceedsMaxChars)) {
+    if (batch.length > 0 && exceedsMaxArgs) {
+      yield { args: [...initialArgs, ...batch] };
+      batch = [];
+      batchBytes = getCommandBytes({ command, args: initialArgs });
+    } else if (batch.length > 0 && exceedsMaxChars) {
+      if (exitIfTooLong && (!itemFitsEmptyBatch || maxArgs !== undefined)) {
+        throw new XargsArgumentListTooLongError('xargs: argument line too long');
+      }
       yield { args: [...initialArgs, ...batch] };
       batch = [];
       batchBytes = getCommandBytes({ command, args: initialArgs });
@@ -493,23 +953,22 @@ async function* createBatchedInvocations({
     const exceedsEmptyBatch = (maxArgs !== undefined && 1 > maxArgs)
       || batchBytes + itemBytes > maxChars;
     if (batch.length === 0 && exceedsEmptyBatch) {
-      if (exitIfTooLong) {
-        throw new XargsArgumentListTooLongError('xargs: argument list too long');
-      }
-      yield { args: [...initialArgs, item] };
-      continue;
+      throw new XargsArgumentListTooLongError('xargs: argument line too long');
     }
 
     batch.push(item);
     batchBytes += itemBytes;
-  }
 
+  }
   if (batch.length > 0) {
     yield { args: [...initialArgs, ...batch] };
     return;
   }
 
   if (!sawItem && !noRunIfEmpty) {
+    if (getCommandBytes({ command, args: initialArgs }) > maxChars) {
+      throw new XargsArgumentListTooLongError('xargs: argument line too long');
+    }
     yield { args: [...initialArgs] };
   }
 }
@@ -523,46 +982,47 @@ function replaceTemplateArgs({
   placeholder: string,
   value: string,
 }): string[] {
-  let replaced = false;
-  const nextArgs = args.map((arg) => {
+  return args.map((arg) => {
     if (!arg.includes(placeholder)) return arg;
-    replaced = true;
-    return arg.replaceAll(placeholder, value);
+    const replaced = arg.replaceAll(placeholder, value);
+    const nulIndex = replaced.indexOf('\0');
+    return nulIndex === -1 ? replaced : replaced.slice(0, nulIndex);
   });
-
-  return replaced ? nextArgs : [...args, value];
 }
 
 async function* createReplaceInvocations({
+  command,
   items,
   initialArgs,
   placeholder,
-  noRunIfEmpty,
+  maxChars,
 }: {
+  command: string,
   items: AsyncIterable<string>,
   initialArgs: readonly string[],
   placeholder: string,
-  noRunIfEmpty: boolean,
+  maxChars: number,
 }): AsyncIterable<XargsInvocation> {
-  let sawItem = false;
   for await (const item of items) {
-    sawItem = true;
-    yield {
-      args: replaceTemplateArgs({
-        args: [...initialArgs],
-        placeholder,
-        value: item,
-      }),
-    };
-  }
+    // GNU xargs treats an empty -I replacement marker as unbounded when any
+    // initial argument would need replacement. The command name itself is not
+    // subject to -I replacement, so a command with no initial arguments still
+    // runs normally. Defer this until the first input item so -I '' preserves
+    // the usual no-run-on-empty-input behavior.
+    if (placeholder.length === 0 && initialArgs.length > 0) {
+      throw new XargsArgumentListTooLongError('xargs: command too long');
+    }
 
-  if (!sawItem && !noRunIfEmpty) {
+    const args = replaceTemplateArgs({
+      args: [...initialArgs],
+      placeholder,
+      value: item,
+    });
+    if (getCommandBytes({ command, args }) > maxChars) {
+      throw new XargsArgumentListTooLongError('xargs: argument list too long');
+    }
     yield {
-      args: replaceTemplateArgs({
-        args: [...initialArgs],
-        placeholder,
-        value: '',
-      }),
+      args,
     };
   }
 }
@@ -574,6 +1034,7 @@ async function* createLineInvocations({
   maxLines,
   maxChars,
   exitIfTooLong,
+  noRunIfEmpty,
 }: {
   command: string,
   lines: AsyncIterable<string[]>,
@@ -581,9 +1042,11 @@ async function* createLineInvocations({
   maxLines: number,
   maxChars: number,
   exitIfTooLong: boolean,
+  noRunIfEmpty: boolean,
 }): AsyncIterable<XargsInvocation> {
   let groupedItems: string[] = [];
   let lineCount = 0;
+  let sawLine = false;
 
   const buildInvocation = (): XargsInvocation | undefined => {
     if (groupedItems.length === 0) {
@@ -599,19 +1062,25 @@ async function* createLineInvocations({
   };
 
   for await (const lineItems of lines) {
+    sawLine = true;
     if (lineCount >= maxLines) {
       const invocation = buildInvocation();
       if (invocation !== undefined) {
         yield invocation;
       }
     }
-    groupedItems.push(...lineItems);
+    for (const item of lineItems) groupedItems.push(item);
     lineCount += 1;
   }
 
   const invocation = buildInvocation();
   if (invocation !== undefined) {
     yield invocation;
+  } else if (!sawLine && !noRunIfEmpty) {
+    if (getCommandBytes({ command, args: initialArgs }) > maxChars) {
+      throw new XargsArgumentListTooLongError('xargs: argument list too long');
+    }
+    yield { args: [...initialArgs] };
   }
 }
 
@@ -622,9 +1091,12 @@ function normalizeXargsExitCode({
 }): number {
   if (exitCode === 0) return 0;
   if (exitCode === 255) return 124;
-  if (exitCode === 126 || exitCode === 127) return exitCode;
-  if (exitCode >= 1 && exitCode <= 125) return 123;
+  if (exitCode >= 1 && exitCode <= 254) return 123;
   return exitCode;
+}
+
+interface XargsCommandResult extends WeshCommandResult {
+  readonly launchFailure?: 'notFound',
 }
 
 async function runCommand({
@@ -639,20 +1111,32 @@ async function runCommand({
   args: string[],
   trace: boolean,
   stdin: WeshFileHandle,
-}): Promise<WeshCommandResult> {
+}): Promise<XargsCommandResult> {
   if (trace) {
+    const characterLocaleMode = resolveCharacterLocaleMode({ env: context.env });
     await context.text().error({
-      text: `${[command, ...args].map((item) => shellQuote({ text: item })).join(' ')}\n`,
+      text: `${[command, ...args].map((item) => shellQuote({ text: item, characterLocaleMode })).join(' ')}\n`,
     });
   }
 
-  return context.executeCommand({
-    command,
-    args,
-    stdin,
-    stdout: context.stdout,
-    stderr: context.stderr,
-  });
+  try {
+    return await context.executeCommand({
+      command,
+      args,
+      stdin,
+      stdout: context.stdout,
+      stderr: context.stderr,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.startsWith('Command not found:')) {
+      throw error;
+    }
+    await context.text().error({
+      text: `xargs: ${command}: No such file or directory\n`,
+    });
+    return { exitCode: 127, launchFailure: 'notFound' };
+  }
 }
 
 async function handleCommandResult({
@@ -660,8 +1144,18 @@ async function handleCommandResult({
   result,
 }: {
   context: WeshCommandContext,
-  result: WeshCommandResult,
+  result: XargsCommandResult,
 }): Promise<{ kind: 'continue', normalizedExitCode: number } | { kind: 'stop', exitCode: number }> {
+  switch (result.launchFailure) {
+  case 'notFound':
+    return { kind: 'stop', exitCode: 127 };
+  case undefined:
+    break;
+  default: {
+    const _ex: never = result.launchFailure;
+    throw new Error(`Unhandled xargs launch failure: ${_ex}`);
+  }
+  }
   if (result.exitCode === 255) {
     await context.text().error({
       text: 'xargs: command exited with status 255; aborting\n',
@@ -768,10 +1262,22 @@ export const xargsCommandDefinition: WeshCommandDefinition = {
     usage: 'xargs [-0rtx] [-a FILE] [-d DELIM] [-E EOFSTR] [-n MAX] [-L MAX] [-s MAX] [-I REPLSTR] [COMMAND [INITIAL-ARGS]...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({
-      args: context.args,
+    const { xargsArgs, commandArgs } = splitXargsArguments({ args: context.args });
+    const normalizedXargsArgs = normalizeXargsDeprecatedOptionalShortBundles({
+      args: xargsArgs,
+    });
+    const parsedOwnArguments = parseStandardArgv({
+      args: stopStandardArgvAtFirstEarlyExit({
+        args: normalizedXargsArgs,
+        spec: xargsArgvSpec,
+        earlyExitOptions: STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS,
+      }),
       spec: xargsArgvSpec,
     });
+    const parsed = {
+      ...parsedOwnArguments,
+      positionals: commandArgs,
+    };
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
@@ -781,7 +1287,7 @@ export const xargsCommandDefinition: WeshCommandDefinition = {
         message: `xargs: ${diagnostic.message}`,
         argvSpec: xargsArgvSpec,
       });
-      return { exitCode: 2 };
+      return { exitCode: 1 };
     }
 
     if (parsed.optionValues.help === true) {
@@ -850,70 +1356,120 @@ Maximum parallelism (--max-procs must be no greater): ${MAX_AUTOMATIC_PARALLELIS
       key: 'maxProcs',
     });
     const maxProcs = typeof maxProcsOccurrence?.value === 'number' ? maxProcsOccurrence.value : 1;
-    const delimiterOccurrence = getLastValueOccurrence({
-      occurrences: parsed.occurrences,
-      key: 'delimiter',
-    });
-    const delimiter = typeof delimiterOccurrence?.value === 'string' ? delimiterOccurrence.value : undefined;
+    const inputMode = resolveInputMode({ occurrences: parsed.occurrences });
     const eofOccurrence = getLastValueOccurrence({
       occurrences: parsed.occurrences,
       key: 'eofString',
     });
     const eofString = typeof eofOccurrence?.value === 'string' ? eofOccurrence.value : undefined;
 
-    if (parsed.optionValues.nullDelimited === true && delimiter !== undefined) {
-      await writeCommandUsageError({
-        context,
-        command: 'xargs',
-        message: "xargs: options '--null' and '--delimiter' are mutually exclusive",
-        argvSpec: xargsArgvSpec,
-      });
-      return { exitCode: 1 };
-    }
-
     const [command = 'echo', ...initialArgs] = parsed.positionals;
-    const childStdin = argFile === undefined
+    const readsItemsFromStdin = argFile === undefined || argFile === '-';
+    const childStdin = readsItemsFromStdin
       ? createDevNullLikeHandle()
       : context.stdin;
 
     try {
-      const inputStream = argFile === undefined
+      const inputStream = readsItemsFromStdin
         ? openHandleReadStream({ handle: context.stdin })
         : await openFileReadStream({
           files: context.files,
           path: argFile.startsWith('/') ? argFile : `${context.cwd}/${argFile}`,
         });
       const byteChunks = iterateReadableStreamChunks({ stream: inputStream });
+      const textChunks = iterateCommandDataTextChunks({ chunks: byteChunks });
+      let ignoredNulWarningWritten = false;
+      const writeIgnoredNulWarning = async (): Promise<void> => {
+        if (ignoredNulWarningWritten) return;
+        ignoredNulWarningWritten = true;
+        await context.text().error({ text: XARGS_IGNORED_NUL_WARNING });
+      };
       let invocations: AsyncIterable<XargsInvocation>;
 
       if (typeof replaceValue === 'string') {
+        const items = (() => {
+          switch (inputMode.kind) {
+          case 'standard':
+            return iterateXargsInsertItems({
+              lines: iterateXargsInputLines({
+                textChunks: iterateXargsTextIgnoringNulSuffixes({
+                  textChunks,
+                  boundary: { kind: 'line' },
+                  onIgnoredNul: writeIgnoredNulWarning,
+                  preserveNul: true,
+                }),
+              }),
+              eofString,
+            });
+          case 'null':
+          case 'delimiter':
+            return createExplicitlyDelimitedXargsItems({ textChunks, inputMode });
+          default: {
+            const _ex: never = inputMode;
+            throw new Error(`Unhandled xargs input mode: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+          }
+          }
+        })();
         invocations = createReplaceInvocations({
-          items: iterateXargsInsertItems({
-            lines: iterateUtf8Lines({ chunks: byteChunks }),
-            eofString,
-          }),
+          command,
+          items,
           initialArgs,
           placeholder: replaceValue,
-          noRunIfEmpty: parsed.optionValues.noRunIfEmpty === true,
+          maxChars,
         });
       } else if (maxLines !== undefined) {
+        const lines = (() => {
+          switch (inputMode.kind) {
+          case 'standard':
+            return iterateXargsLogicalLines({
+              lines: iterateXargsInputLines({
+                textChunks: iterateXargsTextIgnoringNulSuffixes({
+                  textChunks,
+                  boundary: { kind: 'whitespace' },
+                  onIgnoredNul: writeIgnoredNulWarning,
+                }),
+              }),
+            });
+          case 'null':
+          case 'delimiter':
+            return iterateXargsItemsAsLogicalLines({
+              items: createExplicitlyDelimitedXargsItems({ textChunks, inputMode }),
+            });
+          default: {
+            const _ex: never = inputMode;
+            throw new Error(`Unhandled xargs input mode: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+          }
+          }
+        })();
         invocations = createLineInvocations({
           command,
-          lines: iterateXargsLogicalLines({
-            lines: iterateUtf8Lines({ chunks: byteChunks }),
-          }),
+          lines,
           initialArgs,
           maxLines,
           maxChars,
-          exitIfTooLong: parsed.optionValues.exitIfTooLong === true,
+          exitIfTooLong: true,
+          noRunIfEmpty: parsed.optionValues.noRunIfEmpty === true,
         });
       } else {
-        const textChunks = iterateUtf8TextChunks({ chunks: byteChunks });
-        const items = parsed.optionValues.nullDelimited === true
-          ? iterateXargsDelimitedItems({ textChunks, delimiter: '\0' })
-          : delimiter !== undefined
-            ? iterateXargsDelimitedItems({ textChunks, delimiter })
-            : iterateXargsStandardItems({ textChunks, eofString });
+        const items = (() => {
+          switch (inputMode.kind) {
+          case 'standard': {
+            const filteredTextChunks = iterateXargsTextIgnoringNulSuffixes({
+              textChunks,
+              boundary: { kind: 'whitespace' },
+              onIgnoredNul: writeIgnoredNulWarning,
+            });
+            return iterateXargsStandardItems({ textChunks: filteredTextChunks, eofString });
+          }
+          case 'null':
+          case 'delimiter':
+            return createExplicitlyDelimitedXargsItems({ textChunks, inputMode });
+          default: {
+            const _ex: never = inputMode;
+            throw new Error(`Unhandled xargs input mode: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+          }
+          }
+        })();
         invocations = createBatchedInvocations({
           command,
           items,
@@ -947,4 +1503,5 @@ Maximum parallelism (--max-procs must be no greater): ${MAX_AUTOMATIC_PARALLELIS
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  normalizeXargsExitCode,
 };

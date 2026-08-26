@@ -115,7 +115,7 @@ describe('wesh stat', () => {
 
     expect(stdout.text).toBe(
       "file.txt|'file.txt'|644|-rw-r--r--|81a4|regular file|0|3|0|-|0|"
-      + '2023-11-14 22:13:20.123 +0000|1700000000\n',
+      + '2023-11-14 22:13:20.123000000 +0000|1700000000\n',
     );
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
@@ -130,7 +130,7 @@ describe('wesh stat', () => {
     expect(stdout.text).toContain('  Size: 3    Type: regular file\n');
     expect(stdout.text).toContain('  Mode: (0644/-rw-r--r--)  Uid: 0  Gid: 0\n');
     expect(stdout.text).toMatch(/ Inode: \d+\n/u);
-    expect(stdout.text).toContain('Modify: 2023-11-14 22:13:20.123 +0000\n');
+    expect(stdout.text).toContain('Modify: 2023-11-14 22:13:20.123000000 +0000\n');
     expect(stdout.text).not.toContain('Blocks:');
     expect(stdout.text).not.toContain('Access:');
     expect(stdout.text).not.toContain('Change:');
@@ -308,6 +308,88 @@ describe('wesh stat', () => {
     expect(negativeTimestamp.stderr.text).toBe('');
   });
 
+  it('measures string field widths in output bytes and ignores zero padding for names', async () => {
+    const setup = await execute({
+      script: `printf x > 'é'; printf x > '😀'; printf x > 'é'`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const { result, stdout, stderr } = await execute({
+      script: `stat -c '|%5n|:|%-5n|:|%05n|' 'é' '😀' 'é'`,
+    });
+
+    expect(stdout.text).toBe(`\
+|   é|:|é   |:|   é|
+| 😀|:|😀 |:| 😀|
+|  é|:|é  |:|  é|
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('applies GNU numeric precision, sign flags, and byte-oriented string precision', async () => {
+    await writeFile({ path: 'file.txt', data: 'x'.repeat(1234), mtime: FIXED_MTIME });
+    await writeFile({ path: 'éabc', data: 'x', mtime: FIXED_MTIME });
+
+    const numeric = await execute({
+      script: `stat -c '%08.6s|%.6a|%#.6a|%#012.8f|%+.3Y|% .3Y' file.txt`,
+    });
+    const strings = await execute({
+      script: `stat --printf='%.1n|%.2n|%8.3n|%-8.3n|%08.3n' 'éabc'`,
+    });
+
+    expect(numeric.stdout.text).toBe(
+      '  001234|000644|000644|  0x000081a4|+1700000000.123| 1700000000.123\n',
+    );
+    expect(numeric.stderr.text).toBe('');
+    expect(numeric.result.exitCode).toBe(0);
+
+    expect([...strings.stdout.buffer]).toEqual([
+      0xc3,
+      0x7c,
+      0xc3, 0xa9,
+      0x7c,
+      ...new Array<number>(5).fill(0x20), 0xc3, 0xa9, 0x61,
+      0x7c,
+      0xc3, 0xa9, 0x61, ...new Array<number>(5).fill(0x20),
+      0x7c,
+      ...new Array<number>(5).fill(0x20), 0xc3, 0xa9, 0x61,
+    ]);
+    expect(strings.stderr.text).toBe('');
+    expect(strings.result.exitCode).toBe(0);
+  });
+
+  it('suppresses zero integers at precision zero and formats each %N link component independently', async () => {
+    await writeFile({ path: 'target.txt', data: 'target', mtime: FIXED_MTIME });
+    await wesh.vfs.symlink({ path: '/link.txt', targetPath: '/target.txt' });
+
+    const zeroPrecision = await execute({
+      script: "stat -c '<%.0g>|<%.0u>|<%08.0g>' target.txt",
+    });
+    const names = await execute({
+      script: "stat -c '%N|%8.3N' target.txt link.txt",
+    });
+    const rawModifiedNames = await execute({
+      script: "stat -c '%8.3N' target.txt link.txt",
+    });
+
+    expect(zeroPrecision.stdout.text).toBe('<>|<>|<        >\n');
+    expect(zeroPrecision.stderr.text).toBe('');
+    expect(zeroPrecision.result.exitCode).toBe(0);
+    expect(names.stdout.text).toBe(`\
+'target.txt'|     'ta
+'link.txt' -> '/target.txt'|     'li ->      '/t
+`);
+    expect(names.stderr.text).toBe('');
+    expect(names.result.exitCode).toBe(0);
+    expect(rawModifiedNames.stdout.text).toBe(`\
+     tar
+     lin ->      /ta
+`);
+    expect(rawModifiedNames.stderr.text).toBe('');
+    expect(rawModifiedNames.result.exitCode).toBe(0);
+  });
+
   it('does not add a duplicate alternate-form prefix for zero permissions', () => {
     const compiled = compileStatFormat({ format: '%#a', escapeMode: 'literal' });
     if (!compiled.ok) throw new Error(compiled.message);
@@ -327,6 +409,7 @@ describe('wesh stat', () => {
             gid: 0,
           },
           symlinkTarget: undefined,
+          characterLocaleMode: 'unicode',
         },
       }),
     });
@@ -340,7 +423,7 @@ describe('wesh stat', () => {
     const unknown = await execute({ script: "stat -c '%q|%' file.txt" });
     const unavailable = await execute({ script: "stat -c '%h' file.txt" });
     const unavailableMajor = await execute({ script: "stat -c '%Hd' file.txt" });
-    const unsupportedFlag = await execute({ script: "stat -c '%+s' file.txt" });
+    const acceptedSignFlag = await execute({ script: "stat -c '%+s' file.txt" });
     const incomplete = await execute({ script: "stat -c '%05' file.txt" });
 
     expect(unknown.stdout.text).toBe('?|%\n');
@@ -355,9 +438,9 @@ describe('wesh stat', () => {
     expect(unavailableMajor.stderr.text).toBe("stat: format directive '%Hd' is unavailable in Wesh\n");
     expect(unavailableMajor.result.exitCode).toBe(1);
 
-    expect(unsupportedFlag.stdout.text).toBe('');
-    expect(unsupportedFlag.stderr.text).toBe("stat: unsupported format flag '+'\n");
-    expect(unsupportedFlag.result.exitCode).toBe(1);
+    expect(acceptedSignFlag.stdout.text).toBe('3\n');
+    expect(acceptedSignFlag.stderr.text).toBe('');
+    expect(acceptedSignFlag.result.exitCode).toBe(0);
 
     expect(incomplete.stdout.text).toBe('');
     expect(incomplete.stderr.text).toBe("stat: invalid format directive '%05'\n");
@@ -379,12 +462,25 @@ describe('wesh stat', () => {
     expect(named.result.exitCode).toBe(0);
   });
 
-  it('quotes apostrophes and control characters deterministically', () => {
-    expect(quoteStatName({ value: "it's.txt" })).toBe("'it'\\''s.txt'");
-    expect(quoteStatName({ value: `\
+  it('quotes apostrophes and non-printable bytes using GNU shell-escape style', () => {
+    expect(quoteStatName({
+      value: "it's.txt",
+      characterLocaleMode: 'unicode',
+    })).toBe(`"it's.txt"`);
+    expect(quoteStatName({
+      value: `\
 line
-name` })).toBe("$'line\\nname'");
-    expect(quoteStatName({ value: `before\u0085after` })).toBe("$'before\\x85after'");
+name`,
+      characterLocaleMode: 'unicode',
+    })).toBe("'line'$'\\n''name'");
+    expect(quoteStatName({
+      value: `before\u0085after`,
+      characterLocaleMode: 'unicode',
+    })).toBe("'before'$'\\302\\205''after'");
+    expect(quoteStatName({
+      value: 'é',
+      characterLocaleMode: 'ascii',
+    })).toBe("''$'\\303\\251'");
   });
 
   it('validates untrusted virtual-filesystem metadata before formatting', () => {
@@ -462,4 +558,16 @@ name` })).toBe("$'line\\nname'");
     expect(named.result.exitCode).toBe(0);
     expect(readlinkSpy).toHaveBeenCalledTimes(1);
   });
+  it('stops argv processing when --help is reached before a later invalid option', async () => {
+    const helpFirst = await execute({ script: 'stat --help --definitely-invalid-option' });
+    const invalidFirst = await execute({ script: 'stat --definitely-invalid-option --help' });
+
+    expect(helpFirst.result.exitCode).toBe(0);
+    expect(helpFirst.stdout.text).not.toBe('');
+    expect(helpFirst.stderr.text).toBe('');
+
+    expect(invalidFirst.result.exitCode).not.toBe(0);
+    expect(invalidFirst.stderr.text).not.toBe('');
+  });
+
 });

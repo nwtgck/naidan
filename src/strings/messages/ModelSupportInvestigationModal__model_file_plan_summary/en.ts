@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__model_file_plan_summary = ({ eligibleCount, candidateCount, registryFailureCount }: { eligibleCount: number; candidateCount: number; registryFailureCount: number }): string => `${eligibleCount} of ${candidateCount} candidates have all required repository files · ${registryFailureCount} Registry failures`;

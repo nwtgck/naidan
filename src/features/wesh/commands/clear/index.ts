@@ -4,6 +4,7 @@ import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } fro
 
 const clearArgvSpec: StandardArgvParserSpec = {
   options: [
+    { kind: 'flag', short: 'x', long: undefined, effects: [{ key: 'keepScrollback', value: true }], help: { summary: 'do not try to clear scrollback', category: 'common' } },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit' } },
   ],
   allowShortFlagBundles: true,
@@ -55,8 +56,9 @@ export const clearCommandDefinition: WeshCommandDefinition = {
     }
 
     const text = context.text();
-    /** Standard clear escape code */
-    await text.print({ text: '\x1b[2J\x1b[H' });
+    const eraseDisplay = '\x1b[H\x1b[2J';
+    const eraseScrollback = parsed.optionValues.keepScrollback === true ? '' : '\x1b[3J';
+    await text.print({ text: eraseDisplay + eraseScrollback });
     return { exitCode: 0 };
   },
 };

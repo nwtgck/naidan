@@ -1,19 +1,22 @@
 const REGEXP_SPECIAL_CHARACTERS = /[\\^$.*+?()[\]{}|]/gu;
 
-const POSIX_CHARACTER_CLASSES: Readonly<Record<string, string>> = {
-  alnum: 'A-Za-z0-9',
-  alpha: 'A-Za-z',
-  blank: ' \\t',
-  cntrl: '\\x00-\\x1F\\x7F',
-  digit: '0-9',
-  graph: '\\x21-\\x7E',
-  lower: 'a-z',
-  print: '\\x20-\\x7E',
-  punct: '!-/:-@\\[-`{-~',
-  space: ' \\t\\r\\n\\v\\f',
-  upper: 'A-Z',
-  xdigit: 'A-Fa-f0-9',
-};
+function getPosixCharacterClassSource({ name }: { name: string }): string | undefined {
+  switch (name) {
+  case 'alnum': return 'A-Za-z0-9';
+  case 'alpha': return 'A-Za-z';
+  case 'blank': return ' \\t';
+  case 'cntrl': return '\\x00-\\x1F\\x7F';
+  case 'digit': return '0-9';
+  case 'graph': return '\\x21-\\x7E';
+  case 'lower': return 'a-z';
+  case 'print': return '\\x20-\\x7E';
+  case 'punct': return '!-/:-@\\[-`{-~';
+  case 'space': return ' \\t\\r\\n\\v\\f';
+  case 'upper': return 'A-Z';
+  case 'xdigit': return 'A-Fa-f0-9';
+  default: return undefined;
+  }
+}
 
 function escapeRegExpCharacter({ value }: { value: string }): string {
   return value.replace(REGEXP_SPECIAL_CHARACTERS, '\\$&');
@@ -49,7 +52,7 @@ function parseCharacterClass({
       const classEnd = pattern.indexOf(':]', index + 2);
       if (classEnd >= 0) {
         const className = pattern.slice(index + 2, classEnd);
-        const classSource = POSIX_CHARACTER_CLASSES[className];
+        const classSource = getPosixCharacterClassSource({ name: className });
         if (classSource !== undefined) {
           source += classSource;
           index = classEnd + 2;

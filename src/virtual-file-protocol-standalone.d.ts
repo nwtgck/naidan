@@ -1,30 +1,61 @@
-declare module 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub' {
-  export type DebugFileProtocolStandaloneWorkerDiagnostics = Readonly<{
-    workerId: string,
-    registryScriptLoads: number,
-    registryScriptLoadFailures: number,
-    blobRegistrations: number,
-    objectUrlsCreated: number,
-    workersCreated: number,
-    workersTerminated: number,
-    activeWorkers: number,
-    terminateInstrumentationFailures: number,
-    runtimeDigestCalls: number,
-    sourceStoredAsGlobalString: false,
-    objectUrlLifetime: 'page',
-    registryEntryReleased: boolean,
-    registryEntryPresent: boolean,
-    blobUrlStatus: 'idle' | 'warmup-scheduled' | 'loading' | 'ready' | 'failed',
-    blobBytes?: number,
-    sourcePartCount?: number,
-    sha256?: string,
-    timingsMs: Readonly<Record<string, number>>,
-  }>;
+declare module 'virtual:naidan-standalone-worker-runtime' {
+  import type { StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
 
-  export function createFileProtocolStandaloneWorker({ name }: {
-    name: string | undefined,
-  }): Promise<Worker>;
+  export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
+  export function scheduleStandaloneWorkerBootstrapWarmup(): void;
+  export function disposeStandaloneWorkerBootstrap(): void;
+}
 
-  export function debugGetFileProtocolStandaloneWorkerDiagnostics(): DebugFileProtocolStandaloneWorkerDiagnostics;
-  export function scheduleFileProtocolStandaloneWorkerAssetWarmup(): void;
+declare module 'virtual:file-protocol-standalone/worker/advanced-text-editor-v3' {
+  import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
+
+  export function createStandaloneWorker(options?: StandaloneWorkerCreateOptions): Promise<Worker>;
+  export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
+  export function scheduleStandaloneWorkerBootstrapWarmup(): void;
+  export function disposeStandaloneWorkerBootstrap(): void;
+}
+
+declare module 'virtual:file-protocol-standalone/worker/highlight' {
+  import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
+
+  export function createStandaloneWorker(options?: StandaloneWorkerCreateOptions): Promise<Worker>;
+  export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
+  export function scheduleStandaloneWorkerBootstrapWarmup(): void;
+  export function disposeStandaloneWorkerBootstrap(): void;
+}
+
+declare module 'virtual:file-protocol-standalone/worker/wesh' {
+  import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
+
+  export function createStandaloneWorker(options?: StandaloneWorkerCreateOptions): Promise<Worker>;
+  export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
+  export function scheduleStandaloneWorkerBootstrapWarmup(): void;
+  export function disposeStandaloneWorkerBootstrap(): void;
+}
+
+declare module 'virtual:file-protocol-standalone/worker/global-search' {
+  import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
+
+  export function createStandaloneWorker(options?: StandaloneWorkerCreateOptions): Promise<Worker>;
+  export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
+  export function scheduleStandaloneWorkerBootstrapWarmup(): void;
+  export function disposeStandaloneWorkerBootstrap(): void;
+}
+
+declare module 'virtual:file-protocol-standalone/worker/file-explorer' {
+  import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
+
+  export function createStandaloneWorker(options?: StandaloneWorkerCreateOptions): Promise<Worker>;
+  export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
+  export function scheduleStandaloneWorkerBootstrapWarmup(): void;
+  export function disposeStandaloneWorkerBootstrap(): void;
+}
+
+declare module 'virtual:file-protocol-standalone/worker/hizofs-benchmark' {
+  import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
+
+  export function createStandaloneWorker(options?: StandaloneWorkerCreateOptions): Promise<Worker>;
+  export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
+  export function scheduleStandaloneWorkerBootstrapWarmup(): void;
+  export function disposeStandaloneWorkerBootstrap(): void;
 }

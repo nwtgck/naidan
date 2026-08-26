@@ -152,14 +152,14 @@ describe('getEnabledTools shell_execute', () => {
 
     // /tmp (read-write) appears in the description because it is in resolvedMounts
     expect(toolA?.description).toEqual(`\
-Execute shell scripts to perform file operations, system exploration, and data processing. You can use standard Unix-like commands (ls, cat, grep, etc.). Run \`help\` to see available utilities.
+Execute shell scripts to perform file operations, system exploration, and data processing. You can use standard Unix-like commands (ls, cat, grep, etc.). For file edits, \`sed\` and \`patch\` are available. Run \`help\` to see available utilities.
 
 Mounted directories:
 - /tmp (read-write)
 - /sys/fs/naidan (read-only)
 - /mnt/a (read-write)`);
     expect(toolB?.description).toEqual(`\
-Execute shell scripts to perform file operations, system exploration, and data processing. You can use standard Unix-like commands (ls, cat, grep, etc.). Run \`help\` to see available utilities.
+Execute shell scripts to perform file operations, system exploration, and data processing. You can use standard Unix-like commands (ls, cat, grep, etc.). For file edits, \`sed\` and \`patch\` are available. Run \`help\` to see available utilities.
 
 Mounted directories:
 - /tmp (read-write)

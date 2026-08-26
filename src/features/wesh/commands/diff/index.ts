@@ -1,9 +1,11 @@
+import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import {
   parseStandardArgv,
   type ArgvOptionOccurrence,
   type ArgvSpecialTokenParser,
   type StandardArgvParserSpec,
 } from '@/features/wesh/argv';
+import { STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
@@ -16,7 +18,9 @@ import {
 } from './directory';
 import { createDiffInput, readFileInput, readStdinBytes } from './input';
 import type { DiffComparisonOptions, DiffOutputMode, DiffOutputOptions } from './model';
-import { compileBasicRegularExpression, compileFileNameGlob } from './patterns';
+import { resolveCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
+import { compileBasicRegularExpression } from '@/features/wesh/commands/_shared/posix-regexp';
+import { compileFileNameGlob } from './patterns';
 import { createDiffByteWriter } from './output';
 
 const DEFAULT_CONTEXT_LINES = 3;
@@ -26,10 +30,11 @@ const MAX_OPTION_NUMBER = 1_000_000;
 const DEFAULT_C_FUNCTION_PATTERN = /^[A-Za-z_$].*\([^;]*\)[^{;]*(?:\{|$)/u;
 
 function parseNonnegativeInteger({ value }: { value: string }): { ok: true, value: number } | { ok: false, message: string } {
-  if (!/^\d+$/u.test(value)) {
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  if (!/^\+?\d+$/u.test(numericText)) {
     return { ok: false, message: `invalid numeric value '${value}'` };
   }
-  const parsed = Number(value);
+  const parsed = Number(numericText);
   if (!Number.isSafeInteger(parsed) || parsed > MAX_OPTION_NUMBER) {
     return { ok: false, message: `numeric value is too large: '${value}'` };
   }
@@ -155,6 +160,69 @@ const diffArgvSpec: StandardArgvParserSpec = {
     createOptionalContextParser({ longName: 'unified', outputKind: 'unified' }),
   ],
 };
+
+function normalizeOptionalShortContextCounts({
+  args,
+}: {
+  args: readonly string[],
+}): string[] {
+  const shortFlags = new Set(
+    diffArgvSpec.options
+      .filter((option) => option.kind === 'flag' && option.short !== undefined)
+      .map((option) => option.short!),
+  );
+  const normalized: string[] = [];
+  let optionsEnded = false;
+
+  for (const token of args) {
+    if (optionsEnded) {
+      normalized.push(token);
+      continue;
+    }
+    if (token === '--') {
+      normalized.push(token);
+      optionsEnded = true;
+      continue;
+    }
+    if (!token.startsWith('-') || token.startsWith('--') || token === '-') {
+      normalized.push(token);
+      continue;
+    }
+
+    const match = /^(.*)([cu])(\d+)$/u.exec(token.slice(1));
+    if (match === null) {
+      normalized.push(token);
+      continue;
+    }
+    const prefix = match[1] ?? '';
+    const outputKind = match[2];
+    const lineCount = match[3];
+    if ((outputKind !== 'c' && outputKind !== 'u') || lineCount === undefined) {
+      normalized.push(token);
+      continue;
+    }
+    if (![...prefix].every((short) => shortFlags.has(short))) {
+      normalized.push(token);
+      continue;
+    }
+    if (prefix.length > 0) {
+      normalized.push(`-${prefix}`);
+    }
+    const explicitOption = (() => {
+      switch (outputKind) {
+      case 'c': return 'C';
+      case 'u': return 'U';
+      default: {
+        const _ex: never = outputKind;
+        throw new Error(`Unhandled diff output kind: ${_ex}`);
+      }
+      }
+    })();
+    normalized.push(`-${explicitOption}${lineCount}`);
+  }
+
+  return normalized;
+}
 
 function findUnexpectedLongFlagArgument({
   args,
@@ -347,9 +415,13 @@ async function readExcludePatterns({
       files: context.files,
       path: resolvePath({ cwd: context.cwd, path }),
     });
-    const lines = new TextDecoder().decode(bytes).split(/\r?\n/u);
+    const lines = new TextDecoder('utf-8', { ignoreBOM: true })
+      .decode(bytes)
+      .split('\n');
     if (lines[lines.length - 1] === '') lines.pop();
-    patterns.push(...lines);
+    for (const line of lines) {
+      patterns.push(line.endsWith('\r') ? line.slice(0, -1) : line);
+    }
   }
   return patterns;
 }
@@ -410,10 +482,33 @@ function shellQuote({ value }: { value: string }): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+function restoreShortFlagBundles({
+  tokens,
+  args,
+}: {
+  tokens: string[],
+  args: readonly string[],
+}): string[] {
+  const restored = [...tokens];
+  for (const arg of args) {
+    if (!/^-[A-Za-z]{2,}$/u.test(arg)) continue;
+    const expanded = [...arg.slice(1)].map(character => `-${character}`);
+    const firstCandidate = restored.findIndex((token, index) => (
+      token === expanded[0]
+      && expanded.every((expected, offset) => restored[index + offset] === expected)
+    ));
+    if (firstCandidate < 0) continue;
+    restored.splice(firstCandidate, expanded.length, arg);
+  }
+  return restored;
+}
+
 function createRecursiveCommandPrefix({
   occurrences,
+  args,
 }: {
   occurrences: readonly ArgvOptionOccurrence[],
+  args: readonly string[],
 }): string {
   const parts = ['diff'];
   for (const occurrence of occurrences) {
@@ -432,7 +527,9 @@ function createRecursiveCommandPrefix({
     }
     }
   }
-  return parts.join(' ');
+  const [command, ...optionTokens] = parts;
+  const restoredOptions = restoreShortFlagBundles({ tokens: optionTokens, args });
+  return [command, ...restoredOptions].join(' ');
 }
 
 async function getStdinDiffInput({
@@ -514,7 +611,14 @@ export const diffCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 2 };
     }
 
-    const parsed = parseStandardArgv({ args: context.args, spec: diffArgvSpec });
+    const parsed = parseStandardArgv({
+      args: stopStandardArgvAtFirstEarlyExit({
+        args: normalizeOptionalShortContextCounts({ args: context.args }),
+        spec: diffArgvSpec,
+        earlyExitOptions: STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS,
+      }),
+      spec: diffArgvSpec,
+    });
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
       await writeCommandUsageError({
@@ -617,11 +721,20 @@ export const diffCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 2 };
     }
 
+    const characterLocaleMode = resolveCharacterLocaleMode({ env: context.env });
     const ignorePatterns: RegExp[] = [];
     let functionLinePattern: RegExp | undefined;
     try {
       for (const source of collectOccurrenceValues({ occurrences: parsed.occurrences, key: 'ignoreMatchingLines' })) {
-        ignorePatterns.push(compileBasicRegularExpression({ pattern: source }));
+        ignorePatterns.push(compileBasicRegularExpression({
+          source,
+          flags: '',
+          characterClassMode: characterLocaleMode,
+          gnuWordOperators: true,
+          basicOperatorMode: 'gnu',
+          dotMode: 'non-newline',
+          excludeSurrogateEscapes: characterLocaleMode === 'unicode',
+        }));
       }
       const functionPatternSources = collectOccurrenceValues({
         occurrences: parsed.occurrences,
@@ -629,7 +742,15 @@ export const diffCommandDefinition: WeshCommandDefinition = {
       });
       const functionPatternSource = functionPatternSources[functionPatternSources.length - 1];
       if (functionPatternSource !== undefined) {
-        functionLinePattern = compileBasicRegularExpression({ pattern: functionPatternSource });
+        functionLinePattern = compileBasicRegularExpression({
+          source: functionPatternSource,
+          flags: '',
+          characterClassMode: characterLocaleMode,
+          gnuWordOperators: true,
+          basicOperatorMode: 'gnu',
+          dotMode: 'non-newline',
+          excludeSurrogateEscapes: characterLocaleMode === 'unicode',
+        });
       } else if (parsed.optionValues.showCFunction === true) {
         functionLinePattern = DEFAULT_C_FUNCTION_PATTERN;
       }
@@ -641,10 +762,11 @@ export const diffCommandDefinition: WeshCommandDefinition = {
 
     try {
       const excludeSources = collectOccurrenceValues({ occurrences: parsed.occurrences, key: 'exclude' });
-      excludeSources.push(...await readExcludePatterns({
+      const excludedFromFiles = await readExcludePatterns({
         context,
         paths: collectOccurrenceValues({ occurrences: parsed.occurrences, key: 'excludeFrom' }),
-      }));
+      });
+      for (const excluded of excludedFromFiles) excludeSources.push(excluded);
       const fileNameCaseMode = parsed.optionValues.fileNameCaseMode === 'insensitive' ? 'insensitive' : 'sensitive';
       const comparisonOptions: DiffComparisonOptions = {
         stripTrailingCarriageReturn: parsed.optionValues.stripTrailingCarriageReturn === true,
@@ -657,6 +779,7 @@ export const diffCommandDefinition: WeshCommandDefinition = {
       };
       const outputOptions: DiffOutputOptions = {
         mode: resolveOutputMode({ occurrences: parsed.occurrences }),
+        characterLocaleMode,
         functionLinePattern,
         expandTabs: parsed.optionValues.expandTabs === true,
         initialTab: parsed.optionValues.initialTab === true,
@@ -685,7 +808,7 @@ export const diffCommandDefinition: WeshCommandDefinition = {
 
       const stdout = createDiffByteWriter({ handle: context.stdout });
       const stderr = createDiffByteWriter({ handle: context.stderr });
-      const recursiveCommandPrefix = createRecursiveCommandPrefix({ occurrences: parsed.occurrences });
+      const recursiveCommandPrefix = createRecursiveCommandPrefix({ occurrences: parsed.occurrences, args: context.args });
       const stdinCache: DiffStdinCache = {
         bytes: undefined,
         mtime: undefined,

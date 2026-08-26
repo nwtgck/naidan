@@ -1,4 +1,8 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { parseStandardArgv, type ArgvDiagnostic, type ParsedStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { decodeCommandDataBytes } from '@/features/wesh/commands/_shared/data-codec';
+import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
+import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
+import { compileBasicRegularExpression } from '@/features/wesh/commands/_shared/posix-regexp';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/features/wesh/types';
 import { openHandleReadStream, openFileReadStream } from '@/features/wesh/utils/fs';
@@ -10,7 +14,12 @@ type NlNumberingStyle =
   | { kind: 'all' }
   | { kind: 'nonempty' }
   | { kind: 'none' }
-  | { kind: 'pattern', pattern: string, regex: RegExp };
+  | {
+      kind: 'pattern',
+      pattern: string,
+      regex: RegExp,
+      characterLocaleMode: WeshCharacterLocaleMode,
+    };
 
 type NlNumberFormat = 'ln' | 'rn' | 'rz';
 
@@ -39,8 +48,8 @@ interface NlState {
 }
 
 const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
 const lineFeedByte = 0x0a;
+const NL_MAX_NUMBER_WIDTH = 1_000_000;
 
 function resolveInputPath({
   cwd,
@@ -65,11 +74,12 @@ function parseIntegerOption({
   label: string,
   minimum: number | undefined,
 }): { ok: true, value: number } | { ok: false, message: string } {
-  if (!/^[+-]?\d+$/.test(value)) {
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  if (!/^[+-]?\d+$/.test(numericText)) {
     return { ok: false, message: `invalid ${label}: '${value}'` };
   }
 
-  const parsed = Number(value);
+  const parsed = Number(numericText);
   if (!Number.isSafeInteger(parsed)) {
     return { ok: false, message: `invalid ${label}: '${value}'` };
   }
@@ -79,6 +89,23 @@ function parseIntegerOption({
   }
 
   return { ok: true, value: parsed };
+}
+
+function parseNumberWidth({
+  value,
+}: {
+  value: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
+  const parsed = parseIntegerOption({
+    value,
+    label: 'line number field width',
+    minimum: 1,
+  });
+  if (!parsed.ok || parsed.value <= NL_MAX_NUMBER_WIDTH) return parsed;
+  return {
+    ok: false,
+    message: `line number field width exceeds safety limit ${NL_MAX_NUMBER_WIDTH}`,
+  };
 }
 
 const nlArgvSpec: StandardArgvParserSpec = {
@@ -94,7 +121,7 @@ const nlArgvSpec: StandardArgvParserSpec = {
     { kind: 'flag', short: 'p', long: 'no-renumber', effects: [{ key: 'noRenumber', value: true }], help: { summary: 'do not reset line numbers at logical pages', category: 'advanced' } },
     { kind: 'value', short: 's', long: 'number-separator', key: 'separator', valueName: 'STRING', allowAttachedValue: true, parseValue: undefined, help: { summary: 'add STRING after each line number', valueName: 'STRING', category: 'common' } },
     { kind: 'value', short: 'v', long: 'starting-line-number', key: 'startingLineNumber', valueName: 'NUMBER', allowAttachedValue: true, parseValue: ({ value }) => parseIntegerOption({ value, label: 'starting line number', minimum: undefined }), help: { summary: 'first line number on each logical page', valueName: 'NUMBER', category: 'common' } },
-    { kind: 'value', short: 'w', long: 'number-width', key: 'numberWidth', valueName: 'NUMBER', allowAttachedValue: true, parseValue: ({ value }) => parseIntegerOption({ value, label: 'line number field width', minimum: 1 }), help: { summary: 'use NUMBER columns for line numbers', valueName: 'NUMBER', category: 'common' } },
+    { kind: 'value', short: 'w', long: 'number-width', key: 'numberWidth', valueName: 'NUMBER', allowAttachedValue: true, parseValue: ({ value }) => parseNumberWidth({ value }), help: { summary: 'use NUMBER columns for line numbers', valueName: 'NUMBER', category: 'common' } },
   ],
   allowShortFlagBundles: true,
   stopAtDoubleDash: true,
@@ -102,75 +129,71 @@ const nlArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-function escapeRegExpLiteral({
-  value,
-}: {
-  value: string,
-}): string {
-  return value.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+
+interface ParsedNlArgv {
+  readonly parsed: ParsedStandardArgv,
+  readonly parsedArgs: string[],
+  readonly helpMode: 'normal' | 'after-unknown-options',
 }
 
-function compileBasicRegularExpression({
-  pattern,
+function isUnknownOptionDiagnostic({
+  diagnostic,
 }: {
-  pattern: string,
-}): RegExp {
-  let result = '';
-  let inBracketExpression = false;
+  diagnostic: ArgvDiagnostic,
+}): boolean {
+  switch (diagnostic.kind) {
+  case 'unknown_short_option':
+  case 'unknown_long_option':
+    return true;
+  case 'missing_option_value':
+  case 'invalid_option_value':
+    return false;
+  default: {
+    const _ex: never = diagnostic.kind;
+    throw new Error(`Unhandled nl argv diagnostic kind: ${_ex}`);
+  }
+  }
+}
 
-  for (let index = 0; index < pattern.length; index++) {
-    const char = pattern[index];
-    if (char === undefined) continue;
+function parseNlArgv({
+  args,
+}: {
+  args: string[],
+}): ParsedNlArgv {
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== '--help') continue;
 
-    if (inBracketExpression) {
-      result += char;
-      if (char === ']') {
-        inBracketExpression = false;
-      }
-      continue;
+    const parsedPrefix = parseStandardArgv({
+      args: args.slice(0, index + 1),
+      spec: nlArgvSpec,
+    });
+    if (
+      parsedPrefix.optionValues.help === true
+      && parsedPrefix.diagnostics.every((diagnostic) => isUnknownOptionDiagnostic({ diagnostic }))
+    ) {
+      return {
+        parsed: parsedPrefix,
+        parsedArgs: args.slice(0, index + 1),
+        helpMode: parsedPrefix.diagnostics.length === 0 ? 'normal' : 'after-unknown-options',
+      };
     }
-
-    if (char === '[') {
-      inBracketExpression = true;
-      result += char;
-      continue;
-    }
-
-    if (char === '\\') {
-      const next = pattern[index + 1];
-      if (next === undefined) {
-        result += '\\\\';
-        continue;
-      }
-
-      if ('(){}+?|'.includes(next)) {
-        result += next;
-        index += 1;
-        continue;
-      }
-
-      result += `\\${next}`;
-      index += 1;
-      continue;
-    }
-
-    if ('(){}+?|'.includes(char)) {
-      result += escapeRegExpLiteral({ value: char });
-      continue;
-    }
-
-    result += char;
   }
 
-  return new RegExp(result);
+  return {
+    parsed: parseStandardArgv({ args, spec: nlArgvSpec }),
+    parsedArgs: args,
+    helpMode: 'normal',
+  };
 }
 
 function parseNumberingStyle({
   value,
   label,
+  characterLocaleMode,
 }: {
   value: string,
   label: string,
+  characterLocaleMode: WeshCharacterLocaleMode,
 }): { ok: true, style: NlNumberingStyle } | { ok: false, message: string } {
   switch (value) {
   case 'a':
@@ -190,7 +213,16 @@ function parseNumberingStyle({
         style: {
           kind: 'pattern',
           pattern: value.slice(1),
-          regex: compileBasicRegularExpression({ pattern: value.slice(1) }),
+          regex: compileBasicRegularExpression({
+            source: value.slice(1),
+            flags: '',
+            characterClassMode: characterLocaleMode,
+            gnuWordOperators: true,
+            basicOperatorMode: 'gnu',
+            dotMode: 'non-newline',
+            excludeSurrogateEscapes: false,
+          }),
+          characterLocaleMode,
         },
       };
     } catch {
@@ -212,6 +244,102 @@ function parseNumberFormat({
   default:
     return { ok: false, message: `invalid line numbering format: '${value}'` };
   }
+}
+
+interface NlPreHelpSemanticDiagnostic {
+  readonly message: string,
+  readonly fatal: boolean,
+}
+
+function collectNlPreHelpSemanticDiagnostics({
+  parsed,
+  characterLocaleMode,
+}: {
+  parsed: ParsedStandardArgv,
+  characterLocaleMode: WeshCharacterLocaleMode,
+}): readonly NlPreHelpSemanticDiagnostic[] {
+  const diagnostics: NlPreHelpSemanticDiagnostic[] = [];
+
+  for (const occurrence of parsed.occurrences) {
+    if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') continue;
+
+    const styleLabel = (() => {
+      switch (occurrence.key) {
+      case 'bodyNumbering':
+        return 'body numbering style';
+      case 'footerNumbering':
+        return 'footer numbering style';
+      case 'headerNumbering':
+        return 'header numbering style';
+      default:
+        return undefined;
+      }
+    })();
+
+    if (styleLabel !== undefined) {
+      const style = parseNumberingStyle({
+        value: occurrence.value,
+        label: styleLabel,
+        characterLocaleMode,
+      });
+      if (!style.ok) {
+        diagnostics.push({
+          message: style.message,
+          fatal: style.message === 'invalid regular expression',
+        });
+        if (style.message === 'invalid regular expression') break;
+      }
+      continue;
+    }
+
+    if (occurrence.key === 'numberFormat') {
+      const format = parseNumberFormat({ value: occurrence.value });
+      if (!format.ok) diagnostics.push({ message: format.message, fatal: false });
+    }
+  }
+
+  return diagnostics;
+}
+
+interface NlOrderedPreHelpDiagnostic {
+  readonly message: string,
+  readonly fatal: boolean,
+}
+
+function collectNlMixedPreHelpDiagnosticsInArgvOrder({
+  args,
+  characterLocaleMode,
+}: {
+  args: string[],
+  characterLocaleMode: WeshCharacterLocaleMode,
+}): readonly NlOrderedPreHelpDiagnostic[] {
+  const ordered: NlOrderedPreHelpDiagnostic[] = [];
+  let unknownCount = 0;
+  let semanticCount = 0;
+
+  for (let end = 1; end <= args.length; end += 1) {
+    const parsedPrefix = parseStandardArgv({ args: args.slice(0, end), spec: nlArgvSpec });
+    const unknownDiagnostics = parsedPrefix.diagnostics.filter((diagnostic) => (
+      isUnknownOptionDiagnostic({ diagnostic })
+    ));
+    const semanticDiagnostics = collectNlPreHelpSemanticDiagnostics({
+      parsed: parsedPrefix,
+      characterLocaleMode,
+    });
+
+    for (; unknownCount < unknownDiagnostics.length; unknownCount += 1) {
+      const diagnostic = unknownDiagnostics[unknownCount];
+      if (diagnostic !== undefined) ordered.push({ message: diagnostic.message, fatal: false });
+    }
+    for (; semanticCount < semanticDiagnostics.length; semanticCount += 1) {
+      const diagnostic = semanticDiagnostics[semanticCount];
+      if (diagnostic === undefined) continue;
+      ordered.push(diagnostic);
+      if (diagnostic.fatal) return ordered;
+    }
+  }
+
+  return ordered;
 }
 
 function parseSectionDelimiter({
@@ -249,24 +377,29 @@ function getNumberOption({
 
 function buildOptions({
   optionValues,
+  characterLocaleMode,
 }: {
   optionValues: Record<string, boolean | string | number>,
+  characterLocaleMode: WeshCharacterLocaleMode,
 }): { ok: true, options: NlOptions } | { ok: false, message: string } {
   const bodyStyle = parseNumberingStyle({
     value: getStringOption({ value: optionValues.bodyNumbering, fallback: 't' }),
     label: 'body numbering style',
+    characterLocaleMode,
   });
   if (!bodyStyle.ok) return { ok: false, message: bodyStyle.message };
 
   const headerStyle = parseNumberingStyle({
     value: getStringOption({ value: optionValues.headerNumbering, fallback: 'n' }),
     label: 'header numbering style',
+    characterLocaleMode,
   });
   if (!headerStyle.ok) return { ok: false, message: headerStyle.message };
 
   const footerStyle = parseNumberingStyle({
     value: getStringOption({ value: optionValues.footerNumbering, fallback: 'n' }),
     label: 'footer numbering style',
+    characterLocaleMode,
   });
   if (!footerStyle.ok) return { ok: false, message: footerStyle.message };
 
@@ -509,6 +642,63 @@ function getNumberingStyleForSection({
   }
 }
 
+function decodeSingleByteCharacters({
+  bytes,
+}: {
+  bytes: Uint8Array,
+}): string {
+  const parts: string[] = [];
+  const chunkLength = 8 * 1024;
+  for (let offset = 0; offset < bytes.length; offset += chunkLength) {
+    parts.push(String.fromCharCode(...bytes.subarray(offset, offset + chunkLength)));
+  }
+  return parts.join('');
+}
+
+function testUnicodePattern({
+  regex,
+  lineBytes,
+}: {
+  regex: RegExp,
+  lineBytes: Uint8Array,
+}): boolean {
+  const decoded = decodeCommandDataBytes({ bytes: lineBytes });
+  const input = decoded.replace(/[\udc80-\udcff]/gu, '\n');
+  const flags = regex.flags.replaceAll('y', '').includes('g')
+    ? regex.flags.replaceAll('y', '')
+    : `${regex.flags.replaceAll('y', '')}g`;
+  const matcher = new RegExp(regex.source, flags);
+  let match = matcher.exec(input);
+  while (match !== null) {
+    if (!match[0].includes('\n')) {
+      return true;
+    }
+    const codePoint = input.codePointAt(match.index);
+    matcher.lastIndex = match.index + (codePoint !== undefined && codePoint > 0xffff ? 2 : 1);
+    match = matcher.exec(input);
+  }
+  return false;
+}
+
+function testPattern({
+  style,
+  lineBytes,
+}: {
+  style: Extract<NlNumberingStyle, { kind: 'pattern' }>,
+  lineBytes: Uint8Array,
+}): boolean {
+  switch (style.characterLocaleMode) {
+  case 'ascii':
+    return style.regex.test(decodeSingleByteCharacters({ bytes: lineBytes }));
+  case 'unicode':
+    return testUnicodePattern({ regex: style.regex, lineBytes });
+  default: {
+    const _ex: never = style.characterLocaleMode;
+    throw new Error(`Unhandled nl character locale mode: ${_ex}`);
+  }
+  }
+}
+
 function shouldNumberLine({
   lineBytes,
   options,
@@ -536,11 +726,10 @@ function shouldNumberLine({
     state.blankRunLength = isEmpty ? state.blankRunLength + 1 : 0;
     return !isEmpty;
   case 'none':
-    state.blankRunLength = isEmpty ? state.blankRunLength + 1 : 0;
     return false;
   case 'pattern':
     state.blankRunLength = isEmpty ? state.blankRunLength + 1 : 0;
-    return style.regex.test(textDecoder.decode(lineBytes));
+    return testPattern({ style, lineBytes });
   default: {
     const _ex: never = style;
     throw new Error(`Unhandled nl numbering style: ${JSON.stringify(_ex)}`);
@@ -632,7 +821,6 @@ async function processStream({
 
     if (nextSection !== undefined) {
       state.section = nextSection;
-      state.blankRunLength = 0;
       if (!options.noRenumber) {
         state.lineNumber = options.startingLineNumber;
       }
@@ -678,10 +866,35 @@ export const nlCommandDefinition: WeshCommandDefinition = {
     usage: 'nl [OPTION]... [FILE]...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({
-      args: context.args,
-      spec: nlArgvSpec,
-    });
+    const parsedArgv = parseNlArgv({ args: context.args });
+    const { parsed, parsedArgs, helpMode } = parsedArgv;
+
+    const characterLocaleMode = resolveCharacterLocaleMode({ env: context.env });
+
+    switch (helpMode) {
+    case 'after-unknown-options': {
+      const orderedDiagnostics = collectNlMixedPreHelpDiagnosticsInArgvOrder({
+        args: parsedArgs,
+        characterLocaleMode,
+      });
+      for (const diagnostic of orderedDiagnostics) {
+        await context.text().error({ text: `nl: ${diagnostic.message}\n` });
+        if (diagnostic.fatal) return { exitCode: 1 };
+      }
+      await writeCommandHelp({
+        context,
+        command: 'nl',
+        argvSpec: nlArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+    case 'normal':
+      break;
+    default: {
+      const _ex: never = helpMode;
+      throw new Error(`Unhandled nl help mode: ${_ex}`);
+    }
+    }
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
@@ -695,6 +908,14 @@ export const nlCommandDefinition: WeshCommandDefinition = {
     }
 
     if (parsed.optionValues.help === true) {
+      const semanticDiagnostics = collectNlPreHelpSemanticDiagnostics({
+        parsed,
+        characterLocaleMode,
+      });
+      for (const semanticDiagnostic of semanticDiagnostics) {
+        await context.text().error({ text: `nl: ${semanticDiagnostic.message}\n` });
+        if (semanticDiagnostic.fatal) return { exitCode: 1 };
+      }
       await writeCommandHelp({
         context,
         command: 'nl',
@@ -703,7 +924,10 @@ export const nlCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
-    const builtOptions = buildOptions({ optionValues: parsed.optionValues });
+    const builtOptions = buildOptions({
+      optionValues: parsed.optionValues,
+      characterLocaleMode,
+    });
     if (!builtOptions.ok) {
       await writeCommandUsageError({
         context,

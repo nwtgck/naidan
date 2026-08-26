@@ -103,7 +103,7 @@ vi.mock('../features/tools/composables/useChatWeshPreferences', () => ({
 describe('useChat Tool Chaining', () => {
   const chatStore = useChat();
   const {
-    activeMessages, sendMessage, TEST_ONLY,
+    activeMessages, sendMessage, streaming, TEST_ONLY,
   } = chatStore;
   const { __testOnlySetCurrentChat } = TEST_ONLY;
 
@@ -119,6 +119,7 @@ describe('useChat Tool Chaining', () => {
 
     // Setup persistence mocks
     vi.mocked(storageService.updateChatMeta).mockResolvedValue(undefined);
+    vi.mocked(storageService.saveFile).mockResolvedValue(undefined);
     vi.mocked(storageService.updateChatContent).mockImplementation(({ updater }) => {
       return Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } })) as any;
     });
@@ -147,12 +148,20 @@ describe('useChat Tool Chaining', () => {
 
       // Iteration 1: Assistant makes tool calls
       onAssistantMessageStart?.();
-      onToolCall({ id: 'call-1', toolName: 'calculator', args: { expression: '1+1' } });
+      onToolCall({
+        id: 'call-1',
+        toolName: 'calculator',
+        modelVisibleArguments: '{"expression":"1+1"}',
+      });
       await nextTick();
       await onToolResult({ id: 'call-1', result: { status: 'success', content: '2' } });
       await nextTick();
 
-      onToolCall({ id: 'call-2', toolName: 'calculator', args: { expression: '2+2' } });
+      onToolCall({
+        id: 'call-2',
+        toolName: 'calculator',
+        modelVisibleArguments: '{"expression":"2+2"}',
+      });
       await nextTick();
       await onToolResult({ id: 'call-2', result: { status: 'success', content: '4' } });
       await nextTick();
@@ -208,8 +217,89 @@ describe('useChat Tool Chaining', () => {
     const toolNode = messages[2]!;
     const assistant2 = messages[3]!;
 
+    expect(assistant1.toolCalls?.map((toolCall) => toolCall.function.arguments)).toEqual([
+      '{"expression":"1+1"}',
+      '{"expression":"2+2"}',
+    ]);
     expect(assistant1.replies.items).toContain(toolNode);
     expect(toolNode.replies.items).toContain(assistant2);
+  });
+
+  it('should preserve model-visible tool history when rebuilding the next user turn', async () => {
+    const chat: Chat = reactive({
+      id: toChatId({ raw: 'chat-prefix-continuity' }),
+      title: 'Prefix Continuity Test',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: true,
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost',
+      },
+      modelId: 'gpt-4',
+    });
+    __testOnlySetCurrentChat({ chat });
+
+    let generationNumber = 0;
+    mockLmChat.mockImplementation(async (params) => {
+      generationNumber += 1;
+      const { onToolCall, onToolResult, onChunk, onAssistantMessageStart } = params;
+
+      onAssistantMessageStart?.();
+      if (generationNumber === 1) {
+        onChunk({ chunk: '<think>tool-call reasoning</think>' });
+        onToolCall?.({
+          id: 'call-invalid',
+          toolName: 'calculator',
+          modelVisibleArguments: '{"expression":"1+1"}',
+        });
+        await onToolResult?.({
+          id: 'call-invalid',
+          result: {
+            status: 'error',
+            code: 'invalid_arguments',
+            message: 'Invalid arguments: test fixture',
+          },
+        });
+        onAssistantMessageStart?.();
+        onChunk({ chunk: 'Recovered from the tool error.' });
+      } else {
+        onChunk({ chunk: 'Second answer.' });
+      }
+    });
+
+    await sendMessage({ content: 'First request' });
+    await flushPromises();
+    await nextTick();
+    await sendMessage({ content: 'Second request' });
+    await flushPromises();
+    await nextTick();
+
+    expect(mockLmChat).toHaveBeenCalledTimes(2);
+    const secondGenerationMessages = mockLmChat.mock.calls[1]![0].messages;
+    expect(secondGenerationMessages).toEqual([
+      { role: 'user', content: 'First request', tool_calls: undefined },
+      {
+        role: 'assistant',
+        content: '<think>tool-call reasoning</think>',
+        tool_calls: [{
+          id: 'call-invalid',
+          type: 'function',
+          function: {
+            name: 'calculator',
+            arguments: '{"expression":"1+1"}',
+          },
+        }],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call-invalid',
+        content: 'Error [invalid_arguments]: Invalid arguments: test fixture',
+      },
+      { role: 'assistant', content: 'Recovered from the tool error.', tool_calls: undefined },
+      { role: 'user', content: 'Second request', tool_calls: undefined },
+    ]);
   });
 
   it('should correctly follow the branch even with multiple root items', async () => {
@@ -244,4 +334,58 @@ describe('useChat Tool Chaining', () => {
     const messages = activeMessages.value;
     expect(messages[0]!.content).toBe('Message 2');
   });
+
+  it('should not finish a generation before asynchronous tool-result persistence settles', async () => {
+    const chat: Chat = reactive({
+      id: toChatId({ raw: 'chat-tool-result-persistence' }),
+      title: 'Tool Result Persistence Test',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: true,
+      endpoint: {
+        type: 'openai',
+        url: 'http://localhost',
+      },
+      modelId: 'gpt-4',
+    });
+    __testOnlySetCurrentChat({ chat });
+
+    let releaseSave: (() => void) | undefined;
+    vi.mocked(storageService.saveFile).mockImplementation(() => new Promise<void>(resolve => {
+      releaseSave = resolve;
+    }));
+
+    mockLmChat.mockImplementation(async (params) => {
+      const { onToolCall, onToolResult, onChunk, onAssistantMessageStart } = params;
+      onAssistantMessageStart?.();
+      onToolCall?.({
+        id: 'call-large-result',
+        toolName: 'calculator',
+        modelVisibleArguments: '{"expression":"1+1"}',
+      });
+      onToolResult?.({
+        id: 'call-large-result',
+        result: { status: 'success', content: 'x'.repeat(100 * 1024 + 1) },
+      });
+      onAssistantMessageStart?.();
+      onChunk({ chunk: 'Done.' });
+    });
+
+    await sendMessage({ content: 'Persist a large result' });
+    await vi.waitUntil(() => vi.mocked(storageService.saveFile).mock.calls.length > 0);
+    await flushPromises();
+    expect(streaming.value).toBe(true);
+
+    releaseSave!();
+    await vi.waitUntil(() => !streaming.value);
+
+    const toolMessage = activeMessages.value.find((message) => message.role === 'tool');
+    expect(toolMessage?.role).toBe('tool');
+    if (toolMessage?.role !== 'tool') throw new Error('Expected a persisted Tool Result message.');
+    expect(toolMessage.results[0]?.status).toBe('success');
+    if (toolMessage.results[0]?.status !== 'success') throw new Error('Expected a successful Tool Result.');
+    expect(toolMessage.results[0].content.type).toBe('binary_object');
+  });
+
 });

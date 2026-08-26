@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { reactive } from 'vue';
 import { getEffectiveToolConfigsForChat, useChatTools } from './useChatTools';
-import type { Chat, ChatMeta } from '@/01-models/types';
+import type { Chat, ChatMeta, Volume } from '@/01-models/types';
 import type { ChatId } from '@/01-models/ids';
-import { toChatGroupId, toChatId } from '@/01-models/ids';
+import { toChatGroupId, toChatId, toVolumeId } from '@/01-models/ids';
 import { currentChatRef, liveChatRegistry, rootItems } from '@/composables/chat/global/chat-core-singletons';
 import { useSettings } from '@/composables/useSettings';
 import { storageService } from '@/00-storage/service';
@@ -14,6 +14,15 @@ vi.mock('@/00-storage/service', () => ({
     updateChatMeta: vi.fn().mockResolvedValue(undefined),
     updateSettings: vi.fn().mockResolvedValue(undefined),
     getCurrentType: vi.fn().mockReturnValue('local'),
+    createVolumeFromFiles: vi.fn().mockResolvedValue({
+      id: 'workspace-volume' as unknown as Volume['id'],
+      name: 'Workspace',
+      type: 'opfs',
+      createdAt: 0,
+    } satisfies Volume),
+    addMountToChat: vi.fn().mockResolvedValue(undefined),
+    addMountToChatIfPathAvailable: vi.fn().mockResolvedValue('added'),
+    deleteVolume: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -26,6 +35,9 @@ describe('useChatTools', () => {
     liveChatRegistry.clear();
     rootItems.value = [];
     vi.mocked(storageService.updateChatMeta).mockClear();
+    vi.mocked(storageService.getCurrentType).mockReturnValue('local');
+    vi.mocked(storageService.createVolumeFromFiles).mockClear();
+    vi.mocked(storageService.addMountToChatIfPathAvailable).mockClear();
     vi.mocked(storageService.updateChatMeta).mockImplementation(async ({ id, updater }) => {
       await updater({ current: liveChatRegistry.get(id) ?? null });
     });
@@ -407,6 +419,80 @@ describe('useChatTools', () => {
       expect(isToolEnabled({ name: 'calculator' })).toBe(false);
       expect(isToolEnabled({ name: 'shell_execute' })).toBe(true);
     });
+  });
+
+  it('provisions /workspace again when Shell Execute is re-enabled after the mount was removed', async () => {
+    vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
+    vi.mocked(storageService.createVolumeFromFiles)
+      .mockResolvedValueOnce({ id: toVolumeId({ raw: 'workspace-volume-1' }), name: 'Workspace', type: 'opfs', createdAt: 0 })
+      .mockResolvedValueOnce({ id: toVolumeId({ raw: 'workspace-volume-2' }), name: 'Workspace', type: 'opfs', createdAt: 1 });
+
+    const chatId = toChatId({ raw: 'chat-workspace' });
+    const chat = createTestChat({ id: chatId });
+    liveChatRegistry.set(chatId, chat);
+    const { setCurrentChatId, setToolEnabled } = useChatTools();
+    setCurrentChatId({ chatId });
+
+    await setToolEnabled({ name: 'shell_execute', enabled: true });
+    expect(chat.mounts?.[0]?.mountPath).toBe('/workspace');
+
+    chat.mounts = [];
+    await setToolEnabled({ name: 'shell_execute', enabled: false });
+    expect(chat.mounts).toEqual([]);
+
+    await setToolEnabled({ name: 'shell_execute', enabled: true });
+
+    expect(storageService.createVolumeFromFiles).toHaveBeenCalledTimes(2);
+    expect(chat.mounts).toEqual([{
+      type: 'volume',
+      volumeId: toVolumeId({ raw: 'workspace-volume-2' }),
+      mountPath: '/workspace',
+      readOnly: false,
+    }]);
+  });
+
+  it('provisions /workspace when resetting Shell Execute to an enabled Chat Group override', async () => {
+    setToolConfigPersistence({ persistence: 'enabled' });
+    vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
+
+    const groupId = toChatGroupId({ raw: 'workspace-group' });
+    rootItems.value = [{
+      id: 'chat_group:workspace-group',
+      type: 'chat_group',
+      chatGroup: {
+        id: groupId,
+        name: 'Workspace Group',
+        isCollapsed: false,
+        updatedAt: 0,
+        items: [],
+        toolConfigs: [{
+          key: 'builtin.wesh',
+          status: 'enabled',
+          naidanSysfs: { accessScope: 'none' },
+        }],
+      },
+    }];
+    const chatId = toChatId({ raw: 'chat-inherited-workspace' });
+    const chat = createTestChat({
+      id: chatId,
+      groupId,
+      toolConfigs: [{
+        key: 'builtin.wesh',
+        status: 'disabled',
+        naidanSysfs: { accessScope: 'none' },
+      }],
+    });
+    liveChatRegistry.set(chatId, chat);
+
+    const { setCurrentChatId, isToolEnabled, resetToolToInherited } = useChatTools();
+    setCurrentChatId({ chatId });
+    expect(isToolEnabled({ name: 'shell_execute' })).toBe(false);
+
+    await resetToolToInherited({ name: 'shell_execute' });
+
+    expect(isToolEnabled({ name: 'shell_execute' })).toBe(true);
+    expect(storageService.createVolumeFromFiles).toHaveBeenCalledTimes(1);
+    expect(chat.mounts?.[0]?.mountPath).toBe('/workspace');
   });
 
   describe('setToolEnabled', () => {

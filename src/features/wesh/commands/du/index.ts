@@ -1,4 +1,5 @@
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
+import { iterateNullTerminatedPathnames } from '@/features/wesh/commands/_shared/files0-from';
 import {
   writeCommandHelp,
   writeCommandUsageError,
@@ -35,102 +36,6 @@ interface DuOperandRecord {
   sourceRecordNumber: number | undefined,
 }
 
-function combineByteFragments({
-  fragments,
-  finalFragment,
-}: {
-  fragments: Uint8Array[],
-  finalFragment: Uint8Array,
-}): Uint8Array {
-  if (fragments.length === 0) {
-    return finalFragment;
-  }
-
-  const totalLength = fragments.reduce(
-    (sum, fragment) => sum + fragment.byteLength,
-    finalFragment.byteLength,
-  );
-  const combined = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const fragment of fragments) {
-    combined.set(fragment, offset);
-    offset += fragment.byteLength;
-  }
-  combined.set(finalFragment, offset);
-  return combined;
-}
-
-function decodePathname({
-  decoder,
-  bytes,
-  source,
-}: {
-  decoder: TextDecoder,
-  bytes: Uint8Array,
-  source: string,
-}): string {
-  try {
-    return decoder.decode(bytes);
-  } catch {
-    throw new Error(`invalid UTF-8 pathname in '${source}'`);
-  }
-}
-
-async function* iterateNullTerminatedPathnames({
-  context,
-  source,
-}: {
-  context: WeshCommandContext,
-  source: string,
-}): AsyncIterable<DuOperandRecord> {
-  const stream = await openCommandInputStream({
-    context,
-    input: source,
-  });
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  let fragments: Uint8Array[] = [];
-  let sourceRecordNumber = 1;
-
-  for await (const chunk of iterateReadableStreamChunks({ stream })) {
-    let recordStart = 0;
-    for (let index = 0; index < chunk.byteLength; index += 1) {
-      if (chunk[index] !== 0) {
-        continue;
-      }
-
-      const bytes = combineByteFragments({
-        fragments,
-        finalFragment: chunk.subarray(recordStart, index),
-      });
-      yield {
-        value: decodePathname({ decoder, bytes, source }),
-        sourceRecordNumber,
-      };
-      sourceRecordNumber += 1;
-      fragments = [];
-      recordStart = index + 1;
-    }
-
-    if (recordStart < chunk.byteLength) {
-      fragments.push(chunk.subarray(recordStart));
-    }
-  }
-
-  if (fragments.length > 0) {
-    yield {
-      value: decodePathname({
-        decoder,
-        bytes: combineByteFragments({
-          fragments,
-          finalFragment: new Uint8Array(0),
-        }),
-        source,
-      }),
-      sourceRecordNumber,
-    };
-  }
-}
-
 async function loadExcludePatterns({
   context,
   directPatterns,
@@ -142,10 +47,16 @@ async function loadExcludePatterns({
 }): Promise<CompiledDuPattern[]> {
   const patterns = directPatterns.map((pattern) => compileDuPattern({ pattern }));
   for (const source of sources) {
-    const stream = await openCommandInputStream({
-      context,
-      input: source,
-    });
+    let stream: ReadableStream<Uint8Array>;
+    try {
+      stream = await openCommandInputStream({
+        context,
+        input: source,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`cannot read exclude file '${source}': ${message}`);
+    }
     for await (const line of iterateUtf8Lines({
       chunks: iterateReadableStreamChunks({ stream }),
     })) {
@@ -213,26 +124,11 @@ export const duCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    if (parsed.helpRequested) {
-      await writeCommandHelp({
-        context,
-        command: 'du',
-        argvSpec: duArgvSpec,
-      });
-      return { exitCode: 0 };
+    for (const diagnostic of parsed.preHelpDiagnostics) {
+      await context.text().error({ text: `${diagnostic}\n` });
     }
 
     const { options } = parsed;
-    if (options.summarize && options.maxDepth === 0) {
-      await context.text().error({
-        text: 'du: warning: summarizing is the same as using --max-depth=0\n',
-      });
-    }
-    if (options.metric === 'inodes' && options.logicalSizeOptionRequested) {
-      await context.text().error({
-        text: 'du: warning: options --apparent-size and -b are ineffective with --inodes\n',
-      });
-    }
 
     let patterns: CompiledDuPattern[];
     try {
@@ -244,8 +140,30 @@ export const duCommandDefinition: WeshCommandDefinition = {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       await context.text().error({ text: `du: ${message}\n` });
-      return { exitCode: 1 };
+      if (!parsed.helpRequested) return { exitCode: 1 };
+      patterns = [];
     }
+
+    if (parsed.helpRequested) {
+      await writeCommandHelp({
+        context,
+        command: 'du',
+        argvSpec: duArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
+    if (options.summarize && options.maxDepth === 0) {
+      await context.text().error({
+        text: 'du: warning: summarizing is the same as using --max-depth=0\n',
+      });
+    }
+    if (options.metric === 'inodes' && options.logicalSizeOptionRequested) {
+      await context.text().error({
+        text: 'du: warning: options --apparent-size and -b are ineffective with --inodes\n',
+      });
+    }
+
     const writer = createBufferedTextWriter({
       handle: context.stdout,
       maxBufferLength: 16 * 1024,

@@ -1,5 +1,10 @@
 import { parseStandardArgv, type ArgvValue, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
+import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
+import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
+import { decodeCommandDataBytes, decodeCommandDataBytesAsSingleByte } from '@/features/wesh/commands/_shared/data-codec';
+import { compileBasicRegularExpression } from '@/features/wesh/commands/_shared/posix-regexp';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
@@ -38,6 +43,7 @@ interface CsplitSection {
 
 interface CsplitPlan {
   sections: CsplitSection[],
+  warnings: string[],
   errorMessage: string | undefined,
 }
 
@@ -58,11 +64,12 @@ function parsePositiveInteger({
   value: string,
   description: string,
 }): { ok: true, value: number } | { ok: false, message: string } {
-  if (!/^\d+$/u.test(value)) {
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  if (!/^\+?\d+$/u.test(numericText)) {
     return { ok: false, message: `${description} must be a positive integer: '${value}'` };
   }
 
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number.parseInt(numericText, 10);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     return { ok: false, message: `${description} must be a positive integer: '${value}'` };
   }
@@ -77,11 +84,12 @@ function parseNonNegativeInteger({
   value: string,
   description: string,
 }): { ok: true, value: number } | { ok: false, message: string } {
-  if (!/^\d+$/u.test(value)) {
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  if (!/^\+?\d+$/u.test(numericText)) {
     return { ok: false, message: `${description} must be a non-negative integer: '${value}'` };
   }
 
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number.parseInt(numericText, 10);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
     return { ok: false, message: `${description} must be a non-negative integer: '${value}'` };
   }
@@ -229,9 +237,11 @@ function parseOffset({
 function parseDelimitedRegexPattern({
   token,
   delimiter,
+  characterLocaleMode,
 }: {
   token: string,
   delimiter: '/' | '%',
+  characterLocaleMode: WeshCharacterLocaleMode,
 }): CsplitPattern | undefined {
   if (!token.startsWith(delimiter)) {
     return undefined;
@@ -260,7 +270,15 @@ function parseDelimitedRegexPattern({
     return {
       kind: 'regex',
       delimiter,
-      regex: new RegExp(body, 'u'),
+      regex: compileBasicRegularExpression({
+        source: body,
+        flags: '',
+        characterClassMode: characterLocaleMode,
+        gnuWordOperators: true,
+        basicOperatorMode: 'gnu',
+        dotMode: 'non-null',
+        excludeSurrogateEscapes: characterLocaleMode === 'unicode',
+      }),
       offset,
       source: token,
     };
@@ -272,10 +290,12 @@ function parseDelimitedRegexPattern({
 
 function parseCsplitToken({
   token,
+  characterLocaleMode,
 }: {
   token: string,
+  characterLocaleMode: WeshCharacterLocaleMode,
 }): CsplitParsedToken {
-  const repeatMatch = /^\{(\d+|\*)\}$/u.exec(token);
+  const repeatMatch = /^\{(\+?\d+|\*)\}$/u.exec(token);
   if (repeatMatch !== null) {
     const rawCount = repeatMatch[1];
     if (rawCount === undefined) {
@@ -294,12 +314,20 @@ function parseCsplitToken({
     return { kind: 'repeat', count: repeatCount.value, source: token };
   }
 
-  const slashPattern = parseDelimitedRegexPattern({ token, delimiter: '/' });
+  const slashPattern = parseDelimitedRegexPattern({
+    token,
+    delimiter: '/',
+    characterLocaleMode,
+  });
   if (slashPattern !== undefined) {
     return { kind: 'pattern', pattern: slashPattern };
   }
 
-  const percentPattern = parseDelimitedRegexPattern({ token, delimiter: '%' });
+  const percentPattern = parseDelimitedRegexPattern({
+    token,
+    delimiter: '%',
+    characterLocaleMode,
+  });
   if (percentPattern !== undefined) {
     return { kind: 'pattern', pattern: percentPattern };
   }
@@ -340,12 +368,32 @@ async function readAllInputBytes({
   return combined;
 }
 
-function splitIntoLineRecords({
+function decodeCsplitMatchBytes({
   bytes,
+  characterLocaleMode,
 }: {
   bytes: Uint8Array,
+  characterLocaleMode: WeshCharacterLocaleMode,
+}): string {
+  switch (characterLocaleMode) {
+  case 'ascii':
+    return decodeCommandDataBytesAsSingleByte({ bytes });
+  case 'unicode':
+    return decodeCommandDataBytes({ bytes });
+  default: {
+    const _ex: never = characterLocaleMode;
+    throw new Error(`Unhandled character locale mode: ${_ex}`);
+  }
+  }
+}
+
+function splitIntoLineRecords({
+  bytes,
+  characterLocaleMode,
+}: {
+  bytes: Uint8Array,
+  characterLocaleMode: WeshCharacterLocaleMode,
 }): CsplitLineRecord[] {
-  const decoder = new TextDecoder();
   const records: CsplitLineRecord[] = [];
   let start = 0;
 
@@ -357,7 +405,10 @@ function splitIntoLineRecords({
     const lineBytes = bytes.slice(start, index + 1);
     records.push({
       bytes: lineBytes,
-      matchText: decoder.decode(lineBytes.subarray(0, lineBytes.byteLength - 1)),
+      matchText: decodeCsplitMatchBytes({
+        bytes: lineBytes.subarray(0, lineBytes.byteLength - 1),
+        characterLocaleMode,
+      }),
     });
     start = index + 1;
   }
@@ -366,7 +417,7 @@ function splitIntoLineRecords({
     const lineBytes = bytes.slice(start);
     records.push({
       bytes: lineBytes,
-      matchText: decoder.decode(lineBytes),
+      matchText: decodeCsplitMatchBytes({ bytes: lineBytes, characterLocaleMode }),
     });
   }
 
@@ -395,13 +446,15 @@ function linePatternBoundary({
   currentLineIndex,
   pattern,
   isRepetition,
+  suppressMatched,
 }: {
   currentLineIndex: number,
   pattern: Extract<CsplitPattern, { kind: 'line' }>,
   isRepetition: boolean,
+  suppressMatched: boolean,
 }): number {
   if (isRepetition) {
-    return currentLineIndex + pattern.lineNumber;
+    return currentLineIndex + pattern.lineNumber - (suppressMatched ? 1 : 0);
   }
   return pattern.lineNumber - 1;
 }
@@ -439,27 +492,69 @@ function appendFinalWriteSection({
   });
 }
 
+function validateAbsoluteLinePatternOrder({
+  parsedTokens,
+}: {
+  parsedTokens: readonly CsplitParsedToken[],
+}): { warnings: string[], errorMessage: string | undefined } {
+  const warnings: string[] = [];
+  let precedingLineNumber: number | undefined;
+
+  for (const parsedToken of parsedTokens) {
+    if (parsedToken.kind !== 'pattern' || parsedToken.pattern.kind !== 'line') {
+      continue;
+    }
+    const { lineNumber, source } = parsedToken.pattern;
+    if (precedingLineNumber !== undefined) {
+      if (lineNumber < precedingLineNumber) {
+        return {
+          warnings,
+          errorMessage: `csplit: line number '${source}' is smaller than preceding line number, ${precedingLineNumber}`,
+        };
+      }
+      if (lineNumber === precedingLineNumber) {
+        warnings.push(`csplit: warning: line number '${source}' is the same as preceding line number`);
+      }
+    }
+    precedingLineNumber = lineNumber;
+  }
+
+  return { warnings, errorMessage: undefined };
+}
+
 function computeSections({
   lines,
   patternTokens,
   suppressMatched,
+  characterLocaleMode,
 }: {
   lines: CsplitLineRecord[],
   patternTokens: string[],
   suppressMatched: boolean,
+  characterLocaleMode: WeshCharacterLocaleMode,
 }): CsplitPlan {
   const parsedTokens: CsplitParsedToken[] = [];
   for (const token of patternTokens) {
     try {
-      parsedTokens.push(parseCsplitToken({ token }));
+      parsedTokens.push(parseCsplitToken({ token, characterLocaleMode }));
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      return { sections: [], errorMessage: `csplit: ${message}` };
+      return { sections: [], warnings: [], errorMessage: `csplit: ${message}` };
     }
+  }
+
+  const orderValidation = validateAbsoluteLinePatternOrder({ parsedTokens });
+  if (orderValidation.errorMessage !== undefined) {
+    return {
+      sections: [],
+      warnings: orderValidation.warnings,
+      errorMessage: orderValidation.errorMessage,
+    };
   }
 
   const sections: CsplitSection[] = [];
   let currentLineIndex = 0;
+  let nextRegexSearchLineIndex = 0;
   let previousPattern: CsplitPattern | undefined;
   let errorMessage: string | undefined;
 
@@ -476,12 +571,60 @@ function computeSections({
   }): CsplitPatternApplicationResult => {
     switch (pattern.kind) {
     case 'line': {
-      const boundary = linePatternBoundary({ currentLineIndex, pattern, isRepetition });
-      if (boundary < currentLineIndex || boundary > lines.length) {
+      const boundary = linePatternBoundary({
+        currentLineIndex,
+        pattern,
+        isRepetition,
+        suppressMatched,
+      });
+      const followsRegex = !isRepetition && previousPattern?.kind === 'regex';
+      if (followsRegex && boundary <= currentLineIndex) {
+        sections.push({
+          mode: 'write',
+          startLineIndex: currentLineIndex,
+          endLineIndexExclusive: currentLineIndex,
+        });
+        const cannotAdvance = suppressMatched
+          ? currentLineIndex >= lines.length
+          : currentLineIndex >= lines.length - 1;
+        if (cannotAdvance) {
+          errorMessage = `csplit: '${pattern.source}': line number out of range`;
+          return 'error';
+        }
+        if (suppressMatched) {
+          currentLineIndex += 1;
+        }
+        nextRegexSearchLineIndex = Math.max(
+          nextRegexSearchLineIndex,
+          suppressMatched ? currentLineIndex : currentLineIndex + 1,
+        );
+        return 'applied';
+      }
+
+      const maximumBoundary = suppressMatched ? lines.length : lines.length - 1;
+      const suppressAtEofWithoutProgress = suppressMatched
+        && boundary === lines.length
+        && boundary === currentLineIndex;
+      if (
+        boundary < currentLineIndex
+        || boundary > maximumBoundary
+        || suppressAtEofWithoutProgress
+      ) {
         errorMessage = repetitionIndex === undefined
           ? `csplit: '${pattern.source}': line number out of range`
           : `csplit: '${pattern.source}': line number out of range on repetition ${repetitionIndex}`;
-        appendFinalWriteSection({ sections, currentLineIndex, lines });
+        const suppressingRegexMatchedAtEnd = suppressMatched
+          && previousPattern?.kind === 'regex'
+          && nextRegexSearchLineIndex >= lines.length;
+        if (suppressingRegexMatchedAtEnd) {
+          sections.push({
+            mode: 'write',
+            startLineIndex: currentLineIndex,
+            endLineIndexExclusive: currentLineIndex,
+          });
+        } else {
+          appendFinalWriteSection({ sections, currentLineIndex, lines });
+        }
         return 'error';
       }
       sections.push({
@@ -490,12 +633,14 @@ function computeSections({
         endLineIndexExclusive: boundary,
       });
       currentLineIndex = boundary;
+      if (suppressMatched && currentLineIndex < lines.length) {
+        currentLineIndex += 1;
+      }
+      nextRegexSearchLineIndex = Math.max(nextRegexSearchLineIndex, currentLineIndex);
       return 'applied';
     }
     case 'regex': {
-      const regexSearchStartLineIndex = isRepetition && !suppressMatched && pattern.offset === 0
-        ? currentLineIndex + 1
-        : currentLineIndex;
+      const regexSearchStartLineIndex = Math.max(currentLineIndex, nextRegexSearchLineIndex);
       const matchedLineIndex = findRegexMatch({
         lines,
         regex: pattern.regex,
@@ -506,14 +651,23 @@ function computeSections({
           return 'exhausted';
         }
         errorMessage = `csplit: '${pattern.source}': match not found`;
-        appendFinalWriteSection({ sections, currentLineIndex, lines });
+        sections.push({
+          mode: sectionModeForRegexDelimiter({ delimiter: pattern.delimiter }),
+          startLineIndex: currentLineIndex,
+          endLineIndexExclusive: lines.length,
+        });
         return 'error';
       }
 
+      nextRegexSearchLineIndex = matchedLineIndex + 1;
       const boundary = matchedLineIndex + pattern.offset;
       if (boundary < currentLineIndex || boundary > lines.length) {
-        errorMessage = `csplit: '${pattern.source}': offset out of range`;
-        appendFinalWriteSection({ sections, currentLineIndex, lines });
+        errorMessage = `csplit: '${pattern.source}': line number out of range`;
+        sections.push({
+          mode: sectionModeForRegexDelimiter({ delimiter: pattern.delimiter }),
+          startLineIndex: currentLineIndex,
+          endLineIndexExclusive: Math.min(Math.max(boundary, currentLineIndex), lines.length),
+        });
         return 'error';
       }
 
@@ -525,6 +679,7 @@ function computeSections({
       currentLineIndex = boundary;
       if (suppressMatched && currentLineIndex < lines.length) {
         currentLineIndex += 1;
+        nextRegexSearchLineIndex = Math.max(nextRegexSearchLineIndex, currentLineIndex);
       }
       return 'applied';
     }
@@ -535,21 +690,29 @@ function computeSections({
     }
   };
 
-  for (const parsed of parsedTokens) {
+  parsedTokenLoop:
+  for (let parsedIndex = 0; parsedIndex < parsedTokens.length; parsedIndex += 1) {
+    const parsed = parsedTokens[parsedIndex];
+    if (parsed === undefined) {
+      throw new Error(`Missing csplit parsed token at index ${parsedIndex}`);
+    }
     switch (parsed.kind) {
     case 'pattern': {
+      const nextParsed = parsedTokens[parsedIndex + 1];
       const result = applyPattern({
         pattern: parsed.pattern,
         isRepetition: false,
         repetitionIndex: undefined,
-        allowRegexExhaustion: false,
+        allowRegexExhaustion: parsed.pattern.kind === 'regex'
+          && nextParsed?.kind === 'repeat'
+          && nextParsed.count === 'until-exhausted',
       });
       previousPattern = parsed.pattern;
       switch (result) {
       case 'applied':
         break;
       case 'error':
-        return { sections, errorMessage };
+        return { sections, warnings: orderValidation.warnings, errorMessage };
       case 'exhausted':
         break;
       default: {
@@ -561,11 +724,14 @@ function computeSections({
     }
     case 'repeat': {
       if (previousPattern === undefined) {
-        return { sections, errorMessage: `csplit: '${parsed.source}': repeat pattern has no previous pattern` };
+        return {
+          sections,
+          warnings: orderValidation.warnings,
+          errorMessage: `csplit: '${parsed.source}': repeat pattern has no previous pattern`,
+        };
       }
 
       if (parsed.count === 'until-exhausted') {
-        repeatUntilExhaustedLoop:
         for (let repetitionIndex = 1; ; repetitionIndex += 1) {
           const result = applyPattern({
             pattern: previousPattern,
@@ -577,9 +743,9 @@ function computeSections({
           case 'applied':
             break;
           case 'exhausted':
-            break repeatUntilExhaustedLoop;
+            break parsedTokenLoop;
           case 'error':
-            return { sections, errorMessage };
+            return { sections, warnings: orderValidation.warnings, errorMessage };
           default: {
             const _ex: never = result;
             throw new Error(`Unhandled csplit pattern result: ${_ex}`);
@@ -600,7 +766,7 @@ function computeSections({
         case 'applied':
           break;
         case 'error':
-          return { sections, errorMessage };
+          return { sections, warnings: orderValidation.warnings, errorMessage };
         case 'exhausted':
           break;
         default: {
@@ -619,7 +785,7 @@ function computeSections({
   }
 
   appendFinalWriteSection({ sections, currentLineIndex, lines });
-  return { sections, errorMessage: undefined };
+  return { sections, warnings: orderValidation.warnings, errorMessage: undefined };
 }
 
 function parseSuffixFormat({
@@ -777,6 +943,52 @@ function sectionByteLength({
   return byteLength;
 }
 
+async function handleDirectoryInput({
+  context,
+  input,
+  options,
+  suffixConversion,
+}: {
+  context: WeshCommandContext,
+  input: string,
+  options: CsplitOptions,
+  suffixConversion: SuffixConversion | undefined,
+}): Promise<WeshCommandResult | undefined> {
+  if (input === '-') return undefined;
+
+  try {
+    const stat = await context.files.stat({ path: resolvePath({ cwd: context.cwd, path: input }) });
+    switch (stat.type) {
+    case 'directory':
+      break;
+    case 'file':
+    case 'fifo':
+    case 'chardev':
+    case 'symlink':
+      return undefined;
+    default: {
+      const _ex: never = stat.type;
+      throw new Error(`Unhandled csplit input type: ${_ex}`);
+    }
+    }
+  } catch {
+    return undefined;
+  }
+
+  const createdPaths = await writeSections({
+    context,
+    lines: [],
+    sections: [{ mode: 'write', startLineIndex: 0, endLineIndexExclusive: 0 }],
+    options,
+    suffixConversion,
+  });
+  if (!options.keepFiles) {
+    await cleanupCreatedFiles({ context, paths: createdPaths });
+  }
+  await context.text().error({ text: 'csplit: read error: Is a directory\n' });
+  return { exitCode: 1 };
+}
+
 async function cleanupCreatedFiles({
   context,
   paths,
@@ -867,7 +1079,11 @@ export const csplitCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardArgvAtFirstEarlyExit({
+        args: context.args,
+        spec: csplitArgvSpec,
+        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+      }),
       spec: csplitArgvSpec,
     });
 
@@ -934,20 +1150,29 @@ export const csplitCommandDefinition: WeshCommandDefinition = {
     }
 
     try {
+      const directoryResult = await handleDirectoryInput({
+        context,
+        input,
+        options,
+        suffixConversion,
+      });
+      if (directoryResult !== undefined) return directoryResult;
+
+      const characterLocaleMode = resolveCharacterLocaleMode({ env: context.env });
       const lines = splitIntoLineRecords({
         bytes: await readAllInputBytes({ context, input }),
+        characterLocaleMode,
       });
       const plan = computeSections({
         lines,
         patternTokens,
         suppressMatched: options.suppressMatched,
+        characterLocaleMode,
       });
-      if (plan.errorMessage !== undefined && !options.keepFiles) {
-        await context.text().error({ text: `${plan.errorMessage}\n` });
-        return { exitCode: 1 };
+      for (const warning of plan.warnings) {
+        await context.text().error({ text: `${warning}\n` });
       }
-
-      await writeSections({
+      const createdPaths = await writeSections({
         context,
         lines,
         sections: plan.sections,
@@ -956,6 +1181,9 @@ export const csplitCommandDefinition: WeshCommandDefinition = {
       });
 
       if (plan.errorMessage !== undefined) {
+        if (!options.keepFiles) {
+          await cleanupCreatedFiles({ context, paths: createdPaths });
+        }
         await context.text().error({ text: `${plan.errorMessage}\n` });
         return { exitCode: 1 };
       }

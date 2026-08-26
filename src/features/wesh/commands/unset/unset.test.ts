@@ -37,19 +37,18 @@ describe('wesh unset', () => {
     return { result, stdout, stderr };
   }
 
-  it('prints help and reports missing operands', async () => {
+  it('prints help and accepts no operands', async () => {
     const help = await execute({ script: 'unset --help' });
     expect(help.stdout.text).toContain('Unset environment variables');
-    expect(help.stdout.text).toContain('usage: unset name...');
+    expect(help.stdout.text).toContain('usage: unset [-v] [-f] [name ...]');
     expect(help.stdout.text).toContain('--help');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
 
-    const missing = await execute({ script: 'unset' });
-    expect(missing.stdout.text).toBe('');
-    expect(missing.stderr.text).toContain('unset: missing operand');
-    expect(missing.stderr.text).toContain('usage: unset name...');
-    expect(missing.result.exitCode).toBe(1);
+    const noOperands = await execute({ script: 'unset' });
+    expect(noOperands.stdout.text).toBe('');
+    expect(noOperands.stderr.text).toBe('');
+    expect(noOperands.result.exitCode).toBe(0);
   });
 
   it('keeps unsetting behavior unchanged', async () => {
@@ -58,9 +57,53 @@ describe('wesh unset', () => {
     expect(unsetResult.stderr.text).toBe('');
     expect(unsetResult.result.exitCode).toBe(0);
 
-    const verifyUnset = await execute({ script: 'env FOO' });
-    expect(verifyUnset.stdout.text).toBe('');
+    const verifyUnset = await execute({
+      script: `printf '<%s>\n' "\${FOO-unset}"`,
+    });
+    expect(verifyUnset.stdout.text).toBe('<unset>\n');
     expect(verifyUnset.stderr.text).toBe('');
     expect(verifyUnset.result.exitCode).toBe(0);
   });
+
+  it('returns status 2 for invalid options without unsetting operands', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `VALUE=one
+unset -z VALUE
+`,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('invalid option');
+    expect(result.exitCode).toBe(2);
+
+    const preserved = await execute({ script: `printf '%s\n' "$VALUE"` });
+    expect(preserved.stdout.text).toBe('one\n');
+  });
+
+  it('does not reinterpret option-looking tokens after the first name operand', async () => {
+    const execution = await execute({
+      script: `VALUE=one
+unset VALUE --bogus
+printf '<%s>\n' "\${VALUE-unset}"
+`,
+    });
+
+    expect(execution.stdout.text).toBe('<unset>\n');
+    expect(execution.stderr.text).toBe('');
+    expect(execution.result.exitCode).toBe(0);
+  });
+
+  it('does not let a later --help prevent an earlier name from being unset', async () => {
+    const execution = await execute({
+      script: `VALUE=one
+unset VALUE --help >/dev/null
+printf '<%s>\n' "\${VALUE-unset}"
+`,
+    });
+
+    expect(execution.stdout.text).toBe('<unset>\n');
+    expect(execution.stderr.text).toBe('');
+    expect(execution.result.exitCode).toBe(0);
+  });
+
 });

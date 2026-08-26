@@ -29,6 +29,7 @@ export type CmpDifference =
       shorter: 'left' | 'right',
       comparedBytes: bigint,
       line: bigint,
+      afterRecordDelimiter: boolean,
     };
 
 class CmpChunkCursor {
@@ -163,6 +164,7 @@ export async function* iterateCmpDifferences({
   const right = new CmpChunkCursor({ stream: rightStream, side: 'right' });
   let position = 0n;
   let line = 1n;
+  let lastComparedByteWasRecordDelimiter = false;
   let remainingLimit = limit;
 
   try {
@@ -182,7 +184,8 @@ export async function* iterateCmpDifferences({
           kind: 'eof',
           shorter: leftAvailable ? 'right' : 'left',
           comparedBytes: position,
-          line,
+          line: lastComparedByteWasRecordDelimiter && line > 1n ? line - 1n : line,
+          afterRecordDelimiter: lastComparedByteWasRecordDelimiter,
         };
         return;
       }
@@ -221,7 +224,8 @@ export async function* iterateCmpDifferences({
           }
         }
 
-        if (leftByte === 0x0a) {
+        lastComparedByteWasRecordDelimiter = leftByte === 0x0a;
+        if (lastComparedByteWasRecordDelimiter) {
           line += 1n;
         }
       }

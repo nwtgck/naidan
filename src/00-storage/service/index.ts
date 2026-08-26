@@ -7,6 +7,7 @@ import { OPFSStorageProvider } from './opfs-storage';
 import { NaidanOpfsStorageBackend } from './naidan-opfs/backend';
 import { HostVolumeDB } from './opfs/host-volume-db';
 import { createNativeOpfsFileSystemSession } from './storage-file-system/native-opfs';
+import type { StorageVolumeAccess } from './volume-access';
 import type {
   OpfsEncryptionInspection,
   OpfsEncryptionSettingsInspection,
@@ -90,6 +91,25 @@ function throwOpfsTransitionFailures({ failures, message }: {
   }
   if (failures.length === 1) throw failure;
   throw new AggregateError(failures, message);
+}
+
+
+// Match Wesh VFS lexical mount normalization without introducing a storage -> feature dependency.
+function normalizeMountPathForComparison({ mountPath }: { mountPath: string }): string {
+  const normalizedSegments: string[] = [];
+  for (const segment of mountPath.split('/')) {
+    if (segment.length === 0 || segment === '.') continue;
+    if (segment === '..') {
+      normalizedSegments.pop();
+      continue;
+    }
+    normalizedSegments.push(segment);
+  }
+  return normalizedSegments.length === 0 ? '/' : `/${normalizedSegments.join('/')}`;
+}
+
+function mountPathsAreEquivalent({ left, right }: { left: string, right: string }): boolean {
+  return normalizeMountPathForComparison({ mountPath: left }) === normalizeMountPathForComparison({ mountPath: right });
 }
 
 
@@ -1068,6 +1088,51 @@ export class StorageService {
     return this.getProvider().deleteVolume({ volumeId });
   }
 
+  async deleteVolumeIfEmptyAndUnreferenced({ volumeId }: { volumeId: VolumeId }): Promise<'deleted' | 'kept'> {
+    const isVolumeEmpty = async ({ access }: { access: StorageVolumeAccess }): Promise<boolean> => {
+      switch (access.type) {
+      case 'direct_directory':
+        for await (const _entry of access.handle.values()) {
+          return false;
+        }
+        return true;
+      case 'storage_directory':
+        for await (const _entry of access.handle.entries()) {
+          return false;
+        }
+        return true;
+      default: {
+        const _ex: never = access;
+        throw new Error(`Unhandled storage volume access type: ${String(_ex)}`);
+      }
+      }
+    };
+    const isReferenced = async (): Promise<boolean> => (
+      await this.getProvider().hasVolumeMountReference({ volumeId })
+    );
+
+    const access = await this.getProvider().openVolume({ volumeId });
+    if (access === null || !await isVolumeEmpty({ access })) return 'kept';
+    if (await isReferenced()) return 'kept';
+
+    return await this.synchronizer.withLock({
+      // This runs from best-effort idle cleanup, so keep lock waiting/slow-path
+      // notifications silent rather than surfacing background GC activity to the user.
+      lockKey: LOCK_METADATA,
+      fn: async () => await this.synchronizer.withLock({
+        lockKey: SYNC_LOCK_KEY,
+        fn: async () => {
+          const latestAccess = await this.getProvider().openVolume({ volumeId });
+          if (latestAccess === null || !await isVolumeEmpty({ access: latestAccess })) return 'kept';
+          if (await isReferenced()) return 'kept';
+
+          await this.getProvider().deleteVolume({ volumeId });
+          return 'deleted';
+        },
+      }),
+    });
+  }
+
   async renameVolume({ volumeId, name }: { volumeId: VolumeId, name: string }): Promise<void> {
     return this.getProvider().renameVolume({ volumeId, name });
   }
@@ -1105,6 +1170,54 @@ export class StorageService {
       const existing = current.mounts ?? [];
       return { ...current, mounts: [...existing, mount] };
     } });
+  }
+
+  async addMountToChatIfPathAvailable({ chatId, mount }: { chatId: ChatId, mount: Mount }): Promise<'added' | 'path_occupied'> {
+    try {
+      const result = await this.synchronizer.withLock({
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'addMountToChatIfPathAvailable' }),
+        fn: async () => await this.synchronizer.withLock({
+          lockKey: SYNC_LOCK_KEY,
+          ...this.getLockOptions({ source: 'addMountToChatIfPathAvailable' }),
+          fn: async (): Promise<'added' | 'path_occupied'> => {
+            const provider = this.getProvider();
+            const current = await provider.loadChatMeta({ id: chatId });
+            if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
+
+            const settings = await provider.loadSettings();
+            if (settings?.mounts.some(existing => mountPathsAreEquivalent({ left: existing.mountPath, right: mount.mountPath }))) return 'path_occupied';
+
+            const groupId = current.groupId ?? undefined;
+            if (groupId !== undefined) {
+              const group = await provider.loadChatGroup({ id: groupId });
+              if (group?.mounts?.some(existing => mountPathsAreEquivalent({ left: existing.mountPath, right: mount.mountPath }))) return 'path_occupied';
+            }
+
+            const chatMounts = current.mounts ?? [];
+            if (chatMounts.some(existing => mountPathsAreEquivalent({ left: existing.mountPath, right: mount.mountPath }))) return 'path_occupied';
+
+            await provider.saveChatMeta({ meta: { ...current, mounts: [...chatMounts, mount] } });
+            return 'added';
+          },
+        }),
+      });
+      switch (result) {
+      case 'added':
+        this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id: chatId }), timestamp: Date.now() } });
+        break;
+      case 'path_occupied':
+        break;
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled chat mount result: ${String(_ex)}`);
+      }
+      }
+      return result;
+    } catch (e) {
+      await this.handleStorageError({ error: e, source: 'addMountToChatIfPathAvailable' });
+      throw e;
+    }
   }
 
   async removeMountFromChat({ chatId, volumeId }: { chatId: ChatId, volumeId: VolumeId }): Promise<void> {

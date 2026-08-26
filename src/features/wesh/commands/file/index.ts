@@ -1,8 +1,19 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { parseStandardArgv, type ArgvDiagnostic, type ParsedStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { detectFileClassification, statFileTarget } from './detect';
-import { formatFileClassification, formatFileMime } from './format';
+import {
+  detectFileClassification,
+  detectStdinClassification,
+  statFileTarget,
+} from './detect';
+import {
+  formatFileClassification,
+  formatFileMime,
+  formatFileMimeEncoding,
+  formatFileMimeType,
+} from './format';
+import type { FileCommandClassification } from './types';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import { getWeshCodePointDisplayWidth } from '@/features/wesh/utils/display-width';
 
 const fileArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -14,18 +25,45 @@ const fileArgvSpec: StandardArgvParserSpec = {
       help: { summary: 'do not prepend filenames to output lines' },
     },
     {
+      kind: 'value',
+      short: 'F',
+      long: 'separator',
+      key: 'separator',
+      valueName: 'SEPARATOR',
+      allowAttachedValue: true,
+      parseValue: undefined,
+      help: { summary: 'use SEPARATOR instead of colon after filenames', valueName: 'SEPARATOR' },
+    },
+    {
+      kind: 'flag',
+      short: 'L',
+      long: 'dereference',
+      effects: [{ key: 'followSymlinks', value: true }],
+      help: { summary: 'follow symbolic links' },
+    },
+    {
       kind: 'flag',
       short: 'i',
       long: 'mime',
-      effects: [{ key: 'outputMode', value: 'mime' }],
-      help: { summary: 'output MIME type strings' },
+      effects: [
+        { key: 'mimeType', value: true },
+        { key: 'mimeEncoding', value: true },
+      ],
+      help: { summary: 'output MIME type and encoding strings' },
     },
     {
       kind: 'flag',
       short: undefined,
       long: 'mime-type',
-      effects: [{ key: 'outputMode', value: 'mime' }],
+      effects: [{ key: 'mimeType', value: true }],
       help: { summary: 'output only the MIME type string' },
+    },
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'mime-encoding',
+      effects: [{ key: 'mimeEncoding', value: true }],
+      help: { summary: 'output only the MIME encoding string' },
     },
     {
       kind: 'flag',
@@ -41,45 +79,158 @@ const fileArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
+
+interface ParsedFileArgv {
+  readonly parsed: ParsedStandardArgv,
+  readonly helpMode: 'normal' | 'after-unknown-options',
+}
+
+function isFileUnknownOptionDiagnostic({
+  diagnostic,
+}: {
+  diagnostic: ArgvDiagnostic,
+}): boolean {
+  switch (diagnostic.kind) {
+  case 'unknown_short_option':
+  case 'unknown_long_option':
+    return true;
+  case 'missing_option_value':
+  case 'invalid_option_value':
+    return false;
+  default: {
+    const _ex: never = diagnostic.kind;
+    throw new Error(`Unhandled file argv diagnostic kind: ${_ex}`);
+  }
+  }
+}
+
+function parseFileArgv({
+  args,
+}: {
+  args: string[],
+}): ParsedFileArgv {
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== '--help') continue;
+
+    const parsedPrefix = parseStandardArgv({
+      args: args.slice(0, index + 1),
+      spec: fileArgvSpec,
+    });
+    if (
+      parsedPrefix.optionValues.help === true
+      && parsedPrefix.diagnostics.every((diagnostic) => isFileUnknownOptionDiagnostic({ diagnostic }))
+    ) {
+      return {
+        parsed: parsedPrefix,
+        helpMode: parsedPrefix.diagnostics.length === 0 ? 'normal' : 'after-unknown-options',
+      };
+    }
+  }
+
+  return {
+    parsed: parseStandardArgv({ args, spec: fileArgvSpec }),
+    helpMode: 'normal',
+  };
+}
+
+type FileOutputMode = 'description' | 'mime' | 'mime_type' | 'mime_encoding';
+
+function formatClassification({
+  classification,
+  outputMode,
+}: {
+  classification: FileCommandClassification,
+  outputMode: FileOutputMode,
+}): string {
+  switch (outputMode) {
+  case 'description':
+    return formatFileClassification({ classification });
+  case 'mime':
+    return formatFileMime({ classification });
+  case 'mime_type':
+    return formatFileMimeType({ classification });
+  case 'mime_encoding':
+    return formatFileMimeEncoding({ classification });
+  default: {
+    const _ex: never = outputMode;
+    throw new Error(`Unhandled file output mode: ${_ex}`);
+  }
+  }
+}
+
+function getDisplayPath({
+  path,
+}: {
+  path: string,
+}): string {
+  return path === '-' ? '/dev/stdin' : path;
+}
+
+function getFileOperandDisplayWidth({
+  path,
+}: {
+  path: string,
+}): number {
+  let width = 0;
+  for (const character of path) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined) continue;
+    const displayWidth = getWeshCodePointDisplayWidth({ codePoint });
+    // libmagic counts printable combining and default-ignorable code points as
+    // one filename column even though terminal text rendering gives them zero.
+    width += displayWidth === 0 && codePoint >= 0x20 ? 1 : displayWidth;
+  }
+  return width;
+}
+
 async function describePath({
   context,
   path,
   brief,
   outputMode,
+  followSymlinks,
+  operandDisplayWidth,
+  alignmentWidth,
+  outputSeparator,
 }: {
   context: WeshCommandContext,
   path: string,
   brief: boolean,
-  outputMode: 'description' | 'mime',
+  outputMode: FileOutputMode,
+  followSymlinks: boolean,
+  operandDisplayWidth: number,
+  alignmentWidth: number,
+  outputSeparator: string,
 }): Promise<{ ok: true } | { ok: false }> {
+  const displayPath = getDisplayPath({ path });
   try {
-    const target = await statFileTarget({
-      context,
-      path,
-    });
-    const classification = await detectFileClassification({
-      context,
-      target,
-    });
-    const description = (() => {
-      switch (outputMode) {
-      case 'description':
-        return formatFileClassification({ classification });
-      case 'mime':
-        return formatFileMime({ classification });
-      default: {
-        const _ex: never = outputMode;
-        throw new Error(`Unhandled file output mode: ${_ex}`);
-      }
-      }
-    })();
-    const text = brief ? `${description}\n` : `${path}: ${description}\n`;
+    const classification = path === '-'
+      ? await detectStdinClassification({ context })
+      : await (async () => {
+        const target = await statFileTarget({
+          context,
+          path,
+          followSymlinks,
+        });
+        return detectFileClassification({ context, target });
+      })();
+    const brokenSymlinkEncoding = outputMode === 'mime_encoding'
+      && classification.kind === 'symlink'
+      && classification.broken;
+    const description = brokenSymlinkEncoding
+      ? 'ERROR: (null)'
+      : formatClassification({ classification, outputMode });
+    const padding = ' '.repeat(Math.max(1, alignmentWidth - operandDisplayWidth + 1));
+    const text = brief ? `${description}\n` : `${displayPath}${outputSeparator}${padding}${description}\n`;
+    await context.text().print({ text });
+    return brokenSymlinkEncoding ? { ok: false } : { ok: true };
+  } catch {
+    const padding = ' '.repeat(Math.max(1, alignmentWidth - operandDisplayWidth + 1));
+    const text = brief
+      ? `cannot open \`${displayPath}' (No such file or directory)\n`
+      : `${displayPath}${outputSeparator}${padding}cannot open \`${displayPath}' (No such file or directory)\n`;
     await context.text().print({ text });
     return { ok: true };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    await context.text().error({ text: `file: cannot open '${path}' (${message})\n` });
-    return { ok: false };
   }
 }
 
@@ -87,13 +238,30 @@ export const fileCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'file',
     description: 'Determine file type',
-    usage: 'file [-b] [-i] [--brief] [--mime] [--mime-type] [--help] FILE...',
+    usage: 'file [-b] [-F SEPARATOR] [-i] [-L] [--brief] [--mime] [--mime-type] [--mime-encoding] [--help] FILE...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({
-      args: context.args,
-      spec: fileArgvSpec,
-    });
+    const parsedArgv = parseFileArgv({ args: context.args });
+    const { parsed, helpMode } = parsedArgv;
+
+    switch (helpMode) {
+    case 'after-unknown-options':
+      for (const diagnostic of parsed.diagnostics) {
+        await context.text().error({ text: `file: ${diagnostic.message}\n` });
+      }
+      await writeCommandHelp({
+        context,
+        command: 'file',
+        argvSpec: fileArgvSpec,
+      });
+      return { exitCode: 0 };
+    case 'normal':
+      break;
+    default: {
+      const _ex: never = helpMode;
+      throw new Error(`Unhandled file help mode: ${_ex}`);
+    }
+    }
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
@@ -103,7 +271,7 @@ export const fileCommandDefinition: WeshCommandDefinition = {
         message: `file: ${diagnostic.message}`,
         argvSpec: fileArgvSpec,
       });
-      return { exitCode: 2 };
+      return { exitCode: 1 };
     }
 
     if (parsed.optionValues.help === true) {
@@ -125,20 +293,42 @@ export const fileCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    let exitCode = 0;
-    for (const path of parsed.positionals) {
+    const mimeType = parsed.optionValues.mimeType === true;
+    const mimeEncoding = parsed.optionValues.mimeEncoding === true;
+    const outputMode: FileOutputMode = mimeType && mimeEncoding
+      ? 'mime'
+      : mimeType
+        ? 'mime_type'
+        : mimeEncoding
+          ? 'mime_encoding'
+          : 'description';
+    const brief = parsed.optionValues.brief === true;
+    const outputSeparator = typeof parsed.optionValues.separator === 'string'
+      ? parsed.optionValues.separator
+      : ':';
+    const operands = parsed.positionals.map((path) => ({
+      path,
+      displayWidth: getFileOperandDisplayWidth({ path }),
+    }));
+    const alignmentWidth = brief
+      ? 0
+      : operands.reduce((maximum, operand) => Math.max(maximum, operand.displayWidth), 0);
+    let hadFailure = false;
+    for (const operand of operands) {
       const result = await describePath({
         context,
-        path,
-        brief: parsed.optionValues.brief === true,
-        outputMode: parsed.optionValues.outputMode === 'mime' ? 'mime' : 'description',
+        path: operand.path,
+        brief,
+        outputMode,
+        followSymlinks: parsed.optionValues.followSymlinks === true,
+        operandDisplayWidth: operand.displayWidth,
+        alignmentWidth,
+        outputSeparator,
       });
-      if (!result.ok) {
-        exitCode = 1;
-      }
+      if (!result.ok) hadFailure = true;
     }
 
-    return { exitCode };
+    return { exitCode: hadFailure ? 1 : 0 };
   },
 };
 

@@ -88,6 +88,29 @@ describe('wesh patch', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('uses the first help or version early-exit option in argv order', async () => {
+    const helpThenInvalid = await execute({ script: 'patch --help --definitely-invalid-option' });
+    const versionThenInvalid = await execute({ script: 'patch --version --definitely-invalid-option' });
+    const helpThenVersion = await execute({ script: 'patch --help --version' });
+    const versionThenHelp = await execute({ script: 'patch --version --help' });
+
+    expect(helpThenInvalid.stdout.text).toContain('Apply a diff file to original files');
+    expect(helpThenInvalid.stderr.text).toBe('');
+    expect(helpThenInvalid.result.exitCode).toBe(0);
+
+    expect(versionThenInvalid.stdout.text).toContain('Wesh patch 1.0');
+    expect(versionThenInvalid.stderr.text).toBe('');
+    expect(versionThenInvalid.result.exitCode).toBe(0);
+
+    expect(helpThenVersion.stdout.text).toContain('Apply a diff file to original files');
+    expect(helpThenVersion.stdout.text).not.toContain('Wesh patch 1.0');
+    expect(helpThenVersion.result.exitCode).toBe(0);
+
+    expect(versionThenHelp.stdout.text).toContain('Wesh patch 1.0');
+    expect(versionThenHelp.stdout.text).not.toContain('Apply a diff file to original files');
+    expect(versionThenHelp.result.exitCode).toBe(0);
+  });
+
   it('requires explicit path stripping when safe path resolution is enabled', async () => {
     await writeFile({ path: 'file.txt', data: `\
 one
@@ -279,6 +302,77 @@ Index: actual.txt
     expect(result.exitCode).toBe(0);
   });
 
+  it('preserves non-ASCII whitespace in header and Index paths', async () => {
+    const paths = [
+      '\u00A0leading.txt',
+      'trailing.txt\u00A0',
+      '\u2003em-space.txt',
+      '\uFEFFbom.txt',
+    ];
+
+    for (const path of paths) {
+      await writeFile({ path, data: 'old\n' });
+      await writeFile({ path: 'plain.txt', data: 'plain\n' });
+
+      const { result, stderr } = await execute({
+        script: 'patch --batch',
+        stdinText: `--- ${path}\t2020-01-01 00:00:00 +0000\n+++ ${path}\t2020-01-01 00:00:00 +0000\n@@ -1 +1 @@\n-old\n+new\n`,
+      });
+
+      expect(await readFile({ path })).toBe('new\n');
+      expect(await readFile({ path: 'plain.txt' })).toBe('plain\n');
+      expect(stderr.text).toBe('');
+      expect(result.exitCode).toBe(0);
+    }
+
+    const indexPath = '\u00A0indexed.txt\u00A0';
+    await writeFile({ path: indexPath, data: 'old\n' });
+    const indexed = await execute({
+      script: 'patch --batch',
+      stdinText: `Index: ${indexPath}\n===================================================================\n--- missing-old.txt\n+++ missing-new.txt\n@@ -1 +1 @@\n-old\n+new\n`,
+    });
+
+    expect(await readFile({ path: indexPath })).toBe('new\n');
+    expect(indexed.stderr.text).toBe('');
+    expect(indexed.result.exitCode).toBe(0);
+  });
+
+  it('accepts explicitly signed non-negative numeric options', async () => {
+    const patchText = `\
+--- a/file.txt
++++ b/file.txt
+@@ -1 +1 @@
+-old
++new
+`;
+
+    for (const { script, path } of [
+      { script: "patch --batch -p '+1'", path: 'strip/file.txt' },
+      { script: "patch --batch -p1 -F '+0'", path: 'fuzz/file.txt' },
+      { script: "patch --batch -p1 -g '-0'", path: 'get/file.txt' },
+    ]) {
+      await writeFile({ path, data: 'old\n' });
+      const { result, stderr } = await execute({
+        script,
+        stdinText: patchText.replaceAll('file.txt', path),
+      });
+
+      expect(await readFile({ path })).toBe('new\n');
+      expect(stderr.text).toBe('');
+      expect(result.exitCode).toBe(0);
+    }
+
+    for (const script of [
+      "patch -p '-1'",
+      "patch -F '-1'",
+      "patch -g '-1'",
+    ]) {
+      const { result, stderr } = await execute({ script });
+      expect(result.exitCode).toBe(2);
+      expect(stderr.text).toContain('invalid numeric value');
+    }
+  });
+
   it('supports -p path stripping for multiple files', async () => {
     await writeFile({ path: 'src/a.txt', data: 'old a\n' });
     await writeFile({ path: 'src/b.txt', data: 'old b\n' });
@@ -466,6 +560,36 @@ three
     expect(result.exitCode).toBe(0);
   });
 
+  it('uses GNU pluralization for negative one-line offsets', async () => {
+    await writeFile({ path: 'file.txt', data: `\
+one
+two
+three
+` });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'patch',
+      stdinText: `\
+--- file.txt
++++ file.txt
+@@ -2,3 +2,3 @@
+ one
+-two
++TWO
+ three
+`,
+    });
+
+    expect(await readFile({ path: 'file.txt' })).toBe(`\
+one
+TWO
+three
+`);
+    expect(stdout.text).toContain('offset -1 lines');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('uses fuzz only for edge context lines', async () => {
     await writeFile({ path: 'file.txt', data: `\
 DIFFERENT
@@ -496,6 +620,87 @@ three
     expect(result.exitCode).toBe(0);
   });
 
+  it('uses asymmetric GNU fuzz counts without discarding short-side context too early', async () => {
+    await writeFile({ path: 'file.txt', data: `\
+DIFFERENT
+two
+three
+four
+` });
+
+    const patchText = `\
+--- file.txt
++++ file.txt
+@@ -1,4 +1,4 @@
+ one
+-two
++TWO
+ three
+ four
+`;
+
+    const fuzzOne = await execute({ script: 'patch -f -F1', stdinText: patchText });
+    expect(fuzzOne.result.exitCode).toBe(1);
+    expect(await readFile({ path: 'file.txt' })).toBe(`\
+DIFFERENT
+two
+three
+four
+`);
+
+    const fuzzTwo = await execute({ script: 'patch -f -F2', stdinText: patchText });
+    expect(fuzzTwo.result.exitCode).toBe(0);
+    expect(fuzzTwo.stdout.text).toContain('with fuzz 2');
+    expect(await readFile({ path: 'file.txt' })).toBe(`\
+DIFFERENT
+TWO
+three
+four
+`);
+  });
+
+  it('keeps an asymmetric line-one hunk anchored until enough fuzz is available', async () => {
+    await writeFile({ path: 'file.txt', data: `\
+prefix
+one
+two
+three
+four
+` });
+    const patchText = `\
+--- file.txt
++++ file.txt
+@@ -1,4 +1,4 @@
+ one
+-two
++TWO
+ three
+ four
+`;
+
+    const exact = await execute({ script: 'patch -f -F0', stdinText: patchText });
+    expect(exact.result.exitCode).toBe(1);
+    expect(await readFile({ path: 'file.txt' })).toBe(`\
+prefix
+one
+two
+three
+four
+`);
+
+    const fuzzy = await execute({ script: 'patch -f -F1', stdinText: patchText });
+    expect(fuzzy.result.exitCode).toBe(0);
+    expect(fuzzy.stdout.text).toContain('with fuzz 1');
+    expect(fuzzy.stdout.text).toContain('offset 1 line');
+    expect(await readFile({ path: 'file.txt' })).toBe(`\
+prefix
+one
+TWO
+three
+four
+`);
+  });
+
   it('skips a reversed patch by default without mutating the file', async () => {
     await writeFile({ path: 'file.txt', data: 'new\n' });
 
@@ -512,6 +717,9 @@ three
 
     expect(await readFile({ path: 'file.txt' })).toBe('new\n');
     expect(stdout.text).toContain('Reversed (or previously applied) patch detected!');
+    expect(stdout.text).toContain('1 out of 1 hunk ignored -- saving rejects to file file.txt.rej');
+    expect(await exists({ path: 'file.txt.orig' })).toBe(false);
+    expect(await readFile({ path: 'file.txt.rej' })).toContain('-old');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(1);
   });
@@ -553,6 +761,31 @@ three
     expect(await exists({ path: 'file.txt.rej' })).toBe(false);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('reports failed dry runs without claiming that rejects were saved', async () => {
+    await writeFile({ path: 'file.txt', data: 'actual\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'patch --dry-run -f',
+      stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-expected
++changed
+`,
+    });
+
+    expect(await readFile({ path: 'file.txt' })).toBe('actual\n');
+    expect(await exists({ path: 'file.txt.rej' })).toBe(false);
+    expect(stdout.text).toBe(`\
+checking file file.txt
+Hunk #1 FAILED at 1.
+1 out of 1 hunk FAILED
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(1);
   });
 
   it('creates and deletes files using /dev/null headers', async () => {
@@ -658,6 +891,7 @@ four
 `);
     expect(await readFile({ path: 'file.txt.rej' })).toContain('NOT-FOUR');
     expect(stdout.text).toContain('Hunk #2 FAILED');
+    expect(stdout.text).toContain('1 out of 2 hunks FAILED -- saving rejects to file file.txt.rej');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(1);
   });
@@ -685,7 +919,7 @@ four
     expect(await readFile({ path: 'one.txt' })).toBe('old one\n');
     expect(await readFile({ path: 'two.txt' })).toBe('old two\n');
     expect(await exists({ path: 'two.txt.rej' })).toBe(false);
-    expect(stdout.text).toContain('Hunk #1 FAILED');
+    expect(stdout.text).toContain('1 out of 1 hunk FAILED');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(1);
   });
@@ -745,6 +979,91 @@ FOUR
     expect(result.exitCode).toBe(0);
   });
 
+  it('ignores trailing blanks on either side when -l is used', async () => {
+    await writeFile({ path: 'file.txt', data: 'old   \n' });
+    const first = await execute({
+      script: 'patch -l',
+      stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+    expect(first.result.exitCode).toBe(0);
+    expect(await readFile({ path: 'file.txt' })).toBe('new\n');
+
+    await writeFile({ path: 'file.txt', data: 'old\n' });
+    const second = await execute({
+      script: 'patch -l',
+      stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-${'old   '}
++newer
+`,
+    });
+    expect(second.result.exitCode).toBe(0);
+    expect(await readFile({ path: 'file.txt' })).toBe('newer\n');
+
+    await writeFile({ path: 'file.txt', data: ' old\n' });
+    const leading = await execute({
+      script: 'patch -l -f',
+      stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-old
++bad
+`,
+    });
+    expect(leading.result.exitCode).toBe(1);
+    expect(await readFile({ path: 'file.txt' })).toBe(' old\n');
+  });
+
+  it('treats an over-stripped path as an ignored patch instead of a fatal parse error', async () => {
+    await writeFile({ path: 'file.txt', data: 'old\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'patch -p4 -f',
+      stdinText: `\
+--- a/b/file.txt
++++ a/b/file.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(await readFile({ path: 'file.txt' })).toBe('old\n');
+    expect(stdout.text).toContain("can't find file to patch at input line 3");
+    expect(stdout.text).toContain('No file to patch.  Skipping patch.');
+    expect(stdout.text).toContain('1 out of 1 hunk ignored');
+    expect(stderr.text).toBe('');
+  });
+
+  it('does not emit an interactive missing-file prompt in --batch mode', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'patch --batch',
+      stdinText: `\
+--- missing.txt
++++ missing.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toContain('No file to patch.  Skipping patch.');
+    expect(stdout.text).not.toContain('File to patch:');
+    expect(stdout.text).not.toContain('Skip this patch?');
+    expect(stderr.text).toBe('');
+  });
+
   it('strips CR from CRLF patch input unless --binary is used', async () => {
     await writeFile({ path: 'file.txt', data: 'old\n' });
     const crlfPatch = `\
@@ -763,6 +1082,7 @@ FOUR
     await writeFile({ path: 'file.txt', data: 'old\n' });
     const binary = await execute({ script: 'patch --binary', stdinText: crlfPatch });
     expect(binary.result.exitCode).toBe(1);
+    expect(binary.stdout.text).toContain('different line endings');
     expect(await readFile({ path: 'file.txt' })).toBe('old\n');
   });
 
@@ -802,9 +1122,44 @@ FOUR
     });
 
     expect(stdout.text).toBe('new\n');
-    expect(stderr.text).toContain('patching file file.txt');
+    expect(stderr.text).toBe('patching file - (read from file.txt)\n');
     expect(await readFile({ path: 'file.txt' })).toBe('old\n');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('allows -o - together with -r - like GNU patch', async () => {
+    await writeFile({ path: 'file.txt', data: 'old\n' });
+
+    const applied = await execute({
+      script: 'patch --batch -o - -r -',
+      stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+    expect(applied.result.exitCode, applied.stderr.text).toBe(0);
+    expect(applied.stdout.text).toBe('new\n');
+    expect(applied.stderr.text).toContain('patching file - (read from file.txt)');
+    expect(await readFile({ path: 'file.txt' })).toBe('old\n');
+
+    const rejected = await execute({
+      script: 'patch --batch -o - -r -',
+      stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-NOTOLD
++new
+`,
+    });
+    expect(rejected.result.exitCode).toBe(1);
+    expect(rejected.stdout.text).toBe('old\n');
+    expect(rejected.stderr.text).toContain('1 out of 1 hunk FAILED\n');
+    expect(rejected.stderr.text).not.toContain('saving rejects');
+    expect(await readFile({ path: 'file.txt' })).toBe('old\n');
   });
 
   it('writes conditional changes with -D', async () => {
@@ -826,10 +1181,42 @@ FOUR
 old
 #else
 new
-#endif /* FEATURE */
+#endif
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('preserves arbitrary -D names exactly like GNU patch', async () => {
+    const cases = [
+      { argument: "'1x'", expected: '1x' },
+      { argument: "'a-b'", expected: 'a-b' },
+      { argument: "'a b'", expected: 'a b' },
+      { argument: "''", expected: '' },
+    ] as const;
+
+    for (const testCase of cases) {
+      await writeFile({ path: 'file.txt', data: 'old\n' });
+      const { result, stderr } = await execute({
+        script: `patch -D ${testCase.argument}`,
+        stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-old
++new
+`,
+      });
+
+      expect(result.exitCode, stderr.text).toBe(0);
+      expect(await readFile({ path: 'file.txt' })).toBe(`\
+#ifndef ${testCase.expected}
+old
+#else
+new
+#endif
+`);
+    }
   });
 
   it('supports Git rename and copy metadata', async () => {
@@ -1079,6 +1466,351 @@ abc
     expect(result.exitCode).toBe(1);
   });
 
+  it('keeps direction and noninteractive decision flags independent of argv order', async () => {
+    const cases = [
+      { args: '-R', initial: 'old\n', expected: 'new\n', exitCode: 0 },
+      { args: '-R', initial: 'new\n', expected: 'old\n', exitCode: 0 },
+      { args: '-R -f', initial: 'old\n', expected: 'old\n', exitCode: 1 },
+      { args: '-R -f', initial: 'new\n', expected: 'old\n', exitCode: 0 },
+      { args: '-N -t', initial: 'new\n', expected: 'new\n', exitCode: 1 },
+      { args: '-N -R', initial: 'old\n', expected: 'old\n', exitCode: 1 },
+      { args: '-R -N', initial: 'old\n', expected: 'old\n', exitCode: 1 },
+      { args: '-N -R', initial: 'new\n', expected: 'old\n', exitCode: 0 },
+      { args: '-R -N', initial: 'new\n', expected: 'old\n', exitCode: 0 },
+      { args: '-t -f', initial: 'old\n', expected: 'new\n', exitCode: 0 },
+      { args: '-f -t', initial: 'old\n', expected: 'new\n', exitCode: 0 },
+      { args: '-t -f', initial: 'new\n', expected: 'new\n', exitCode: 1 },
+      { args: '-f -t', initial: 'new\n', expected: 'new\n', exitCode: 1 },
+    ] as const;
+
+    for (const [index, testCase] of cases.entries()) {
+      const path = `mixed-flags-${index}.txt`;
+      await writeFile({ path, data: testCase.initial });
+      const { result } = await execute({
+        script: `patch --batch ${testCase.args}`,
+        stdinText: `--- ${path}
++++ ${path}
+@@ -1 +1 @@
+-old
++new
+`,
+      });
+
+      expect(await readFile({ path })).toBe(testCase.expected);
+      expect(result.exitCode).toBe(testCase.exitCode);
+    }
+  });
+
+  it('forces structurally contradictory create and delete patches through hunk rejection', async () => {
+    const cases = [
+      {
+        path: 'force-create-existing.txt',
+        script: 'patch -f',
+        initial: 'new\n',
+        patch: `--- /dev/null
++++ force-create-existing.txt
+@@ -0,0 +1 @@
++new
+`,
+        reject: `--- /dev/null
++++ force-create-existing.txt
+@@ -0,0 +1 @@
++new
+`,
+        diagnostic: `The next patch would create the file force-create-existing.txt,
+which already exists!  Applying it anyway.
+`,
+      },
+      {
+        path: 'force-delete-missing.txt',
+        script: 'patch --force',
+        initial: undefined,
+        patch: `--- force-delete-missing.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-old
+`,
+        reject: `--- force-delete-missing.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-old
+`,
+        diagnostic: `The next patch would delete the file force-delete-missing.txt,
+which does not exist!  Applying it anyway.
+`,
+      },
+      {
+        path: 'force-reverse-delete-missing.txt',
+        script: 'patch -R -f',
+        initial: undefined,
+        patch: `--- /dev/null
++++ force-reverse-delete-missing.txt
+@@ -0,0 +1 @@
++new
+`,
+        reject: `--- force-reverse-delete-missing.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-new
+`,
+        diagnostic: `The next patch, when reversed, would delete the file force-reverse-delete-missing.txt,
+which does not exist!  Applying it anyway.
+`,
+      },
+      {
+        path: 'force-reverse-create-existing.txt',
+        script: 'patch --reverse --force',
+        initial: 'old\n',
+        patch: `--- force-reverse-create-existing.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-old
+`,
+        reject: `--- /dev/null
++++ force-reverse-create-existing.txt
+@@ -0,0 +1 @@
++old
+`,
+        diagnostic: `The next patch, when reversed, would create the file force-reverse-create-existing.txt,
+which already exists!  Applying it anyway.
+`,
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      if (testCase.initial !== undefined) {
+        await writeFile({ path: testCase.path, data: testCase.initial });
+      }
+      const { result, stdout, stderr } = await execute({
+        script: testCase.script,
+        stdinText: testCase.patch,
+      });
+
+      expect(stdout.text).toBe(
+        testCase.diagnostic
+        + `patching file ${testCase.path}\n`
+        + 'Hunk #1 FAILED at 1.\n'
+        + `1 out of 1 hunk FAILED -- saving rejects to file ${testCase.path}.rej\n`,
+      );
+      expect(stderr.text).toBe('');
+      expect(result.exitCode).toBe(1);
+      expect(await exists({ path: testCase.path })).toBe(testCase.initial !== undefined);
+      if (testCase.initial !== undefined) {
+        expect(await readFile({ path: testCase.path })).toBe(testCase.initial);
+      }
+      expect(await readFile({ path: `${testCase.path}.rej` })).toBe(testCase.reject);
+      expect(await readFile({ path: `${testCase.path}.orig` })).toBe(testCase.initial ?? '');
+    }
+  });
+
+  it('treats an existing empty regular file as a valid create target', async () => {
+    const cases = [
+      { path: 'empty-create-default.txt', script: 'patch', patchDirection: 'forward' },
+      { path: 'empty-create-force.txt', script: 'patch -f', patchDirection: 'forward' },
+      { path: 'empty-create-forward.txt', script: 'patch -N', patchDirection: 'forward' },
+      { path: 'empty-create-batch.txt', script: 'patch -t', patchDirection: 'forward' },
+      { path: 'empty-create-reverse.txt', script: 'patch -R -f', patchDirection: 'reverse' },
+    ] as const;
+
+    for (const testCase of cases) {
+      await writeFile({ path: testCase.path, data: '' });
+      const patch = testCase.patchDirection === 'forward'
+        ? `--- /dev/null
++++ ${testCase.path}
+@@ -0,0 +1 @@
++new
+`
+        : `--- ${testCase.path}
++++ /dev/null
+@@ -1 +0,0 @@
+-old
+`;
+      const { result, stdout, stderr } = await execute({
+        script: testCase.script,
+        stdinText: patch,
+      });
+
+      expect(stdout.text).toBe(`patching file ${testCase.path}\n`);
+      expect(stderr.text).toBe('');
+      expect(result.exitCode).toBe(0);
+      expect(await readFile({ path: testCase.path })).toBe(testCase.patchDirection === 'forward' ? 'new\n' : 'old\n');
+      expect(await exists({ path: `${testCase.path}.rej` })).toBe(false);
+      expect(await exists({ path: `${testCase.path}.orig` })).toBe(false);
+    }
+
+    await writeFile({ path: 'empty-create-backup.txt', data: '' });
+    const backup = await execute({
+      script: 'patch -f -b',
+      stdinText: `--- /dev/null
++++ empty-create-backup.txt
+@@ -0,0 +1 @@
++new
+`,
+    });
+    expect(backup.stdout.text).toBe('patching file empty-create-backup.txt\n');
+    expect(backup.stderr.text).toBe('');
+    expect(backup.result.exitCode).toBe(0);
+    expect(await readFile({ path: 'empty-create-backup.txt' })).toBe('new\n');
+    expect(await readFile({ path: 'empty-create-backup.txt.orig' })).toBe('');
+  });
+
+  it('rejects non-regular create targets before forced structural fallback', async () => {
+    const cases = [
+      { id: 'directory-forward', kind: 'directory', script: 'patch -f', reverse: false },
+      { id: 'directory-reverse', kind: 'directory', script: 'patch -R -f', reverse: true },
+      { id: 'symlink-forward', kind: 'symlink', script: 'patch -f', reverse: false },
+      { id: 'symlink-reverse', kind: 'symlink', script: 'patch -R -f', reverse: true },
+    ] as const;
+
+    for (const testCase of cases) {
+      const path = `nonregular-${testCase.id}`;
+      if (testCase.kind === 'directory') {
+        await rootHandle.getDirectoryHandle(path, { create: true });
+      } else {
+        await writeFile({ path: `${path}-target`, data: '' });
+        await wesh.vfs.symlink({ path: `/${path}`, targetPath: `${path}-target` });
+      }
+      const patch = testCase.reverse
+        ? `--- ${path}\n+++ /dev/null\n@@ -1 +0,0 @@\n-old\n`
+        : `--- /dev/null\n+++ ${path}\n@@ -0,0 +1 @@\n+new\n`;
+      const { result, stdout, stderr } = await execute({ script: testCase.script, stdinText: patch });
+
+      expect(stdout.text).toBe(
+        `File ${path} is not a regular file -- refusing to patch\n`
+        + `1 out of 1 hunk ignored -- saving rejects to file ${path}.rej\n`,
+      );
+      expect(stderr.text).toBe('');
+      expect(result.exitCode).toBe(1);
+      expect((await wesh.vfs.lstat({ path: `/${path}` })).type).toBe(testCase.kind);
+      if (testCase.kind === 'symlink') {
+        expect(await wesh.vfs.readlink({ path: `/${path}` })).toBe(`${path}-target`);
+      }
+      expect(await readFile({ path: `${path}.rej` })).toBe(testCase.reverse
+        ? `--- /dev/null\n+++ ${path}\n@@ -0,0 +1 @@\n+old\n`
+        : patch);
+    }
+  });
+
+  it('writes multiple forced structural rejects under one patch section header', async () => {
+    await writeFile({ path: 'force-multi.txt', data: 'old\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'patch -f',
+      stdinText: `--- /dev/null
++++ force-multi.txt
+@@ -0,0 +1 @@
++a
+@@ -0,0 +3 @@
++b
+`,
+    });
+
+    expect(stdout.text).toContain(`\
+Hunk #1 FAILED at 1.
+Hunk #2 FAILED at 1.
+`);
+    expect(stdout.text).toContain('2 out of 2 hunks FAILED -- saving rejects to file force-multi.txt.rej');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(1);
+    expect(await readFile({ path: 'force-multi.txt' })).toBe('old\n');
+    expect(await readFile({ path: 'force-multi.txt.orig' })).toBe('old\n');
+    expect(await readFile({ path: 'force-multi.txt.rej' })).toBe(`--- /dev/null
++++ force-multi.txt
+@@ -0,0 +1 @@
++a
+@@ -0,0 +3 @@
++b
+`);
+  });
+
+  it('serializes zero- and one-count context reject ranges without duplicated endpoints', async () => {
+    await writeFile({ path: 'force-context-reject.txt', data: 'old\n' });
+    const { result, stdout, stderr } = await execute({
+      script: 'patch -f --reject-format=context',
+      stdinText: `--- /dev/null
++++ force-context-reject.txt
+@@ -0,0 +1,2 @@
++a
++b
+@@ -0,0 +4 @@
++c
+`,
+    });
+
+    expect(stdout.text).toContain('2 out of 2 hunks FAILED');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(1);
+    expect(await readFile({ path: 'force-context-reject.txt.rej' })).toBe(`*** /dev/null
+--- force-context-reject.txt
+***************
+*** 0 ****
+--- 1,2 ----
++ a
++ b
+***************
+*** 0 ****
+--- 4 ----
++ c
+`);
+  });
+
+  it('treats a whole-file -E hunk as a deletion for structural reverse detection', async () => {
+    await writeFile({ path: 'dir/file.txt', data: 'old\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'patch --batch -E',
+      stdinText: `\
+--- dir/file.txt
++++ dir/file.txt
+@@ -1 +0,0 @@
+-old
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(await readFile({ path: 'dir/file.txt' })).toBe('old\n');
+    expect(await readFile({ path: 'file.txt' })).toBe('old\n');
+    expect(stdout.text).toContain('Assuming -R');
+    expect(stderr.text).toBe('');
+  });
+
+  it('still removes an existing whole-file target with -E', async () => {
+    await writeFile({ path: 'file.txt', data: 'old\n' });
+
+    const { result, stderr } = await execute({
+      script: 'patch --batch -E',
+      stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +0,0 @@
+-old
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(await exists({ path: 'file.txt' })).toBe(false);
+    expect(stderr.text).toBe('');
+  });
+
+  it('does not create an implicit mismatch backup when reversing into a missing file', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'patch -t',
+      stdinText: `\
+--- file.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-created
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toContain('Assuming -R');
+    expect(await readFile({ path: 'file.txt' })).toBe('created\n');
+    expect(await exists({ path: 'file.txt.orig' })).toBe(false);
+    expect(stderr.text).toBe('');
+  });
+
+
   it('creates an exact-match backup when -b is specified', async () => {
     await writeFile({ path: 'file.txt', data: 'old\n' });
 
@@ -1097,6 +1829,67 @@ abc
     expect(await readFile({ path: 'file.txt.orig' })).toBe('old\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps explicit -b independent from mismatch backup policy ordering', async () => {
+    for (const script of [
+      'patch -b --no-backup-if-mismatch',
+      'patch --no-backup-if-mismatch -b',
+      'patch -b --backup-if-mismatch',
+      'patch --backup-if-mismatch -b',
+    ]) {
+      await writeFile({ path: 'file.txt', data: 'old\n' });
+
+      const { result, stderr } = await execute({
+        script,
+        stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-old
++new
+`,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(stderr.text).toBe('');
+      expect(await readFile({ path: 'file.txt' })).toBe('new\n');
+      expect(await readFile({ path: 'file.txt.orig' })).toBe('old\n');
+    }
+  });
+
+  it('lets explicit mismatch backup policy override the POSIX default independently of argv order', async () => {
+    for (const script of [
+      'patch --posix --backup-if-mismatch',
+      'patch --backup-if-mismatch --posix',
+    ]) {
+      await writeFile({ path: 'file.txt', data: `\
+prefix
+old
+` });
+
+      const { result, stderr } = await execute({
+        script,
+        stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-old
++new
+`,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(stderr.text).toBe('');
+      expect(await readFile({ path: 'file.txt' })).toBe(`\
+prefix
+new
+`);
+      expect(await readFile({ path: 'file.txt.orig' })).toBe(`\
+prefix
+old
+`);
+    }
   });
 
   it('replaces an existing simple backup with the immediate pre-patch contents', async () => {
@@ -1120,6 +1913,53 @@ abc
     expect(result.exitCode).toBe(0);
   });
 
+  it('uses an explicit suffix together with a backup prefix', async () => {
+    await writeFile({ path: 'project/file.txt', data: 'old\n' });
+
+    const { result, stderr } = await execute({
+      script: 'patch -d project -b -B backups/ -z .bak',
+      stdinText: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(await readFile({ path: 'project/backups/file.txt.bak' })).toBe('old\n');
+    expect(stderr.text).toBe('');
+  });
+
+  it('composes backup path and basename prefixes independently of argv order', async () => {
+    for (const script of [
+      'patch -p0 -b -B backup/ -Y pre-',
+      'patch -p0 -b -Y pre- -B backup/',
+    ]) {
+      await writeFile({ path: 'dir/file.txt', data: 'old\n' });
+      await rootHandle.getDirectoryHandle('backup', { create: true }).then(directory => (
+        directory.getDirectoryHandle('dir', { create: true })
+      ));
+
+      const { result, stderr } = await execute({
+        script,
+        stdinText: `\
+--- dir/file.txt
++++ dir/file.txt
+@@ -1 +1 @@
+-old
++new
+`,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(stderr.text).toBe('');
+      expect(await readFile({ path: 'dir/file.txt' })).toBe('new\n');
+      expect(await readFile({ path: 'backup/dir/pre-file.txt' })).toBe('old\n');
+    }
+  });
+
   it('creates prefixed existing-style and nonexistent-file backups', async () => {
     await writeFile({ path: 'project/file.txt', data: 'old\n' });
 
@@ -1134,7 +1974,7 @@ abc
 `,
     });
     expect(modified.result.exitCode).toBe(0);
-    expect(await readFile({ path: 'project/backups/file.txt.orig' })).toBe('old\n');
+    expect(await readFile({ path: 'project/backups/file.txt' })).toBe('old\n');
 
     const created = await execute({
       script: 'patch -b',
@@ -1173,7 +2013,7 @@ abc
   it('writes patched data to a file without changing the original with -o', async () => {
     await writeFile({ path: 'file.txt', data: 'old\n' });
 
-    const { result, stderr } = await execute({
+    const { result, stdout, stderr } = await execute({
       script: 'patch -o output.txt',
       stdinText: `\
 --- file.txt
@@ -1186,6 +2026,7 @@ abc
 
     expect(await readFile({ path: 'file.txt' })).toBe('old\n');
     expect(await readFile({ path: 'output.txt' })).toBe('new\n');
+    expect(stdout.text).toBe('patching file output.txt (read from file.txt)\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -1371,6 +2212,266 @@ DIFFERENT
     expect(result.exitCode).toBe(0);
   });
 
+  it('applies repeated directory options cumulatively', async () => {
+    await writeFile({ path: 'outer/inner/file.txt', data: 'old\n' });
+    await writeFile({ path: 'outer/inner/change.diff', data: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-old
++new
+` });
+
+    const { result, stderr } = await execute({
+      script: 'patch -d outer -d inner -i change.diff -o output.txt',
+    });
+
+    expect(await readFile({ path: 'outer/inner/file.txt' })).toBe('old\n');
+    expect(await readFile({ path: 'outer/inner/output.txt' })).toBe('new\n');
+    expect(await exists({ path: 'output.txt' })).toBe(false);
+    expect(await exists({ path: 'outer/output.txt' })).toBe(false);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('applies directory-option failures in argv order before later help or diagnostics', async () => {
+    await writeFile({ path: 'outer/.keep', data: '' });
+    await writeFile({ path: 'plain-file', data: '' });
+
+    const helpFirst = await execute({ script: 'patch --help -d missing' });
+    expect(helpFirst.stdout.text).toContain('Apply a diff file to original files');
+    expect(helpFirst.stderr.text).toBe('');
+    expect(helpFirst.result.exitCode).toBe(0);
+
+    const missingBeforeHelp = await execute({ script: 'patch -d missing --help' });
+    expect(missingBeforeHelp.stdout.text).toBe('');
+    expect(missingBeforeHelp.stderr.text).toBe(
+      'patch: **** Can\'t change to directory missing : No such file or directory\n',
+    );
+    expect(missingBeforeHelp.result.exitCode).toBe(2);
+
+    const nestedMissingBeforeHelp = await execute({ script: 'patch -d outer -d missing --help' });
+    expect(nestedMissingBeforeHelp.stdout.text).toBe('');
+    expect(nestedMissingBeforeHelp.stderr.text).toBe(
+      'patch: **** Can\'t change to directory missing : No such file or directory\n',
+    );
+    expect(nestedMissingBeforeHelp.result.exitCode).toBe(2);
+
+    const helpStopsLaterDirectory = await execute({ script: 'patch -d outer --help -d missing' });
+    expect(helpStopsLaterDirectory.stdout.text).toContain('Apply a diff file to original files');
+    expect(helpStopsLaterDirectory.stderr.text).toBe('');
+    expect(helpStopsLaterDirectory.result.exitCode).toBe(0);
+
+    const diagnosticFirst = await execute({ script: 'patch --definitely-invalid-option -d missing' });
+    expect(diagnosticFirst.stderr.text).toContain("patch: unrecognized option '--definitely-invalid-option'");
+    expect(diagnosticFirst.stderr.text).not.toContain("Can't change to directory");
+    expect(diagnosticFirst.result.exitCode).toBe(2);
+
+    const directoryFirst = await execute({ script: 'patch -d missing --definitely-invalid-option' });
+    expect(directoryFirst.stderr.text).toBe(
+      'patch: **** Can\'t change to directory missing : No such file or directory\n',
+    );
+    expect(directoryFirst.result.exitCode).toBe(2);
+
+    const emptyDirectory = await execute({ script: `patch -d '' --help` });
+    expect(emptyDirectory.stderr.text).toBe(
+      "patch: **** Can't change to directory '' : No such file or directory\n",
+    );
+    expect(emptyDirectory.result.exitCode).toBe(2);
+
+    const fileDirectory = await execute({ script: 'patch -d plain-file --help' });
+    expect(fileDirectory.stderr.text).toBe(
+      'patch: **** Can\'t change to directory plain-file : Not a directory\n',
+    );
+    expect(fileDirectory.result.exitCode).toBe(2);
+  });
+
+  it('orders delayed version-control style validation around directory and early-exit parsing', async () => {
+    const styleBeforeDirectory = await execute({ script: 'patch -V BAD -d missing --help' });
+    expect(styleBeforeDirectory.stderr.text).toBe(
+      'patch: **** Can\'t change to directory missing : No such file or directory\n',
+    );
+    expect(styleBeforeDirectory.result.exitCode).toBe(2);
+
+    const styleBeforeHelp = await execute({ script: 'patch -V BAD --help' });
+    expect(styleBeforeHelp.stdout.text).toContain('usage: patch');
+    expect(styleBeforeHelp.stderr.text).toBe('');
+    expect(styleBeforeHelp.result.exitCode).toBe(0);
+
+    const styleBeforeUnknown = await execute({ script: 'patch -V BAD --definitely-invalid-option' });
+    expect(styleBeforeUnknown.stderr.text).toContain("unrecognized option '--definitely-invalid-option'");
+    expect(styleBeforeUnknown.stderr.text).not.toContain('invalid version control style');
+    expect(styleBeforeUnknown.result.exitCode).toBe(2);
+
+    const styleWithoutLaterTerminal = await execute({ script: 'patch -V BAD' });
+    expect(styleWithoutLaterTerminal.stderr.text).toBe(`\
+patch: invalid version control style 'BAD'
+usage: patch [OPTION]... [ORIGFILE [PATCHFILE]]
+try: --help, --version, -p NUM, --strip=NUM, -F NUM, --fuzz=NUM, -l, --ignore-whitespace, -N, --forward, -R, --reverse, -i FILE, --input=FILE, -o FILE, --output=FILE, -r FILE, --reject-file=FILE, -d DIR, --directory=DIR, -b, --backup, --help
+`);
+    expect(styleWithoutLaterTerminal.result.exitCode).toBe(2);
+
+    await writeFile({ path: '/version-control-alias.txt', data: 'old\n' });
+    const aliasResult = await execute({
+      script: 'patch -b -V none',
+      stdinText: `\
+--- version-control-alias.txt
++++ version-control-alias.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+    expect(aliasResult.result.exitCode).toBe(0);
+    expect(await readFile({ path: '/version-control-alias.txt.~1~' })).toBe('old\n');
+
+    const uniquePrefix = await execute({ script: 'patch -V e' });
+    expect(uniquePrefix.result.exitCode).toBe(0);
+    expect(uniquePrefix.stderr.text).toBe('');
+
+    const emptyStyle = await execute({ script: `patch -V ''` });
+    expect(emptyStyle.result.exitCode).toBe(0);
+    expect(emptyStyle.stderr.text).toBe('');
+
+    const ambiguousPrefix = await execute({ script: 'patch -V n' });
+    expect(ambiguousPrefix.stderr.text).toContain("ambiguous version control style 'n'");
+    expect(ambiguousPrefix.result.exitCode).toBe(2);
+  });
+
+  it('accepts attached short values for input, output, reject, and directory options', async () => {
+    await writeFile({ path: 'work/file.txt', data: 'old\n' });
+    await writeFile({ path: 'work/change.diff', data: `\
+--- file.txt
++++ file.txt
+@@ -1 +1 @@
+-old
++new
+` });
+
+    const { result, stderr } = await execute({
+      script: 'patch -dwork -ichange.diff -ooutput.txt -rreject.diff',
+    });
+
+    expect(await readFile({ path: 'work/file.txt' })).toBe('old\n');
+    expect(await readFile({ path: 'work/output.txt' })).toBe('new\n');
+    expect(await exists({ path: 'work/reject.diff' })).toBe(false);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('uses patch backup environment defaults unless command-line values override them', async () => {
+    await writeFile({ path: 'environment-backup.txt', data: 'old\n' });
+    const numbered = await execute({
+      script: 'export VERSION_CONTROL=numbered; patch -b environment-backup.txt',
+      stdinText: `\
+--- environment-backup.txt
++++ environment-backup.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+    expect(numbered.result.exitCode).toBe(0);
+    expect(await readFile({ path: 'environment-backup.txt.~1~' })).toBe('old\n');
+
+    await writeFile({ path: 'environment-suffix.txt', data: 'old\n' });
+    const suffix = await execute({
+      script: 'unset VERSION_CONTROL; export SIMPLE_BACKUP_SUFFIX=.bak; patch -b environment-suffix.txt',
+      stdinText: `\
+--- environment-suffix.txt
++++ environment-suffix.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+    expect(suffix.result.exitCode).toBe(0);
+    expect(await readFile({ path: 'environment-suffix.txt.bak' })).toBe('old\n');
+
+    await writeFile({ path: 'environment-override.txt', data: 'old\n' });
+    const override = await execute({
+      script: 'export VERSION_CONTROL=numbered SIMPLE_BACKUP_SUFFIX=.env; patch -b -V simple -z .cli environment-override.txt',
+      stdinText: `\
+--- environment-override.txt
++++ environment-override.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+    expect(override.result.exitCode).toBe(0);
+    expect(await readFile({ path: 'environment-override.txt.cli' })).toBe('old\n');
+  });
+
+  it('honors POSIXLY_CORRECT presence for deletion and mismatch backup defaults', async () => {
+    const deletePatch = `\
+--- posix-environment-delete.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-old
+`;
+
+    await writeFile({ path: 'posix-environment-delete.txt', data: 'old\n' });
+    const deleteResult = await execute({
+      script: 'export POSIXLY_CORRECT=; patch',
+      stdinText: deletePatch,
+    });
+    expect(deleteResult.result.exitCode).toBe(0);
+    expect(await exists({ path: 'posix-environment-delete.txt' })).toBe(true);
+    expect(await readFile({ path: 'posix-environment-delete.txt' })).toBe('');
+
+    await writeFile({ path: 'posix-environment-offset.txt', data: `\
+prefix
+old
+` });
+    const offsetPatch = `\
+--- posix-environment-offset.txt
++++ posix-environment-offset.txt
+@@ -1 +1 @@
+-old
++new
+`;
+    const defaultBackup = await execute({
+      script: 'export POSIXLY_CORRECT=1; patch',
+      stdinText: offsetPatch,
+    });
+    expect(defaultBackup.result.exitCode).toBe(0);
+    expect(await exists({ path: 'posix-environment-offset.txt.orig' })).toBe(false);
+
+    await writeFile({ path: 'posix-environment-explicit.txt', data: `\
+prefix
+old
+` });
+    const explicitBackup = await execute({
+      script: 'patch --backup-if-mismatch posix-environment-explicit.txt',
+      stdinText: offsetPatch.replaceAll('posix-environment-offset.txt', 'posix-environment-explicit.txt'),
+    });
+    expect(explicitBackup.result.exitCode).toBe(0);
+    expect(await readFile({ path: 'posix-environment-explicit.txt.orig' })).toBe(`\
+prefix
+old
+`);
+  });
+
+  it('rejects an invalid VERSION_CONTROL value before applying the patch', async () => {
+    await writeFile({ path: 'environment-invalid.txt', data: 'old\n' });
+    const { result, stdout, stderr } = await execute({
+      script: 'export VERSION_CONTROL=BAD; patch -b environment-invalid.txt',
+      stdinText: `\
+--- environment-invalid.txt
++++ environment-invalid.txt
+@@ -1 +1 @@
+-old
++new
+`,
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("invalid argument 'BAD' for '$VERSION_CONTROL'");
+    expect(await readFile({ path: 'environment-invalid.txt' })).toBe('old\n');
+  });
+
   it('refuses a backup path that would overwrite the target', async () => {
     await writeFile({ path: 'file.txt', data: 'old\n' });
 
@@ -1494,7 +2595,7 @@ new file mode 160000
     expect(result.exitCode).toBe(0);
   });
 
-  it('rejects unified hunks with lines beyond their declared counts', async () => {
+  it('ignores trailing hunk-like text after the declared ranges are complete', async () => {
     await writeFile({ path: 'file.txt', data: 'old\n' });
 
     const { result, stderr } = await execute({
@@ -1509,12 +2610,12 @@ new file mode 160000
 `,
     });
 
-    expect(result.exitCode).toBe(2);
-    expect(stderr.text).toContain('hunk body exceeds declared range');
-    expect(await readFile({ path: 'file.txt' })).toBe('old\n');
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(await readFile({ path: 'file.txt' })).toBe('new\n');
   });
 
-  it('validates every section before modifying any file', async () => {
+  it('ignores an incomplete trailing file header after a valid section', async () => {
     await writeFile({ path: 'a.txt', data: 'old a\n' });
     await writeFile({ path: 'b.txt', data: 'old b\n' });
 
@@ -1531,11 +2632,11 @@ this is not a new-file header
 `,
     });
 
-    expect(await readFile({ path: 'a.txt' })).toBe('old a\n');
+    expect(await readFile({ path: 'a.txt' })).toBe('new a\n');
     expect(await readFile({ path: 'b.txt' })).toBe('old b\n');
-    expect(stdout.text).toBe('');
-    expect(stderr.text).toContain('missing +++ header');
-    expect(result.exitCode).toBe(2);
+    expect(stdout.text).toBe('patching file a.txt\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('keeps reject bytes separate from diagnostics with -r -', async () => {
@@ -1552,10 +2653,12 @@ this is not a new-file header
 `,
     });
 
-    expect(stdout.text).toContain('-expected');
-    expect(stdout.text).not.toContain('patching file');
-    expect(stderr.text).toContain('patching file file.txt');
-    expect(stderr.text).toContain('Hunk #1 FAILED');
+    expect(stdout.text).toBe(`\
+patching file file.txt
+Hunk #1 FAILED at 1.
+1 out of 1 hunk FAILED
+`);
+    expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(1);
   });
 

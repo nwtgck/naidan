@@ -2,11 +2,14 @@ import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } fro
 import { parseStandardArgv } from '@/features/wesh/argv';
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { compareAsciiStrings } from '@/features/wesh/commands/_shared/ascii-order';
+import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
 
 const exportArgvSpec: StandardArgvParserSpec = {
   options: [
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
     { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'print', value: true }], help: { summary: 'show exported names and values in a reusable format', category: 'common' } },
+    { kind: 'flag', short: 'n', long: undefined, effects: [{ key: 'unexport', value: true }], help: { summary: 'remove the export attribute from each name', category: 'common' } },
   ],
   allowShortFlagBundles: true,
   stopAtDoubleDash: true,
@@ -14,15 +17,22 @@ const exportArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
+async function printExportedVariables({ context }: { context: WeshCommandContext }): Promise<void> {
+  for (const [key, value] of [...context.env.entries()].sort(([left], [right]) => compareAsciiStrings({ left, right }))) {
+    const declaration = `export ${key}='${value.replaceAll("'", "'\\''")}'`;
+    await context.text().print({ text: `${declaration}\n` });
+  }
+}
+
 export const exportCmdCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'export',
     description: 'Set environment variables',
-    usage: 'export [-p] name=value...',
+    usage: 'export [-pn] [name[=value]...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: context.args,
+      args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: exportArgvSpec }),
       spec: exportArgvSpec,
     });
 
@@ -34,7 +44,7 @@ export const exportCmdCommandDefinition: WeshCommandDefinition = {
         message: `export: ${diagnostic.message}`,
         argvSpec: exportArgvSpec,
       });
-      return { exitCode: 1 };
+      return { exitCode: 2 };
     }
 
     if (parsed.optionValues.help === true) {
@@ -46,24 +56,45 @@ export const exportCmdCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
-    const text = context.text();
-    if (parsed.optionValues.print === true) {
-      for (const [key, val] of context.env) {
-        await text.print({ text: `export ${key}='${val}'\n` });
-      }
+    const printVariables = parsed.optionValues.print === true || parsed.positionals.length === 0;
+    if (printVariables) {
+      await printExportedVariables({ context });
+    }
+    if (parsed.positionals.length === 0) {
       return { exitCode: 0 };
     }
 
-    for (const p of parsed.positionals) {
-      const idx = p.indexOf('=');
-      if (idx !== -1) {
-        const key = p.slice(0, idx);
-        const value = p.slice(idx + 1);
+    const unexport = parsed.optionValues.unexport === true;
+    let exitCode = 0;
+    for (const argument of parsed.positionals) {
+      const equalsIndex = argument.indexOf('=');
+      const key = equalsIndex < 0
+        ? argument
+        : argument.slice(0, equalsIndex);
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(key)) {
+        await context.text().error({
+          text: `export: \`${argument}': not a valid identifier\n`,
+        });
+        exitCode = 1;
+        continue;
+      }
+      const value = equalsIndex < 0
+        ? undefined
+        : argument.slice(equalsIndex + 1);
+      if (unexport) {
+        if (value !== undefined) {
+          context.setEnv({ key, value });
+        }
+        await context.text().error({
+          text: 'export: -n requires Wesh core export-state support\n',
+        });
+        exitCode = 1;
+      } else if (value !== undefined) {
         context.setEnv({ key, value });
       }
     }
 
-    return { exitCode: 0 };
+    return { exitCode };
   },
 };
 

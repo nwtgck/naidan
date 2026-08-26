@@ -20,6 +20,7 @@ import { useChatMounts } from '@/composables/chat/useChatMounts';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { storageService } from '@/00-storage/service';
 import { startVolumeExtensionScan } from '@/features/tools/wesh/volume-extension-cache';
+import { scheduleUnusedEmptyVolumeCleanup } from '@/features/tools/wesh/chat-workspace';
 import { checkFileSystemAccessSupport } from '@/utils/opfs-detection';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
@@ -626,7 +627,7 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
   case 'opfs':
   case undefined:
     title = await ensureStrings.ChatInput__remove_folder();
-    message = await ensureStrings.ChatInput__remove_browser_copy();
+    message = await ensureStrings.ChatInput__stop_using_folder();
     confirmButtonText = await ensureStrings.ChatInput__remove();
     break;
   default: {
@@ -641,8 +642,17 @@ async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
     chatId: props.chatId,
     volumeId,
   });
-  if (volumeType === 'opfs' || volumeType === undefined) {
-    await storageService.deleteVolume({ volumeId });
+  switch (volumeType) {
+  case 'opfs':
+    scheduleUnusedEmptyVolumeCleanup({ volumeId });
+    break;
+  case 'host':
+  case undefined:
+    break;
+  default: {
+    const _ex: never = volumeType;
+    throw new Error(`Unhandled volume type after detach: ${_ex}`);
+  }
   }
 }
 

@@ -1,17 +1,23 @@
+import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import type { ArgvSpecialParseResult } from '@/features/wesh/argv';
 
 export type SplitMode =
   | { kind: 'lines', count: number }
-  | { kind: 'bytes', size: number };
+  | { kind: 'bytes', size: number }
+  | { kind: 'lineBytes', size: number };
 
 export type SuffixMode =
   | { kind: 'alphabetic' }
   | { kind: 'numeric', start: number };
 
+export type SplitSuffixLength =
+  | { kind: 'auto', initialLength: number }
+  | { kind: 'fixed', length: number };
+
 export interface SplitOptions {
   mode: SplitMode,
-  suffixLength: number,
+  suffixLength: SplitSuffixLength,
   suffixMode: SuffixMode,
   additionalSuffix: string,
   verbose: boolean,
@@ -31,11 +37,12 @@ function parsePositiveInteger({
   value: string,
   label: string,
 }): { ok: true, value: number } | { ok: false, message: string } {
-  if (!/^\d+$/u.test(value)) {
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  if (!/^\+?\d+$/u.test(numericText)) {
     return { ok: false, message: `invalid ${label}: '${value}'` };
   }
 
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number.parseInt(numericText, 10);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     return { ok: false, message: `invalid ${label}: '${value}'` };
   }
@@ -50,11 +57,12 @@ function parseNonNegativeInteger({
   value: string,
   label: string,
 }): { ok: true, value: number } | { ok: false, message: string } {
-  if (!/^\d+$/u.test(value)) {
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  if (!/^\d+$/u.test(numericText)) {
     return { ok: false, message: `invalid ${label}: '${value}'` };
   }
 
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number.parseInt(numericText, 10);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
     return { ok: false, message: `invalid ${label}: '${value}'` };
   }
@@ -92,7 +100,8 @@ export function parseByteSize({
 }: {
   value: string,
 }): { ok: true, value: number } | { ok: false, message: string } {
-  const match = /^(\d+)([A-Za-z]*)$/u.exec(value);
+  const numericText = stripLeadingCLocaleWhitespace({ value });
+  const match = /^(\+?\d+)([A-Za-z]*)$/u.exec(numericText);
   if (match === null) {
     return { ok: false, message: `invalid number of bytes: '${value}'` };
   }
@@ -165,7 +174,7 @@ function parseNumericSuffixToken({
       consumeCount: 1,
       effects: [
         { key: 'numericSuffixes', value: true },
-        { key: 'numericSuffixStart', value: 0 },
+        { key: 'numericSuffixAutoExpand', value: true },
       ],
       occurrences: [
         {
@@ -173,7 +182,6 @@ function parseNumericSuffixToken({
           option: '--numeric-suffixes',
           effects: [
             { key: 'numericSuffixes', value: true },
-            { key: 'numericSuffixStart', value: 0 },
           ],
         },
       ],
@@ -211,6 +219,7 @@ function parseNumericSuffixToken({
     effects: [
       { key: 'numericSuffixes', value: true },
       { key: 'numericSuffixStart', value: parsed.value },
+      { key: 'numericSuffixStartExplicit', value: true },
     ],
     occurrences: [
       {
@@ -219,9 +228,62 @@ function parseNumericSuffixToken({
         effects: [
           { key: 'numericSuffixes', value: true },
           { key: 'numericSuffixStart', value: parsed.value },
+          { key: 'numericSuffixStartExplicit', value: true },
         ],
       },
     ],
+  };
+}
+
+
+function parseLegacyLineCountToken({
+  token,
+}: {
+  token: string,
+}): ArgvSpecialParseResult | undefined {
+  const match = /^-(d*)(\d+)$/u.exec(token);
+  if (match === null) return undefined;
+
+  const numericSuffixFlags = match[1];
+  const rawValue = match[2];
+  if (numericSuffixFlags === undefined || rawValue === undefined) return undefined;
+
+  const parsed = parseLineCount({ value: rawValue });
+  const numericEffects = numericSuffixFlags.length > 0
+    ? [
+      { key: 'numericSuffixes', value: true as const },
+      { key: 'numericSuffixAutoExpand', value: true as const },
+    ]
+    : [];
+
+  if (!parsed.ok) {
+    return {
+      kind: 'matched',
+      consumeCount: 1,
+      effects: [
+        ...numericEffects,
+        { key: 'legacyLineCountParseError', value: parsed.message },
+      ],
+      occurrences: [{
+        kind: 'special',
+        option: token,
+        effects: [{ key: 'legacyLineCountParseError', value: parsed.message }],
+      }],
+    };
+  }
+
+  return {
+    kind: 'matched',
+    consumeCount: 1,
+    effects: [
+      ...numericEffects,
+      { key: 'lines', value: parsed.value },
+    ],
+    occurrences: [{
+      kind: 'special',
+      option: token,
+      effects: [{ key: 'lines', value: parsed.value }],
+    }],
   };
 }
 
@@ -249,6 +311,16 @@ export const splitArgvSpec: StandardArgvParserSpec = {
     },
     {
       kind: 'value',
+      short: 'C',
+      long: 'line-bytes',
+      key: 'lineBytes',
+      valueName: 'SIZE',
+      allowAttachedValue: true,
+      parseValue: parseByteSize,
+      help: { summary: 'put at most SIZE bytes of records per output file', valueName: 'SIZE', category: 'common' },
+    },
+    {
+      kind: 'value',
       short: 'a',
       long: 'suffix-length',
       key: 'suffixLength',
@@ -263,7 +335,7 @@ export const splitArgvSpec: StandardArgvParserSpec = {
       long: undefined,
       effects: [
         { key: 'numericSuffixes', value: true },
-        { key: 'numericSuffixStart', value: 0 },
+        { key: 'numericSuffixAutoExpand', value: true },
       ],
       help: { summary: 'use numeric suffixes starting at 0', category: 'common' },
     },
@@ -273,7 +345,7 @@ export const splitArgvSpec: StandardArgvParserSpec = {
       long: 'numeric-suffixes',
       effects: [
         { key: 'numericSuffixes', value: true },
-        { key: 'numericSuffixStart', value: 0 },
+        { key: 'numericSuffixAutoExpand', value: true },
       ],
       help: { summary: 'use numeric suffixes, optionally starting at FROM with --numeric-suffixes=FROM', category: 'common' },
     },
@@ -302,11 +374,12 @@ export const splitArgvSpec: StandardArgvParserSpec = {
       help: { summary: 'display this help and exit', category: 'common' },
     },
   ],
-  allowShortFlagBundles: false,
+  allowShortFlagBundles: true,
   stopAtDoubleDash: true,
   treatSingleDashAsPositional: true,
   specialTokenParsers: [
     ({ token }) => parseNumericSuffixToken({ token }),
+    ({ token }) => parseLegacyLineCountToken({ token }),
   ],
 };
 
@@ -320,31 +393,48 @@ export function buildSplitOptions({
     return { ok: false, message: numericSuffixError };
   }
 
+  const legacyLineCountError = optionValues.legacyLineCountParseError;
+  if (typeof legacyLineCountError === 'string') {
+    return { ok: false, message: legacyLineCountError };
+  }
+
   const hasLines = typeof optionValues.lines === 'number';
   const hasBytes = typeof optionValues.bytes === 'number';
-  if (hasLines && hasBytes) {
+  const hasLineBytes = typeof optionValues.lineBytes === 'number';
+  if ([hasLines, hasBytes, hasLineBytes].filter(Boolean).length > 1) {
     return { ok: false, message: 'cannot split in more than one way' };
   }
 
   const mode: SplitMode = hasBytes
     ? { kind: 'bytes', size: optionValues.bytes as number }
-    : { kind: 'lines', count: hasLines ? optionValues.lines as number : 1000 };
+    : hasLineBytes
+      ? { kind: 'lineBytes', size: optionValues.lineBytes as number }
+      : { kind: 'lines', count: hasLines ? optionValues.lines as number : 1000 };
 
-  const suffixLength = typeof optionValues.suffixLength === 'number'
+  const explicitSuffixLength = typeof optionValues.suffixLength === 'number'
     ? optionValues.suffixLength
-    : 2;
+    : undefined;
   const numericSuffixStart = typeof optionValues.numericSuffixStart === 'number'
     ? optionValues.numericSuffixStart
     : 0;
+  const suffixMode: SuffixMode = optionValues.numericSuffixes === true
+    ? { kind: 'numeric', start: numericSuffixStart }
+    : { kind: 'alphabetic' };
+  const mayAutoExpand = suffixMode.kind === 'alphabetic'
+    || (
+      optionValues.numericSuffixAutoExpand === true
+      && optionValues.numericSuffixStartExplicit !== true
+    );
+  const suffixLength: SplitSuffixLength = explicitSuffixLength === undefined && mayAutoExpand
+    ? { kind: 'auto', initialLength: 2 }
+    : { kind: 'fixed', length: explicitSuffixLength ?? 2 };
 
   return {
     ok: true,
     options: {
       mode,
       suffixLength,
-      suffixMode: optionValues.numericSuffixes === true
-        ? { kind: 'numeric', start: numericSuffixStart }
-        : { kind: 'alphabetic' },
+      suffixMode,
       additionalSuffix: typeof optionValues.additionalSuffix === 'string'
         ? optionValues.additionalSuffix
         : '',
