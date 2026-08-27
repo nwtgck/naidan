@@ -2,13 +2,12 @@ import { z } from 'zod';
 import * as Comlink from 'comlink';
 
 import { FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME } from '@/constants';
+import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
 import {
   mapRemoteWeshWorkerExecutionEventToClientEvent,
   weshWorkerExecutionSummarySchema,
-  mapWeshMountsToWorkerMounts,
   weshWorkerStartExecutionResponseSchema,
-  weshWorkerInitRequestSchema,
   weshWorkerShellStateSchema,
   weshWorkerCommandEntrySchema,
   weshWorkerListDirectoryRequestSchema,
@@ -19,6 +18,11 @@ import {
   type WeshWorkerExecuteRequest,
   type WeshWorkerRemoteExecutionEvent,
 } from './types';
+import {
+  createWeshWorkerInitRequest,
+  hasWeshFileSystemHandles,
+  type WeshFileSystemHandleTransport,
+} from './init-request';
 import type { WeshMount } from '@/features/wesh/types';
 
 export async function createFileProtocolCompatibleWeshWorkerClient({
@@ -35,15 +39,17 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   initialCwd?: string | undefined,
 }): Promise<WeshWorkerClient> {
   const naidanSysfsRemoteReader = createNaidanSysfsRemoteReaderForMounts({ mounts });
-  const initRequest = weshWorkerInitRequestSchema.parse({
-    rootHandle,
-    mounts: mapWeshMountsToWorkerMounts({ mounts }),
-    user,
-    initialEnv,
-    initialCwd,
-  });
-
-  const createRuntime = async () => {
+  const createRuntime = async ({ transport }: {
+    transport: WeshFileSystemHandleTransport,
+  }) => {
+    const initRequest = await createWeshWorkerInitRequest({
+      rootHandle,
+      mounts,
+      user,
+      initialEnv,
+      initialCwd,
+      transport,
+    });
     const worker = new Worker(
       new URL('./entry.ts', import.meta.url),
       {
@@ -52,15 +58,20 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       },
     );
     const remote = Comlink.wrap<IWeshWorker>(worker);
-    // Keep the proxied reader as a separate top-level argument.
-    // Putting it inside the init request object can fail structured clone in browsers.
-    await remote.init(
-      initRequest,
-      naidanSysfsRemoteReader
-        ? Comlink.proxy(naidanSysfsRemoteReader)
-        : undefined,
-    );
-    return { worker, remote };
+    try {
+      // Keep the proxied reader as a separate top-level argument.
+      // Putting it inside the init request object can fail structured clone in browsers.
+      await remote.init(
+        initRequest,
+        naidanSysfsRemoteReader
+          ? Comlink.proxy(naidanSysfsRemoteReader)
+          : undefined,
+      );
+      return { worker, remote };
+    } catch (error) {
+      worker.terminate();
+      throw error;
+    }
   };
 
   const destroyRuntime = async ({ worker, remote }: {
@@ -74,7 +85,17 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     }
   };
 
-  let runtime = await createRuntime();
+  const createCompatibleRuntime = async () => {
+    if (!hasWeshFileSystemHandles({ rootHandle, mounts })) {
+      return createRuntime({ transport: 'direct' });
+    }
+    return runWithFileSystemHandleCloneFallback({
+      direct: () => createRuntime({ transport: 'direct' }),
+      fallback: () => createRuntime({ transport: 'opfs-locator' }),
+    });
+  };
+
+  let runtime = await createCompatibleRuntime();
 
   return {
     async startExecution({ request, onEvent }: {
@@ -110,7 +131,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
         return true;
       }
 
-      runtime = await createRuntime();
+      runtime = await createCompatibleRuntime();
       void completionSettled.finally(() => {
         void destroyRuntime(activeRuntime).catch(error => {
           console.error('Failed to destroy cancelled Wesh worker runtime', error);

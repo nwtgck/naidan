@@ -699,85 +699,84 @@ describe('file-explorer.worker.impl', () => {
             currentChatId: 'chat-1',
             currentChatGroupId: 'chat-group-1',
           }],
-          naidanSysfsRemoteReader: {
-            storageType: 'local',
-            async getSidebarStructure() {
-              return [{
-                id: 'chat-group:chat-group-1',
-                type: 'chat_group',
-                chatGroup: {
-                  dto: chatGroupToDto({ domain: chatGroup }),
-                  items: chatGroup.items.map(item => ({
-                    id: item.id,
-                    type: 'chat',
-                    chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
-                  })),
-                },
-              }];
-            },
-            async listChats() {
-              return [{
-                id: 'chat-1',
-                title: 'Local Chat',
-                updatedAt: 200,
-                groupId: 'chat-group-1',
-              }];
-            },
-            async listChatGroups() {
-              return [{
-                dto: chatGroupToDto({ domain: chatGroup }),
-                items: chatGroup.items.map(item => ({
-                  id: item.id,
-                  type: 'chat',
-                  chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
-                })),
-              }];
-            },
-            async loadChatMeta({ chatId }: { chatId: string }) {
-              return chatId === 'chat-1'
-                ? {
-                  dto: chatMetaToDto({ domain: chatMeta }),
-                  groupId: 'chat-group-1',
-                }
-                : undefined;
-            },
-            async loadChatContent({ chatId }: { chatId: string }) {
-              return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined;
-            },
-            async loadChat({ chatId }: { chatId: string }) {
-              return chatId === 'chat-1'
-                ? {
-                  metadata: {
-                    dto: chatMetaToDto({ domain: chatMeta }),
-                    groupId: 'chat-group-1',
-                  },
-                  content: chatContentToDto({ domain: chatContent }),
-                }
-                : undefined;
-            },
-            async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
-              return chatGroupId === 'chat-group-1'
-                ? {
-                  dto: chatGroupToDto({ domain: chatGroup }),
-                  items: chatGroup.items.map(item => ({
-                    id: item.id,
-                    type: 'chat',
-                    chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
-                  })),
-                }
-                : undefined;
-            },
-            async listBinaryObjects() {
-              return [];
-            },
-            async getBinaryObject() {
-              return undefined;
-            },
-            async getBinaryObjectBlob() {
-              return undefined;
-            },
-          },
         },
+      },
+    }, {
+      storageType: 'local',
+      async getSidebarStructure() {
+        return [{
+          id: 'chat-group:chat-group-1',
+          type: 'chat_group',
+          chatGroup: {
+            dto: chatGroupToDto({ domain: chatGroup }),
+            items: chatGroup.items.map(item => ({
+              id: item.id,
+              type: 'chat',
+              chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
+            })),
+          },
+        }];
+      },
+      async listChats() {
+        return [{
+          id: 'chat-1',
+          title: 'Local Chat',
+          updatedAt: 200,
+          groupId: 'chat-group-1',
+        }];
+      },
+      async listChatGroups() {
+        return [{
+          dto: chatGroupToDto({ domain: chatGroup }),
+          items: chatGroup.items.map(item => ({
+            id: item.id,
+            type: 'chat',
+            chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
+          })),
+        }];
+      },
+      async loadChatMeta({ chatId }: { chatId: string }) {
+        return chatId === 'chat-1'
+          ? {
+            dto: chatMetaToDto({ domain: chatMeta }),
+            groupId: 'chat-group-1',
+          }
+          : undefined;
+      },
+      async loadChatContent({ chatId }: { chatId: string }) {
+        return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined;
+      },
+      async loadChat({ chatId }: { chatId: string }) {
+        return chatId === 'chat-1'
+          ? {
+            metadata: {
+              dto: chatMetaToDto({ domain: chatMeta }),
+              groupId: 'chat-group-1',
+            },
+            content: chatContentToDto({ domain: chatContent }),
+          }
+          : undefined;
+      },
+      async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
+        return chatGroupId === 'chat-group-1'
+          ? {
+            dto: chatGroupToDto({ domain: chatGroup }),
+            items: chatGroup.items.map(item => ({
+              id: item.id,
+              type: 'chat',
+              chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
+            })),
+          }
+          : undefined;
+      },
+      async listBinaryObjects() {
+        return [];
+      },
+      async getBinaryObject() {
+        return undefined;
+      },
+      async getBinaryObjectBlob() {
+        return undefined;
       },
     });
 

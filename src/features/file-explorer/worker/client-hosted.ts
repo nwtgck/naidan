@@ -1,5 +1,6 @@
 import * as Comlink from 'comlink';
 
+import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
 import {
   fileExplorerCreateDirectoryArchiveResponseSchema,
@@ -16,6 +17,10 @@ import {
   type FileExplorerWorkerClient,
   type IFileExplorerWorker,
 } from './types';
+import {
+  hasFileExplorerFileSystemHandles,
+  mapFileExplorerRootToOpfsLocators,
+} from './root-transport';
 
 function createDirectoryArchiveJobId(): string {
   if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
@@ -50,38 +55,44 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })();
-  const worker = new Worker(
-    new URL('./entry.ts', import.meta.url),
-    {
-      type: 'module',
-      name: 'naidan-file-explorer-worker',
-    },
-  );
-  const remote = Comlink.wrap<IFileExplorerWorker>(worker);
-  const requestRoot = (() => {
-    switch (root.kind) {
-    case 'native-directory':
-    case 'opfs-root':
-      return root;
-    case 'wesh-mounts':
-      return {
-        ...root,
-        naidanSysfsRemoteReader: naidanSysfsRemoteReader
+  const createRuntime = async ({ requestRoot }: {
+    requestRoot: FileExplorerRootDescriptor,
+  }) => {
+    const worker = new Worker(
+      new URL('./entry.ts', import.meta.url),
+      {
+        type: 'module',
+        name: 'naidan-file-explorer-worker',
+      },
+    );
+    const remote = Comlink.wrap<IFileExplorerWorker>(worker);
+    try {
+      const prepareResponse = await remote.prepareSession(
+        { request: { root: requestRoot } },
+        naidanSysfsRemoteReader
           ? Comlink.proxy(naidanSysfsRemoteReader)
           : undefined,
+      );
+      return {
+        worker,
+        remote,
+        sessionId: fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId,
       };
-    default: {
-      const _ex: never = root;
-      throw new Error(`Unhandled file explorer root kind: ${String(_ex)}`);
+    } catch (error) {
+      worker.terminate();
+      throw error;
     }
-    }
-  })();
-  const prepareResponse = await remote.prepareSession({
-    request: {
-      root: requestRoot,
-    },
-  });
-  const sessionId = fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId;
+  };
+
+  const runtime = hasFileExplorerFileSystemHandles({ root })
+    ? await runWithFileSystemHandleCloneFallback({
+      direct: () => createRuntime({ requestRoot: root }),
+      fallback: async () => createRuntime({
+        requestRoot: await mapFileExplorerRootToOpfsLocators({ root }),
+      }),
+    })
+    : await createRuntime({ requestRoot: root });
+  const { worker, remote, sessionId } = runtime;
 
   return {
     async readDirectory({ path }) {

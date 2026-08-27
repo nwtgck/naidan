@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import * as Comlink from 'comlink';
+import { createFileSystemDirectoryHandleReferenceResolver } from '@/utils/file-system-handle-transport';
 
 import { Wesh } from '@/features/wesh';
 import { NaidanSysfsProvider } from '@/features/wesh/naidan-sysfs/provider';
@@ -170,9 +171,10 @@ export function createWeshWorker(): IWeshWorker {
         return requestOrOptions;
       })();
       const validated = weshWorkerInitRequestSchema.parse(normalizedRequest);
+      const directoryHandleResolver = createFileSystemDirectoryHandleReferenceResolver();
       const rootHandle = validated.rootHandle === 'readonly'
         ? new ReadonlyDirectoryHandle()
-        : validated.rootHandle;
+        : await directoryHandleResolver.resolve({ reference: validated.rootHandle });
 
       wesh = new Wesh({
         rootHandle,
@@ -186,7 +188,7 @@ export function createWeshWorker(): IWeshWorker {
         case 'directory':
           await wesh.vfs.mount({
             path: mount.path,
-            handle: mount.handle,
+            handle: await directoryHandleResolver.resolve({ reference: mount.handle }),
             readOnly: mount.readOnly,
           });
           break;
