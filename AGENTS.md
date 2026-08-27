@@ -4,6 +4,7 @@
 *   **Strong Typing**: Prefer strict static typing to catch errors at build-time. Avoid `any`.
 *   **Keyed Promise Aggregation**: Use `promiseAllKeyed` from `@/utils/promise` instead of `Promise.all` for a fixed set of concurrent operations that produce values. Use `Promise.all` only for fixed operations that produce no values or for dynamic collections.
 *   **LM Terminology**: Use `LM` rather than `LLM` for generative language-model domain terminology, regardless of model size. In identifiers, use `Lm` or `lm` (for example, `LmProvider` and `lmParameters`). User-facing prose may intentionally use `LLM` when it is clearer to a general audience; explain ambiguous cases to the user before changing them.
+*   **Japanese UI Terminology**: For Japanese user-facing copy, follow `src/strings/terminology.tsv` and `src/strings/messages/AGENTS.md`. The TSV is a compact record of established concept, usage-context, and wording decisions, not a mechanical English-to-Japanese replacement table. Natural and accurate Japanese for the actual meaning and context takes priority. For concepts not yet represented in Naidan, use human-reviewed Google product UI and general-user help as the primary external reference because this project considers their wording the closest practical reference for forms familiar to Japanese users.
 *   **Exhaustive Type Checking**: Use `switch` statements with a `default` block assigning to `never` (e.g., `const _ex: never = val;`) when handling union types to ensure all cases are handled.
 
 # Exhaustive Object Handling

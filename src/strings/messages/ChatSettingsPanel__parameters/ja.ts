@@ -1,1 +1,1 @@
-export const ChatSettingsPanel__parameters = (): string => 'パラメーター';
+export const ChatSettingsPanel__parameters = (): string => 'パラメータ';

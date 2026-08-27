@@ -1,1 +1,1 @@
-export const advancedTextEditor__close_editor_esc = (): string => 'エディターを閉じる（Esc）';
+export const advancedTextEditor__close_editor_esc = (): string => 'エディタを閉じる（Esc）';

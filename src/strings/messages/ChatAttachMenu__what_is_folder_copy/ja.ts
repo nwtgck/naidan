@@ -1,1 +1,1 @@
-export const ChatAttachMenu__what_is_folder_copy = (): string => '「フォルダー（コピー）」とは？';
+export const ChatAttachMenu__what_is_folder_copy = (): string => '「フォルダ（コピー）」とは？';

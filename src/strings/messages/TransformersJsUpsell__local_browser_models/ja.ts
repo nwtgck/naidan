@@ -1,1 +1,1 @@
-export const TransformersJsUpsell__local_browser_models = (): string => 'ブラウザー内のローカルモデル';
+export const TransformersJsUpsell__local_browser_models = (): string => 'ブラウザ内のローカルモデル';

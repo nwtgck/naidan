@@ -1,1 +1,1 @@
-export const ConnectionTab__global_context_and_parameters = (): string => 'グローバルコンテキストとパラメーター';
+export const ConnectionTab__global_context_and_parameters = (): string => 'グローバルコンテキストとパラメータ';

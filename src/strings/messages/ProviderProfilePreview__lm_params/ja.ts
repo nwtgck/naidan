@@ -1,1 +1,1 @@
-export const ProviderProfilePreview__lm_params = (): string => 'LMパラメーター';
+export const ProviderProfilePreview__lm_params = (): string => 'LMパラメータ';

@@ -1,1 +1,1 @@
-export const fileExplorer__delete_folder = (): string => 'フォルダーを削除';
+export const fileExplorer__delete_folder = (): string => 'フォルダを削除';

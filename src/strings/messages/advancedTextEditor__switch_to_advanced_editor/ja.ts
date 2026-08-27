@@ -1,1 +1,1 @@
-export const advancedTextEditor__switch_to_advanced_editor = (): string => '高度なエディターに切り替える';
+export const advancedTextEditor__switch_to_advanced_editor = (): string => '高度なエディタに切り替える';
