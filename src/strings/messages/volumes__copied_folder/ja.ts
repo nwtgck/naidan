@@ -1,1 +1,1 @@
-export const volumes__copied_folder = (): string => 'コピーしたフォルダー';
+export const volumes__copied_folder = (): string => 'コピーしたフォルダ';

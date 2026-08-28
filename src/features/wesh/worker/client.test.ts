@@ -81,6 +81,81 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     expect(terminate).toHaveBeenCalledTimes(1);
   });
 
+  it('retries with OPFS locators when directory handles cannot be cloned', async () => {
+    const firstTerminate = vi.fn();
+    const secondTerminate = vi.fn();
+    const workers = [
+      { terminate: firstTerminate } as unknown as Worker,
+      { terminate: secondTerminate } as unknown as Worker,
+    ];
+    class WorkerMock {
+      constructor() {
+        return workers.shift()!;
+      }
+    }
+    vi.stubGlobal('Worker', WorkerMock);
+
+    const firstInit = vi.fn().mockRejectedValue(new DOMException('Cannot clone handle', 'DataCloneError'));
+    const secondInit = vi.fn().mockResolvedValue(undefined);
+    const secondRelease = vi.fn().mockResolvedValue(undefined);
+    const createRemote = ({ init, release }: {
+      init: typeof firstInit,
+      release: ReturnType<typeof vi.fn>,
+    }) => ({
+      init,
+      startExecution: vi.fn(),
+      awaitExecution: vi.fn(),
+      interruptExecution: vi.fn(),
+      disposeExecution: vi.fn(),
+      execute: vi.fn(),
+      getShellState: vi.fn(),
+      listCommands: vi.fn(),
+      listDirectory: vi.fn(),
+      interrupt: vi.fn(),
+      dispose: vi.fn().mockResolvedValue(undefined),
+      [Comlink.releaseProxy]: release,
+    } as unknown as Comlink.Remote<import('./types').IWeshWorker>);
+    vi.mocked(Comlink.wrap)
+      .mockReturnValueOnce(createRemote({ init: firstInit, release: vi.fn() }))
+      .mockReturnValueOnce(createRemote({ init: secondInit, release: secondRelease }));
+
+    const { MockFileSystemDirectoryHandle } = await import('@/features/wesh/mocks/InMemoryFileSystem');
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: '' });
+    const terminalRoot = await opfsRoot.getDirectoryHandle('terminal', { create: true });
+    const globalRoot = await terminalRoot.getDirectoryHandle('global', { create: true });
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn().mockResolvedValue(opfsRoot),
+      },
+    });
+
+    const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client');
+    const client = await createFileProtocolCompatibleWeshWorkerClient({
+      rootHandle: globalRoot as unknown as FileSystemDirectoryHandle,
+      mounts: [],
+      user: 'user',
+      initialEnv: {},
+      initialCwd: undefined,
+    });
+
+    expect(firstInit).toHaveBeenCalledOnce();
+    expect(firstTerminate).toHaveBeenCalledOnce();
+    expect(secondInit).toHaveBeenCalledWith({
+      rootHandle: {
+        kind: 'opfs-directory',
+        pathSegments: ['terminal', 'global'],
+      },
+      mounts: [],
+      user: 'user',
+      initialEnv: {},
+      initialCwd: undefined,
+    }, undefined);
+
+    await client.dispose();
+    expect(secondRelease).toHaveBeenCalledOnce();
+    expect(secondTerminate).toHaveBeenCalledOnce();
+  });
+
   it('does not release the active runtime before pending awaitExecution settles during cancel', async () => {
     const terminate1 = vi.fn();
     const terminate2 = vi.fn();

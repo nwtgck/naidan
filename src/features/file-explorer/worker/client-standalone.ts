@@ -1,5 +1,6 @@
 import * as Comlink from 'comlink';
 
+import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/file-explorer';
 import {
   createStandaloneWorkerSession,
@@ -22,6 +23,10 @@ import {
   type FileExplorerWorkerClient,
   type IFileExplorerWorker,
 } from './types';
+import {
+  hasFileExplorerFileSystemHandles,
+  mapFileExplorerRootToOpfsLocators,
+} from './root-transport';
 
 function createDirectoryArchiveJobId(): string {
   if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
@@ -56,42 +61,42 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })();
-  const requestRoot = (() => {
-    switch (root.kind) {
-    case 'native-directory':
-    case 'opfs-root':
-      return root;
-    case 'wesh-mounts':
-      return {
-        ...root,
-        naidanSysfsRemoteReader: naidanSysfsRemoteReader
+  const createRuntime = async ({ requestRoot }: {
+    requestRoot: FileExplorerRootDescriptor,
+  }) => {
+    const session = await createStandaloneWorkerSession<IFileExplorerWorker>({ createWorker: createStandaloneWorker });
+    const { remote } = session;
+    try {
+      const prepareResponse = await remote.prepareSession(
+        { request: { root: requestRoot } },
+        naidanSysfsRemoteReader
           ? Comlink.proxy(naidanSysfsRemoteReader)
           : undefined,
+      );
+      return {
+        session,
+        remote,
+        sessionId: fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId,
       };
-    default: {
-      const _ex: never = root;
-      throw new Error(`Unhandled file explorer root kind: ${String(_ex)}`);
+    } catch (error) {
+      await disposeStandaloneWorkerSession({
+        session,
+        beforeRelease: undefined,
+        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+      }).catch(() => undefined);
+      throw error;
     }
-    }
-  })();
-  const session = await createStandaloneWorkerSession<IFileExplorerWorker>({ createWorker: createStandaloneWorker });
-  const { remote } = session;
-  let sessionId: string;
-  try {
-    const prepareResponse = await remote.prepareSession({
-      request: {
-        root: requestRoot,
-      },
-    });
-    sessionId = fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId;
-  } catch (error) {
-    await disposeStandaloneWorkerSession({
-      session,
-      beforeRelease: undefined,
-      cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-    }).catch(() => undefined);
-    throw error;
-  }
+  };
+
+  const runtime = hasFileExplorerFileSystemHandles({ root })
+    ? await runWithFileSystemHandleCloneFallback({
+      direct: () => createRuntime({ requestRoot: root }),
+      fallback: async () => createRuntime({
+        requestRoot: await mapFileExplorerRootToOpfsLocators({ root }),
+      }),
+    })
+    : await createRuntime({ requestRoot: root });
+  const { session, remote, sessionId } = runtime;
 
   return {
     async readDirectory({ path }) {

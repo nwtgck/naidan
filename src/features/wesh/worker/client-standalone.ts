@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import * as Comlink from 'comlink';
 
+import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/wesh';
 import {
   createStandaloneWorkerSession,
@@ -12,9 +13,7 @@ import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-s
 import {
   mapRemoteWeshWorkerExecutionEventToClientEvent,
   weshWorkerExecutionSummarySchema,
-  mapWeshMountsToWorkerMounts,
   weshWorkerStartExecutionResponseSchema,
-  weshWorkerInitRequestSchema,
   weshWorkerShellStateSchema,
   weshWorkerCommandEntrySchema,
   weshWorkerListDirectoryRequestSchema,
@@ -25,6 +24,11 @@ import {
   type WeshWorkerExecuteRequest,
   type WeshWorkerRemoteExecutionEvent,
 } from './types';
+import {
+  createWeshWorkerInitRequest,
+  hasWeshFileSystemHandles,
+  type WeshFileSystemHandleTransport,
+} from './init-request';
 import type { WeshMount } from '@/features/wesh/types';
 
 export async function createFileProtocolCompatibleWeshWorkerClient({
@@ -41,15 +45,17 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   initialCwd?: string | undefined,
 }): Promise<WeshWorkerClient> {
   const naidanSysfsRemoteReader = createNaidanSysfsRemoteReaderForMounts({ mounts });
-  const initRequest = weshWorkerInitRequestSchema.parse({
-    rootHandle,
-    mounts: mapWeshMountsToWorkerMounts({ mounts }),
-    user,
-    initialEnv,
-    initialCwd,
-  });
-
-  const createRuntime = async (): Promise<StandaloneWorkerSession<IWeshWorker>> => {
+  const createRuntime = async ({ transport }: {
+    transport: WeshFileSystemHandleTransport,
+  }): Promise<StandaloneWorkerSession<IWeshWorker>> => {
+    const initRequest = await createWeshWorkerInitRequest({
+      rootHandle,
+      mounts,
+      user,
+      initialEnv,
+      initialCwd,
+      transport,
+    });
     const session = await createStandaloneWorkerSession<IWeshWorker>({ createWorker: createStandaloneWorker });
     const { remote } = session;
     try {
@@ -72,6 +78,16 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     }
   };
 
+  const createCompatibleRuntime = async (): Promise<StandaloneWorkerSession<IWeshWorker>> => {
+    if (!hasWeshFileSystemHandles({ rootHandle, mounts })) {
+      return createRuntime({ transport: 'direct' });
+    }
+    return runWithFileSystemHandleCloneFallback({
+      direct: () => createRuntime({ transport: 'direct' }),
+      fallback: () => createRuntime({ transport: 'opfs-locator' }),
+    });
+  };
+
   const destroyRuntime = async ({ runtime }: {
     runtime: StandaloneWorkerSession<IWeshWorker>,
   }) => {
@@ -82,7 +98,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     });
   };
 
-  let runtime = await createRuntime();
+  let runtime = await createCompatibleRuntime();
 
   return {
     async startExecution({ request, onEvent }: {
@@ -119,7 +135,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       }
 
       try {
-        runtime = await createRuntime();
+        runtime = await createCompatibleRuntime();
       } catch (error) {
         await destroyRuntime({ runtime: activeRuntime }).catch(cleanupError => {
           console.error('Failed to destroy cancelled standalone Wesh worker runtime after replacement failure', cleanupError);

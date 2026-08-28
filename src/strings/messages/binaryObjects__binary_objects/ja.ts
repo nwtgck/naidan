@@ -1,1 +1,1 @@
-export const binaryObjects__binary_objects = (): string => 'バイナリーオブジェクト';
+export const binaryObjects__binary_objects = (): string => 'バイナリオブジェクト';

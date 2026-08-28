@@ -1,1 +1,1 @@
-export const FeatureFlagsSettings__disable_shell = (): string => 'ブラウザー内シェルを無効にする';
+export const FeatureFlagsSettings__disable_shell = (): string => 'ブラウザ内シェルを無効にする';

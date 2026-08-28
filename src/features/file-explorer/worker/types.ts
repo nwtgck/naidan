@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
+import { fileSystemDirectoryHandleReferenceSchema } from '@/utils/file-system-handle-transport';
 import { weshWorkerMountSchema } from '@/features/wesh/worker/types';
 
 const fileExplorerPathSchema = z.string().min(1);
@@ -24,14 +25,13 @@ export const fileExplorerRootDescriptorSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('native-directory'),
     rootName: z.string().min(1),
-    handle: z.custom<FileSystemDirectoryHandle>(),
+    handle: fileSystemDirectoryHandleReferenceSchema,
     readOnly: z.boolean(),
   }),
   z.object({
     kind: z.literal('wesh-mounts'),
     rootName: z.string().min(1),
     mounts: z.array(weshWorkerMountSchema),
-    naidanSysfsRemoteReader: z.custom<NaidanSysfsRemoteReader>().optional(),
   }),
 ]);
 
@@ -370,7 +370,11 @@ export type FileExplorerUploadFilesRequest = z.infer<typeof fileExplorerUploadFi
 export type FileExplorerDisposeSessionRequest = z.infer<typeof fileExplorerDisposeSessionRequestSchema>;
 
 export interface IFileExplorerWorker {
-  prepareSession({ request }: { request: FileExplorerPrepareSessionRequest }): Promise<FileExplorerPrepareSessionResponse>,
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy values must remain top-level arguments.
+  prepareSession(
+    options: { request: FileExplorerPrepareSessionRequest },
+    naidanSysfsRemoteReader?: NaidanSysfsRemoteReader,
+  ): Promise<FileExplorerPrepareSessionResponse>,
   readDirectory({ request }: { request: FileExplorerReadDirectoryRequest }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ request }: { request: FileExplorerReadPreviewRequest }): Promise<FileExplorerReadPreviewResponse>,
   readFile({ request }: { request: FileExplorerReadFileRequest }): Promise<FileExplorerReadFileResponse>,

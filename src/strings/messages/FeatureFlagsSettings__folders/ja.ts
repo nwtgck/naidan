@@ -1,1 +1,1 @@
-export const FeatureFlagsSettings__folders = (): string => 'フォルダー';
+export const FeatureFlagsSettings__folders = (): string => 'フォルダ';

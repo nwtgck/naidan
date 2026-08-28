@@ -1,1 +1,1 @@
-export const LmParametersEditor__lm_parameters = (): string => 'LMパラメーター';
+export const LmParametersEditor__lm_parameters = (): string => 'LMパラメータ';

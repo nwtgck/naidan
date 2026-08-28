@@ -1,1 +1,1 @@
-export const volumes__what_is_copy_folder = (): string => 'フォルダーのコピーとは？';
+export const volumes__what_is_copy_folder = (): string => 'フォルダのコピーとは？';

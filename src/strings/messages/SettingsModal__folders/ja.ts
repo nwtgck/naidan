@@ -1,1 +1,1 @@
-export const SettingsModal__folders = (): string => 'フォルダー';
+export const SettingsModal__folders = (): string => 'フォルダ';

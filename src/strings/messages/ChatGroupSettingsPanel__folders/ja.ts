@@ -1,1 +1,1 @@
-export const ChatGroupSettingsPanel__folders = (): string => 'フォルダー';
+export const ChatGroupSettingsPanel__folders = (): string => 'フォルダ';

@@ -1,1 +1,1 @@
-export const ChatMediaShelf__parameters = (): string => 'パラメーター';
+export const ChatMediaShelf__parameters = (): string => 'パラメータ';

@@ -1,1 +1,1 @@
-export const volumes__delete_folder = (): string => 'フォルダーを削除';
+export const volumes__delete_folder = (): string => 'フォルダを削除';

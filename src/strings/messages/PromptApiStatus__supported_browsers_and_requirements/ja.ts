@@ -1,1 +1,1 @@
-export const PromptApiStatus__supported_browsers_and_requirements = (): string => '対応ブラウザーと要件';
+export const PromptApiStatus__supported_browsers_and_requirements = (): string => '対応ブラウザと要件';

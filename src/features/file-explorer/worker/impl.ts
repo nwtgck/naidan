@@ -30,6 +30,8 @@ import {
   isFileSystemEntryLookupMiss,
   writeReadableStreamToFileHandle,
 } from '@/utils/file-system-stream';
+import { createFileSystemDirectoryHandleReferenceResolver } from '@/utils/file-system-handle-transport';
+import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
 import {
   fileExplorerCancelDirectoryArchiveRequestSchema,
   fileExplorerAnalyzeZipUploadRequestSchema,
@@ -206,7 +208,14 @@ function getSession({ sessionId }: { sessionId: string }): FileExplorerSession {
   return session;
 }
 
-async function createSessionFromRoot({ root }: { root: FileExplorerRootDescriptor }): Promise<FileExplorerSession> {
+async function createSessionFromRoot({
+  root,
+  naidanSysfsRemoteReader,
+}: {
+  root: FileExplorerRootDescriptor,
+  naidanSysfsRemoteReader: NaidanSysfsRemoteReader | undefined,
+}): Promise<FileExplorerSession> {
+  const directoryHandleResolver = createFileSystemDirectoryHandleReferenceResolver();
   switch (root.kind) {
   case 'opfs-root':
     return {
@@ -219,7 +228,7 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
     return {
       kind: 'native-directory',
       rootName: root.rootName,
-      rootHandle: root.handle,
+      rootHandle: await directoryHandleResolver.resolve({ reference: root.handle }),
       readOnly: root.readOnly,
     };
   case 'wesh-mounts': {
@@ -229,7 +238,7 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
       case 'directory':
         await vfs.mount({
           path: mount.path,
-          handle: mount.handle,
+          handle: await directoryHandleResolver.resolve({ reference: mount.handle }),
           readOnly: mount.readOnly,
         });
         break;
@@ -240,11 +249,11 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
             return createOpfsNaidanSysfsStorageReader();
           case 'local':
           case 'memory':
-            if (root.naidanSysfsRemoteReader === undefined) {
+            if (naidanSysfsRemoteReader === undefined) {
               throw new Error(`Naidan sysfs remote reader is required for ${mount.storageType} storage`);
             }
             return createRemoteNaidanSysfsStorageReader({
-              remoteReader: root.naidanSysfsRemoteReader,
+              remoteReader: naidanSysfsRemoteReader,
             });
           default: {
             const _exhaustiveCheck: never = mount.storageType;
@@ -1136,10 +1145,14 @@ async function listZipUploadExistingEntries({
 
 export function createFileExplorerWorker(): IFileExplorerWorker {
   return {
-    async prepareSession({ request }) {
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy values must remain top-level arguments.
+    async prepareSession({ request }, naidanSysfsRemoteReader) {
       const validated = fileExplorerPrepareSessionRequestSchema.parse(request);
       const sessionId = createSessionId();
-      sessions.set(sessionId, await createSessionFromRoot({ root: validated.root }));
+      sessions.set(sessionId, await createSessionFromRoot({
+        root: validated.root,
+        naidanSysfsRemoteReader,
+      }));
       return fileExplorerPrepareSessionResponseSchema.parse({ sessionId });
     },
 

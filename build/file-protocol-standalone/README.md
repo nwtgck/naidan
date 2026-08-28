@@ -6,6 +6,19 @@ It owns one Vite/Rolldown module graph containing the UI entry and every standal
 
 The integration also owns the standalone release gate. Size, module ownership, license coverage, output shape, and packaging are validated by internal plugins before the archive callback is allowed to run.
 
+## Implementation map
+
+Start with `plugin.ts`. It is the public factory and pipeline table of contents: validation and build-local state are followed by graph construction, source policies, composed-bundle guards, CSS/SystemJS finalization, and the optional written-distribution release gate in execution order. Keep that ordering visible in the factory rather than hiding mandatory phases behind a barrel or aggregate helper.
+
+Implementation details live under `plugin/` and are grouped by behavior rather than by generic utility type:
+
+- `source-policy/` contains source/module-graph policies such as Vite Worker queries, `importScripts()`, Raw Worker construction, Worker-realm globals, and CommonJS compatibility.
+- `worker-entry.ts` owns Worker virtual entries and generated clients; `worker-definition.ts` owns validation/normalization of caller definitions.
+- `worker-css.ts`, `external-wasm.ts`, `preload-helper.ts`, and `empty-css.ts` own focused output compatibility policies.
+- `systemjs-output.ts` owns the single post-bundle SystemJS lifecycle hook. It transforms one JavaScript chunk at a time and delegates HTML semantics to `html-rewrite.ts` without creating a second Vite-plugin boundary.
+- `html-rewrite.ts` separates HTML decision-making from application with a small rewrite plan that is created and immediately applied to the same original HTML source.
+- `diagnostics.ts` and `output-graph.ts` contain narrowly shared data/graph definitions; there is intentionally no generic `utils.ts` bucket or internal `index.ts` barrel.
+
 Worker definitions live in `worker-definitions.ts`. Runtime Worker clients use the generated virtual modules declared under `virtual:file-protocol-standalone/worker/*`.
 
 ## Validation ownership
@@ -14,7 +27,7 @@ Worker definitions live in `worker-definitions.ts`. Runtime Worker clients use t
 - `standalone-worker-runtime-source.ts` generates the small Blob Worker bootstrap and the shared Worker lifecycle runtime. It does not embed Worker application code.
 - `html-validation.ts` validates the HTML both before and after the standalone rewrite and fails closed on unexpected executable/preload/network-dependent elements. It also rejects `<base href>` and CSP meta because both can change the runtime semantics of generated relative scripts/styles, and it records whether each existing stylesheet applies unconditionally. Conditional public stylesheets remain valid, while a link used as the existing owner of UI-graph CSS must be a direct child of `<head>` and unconditional (`media` absent/`all`, not disabled/alternate/titled, and CSS-typed when a type hint is present).
 - Bootstrap insertion uses the parsed `<head>` source boundary rather than a literal `</head>` search, so comments or inline text containing that token cannot capture generated runtime scripts.
-- `plugin.ts` owns the unified graph, source/output policy hooks, Worker entries, and SystemJS output conversion.
+- `plugin.ts` owns public orchestration and keeps the pipeline order visible; the corresponding hook implementations are grouped under `plugin/` by domain.
 - The Vite preload-helper compatibility hook leaves HTTP/HTTPS preloading intact. Under `file:`, SystemJS owns JavaScript dependency loads, while local CSS dependencies retain Vite's Dynamic Import timing and are linked on demand by the UI Realm without `crossorigin`. The helper is guarded by `typeof document !== 'undefined'`, so Worker Realms do not execute DOM loading code.
 - CSS output metadata is fail-closed: every UI chunk must retain Vite `importedCss` metadata as `Set<string>`, every metadata-referenced non-empty stylesheet must exist as a CSS asset, parsed HTML must not link the same CSS output twice, and final local stylesheet links must not retain `crossorigin`.
 - Effect-free empty CSS placeholders are removed from stylesheet metadata and HTML before Vite's manifest post-plugin runs. The physical file is removed only when it is not also referenced through `importedAssets`; this preserves JavaScript-owned lazy CSS splitting without breaking `?url`-style data-asset semantics.

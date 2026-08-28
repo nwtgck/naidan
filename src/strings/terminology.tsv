@@ -1,0 +1,26 @@
+Concept	Usage Context	Japanese	Notes
+adapter	hardware adapter,software adapter,GPU adapter	アダプター	
+binary object	binary data object,stored binary object	バイナリオブジェクト	
+browser	web browser,browser-provided feature,browser session	ブラウザ	
+computer	computer device,host computer	コンピュータ	
+connector	connection component,software connector,service connector	コネクター	
+controller	controller component,controller UI	コントローラー	
+developer	developer role,developer-facing UI	デベロッパー	
+directory	filesystem directory,parent directory,subdirectory,portable directory	ディレクトリ	
+editor	editing UI,editor tool	エディタ	
+explorer	file explorer,resource explorer	エクスプローラー	
+filter	search filter,data filter,filter UI	フィルター	
+folder	user-visible folder,file explorer folder,folder settings	フォルダ	
+header	HTTP header,request header,response header,UI header	ヘッダー	
+installer	software installer	インストーラー	
+interface	user interface,software interface,LM interface	インターフェース	
+mapper	mapping component,data mapper	マッパー	
+memory	system memory,video memory,in-memory storage	メモリ	
+parameter	LM parameter,query parameter,configuration parameter	パラメータ	
+profile	provider profile,connection configuration,saved configuration,browser profile	プロファイル	
+profile	person profile,self introduction,public identity	プロフィール	
+provider	LM provider,service provider,provider implementation	プロバイダー	
+server	network server,application server,LM server	サーバー	
+user	product user,account user	ユーザー	
+volume	user-visible mountable volume	フォルダ	Use フォルダ only for a mountable volume presented to users; do not rename unrelated volume concepts mechanically.
+worker	Web Worker,background worker,worker component	ワーカー	
