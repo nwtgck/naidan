@@ -16,7 +16,7 @@ describe('wesh git config serialization safety', () => {
 
   it.each([`\
 one
-two`, 'one\rtwo', 'one\0two'])('rejects control characters before writing config value %j', async value => {
+two`, 'one\rtwo'])('round-trips Git-supported control characters in config value %j', async value => {
     const files = createFiles();
     await files.mkdir({ path: '/repo/.git', recursive: true });
 
@@ -25,7 +25,23 @@ two`, 'one\rtwo', 'one\0two'])('rejects control characters before writing config
       repository: repository(),
       key: 'remote.origin.url',
       value,
-    })).rejects.toThrow("config value for 'remote.origin.url' contains an unsupported control character");
+    })).resolves.toBe('set');
+    expect(await readLocalConfigEntries({ files, repository: repository() })).toEqual([{
+      key: 'remote.origin.url',
+      value: { kind: 'explicit', value },
+    }]);
+  });
+
+  it('rejects NUL before writing a config value', async () => {
+    const files = createFiles();
+    await files.mkdir({ path: '/repo/.git', recursive: true });
+
+    await expect(setLocalConfigValue({
+      files,
+      repository: repository(),
+      key: 'remote.origin.url',
+      value: 'one\0two',
+    })).rejects.toThrow("config value for 'remote.origin.url' contains NUL");
     expect(await readLocalConfigEntries({ files, repository: repository() })).toEqual([]);
   });
 });
