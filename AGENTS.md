@@ -47,6 +47,26 @@ Use inline `Record<PropertyKey, never>` for rest-property checks. Do not create 
 
 Do not mechanically mirror DTO or domain state into UI. Prefer the user workflow. For example, inherited controls may stay visible so the user can see the effective value and editing that control can intentionally materialize a local override. Add comments/tests for these UX contracts so they are not simplified away as a data-model cleanup.
 
+## UI for unavailable features
+
+### Principle
+
+When a feature is unavailable, prefer keeping its UI visible and disabling unavailable actions rather than removing or hiding the UI.
+
+### Why
+
+- People using Naidan can understand the features and options Naidan provides.
+- UI position and structure stay more consistent across environments and configurations.
+- Fewer structural UI branches reduce opportunities for behavior to diverge or regress.
+
+For example, when a choice cannot be changed in the current environment, keep the choice UI and its effective value visible while disabling the change action.
+
+### Exceptions
+
+Hiding or structurally separating UI is appropriate when keeping it visible would mislead people using Naidan, when safety requires stronger isolation, or when a branch meaningfully contains a problem or dependency.
+
+The goal is not to eliminate branching itself. Prefer reducing unnecessary structural branches and representing unavailable states through disabled existing UI when that remains accurate and safe.
+
 *   **Verification**: Run `npm run typecheck`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions. `npm run test:only-failed` is mandatory and must always be run before commit.
 *   **Targeted Testing**: Test specific files or directories (multiple paths supported) by passing them as arguments: `npm run test:only-failed -- <paths...>`.
 * **Boundary Strings in Tests**: When string loading is not part of the behavior under test, preload strings locally in the relevant test file or suite:

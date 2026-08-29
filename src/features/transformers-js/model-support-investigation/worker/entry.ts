@@ -1,5 +1,4 @@
 /* eslint-disable no-restricted-imports -- Hosted investigation worker intentionally imports the Transformers.js runtime directly. */
-import * as Comlink from "comlink";
 import {
   AutoModel,
   AutoModelForAudioTextToText,
@@ -20,7 +19,10 @@ import { InferenceSession, Tensor } from "onnxruntime-web";
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationGenerationAutoClassName,
+  ModelSupportInvestigationJsonValue,
 } from "@/features/transformers-js/model-support-investigation/types";
+import { exposeWorkerRemote, type WorkerServerApi } from "@/utils/worker-transport";
+import { parseInvestigationJson } from "@/features/transformers-js/model-support-investigation/logic/json-value-schema";
 import { runRuntimeIntegrityPreflight } from "@/features/transformers-js/model-support-investigation/logic/run-runtime-integrity-preflight";
 import { runPartialModelSupportInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-partial-model-support-investigation";
 import { inspectHuggingFaceRepository } from "@/features/transformers-js/model-support-investigation/logic/inspect-hugging-face-repository";
@@ -151,6 +153,14 @@ function stringArray({ value }: { value: unknown }): string[] {
   return Array.isArray(value) ? value.filter(item => typeof item === "string") : [];
 }
 
+function optionalJsonValue({ value, label }: {
+  value: unknown,
+  label: string,
+}): ModelSupportInvestigationJsonValue | undefined {
+  if (value === undefined) return undefined;
+  return parseInvestigationJson({ value, label });
+}
+
 function observeCandidateModel({ model }: { model: CandidateModel }) {
   const sessions = Object.entries(model.sessions)
     .map(([name, session]) => ({
@@ -169,10 +179,10 @@ function observeCandidateModel({ model }: { model: CandidateModel }) {
     effectiveMinimumGenerationConfig: {
       maxNewTokens: 1 as const,
       doSample: false as const,
-      bosTokenId: generationConfig?.bos_token_id,
-      eosTokenId: generationConfig?.eos_token_id,
-      padTokenId: generationConfig?.pad_token_id,
-      decoderStartTokenId: generationConfig?.decoder_start_token_id,
+      bosTokenId: optionalJsonValue({ value: generationConfig?.bos_token_id, label: 'generation_config.bos_token_id' }),
+      eosTokenId: optionalJsonValue({ value: generationConfig?.eos_token_id, label: 'generation_config.eos_token_id' }),
+      padTokenId: optionalJsonValue({ value: generationConfig?.pad_token_id, label: 'generation_config.pad_token_id' }),
+      decoderStartTokenId: optionalJsonValue({ value: generationConfig?.decoder_start_token_id, label: 'generation_config.decoder_start_token_id' }),
     },
   };
 }
@@ -200,7 +210,7 @@ function reconstructProductionTextStreamerChunks({
   return chunks;
 }
 
-const worker: IModelSupportInvestigationWorker = {
+const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback must be a top-level remote argument to remain transferable.
   async runPartialInvestigation(modelId, onEvent) {
     return runPartialModelSupportInvestigation({
@@ -609,7 +619,7 @@ const worker: IModelSupportInvestigationWorker = {
   },
 };
 
-Comlink.expose(worker);
+exposeWorkerRemote<IModelSupportInvestigationWorker>({ api: worker, endpoint: undefined });
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

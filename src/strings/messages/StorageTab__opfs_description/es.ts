@@ -1,0 +1,1 @@
+export const StorageTab__opfs_description = (): string => 'Guarda los datos localmente en el sistema de archivos de alta capacidad del navegador. Optimizado para grandes volúmenes de datos y archivos adjuntos.';

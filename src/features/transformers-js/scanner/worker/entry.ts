@@ -21,7 +21,6 @@
  * stream-based prefetching directly to OPFS.
  */
 
-import * as Comlink from 'comlink';
 import {
   AutoProcessor,
   AutoTokenizer,
@@ -30,6 +29,7 @@ import {
   env,
 } from '@huggingface/transformers';
 import type { ITransformersJsScannerWorker, ScannedModelFile, ScanOptions, ScanTask } from '@/features/transformers-js/types';
+import { exposeWorkerRemote, type WorkerServerApi } from '@/utils/worker-transport';
 import {
   configureHostedTransformersRuntime,
   isHuggingFaceModelArtifactUrl,
@@ -104,7 +104,7 @@ const interceptedFetch: typeof self.fetch = async (input, init) => {
 self.fetch = interceptedFetch;
 env.fetch = interceptedFetch;
 
-const scannerWorker: ITransformersJsScannerWorker = {
+const scannerWorker: WorkerServerApi<ITransformersJsScannerWorker> = {
   async scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }> {
     const scanStartedAt = performance.now();
     console.log(`[scanner-worker] Starting scan with ${tasks.length} tasks.`);
@@ -225,7 +225,10 @@ const scannerWorker: ITransformersJsScannerWorker = {
   },
 };
 
-Comlink.expose(scannerWorker);
+exposeWorkerRemote<ITransformersJsScannerWorker>({
+  api: scannerWorker,
+  endpoint: undefined,
+});
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

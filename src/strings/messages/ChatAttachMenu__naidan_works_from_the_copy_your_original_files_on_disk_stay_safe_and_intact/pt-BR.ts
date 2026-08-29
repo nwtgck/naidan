@@ -1,0 +1,1 @@
+export const ChatAttachMenu__naidan_works_from_the_copy_your_original_files_on_disk_stay_safe_and_intact = (): string => 'O Naidan trabalha com a cópia — seus arquivos originais no disco permanecem seguros e intactos.';

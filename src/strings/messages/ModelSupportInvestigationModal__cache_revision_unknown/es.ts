@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__cache_revision_unknown = (): string => 'La ruta de caché registra la revisión solicitada, pero los marcadores de finalización no verifican de forma independiente los bytes de los archivos con respecto al SHA del commit resuelto.';

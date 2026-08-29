@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__multimodal_unavailable = ({ strategy, reason }: { strategy: string, reason: string }): string => `Production-Multimodal-Test nicht verfügbar (${strategy}): ${reason}`;

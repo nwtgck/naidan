@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__reasoning_differential_failed = ({ effort, name, message }: { effort: "none" | "high", name: string, message: string }): string => `Production 추론 강도 차이가 ${effort}에서 실패: ${name}: ${message}`;

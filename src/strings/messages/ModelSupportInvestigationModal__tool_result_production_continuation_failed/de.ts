@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__tool_result_production_continuation_failed = ({ strategy, name, message }: { strategy: string, name: string, message: string }): string => `Production-Fortsetzung nach dem Tool-Ergebnis in ${strategy} fehlgeschlagen: ${name}: ${message}`;

@@ -1630,7 +1630,7 @@ import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__we
 
 import type { Strings } from './en';
 
-export const ja = {
+export const catalog = {
   SHARED__all_chats,
   SHARED__assistant,
   SHARED__browser_provided,

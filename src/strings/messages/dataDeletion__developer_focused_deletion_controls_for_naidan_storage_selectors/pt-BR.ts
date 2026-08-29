@@ -1,0 +1,1 @@
+export const dataDeletion__developer_focused_deletion_controls_for_naidan_storage_selectors = (): string => 'Controles de exclusão voltados a desenvolvedores para seletores de armazenamento do Naidan.';

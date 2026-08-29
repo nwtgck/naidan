@@ -1,0 +1,1 @@
+export const TransformersJsUpsell__need_more_models_you_can_download_and_manage_local_llms_to_run_directly_in_your_browser = (): string => 'Precisa de mais modelos? Você pode baixar e gerenciar LLMs locais para executá-los diretamente no navegador.';

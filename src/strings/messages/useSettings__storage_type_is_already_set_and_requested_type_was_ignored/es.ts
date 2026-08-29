@@ -1,0 +1,1 @@
+export const useSettings__storage_type_is_already_set_and_requested_type_was_ignored = ({ savedStorageType, requestedStorageType }: { savedStorageType: string; requestedStorageType: string }): string => `El tipo de almacenamiento ya está configurado como "${savedStorageType}". Se ignoró el tipo solicitado "${requestedStorageType}" mediante un parámetro de consulta.`;

@@ -1,0 +1,1 @@
+export const useSettings__storage_type_is_already_set_and_requested_type_was_ignored = ({ savedStorageType, requestedStorageType }: { savedStorageType: string; requestedStorageType: string }): string => `현재 저장소 유형: "${savedStorageType}". 쿼리 매개변수에서 요청한 유형은 적용되지 않았습니다: "${requestedStorageType}".`;

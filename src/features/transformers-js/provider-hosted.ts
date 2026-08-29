@@ -5,7 +5,7 @@ import type { ToolCallId } from '@/01-models/ids';
 import { transformersJsService } from './index';
 import { formatToolExecutionOutcomeForLm, type Tool, type ToolExecutionOutcome } from '@/01-models/tool';
 import type { ToolApprovalContext } from '@/features/tools/approval';
-import type { WorkerToolDefinition } from './types';
+import type { WorkerToolDefinition, WorkerToolJsonObject } from './types';
 import { zodToJsonSchema } from '@/utils/lm-tools';
 
 export class TransformersJsProvider implements LmProvider {
@@ -55,7 +55,7 @@ export class TransformersJsProvider implements LmProvider {
         function: {
           name: t.name,
           description: t.description,
-          parameters: zodToJsonSchema({ schema: t.parametersSchema }) as Record<string, unknown>,
+          parameters: zodToJsonSchema({ schema: t.parametersSchema }) as WorkerToolJsonObject,
         },
       }))
       : undefined;

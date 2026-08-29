@@ -1,0 +1,1 @@
+export const Sidebar__delete_group_question = (): string => 'Excluir grupo?';

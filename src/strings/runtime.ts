@@ -1,5 +1,6 @@
 import { readonly, shallowReactive, shallowRef } from 'vue';
 
+import { UI_LOCALES } from '@/01-models/ui-locale';
 import type { Strings, StringKey } from '@/strings/catalogs/en';
 import type { UiLocale } from '@/strings/types';
 import { resolveStandalonePackageLocale } from '@/features/file-protocol-standalone/logic/package-locale';
@@ -20,12 +21,22 @@ type StringBoundaryRegistration = {
 const registries = {
   en: shallowReactive<StringBoundaryModule>({}),
   ja: shallowReactive<StringBoundaryModule>({}),
+  'zh-Hans': shallowReactive<StringBoundaryModule>({}),
+  'pt-BR': shallowReactive<StringBoundaryModule>({}),
+  es: shallowReactive<StringBoundaryModule>({}),
+  ko: shallowReactive<StringBoundaryModule>({}),
+  de: shallowReactive<StringBoundaryModule>({}),
 } satisfies Record<UiLocale, StringBoundaryModule>;
 const boundaryRegistrations = new Map<string, StringBoundaryRegistration>();
 const boundaryIdsByKey = new Map<string, Set<string>>();
 const loadedBoundaryModules: Record<UiLocale, Map<string, StringBoundaryModule>> = {
   en: new Map(),
   ja: new Map(),
+  'zh-Hans': new Map(),
+  'pt-BR': new Map(),
+  es: new Map(),
+  ko: new Map(),
+  de: new Map(),
 };
 const loadingBoundaries = new Map<string, Promise<void>>();
 const usedBoundaryIds = new Set<string>();
@@ -47,9 +58,21 @@ let localeSwitchRequest = 0;
 
 export function resolveBrowserLocale(): UiLocale {
   const browserLocale = typeof navigator === 'undefined' ? undefined : navigator.language;
-  if (browserLocale?.toLowerCase().startsWith('ja') === true) {
-    return 'ja';
-  }
+  const normalized = browserLocale?.toLowerCase();
+  if (normalized === 'ja' || normalized?.startsWith('ja-') === true) return 'ja';
+  if (
+    normalized === 'zh'
+    || normalized === 'zh-hans'
+    || normalized?.startsWith('zh-hans-') === true
+    || normalized === 'zh-cn'
+    || normalized?.startsWith('zh-cn-') === true
+    || normalized === 'zh-sg'
+    || normalized?.startsWith('zh-sg-') === true
+  ) return 'zh-Hans';
+  if (normalized === 'pt' || normalized === 'pt-br' || normalized?.startsWith('pt-br-') === true) return 'pt-BR';
+  if (normalized === 'es' || normalized?.startsWith('es-') === true) return 'es';
+  if (normalized === 'ko' || normalized?.startsWith('ko-') === true) return 'ko';
+  if (normalized === 'de' || normalized?.startsWith('de-') === true) return 'de';
   return 'en';
 }
 
@@ -309,7 +332,7 @@ export function registerStringBoundary({ boundaryId, keys, loaders }: {
     }
     scheduledBoundaryWarmups.get(boundaryId)?.();
     scheduledBoundaryWarmups.delete(boundaryId);
-    for (const locale of ['en', 'ja'] as const) {
+    for (const locale of UI_LOCALES) {
       loadedBoundaryModules[locale].delete(boundaryId);
       loadingBoundaries.delete(boundaryLoadKey({ boundaryId, locale }));
       for (const key of previous.keys) {
@@ -481,12 +504,14 @@ export const TEST_ONLY = {
   resolveBrowserLocale,
   resolveEffectiveLocale,
   reset(): void {
-    clearRegistry({ registry: registries.en });
-    clearRegistry({ registry: registries.ja });
+    for (const registry of Object.values(registries)) {
+      clearRegistry({ registry });
+    }
     boundaryRegistrations.clear();
     boundaryIdsByKey.clear();
-    loadedBoundaryModules.en.clear();
-    loadedBoundaryModules.ja.clear();
+    for (const modules of Object.values(loadedBoundaryModules)) {
+      modules.clear();
+    }
     loadingBoundaries.clear();
     for (const cancel of scheduledBoundaryWarmups.values()) {
       cancel();

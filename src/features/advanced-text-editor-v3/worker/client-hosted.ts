@@ -1,5 +1,4 @@
-import * as Comlink from 'comlink';
-
+import { releaseWorkerRemote, wrapWorkerRemote } from '@/utils/worker-transport';
 import { createAdvancedTextEditorV3Worker } from './impl';
 import {
   advancedTextEditorV3ApplyMultiEditResponseSchema,
@@ -46,7 +45,7 @@ export async function createAdvancedTextEditorV3WorkerClient(): Promise<Advanced
       name: 'naidan-advanced-text-editor-v3-worker',
     },
   );
-  const remote = Comlink.wrap<IAdvancedTextEditorV3Worker>(worker);
+  const remote = wrapWorkerRemote<IAdvancedTextEditorV3Worker>({ endpoint: worker });
 
   return {
     async searchText({ request }) {
@@ -66,7 +65,7 @@ export async function createAdvancedTextEditorV3WorkerClient(): Promise<Advanced
     },
     async dispose() {
       try {
-        await remote[Comlink.releaseProxy]();
+        releaseWorkerRemote({ remote });
       } finally {
         worker.terminate();
       }

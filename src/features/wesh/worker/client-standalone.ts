@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import * as Comlink from 'comlink';
+import { workerCapability, workerProxy } from '@/utils/worker-transport';
 
 import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/wesh';
@@ -62,9 +62,12 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       // Keep the proxied reader as a separate top-level argument.
       // Putting it inside the init request object can fail structured clone in browsers.
       await remote.init(
-        initRequest,
+        workerCapability({
+          value: initRequest,
+          capability: 'file-system-handle-clone',
+        }),
         naidanSysfsRemoteReader
-          ? Comlink.proxy(naidanSysfsRemoteReader)
+          ? workerProxy({ value: naidanSysfsRemoteReader })
           : undefined,
       );
       return session;
@@ -107,8 +110,11 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     }) {
       const response = await runtime.remote.startExecution(
         request,
-        onEvent ? Comlink.proxy(async (event: WeshWorkerRemoteExecutionEvent) => {
-          await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) });
+        onEvent ? workerProxy({
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback signatures are remote boundaries.
+          value: async (event: WeshWorkerRemoteExecutionEvent) => {
+            await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) });
+          },
         }) : undefined,
       );
       return weshWorkerStartExecutionResponseSchema.parse(response);

@@ -1,4 +1,4 @@
-import * as Comlink from "comlink";
+import { releaseWorkerRemote, workerProxy, wrapWorkerRemote, type WorkerRemote } from "@/utils/worker-transport";
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationCheckpoint,
@@ -38,12 +38,12 @@ import {
 
 interface InvestigationWorkerHandle {
   worker: Worker,
-  remote: Comlink.Remote<IModelSupportInvestigationWorker>,
+  remote: WorkerRemote<IModelSupportInvestigationWorker>,
 }
 
 interface ProductionWorkerHandle {
   worker: Worker,
-  remote: Comlink.Remote<ITransformersJsWorker>,
+  remote: WorkerRemote<ITransformersJsWorker>,
 }
 
 function productionLaneStageFromStatus({
@@ -92,7 +92,7 @@ export function createModelSupportInvestigationWorkerClient({
     activeWorkers.add(worker);
     return {
       worker,
-      remote: Comlink.wrap<IModelSupportInvestigationWorker>(worker),
+      remote: wrapWorkerRemote<IModelSupportInvestigationWorker>({ endpoint: worker }),
     };
   };
 
@@ -103,7 +103,7 @@ export function createModelSupportInvestigationWorkerClient({
 
   const releaseWorkerHandle = async ({ handle }: { handle: InvestigationWorkerHandle }): Promise<void> => {
     try {
-      await handle.remote[Comlink.releaseProxy]();
+      await releaseWorkerRemote({ remote: handle.remote });
     } finally {
       terminateWorkerHandle({ handle });
     }
@@ -117,7 +117,7 @@ export function createModelSupportInvestigationWorkerClient({
     activeProductionWorkers.add(worker);
     return {
       worker,
-      remote: Comlink.wrap<ITransformersJsWorker>(worker),
+      remote: wrapWorkerRemote<ITransformersJsWorker>({ endpoint: worker }),
     };
   };
 
@@ -128,7 +128,7 @@ export function createModelSupportInvestigationWorkerClient({
 
   const releaseProductionWorkerHandle = async ({ handle }: { handle: ProductionWorkerHandle }): Promise<void> => {
     try {
-      await handle.remote[Comlink.releaseProxy]();
+      await releaseWorkerRemote({ remote: handle.remote });
     } finally {
       terminateProductionWorkerHandle({ handle });
     }
@@ -160,10 +160,10 @@ export function createModelSupportInvestigationWorkerClient({
         try {
           const operation = planningHandle.remote.runPartialInvestigation(
             modelId,
-            Comlink.proxy(({ event }) => {
+            workerProxy({ value: ({ event }) => {
               planningStage = event.stepId;
               publishEvent({ event });
-            }),
+            } }),
           );
           partialRun = await withPlanningTimeout({
             operation,
@@ -228,11 +228,11 @@ export function createModelSupportInvestigationWorkerClient({
                 templateBehavior,
                 cacheRevisionAliases,
                 candidate,
-                Comlink.proxy(publishEvent),
-                Comlink.proxy(({ event }) => {
+                workerProxy({ value: publishEvent }),
+                workerProxy({ value: ({ event }) => {
                   lastStage = event.stage;
                   attemptEvents.push(event);
-                }),
+                } }),
               );
               return await withCandidateAttemptTimeout({
                 operation,
@@ -278,7 +278,7 @@ export function createModelSupportInvestigationWorkerClient({
             try {
               const operation = productionHandle.remote.runModelSupportInvestigationScenario(
                 scenario,
-                Comlink.proxy(({ info }) => {
+                workerProxy({ value: ({ info }) => {
                   lastStage = productionLaneStageFromStatus({ status: info.status, currentStage: lastStage });
                   if (info.status === "progress" || info.status === "progress_total" || info.status === "initiate" || info.status === "download" || info.status === "done" || info.status === "ready") {
                     const progress = modelLoadProgress.observe({
@@ -304,7 +304,7 @@ export function createModelSupportInvestigationWorkerClient({
                       detail: `Production Lane ${lastStage}`,
                     },
                   });
-                }),
+                } }),
               );
               return await withProductionLaneTimeout({
                 operation,

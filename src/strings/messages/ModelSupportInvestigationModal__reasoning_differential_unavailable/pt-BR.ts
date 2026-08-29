@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__reasoning_differential_unavailable = ({ reason }: { reason: string }): string => `Diferencial de esforço de raciocínio em Production indisponível: ${reason}`;

@@ -1,6 +1,5 @@
-import * as Comlink from 'comlink';
-
 import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
+import { workerCapability, workerProxy } from '@/utils/worker-transport';
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/file-explorer';
 import {
   createStandaloneWorkerSession,
@@ -68,9 +67,12 @@ export async function createFileExplorerWorkerClient({
     const { remote } = session;
     try {
       const prepareResponse = await remote.prepareSession(
-        { request: { root: requestRoot } },
+        workerCapability({
+          value: { request: { root: requestRoot } },
+          capability: 'file-system-handle-clone',
+        }),
         naidanSysfsRemoteReader
-          ? Comlink.proxy(naidanSysfsRemoteReader)
+          ? workerProxy({ value: naidanSysfsRemoteReader })
           : undefined,
       );
       return {

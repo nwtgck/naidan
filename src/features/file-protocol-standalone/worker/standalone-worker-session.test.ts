@@ -1,16 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Comlink from 'comlink';
+import { wrapWorkerRemote } from '@/utils/worker-transport';
 
 import {
   createStandaloneWorkerSession,
   disposeStandaloneWorkerSession,
 } from './standalone-worker-session';
 
-vi.mock('comlink', async (importOriginal) => {
-  const original = await importOriginal<typeof import('comlink')>();
+vi.mock('@/utils/worker-transport', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/utils/worker-transport')>();
   return {
     ...original,
-    wrap: vi.fn(),
+    wrapWorkerRemote: vi.fn(),
   };
 });
 
@@ -36,7 +37,7 @@ afterEach(() => {
 describe('standalone Worker session', () => {
   it('terminates the physical Worker when Comlink wrapping fails', async () => {
     const worker = createWorkerMock();
-    vi.mocked(Comlink.wrap).mockImplementation(() => {
+    vi.mocked(wrapWorkerRemote).mockImplementation(() => {
       throw new Error('wrap failed');
     });
 
@@ -49,7 +50,7 @@ describe('standalone Worker session', () => {
   it('releases Comlink and terminates the Worker', async () => {
     const worker = createWorkerMock();
     const remote = createRemoteMock({ release: async () => undefined });
-    vi.mocked(Comlink.wrap).mockReturnValue(remote as never);
+    vi.mocked(wrapWorkerRemote).mockReturnValue(remote as never);
     const session = await createStandaloneWorkerSession<Record<string, never>>({
       createWorker: async () => worker,
     });
@@ -68,7 +69,7 @@ describe('standalone Worker session', () => {
     vi.useFakeTimers();
     const worker = createWorkerMock();
     const remote = createRemoteMock({ release: () => new Promise(() => undefined) });
-    vi.mocked(Comlink.wrap).mockReturnValue(remote as never);
+    vi.mocked(wrapWorkerRemote).mockReturnValue(remote as never);
     const session = await createStandaloneWorkerSession<Record<string, never>>({
       createWorker: async () => worker,
     });
@@ -89,7 +90,7 @@ describe('standalone Worker session', () => {
   it('makes repeated disposal idempotent', async () => {
     const worker = createWorkerMock();
     const remote = createRemoteMock({ release: async () => undefined });
-    vi.mocked(Comlink.wrap).mockReturnValue(remote as never);
+    vi.mocked(wrapWorkerRemote).mockReturnValue(remote as never);
     const session = await createStandaloneWorkerSession<Record<string, never>>({
       createWorker: async () => worker,
     });
@@ -118,7 +119,7 @@ describe('standalone Worker session', () => {
     const remote = createRemoteMock({ release: async () => {
       throw new Error('release failed');
     } });
-    vi.mocked(Comlink.wrap).mockReturnValue(remote as never);
+    vi.mocked(wrapWorkerRemote).mockReturnValue(remote as never);
     const session = await createStandaloneWorkerSession<Record<string, never>>({
       createWorker: async () => worker,
     });

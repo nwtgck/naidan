@@ -1,10 +1,12 @@
 import type {
+  ModelSupportInvestigationJsonObject,
   ModelSupportInvestigationRepository,
   ModelSupportInvestigationTemplateBehavior,
   ModelSupportInvestigationTemplateCase,
   ModelSupportInvestigationTemplateMessage,
   ModelSupportInvestigationToolTemplateProvenance,
 } from '@/features/transformers-js/model-support-investigation/types';
+import { parseInvestigationJson } from '@/features/transformers-js/model-support-investigation/logic/json-value-schema';
 
 type LoadedTokenizer = Awaited<ReturnType<typeof import('@huggingface/transformers').AutoTokenizer.from_pretrained>>;
 export type ModelSupportInvestigationTemplateTokenizer = Pick<
@@ -15,7 +17,7 @@ export type ModelSupportInvestigationTemplateTokenizer = Pick<
   constructor: { name: string },
 };
 
-const TOOLS: Record<string, unknown>[] = [{
+const TOOLS: ModelSupportInvestigationJsonObject[] = [{
   type: 'function',
   function: {
     name: 'lookup_weather',
@@ -31,7 +33,7 @@ const TOOLS: Record<string, unknown>[] = [{
 const FIXTURES: Array<{
   caseId: ModelSupportInvestigationTemplateCase['caseId'],
   messages: ModelSupportInvestigationTemplateMessage[],
-  tools: Record<string, unknown>[] | undefined,
+  tools: ModelSupportInvestigationJsonObject[] | undefined,
   addGenerationPrompt: boolean,
 }> = [
   {
@@ -315,7 +317,9 @@ export async function inspectTemplateBehavior({
     normalizedModelId: repository.normalizedModelId,
     resolvedRevision: repository.resolvedRevision,
     tokenizerClass: tokenizer.constructor.name,
-    declaredChatTemplate: tokenizer.chat_template,
+    declaredChatTemplate: tokenizer.chat_template === undefined
+      ? undefined
+      : parseInvestigationJson({ value: tokenizer.chat_template, label: 'Tokenizer chat_template' }),
     cases,
     toolTemplateProvenance: deriveToolTemplateProvenance({ cases }),
   };

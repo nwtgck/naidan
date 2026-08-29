@@ -1633,7 +1633,7 @@ type BoundaryStringMessage = (() => string) | ((args: never) => string);
 /* eslint-enable local-rules-named-args/require-named-args */
 type BoundaryStringCatalog = Readonly<Record<string, BoundaryStringMessage>>;
 
-export const en = {
+export const catalog = {
   SHARED__all_chats,
   SHARED__assistant,
   SHARED__browser_provided,
@@ -3263,5 +3263,5 @@ export const en = {
   weshTerminal__wesh_terminal,
 } satisfies BoundaryStringCatalog;
 
-export type Strings = typeof en;
+export type Strings = typeof catalog;
 export type StringKey = keyof Strings;

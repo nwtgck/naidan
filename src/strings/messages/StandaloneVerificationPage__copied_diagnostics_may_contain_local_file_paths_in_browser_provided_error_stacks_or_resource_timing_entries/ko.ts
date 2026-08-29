@@ -1,0 +1,1 @@
+export const StandaloneVerificationPage__copied_diagnostics_may_contain_local_file_paths_in_browser_provided_error_stacks_or_resource_timing_entries = (): string => '복사된 진단 정보에는 브라우저 제공 오류 스택 또는 리소스 타이밍 항목의 로컬 파일 경로가 포함될 수 있습니다.';

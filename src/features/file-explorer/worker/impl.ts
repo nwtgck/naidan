@@ -1,4 +1,5 @@
 
+import type { WorkerServerApi } from '@/utils/worker-transport';
 import { WeshVFS } from '@/features/wesh/vfs';
 import { openFileReadStream } from '@/features/wesh/utils/fs';
 import { NaidanSysfsProvider } from '@/features/wesh/naidan-sysfs/provider';
@@ -1143,7 +1144,7 @@ async function listZipUploadExistingEntries({
   return entries;
 }
 
-export function createFileExplorerWorker(): IFileExplorerWorker {
+export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker> {
   return {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy values must remain top-level arguments.
     async prepareSession({ request }, naidanSysfsRemoteReader) {

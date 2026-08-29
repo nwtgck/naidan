@@ -8,6 +8,35 @@ import {
   ChatMetaSchemaDto,
 } from '@/00-storage/00-dto/dto';
 
+/**
+ * Persistence DTOs can carry forward-compatibility metadata on non-enumerable
+ * `unreadable` properties. Structured clone does not copy those properties.
+ * These types describe the value observable in the receiving realm without
+ * changing persistence DTO contracts or adding a runtime projection/copy.
+ */
+type NaidanSysfsRemoteExperimentalValue<T> =
+  T extends object
+    ? {
+      [TKey in keyof T as TKey extends 'unreadable' ? never : TKey]:
+      NaidanSysfsRemoteValue<T[TKey]>
+    }
+    : T;
+
+type NaidanSysfsRemoteValue<T> =
+  T extends readonly unknown[]
+    ? { [TKey in keyof T]: NaidanSysfsRemoteValue<T[TKey]> }
+    : T extends object
+      ? {
+        [TKey in keyof T]: TKey extends 'experimental'
+          ? NaidanSysfsRemoteExperimentalValue<T[TKey]>
+          : NaidanSysfsRemoteValue<T[TKey]>
+      }
+      : T;
+
+export type NaidanSysfsRemoteChatMetaValue = NaidanSysfsRemoteValue<z.output<typeof ChatMetaSchemaDto>>;
+export type NaidanSysfsRemoteChatContentValue = NaidanSysfsRemoteValue<z.output<typeof ChatContentSchemaDto>>;
+export type NaidanSysfsRemoteChatGroupValue = NaidanSysfsRemoteValue<z.output<typeof ChatGroupSchemaDto>>;
+
 export const naidanSysfsRemoteChatSummarySchema = z.object({
   id: z.string().min(1),
   title: z.string().nullable(),

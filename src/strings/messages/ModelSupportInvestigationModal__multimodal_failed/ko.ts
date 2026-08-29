@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__multimodal_failed = ({ strategy, name, message }: { strategy: string, name: string, message: string }): string => `Production 멀티모달 테스트 실패 (${strategy}): ${name}: ${message}`;

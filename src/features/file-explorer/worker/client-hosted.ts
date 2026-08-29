@@ -1,6 +1,5 @@
-import * as Comlink from 'comlink';
-
 import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
+import { releaseWorkerRemote, workerCapability, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
 import {
   fileExplorerCreateDirectoryArchiveResponseSchema,
@@ -65,12 +64,15 @@ export async function createFileExplorerWorkerClient({
         name: 'naidan-file-explorer-worker',
       },
     );
-    const remote = Comlink.wrap<IFileExplorerWorker>(worker);
+    const remote = wrapWorkerRemote<IFileExplorerWorker>({ endpoint: worker });
     try {
       const prepareResponse = await remote.prepareSession(
-        { request: { root: requestRoot } },
+        workerCapability({
+          value: { request: { root: requestRoot } },
+          capability: 'file-system-handle-clone',
+        }),
         naidanSysfsRemoteReader
-          ? Comlink.proxy(naidanSysfsRemoteReader)
+          ? workerProxy({ value: naidanSysfsRemoteReader })
           : undefined,
       );
       return {
@@ -182,7 +184,7 @@ export async function createFileExplorerWorkerClient({
     async dispose() {
       try {
         await remote.disposeSession({ request: { sessionId } });
-        await remote[Comlink.releaseProxy]();
+        await releaseWorkerRemote({ remote });
       } finally {
         worker.terminate();
       }

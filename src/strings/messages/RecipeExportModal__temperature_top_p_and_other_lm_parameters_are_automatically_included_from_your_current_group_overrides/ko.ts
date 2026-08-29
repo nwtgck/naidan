@@ -1,0 +1,1 @@
+export const RecipeExportModal__temperature_top_p_and_other_lm_parameters_are_automatically_included_from_your_current_group_overrides = (): string => '현재 그룹에서 재정의한 온도, Top-P 및 기타 LM 매개변수가 자동으로 포함됩니다.';

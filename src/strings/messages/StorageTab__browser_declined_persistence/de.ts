@@ -1,0 +1,1 @@
+export const StorageTab__browser_declined_persistence = (): string => 'Der Browser hat die Anfrage für persistenten Speicher abgelehnt. Das kann passieren, wenn die Website noch nicht ausreichend genutzt wurde oder die Browsereinstellungen dies verhindern.';

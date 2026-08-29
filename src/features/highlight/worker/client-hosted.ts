@@ -1,6 +1,5 @@
-import * as Comlink from 'comlink';
-
 import { createModuleLoader } from '@/utils/module-loader';
+import { releaseWorkerRemote, wrapWorkerRemote } from '@/utils/worker-transport';
 import {
   highlightResponseSchema,
   type HighlightWorkerClient,
@@ -39,7 +38,7 @@ export async function createHighlightWorkerClient(): Promise<HighlightWorkerClie
       name: 'naidan-highlight-worker',
     },
   );
-  const remote = Comlink.wrap<IHighlightWorker>(worker);
+  const remote = wrapWorkerRemote<IHighlightWorker>({ endpoint: worker });
 
   return {
     async highlight({ request }) {
@@ -47,7 +46,7 @@ export async function createHighlightWorkerClient(): Promise<HighlightWorkerClie
     },
     async dispose() {
       try {
-        await remote[Comlink.releaseProxy]();
+        releaseWorkerRemote({ remote });
       } finally {
         worker.terminate();
       }

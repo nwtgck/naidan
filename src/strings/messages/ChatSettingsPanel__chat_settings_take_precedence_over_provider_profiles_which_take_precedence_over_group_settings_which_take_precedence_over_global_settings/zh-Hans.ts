@@ -1,0 +1,1 @@
+export const ChatSettingsPanel__chat_settings_take_precedence_over_provider_profiles_which_take_precedence_over_group_settings_which_take_precedence_over_global_settings = (): string => '优先级依次为：聊天设置、提供商配置文件、组设置、全局设置。';

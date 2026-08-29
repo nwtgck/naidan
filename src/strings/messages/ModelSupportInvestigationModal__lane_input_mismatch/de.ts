@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__lane_input_mismatch = ({ mismatchIndex }: { mismatchIndex: number | undefined }): string => `Die Eingabe-Tokens von Reference und Production weichen bei ${mismatchIndex === undefined ? "der Grenze des kürzeren Präfixes" : `Index ${mismatchIndex}`}`;

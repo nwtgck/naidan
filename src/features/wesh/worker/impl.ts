@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import * as Comlink from 'comlink';
+import type { WorkerServerApi } from '@/utils/worker-transport';
+import { workerTransfer } from '@/utils/worker-transport';
 import { createFileSystemDirectoryHandleReferenceResolver } from '@/utils/file-system-handle-transport';
 
 import { Wesh } from '@/features/wesh';
@@ -95,10 +96,13 @@ function createForwardingHandle({
     if (buffer !== undefined) {
       sendChain = sendChain.then(async () => {
         await onEvent({
-          event: Comlink.transfer({
-            type: stream,
-            buffer,
-          }, [buffer]),
+          event: workerTransfer({
+            value: {
+              type: stream,
+              buffer,
+            },
+            transferables: [buffer],
+          }),
         });
       });
     }
@@ -150,7 +154,7 @@ function createForwardingHandle({
   };
 }
 
-export function createWeshWorker(): IWeshWorker {
+export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
   let wesh: Wesh | undefined;
   let nextExecutionId = 1;
   const executions = new Map<string, {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Comlink from 'comlink';
+import { wrapWorkerRemote } from '@/utils/worker-transport';
 
 const { createStandaloneWorkerMock } = vi.hoisted(() => ({
   createStandaloneWorkerMock: vi.fn(),
@@ -9,11 +10,11 @@ vi.mock('virtual:file-protocol-standalone/worker/wesh', () => ({
   createStandaloneWorker: createStandaloneWorkerMock,
 }));
 
-vi.mock('comlink', async (importOriginal) => {
-  const original = await importOriginal<typeof import('comlink')>();
+vi.mock('@/utils/worker-transport', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/utils/worker-transport')>();
   return {
     ...original,
-    wrap: vi.fn(),
+    wrapWorkerRemote: vi.fn(),
   };
 });
 
@@ -65,7 +66,7 @@ describe('standalone Wesh Worker client lifecycle', () => {
       awaitExecution: async () => ({ exitCode: 0 }),
     });
     createStandaloneWorkerMock.mockResolvedValue(worker);
-    vi.mocked(Comlink.wrap).mockReturnValue(remote);
+    vi.mocked(wrapWorkerRemote).mockReturnValue(remote);
 
     await expect(createFileProtocolCompatibleWeshWorkerClient({
       rootHandle: 'readonly',
@@ -94,7 +95,7 @@ describe('standalone Wesh Worker client lifecycle', () => {
     createStandaloneWorkerMock
       .mockResolvedValueOnce(firstWorker)
       .mockResolvedValueOnce(replacementWorker);
-    vi.mocked(Comlink.wrap)
+    vi.mocked(wrapWorkerRemote)
       .mockReturnValueOnce(firstRemote)
       .mockReturnValueOnce(replacementRemote);
 
@@ -131,7 +132,7 @@ describe('standalone Wesh Worker client lifecycle', () => {
     createStandaloneWorkerMock
       .mockResolvedValueOnce(firstWorker)
       .mockRejectedValueOnce(replacementError);
-    vi.mocked(Comlink.wrap).mockReturnValue(firstRemote);
+    vi.mocked(wrapWorkerRemote).mockReturnValue(firstRemote);
 
     const client = await createFileProtocolCompatibleWeshWorkerClient({
       rootHandle: 'readonly',

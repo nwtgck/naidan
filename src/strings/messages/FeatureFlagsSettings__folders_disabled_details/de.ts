@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__folders_disabled_details = (): string => 'Für dieses Browserprofil deaktiviert. Aktiviere die Funktion, um den Tab „Ordner“ wiederherzustellen und erneut auf gespeicherte Ordner zuzugreifen.';

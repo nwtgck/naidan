@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__folders_enabled_details = (): string => 'Activado de forma predeterminada para este perfil del navegador. Desactívalo para ocultar la pestaña Carpetas sin cambiar los datos de carpetas guardados.';

@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__environment_evidence_disclosure = (): string => 'Die Nachweise enthalten Browser-, CPU-, Isolations- und GPU-Adapterdetails, die Fingerprinting-Informationen darstellen können.';

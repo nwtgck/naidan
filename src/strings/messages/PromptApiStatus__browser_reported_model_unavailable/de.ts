@@ -1,0 +1,1 @@
+export const PromptApiStatus__browser_reported_model_unavailable = (): string => 'Dein Browser unterstützt die LanguageModel API, kann derzeit aber kein Sprachmodell bereitstellen. Der Browser nennt keinen genauen Grund.';

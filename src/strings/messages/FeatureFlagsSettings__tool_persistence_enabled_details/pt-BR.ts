@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__tool_persistence_enabled_details = (): string => 'Sobrescritas globais, de grupos de conversas e de chats são persistidas. Desative para que novas alterações do chat valham apenas durante a execução, mantendo as configurações salvas ativas.';

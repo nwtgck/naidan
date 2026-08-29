@@ -1,0 +1,1 @@
+export const TransformersJsManager__which_is_required_for_storing_model_files_this_often_happens_in_private_browsing_modes_or_insecure_contexts = (): string => '。存储模型文件需要此功能。这种情况通常发生在隐私浏览模式或不安全的上下文中。';

@@ -1,0 +1,1 @@
+export const TransformersJsManager__which_is_required_for_storing_model_files_this_often_happens_in_private_browsing_modes_or_insecure_contexts = (): string => '이며 모델 파일을 저장하는 데 필요합니다. 시크릿 브라우징 모드나 안전하지 않은 컨텍스트에서 자주 발생합니다.';

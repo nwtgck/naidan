@@ -1,0 +1,1 @@
+export const TransformersJsManager__in_browser_ai_transformers_js_is_not_available_because_the_browser_does_not_support_or_allow_access_to = (): string => '浏览器不支持或不允许访问以下功能，因此无法使用浏览器内 AI（Transformers.js）：';

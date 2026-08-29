@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__shell_enabled_details = (): string => 'Activado de forma predeterminada para este perfil del navegador. Desactívalo para quitar Shell en el navegador del menú de herramientas del chat.';

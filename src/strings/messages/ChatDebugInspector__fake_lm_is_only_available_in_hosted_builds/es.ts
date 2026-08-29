@@ -1,0 +1,1 @@
+export const ChatDebugInspector__fake_lm_is_only_available_in_hosted_builds = (): string => 'Fake LM solo está disponible en compilaciones alojadas. Las compilaciones independientes no incluyen Fake LM.';

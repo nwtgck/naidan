@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ModelSupportInvestigationRepository } from '@/features/transformers-js/model-support-investigation/types';
-import { parseInvestigationJson } from '@/features/transformers-js/model-support-investigation/logic/json-value-schema';
+import { investigationJsonObjectSchema, parseInvestigationJson } from '@/features/transformers-js/model-support-investigation/logic/json-value-schema';
 
 const repositoryLfsSchema = z.object({
   oid: z.string().optional(),
@@ -62,10 +62,11 @@ export async function inspectHuggingFaceRepository({
     throw new Error(`Hugging Face repository metadata request failed: ${response.status} ${response.statusText}`);
   }
 
-  const metadata = repositoryMetadataSchema.parse(parseInvestigationJson({
+  const metadataJson = investigationJsonObjectSchema.parse(parseInvestigationJson({
     value: await response.json(),
     label: 'Hugging Face repository metadata',
   }));
+  const metadata = repositoryMetadataSchema.parse(metadataJson);
   const resolvedRevision = metadata.sha;
   if (!/^[0-9a-f]{40}$/iu.test(resolvedRevision)) {
     throw new Error('Hugging Face repository metadata did not include a resolved commit SHA');
@@ -88,7 +89,7 @@ export async function inspectHuggingFaceRepository({
     files,
     pipelineTag: metadata.pipeline_tag,
     libraryName: metadata.library_name,
-    metadata,
+    metadata: metadataJson,
   };
 }
 

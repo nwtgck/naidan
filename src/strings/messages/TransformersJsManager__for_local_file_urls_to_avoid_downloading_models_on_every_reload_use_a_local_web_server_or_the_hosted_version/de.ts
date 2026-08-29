@@ -1,0 +1,1 @@
+export const TransformersJsManager__for_local_file_urls_to_avoid_downloading_models_on_every_reload_use_a_local_web_server_or_the_hosted_version = (): string => 'bei lokalen Datei-URLs häufig. Um Modelle nicht bei jedem Neuladen erneut herunterzuladen, verwende einen lokalen Webserver oder die Hosted-Version.';

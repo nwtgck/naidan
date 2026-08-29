@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__repository_summary = ({ fileCount, pipelineTag }: { fileCount: number; pipelineTag: string | undefined }): string => `파일 ${fileCount}개 · ${pipelineTag ?? "Pipeline 알 수 없음"}`;

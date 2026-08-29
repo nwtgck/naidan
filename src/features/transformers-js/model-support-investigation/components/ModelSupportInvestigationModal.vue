@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, toRaw } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, toRaw } from "vue";
 import {
   AlertCircleIcon,
   CheckCircle2Icon,
@@ -35,7 +35,7 @@ const emit = defineEmits<{
 }>();
 
 const modalContent = ref<HTMLElement | undefined>(undefined);
-const run = ref<ModelSupportInvestigationRun | undefined>(undefined);
+const run = shallowRef<ModelSupportInvestigationRun | undefined>(undefined);
 const recovery = ref<ModelSupportInvestigationRecovery | undefined>(undefined);
 const running = ref(true);
 const evidenceExporting = ref(false);

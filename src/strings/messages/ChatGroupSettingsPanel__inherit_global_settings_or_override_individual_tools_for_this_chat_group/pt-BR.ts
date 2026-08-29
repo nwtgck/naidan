@@ -1,0 +1,1 @@
+export const ChatGroupSettingsPanel__inherit_global_settings_or_override_individual_tools_for_this_chat_group = (): string => 'Herde as configurações globais ou sobrescreva individualmente as configurações das ferramentas para este grupo de conversas.';

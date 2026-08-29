@@ -1,0 +1,1 @@
+export const StorageTab__clear_history_description = (): string => 'Isso excluirá permanentemente todas as conversas e grupos de conversas. Suas configurações e perfis de provedores serão preservados.';

@@ -1,0 +1,1 @@
+export const StandaloneVerificationPage__copied_diagnostics_may_contain_local_file_paths_in_browser_provided_error_stacks_or_resource_timing_entries = (): string => '复制的诊断信息可能在浏览器提供的错误堆栈或资源计时条目中包含本地文件路径。';

@@ -1,4 +1,4 @@
-import * as Comlink from 'comlink';
+import { releaseWorkerRemote, wrapWorkerRemote } from '@/utils/worker-transport';
 
 import type {
   ITransformersJsScannerWorker,
@@ -27,7 +27,7 @@ export function createTransformersJsScannerWorkerClient(): TransformersJsScanner
     { type: 'module' },
   );
 
-  const remote = Comlink.wrap<ITransformersJsScannerWorker>(worker);
+  const remote = wrapWorkerRemote<ITransformersJsScannerWorker>({ endpoint: worker });
 
   return {
     async scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }> {
@@ -35,7 +35,7 @@ export function createTransformersJsScannerWorkerClient(): TransformersJsScanner
     },
     async dispose(): Promise<void> {
       try {
-        await remote[Comlink.releaseProxy]();
+        await releaseWorkerRemote({ remote });
       } finally {
         worker.terminate();
       }

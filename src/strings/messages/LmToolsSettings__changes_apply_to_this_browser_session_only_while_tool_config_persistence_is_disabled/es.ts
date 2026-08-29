@@ -1,0 +1,1 @@
+export const LmToolsSettings__changes_apply_to_this_browser_session_only_while_tool_config_persistence_is_disabled = (): string => 'Los cambios solo se aplican a esta sesión del navegador mientras la persistencia de la configuración de herramientas esté desactivada.';

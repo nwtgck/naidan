@@ -1,0 +1,1 @@
+export const chatGenerationFlow__local_storage_attachments_are_only_available_during_this_session = (): string => '5MB 제한이 있는 로컬 저장소를 사용 중입니다. 첨부 파일은 이 세션 동안 사용할 수 있지만 기록에는 저장되지 않습니다. 영구 저장을 사용하려면 설정에서 OPFS 저장소로 전환하세요.';

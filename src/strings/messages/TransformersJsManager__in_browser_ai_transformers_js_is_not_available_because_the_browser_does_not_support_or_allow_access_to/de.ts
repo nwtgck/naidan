@@ -1,0 +1,1 @@
+export const TransformersJsManager__in_browser_ai_transformers_js_is_not_available_because_the_browser_does_not_support_or_allow_access_to = (): string => 'Browserinterne KI (Transformers.js) ist nicht verfügbar, da der Browser Folgendes nicht unterstützt oder den Zugriff darauf nicht zulässt:';

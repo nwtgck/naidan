@@ -1,7 +1,11 @@
-import * as Comlink from 'comlink';
+import { exposeWorkerRemote } from '@/utils/worker-transport';
 import { createWeshWorker } from './impl';
+import type { IWeshWorker } from './types';
 
-Comlink.expose(createWeshWorker());
+exposeWorkerRemote<IWeshWorker>({
+  api: createWeshWorker(),
+  endpoint: undefined,
+});
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

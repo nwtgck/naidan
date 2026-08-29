@@ -1,0 +1,1 @@
+export const ChatGroupSettingsPanel__these_settings_will_apply_to_all_chats_within_this_group_unless_overridden_by_a_specific_chat = (): string => 'Esta configuración se aplicará a todos los chats de este grupo, salvo que un chat específico la sobrescriba.';

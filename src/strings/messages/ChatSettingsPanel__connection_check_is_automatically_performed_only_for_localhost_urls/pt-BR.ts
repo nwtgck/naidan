@@ -1,0 +1,1 @@
+export const ChatSettingsPanel__connection_check_is_automatically_performed_only_for_localhost_urls = (): string => 'A verificação da conexão é realizada automaticamente somente para URLs localhost.';

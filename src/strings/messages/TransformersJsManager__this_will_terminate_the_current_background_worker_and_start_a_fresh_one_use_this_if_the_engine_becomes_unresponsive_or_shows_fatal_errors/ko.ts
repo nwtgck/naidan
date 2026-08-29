@@ -1,0 +1,1 @@
+export const TransformersJsManager__this_will_terminate_the_current_background_worker_and_start_a_fresh_one_use_this_if_the_engine_becomes_unresponsive_or_shows_fatal_errors = (): string => '현재 백그라운드 Worker를 종료하고 새 Worker를 시작합니다. 엔진이 응답하지 않거나 치명적인 오류가 표시될 때 사용하세요.';

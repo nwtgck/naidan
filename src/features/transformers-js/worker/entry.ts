@@ -1,5 +1,4 @@
 /* eslint-disable no-restricted-imports -- Dedicated worker entry intentionally imports transformers.js runtime directly. */
-import * as Comlink from 'comlink';
 import {
   AutoProcessor,
   AutoTokenizer,
@@ -12,6 +11,7 @@ import {
   type ProgressCallback as TransformersProgressCallback,
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
+import { exposeWorkerRemote, type WorkerServerApi } from '@/utils/worker-transport';
 import type {
   ProgressInfo,
   ModelLoadResult,
@@ -663,7 +663,7 @@ async function runObservedProductionTurn({
 
 // ---------------------------------------------------------------------------
 
-const transformersJsWorker: ITransformersJsWorker = {
+const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   async downloadModel(modelId: string, progressCallback: (x: ProgressInfo) => void) {
     console.log('[transformersJsWorker] Starting downloadModel:', modelId);
@@ -1365,7 +1365,10 @@ const transformersJsWorker: ITransformersJsWorker = {
   },
 };
 
-Comlink.expose(transformersJsWorker);
+exposeWorkerRemote<ITransformersJsWorker>({
+  api: transformersJsWorker,
+  endpoint: undefined,
+});
 export type { ITransformersJsWorker as TransformersJsWorker };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

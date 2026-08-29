@@ -1,0 +1,1 @@
+export const TransformersJsManager__this_will_terminate_the_current_background_worker_and_start_a_fresh_one_use_this_if_the_engine_becomes_unresponsive_or_shows_fatal_errors = (): string => 'Isso encerrará o worker atual em segundo plano e iniciará um novo. Use esta opção se o mecanismo parar de responder ou apresentar erros fatais.';

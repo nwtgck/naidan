@@ -1,8 +1,12 @@
-import * as Comlink from 'comlink';
+import {
+  releaseWorkerRemote,
+  wrapWorkerRemote,
+  type WorkerRemote,
+} from '@/utils/worker-transport';
 
 export type StandaloneWorkerSession<Api extends object> = Readonly<{
   worker: Worker,
-  remote: Comlink.Remote<Api>,
+  remote: WorkerRemote<Api>,
 }>;
 
 export const STANDALONE_WORKER_CLEANUP_TIMEOUT_MS = 3_000;
@@ -40,7 +44,7 @@ export async function createStandaloneWorkerSession<Api extends object>({
   try {
     return {
       worker,
-      remote: Comlink.wrap<Api>(worker),
+      remote: wrapWorkerRemote<Api>({ endpoint: worker }),
     };
   } catch (error) {
     worker.terminate();
@@ -75,7 +79,7 @@ async function disposeStandaloneWorkerSessionOnce<Api extends object>({
 
     try {
       await runCleanupStep({
-        operation: () => session.remote[Comlink.releaseProxy](),
+        operation: () => releaseWorkerRemote({ remote: session.remote }),
         timeoutMs: cleanupTimeoutMs,
         label: 'Standalone Worker Comlink release',
       });

@@ -1,0 +1,1 @@
+export const DeveloperTab__clear_cache_storage_warning = (): string => 'Tem certeza de que deseja excluir todas as entradas da API Cache Storage do navegador? Isso fará com que o aplicativo baixe novamente todos os recursos na próxima recarga.';
