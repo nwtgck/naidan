@@ -22,18 +22,138 @@ async function hasBashBinaryScriptPrefix({ handle }: {
   handle: WeshFileHandle,
 }): Promise<boolean> {
   const buffer = new Uint8Array(BASH_BINARY_PROBE_BYTES);
-  const { bytesRead } = await handle.read({
-    buffer,
-    offset: 0,
-    length: buffer.length,
-    position: 0,
-  });
-  if (bytesRead < 0 || bytesRead > buffer.length) {
-    throw new Error(`Invalid Bash script prefix read length: ${bytesRead}`);
+  let totalRead = 0;
+
+  while (totalRead < buffer.length) {
+    const remaining = buffer.length - totalRead;
+    const { bytesRead } = await handle.read({
+      buffer,
+      offset: totalRead,
+      length: remaining,
+      position: totalRead,
+    });
+    if (bytesRead < 0 || bytesRead > remaining) {
+      throw new Error(`Invalid Bash script prefix read length: ${bytesRead}`);
+    }
+    if (bytesRead === 0) {
+      break;
+    }
+
+    const chunkEnd = totalRead + bytesRead;
+    const chunk = buffer.subarray(totalRead, chunkEnd);
+    const newlineIndex = chunk.indexOf(0x0a);
+    const inspectedLength = newlineIndex >= 0 ? newlineIndex : chunk.length;
+    if (chunk.subarray(0, inspectedLength).includes(0x00)) {
+      return true;
+    }
+    if (newlineIndex >= 0) {
+      return false;
+    }
+    totalRead = chunkEnd;
   }
-  const newlineIndex = buffer.subarray(0, bytesRead).indexOf(0x0a);
-  const inspectedLength = newlineIndex >= 0 ? newlineIndex : bytesRead;
-  return buffer.subarray(0, inspectedLength).includes(0x00);
+
+  return false;
+}
+
+
+type PreparedBashScriptSource =
+  | { readonly kind: 'binary' }
+  | { readonly kind: 'source', readonly source: ShellSource };
+
+function createPrefixedHandleShellSource({ prefix, handle }: {
+  prefix: Uint8Array,
+  handle: WeshFileHandle,
+}): ShellSource {
+  let prefixOffset = 0;
+  return {
+    kind: 'bytes',
+    async read({ maximumBytes }) {
+      if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0) {
+        throw new Error('Bash script source maximumBytes must be a positive safe integer');
+      }
+      if (prefixOffset < prefix.length) {
+        const end = Math.min(prefix.length, prefixOffset + maximumBytes);
+        const chunk = prefix.subarray(prefixOffset, end);
+        prefixOffset = end;
+        return chunk;
+      }
+
+      const buffer = new Uint8Array(maximumBytes);
+      const { bytesRead } = await handle.read({
+        buffer,
+        offset: 0,
+        length: buffer.length,
+        position: undefined,
+      });
+      if (bytesRead < 0 || bytesRead > buffer.length) {
+        throw new Error(`Invalid Bash script source read length: ${bytesRead}`);
+      }
+      return bytesRead === 0 ? undefined : buffer.subarray(0, bytesRead);
+    },
+  };
+}
+
+async function prepareSequentialBashScriptSource({ handle }: {
+  handle: WeshFileHandle,
+}): Promise<PreparedBashScriptSource> {
+  const prefix = new Uint8Array(BASH_BINARY_PROBE_BYTES);
+  let totalRead = 0;
+
+  while (totalRead < prefix.length) {
+    const remaining = prefix.length - totalRead;
+    const { bytesRead } = await handle.read({
+      buffer: prefix,
+      offset: totalRead,
+      length: remaining,
+      position: undefined,
+    });
+    if (bytesRead < 0 || bytesRead > remaining) {
+      throw new Error(`Invalid Bash sequential script prefix read length: ${bytesRead}`);
+    }
+    if (bytesRead === 0) break;
+
+    const chunkEnd = totalRead + bytesRead;
+    const chunk = prefix.subarray(totalRead, chunkEnd);
+    const newlineIndex = chunk.indexOf(0x0a);
+    const inspectedLength = newlineIndex >= 0 ? newlineIndex : chunk.length;
+    if (chunk.subarray(0, inspectedLength).includes(0x00)) {
+      return { kind: 'binary' };
+    }
+    totalRead = chunkEnd;
+    if (newlineIndex >= 0) break;
+  }
+
+  return {
+    kind: 'source',
+    source: createPrefixedHandleShellSource({
+      prefix: prefix.subarray(0, totalRead),
+      handle,
+    }),
+  };
+}
+
+async function prepareBashScriptSource({ handle, stat }: {
+  handle: WeshFileHandle,
+  stat: WeshStat,
+}): Promise<PreparedBashScriptSource> {
+  switch (stat.type) {
+  case 'fifo':
+    // Bash does not apply the regular-file NUL preflight to FIFO scripts.
+    return { kind: 'source', source: createHandleShellSource({ handle }) };
+  case 'chardev':
+    // Character devices are checked, but their reads are sequential. Replay a
+    // non-binary prefix so the shell receives exactly the bytes that were probed.
+    return prepareSequentialBashScriptSource({ handle });
+  case 'file':
+  case 'directory':
+  case 'symlink':
+    if (await hasBashBinaryScriptPrefix({ handle })) return { kind: 'binary' };
+    return { kind: 'source', source: createHandleShellSource({ handle }) };
+  default: {
+    const _ex: never = stat.type;
+    throw new Error(`Unhandled Bash script source type: ${_ex}`);
+  }
+  }
 }
 
 function isDirectoryStat({ stat }: { stat: WeshStat }): boolean {
@@ -226,19 +346,29 @@ usage: bash [-c command] [file [argument...]]
             },
           });
           try {
-            if (await hasBashBinaryScriptPrefix({ handle })) {
+            const preparedSource = await prepareBashScriptSource({
+              handle,
+              stat: await handle.stat(),
+            });
+            switch (preparedSource.kind) {
+            case 'binary':
               await context.text().error({
-                text: `bash: ${scriptPath}: cannot execute binary file\n`,
+                text: `${scriptPath}: ${scriptPath}: cannot execute binary file\n`,
               });
               return { exitCode: 126 };
+            case 'source':
+              return await executeShellInvocation({
+                context,
+                invocation: createShellInvocation({
+                  plan: parsed,
+                  source: preparedSource.source,
+                }),
+              });
+            default: {
+              const _ex: never = preparedSource;
+              throw new Error(`Unhandled prepared Bash script source: ${JSON.stringify(_ex)}`);
             }
-            return await executeShellInvocation({
-              context,
-              invocation: createShellInvocation({
-                plan: parsed,
-                source: createHandleShellSource({ handle }),
-              }),
-            });
+            }
           } finally {
             await handle.close();
           }

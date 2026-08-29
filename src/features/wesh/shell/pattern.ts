@@ -192,6 +192,24 @@ function parseCharacterClass({
       }
     }
 
+    if (
+      pattern[index] === '['
+      && (pattern[index + 1] === '=' || pattern[index + 1] === '.')
+    ) {
+      const marker = pattern[index + 1]!;
+      const itemEnd = pattern.indexOf(`${marker}]`, index + 2);
+      if (itemEnd >= 0) {
+        const itemValue = pattern.slice(index + 2, itemEnd);
+        const codePoints = [...itemValue];
+        if (codePoints.length === 1) {
+          items.push({ kind: 'literal', value: codePoints[0]! });
+          index = itemEnd + 2;
+          hasContent = true;
+          continue;
+        }
+      }
+    }
+
     const firstCharacter = readEscapedPatternCharacter({
       pattern,
       index,
@@ -639,8 +657,18 @@ export function containsShellPatternMeta({
       continue;
     }
 
-    if (character === '*' || character === '?' || character === '[') {
+    if (character === '*' || character === '?') {
       return true;
+    }
+
+    if (character === '[') {
+      const characterClass = parseCharacterClass({
+        pattern,
+        startIndex: index,
+      });
+      if (characterClass !== undefined) {
+        return true;
+      }
     }
 
     if (

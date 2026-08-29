@@ -64,6 +64,92 @@ wait
     expect(stderr.text).toBe('wesh: source read failed\n');
   });
 
+  it('ignores NUL bytes in byte-backed parser-visible shell text', async () => {
+    const prefix = new TextEncoder().encode(`\
+:
+pri`);
+    const suffix = new TextEncoder().encode(`\
+ntf 'ok\\n'
+`);
+    const bytes = new Uint8Array(prefix.length + 1 + suffix.length);
+    bytes.set(prefix, 0);
+    bytes[prefix.length] = 0x00;
+    bytes.set(suffix, prefix.length + 1);
+    let emitted = false;
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      source: {
+        kind: 'bytes',
+        async read(): Promise<Uint8Array | undefined> {
+          if (emitted) {
+            return undefined;
+          }
+          emitted = true;
+          return bytes;
+        },
+      },
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('ok\n');
+    expect(stderr.text).toBe('');
+  });
+
+  it('does not expose EOF-only NUL bytes after an unterminated command as stdin data', async () => {
+    for (const visibleCommand of ['cat', 'cat;']) {
+      const command = new TextEncoder().encode(visibleCommand);
+      const bytes = new Uint8Array(command.length + 1);
+      bytes.set(command, 0);
+      bytes[command.length] = 0x00;
+      const sharedInput = createTestReadHandleFromBytes({ bytes });
+      const stdout = createTestWriteCaptureHandle();
+      const stderr = createTestWriteCaptureHandle();
+
+      const result = await wesh.execute({
+        source: createHandleShellSource({ handle: sharedInput }),
+        stdin: sharedInput,
+        stdout: stdout.handle,
+        stderr: stderr.handle,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect([...stdout.buffer]).toEqual([]);
+      expect(stderr.text).toBe('');
+    }
+  });
+
+  it('retains parser-invisible NUL bytes when a command drains shared source stdin', async () => {
+    const command = new TextEncoder().encode(`\
+cat
+abc`);
+    const suffix = new TextEncoder().encode(`\
+TAIL
+`);
+    const bytes = new Uint8Array(command.length + 1 + suffix.length);
+    bytes.set(command, 0);
+    bytes[command.length] = 0x00;
+    bytes.set(suffix, command.length + 1);
+    const sharedInput = createTestReadHandleFromBytes({ bytes });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      source: createHandleShellSource({ handle: sharedInput }),
+      stdin: sharedInput,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect([...stdout.buffer]).toEqual([...bytes.subarray(4)]);
+    expect(stderr.text).toBe('');
+  });
+
   it('executes a complete byte-backed unit before the following source chunk is available', async () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -450,6 +536,42 @@ printf 'AFTER\\n'
 
 
 
+  it('applies ANSI-C control escapes to raw invalid source bytes like Bash', async () => {
+    const prefix = new TextEncoder().encode(String.raw`printf '%s' $'\c`);
+    const suffix = new TextEncoder().encode("'\n");
+    for (const testCase of [
+      { sourceByte: 0x80, expected: [] },
+      { sourceByte: 0xc3, expected: [0x03] },
+      { sourceByte: 0xff, expected: [0x1f] },
+    ] as const) {
+      const sourceBytes = new Uint8Array(prefix.length + 1 + suffix.length);
+      sourceBytes.set(prefix, 0);
+      sourceBytes[prefix.length] = testCase.sourceByte;
+      sourceBytes.set(suffix, prefix.length + 1);
+      let emitted = false;
+      const stdout = createTestWriteCaptureHandle();
+      const stderr = createTestWriteCaptureHandle();
+
+      const result = await wesh.execute({
+        source: {
+          kind: 'bytes',
+          async read() {
+            if (emitted) return undefined;
+            emitted = true;
+            return sourceBytes;
+          },
+        },
+        stdin: createTestReadHandleFromText({ text: '' }),
+        stdout: stdout.handle,
+        stderr: stderr.handle,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect([...stdout.buffer]).toEqual(testCase.expected);
+      expect(stderr.text).toBe('');
+    }
+  });
+
   it('preserves every non-NUL raw source byte except the single-quote delimiter', async () => {
     const testedBytes = Array.from({ length: 0xff }, (_, index) => index + 1)
       .filter((byte) => byte !== 0x27);
@@ -692,6 +814,27 @@ second
 first
 second
 `);
+    expect(result.stderr.text).toBe('');
+  });
+
+  it('trims Linux shebang trailing separators before invoking the interpreter', async () => {
+    const result = await execute({ script: `\
+printf '%s\\n' '#!/bin/bash -e   ' 'printf "TRAILING-SHEBANG\\n"' > /script.sh
+/script.sh
+` });
+
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stdout.text).toBe('TRAILING-SHEBANG\n');
+    expect(result.stderr.text).toBe('');
+  });
+
+  it('matches Linux NUL termination while resolving a shebang', async () => {
+    const result = await execute({ script: String.raw`printf '#!/bin/bash -e\000ignored\nprintf "NUL-SHEBANG\n"\n' > /script.sh
+/script.sh
+` });
+
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stdout.text).toBe('NUL-SHEBANG\n');
     expect(result.stderr.text).toBe('');
   });
 
@@ -1124,6 +1267,16 @@ value#suffix
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
+  it('matches Bash locale-quoted word semantics when no message translation is present', async () => {
+    const result = await execute({ script: `\
+x=Y
+printf '<%s>|<%s>|<%s>\n' $"abc" $"a$x" pre$"a$x"post
+` });
+    expect(result.stdout.text).toBe('<abc>|<aY>|<preaYpost>\n');
+    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
   it('supports Bash-style ANSI-C quoted words without exposing them to later expansion', async () => {
     const result = await execute({ script: String.raw`printf '<%s>|<%s>|<%s>|<%s>\n' $'alpha\nbeta' $'\x41\101' $'\u03b1' $'literal * $HOME'` });
     expect(result.stdout.text).toBe(`\
@@ -1137,6 +1290,46 @@ beta>|<AA>|<α>|<literal * $HOME>
   it('keeps escaped single quotes inside ANSI-C quoted words', async () => {
     const result = await execute({ script: String.raw`printf '<%s>\n' $'it\'s'` });
     expect(result.stdout.text).toBe("<it's>\n");
+    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('consumes the quoted backslash in ANSI-C control-backslash escapes', async () => {
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const result = await wesh.execute({
+      source: createTextShellSource({ text: String.raw`printf '%s' $'\c\\'` }),
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect([...stdout.buffer]).toEqual([0x1c]);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('applies ANSI-C control escapes to UTF-8 source bytes like Bash', async () => {
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const result = await wesh.execute({
+      source: createTextShellSource({ text: String.raw`printf '%s%s' $'\cé' $'\c😀'` }),
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect([...stdout.buffer]).toEqual([0x03, 0xa9, 0x10, 0x9f, 0x98, 0x80]);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps ANSI-C escaped quotes opaque to command-substitution balancing', async () => {
+    const result = await execute({
+      script: String.raw`printf '<%s>\n' "$(printf '%s' $'a\')b')"`,
+    });
+
+    expect(result.stdout.text).toBe("<a')b>\n");
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
@@ -1343,6 +1536,27 @@ printf '<%s>\\n' "$value"` });
     expect(result.result.exitCode).toBe(0);
   });
 
+  it('keeps incomplete bracket patterns literal with failglob and nullglob', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+shopt -s failglob
+pattern='['
+printf '<%s>\\n' $pattern
+shopt -u failglob
+shopt -s nullglob
+pattern='foo[a'
+printf '<%s>\\n' $pattern
+`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+<[>
+<foo[a>
+`);
+    expect(stderr.text).toBe('');
+  });
+
   it('sorts pathname expansion results like the C-locale Bash oracle', async () => {
     const result = await execute({ script: `\
 printf x > b.txt
@@ -1450,10 +1664,12 @@ nested:<beta>
     const result = await execute({ script: `\
 unset value
 printf '<%s>\n' "\${value:-"alpha beta"}"
+printf '<%s>\n' "\${value:-"\\q"}"
 printf '<%s>\n' "\${value:-$'gamma\\ndelta'}"` });
 
     expect(result.stdout.text).toBe(`\
 <alpha beta>
+<q>
 <gamma
 delta>
 `);
@@ -1479,6 +1695,16 @@ opening=$(printf '<%s>\n' \${value:-(})
 printf '%s|%s\n' "$closing" "$opening"` });
 
     expect(result.stdout.text).toBe('<)>|<(>\n');
+    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('keeps process-substitution braces inside parameter operands', async () => {
+    const result = await execute({ script: `\
+unset value
+printf '<%s>|<%s>\n' "\${value:-<(printf %s a}b)}" "\${value:->(printf %s a}b)}"` });
+
+    expect(result.stdout.text).toBe('<<(printf %s a}b)>|<>(printf %s a}b)>\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
@@ -1896,6 +2122,7 @@ printf '<%s>|<%s>|<%s>\\n' "${'${value:1:3}'}" "${'${value: -2}'}" "${'${!target
     expect(result.result.exitCode).toBe(0);
   });
 
+
   it('iterates shell options with getopts and updates OPTIND and OPTARG', async () => {
     const result = await execute({ script: `\
 parse() {
@@ -2185,6 +2412,41 @@ outside:outer
     expect(result.result.exitCode).toBe(0);
   });
 
+  it('preserves dynamic local scope, recursive positional frames, and quoted function arguments', async () => {
+    const result = await execute({ script: `\
+value=global
+inner() { printf 'inner:<%s>\n' "$value"; value=changed; }
+outer() { local value=outer; inner; printf 'outer:<%s>\n' "$value"; }
+outer
+printf 'global:<%s>\n' "$value"
+recursive() {
+  printf 'enter:<%s>\n' "$1"
+  case "$1" in
+    alpha) recursive beta ;;
+  esac
+  printf 'leave:<%s>\n' "$1"
+}
+recursive alpha
+spread() { for argument in "$@"; do printf 'arg:<%s>\n' "$argument"; done; }
+spread first 'two words' ''
+` });
+
+    expect(result.stdout.text).toBe(`\
+inner:<outer>
+outer:<changed>
+global:<global>
+enter:<alpha>
+enter:<beta>
+leave:<beta>
+leave:<alpha>
+arg:<first>
+arg:<two words>
+arg:<>
+`);
+    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
   it('applies invocation redirections to shell function bodies', async () => {
     const result = await execute({ script: `\
 show() { printf 'function-output\\n'; }
@@ -2288,6 +2550,32 @@ printf 'trim:<%s>\n' "${'${value#[[:digit:]]}'}"
 digit:yes
 space:yes
 trim:<tail>
+`);
+    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('supports single-character equivalence classes and collating symbols across shell pattern consumers', async () => {
+    const result = await execute({ script: `\
+printf x > a
+value=a
+case "$value" in
+  [[=a=]]) printf 'equivalence:yes\n' ;;
+  *) printf 'equivalence:no\n' ;;
+esac
+case "$value" in
+  [[.a.]]) printf 'collating:yes\n' ;;
+  *) printf 'collating:no\n' ;;
+esac
+printf 'trim:<%s>\n' "${'${value#[[=a=]]}'}"
+printf 'glob:<%s>\n' [[=a=]]
+` });
+
+    expect(result.stdout.text).toBe(`\
+equivalence:yes
+collating:yes
+trim:<>
+glob:<a>
 `);
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);

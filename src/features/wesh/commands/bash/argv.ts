@@ -159,7 +159,7 @@ export function parseBashArgv({ args }: {
         if (optionName !== 'pipefail') {
           return {
             kind: 'error',
-            message: `bash: ${optionName}: invalid option name\n`,
+            message: `bash: line 0: bash: ${optionName}: invalid option name\n`,
             exitCode: 2,
           };
         }

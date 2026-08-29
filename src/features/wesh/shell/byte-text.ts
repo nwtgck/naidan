@@ -3,7 +3,7 @@ const RAW_BYTE_MINIMUM = 0x80;
 const RAW_BYTE_MAXIMUM = 0xff;
 const RAW_BYTE_SURROGATE_PATTERN = /[\uDC80-\uDCFF]/u;
 const UTF8_ENCODER = new TextEncoder();
-const STRICT_UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
+const STRICT_UTF8_DECODER = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 export type ShellByteTextProjection = {
   text: string,

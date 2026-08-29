@@ -254,6 +254,16 @@ describe('parseBashArgv', () => {
     });
   });
 
+  it('matches Bash diagnostics for invalid -o and +o option names', () => {
+    for (const option of ['-o', '+o'] as const) {
+      expect(parseBashArgv({ args: [option, 'definitely_unknown', '-c', 'true'] })).toEqual({
+        kind: 'error',
+        message: 'bash: line 0: bash: definitely_unknown: invalid option name\n',
+        exitCode: 2,
+      });
+    }
+  });
+
   it('rejects shopt options not implemented by the Wesh shell core', () => {
     expect(parseBashArgv({ args: ['-O', 'definitely_unknown', '-c', 'true'] })).toEqual({
       kind: 'error',
