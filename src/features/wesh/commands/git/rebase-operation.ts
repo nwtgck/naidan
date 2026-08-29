@@ -29,7 +29,7 @@ async function finishRebase({ context, repository, reflogAction }: {
   const head = await readHead({ files: context.files, repository });
   if (head.objectId === undefined)
     throw new Error('rebase HEAD is unborn');
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const identity = resolveGitReflogIdentity({ env: context.env, config });
   const timestamp = resolveGitTimestamp({ env: context.env, role: 'COMMITTER' });
   await updateRef({
@@ -186,7 +186,7 @@ export async function abortRebase({ context }: {
     targetEntries: origEntries,
     contentConfig: await resolveContentConfigForContext({ context, repository }),
   });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   await moveHeadReference({
     files: context.files,
     repository,
@@ -253,7 +253,7 @@ export async function checkoutRebaseTargetBranch({ context, repository, currentH
     contentConfig: await resolveContentConfigForContext({ context, repository }),
   });
   await writeIndex({ files: context.files, repository, entries: plan.nextIndexEntries });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   await moveHeadReference({
     files: context.files,
     repository,
@@ -325,7 +325,7 @@ export async function startRebaseSequence({ context, repository, headRefName, or
     contentConfig: await resolveContentConfigForContext({ context, repository }),
   });
   await writeIndex({ files: context.files, repository, entries: plan.nextIndexEntries });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   await moveHeadReference({
     files: context.files,
     repository,

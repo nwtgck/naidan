@@ -81,6 +81,24 @@ test ! -e .git/rebase-merge`,
     expect(rebased.stderr.text).toBe('Successfully rebased and updated refs/heads/topic.\n');
   });
 
+  it('uses configured upstream for argument-free rebase and reports missing tracking as exit 1', async () => {
+    await setupDiverged({ conflictingFirstCommit: false });
+
+    const missing = await execute({ script: 'git rebase' });
+    expect(missing.result.exitCode).toBe(1);
+    expect(missing.stderr.text).toBe('');
+    expect(missing.stdout.text).toContain('There is no tracking information for the current branch.');
+
+    const configured = await execute({
+      script: `\
+git config branch.topic.remote .
+git config branch.topic.merge refs/heads/master
+git rebase`,
+    });
+    expect(configured.result.exitCode).toBe(0);
+    expect(configured.stderr.text).toBe('Successfully rebased and updated refs/heads/topic.\n');
+  });
+
   it('uses canonical rebase-merge state and continues after a content conflict', async () => {
     const ids = await setupDiverged({ conflictingFirstCommit: true });
     const started = await execute({ script: 'git rebase master' });

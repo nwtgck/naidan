@@ -1,7 +1,7 @@
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { applyCheckoutTreePlan, planCheckoutTree } from "./checkout";
 import { commitSubject, readCommit } from "./commits";
-import { getConfigValue, readEffectiveConfig } from "./config";
+import { readEffectiveConfig, shouldCreateBranchReflog } from "./config";
 import { resolveGitReflogIdentity, resolveGitTimestamp } from "./identity";
 import type { GitIndexEntry } from "./index-file";
 import { readIndex, writeIndex } from "./index-file";
@@ -172,7 +172,7 @@ export async function executeCheckoutLike({ context, parsed }: {
     await printCheckoutConflicts({ context, conflicts: plan.conflicts });
     return { exitCode: 1 };
   }
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const identity = resolveGitReflogIdentity({ env: context.env, config });
   const timestamp = resolveGitTimestamp({ env: context.env, role: 'COMMITTER' });
   if (parsed.createBranchName !== undefined) {
@@ -185,7 +185,7 @@ export async function executeCheckoutLike({ context, parsed }: {
       repository,
       refName,
       objectId: targetObjectId,
-      reflog: getConfigValue({ config, key: 'core.logallrefupdates' }) === 'false'
+      reflog: !shouldCreateBranchReflog({ config })
         ? undefined
         : { identity, timestamp, message: `branch: Created from ${parsed.targetExpression}` },
     });

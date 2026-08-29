@@ -1,7 +1,7 @@
 import { normalizePath } from '@/features/wesh/path';
 import type { GitRepository } from './repository';
 import { relativeToWorktree } from './repository';
-import { gitGlobSource, gitPathspecGlobSource } from './wildmatch';
+import { compileGitWildmatch } from './wildmatch';
 import { sortGitPaths } from './path-order';
 
 type GitPathspecMatchMode = 'default' | 'literal' | 'glob';
@@ -93,13 +93,21 @@ function matchOnePathspec({ repository, cwd, pathspec, paths }: {
         ? [...paths]
         : paths.filter(path => path === relativePath || path.startsWith(`${relativePath}/`));
     }
-    const regex = new RegExp(`^${gitGlobSource({ pattern: relativePath })}$`, 'u');
-    return paths.filter(path => regex.test(path));
+    const matcher = compileGitWildmatch({
+      pattern: relativePath,
+      slashMode: 'wildcards-exclude-slash',
+      anchorMode: 'full',
+    });
+    return paths.filter(path => matcher.matches({ value: path }));
   }
   case 'default': {
     if (hasWildcards) {
-      const regex = new RegExp(`^${gitPathspecGlobSource({ pattern: relativePath })}$`, 'u');
-      return paths.filter(path => regex.test(path));
+      const matcher = compileGitWildmatch({
+        pattern: relativePath,
+        slashMode: 'wildcards-include-slash',
+        anchorMode: 'full',
+      });
+      return paths.filter(path => matcher.matches({ value: path }));
     }
     return relativePath.length === 0
       ? [...paths]
@@ -159,20 +167,30 @@ export function isExclusionPathspec({ operand }: { operand: string }): boolean {
   return parseGitPathspec({ operand }).exclude;
 }
 
+export function selectedDirectoryPathForPathspec({ repository, cwd, operand, matchedPaths }: {
+  repository: GitRepository,
+  cwd: string,
+  operand: string,
+  matchedPaths: readonly string[],
+}): string | undefined {
+  const pathspec = parseGitPathspec({ operand });
+  if (pathspec.exclude) return undefined;
+  const baseCwd = pathspec.top ? repository.worktreePath : cwd;
+  const absolutePath = normalizePath({ cwd: baseCwd, path: pathspec.pattern });
+  const relativePath = relativeToWorktree({ repository, absolutePath });
+  if (relativePath.length === 0) return undefined;
+  const hasWildcards = pathspec.mode !== 'literal' && /[*?[]/u.test(relativePath);
+  if (hasWildcards || matchedPaths.length === 0 || matchedPaths.includes(relativePath)) return undefined;
+  return relativePath;
+}
+
 export function pathspecSelectsDirectory({ repository, cwd, operand, matchedPaths }: {
   repository: GitRepository,
   cwd: string,
   operand: string,
   matchedPaths: readonly string[],
 }): boolean {
-  const pathspec = parseGitPathspec({ operand });
-  if (pathspec.exclude) return false;
-  const baseCwd = pathspec.top ? repository.worktreePath : cwd;
-  const absolutePath = normalizePath({ cwd: baseCwd, path: pathspec.pattern });
-  const relativePath = relativeToWorktree({ repository, absolutePath });
-  if (relativePath.length === 0) return false;
-  const hasWildcards = pathspec.mode !== 'literal' && /[*?[]/u.test(relativePath);
-  return !hasWildcards && matchedPaths.length > 0 && !matchedPaths.includes(relativePath);
+  return selectedDirectoryPathForPathspec({ repository, cwd, operand, matchedPaths }) !== undefined;
 }
 
 export function matchRepositoryPaths({ repository, cwd, operands, availablePaths }: {

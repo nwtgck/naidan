@@ -346,7 +346,7 @@ export async function listRefs({ files, repository, prefix }: {
   repository: GitRepository,
   prefix: string,
 }): Promise<GitListedRef[]> {
-  assertRefName({ refName: prefix });
+  if (prefix !== 'refs') assertRefName({ refName: prefix });
   const byName = new Map<string, GitListedRef>();
   for (const entry of await readPackedRefs({ files, repository })) {
     if (entry.refName.startsWith(`${prefix}/`)) {

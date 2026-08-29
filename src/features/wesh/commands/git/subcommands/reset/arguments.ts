@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 
 type ResetMode = 'soft' | 'mixed' | 'hard';
 export function parseResetArguments({ args }: {
@@ -26,7 +27,7 @@ export function parseResetArguments({ args }: {
     else if (arg === '--hard')
       mode = 'hard';
     else if (arg.startsWith('-'))
-      throw new Error(`unknown option: ${arg}`);
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
     else if (!hasRevision) {
       revisionExpression = arg;
       hasRevision = true;

@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { isExclusionPathspec, matchRepositoryPaths, pathspecSelectsDirectory, selectRepositoryPaths } from "@/features/wesh/commands/git/pathspec";
 import { sortGitPaths } from "@/features/wesh/commands/git/path-order";
@@ -31,7 +32,7 @@ export async function runRm({ context, args }: {
     else if (parsingOptions && arg === '-r')
       recursive = true;
     else if (parsingOptions && arg.startsWith('-'))
-      throw new Error(`unknown option: ${arg}`);
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
     else
       operands.push(arg);
   }

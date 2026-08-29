@@ -1,9 +1,12 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
 import { getBooleanConfigValue, readEffectiveConfig } from '@/features/wesh/commands/git/config';
+import type { GitConfig } from '@/features/wesh/commands/git/config';
 import { resolveGitIdentity, resolveGitTimestamp } from '@/features/wesh/commands/git/identity';
 import { readObject, writeObject } from '@/features/wesh/commands/git/objects';
 import { createRef, deleteRef, listRefs, readRef } from '@/features/wesh/commands/git/refs';
 import { discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
+import type { GitRepository } from '@/features/wesh/commands/git/repository';
 import { resolveRevision } from '@/features/wesh/commands/git/revision';
 import { compareGitUtf8Strings } from '@/features/wesh/commands/git/utf8-order';
 import { expandGitShortOptions } from '@/features/wesh/commands/git/short-options';
@@ -25,14 +28,14 @@ function tagObjectType({ type }: { type: 'blob' | 'tree' | 'commit' | 'tag' }): 
   }
 }
 
-async function createAnnotatedTag({ context, name, targetObjectId, message }: {
+async function createAnnotatedTag({ context, repository, config, name, targetObjectId, message }: {
   context: WeshCommandContext,
+  repository: GitRepository,
+  config: GitConfig,
   name: string,
   targetObjectId: string,
   message: string,
 }): Promise<string> {
-  const repository = await discoverRepositoryFromContext({ context });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
   const identity = resolveGitIdentity({ env: context.env, config, role: 'COMMITTER' });
   const timestamp = resolveGitTimestamp({ env: context.env, role: 'COMMITTER' });
   const target = await readObject({ files: context.files, repository, objectId: targetObjectId });
@@ -52,6 +55,14 @@ export async function runTag({ context, args }: {
   context: WeshCommandContext,
   args: readonly string[],
 }): Promise<WeshCommandResult> {
+  const repository = await discoverRepositoryFromContext({ context });
+  const config = await readEffectiveConfig({
+    files: context.files,
+    repository,
+    homePath: context.env.get('HOME') ?? '/',
+    cwd: context.cwd,
+    env: context.env,
+  });
   let annotated = false;
   let deleteMode = false;
   let message: string | undefined;
@@ -68,35 +79,39 @@ export async function runTag({ context, args }: {
     else if (parsingOptions && (arg === '-d' || arg === '--delete')) deleteMode = true;
     else if (parsingOptions && (arg === '-m' || arg === '--message')) {
       const value = normalizedArgs[index + 1];
-      if (value === undefined) throw new Error(`option '${arg}' requires a value`);
+      if (value === undefined) throw new GitUsageError({ message: `option '${arg}' requires a value` });
       message = appendMessageParagraph({ current: message, value });
       annotated = true;
       index += 1;
     } else if (parsingOptions && arg.startsWith('--message=')) {
       message = appendMessageParagraph({ current: message, value: arg.slice('--message='.length) });
       annotated = true;
-    } else if (parsingOptions && arg.startsWith('-')) throw new Error(`unsupported tag argument: ${arg}`);
+    } else if (parsingOptions && arg.startsWith('-')) throw new GitUsageError({ message: `unsupported tag argument: ${arg}` });
     else operands.push(arg);
   }
 
   if (message !== undefined) message = cleanupMessage({ text: message });
 
-  const repository = await discoverRepositoryFromContext({ context });
   if (deleteMode) {
     if (annotated || message !== undefined) throw new Error('tag delete cannot be combined with annotation options');
-    if (operands.length === 0) throw new Error('tag name required');
+    if (operands.length === 0) return { exitCode: 0 };
+    let exitCode = 0;
     for (const name of operands) {
       const refName = `refs/tags/${name}`;
       const oldObjectId = await readRef({ files: context.files, repository, refName });
-      if (oldObjectId === undefined) throw new Error(`tag '${name}' not found.`);
+      if (oldObjectId === undefined) {
+        await context.text().error({ text: `error: tag '${name}' not found.\n` });
+        exitCode = 1;
+        continue;
+      }
       await deleteRef({ files: context.files, repository, refName });
       await context.text().print({ text: `Deleted tag '${name}' (was ${oldObjectId.slice(0, 7)})\n` });
     }
-    return { exitCode: 0 };
+    return { exitCode };
   }
 
   if (operands.length === 0) {
-    if (annotated || message !== undefined) throw new Error('tag name required');
+    if (annotated || message !== undefined) throw new GitUsageError({ message: 'usage: git tag [-a] [-m <msg>] <tagname> [<object>]', prefix: 'none' });
     const refs = await listRefs({ files: context.files, repository, prefix: 'refs/tags' });
     for (const ref of refs.sort((left, right) => compareGitUtf8Strings({ left: left.refName, right: right.refName }))) {
       await context.text().print({ text: `${ref.refName.slice('refs/tags/'.length)}\n` });
@@ -104,12 +119,6 @@ export async function runTag({ context, args }: {
     return { exitCode: 0 };
   }
   if (operands.length > 2) throw new Error('too many arguments');
-  const config = await readEffectiveConfig({
-    files: context.files,
-    repository,
-    homePath: context.env.get('HOME') ?? '/',
-    env: context.env,
-  });
   if (getBooleanConfigValue({ config, key: 'tag.gpgsign' }) === true) {
     throw new Error('tag signing is not supported yet');
   }
@@ -127,7 +136,7 @@ export async function runTag({ context, args }: {
     expression: operands[1] ?? 'HEAD',
   });
   const refObjectId = annotated
-    ? await createAnnotatedTag({ context, name, targetObjectId, message: message! })
+    ? await createAnnotatedTag({ context, repository, config, name, targetObjectId, message: message! })
     : targetObjectId;
   await createRef({ files: context.files, repository, refName, objectId: refObjectId });
   return { exitCode: 0 };

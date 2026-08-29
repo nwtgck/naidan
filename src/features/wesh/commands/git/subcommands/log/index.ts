@@ -2,6 +2,7 @@ import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/type
 import { parseLogArguments } from './arguments';
 import type { GitLogDecorationMode } from './arguments';
 import { commitSubject } from "@/features/wesh/commands/git/commits";
+import { testAnyGitBasicRegex } from '@/features/wesh/commands/git/basic-regex';
 import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { revisionDiffMatchesSearch, writeRevisionPatch, writeRevisionStat } from "@/features/wesh/commands/git/diff/revision";
 import { quoteNonAsciiFromConfig } from "@/features/wesh/commands/git/path-output";
@@ -56,7 +57,8 @@ async function collectLogDecorations({ context, repository, mode }: {
         : `HEAD -> ${logDecorationRefName({ refName: head.symbolicRef, mode })}`,
     });
   }
-  const tags = await listRefs({ files: context.files, repository, prefix: 'refs/tags' });
+  const refs = await listRefs({ files: context.files, repository, prefix: 'refs' });
+  const tags = refs.filter(ref => ref.refName.startsWith('refs/tags/'));
   for (const ref of [...tags].reverse()) {
     let objectId: string;
     try {
@@ -69,15 +71,29 @@ async function collectLogDecorations({ context, repository, mode }: {
       label: `tag: ${logDecorationRefName({ refName: ref.refName, mode })}`,
     });
   }
-  const remoteRefs = await listRefs({ files: context.files, repository, prefix: 'refs/remotes' });
+  const remoteRefs = refs.filter(ref => ref.refName.startsWith('refs/remotes/'));
   for (const ref of [...remoteRefs].reverse()) {
     add({ objectId: ref.objectId, label: logDecorationRefName({ refName: ref.refName, mode }) });
   }
-  const localRefs = await listRefs({ files: context.files, repository, prefix: 'refs/heads' });
+  const localRefs = refs.filter(ref => ref.refName.startsWith('refs/heads/'));
   for (const ref of [...localRefs].reverse()) {
     if (ref.refName === head.symbolicRef)
       continue;
     add({ objectId: ref.objectId, label: logDecorationRefName({ refName: ref.refName, mode }) });
+  }
+  const miscellaneousRefs = refs.filter(ref =>
+    !ref.refName.startsWith('refs/heads/')
+      && !ref.refName.startsWith('refs/remotes/')
+      && !ref.refName.startsWith('refs/tags/'),
+  );
+  for (const ref of [...miscellaneousRefs].reverse()) {
+    let objectId: string;
+    try {
+      objectId = await peelToCommitObjectId({ files: context.files, repository, objectId: ref.objectId });
+    } catch {
+      continue;
+    }
+    add({ objectId, label: logDecorationRefName({ refName: ref.refName, mode }) });
   }
   return new Map([...labelsByObjectId].map(([objectId, labels]) => [objectId, ` (${labels.join(', ')})`]));
 }
@@ -103,7 +119,7 @@ export async function runLog({ context, args }: {
     pathOperands,
   } = parseLogArguments({ args });
   const repository = await discoverRepositoryFromContext({ context });
-  const logConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const logConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const logQuoteNonAscii = quoteNonAsciiFromConfig({ config: logConfig });
   const includeExpressions: string[] = [];
   const excludeExpressions: string[] = [];
@@ -137,9 +153,14 @@ export async function runLog({ context, args }: {
   const includeObjectIds: string[] = [];
   const excludeObjectIds: string[] = [];
   if (allRefs) {
-    for (const prefix of ['refs/heads', 'refs/remotes', 'refs/tags']) {
-      for (const ref of await listRefs({ files: context.files, repository, prefix }))
-        includeObjectIds.push(ref.objectId);
+    const head = await readHead({ files: context.files, repository });
+    if (head.objectId !== undefined) includeObjectIds.push(head.objectId);
+    for (const ref of await listRefs({ files: context.files, repository, prefix: 'refs' })) {
+      try {
+        includeObjectIds.push(await peelToCommitObjectId({ files: context.files, repository, objectId: ref.objectId }));
+      } catch {
+        continue;
+      }
     }
   }
   for (const expression of includeExpressions) {
@@ -245,7 +266,7 @@ export async function runLog({ context, args }: {
     if (untilTimestamp !== undefined && committerTimestamp > untilTimestamp)
       continue;
     if (grepPatterns.length > 0 && !entry.commit.message.split('\n').some(
-      line => grepPatterns.some(pattern => pattern.test(line)),
+      line => testAnyGitBasicRegex({ regexes: grepPatterns, value: line }),
     ))
       continue;
     if (pickaxeString !== undefined || pickaxeRegex !== undefined) {

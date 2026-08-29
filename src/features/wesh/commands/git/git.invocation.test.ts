@@ -44,6 +44,40 @@ git -C /repo/sub rev-parse --git-dir`,
     expect(stdout.text).toBe(`/\n/repo\n/\n/repo/.git\n`);
   });
 
+  it('reports the implicit common Git directory relative to a worktree subdirectory', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q /repo
+mkdir -p /repo/sub/deep
+git -C /repo/sub rev-parse --git-dir
+git -C /repo/sub rev-parse --git-common-dir
+git -C /repo/sub/deep rev-parse --git-dir
+git -C /repo/sub/deep rev-parse --git-common-dir
+git -C /repo/.git/objects rev-parse --git-common-dir`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`/repo/.git\n../.git\n/repo/.git\n../../.git\n/repo/.git\n`);
+  });
+
+  it('preserves an explicit relative GIT_DIR spelling in rev-parse path output', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q /repo
+mkdir -p /outside
+git --git-dir=../repo/.git -C /outside rev-parse --git-dir
+git --git-dir=../repo/.git -C /outside rev-parse --git-common-dir`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+../repo/.git
+../repo/.git
+`);
+  });
+
   it('accepts --no-pager before other global options', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -290,6 +324,50 @@ git -C /repo -c demo.flag config demo.flag`,
     expect(result.exitCode).toBe(0);
     expect(stderr.text).toBe('');
     expect(stdout.text).toBe('AM a\n\n');
+  });
+
+
+  it('keeps implicit and explicit-empty -c values distinct without a string sentinel', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q /implicit
+printf 'one\r\n' > /implicit/a
+git -C /implicit -c core.autocrlf add a
+git -C /implicit status --short
+git init -q /empty
+printf 'one\r\n' > /empty/a
+git -C /empty -c core.autocrlf= add a
+git -C /empty status --short
+git -C /empty -c demo.flag= config demo.flag`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+AM a
+A  a
+
+`);
+  });
+
+  it('applies parsed -c values after environment-provided GIT_CONFIG entries', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q /repo
+export GIT_CONFIG_COUNT=01
+export GIT_CONFIG_KEY_0=demo.flag
+export GIT_CONFIG_VALUE_0=environment
+git -C /repo -c demo.flag=command config demo.flag
+git -C /repo -c demo.flag=command config --get-all demo.flag`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+command
+environment
+command
+`);
   });
 
 });

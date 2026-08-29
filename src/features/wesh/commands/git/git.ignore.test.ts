@@ -100,6 +100,25 @@ git status --short` });
     expect(forced.stdout.text).toContain('A  a.log\n');
   });
 
+  it('supports POSIX character classes in ignore patterns', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+printf 'ign[[:digit:]].tmp\n' > .gitignore
+printf ignored > ign1.tmp
+printf visible > igna.tmp
+git status --short`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+?? .gitignore
+?? igna.tmp
+`);
+  });
+
   it('continues to report tracked files even when an ignore rule matches them', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

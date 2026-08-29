@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { getConfigValue, readEffectiveConfig, setLocalConfigValue } from "@/features/wesh/commands/git/config";
 import { deleteLocalRemoteBranch, pushLocalBranch } from "@/features/wesh/commands/git/local-transport";
@@ -25,13 +26,13 @@ export async function runPush({ context, args }: {
     else if (parsingOptions && arg === '--force-with-lease') forceWithLease = true;
     else if (parsingOptions && arg === '--delete') deleteBranch = true;
     else if (parsingOptions && (arg === '-q' || arg === '--quiet')) quiet = true;
-    else if (parsingOptions && arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
+    else if (parsingOptions && arg.startsWith('-')) throw new GitUsageError({ message: `unknown option: ${arg}` });
     else operands.push(arg);
   }
   const repository = await discoverRepositoryFromContext({ context });
   const head = await readHead({ files: context.files, repository });
   const currentBranch = branchNameFromHead({ head });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   // TODO: Real Git's pre-push hook is active only when executable. Correct hook gating needs executable-mode visibility from the filesystem layer.
   const configuredRemote = currentBranch === undefined
     ? undefined

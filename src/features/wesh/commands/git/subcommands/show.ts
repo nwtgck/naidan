@@ -16,7 +16,7 @@ export async function runShow({ context, args }: {
     args: readonly string[];
 }): Promise<WeshCommandResult> {
   const repository = await discoverRepositoryFromContext({ context });
-  const showConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const showConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const showQuoteNonAscii = quoteNonAsciiFromConfig({ config: showConfig });
   let diffMode: 'patch' | 'no-patch' | 'stat' = 'patch';
   let optionTerminated = false;

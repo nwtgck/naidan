@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import type { CheckoutLikeArguments } from "@/features/wesh/commands/git/checkout-like";
 import { executeCheckoutLike } from "@/features/wesh/commands/git/checkout-like";
@@ -19,7 +20,7 @@ function parseSwitchArguments({ args }: { args: readonly string[] }): CheckoutLi
     if (parsingOptions && arg === '-c') {
       const value = normalizedArgs[index + 1];
       if (value === undefined)
-        throw new Error(`option '${arg}' requires a value`);
+        throw new GitUsageError({ message: `option '${arg}' requires a value` });
       createBranchName = value;
       index += 1;
       continue;
@@ -29,7 +30,7 @@ function parseSwitchArguments({ args }: { args: readonly string[] }): CheckoutLi
       continue;
     }
     if (parsingOptions && arg.startsWith('-'))
-      throw new Error(`unknown option: ${arg}`);
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
     operands.push(arg);
   }
   if (createBranchName !== undefined) {

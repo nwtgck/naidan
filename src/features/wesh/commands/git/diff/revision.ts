@@ -1,3 +1,5 @@
+import { testGitExtendedRegexBytes } from '@/features/wesh/commands/git/extended-regex';
+import type { GitExtendedRegex } from '@/features/wesh/commands/git/extended-regex';
 import { resolveCharacterLocaleMode } from "@/features/wesh/commands/_shared/locale";
 import { createDiffOperations } from "@/features/wesh/commands/git/diff/algorithm";
 import { compareDiffInputs } from "@/features/wesh/commands/git/diff/compare";
@@ -14,7 +16,7 @@ import { readTreeRecursively } from "@/features/wesh/commands/git/tree";
 import { matchRepositoryPaths } from "@/features/wesh/commands/git/pathspec";
 import { formatGitPatchPath, quoteGitPath } from "@/features/wesh/commands/git/path-output";
 import { compareGitPaths, sortGitPaths } from "@/features/wesh/commands/git/path-order";
-import { findExactRenames } from "@/features/wesh/commands/git/renames";
+import { exactRenameContentIdentity, findExactRenames } from "@/features/wesh/commands/git/renames";
 import type { GitExactRenameMatch } from "@/features/wesh/commands/git/renames";
 
 const gitlinkEncoder = new TextEncoder();
@@ -199,8 +201,11 @@ export async function writeExactRenamePatch({ context, rename, quoteNonAscii }: 
   const destinationDiffPath = formatGitPatchPath({ path: rename.destinationPath, prefix: 'b', quoteNonAscii, headerLabel: false });
   const sourcePath = quoteGitPath({ path: rename.sourcePath, quoteNonAscii, quoteSpaces: false });
   const destinationPath = quoteGitPath({ path: rename.destinationPath, quoteNonAscii, quoteSpaces: false });
+  const modeChange = rename.sourceMode === rename.destinationMode
+    ? ''
+    : `old mode ${formatMode({ mode: rename.sourceMode })}\nnew mode ${formatMode({ mode: rename.destinationMode })}\n`;
   await context.text().print({
-    text: `diff --git ${sourceDiffPath} ${destinationDiffPath}\nsimilarity index 100%\nrename from ${sourcePath}\nrename to ${destinationPath}\n`,
+    text: `diff --git ${sourceDiffPath} ${destinationDiffPath}\n${modeChange}similarity index 100%\nrename from ${sourcePath}\nrename to ${destinationPath}\n`,
   });
 }
 
@@ -212,8 +217,14 @@ interface GitDiffStatEntry {
   binarySize: { left: number, right: number } | undefined,
 }
 
-function containsNul({ bytes }: { bytes: Uint8Array }): boolean {
-  return bytes.includes(0);
+const GIT_BINARY_PROBE_BYTE_LIMIT = 8000;
+
+function isGitBinaryContent({ bytes }: { bytes: Uint8Array }): boolean {
+  const limit = Math.min(bytes.byteLength, GIT_BINARY_PROBE_BYTE_LIMIT);
+  for (let index = 0; index < limit; index += 1) {
+    if (bytes[index] === 0) return true;
+  }
+  return false;
 }
 
 function diffLineCounts({ leftBytes, rightBytes }: {
@@ -270,7 +281,7 @@ function createDiffStatEntries({ paths, left, right }: {
     const rightEntry = right.get(path);
     const leftBytes = leftEntry?.bytes ?? new Uint8Array();
     const rightBytes = rightEntry?.bytes ?? new Uint8Array();
-    if (leftEntry?.objectId !== rightEntry?.objectId && (containsNul({ bytes: leftBytes }) || containsNul({ bytes: rightBytes }))) {
+    if (leftEntry?.objectId !== rightEntry?.objectId && (isGitBinaryContent({ bytes: leftBytes }) || isGitBinaryContent({ bytes: rightBytes }))) {
       return {
         path,
         sortPath: path,
@@ -388,7 +399,7 @@ export async function writeDiffStat({ context, paths, left, right, quoteNonAscii
 
 export type GitDiffSearch =
   | { type: 'string', bytes: Uint8Array }
-  | { type: 'regex', pattern: RegExp };
+  | { type: 'regex', pattern: GitExtendedRegex };
 
 function countByteSequence({ bytes, needle }: { bytes: Uint8Array, needle: Uint8Array }): number {
   if (needle.byteLength === 0) return 0;
@@ -412,8 +423,9 @@ function countByteSequence({ bytes, needle }: { bytes: Uint8Array, needle: Uint8
 function changedLinesMatch({ leftBytes, rightBytes, pattern }: {
   leftBytes: Uint8Array,
   rightBytes: Uint8Array,
-  pattern: RegExp,
+  pattern: GitExtendedRegex,
 }): boolean {
+  if (isGitBinaryContent({ bytes: leftBytes }) || isGitBinaryContent({ bytes: rightBytes })) return false;
   const leftInput = createDiffInput({ displayName: 'left', resolvedPath: undefined, mtime: undefined, bytes: leftBytes });
   const rightInput = createDiffInput({ displayName: 'right', resolvedPath: undefined, mtime: undefined, bytes: rightBytes });
   const operations = createDiffOperations({
@@ -422,7 +434,6 @@ function changedLinesMatch({ leftBytes, rightBytes, pattern }: {
     areEqual: createLineComparator({ left: leftInput, right: rightInput, options: defaultComparisonOptions() }),
     preferSpeedOverCompatibility: false,
   });
-  const decoder = new TextDecoder();
   for (const operation of operations) {
     let input;
     let start: number;
@@ -443,12 +454,40 @@ function changedLinesMatch({ leftBytes, rightBytes, pattern }: {
     }
     }
     for (let offset = 0; offset < operation.length; offset += 1) {
-      const text = decoder.decode(getLineBytes({ input, lineIndex: start + offset, stripTrailingCarriageReturn: false }));
-      pattern.lastIndex = 0;
-      if (pattern.test(text)) return true;
+      const bytes = getLineBytes({ input, lineIndex: start + offset, stripTrailingCarriageReturn: false });
+      if (testGitExtendedRegexBytes({ regex: pattern, bytes })) return true;
     }
   }
   return false;
+}
+
+function excludeExactContentMovesForPickaxe({ paths, left, right }: {
+  paths: readonly string[],
+  left: GitDiffSnapshot,
+  right: GitDiffSnapshot,
+}): string[] {
+  const groups = new Map<string, { deleted: string[], added: string[] }>();
+  for (const path of paths) {
+    const leftEntry = left.get(path);
+    const rightEntry = right.get(path);
+    const entry = leftEntry ?? rightEntry;
+    if (entry === undefined || (leftEntry !== undefined && rightEntry !== undefined)) continue;
+    const key = exactRenameContentIdentity({ objectId: entry.objectId, mode: entry.mode });
+    const group = groups.get(key) ?? { deleted: [], added: [] };
+    if (leftEntry !== undefined) group.deleted.push(path);
+    else group.added.push(path);
+    groups.set(key, group);
+  }
+
+  const excluded = new Set<string>();
+  for (const group of groups.values()) {
+    const pairCount = Math.min(group.deleted.length, group.added.length);
+    for (let index = 0; index < pairCount; index += 1) {
+      excluded.add(group.deleted[index]!);
+      excluded.add(group.added[index]!);
+    }
+  }
+  return paths.filter(path => !excluded.has(path));
 }
 
 export async function revisionDiffMatchesSearch({ context, repository, leftRevision, rightRevision, pathOperands, search }: {
@@ -464,6 +503,15 @@ export async function revisionDiffMatchesSearch({ context, repository, leftRevis
     : await snapshotFromTree({ context, repository, revision: leftRevision });
   const right = await snapshotFromTree({ context, repository, revision: rightRevision });
   let paths = changedPaths({ left, right });
+  if (pathOperands.length === 0) {
+    paths = excludeExactContentMovesForPickaxe({ paths, left, right });
+  } else {
+    const exactRenames = exactRenamesForPaths({ paths, left, right });
+    if (exactRenames.length > 0) {
+      const exactRenamePaths = new Set(exactRenames.flatMap(rename => [rename.sourcePath, rename.destinationPath]));
+      paths = paths.filter(path => !exactRenamePaths.has(path));
+    }
+  }
   if (pathOperands.length > 0) {
     const matches = matchRepositoryPaths({
       repository,
@@ -567,4 +615,5 @@ export async function writeRevisionPatch({ context, repository, leftRevision, ri
 export const TEST_ONLY = {
   changedPaths,
   gitlinkDiffBytes,
+  isGitBinaryContent,
 };

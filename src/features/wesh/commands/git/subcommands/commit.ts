@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { normalizePath } from "@/features/wesh/path";
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readTextFromHandle } from "@/features/wesh/commands/_shared/text";
@@ -37,7 +38,7 @@ export async function runCommit({ context, args }: {
     if (arg === '-m' || arg === '--message') {
       const value = normalizedArgs[index + 1];
       if (value === undefined)
-        throw new Error(`option '${arg}' requires a value`);
+        throw new GitUsageError({ message: `option '${arg}' requires a value` });
       message = appendMessageParagraph({ current: message, value });
       index += 1;
     } else if (arg.startsWith('--message=')) {
@@ -46,7 +47,7 @@ export async function runCommit({ context, args }: {
     } else if (arg === '-F' || arg === '--file') {
       const value = normalizedArgs[index + 1];
       if (value === undefined)
-        throw new Error(`option '${arg}' requires a value`);
+        throw new GitUsageError({ message: `option '${arg}' requires a value` });
       messageFile = value;
       index += 1;
     } else if (arg.startsWith('--file=')) {
@@ -60,7 +61,7 @@ export async function runCommit({ context, args }: {
     } else if (arg === '--allow-empty') {
       allowEmpty = true;
     } else {
-      throw new Error(`unknown option: ${arg}`);
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
     }
   }
   if (message !== undefined && messageFile !== undefined)
@@ -70,6 +71,7 @@ export async function runCommit({ context, args }: {
     files: context.files,
     repository,
     homePath: context.env.get('HOME') ?? '/',
+    cwd: context.cwd,
     env: context.env,
   });
   if (getBooleanConfigValue({ config, key: 'commit.gpgsign' }) === true) {

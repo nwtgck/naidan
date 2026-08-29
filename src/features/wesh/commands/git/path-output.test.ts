@@ -29,10 +29,12 @@ describe("Git pathname output", () => {
 
   it("reads the common Git boolean forms for core.quotePath", () => {
     expect(quoteNonAsciiFromConfig({ config: new Map() })).toBe(true);
-    expect(quoteNonAsciiFromConfig({ config: new Map([["core.quotepath", "false"]]) })).toBe(false);
-    expect(quoteNonAsciiFromConfig({ config: new Map([["core.quotepath", "off"]]) })).toBe(false);
-    expect(quoteNonAsciiFromConfig({ config: new Map([["core.quotepath", "yes"]]) })).toBe(true);
-    expect(() => quoteNonAsciiFromConfig({ config: new Map([["core.quotepath", "maybe"]]) }))
+    expect(quoteNonAsciiFromConfig({ config: new Map([["core.quotepath", { kind: 'implicit-boolean' }]]) })).toBe(true);
+    expect(quoteNonAsciiFromConfig({ config: new Map([["core.quotepath", { kind: 'explicit', value: '' }]]) })).toBe(false);
+    expect(quoteNonAsciiFromConfig({ config: new Map([["core.quotepath", { kind: 'explicit', value: "false" }]]) })).toBe(false);
+    expect(quoteNonAsciiFromConfig({ config: new Map([["core.quotepath", { kind: 'explicit', value: "off" }]]) })).toBe(false);
+    expect(quoteNonAsciiFromConfig({ config: new Map([["core.quotepath", { kind: 'explicit', value: "yes" }]]) })).toBe(true);
+    expect(() => quoteNonAsciiFromConfig({ config: new Map([["core.quotepath", { kind: 'explicit', value: "maybe" }]]) }))
       .toThrow("bad boolean config value 'maybe' for 'core.quotepath'");
   });
 });

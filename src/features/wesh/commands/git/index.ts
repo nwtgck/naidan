@@ -31,6 +31,7 @@ import { runTag } from './subcommands/tag';
 import { runApply } from './subcommands/apply';
 import { runMv } from './subcommands/mv';
 import { parseGitInvocation } from "./command-invocation";
+import { GitUsageError } from "./errors";
 
 const HELP_TEXT = `\
 usage: git [--version] [--help] <command> [<args>]
@@ -169,6 +170,24 @@ export const gitCommandDefinition: WeshCommandDefinition = {
       const commandArgs = invocationArgs.slice(1);
       return await executeSubcommand({ context: invocationContext, command, args: commandArgs });
     } catch (error: unknown) {
+      if (error instanceof GitUsageError) {
+        const prefix = (() => {
+          switch (error.prefix) {
+          case 'error':
+            return 'error: ';
+          case 'fatal':
+            return 'fatal: ';
+          case 'none':
+            return '';
+          default: {
+            const _ex: never = error.prefix;
+            throw new Error(`Unhandled Git usage error prefix: ${_ex}`);
+          }
+          }
+        })();
+        await context.text().error({ text: `${prefix}${error.message}\n` });
+        return { exitCode: 129 };
+      }
       const message = error instanceof Error ? error.message : String(error);
       if (message.startsWith('Author identity unknown')) {
         await context.text().error({ text: `${message}\n` });

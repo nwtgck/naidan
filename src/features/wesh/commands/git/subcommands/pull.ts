@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { getConfigValue, readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { fastForwardHead } from "@/features/wesh/commands/git/fast-forward";
@@ -38,7 +39,7 @@ export async function runPull({ context, args }: {
     else if (parsingOptions && (arg === '-q' || arg === '--quiet'))
       quiet = true;
     else if (parsingOptions && arg.startsWith('-'))
-      throw new Error(`unknown option: ${arg}`);
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
     else
       operands.push(arg);
   }
@@ -49,7 +50,7 @@ export async function runPull({ context, args }: {
   const currentBranch = branchNameFromHead({ head });
   if (head.objectId === undefined || currentBranch === undefined)
     throw new Error('pull currently requires an attached branch with commits');
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const configuredRemote = getConfigValue({ config, key: `branch.${currentBranch}.remote` });
   const configuredMerge = getConfigValue({ config, key: `branch.${currentBranch}.merge` });
   const remoteName = operands[0] ?? configuredRemote ?? 'origin';
