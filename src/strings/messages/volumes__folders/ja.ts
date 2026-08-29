@@ -1,1 +1,1 @@
-export const volumes__folders = (): string => 'フォルダー';
+export const volumes__folders = (): string => 'フォルダ';

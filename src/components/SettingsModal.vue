@@ -2,6 +2,7 @@
 import { ref, watch, computed, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
+import { usePortableAppDownload } from '@/features/file-protocol-standalone/composables/usePortableAppDownload';
 import { useToast } from '@/composables/useToast';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import type { Settings } from '@/01-models/types';
@@ -71,6 +72,7 @@ const router = useRouter();
 
 const isHostedMode = __BUILD_MODE_IS_HOSTED__;
 const appVersion = __APP_VERSION__;
+const portableAppDownload = usePortableAppDownload({ version: appVersion });
 
 const form = ref<Settings>(JSON.parse(JSON.stringify(settings.value)));
 const initialFormState = ref(JSON.stringify(pickConnectionFields({ settings: form.value })));
@@ -337,8 +339,8 @@ defineExpose({
 
             <a
               v-if="isHostedMode"
-              href="./naidan-standalone.zip"
-              :download="'naidan-standalone-v' + appVersion + '.zip'"
+              :href="portableAppDownload.href"
+              :download="portableAppDownload.fileName"
               tw-class="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
               data-testid="sidebar-download-button"
             >

@@ -1,0 +1,1 @@
+export const StorageTab__local_storage_loses_attachments = (): string => 'O Local Storage não oferece armazenamento permanente de arquivos, portanto os anexos atuais não estarão acessíveis após a troca. Tem certeza de que deseja continuar?';

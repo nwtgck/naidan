@@ -1,5 +1,5 @@
-import * as Comlink from 'comlink';
 import type { StorageType } from '@/01-models/types';
+import { workerProxy } from '@/utils/worker-transport';
 
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/global-search';
 import {
@@ -25,7 +25,7 @@ export async function createGlobalSearchWorkerClient({
       return undefined;
     case 'local':
     case 'memory':
-      return Comlink.proxy(createGlobalSearchRemoteContentReader({ storageType }));
+      return workerProxy({ value: createGlobalSearchRemoteContentReader({ storageType }) });
     default: {
       const _ex: never = storageType;
       throw new Error(`Unhandled Global Search storage type: ${_ex}`);

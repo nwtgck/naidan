@@ -1,3 +1,6 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+
 interface ApplyArguments {
   cached: boolean,
   check: boolean,
@@ -13,7 +16,7 @@ export function parseApplyArguments({ args }: { args: readonly string[] }): Appl
   let index = false;
   let inputPath: string | undefined;
   let parseOptions = true;
-  for (const arg of args) {
+  for (const arg of expandGitShortOptions({ args, flagOptions: ['R'], valueOptions: [] })) {
     if (parseOptions && arg === '--') {
       parseOptions = false;
       continue;
@@ -34,7 +37,7 @@ export function parseApplyArguments({ args }: { args: readonly string[] }): Appl
         index = true;
         break;
       default:
-        throw new Error(`unknown option for git apply: ${arg}`);
+        throw new GitUsageError({ message: `unknown option for git apply: ${arg}` });
       }
       continue;
     }

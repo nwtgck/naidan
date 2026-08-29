@@ -1,0 +1,1 @@
+export const OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again = (): string => 'Entladen angefordert. Ollama kann dieses Modell weiter anzeigen, bis aktive Anfragen abgeschlossen sind; aktualisieren, um erneut zu prüfen.';

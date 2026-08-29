@@ -50,6 +50,27 @@ describe('ShellSource', () => {
   });
 
 
+  it('preserves a UTF-8 BOM split across byte-backed source chunks', async () => {
+    const chunks = [
+      Uint8Array.of(0xef),
+      Uint8Array.of(0xbb),
+      Uint8Array.of(0xbf, ...new TextEncoder().encode(`\
+printf 'ok\\n'
+`)),
+    ];
+    const source: ShellSource = {
+      kind: 'bytes',
+      async read(): Promise<Uint8Array | undefined> {
+        return chunks.shift();
+      },
+    };
+
+    await expect(readShellSourceToText({ source }))
+      .resolves.toBe(`\
+\ufeffprintf 'ok\\n'
+`);
+  });
+
   it('keeps exact retained bytes when parser text contains invalid UTF-8', async () => {
     const command = new TextEncoder().encode('cat\n');
     const bytes = new Uint8Array(command.length + 2);
@@ -86,6 +107,148 @@ ${invalidByteText}
     expect(reader.readRetainedBytes({ buffer: retained, offset: 0, length: retained.length })).toBe(2);
     expect([...retained]).toEqual([0xff, 0x0a]);
     expect(reader.getRetainedText()).toBe('');
+  });
+
+  it('hides NUL bytes from parser text while retaining them for fd-side reads', async () => {
+    const visiblePrefix = new TextEncoder().encode(`\
+cat
+abc`);
+    const visibleSuffix = new TextEncoder().encode(`\
+TAIL
+`);
+    const bytes = new Uint8Array(visiblePrefix.length + 1 + visibleSuffix.length);
+    bytes.set(visiblePrefix, 0);
+    bytes[visiblePrefix.length] = 0x00;
+    bytes.set(visibleSuffix, visiblePrefix.length + 1);
+    let emitted = false;
+    const reader = createShellSourceReader({
+      source: {
+        kind: 'bytes',
+        async read() {
+          if (emitted) {
+            return undefined;
+          }
+          emitted = true;
+          return bytes;
+        },
+      },
+    });
+
+    await expect(reader.read()).resolves.toEqual({
+      text: `\
+cat
+abcTAIL
+`,
+      completion: 'may-continue',
+    });
+    reader.consumeText({ characters: 4 });
+    expect(reader.getRetainedText()).toBe(`\
+abcTAIL
+`);
+
+    const retained = new Uint8Array(bytes.length - 4);
+    expect(reader.readRetainedBytes({ buffer: retained, offset: 0, length: retained.length }))
+      .toBe(retained.length);
+    expect([...retained]).toEqual([...bytes.subarray(4)]);
+  });
+
+  it('filters NUL before UTF-8 decoding across source chunks', async () => {
+    const chunks = [
+      Uint8Array.of(0xc3, 0x00),
+      Uint8Array.of(0xa9, 0x00, 0x58, 0x0a),
+    ];
+    const reader = createShellSourceReader({
+      source: {
+        kind: 'bytes',
+        async read(): Promise<Uint8Array | undefined> {
+          return chunks.shift();
+        },
+      },
+    });
+
+    await expect(reader.read()).resolves.toEqual({
+      text: '',
+      completion: 'may-continue',
+    });
+    await expect(reader.read()).resolves.toEqual({
+      text: 'éX\n',
+      completion: 'may-continue',
+    });
+    reader.consumeText({ characters: 1 });
+    expect(reader.getRetainedText()).toBe('X\n');
+
+    const retained = new Uint8Array(3);
+    expect(reader.readRetainedBytes({ buffer: retained, offset: 0, length: retained.length })).toBe(3);
+    expect([...retained]).toEqual([0x00, 0x58, 0x0a]);
+  });
+
+  it('consumes trailing parser-invisible NUL when EOF completes the current shell unit', async () => {
+    const command = new TextEncoder().encode('cat');
+    const bytes = new Uint8Array(command.length + 1);
+    bytes.set(command, 0);
+    bytes[command.length] = 0x00;
+    let emitted = false;
+    const reader = createShellSourceReader({
+      source: {
+        kind: 'bytes',
+        async read() {
+          if (emitted) {
+            return undefined;
+          }
+          emitted = true;
+          return bytes;
+        },
+      },
+    });
+
+    await expect(reader.read()).resolves.toEqual({
+      text: 'cat',
+      completion: 'may-continue',
+    });
+    await expect(reader.read()).resolves.toEqual({
+      text: '',
+      completion: 'complete',
+    });
+    reader.consumeText({ characters: command.length });
+    expect(reader.getRetainedText()).toBe('');
+
+    const retained = new Uint8Array(1);
+    expect(reader.readRetainedBytes({ buffer: retained, offset: 0, length: 1 })).toBe(0);
+  });
+
+  it('keeps trailing parser-invisible NUL available as raw stdin data', async () => {
+    const command = new TextEncoder().encode(`\
+cat
+`);
+    const bytes = new Uint8Array(command.length + 1);
+    bytes.set(command, 0);
+    bytes[command.length] = 0x00;
+    let emitted = false;
+    const reader = createShellSourceReader({
+      source: {
+        kind: 'bytes',
+        async read() {
+          if (emitted) {
+            return undefined;
+          }
+          emitted = true;
+          return bytes;
+        },
+      },
+    });
+
+    await expect(reader.read()).resolves.toEqual({
+      text: `\
+cat
+`,
+      completion: 'may-continue',
+    });
+    reader.consumeText({ characters: command.length });
+    expect(reader.getRetainedText()).toBe('');
+
+    const retained = new Uint8Array(1);
+    expect(reader.readRetainedBytes({ buffer: retained, offset: 0, length: 1 })).toBe(1);
+    expect([...retained]).toEqual([0x00]);
   });
 
   it('rebuilds parser text after fd-side consumption splits a UTF-8 sequence', async () => {
@@ -195,4 +358,71 @@ printf`),
       handle,
     });
   });
+
+  it('preserves shebang stripping across bounded byte-source chunk boundaries', async () => {
+    const cases = [
+      '',
+      '#',
+      '#!',
+      '#!\n',
+      '#!/bin/bash',
+      '#!/bin/bash\n',
+      `\
+#!/bin/bash
+body
+`,
+      `\
+#!/bin/bash\r
+body
+`,
+      `\
+#x
+body
+`,
+      `\
+x#!
+body
+`,
+      '#!\0still-shebang\nbody\n',
+    ];
+
+    for (const text of cases) {
+      const bytes = new TextEncoder().encode(text.replace('\\0', '\0'));
+      const newlineIndex = bytes.indexOf(0x0a);
+      const expected = bytes.length >= 2 && bytes[0] === 0x23 && bytes[1] === 0x21
+        ? newlineIndex < 0 ? new Uint8Array(0) : bytes.subarray(newlineIndex + 1)
+        : bytes;
+
+      for (let sourceChunkSize = 1; sourceChunkSize <= 5; sourceChunkSize += 1) {
+        for (let maximumBytes = 1; maximumBytes <= 5; maximumBytes += 1) {
+          let sourceOffset = 0;
+          const source = createShebangStrippedShellSource({
+            source: {
+              kind: 'bytes',
+              async read({ maximumBytes: requestedMaximumBytes }: {
+                maximumBytes: number,
+              }): Promise<Uint8Array | undefined> {
+                if (sourceOffset >= bytes.length) return undefined;
+                const length = Math.min(sourceChunkSize, requestedMaximumBytes, bytes.length - sourceOffset);
+                const chunk = bytes.subarray(sourceOffset, sourceOffset + length);
+                sourceOffset += length;
+                return chunk;
+              },
+            },
+          });
+          if (source.kind !== 'bytes') throw new Error('Expected byte-backed stripped source');
+
+          const output: number[] = [];
+          while (true) {
+            const chunk = await source.read({ maximumBytes });
+            if (chunk === undefined) break;
+            expect(chunk.length).toBeLessThanOrEqual(maximumBytes);
+            output.push(...chunk);
+          }
+          expect(output).toEqual([...expected]);
+        }
+      }
+    }
+  });
+
 });

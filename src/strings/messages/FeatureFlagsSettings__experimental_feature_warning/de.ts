@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__experimental_feature_warning = (): string => 'Diese Funktion ist experimentell. Zukünftige Updates können inkompatible Änderungen enthalten oder die Kompatibilität mit den durch dieses Flag eingeführten Daten und Verhaltensweisen entfernen.';

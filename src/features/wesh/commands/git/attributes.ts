@@ -6,7 +6,8 @@ import { readObject } from './objects';
 import { compareGitPaths } from './path-order';
 import type { GitRepository } from './repository';
 import { joinPath, relativeToWorktree } from './repository';
-import { compileGitPattern } from './wildmatch';
+import { compileGitWildmatch } from './wildmatch';
+import type { GitWildmatchMatcher } from './wildmatch';
 
 type GitTextAttribute = 'auto' | 'set' | 'unset' | 'unspecified';
 type GitEolAttribute = 'crlf' | 'lf' | undefined;
@@ -18,7 +19,7 @@ export interface GitPathAttributes {
 
 interface GitAttributeRule {
   basePath: string,
-  regex: RegExp,
+  matcher: GitWildmatchMatcher,
   updates: Array<
     | { type: 'text', value: GitTextAttribute }
     | { type: 'eol', value: GitEolAttribute }
@@ -173,9 +174,10 @@ function parseAttributeRules({ text, basePath }: { text: string, basePath: strin
     if (updates.length === 0) continue;
     rules.push({
       basePath,
-      regex: compileGitPattern({
+      matcher: compileGitWildmatch({
         pattern: normalizedPattern,
-        basenameAnywhere: !normalizedPattern.includes('/'),
+        slashMode: 'wildcards-exclude-slash',
+        anchorMode: normalizedPattern.includes('/') ? 'full' : 'basename-anywhere',
       }),
       updates,
     });
@@ -260,7 +262,7 @@ function matcherFromRules({ rules, contentConfig }: {
     const result: GitPathAttributes = { text: 'unspecified', eol: undefined };
     for (const rule of rules) {
       const relative = relativeToBase({ path, basePath: rule.basePath });
-      if (relative === undefined || !rule.regex.test(relative)) continue;
+      if (relative === undefined || !rule.matcher.matches({ value: relative })) continue;
       for (const update of rule.updates) {
         switch (update.type) {
         case 'text':

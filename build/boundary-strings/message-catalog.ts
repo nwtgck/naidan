@@ -3,10 +3,12 @@ import path from 'node:path';
 
 import * as ts from 'typescript';
 
+import { UI_LOCALES, type UiLocale } from '../../src/01-models/ui-locale.js';
+
 import { createBoundaryStringDiagnosticError } from './diagnostics';
 
-export const BOUNDARY_STRING_LOCALES = ['en', 'ja'] as const;
-export type BoundaryStringLocale = (typeof BOUNDARY_STRING_LOCALES)[number];
+export const BOUNDARY_STRING_LOCALES = UI_LOCALES;
+export type BoundaryStringLocale = UiLocale;
 
 export type BoundaryStringLocaleModuleDefinition = {
   filePath: string;
@@ -33,6 +35,10 @@ export type BoundaryStringFileKind = 'catalog' | 'message-module' | 'other';
 type SourceFileWithParseDiagnostics = ts.SourceFile & {
   readonly parseDiagnostics: readonly ts.Diagnostic[];
 };
+
+// Locale tags such as zh-Hans and pt-BR are not valid TypeScript identifiers.
+// Keep the catalog export name locale-independent so BCP 47 tags remain data, not syntax.
+const localeCatalogExportName = 'catalog';
 
 const messageKeyPattern = /^[A-Za-z][A-Za-z0-9]*__[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 
@@ -70,6 +76,16 @@ function catalogDisplayName({ locale }: {
     return 'English';
   case 'ja':
     return 'Japanese';
+  case 'zh-Hans':
+    return 'Simplified Chinese';
+  case 'pt-BR':
+    return 'Brazilian Portuguese';
+  case 'es':
+    return 'Spanish';
+  case 'ko':
+    return 'Korean';
+  case 'de':
+    return 'German';
   default: {
     const _exhaustive: never = locale;
     throw new Error(`Unsupported Boundary Strings locale: ${_exhaustive}`);
@@ -182,7 +198,7 @@ function parseCatalog({ catalogPath, locale }: {
       continue;
     }
     const declarations = statement.declarationList.declarations.filter((candidate) => {
-      return ts.isIdentifier(candidate.name) && candidate.name.text === locale;
+      return ts.isIdentifier(candidate.name) && candidate.name.text === localeCatalogExportName;
     });
     if (declarations.length === 0) {
       continue;
@@ -190,21 +206,21 @@ function parseCatalog({ catalogPath, locale }: {
     if (catalogKeys !== undefined || declarations.length !== 1 || !hasExportModifier({ node: statement })) {
       throw createBoundaryStringDiagnosticError({
         code: 'catalog-shape-invalid',
-        message: `[naidan-boundary-strings] ${displayName} catalog must export exactly one "${locale}" object.`,
+        message: `[naidan-boundary-strings] ${displayName} catalog must export exactly one "${localeCatalogExportName}" object.`,
       });
     }
     const declaration = declarations[0];
     if (declaration === undefined || declaration.initializer === undefined) {
       throw createBoundaryStringDiagnosticError({
         code: 'catalog-shape-invalid',
-        message: `[naidan-boundary-strings] ${displayName} catalog "${locale}" has no initializer.`,
+        message: `[naidan-boundary-strings] ${displayName} catalog "${localeCatalogExportName}" has no initializer.`,
       });
     }
     const initializer = unwrapCatalogInitializer({ initializer: declaration.initializer });
     if (!ts.isObjectLiteralExpression(initializer)) {
       throw createBoundaryStringDiagnosticError({
         code: 'catalog-shape-invalid',
-        message: `[naidan-boundary-strings] ${displayName} catalog "${locale}" must be an object literal.`,
+        message: `[naidan-boundary-strings] ${displayName} catalog "${localeCatalogExportName}" must be an object literal.`,
       });
     }
     const keys = initializer.properties.map((property) => {
@@ -228,7 +244,7 @@ function parseCatalog({ catalogPath, locale }: {
   if (catalogKeys === undefined) {
     throw createBoundaryStringDiagnosticError({
       code: 'catalog-shape-invalid',
-      message: `[naidan-boundary-strings] ${displayName} catalog "${locale}" was not found.`,
+      message: `[naidan-boundary-strings] ${displayName} catalog "${localeCatalogExportName}" was not found.`,
     });
   }
   const catalogKeySet = new Set(catalogKeys);
@@ -306,10 +322,10 @@ export function createBoundaryStringProjectPaths({ root }: {
   root: string;
 }): BoundaryStringProjectPaths {
   return {
-    catalogFilePathsByLocale: {
-      en: path.resolve(root, 'src/strings/catalogs/en.ts'),
-      ja: path.resolve(root, 'src/strings/catalogs/ja.ts'),
-    },
+    catalogFilePathsByLocale: Object.fromEntries(BOUNDARY_STRING_LOCALES.map((locale) => [
+      locale,
+      path.resolve(root, `src/strings/catalogs/${locale}.ts`),
+    ])) as Record<BoundaryStringLocale, string>,
     messagesDirectoryPath: path.resolve(root, 'src/strings/messages'),
   };
 }
@@ -357,27 +373,17 @@ export function readBoundaryStringMessageCatalog({ paths, root }: {
     catalogPath: englishCatalogPath,
     locale: 'en',
   });
-  for (const locale of BOUNDARY_STRING_LOCALES) {
-    switch (locale) {
-    case 'en':
-      break;
-    case 'ja': {
-      const catalogPath = paths.catalogFilePathsByLocale[locale];
-      if (!fs.existsSync(catalogPath)) {
-        throw createBoundaryStringDiagnosticError({
-          code: 'catalog-not-found',
-          message: `[naidan-boundary-strings] Missing ${locale}.ts locale catalog.`,
-        });
-      }
-      const localeKeys = parseCatalog({ catalogPath, locale });
-      validateCatalogParity({ englishKeys, locale, localeKeys });
-      break;
+  const [, ...nonEnglishLocales] = BOUNDARY_STRING_LOCALES;
+  for (const locale of nonEnglishLocales) {
+    const catalogPath = paths.catalogFilePathsByLocale[locale];
+    if (!fs.existsSync(catalogPath)) {
+      throw createBoundaryStringDiagnosticError({
+        code: 'catalog-not-found',
+        message: `[naidan-boundary-strings] Missing ${locale}.ts locale catalog.`,
+      });
     }
-    default: {
-      const _exhaustive: never = locale;
-      throw new Error(`Unsupported Boundary Strings locale: ${_exhaustive}`);
-    }
-    }
+    const localeKeys = parseCatalog({ catalogPath, locale });
+    validateCatalogParity({ englishKeys, locale, localeKeys });
   }
   validateMessageDirectories({ catalogKeys: englishKeys, paths });
 

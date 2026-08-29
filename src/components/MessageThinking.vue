@@ -104,7 +104,7 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="hasThinking" :tw-class="noMargin ? '' : 'mb-3'" data-testid="thinking-block">
+  <div v-if="hasThinking" :tw-class="['isolate', noMargin ? '' : 'mb-3']" data-testid="thinking-block">
     <div
       :tw-class="['transition-all duration-500 ease-in-out relative group/thinking w-full',
                   /* Shape & Size */

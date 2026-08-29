@@ -1,4 +1,4 @@
-import * as Comlink from 'comlink';
+import { releaseWorkerRemote, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import type {
   ITransformersJsWorker,
@@ -50,25 +50,28 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
     { type: 'module' },
   );
 
-  const remote = Comlink.wrap<ITransformersJsWorker>(worker);
+  const remote = wrapWorkerRemote<ITransformersJsWorker>({ endpoint: worker });
   return {
     async downloadModel({ modelId, progressCallback }: {
       modelId: string,
       progressCallback: TransformersJsProgressCallback,
     }): Promise<void> {
-      return remote.downloadModel(modelId, Comlink.proxy((info: ProgressInfo) => progressCallback({ info })));
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+      return remote.downloadModel(modelId, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
     },
     async prefetchUrls({ urls, progressCallback }: {
       urls: string[],
       progressCallback: TransformersJsProgressCallback,
     }): Promise<TransformersJsPrefetchResult> {
-      return remote.prefetchUrls(urls, Comlink.proxy((info: ProgressInfo) => progressCallback({ info })));
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+      return remote.prefetchUrls(urls, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
     },
     async loadModel({ modelId, progressCallback }: {
       modelId: string,
       progressCallback: TransformersJsProgressCallback,
     }): Promise<ModelLoadResult> {
-      return remote.loadModel(modelId, Comlink.proxy((info: ProgressInfo) => progressCallback({ info })));
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+      return remote.loadModel(modelId, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
     },
     async unloadModel(): Promise<void> {
       return remote.unloadModel();
@@ -88,15 +91,17 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
     }): Promise<void> {
       return remote.generateText(
         messages,
-        Comlink.proxy((chunk: string) => onChunk({ chunk })),
-        Comlink.proxy((toolCalls: ToolCall[]) => onToolCalls({ toolCalls })),
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+        workerProxy({ value: (chunk: string) => onChunk({ chunk }) }),
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+        workerProxy({ value: (toolCalls: ToolCall[]) => onToolCalls({ toolCalls }) }),
         params,
         tools,
       );
     },
     async dispose(): Promise<void> {
       try {
-        await remote[Comlink.releaseProxy]();
+        await releaseWorkerRemote({ remote });
       } finally {
         worker.terminate();
       }

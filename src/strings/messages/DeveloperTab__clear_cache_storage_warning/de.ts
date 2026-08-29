@@ -1,0 +1,1 @@
+export const DeveloperTab__clear_cache_storage_warning = (): string => 'Möchtest du wirklich alle Einträge in der Cache Storage API des Browsers löschen? Dadurch lädt die Anwendung beim nächsten Neuladen alle Ressourcen erneut herunter.';

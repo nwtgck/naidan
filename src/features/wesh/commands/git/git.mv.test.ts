@@ -225,4 +225,28 @@ R  a -> b
 `);
   });
 
+
+  it('preflights repository config before move validation and mutation', async () => {
+    const setupResult = await execute({
+      script: `\
+${setup}
+printf '\n[bad\n' >> .git/config`,
+    });
+    expect(setupResult.result.exitCode).toBe(0);
+
+    const move = await execute({ script: 'git mv a b' });
+    expect(move.result.exitCode).toBe(128);
+    expect(move.stdout.text).toBe('');
+    expect(move.stderr.text).toContain('bad config line');
+
+    const preserved = await execute({ script: 'test -e a; test ! -e b' });
+    expect(preserved.result.exitCode).toBe(0);
+  });
+
+  it('discovers the repository before parsing mv options', async () => {
+    const result = await execute({ script: 'cd /; git mv --definitely-invalid' });
+    expect(result.result.exitCode).toBe(128);
+    expect(result.stderr.text).toContain('not a git repository');
+  });
+
 });

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createBoundaryStringsCompactionState } from './compaction';
 import {
+  BOUNDARY_STRING_LOCALES,
   createBoundaryStringProjectPaths,
   readBoundaryStringMessageCatalog,
 } from './message-catalog';
@@ -14,6 +15,7 @@ import {
   createBoundaryStringsPackModuleSource,
   parseResolvedBoundaryModuleId,
   parseResolvedPackModuleId,
+  parseResolvedPackModuleIdentity,
   resolveBoundaryStringsVirtualId,
   type BoundaryStringBoundaryDefinition,
 } from './virtual-modules';
@@ -24,7 +26,7 @@ const messageKey = 'ChatInput__type_a_message';
 function createFixtureRoot(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-boundary-strings-'));
   temporaryDirectories.push(root);
-  for (const locale of ['en', 'ja']) {
+  for (const locale of BOUNDARY_STRING_LOCALES) {
     const directory = path.join(root, 'src/strings/messages', messageKey);
     fs.mkdirSync(directory, { recursive: true });
     fs.writeFileSync(
@@ -34,10 +36,10 @@ function createFixtureRoot(): string {
   }
   const catalogDirectory = path.join(root, 'src/strings/catalogs');
   fs.mkdirSync(catalogDirectory, { recursive: true });
-  for (const locale of ['en', 'ja']) {
+  for (const locale of BOUNDARY_STRING_LOCALES) {
     fs.writeFileSync(
       path.join(catalogDirectory, `${locale}.ts`),
-      `import { ${messageKey} } from '@/strings/messages/${messageKey}/${locale}';\n\nexport const ${locale} = {\n  ${messageKey},\n};\n`,
+      `import { ${messageKey} } from '@/strings/messages/${messageKey}/${locale}';\n\nexport const catalog = {\n  ${messageKey},\n};\n`,
     );
   }
   return root;
@@ -64,6 +66,13 @@ describe('Boundary Strings virtual modules', () => {
     })).toEqual({
       boundaryId,
       locale: 'ja',
+      version,
+    });
+    expect(parseResolvedPackModuleIdentity({
+      id: `\0virtual:naidan-boundary-strings/pack/pt-BR/${boundaryId}/${version}`,
+    })).toEqual({
+      boundaryId,
+      locale: 'pt-BR',
       version,
     });
     expect(() => parseResolvedPackModuleId({
@@ -102,6 +111,9 @@ describe('Boundary Strings virtual modules', () => {
       compactionState: undefined,
     });
     expect(registration).toContain(`"${messageKey}"`);
+    for (const locale of BOUNDARY_STRING_LOCALES) {
+      expect(registration).toContain(`${JSON.stringify(locale)}:`);
+    }
     expect(registration).not.toContain('.then((module) => module.default)');
   });
 

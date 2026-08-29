@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readCommit } from "@/features/wesh/commands/git/commits";
 import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
@@ -24,25 +25,27 @@ export async function runMerge({ context, args }: {
     return continueMerge({ context });
   if (args.length === 1 && args[0] === '--abort')
     return abortMerge({ context });
-  let ffOnly = false;
-  let noFf = false;
+  let fastForwardMode: 'default' | 'ff-only' | 'no-ff' = 'default';
   const operands: string[] = [];
+  let parsingOptions = true;
   for (const arg of args) {
-    if (arg === '--ff-only')
-      ffOnly = true;
-    else if (arg === '--no-ff')
-      noFf = true;
-    else if (arg === '--ff')
+    if (parsingOptions && arg === '--') {
+      parsingOptions = false;
       continue;
-    else if (arg.startsWith('-'))
-      throw new Error(`unsupported merge option: ${arg}`);
+    }
+    if (parsingOptions && arg === '--ff-only')
+      fastForwardMode = 'ff-only';
+    else if (parsingOptions && arg === '--no-ff')
+      fastForwardMode = 'no-ff';
+    else if (parsingOptions && arg === '--ff')
+      fastForwardMode = 'default';
+    else if (parsingOptions && arg.startsWith('-'))
+      throw new GitUsageError({ message: `unsupported merge option: ${arg}` });
     else
       operands.push(arg);
   }
   if (operands.length !== 1)
     throw new Error('git merge requires exactly one revision');
-  if (ffOnly && noFf)
-    throw new Error('cannot combine --ff-only and --no-ff');
   const repository = await discoverRepositoryFromContext({ context });
   const existingMergeState = await readMergeState({ files: context.files, repository });
   if (existingMergeState !== undefined) {
@@ -75,10 +78,29 @@ export async function runMerge({ context, args }: {
     descendantObjectId: targetObjectId,
   });
   if (!fastForward) {
-    if (ffOnly) {
+    switch (fastForwardMode) {
+    case 'ff-only':
       await context.text().error({ text: 'fatal: Not possible to fast-forward, aborting.\n' });
       return { exitCode: 128 };
+    case 'default':
+    case 'no-ff':
+      return integrateDivergentMerge({
+        context,
+        repository,
+        headObjectId: head.objectId,
+        targetObjectId,
+        targetLabel: targetExpression,
+        commitMessage: `Merge branch '${targetExpression}'`,
+        reflogMessage: `merge ${targetExpression}: Merge made by the 'ort' strategy.`,
+      });
+    default: {
+      const _ex: never = fastForwardMode;
+      throw new Error(`Unhandled fast-forward mode: ${_ex}`);
     }
+    }
+  }
+  switch (fastForwardMode) {
+  case 'no-ff':
     return integrateDivergentMerge({
       context,
       repository,
@@ -88,19 +110,15 @@ export async function runMerge({ context, args }: {
       commitMessage: `Merge branch '${targetExpression}'`,
       reflogMessage: `merge ${targetExpression}: Merge made by the 'ort' strategy.`,
     });
+  case 'default':
+  case 'ff-only':
+    break;
+  default: {
+    const _ex: never = fastForwardMode;
+    throw new Error(`Unhandled fast-forward mode: ${_ex}`);
   }
-  if (noFf) {
-    return integrateDivergentMerge({
-      context,
-      repository,
-      headObjectId: head.objectId,
-      targetObjectId,
-      targetLabel: targetExpression,
-      commitMessage: `Merge branch '${targetExpression}'`,
-      reflogMessage: `merge ${targetExpression}: Merge made by the 'ort' strategy.`,
-    });
   }
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const result = await fastForwardHead({
     files: context.files,
     repository,

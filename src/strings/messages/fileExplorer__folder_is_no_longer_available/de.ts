@@ -1,0 +1,1 @@
+export const fileExplorer__folder_is_no_longer_available = (): string => 'Dieser Ordner ist nicht mehr verfügbar. Er wurde möglicherweise verschoben, gelöscht oder der Browserzugriff wurde widerrufen.';

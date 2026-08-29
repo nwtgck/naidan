@@ -206,6 +206,7 @@ import { ChatPaneHeader__conversation_outline } from '@/strings/messages/ChatPan
 import { ChatPaneHeader__copy_shareable_chat_url } from '@/strings/messages/ChatPaneHeader__copy_shareable_chat_url/en';
 import { ChatPaneHeader__custom_overrides_active } from '@/strings/messages/ChatPaneHeader__custom_overrides_active/en';
 import { ChatPaneHeader__debug_mode } from '@/strings/messages/ChatPaneHeader__debug_mode/en';
+import { ChatPaneHeader__delete_chat } from '@/strings/messages/ChatPaneHeader__delete_chat/en';
 import { ChatPaneHeader__edit_chat_title } from '@/strings/messages/ChatPaneHeader__edit_chat_title/en';
 import { ChatPaneHeader__export_as_markdown } from '@/strings/messages/ChatPaneHeader__export_as_markdown/en';
 import { ChatPaneHeader__export_as_url } from '@/strings/messages/ChatPaneHeader__export_as_url/en';
@@ -1726,7 +1727,7 @@ type BoundaryStringMessage = (() => string) | ((args: never) => string);
 /* eslint-enable local-rules-named-args/require-named-args */
 type BoundaryStringCatalog = Readonly<Record<string, BoundaryStringMessage>>;
 
-export const en = {
+export const catalog = {
   SHARED__all_chats,
   SHARED__assistant,
   SHARED__browser_provided,
@@ -1933,6 +1934,7 @@ export const en = {
   ChatPaneHeader__copy_shareable_chat_url,
   ChatPaneHeader__custom_overrides_active,
   ChatPaneHeader__debug_mode,
+  ChatPaneHeader__delete_chat,
   ChatPaneHeader__edit_chat_title,
   ChatPaneHeader__export_as_markdown,
   ChatPaneHeader__export_as_url,
@@ -3448,5 +3450,5 @@ export const en = {
   opfsEncryption__returning_to_plain_storage,
 } satisfies BoundaryStringCatalog;
 
-export type Strings = typeof en;
+export type Strings = typeof catalog;
 export type StringKey = keyof Strings;

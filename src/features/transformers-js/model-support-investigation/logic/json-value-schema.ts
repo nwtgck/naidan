@@ -1,12 +1,7 @@
 import { z } from "zod";
+import type { ModelSupportInvestigationJsonValue } from "@/features/transformers-js/model-support-investigation/types";
 
-export type InvestigationJsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | InvestigationJsonValue[]
-  | { [key: string]: InvestigationJsonValue };
+export type InvestigationJsonValue = ModelSupportInvestigationJsonValue;
 
 export const investigationJsonValueSchema: z.ZodType<InvestigationJsonValue> = z.lazy(() => z.union([
   z.string(),

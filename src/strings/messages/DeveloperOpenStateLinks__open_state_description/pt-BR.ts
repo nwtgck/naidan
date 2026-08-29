@@ -1,0 +1,1 @@
+export const DeveloperOpenStateLinks__open_state_description = (): string => 'Abra este estado de armazenamento em outra implantação usando o mesmo formato de importação por URL de Compartilhar via URL.';

@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__tool_persistence_enabled_details = (): string => 'Las sobrescrituras globales, de grupo de chats y de chat se guardan de forma persistente. Desactívalo para que los nuevos cambios del chat solo se apliquen durante la ejecución, manteniendo activa la configuración guardada.';

@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import * as Comlink from 'comlink';
+import type { WorkerServerApi } from '@/utils/worker-transport';
+import { workerTransfer } from '@/utils/worker-transport';
+import { createFileSystemDirectoryHandleReferenceResolver } from '@/utils/file-system-handle-transport';
 
 import { Wesh } from '@/features/wesh';
 import { NaidanSysfsProvider } from '@/features/wesh/naidan-sysfs/provider';
@@ -103,10 +105,13 @@ function createForwardingHandle({
     if (buffer !== undefined) {
       sendChain = sendChain.then(async () => {
         await onEvent({
-          event: Comlink.transfer({
-            type: stream,
-            buffer,
-          }, [buffer]),
+          event: workerTransfer({
+            value: {
+              type: stream,
+              buffer,
+            },
+            transferables: [buffer],
+          }),
         });
       });
     }
@@ -160,7 +165,7 @@ function createForwardingHandle({
 
 export function createWeshWorker({ openStorageDirectoryWorkerMount }: {
   openStorageDirectoryWorkerMount: StorageDirectoryWorkerMountOpener;
-}): IWeshWorker {
+}): WorkerServerApi<IWeshWorker> {
   let wesh: Wesh | undefined;
   let localStorageFileSystemSessions = new Map<string, StorageFileSystemSession>();
   let nextExecutionId = 1;
@@ -212,9 +217,10 @@ export function createWeshWorker({ openStorageDirectoryWorkerMount }: {
         return requestOrOptions;
       })();
       const validated = weshWorkerInitRequestSchema.parse(normalizedRequest);
+      const directoryHandleResolver = createFileSystemDirectoryHandleReferenceResolver();
       const rootHandle = validated.rootHandle === 'readonly'
         ? new ReadonlyDirectoryHandle()
-        : validated.rootHandle;
+        : await directoryHandleResolver.resolve({ reference: validated.rootHandle });
 
       wesh = new Wesh({
         rootHandle,
@@ -229,7 +235,7 @@ export function createWeshWorker({ openStorageDirectoryWorkerMount }: {
           case 'directory':
             await wesh.vfs.mount({
               path: mount.path,
-              handle: mount.handle,
+              handle: await directoryHandleResolver.resolve({ reference: mount.handle }),
               readOnly: mount.readOnly,
             });
             break;

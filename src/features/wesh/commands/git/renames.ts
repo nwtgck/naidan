@@ -8,7 +8,12 @@ export interface GitExactRenameMatch {
   sourcePath: string,
   destinationPath: string,
   objectId: string,
-  mode: number,
+  sourceMode: number,
+  destinationMode: number,
+}
+
+export function exactRenameContentIdentity({ objectId, mode }: { objectId: string, mode: number }): string {
+  return `${mode & 0o170000}:${objectId}`;
 }
 
 export function findExactRenames({ deleted, added }: {
@@ -17,13 +22,13 @@ export function findExactRenames({ deleted, added }: {
 }): GitExactRenameMatch[] {
   const groups = new Map<string, { deleted: GitExactRenameCandidate[], added: GitExactRenameCandidate[] }>();
   for (const candidate of deleted) {
-    const key = `${candidate.mode}:${candidate.objectId}`;
+    const key = exactRenameContentIdentity({ objectId: candidate.objectId, mode: candidate.mode });
     const group = groups.get(key) ?? { deleted: [], added: [] };
     group.deleted.push(candidate);
     groups.set(key, group);
   }
   for (const candidate of added) {
-    const key = `${candidate.mode}:${candidate.objectId}`;
+    const key = exactRenameContentIdentity({ objectId: candidate.objectId, mode: candidate.mode });
     const group = groups.get(key) ?? { deleted: [], added: [] };
     group.added.push(candidate);
     groups.set(key, group);
@@ -38,7 +43,8 @@ export function findExactRenames({ deleted, added }: {
       sourcePath: source.path,
       destinationPath: destination.path,
       objectId: source.objectId,
-      mode: source.mode,
+      sourceMode: source.mode,
+      destinationMode: destination.mode,
     });
   }
   return matches;

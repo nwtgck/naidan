@@ -206,6 +206,7 @@ import { ChatPaneHeader__conversation_outline } from '@/strings/messages/ChatPan
 import { ChatPaneHeader__copy_shareable_chat_url } from '@/strings/messages/ChatPaneHeader__copy_shareable_chat_url/ja';
 import { ChatPaneHeader__custom_overrides_active } from '@/strings/messages/ChatPaneHeader__custom_overrides_active/ja';
 import { ChatPaneHeader__debug_mode } from '@/strings/messages/ChatPaneHeader__debug_mode/ja';
+import { ChatPaneHeader__delete_chat } from '@/strings/messages/ChatPaneHeader__delete_chat/ja';
 import { ChatPaneHeader__edit_chat_title } from '@/strings/messages/ChatPaneHeader__edit_chat_title/ja';
 import { ChatPaneHeader__export_as_markdown } from '@/strings/messages/ChatPaneHeader__export_as_markdown/ja';
 import { ChatPaneHeader__export_as_url } from '@/strings/messages/ChatPaneHeader__export_as_url/ja';
@@ -1723,7 +1724,7 @@ import { opfsEncryption__stop_encryption_and_return_to_plain } from '@/strings/m
 import { opfsEncryption__returning_to_plain_storage } from '@/strings/messages/opfsEncryption__returning_to_plain_storage/ja';
 import type { Strings } from './en';
 
-export const ja = {
+export const catalog = {
   SHARED__all_chats,
   SHARED__assistant,
   SHARED__browser_provided,
@@ -1930,6 +1931,7 @@ export const ja = {
   ChatPaneHeader__copy_shareable_chat_url,
   ChatPaneHeader__custom_overrides_active,
   ChatPaneHeader__debug_mode,
+  ChatPaneHeader__delete_chat,
   ChatPaneHeader__edit_chat_title,
   ChatPaneHeader__export_as_markdown,
   ChatPaneHeader__export_as_url,

@@ -9,23 +9,28 @@ import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repo
 import { resolveRevision, resolveRevisionPath } from "@/features/wesh/commands/git/revision";
 import { parseAnnotatedTagObject } from "@/features/wesh/commands/git/tag-object";
 import { formatLogDate, parseAuthorForLog } from "@/features/wesh/commands/git/log-format";
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
 
 export async function runShow({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];
 }): Promise<WeshCommandResult> {
   const repository = await discoverRepositoryFromContext({ context });
-  const showConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const showConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const showQuoteNonAscii = quoteNonAsciiFromConfig({ config: showConfig });
-  let noPatch = false;
-  let stat = false;
+  let diffMode: 'patch' | 'no-patch' | 'stat' = 'patch';
+  let optionTerminated = false;
   const operands: string[] = [];
-  for (const arg of args) {
-    if (arg === '--no-patch' || arg === '-s')
-      noPatch = true;
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['s'], valueOptions: [] });
+  for (const arg of normalizedArgs) {
+    if (optionTerminated)
+      throw new Error('show pathspecs are not supported yet');
+    if (arg === '--') {
+      optionTerminated = true;
+    } else if (arg === '--no-patch' || arg === '-s')
+      diffMode = 'no-patch';
     else if (arg === '--stat') {
-      stat = true;
-      noPatch = true;
+      diffMode = 'stat';
     } else if (arg === '--no-color') {
       // Output is uncolored by Wesh Git.
     } else if (arg.startsWith('-'))
@@ -81,7 +86,10 @@ export async function runShow({ context, args }: {
   await context.text().print({
     text: `commit ${objectId}\nAuthor: ${author.identity}\nDate:   ${formatLogDate({ timestamp: author.timestamp, timezone: author.timezone })}\n\n${message}\n`,
   });
-  if (stat) {
+  switch (diffMode) {
+  case 'no-patch':
+    break;
+  case 'stat':
     await writeRevisionStat({
       context,
       repository,
@@ -90,8 +98,8 @@ export async function runShow({ context, args }: {
       pathOperands: [],
       quoteNonAscii: showQuoteNonAscii,
     });
-  }
-  if (!noPatch) {
+    break;
+  case 'patch':
     await writeRevisionPatch({
       context,
       repository,
@@ -100,6 +108,11 @@ export async function runShow({ context, args }: {
       pathOperands: [],
       quoteNonAscii: showQuoteNonAscii,
     });
+    break;
+  default: {
+    const _ex: never = diffMode;
+    throw new Error(`Unhandled show diff mode: ${_ex}`);
+  }
   }
   return { exitCode: 0 };
 }

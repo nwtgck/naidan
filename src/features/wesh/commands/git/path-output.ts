@@ -1,5 +1,5 @@
 import type { GitConfig } from "./config";
-import { getConfigValue } from "./config";
+import { getBooleanConfigValue } from "./config";
 
 const textEncoder = new TextEncoder();
 
@@ -59,22 +59,7 @@ export function quoteGitPath({ path, quoteNonAscii, quoteSpaces }: {
 }
 
 export function quoteNonAsciiFromConfig({ config }: { config: GitConfig }): boolean {
-  const raw = getConfigValue({ config, key: "core.quotepath" });
-  if (raw === undefined) return true;
-  switch (raw.trim().toLowerCase()) {
-  case "false":
-  case "no":
-  case "off":
-  case "0":
-    return false;
-  case "true":
-  case "yes":
-  case "on":
-  case "1":
-    return true;
-  default:
-    throw new Error(`bad boolean config value '${raw}' for 'core.quotepath'`);
-  }
+  return getBooleanConfigValue({ config, key: 'core.quotepath' }) ?? true;
 }
 export function formatGitPatchPath({ path, prefix, quoteNonAscii, headerLabel }: {
   path: string,

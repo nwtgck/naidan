@@ -1,0 +1,1 @@
+export const TransformersJsManager__which_is_required_for_storing_model_files_this_often_happens_in_private_browsing_modes_or_insecure_contexts = (): string => '; diese Funktion ist zum Speichern von Modelldateien erforderlich. Dies tritt häufig im privaten Browsermodus oder in unsicheren Kontexten auf.';

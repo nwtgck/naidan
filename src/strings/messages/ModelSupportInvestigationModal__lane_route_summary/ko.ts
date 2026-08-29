@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__lane_route_summary = ({ autoClass, processor, strategy, modelType }: { autoClass: string; processor: string; strategy: string; modelType: string | undefined }): string => `${autoClass} · ${processor} · ${strategy} · ${modelType ?? "모델 유형 알 수 없음"}`;

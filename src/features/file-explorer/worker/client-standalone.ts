@@ -1,5 +1,5 @@
-import * as Comlink from 'comlink';
-
+import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
+import { workerCapability, workerProxy } from '@/utils/worker-transport';
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/file-explorer';
 import {
   createStandaloneWorkerSession,
@@ -20,10 +20,15 @@ import {
   fileExplorerReadDirectoryResponseSchema,
   fileExplorerReadFileResponseSchema,
   fileExplorerReadPreviewResponseSchema,
+  type FileExplorerPrepareSessionRequest,
   type FileExplorerRootDescriptor,
   type FileExplorerWorkerClient,
   type IFileExplorerWorker,
 } from './types';
+import {
+  hasFileExplorerFileSystemHandles,
+  mapFileExplorerRootToOpfsLocators,
+} from './root-transport';
 
 function createDirectoryArchiveJobId(): string {
   if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
@@ -111,34 +116,48 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })();
-  let session: Awaited<ReturnType<typeof createStandaloneWorkerSession<IFileExplorerWorker>>> | undefined;
-  let remote: Comlink.Remote<IFileExplorerWorker> | undefined;
-  let sessionId: string;
-  try {
-    session = await createStandaloneWorkerSession<IFileExplorerWorker>({ createWorker: createStandaloneWorker });
-    remote = session.remote;
-    const prepareResponse = await remote.prepareSession(
-      { root: requestRoot },
-      naidanSysfsRemoteReader
-        ? Comlink.proxy(naidanSysfsRemoteReader)
-        : undefined,
-      storageDirectoryRemote
-        ? Comlink.proxy(storageDirectoryRemote)
-        : undefined,
-    );
-    sessionId = fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId;
-  } catch (error) {
-    const cleanup = [storageDirectoryRemote?.dispose()];
-    if (session !== undefined) {
-      cleanup.push(disposeStandaloneWorkerSession({
+  const createRuntime = async ({ requestRoot }: {
+    requestRoot: FileExplorerPrepareSessionRequest['root'],
+  }) => {
+    const session = await createStandaloneWorkerSession<IFileExplorerWorker>({ createWorker: createStandaloneWorker });
+    const { remote } = session;
+    try {
+      const prepareResponse = await remote.prepareSession(
+        workerCapability({
+          value: { request: { root: requestRoot } },
+          capability: 'file-system-handle-clone',
+        }),
+        naidanSysfsRemoteReader
+          ? workerProxy({ value: naidanSysfsRemoteReader })
+          : undefined,
+        storageDirectoryRemote
+          ? workerProxy({ value: storageDirectoryRemote })
+          : undefined,
+      );
+      return {
+        session,
+        remote,
+        sessionId: fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId,
+      };
+    } catch (error) {
+      await disposeStandaloneWorkerSession({
         session,
         beforeRelease: undefined,
         cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
-      }));
+      }).catch(() => undefined);
+      throw error;
     }
-    await Promise.allSettled(cleanup);
-    throw error;
-  }
+  };
+
+  const runtime = root.kind !== 'storage-directory' && hasFileExplorerFileSystemHandles({ root })
+    ? await runWithFileSystemHandleCloneFallback({
+      direct: () => createRuntime({ requestRoot }),
+      fallback: async () => createRuntime({
+        requestRoot: await mapFileExplorerRootToOpfsLocators({ root }),
+      }),
+    })
+    : await createRuntime({ requestRoot });
+  const { session, remote, sessionId } = runtime;
 
   if (session === undefined || remote === undefined) {
     throw new Error('Standalone File Explorer Worker initialization did not establish a session');

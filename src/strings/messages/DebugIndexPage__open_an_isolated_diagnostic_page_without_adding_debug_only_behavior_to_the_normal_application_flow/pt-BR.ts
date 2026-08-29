@@ -1,0 +1,1 @@
+export const DebugIndexPage__open_an_isolated_diagnostic_page_without_adding_debug_only_behavior_to_the_normal_application_flow = (): string => 'Abra uma página de diagnóstico isolada sem adicionar comportamento exclusivo de depuração ao fluxo normal do aplicativo.';

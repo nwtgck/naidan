@@ -1,4 +1,17 @@
 import type { TransformersJsProductionInvestigationObservation } from '@/features/transformers-js/types';
+import type { WorkerProxy } from '@/utils/worker-transport';
+
+export type ModelSupportInvestigationJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ModelSupportInvestigationJsonValue[]
+  | ModelSupportInvestigationJsonObject;
+
+export interface ModelSupportInvestigationJsonObject {
+  [key: string]: ModelSupportInvestigationJsonValue,
+}
 
 export type ModelSupportInvestigationStepId =
   | "runtime-assets"
@@ -93,7 +106,7 @@ export interface ModelSupportInvestigationRepository {
   files: ModelSupportInvestigationRepositoryFile[],
   pipelineTag: string | undefined,
   libraryName: string | undefined,
-  metadata: Record<string, unknown>,
+  metadata: ModelSupportInvestigationJsonObject,
 }
 
 
@@ -112,7 +125,7 @@ export interface ModelSupportInvestigationDeclarationFile {
   responseUrl: string,
   byteLength: number,
   contentType: string | undefined,
-  value: unknown,
+  value: ModelSupportInvestigationJsonValue,
 }
 
 export interface ModelSupportInvestigationClassCapability {
@@ -125,11 +138,11 @@ export interface ModelSupportInvestigationModelDeclarations {
   normalizedModelId: string,
   resolvedRevision: string,
   files: ModelSupportInvestigationDeclarationFile[],
-  config: Record<string, unknown>,
+  config: ModelSupportInvestigationJsonObject,
   modelType: string | undefined,
   architectures: string[],
-  autoMap: Record<string, unknown> | undefined,
-  transformersJsConfig: Record<string, unknown> | undefined,
+  autoMap: ModelSupportInvestigationJsonObject | undefined,
+  transformersJsConfig: ModelSupportInvestigationJsonObject | undefined,
   classCapabilities: ModelSupportInvestigationClassCapability[],
 }
 
@@ -158,7 +171,7 @@ export interface ModelSupportInvestigationTemplateMessage {
 export interface ModelSupportInvestigationTemplateCase {
   caseId: ModelSupportInvestigationTemplateCaseId,
   messages: ModelSupportInvestigationTemplateMessage[],
-  tools: Record<string, unknown>[] | undefined,
+  tools: ModelSupportInvestigationJsonObject[] | undefined,
   addGenerationPrompt: boolean,
   status: 'passed' | 'failed',
   selectedTemplate: string | undefined,
@@ -195,7 +208,7 @@ export interface ModelSupportInvestigationTemplateBehavior {
   normalizedModelId: string,
   resolvedRevision: string,
   tokenizerClass: string,
-  declaredChatTemplate: unknown,
+  declaredChatTemplate: ModelSupportInvestigationJsonValue | undefined,
   cases: ModelSupportInvestigationTemplateCase[],
   toolTemplateProvenance?: ModelSupportInvestigationToolTemplateProvenance,
 }
@@ -309,10 +322,10 @@ export interface ModelSupportInvestigationLoadedModelObservation {
   effectiveMinimumGenerationConfig: {
     maxNewTokens: 1,
     doSample: false,
-    bosTokenId: unknown,
-    eosTokenId: unknown,
-    padTokenId: unknown,
-    decoderStartTokenId: unknown,
+    bosTokenId: ModelSupportInvestigationJsonValue | undefined,
+    eosTokenId: ModelSupportInvestigationJsonValue | undefined,
+    padTokenId: ModelSupportInvestigationJsonValue | undefined,
+    decoderStartTokenId: ModelSupportInvestigationJsonValue | undefined,
   },
 }
 
@@ -730,7 +743,7 @@ export interface IModelSupportInvestigationWorker {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runPartialInvestigation(
     modelId: string,
-    onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
+    onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
   ): Promise<ModelSupportInvestigationRun>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runCandidateAttempt(
@@ -739,8 +752,8 @@ export interface IModelSupportInvestigationWorker {
     templateBehavior: ModelSupportInvestigationTemplateBehavior | undefined,
     cacheRevisionAliases: import('@/features/transformers-js/types').TransformersJsCacheRevisionAlias[],
     candidate: ModelSupportInvestigationCandidateFilePlan,
-    onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
-    onAttemptEvent: ({ event }: { event: ModelSupportInvestigationLoadAttemptEvent }) => void,
+    onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
+    onAttemptEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationLoadAttemptEvent }) => void>,
   ): Promise<ModelSupportInvestigationLoadAttempt>,
 }
 

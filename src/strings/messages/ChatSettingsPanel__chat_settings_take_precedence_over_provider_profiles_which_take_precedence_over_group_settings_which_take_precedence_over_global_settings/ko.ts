@@ -1,0 +1,1 @@
+export const ChatSettingsPanel__chat_settings_take_precedence_over_provider_profiles_which_take_precedence_over_group_settings_which_take_precedence_over_global_settings = (): string => '채팅 설정, 프로바이더 프로필, 그룹 설정, 전역 설정 순으로 우선 적용됩니다.';

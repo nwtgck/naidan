@@ -10,6 +10,6 @@ beforeEach(async () => {
 
 describe('endpointTypeLabel', () => {
   it('uses the localized browser-provided label', () => {
-    expect(endpointTypeLabel({ endpointType: 'browser_provided_lm' })).toBe('ブラウザー提供');
+    expect(endpointTypeLabel({ endpointType: 'browser_provided_lm' })).toBe('ブラウザ提供');
   });
 });

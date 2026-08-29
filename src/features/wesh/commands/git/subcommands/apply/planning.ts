@@ -369,7 +369,7 @@ export async function planWorktreeChanges({ context, repository, sections, rever
 }): Promise<PlannedApplyChanges> {
   const originalEntries = await readIndex({ files: context.files, repository });
   const indexByPath = singleStageZeroIndex({ entries: originalEntries });
-  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }) });
+  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }) });
   const states = new Map<string, WorktreePatchState>();
   const changes: PlannedIndexChange[] = [];
   const validationPaths = new Set<string>();
@@ -521,7 +521,7 @@ export async function validateIndexMatchesWorktree({
   worktreeAbsentPaths: ReadonlySet<string>,
 }): Promise<void> {
   const originalByPath = new Map(originalEntries.map(entry => [entry.path, entry]));
-  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }) });
+  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }) });
   for (const path of validationPaths) {
     const existing = originalByPath.get(path);
     const absolutePath = worktreeAbsolutePath({ repository, path });

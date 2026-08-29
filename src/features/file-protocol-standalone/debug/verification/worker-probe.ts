@@ -1,4 +1,10 @@
-import * as Comlink from 'comlink';
+import {
+  releaseWorkerRemote,
+  workerCapability,
+  workerProxy,
+  wrapWorkerRemote,
+  type WorkerRemote,
+} from '@/utils/worker-transport';
 
 import type { IHighlightWorker } from '@/features/highlight/worker/types';
 import type {
@@ -51,7 +57,7 @@ export type DebugFileProtocolStandaloneWorkerVerificationResult = Readonly<{
 
 export type DebugFileProtocolStandaloneWorkerSession<Api> = Readonly<{
   worker: Worker,
-  remote: Comlink.Remote<Api>,
+  remote: WorkerRemote<Api>,
 }>;
 
 type ReleaseSession<Api> = ({ session }: {
@@ -94,7 +100,7 @@ async function createSession<Api>({ label, createWorker }: {
     action: createWorker,
   });
   try {
-    return { worker, remote: Comlink.wrap<Api>(worker) };
+    return { worker, remote: wrapWorkerRemote<Api>({ endpoint: worker }) };
   } catch (error) {
     worker.terminate();
     throw error;
@@ -110,7 +116,7 @@ async function releaseAndTerminateSession<Api>({ session }: {
       label: 'Split Worker Comlink proxy release',
       timeoutMs: cleanupDeadlineMs,
       action: async () => {
-        await session.remote[Comlink.releaseProxy]();
+        await releaseWorkerRemote({ remote: session.remote });
       },
     });
   } catch (error) {
@@ -282,7 +288,7 @@ async function runHighlightProbeAndCleanup({
 
 /** @internal Exported for Wesh lifecycle regression tests. */
 async function runWeshCommandProbeWithRemote({ wesh }: {
-  wesh: Comlink.Remote<IWeshWorker>,
+  wesh: WorkerRemote<IWeshWorker>,
 }): Promise<DebugFileProtocolStandaloneWeshCommandProbeResult> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -291,16 +297,20 @@ async function runWeshCommandProbeWithRemote({ wesh }: {
   let result: DebugFileProtocolStandaloneWeshCommandProbeResult | undefined;
   let operationError: unknown;
   try {
-    await wesh.init({
-      rootHandle: 'readonly',
-      mounts: [],
-      user: 'standalone-verification',
-      initialEnv: {},
-      initialCwd: '/',
-    });
+    await wesh.init(workerCapability({
+      value: {
+        rootHandle: 'readonly',
+        mounts: [],
+        user: 'standalone-verification',
+        initialEnv: {},
+        initialCwd: '/',
+      },
+      capability: 'file-system-handle-clone',
+    }));
     const started = await wesh.startExecution(
       { script: 'ls -1 /' },
-      Comlink.proxy((event: WeshWorkerRemoteExecutionEvent) => {
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors the external Comlink positional callback boundary.
+      workerProxy({ value: (event: WeshWorkerRemoteExecutionEvent) => {
         switch (event.type) {
         case 'started':
         case 'exit':
@@ -318,7 +328,7 @@ async function runWeshCommandProbeWithRemote({ wesh }: {
           throw new Error(`Unhandled Wesh verification event: ${String(_exhaustive)}`);
         }
         }
-      }),
+      } }),
     );
     executionId = started.executionId;
     const summary = await wesh.awaitExecution({ request: { executionId } });

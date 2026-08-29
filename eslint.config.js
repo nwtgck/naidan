@@ -13,6 +13,8 @@ import requireTestOnlyGuard from './eslint-local-rules/require-test-only-guard.j
 import noTestOnlyAccessInProduction from './eslint-local-rules/no-test-only-access-in-production.js';
 import requireIconSuffix from './eslint-local-rules/require-icon-suffix.js';
 import requireWorkerClientFacade from './eslint-local-rules/require-worker-client-facade.js';
+import validateWorkerApi from './eslint-local-rules/validate-worker-api.js';
+import noUncheckedWorkerTransport from './eslint-local-rules/no-unchecked-worker-transport.js';
 import requireNamedArgs from './eslint-local-rules/require-named-args.js';
 import requirePromiseAllKeyed from './eslint-local-rules/require-promise-all-keyed.js';
 import requireStaticStringAccess from './eslint-local-rules/require-static-string-access.js';
@@ -86,7 +88,7 @@ import noHizoFSTestExternalProcess from './eslint-local-rules/no-hizofs-test-ext
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'scripts/**'],
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'scripts/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -183,6 +185,8 @@ export default tseslint.config(
   noTestOnlyAccessInProduction,
   requireIconSuffix,
   requireWorkerClientFacade,
+  validateWorkerApi,
+  noUncheckedWorkerTransport,
   requireNamedArgs,
   requirePromiseAllKeyed,
   requireStaticStringAccess,

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { UI_LOCALES } from '@/01-models/ui-locale';
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
 
 const EmptyExperimentalSchemaDto = resolveMissingAsUndefined(z.object({}));
@@ -122,10 +123,7 @@ export const ExperimentalProviderProfileSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalCompletedMigrationSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalMigrationStateSchemaDto = EmptyExperimentalSchemaDto;
 
-export const ExperimentalSettingsLocaleSchemaDto = z.enum([
-  'en',
-  'ja',
-]);
+export const ExperimentalSettingsLocaleSchemaDto = z.enum(UI_LOCALES);
 
 export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object({
   locale: missingAsUndefined(ExperimentalSettingsLocaleSchemaDto),

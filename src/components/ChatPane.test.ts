@@ -56,6 +56,7 @@ const mockEditMessage = vi.fn();
 const mockSwitchVersion = vi.fn();
 const mockForkChat = vi.fn().mockResolvedValue('new-id');
 const mockToggleChatDebug = vi.fn();
+const mockDeleteChat = vi.fn().mockResolvedValue(undefined);
 const mockContextCompactProgress = ref<any>({ phase: 'idle' });
 const mockRenameChat = vi.fn().mockImplementation(({ newTitle }) => {
   if (mockCurrentChat.value) {
@@ -275,6 +276,12 @@ vi.mock('../composables/chat/ui/useChatPaneState', () => ({
     resolvedSettings: computed(() => mockResolvedSettings.value),
     inheritedSettings: computed(() => mockInheritedSettings.value),
     chatGroups: computed(() => mockChatGroups.value),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    deleteChat: mockDeleteChat,
   }),
 }));
 
@@ -2611,6 +2618,86 @@ describe('ChatPane Focus', () => {
     await nextTick(); // Add extra nextTick for stability
     const textarea = wrapper.find('[data-testid="chat-input"]');
     expect(document.activeElement).toBe(textarea.element);
+  });
+});
+
+describe('ChatPane Header Delete Action', () => {
+  beforeEach(async () => {
+    resetMocks();
+    await router.push('/');
+    await router.isReady();
+  });
+
+  afterEach(() => {
+    if (wrapper) wrapper.unmount();
+    wrapper = null;
+  });
+
+  it('deletes an ungrouped current chat through the lifecycle and navigates home', async () => {
+    const chatId = toChatId({ raw: 'delete-from-header' });
+    mockCurrentChat.value = {
+      id: chatId,
+      title: 'Delete me',
+      root: { items: [] },
+      currentLeafId: undefined,
+      debugEnabled: false,
+      originChatId: undefined,
+      modelId: undefined,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await router.push(`/chat/${idToRaw({ id: chatId })}`);
+    expect(router.currentRoute.value.path).toBe(`/chat/${idToRaw({ id: chatId })}`);
+
+    wrapper = mountChatPane({
+      props: { chatId },
+      global: { plugins: [router] },
+    });
+    await nextTick();
+
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="delete-chat-button"]').trigger('click');
+    await flushPromises();
+
+    expect(mockDeleteChat).toHaveBeenCalledWith({
+      id: chatId,
+      injectAddToast: undefined,
+    });
+    expect(router.currentRoute.value.path).toBe('/');
+  });
+
+  it('navigates to the previous chat group after deleting a grouped current chat', async () => {
+    const chatId = toChatId({ raw: 'delete-grouped-from-header' });
+    const groupId = toChatGroupId({ raw: 'delete-grouped-header-group' });
+    mockCurrentChat.value = {
+      id: chatId,
+      title: 'Delete grouped chat',
+      root: { items: [] },
+      currentLeafId: undefined,
+      debugEnabled: false,
+      originChatId: undefined,
+      groupId,
+      modelId: undefined,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await router.push(`/chat/${idToRaw({ id: chatId })}`);
+
+    wrapper = mountChatPane({
+      props: { chatId },
+      global: { plugins: [router] },
+    });
+    await nextTick();
+
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="delete-chat-button"]').trigger('click');
+    await flushPromises();
+
+    expect(mockDeleteChat).toHaveBeenCalledWith({
+      id: chatId,
+      injectAddToast: undefined,
+    });
+    expect(router.currentRoute.value.path).toBe(`/chat-group/${idToRaw({ id: groupId })}`);
   });
 });
 

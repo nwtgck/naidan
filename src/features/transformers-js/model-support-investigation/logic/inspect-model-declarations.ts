@@ -1,6 +1,8 @@
 import type {
   ModelSupportInvestigationAutoClassName,
   ModelSupportInvestigationClassCapability,
+  ModelSupportInvestigationJsonObject,
+  ModelSupportInvestigationJsonValue,
   ModelSupportInvestigationModelDeclarations,
   ModelSupportInvestigationRepository,
 } from "@/features/transformers-js/model-support-investigation/types";
@@ -29,7 +31,7 @@ export type ModelSupportInvestigationAutoClasses = Record<
   AutoClassLike
 >;
 
-function optionalJsonObject({ value }: { value: unknown }): Record<string, unknown> | undefined {
+function optionalJsonObject({ value }: { value: unknown }): ModelSupportInvestigationJsonObject | undefined {
   const result = investigationJsonObjectSchema.safeParse(value);
   return result.success ? result.data : undefined;
 }
@@ -77,7 +79,7 @@ async function fetchJsonDeclaration({
     throw new Error(`Hugging Face declaration ${path} exceeds the ${MAX_DECLARATION_BYTES}-byte limit`);
   }
 
-  let value: unknown;
+  let value: ModelSupportInvestigationJsonValue;
   try {
     value = parseInvestigationJson({
       value: JSON.parse(new TextDecoder().decode(bytes)),

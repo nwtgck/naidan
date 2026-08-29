@@ -1,0 +1,1 @@
+export const OllamaManagementView__view_and_unload_models_currently_held_in_memory_by_this_ollama_server = (): string => 'Consulta y quita de la memoria los modelos que este servidor Ollama mantiene actualmente cargados.';

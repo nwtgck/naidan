@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IModelSupportInvestigationWorker } from "@/features/transformers-js/model-support-investigation/types";
+import type { WorkerServerApi } from "@/utils/worker-transport";
 
 const mocks = vi.hoisted(() => ({
   expose: vi.fn(),
@@ -140,8 +141,8 @@ vi.stubGlobal("navigator", {
 });
 vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "attempt-1") });
 
-function exposedWorker(): IModelSupportInvestigationWorker {
-  const value = mocks.expose.mock.calls[0]?.[0] as IModelSupportInvestigationWorker | undefined;
+function exposedWorker(): WorkerServerApi<IModelSupportInvestigationWorker> {
+  const value = mocks.expose.mock.calls[0]?.[0] as WorkerServerApi<IModelSupportInvestigationWorker> | undefined;
   if (value === undefined) throw new Error("Investigation Worker was not exposed");
   return value;
 }

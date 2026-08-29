@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__tool_persistence_enabled_details = (): string => 'Globale, Chatgruppen- und Chat-Überschreibungen werden dauerhaft gespeichert. Deaktiviere dies, damit neue Chat-Änderungen nur zur Laufzeit gelten, während gespeicherte Einstellungen aktiv bleiben.';

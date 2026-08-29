@@ -1,0 +1,1 @@
+export const TransformersJsManager__select_a_folder_containing_onnx_model_files_to_import_it_into_the_browsers_storage = (): string => `Selecione uma pasta com arquivos de modelo ONNX para importá-la para o armazenamento do navegador.`;

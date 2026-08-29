@@ -1,0 +1,1 @@
+export const GlobalToolsSettings__tool_defaults_can_be_overridden = (): string => 'Establece los valores predeterminados para todos los chats. Los grupos de chats y los chats individuales pueden sobrescribir la configuración de cada herramienta de forma independiente.';

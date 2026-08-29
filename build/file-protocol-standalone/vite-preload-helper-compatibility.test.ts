@@ -429,10 +429,14 @@ describe('Vite preload helper file-protocol compatibility', () => {
     }, 'build', 'production');
     const clientPluginNames = resolved.environments.client.plugins.map(plugin => plugin.name);
     const cssPostIndex = clientPluginNames.indexOf('vite:css-post');
+    const preloadCompatibilityIndex = clientPluginNames.indexOf('naidan-file-protocol-standalone-vite-preload-helper-compatibility');
+    const emptyCssPruningIndex = clientPluginNames.indexOf('naidan-file-protocol-standalone-empty-css-pruning');
     const standaloneOutputIndex = clientPluginNames.indexOf('naidan-file-protocol-standalone-systemjs-output');
     const manifestIndex = clientPluginNames.indexOf('builtin:vite-manifest');
     expect(cssPostIndex).toBeGreaterThanOrEqual(0);
-    expect(standaloneOutputIndex).toBeGreaterThan(cssPostIndex);
+    expect(preloadCompatibilityIndex).toBeGreaterThan(cssPostIndex);
+    expect(emptyCssPruningIndex).toBeGreaterThan(preloadCompatibilityIndex);
+    expect(standaloneOutputIndex).toBeGreaterThan(emptyCssPruningIndex);
     expect(manifestIndex).toBeGreaterThan(standaloneOutputIndex);
   });
 

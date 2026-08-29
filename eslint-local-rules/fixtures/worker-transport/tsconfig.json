@@ -1,0 +1,13 @@
+{
+  "extends": "../../../tsconfig.app.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "jsx": "preserve"
+  },
+  "include": [
+    "./*.ts",
+    "./*.tsx",
+    "./*.vue"
+  ]
+}

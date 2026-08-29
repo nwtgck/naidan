@@ -1,0 +1,1 @@
+export const DebugIndexPage__verify_generated_scripts_routing_lazy_styles_systemjs_recovery_and_the_reusable_worker_factory = (): string => '생성된 스크립트, 라우팅, 지연 스타일, SystemJS 복구 및 재사용 가능한 Worker 팩토리를 검증합니다.';

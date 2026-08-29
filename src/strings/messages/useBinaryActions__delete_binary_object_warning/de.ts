@@ -1,0 +1,1 @@
+export const useBinaryActions__delete_binary_object_warning = ({ name }: { name: string }): string => `Möchtest du „${name}“ wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden. Chatnachrichten, die auf diese Datei verweisen, zeigen sie als fehlend an.`;

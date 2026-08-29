@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__folders_enabled_details = (): string => 'Ativado por padrão para este perfil do navegador. Desative para ocultar a aba Pastas sem alterar os dados de pastas armazenados.';

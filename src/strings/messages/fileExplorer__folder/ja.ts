@@ -1,1 +1,1 @@
-export const fileExplorer__folder = (): string => 'フォルダー';
+export const fileExplorer__folder = (): string => 'フォルダ';

@@ -414,6 +414,55 @@ master.txt
 `);
   });
 
+  it('uses the last fast-forward mode option when merge modes are repeated', async () => {
+    const mergeCommit = await execute({
+      script: `\
+${base}
+git branch topic
+git switch topic >/dev/null 2>/dev/null
+printf 'topic\n' > topic.txt
+git add topic.txt
+export GIT_AUTHOR_DATE='981259506 +0000'
+export GIT_COMMITTER_DATE='981259506 +0000'
+git commit -m topic >/dev/null
+git switch master >/dev/null 2>/dev/null
+git merge --ff-only --no-ff topic >/dev/null
+git rev-parse HEAD^2`,
+    });
+    expect(mergeCommit.result.exitCode).toBe(0);
+    expect(mergeCommit.stderr.text).toBe('');
+    expect(mergeCommit.stdout.text).toMatch(/^[0-9a-f]{40}\n$/u);
+
+    const fastForward = await execute({
+      script: `\
+cd /
+git init -q repo-two
+cd repo-two
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > a.txt
+git add a.txt
+export GIT_AUTHOR_DATE='981173106 +0000'
+export GIT_COMMITTER_DATE='981173106 +0000'
+git commit -m base >/dev/null
+git branch topic
+git switch topic >/dev/null 2>/dev/null
+printf 'topic\n' > topic.txt
+git add topic.txt
+export GIT_AUTHOR_DATE='981259506 +0000'
+export GIT_COMMITTER_DATE='981259506 +0000'
+git commit -m topic >/dev/null
+git switch master >/dev/null 2>/dev/null
+git merge --no-ff --ff-only topic >/dev/null
+git rev-parse HEAD
+git rev-parse topic`,
+    });
+    expect(fastForward.result.exitCode).toBe(0);
+    expect(fastForward.stderr.text).toBe('');
+    const [head, topic] = fastForward.stdout.text.trimEnd().split('\n');
+    expect(head).toBe(topic);
+  });
+
   it('refuses divergent histories with --ff-only without mutating HEAD', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

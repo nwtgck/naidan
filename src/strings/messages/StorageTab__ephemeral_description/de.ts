@@ -1,0 +1,1 @@
+export const StorageTab__ephemeral_description = (): string => 'Speicherung nur im Arbeitsspeicher. Beim Neuladen der Seite oder Schließen des Tabs gehen alle Daten verloren. Es bleiben keine persistenten Daten zurück.';

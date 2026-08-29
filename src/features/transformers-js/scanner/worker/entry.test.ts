@@ -29,9 +29,9 @@ vi.mock('@huggingface/transformers', () => ({
   },
 }));
 
-// Mock Comlink
-vi.mock('comlink', () => ({
-  expose: vi.fn(),
+// Mock the project-owned Worker transport boundary.
+vi.mock('@/utils/worker-transport', () => ({
+  exposeWorkerRemote: vi.fn(),
 }));
 
 describe('transformers-js.scanner.worker', () => {
@@ -53,11 +53,11 @@ describe('transformers-js.scanner.worker', () => {
   });
 
   it('should collect URLs and mock heavy files', async () => {
-    const comlink = await import('comlink');
+    const workerTransport = await import('@/utils/worker-transport');
     const { AutoProcessor, AutoTokenizer, AutoModelForCausalLM, env } = await import('@huggingface/transformers');
     await import('./entry');
 
-    const scannerObj = (comlink.expose as any).mock.calls[0][0];
+    const scannerObj = (workerTransport.exposeWorkerRemote as any).mock.calls[0][0].api;
 
     // Mock responses for metadata files
     originalFetchMock.mockImplementation(async (url: string) => {
@@ -109,10 +109,10 @@ describe('transformers-js.scanner.worker', () => {
   });
 
   it('should support image-text-to-text scan tasks', async () => {
-    const comlink = await import('comlink');
+    const workerTransport = await import('@/utils/worker-transport');
     const { AutoModelForImageTextToText, env } = await import('@huggingface/transformers');
     await import('./entry');
-    const scannerObj = (comlink.expose as any).mock.calls[0][0];
+    const scannerObj = (workerTransport.exposeWorkerRemote as any).mock.calls[0][0].api;
 
     originalFetchMock.mockResolvedValue(new Response('{}', {
       status: 200,
@@ -169,10 +169,10 @@ describe('transformers-js.scanner.worker', () => {
   });
 
   it('should handle scan task errors gracefully', async () => {
-    const comlink = await import('comlink');
+    const workerTransport = await import('@/utils/worker-transport');
     const { AutoTokenizer } = await import('@huggingface/transformers');
     await import('./entry');
-    const scannerObj = (comlink.expose as any).mock.calls[0][0];
+    const scannerObj = (workerTransport.exposeWorkerRemote as any).mock.calls[0][0].api;
 
     (AutoTokenizer.from_pretrained as any).mockRejectedValue(new Error('Scan failed'));
 

@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__move_chat_enabled_details = (): string => 'Quando uma mensagem é enviada, a conversa vai para o topo do seu grupo. Conversas de nível superior ficam logo abaixo dos grupos de conversas.';

@@ -1,13 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Blob as NodeBlob } from 'node:buffer';
 import * as Comlink from 'comlink';
 import JSZip from 'jszip';
 import { isProxy, reactive } from 'vue';
 import { MockFileSystemDirectoryHandle, MockFileSystemFileHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
+import { TEST_ONLY as FILE_SYSTEM_HANDLE_TRANSPORT_TEST_ONLY } from '@/utils/file-system-handle-transport';
 import { createFileExplorerWorker } from './impl';
 import type { FileExplorerZipUploadPlacement } from './types';
 
 type MessageListener = (event: MessageEvent) => void;
+
+let fileSystemHandlesCloneable = true;
 
 function cloneMessageForTest<T>(value: T): T {
   if (isProxy(value)) {
@@ -19,6 +22,12 @@ function cloneMessageForTest<T>(value: T): T {
     value instanceof Blob ||
     value instanceof NodeBlob
   ) {
+    if (!fileSystemHandlesCloneable && (
+      value instanceof MockFileSystemDirectoryHandle ||
+      value instanceof MockFileSystemFileHandle
+    )) {
+      throw new DOMException('The object can not be cloned.', 'DataCloneError');
+    }
     return value;
   }
   if (value instanceof ArrayBuffer) {
@@ -125,6 +134,8 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
 
   beforeEach(() => {
     createdWorkers.length = 0;
+    fileSystemHandlesCloneable = true;
+    FILE_SYSTEM_HANDLE_TRANSPORT_TEST_ONLY.resetFileSystemHandleCloneCapability();
     globalThis.Worker = class WorkerForTest extends FakeWorker {
       constructor(url: URL | string, options?: WorkerOptions) {
         super(url, options);
@@ -135,6 +146,7 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
 
   afterEach(() => {
     globalThis.Worker = originalWorker;
+    vi.unstubAllGlobals();
   });
 
   it('runs native-directory operations through the hosted worker client facade', async () => {
@@ -220,6 +232,39 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
     await client.dispose();
     expect(createdWorkers).toHaveLength(1);
     expect(createdWorkers[0]?.terminated).toBe(true);
+  });
+
+  it('retries OPFS directories with a locator when handles cannot be cloned', async () => {
+    fileSystemHandlesCloneable = false;
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: '' });
+    const rootHandle = await opfsRoot.getDirectoryHandle('files', { create: true });
+    const fileHandle = await rootHandle.getFileHandle('fallback.txt', { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write('fallback works');
+    await writable.close();
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn().mockResolvedValue(opfsRoot),
+      },
+    });
+
+    const { createFileExplorerWorkerClient } = await import('./client-hosted');
+    const client = await createFileExplorerWorkerClient({
+      root: {
+        kind: 'native-directory',
+        rootName: 'Files',
+        handle: rootHandle as unknown as FileSystemDirectoryHandle,
+        readOnly: false,
+      },
+    });
+
+    const listing = await client.readDirectory({ path: '/' });
+    expect(listing.entries.map(entry => entry.name)).toEqual(['fallback.txt']);
+    expect(createdWorkers).toHaveLength(2);
+    expect(createdWorkers[0]?.terminated).toBe(true);
+
+    await client.dispose();
+    expect(createdWorkers[1]?.terminated).toBe(true);
   });
 
 

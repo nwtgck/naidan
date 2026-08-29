@@ -1,0 +1,1 @@
+export const chatGenerationFlow__local_storage_attachments_are_only_available_during_this_session = (): string => 'Você está usando o armazenamento local, que tem um limite de 5 MB. Os anexos estarão disponíveis durante esta sessão, mas NÃO serão salvos no histórico. Mude para o armazenamento OPFS nas Configurações para habilitar o salvamento permanente.';

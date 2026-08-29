@@ -1,8 +1,10 @@
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { readCommit } from "@/features/wesh/commands/git/commits";
-import { getConfigValue, readEffectiveConfig, renameLocalConfigSection } from "@/features/wesh/commands/git/config";
+import { getConfigValue, readEffectiveConfig, shouldCreateBranchReflog, removeLocalConfigSection, renameLocalConfigSection } from "@/features/wesh/commands/git/config";
 import { pathExists } from "@/features/wesh/commands/git/files";
-import { gitPathspecGlobSource } from "@/features/wesh/commands/git/wildmatch";
+import { compileGitWildmatch } from "@/features/wesh/commands/git/wildmatch";
+import type { GitWildmatchMatcher } from "@/features/wesh/commands/git/wildmatch";
 import { isAncestor } from "@/features/wesh/commands/git/graph";
 import { resolveGitReflogIdentity, resolveGitTimestamp } from "@/features/wesh/commands/git/identity";
 import { branchNameFromHead, createRef, deleteRef, listRefs, readHead, readRef, renameRef, setHeadSymbolic } from "@/features/wesh/commands/git/refs";
@@ -11,13 +13,13 @@ import { resolveCommitRevision } from "@/features/wesh/commands/git/revision";
 import { appendReflog } from "@/features/wesh/commands/git/reflog";
 import { branchRefName } from "@/features/wesh/commands/git/branch";
 
-function matchesBranchPatterns({ name, patterns }: {
+function matchesBranchPatterns({ name, matchers }: {
     name: string;
-    patterns: readonly string[];
+    matchers: readonly GitWildmatchMatcher[];
 }): boolean {
-  if (patterns.length === 0)
+  if (matchers.length === 0)
     return true;
-  return patterns.some(pattern => new RegExp(`^${gitPathspecGlobSource({ pattern })}$`, 'u').test(name));
+  return matchers.some(matcher => matcher.matches({ value: name }));
 }
 function isBranchDeleteMode({ mode }: {
     mode: BranchDeleteMode;
@@ -65,19 +67,26 @@ export async function runBranch({ context, args }: {
     args: readonly string[];
 }): Promise<WeshCommandResult> {
   const repository = await discoverRepositoryFromContext({ context });
+  const config = await readEffectiveConfig({
+    files: context.files,
+    repository,
+    homePath: context.env.get('HOME') ?? '/',
+    cwd: context.cwd,
+    env: context.env,
+  });
   const head = await readHead({ files: context.files, repository });
   const currentBranch = branchNameFromHead({ head });
   const { showCurrent, move, deleteMode, listMode, listOnly, operands } = parseBranchArguments({ args });
   if (showCurrent) {
-    if (operands.length > 0 || isBranchDeleteMode({ mode: deleteMode }) || listMode !== 'local') {
-      throw new Error('options are incompatible');
+    if (move || listOnly || isBranchDeleteMode({ mode: deleteMode })) {
+      throw new GitUsageError({ message: 'usage: git branch [<options>] [<branch-name>...]', prefix: 'none' });
     }
     if (currentBranch !== undefined)
       await context.text().print({ text: `${currentBranch}\n` });
     return { exitCode: 0 };
   }
   if (move) {
-    if (showCurrent || isBranchDeleteMode({ mode: deleteMode }))
+    if (showCurrent || listOnly || isBranchDeleteMode({ mode: deleteMode }))
       throw new Error('options are incompatible');
     if (operands.length === 0 || operands.length > 2)
       throw new Error('branch name required');
@@ -105,8 +114,9 @@ export async function runBranch({ context, args }: {
       });
       return { exitCode: 0 };
     }
-    const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
-    const logAllRefUpdates = getConfigValue({ config, key: 'core.logallrefupdates' }) !== 'false';
+    const logAllRefUpdates = shouldCreateBranchReflog({ config });
+    const oldBranchLogPath = joinPath({ base: repository.commonDirPath, child: `logs/${oldRefName}` });
+    const updateBranchReflog = logAllRefUpdates || await pathExists({ files: context.files, path: oldBranchLogPath });
     const identity = resolveGitReflogIdentity({ env: context.env, config });
     const timestamp = resolveGitTimestamp({ env: context.env, role: 'COMMITTER' });
     const message = `Branch: renamed ${oldRefName} to ${newRefName}`;
@@ -115,13 +125,13 @@ export async function runBranch({ context, args }: {
       repository,
       oldRefName,
       newRefName,
-      reflog: logAllRefUpdates ? { identity, timestamp, message } : undefined,
+      reflog: updateBranchReflog ? { identity, timestamp, message } : undefined,
     }))
       throw new Error(`branch '${oldName}' not found`);
     if (renamingCurrent) {
       await setHeadSymbolic({ files: context.files, repository, refName: newRefName });
-      if (logAllRefUpdates) {
-        const headLogPath = joinPath({ base: repository.gitDirPath, child: 'logs/HEAD' });
+      const headLogPath = joinPath({ base: repository.gitDirPath, child: 'logs/HEAD' });
+      if (logAllRefUpdates || await pathExists({ files: context.files, path: headLogPath })) {
         const zero = '0000000000000000000000000000000000000000';
         await appendReflog({
           files: context.files, path: headLogPath, oldObjectId: objectId, newObjectId: zero, identity, timestamp, message,
@@ -141,42 +151,109 @@ export async function runBranch({ context, args }: {
     return { exitCode: 0 };
   }
   if (isBranchDeleteMode({ mode: deleteMode })) {
+    if (listOnly)
+      throw new Error('options are incompatible');
+    const deletingRemoteTrackingBranches = (() => {
+      switch (listMode) {
+      case 'local':
+        return false;
+      case 'remote':
+        return true;
+      case 'all':
+        throw new Error("cannot use -a with branch deletion");
+      default: {
+        const _ex: never = listMode;
+        throw new Error(`Unhandled branch list mode: ${_ex}`);
+      }
+      }
+    })();
     if (operands.length === 0)
       throw new Error('branch name required');
+    const deleteConfig = deletingRemoteTrackingBranches ? undefined : config;
     let exitCode = 0;
     for (const name of operands) {
-      if (name === currentBranch) {
+      if (!deletingRemoteTrackingBranches && name === currentBranch) {
         await context.text().error({
           text: `error: cannot delete branch '${name}' used by worktree at '${repository.worktreePath}'\n`,
         });
         exitCode = 1;
         continue;
       }
-      const refName = branchRefName({ name });
+      const refName = deletingRemoteTrackingBranches ? `refs/remotes/${name}` : branchRefName({ name });
       const objectId = await readRef({ files: context.files, repository, refName });
       if (objectId === undefined) {
-        await context.text().error({ text: `error: branch '${name}' not found.\n` });
+        const kind = deletingRemoteTrackingBranches ? 'remote-tracking branch' : 'branch';
+        await context.text().error({ text: `error: ${kind} '${name}' not found.\n` });
         exitCode = 1;
         continue;
       }
-      if (requiresMergedBranch({ mode: deleteMode }) && (head.objectId === undefined || !await isAncestor({
-        files: context.files,
-        repository,
-        ancestorObjectId: objectId,
-        descendantObjectId: head.objectId,
-      }))) {
-        await context.text().error({ text: `error: the branch '${name}' is not fully merged\n` });
-        exitCode = 1;
-        continue;
+      if (!deletingRemoteTrackingBranches && requiresMergedBranch({ mode: deleteMode })) {
+        const headMerged = head.objectId !== undefined && await isAncestor({
+          files: context.files,
+          repository,
+          ancestorObjectId: objectId,
+          descendantObjectId: head.objectId,
+        });
+        const remoteName = deleteConfig === undefined
+          ? undefined
+          : getConfigValue({ config: deleteConfig, key: `branch.${name}.remote` });
+        const mergeRefName = deleteConfig === undefined
+          ? undefined
+          : getConfigValue({ config: deleteConfig, key: `branch.${name}.merge` });
+        const upstreamRefName = remoteName !== undefined && mergeRefName?.startsWith('refs/heads/') === true
+          ? remoteName === '.'
+            ? mergeRefName
+            : `refs/remotes/${remoteName}/${mergeRefName.slice('refs/heads/'.length)}`
+          : undefined;
+        const upstreamObjectId = upstreamRefName === undefined
+          ? undefined
+          : await readRef({ files: context.files, repository, refName: upstreamRefName });
+        const mergedIntoDeleteBase = upstreamObjectId === undefined
+          ? headMerged
+          : await isAncestor({
+            files: context.files,
+            repository,
+            ancestorObjectId: objectId,
+            descendantObjectId: upstreamObjectId,
+          });
+        if (!mergedIntoDeleteBase) {
+          if (upstreamObjectId !== undefined && headMerged) {
+            await context.text().error({
+              text: `warning: not deleting branch '${name}' that is not yet merged to\n         '${upstreamRefName}', even though it is merged to HEAD\n`,
+            });
+          }
+          await context.text().error({ text: `error: the branch '${name}' is not fully merged\n` });
+          exitCode = 1;
+          continue;
+        }
+        if (upstreamObjectId !== undefined && !headMerged) {
+          await context.text().error({
+            text: `warning: deleting branch '${name}' that has been merged to\n         '${upstreamRefName}', but not yet merged to HEAD\n`,
+          });
+        }
       }
       await deleteRef({ files: context.files, repository, refName });
       await deleteBranchReflog({ context, repository, refName });
-      await context.text().print({ text: `Deleted branch ${name} (was ${objectId.slice(0, 7)}).\n` });
+      if (!deletingRemoteTrackingBranches) {
+        await removeLocalConfigSection({
+          files: context.files,
+          repository,
+          section: 'branch',
+          subsection: name,
+        });
+      }
+      const kind = deletingRemoteTrackingBranches ? 'remote-tracking branch' : 'branch';
+      await context.text().print({ text: `Deleted ${kind} ${name} (was ${objectId.slice(0, 7)}).\n` });
     }
     return { exitCode };
   }
   if (operands.length === 0 || listOnly) {
     const patterns = listOnly ? operands : [];
+    const patternMatchers = patterns.map(pattern => compileGitWildmatch({
+      pattern,
+      slashMode: 'wildcards-include-slash',
+      anchorMode: 'full',
+    }));
     if (listMode === 'local' || listMode === 'all') {
       if (patterns.length === 0 && currentBranch === undefined && head.objectId !== undefined) {
         await context.text().print({ text: '* (no branch)\n' });
@@ -184,7 +261,7 @@ export async function runBranch({ context, args }: {
       const refs = await listRefs({ files: context.files, repository, prefix: 'refs/heads' });
       for (const ref of refs) {
         const name = ref.refName.slice('refs/heads/'.length);
-        if (!matchesBranchPatterns({ name, patterns }))
+        if (!matchesBranchPatterns({ name, matchers: patternMatchers }))
           continue;
         await context.text().print({ text: `${name === currentBranch ? '*' : ' '} ${name}\n` });
       }
@@ -203,7 +280,7 @@ export async function runBranch({ context, args }: {
           }
           }
         })();
-        if (!matchesBranchPatterns({ name: displayName, patterns }))
+        if (!matchesBranchPatterns({ name: displayName, matchers: patternMatchers }))
           continue;
         const targetSuffix = ref.symbolicTargetRefName === undefined
           ? ''
@@ -243,8 +320,7 @@ export async function runBranch({ context, args }: {
     startObjectId = head.objectId;
   }
   await readCommit({ files: context.files, repository, objectId: startObjectId });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
-  const reflog = getConfigValue({ config, key: 'core.logallrefupdates' }) === 'false'
+  const reflog = !shouldCreateBranchReflog({ config })
     ? undefined
     : {
       identity: resolveGitReflogIdentity({ env: context.env, config }),

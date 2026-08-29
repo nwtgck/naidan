@@ -130,6 +130,40 @@ may contain their target natural language.
 
 Prefer direct, neutral Japanese UI copy over formal business-style phrasing.
 
+### Japanese terminology
+
+For Japanese user-facing copy, consult `../terminology.tsv`. The TSV compresses
+terminology decisions from across Naidan's strings so contributors and LMs can
+reproduce established wording without loading every existing Japanese message
+into context. It is not a general bilingual dictionary or a mechanical
+English-to-Japanese replacement table.
+
+Apply these priorities in order:
+
+1. Understand the English meaning and actual usage context, and choose natural,
+   accurate Japanese for that meaning.
+2. When Naidan already uses the same concept in the same usage context, keep the
+   established Japanese wording consistent. A TSV entry records the current
+   project decision and takes precedence over older conflicting occurrences.
+3. When the concept is not yet represented in Naidan, prefer wording familiar to
+   Japanese users. Use human-reviewed Google product UI and general-user help as
+   the primary external references. The project owner considers their wording the
+   closest practical reference for forms Japanese users are familiar with; this
+   is a project style judgment, not a statistical claim or a requirement to
+   conform to Google.
+4. Do not use machine-translated, AI-translated, or automatically generated
+   documentation as the primary evidence for a terminology decision.
+
+The TSV columns are `Concept`, `Usage Context`, `Japanese`, and `Notes`.
+`Usage Context` may list multiple semantic contexts separated by commas. Treat
+those values as compact semantic hints, not exact string-match conditions. If
+the same English token expresses a different concept or meaning, do not reuse a
+TSV translation mechanically. Record a new reusable decision when useful.
+
+Eliminating spelling variation is not itself the goal. Such variation should
+disappear as a consequence of choosing natural wording and keeping the same
+concept and usage context consistent.
+
 Naidan UI around Wesh is eligible for Boundary Strings. Wesh command output,
 usage text, diagnostics, shell transcript content, and raw worker errors remain
 English and must not be moved into this directory.

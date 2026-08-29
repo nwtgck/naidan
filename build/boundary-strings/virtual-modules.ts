@@ -118,11 +118,11 @@ export function parseResolvedBoundaryModuleId({ id }: {
   };
 }
 
-export function parseResolvedPackModuleId({ id }: {
+export function parseResolvedPackModuleIdentity({ id }: {
   id: string;
 }): {
   boundaryId: string;
-  locale: BoundaryStringLocale;
+  locale: string;
   version: string;
 } | undefined {
   if (!id.startsWith(RESOLVED_BOUNDARY_STRINGS_PACK_MODULE_PREFIX)) {
@@ -133,11 +133,7 @@ export function parseResolvedPackModuleId({ id }: {
     throw new Error(`[naidan-boundary-strings] Invalid pack module ID "${id}".`);
   }
   const [localeValue, boundaryIdValue, versionValue] = segments;
-  const locale = BOUNDARY_STRING_LOCALES.find((candidate) => candidate === localeValue);
-  if (locale === undefined) {
-    throw new Error(`[naidan-boundary-strings] Unsupported locale "${String(localeValue)}".`);
-  }
-  if (boundaryIdValue === undefined || versionValue === undefined) {
+  if (localeValue === undefined || localeValue.length === 0 || boundaryIdValue === undefined || versionValue === undefined) {
     throw new Error(`[naidan-boundary-strings] Invalid pack module ID "${id}".`);
   }
   return {
@@ -146,12 +142,32 @@ export function parseResolvedPackModuleId({ id }: {
       moduleId: id,
       value: boundaryIdValue,
     }),
-    locale,
+    locale: localeValue,
     version: requireBoundaryIdentityPart({
       kind: 'boundary version',
       moduleId: id,
       value: versionValue,
     }),
+  };
+}
+
+export function parseResolvedPackModuleId({ id }: {
+  id: string;
+}): {
+  boundaryId: string;
+  locale: BoundaryStringLocale;
+  version: string;
+} | undefined {
+  const identity = parseResolvedPackModuleIdentity({ id });
+  if (identity === undefined) return undefined;
+  const locale = BOUNDARY_STRING_LOCALES.find((candidate) => candidate === identity.locale);
+  if (locale === undefined) {
+    throw new Error(`[naidan-boundary-strings] Unsupported locale "${identity.locale}".`);
+  }
+  return {
+    boundaryId: identity.boundaryId,
+    locale,
+    version: identity.version,
   };
 }
 
@@ -171,7 +187,8 @@ export function createBoundaryRegistrationModuleSource({ boundary, compactionSta
     const loader = compactionState === undefined
       ? `() => import(${moduleId})`
       : `() => import(${moduleId}).then((module) => module.default)`;
-    return `  ${locale}: ${loader}`;
+    // Quote locale keys because valid BCP 47 tags can contain hyphens.
+    return `  ${JSON.stringify(locale)}: ${loader}`;
   }).join(',\n')}\n}`;
 
   return `\

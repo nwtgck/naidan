@@ -1,0 +1,1 @@
+export const OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again = (): string => '언로드를 요청했습니다. 활성 요청이 끝날 때까지 Ollama에 이 모델이 계속 표시될 수 있습니다. 다시 확인하려면 새로고침하세요.';

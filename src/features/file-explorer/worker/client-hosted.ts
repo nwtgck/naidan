@@ -1,5 +1,5 @@
-import * as Comlink from 'comlink';
-
+import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
+import { releaseWorkerRemote, workerCapability, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
 import { createNaidanSysfsRemoteReaderForMounts } from '@/features/wesh/naidan-sysfs/storage-reader';
 import { createWeshStorageDirectoryRemoteForMounts } from '@/features/wesh/storage-directory/remote';
 import { mapWeshMountsToWorkerMounts } from '@/features/wesh/worker/types';
@@ -14,10 +14,15 @@ import {
   fileExplorerReadDirectoryResponseSchema,
   fileExplorerReadFileResponseSchema,
   fileExplorerReadPreviewResponseSchema,
+  type FileExplorerPrepareSessionRequest,
   type FileExplorerRootDescriptor,
   type FileExplorerWorkerClient,
   type IFileExplorerWorker,
 } from './types';
+import {
+  hasFileExplorerFileSystemHandles,
+  mapFileExplorerRootToOpfsLocators,
+} from './root-transport';
 
 function createDirectoryArchiveJobId(): string {
   if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
@@ -79,14 +84,6 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })();
-  const worker = new Worker(
-    new URL('./entry.ts', import.meta.url),
-    {
-      type: 'module',
-      name: 'naidan-file-explorer-worker',
-    },
-  );
-  const remote = Comlink.wrap<IFileExplorerWorker>(worker);
   const requestRoot = await (async () => {
     switch (root.kind) {
     case 'native-directory':
@@ -113,16 +110,50 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })();
-  const prepareResponse = await remote.prepareSession(
-    { root: requestRoot },
-    naidanSysfsRemoteReader
-      ? Comlink.proxy(naidanSysfsRemoteReader)
-      : undefined,
-    storageDirectoryRemote
-      ? Comlink.proxy(storageDirectoryRemote)
-      : undefined,
-  );
-  const sessionId = fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId;
+  const createRuntime = async ({ requestRoot }: {
+    requestRoot: FileExplorerPrepareSessionRequest['root'],
+  }) => {
+    const worker = new Worker(
+      new URL('./entry.ts', import.meta.url),
+      {
+        type: 'module',
+        name: 'naidan-file-explorer-worker',
+      },
+    );
+    const remote = wrapWorkerRemote<IFileExplorerWorker>({ endpoint: worker });
+    try {
+      const prepareResponse = await remote.prepareSession(
+        workerCapability({
+          value: { request: { root: requestRoot } },
+          capability: 'file-system-handle-clone',
+        }),
+        naidanSysfsRemoteReader
+          ? workerProxy({ value: naidanSysfsRemoteReader })
+          : undefined,
+        storageDirectoryRemote
+          ? workerProxy({ value: storageDirectoryRemote })
+          : undefined,
+      );
+      return {
+        worker,
+        remote,
+        sessionId: fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId,
+      };
+    } catch (error) {
+      worker.terminate();
+      throw error;
+    }
+  };
+
+  const runtime = root.kind !== 'storage-directory' && hasFileExplorerFileSystemHandles({ root })
+    ? await runWithFileSystemHandleCloneFallback({
+      direct: () => createRuntime({ requestRoot }),
+      fallback: async () => createRuntime({
+        requestRoot: await mapFileExplorerRootToOpfsLocators({ root }),
+      }),
+    })
+    : await createRuntime({ requestRoot });
+  const { worker, remote, sessionId } = runtime;
 
   return {
     async readDirectory({ path }) {
@@ -212,12 +243,15 @@ export async function createFileExplorerWorkerClient({
     async dispose() {
       try {
         await remote.disposeSession({ request: { sessionId } });
-        await storageDirectoryRemote?.dispose();
       } finally {
         try {
-          await remote[Comlink.releaseProxy]();
+          await storageDirectoryRemote?.dispose();
         } finally {
-          worker.terminate();
+          try {
+            await releaseWorkerRemote({ remote });
+          } finally {
+            worker.terminate();
+          }
         }
       }
     },

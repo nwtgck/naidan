@@ -1,0 +1,1 @@
+export const StandaloneVerificationPage__checks_file_protocol_startup_routing_styles_lazy_chunks_systemjs_and_repeated_worker_creation_without_changing_chats_or_settings = (): string => 'Prüft den Start über das file-Protokoll, Routing, Styles, Lazy-Chunks, SystemJS und wiederholte Worker-Erstellung, ohne Chats oder Einstellungen zu ändern.';

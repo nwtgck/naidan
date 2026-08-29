@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
 import type { StorageDirectoryHandle } from '@/00-storage/service/storage-file-system/types';
+import type { WorkerCapability, WorkerProxy } from '@/utils/worker-transport';
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
 import type { WeshStorageDirectoryRemote } from '@/features/wesh/storage-directory/types';
 import type { WeshMount } from '@/features/wesh/types';
+import { fileSystemDirectoryHandleReferenceSchema } from '@/utils/file-system-handle-transport';
 import { weshWorkerMountSchema } from '@/features/wesh/worker/types';
 
 const fileExplorerPathSchema = z.string().min(1);
@@ -27,7 +29,7 @@ export const fileExplorerRootDescriptorSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('native-directory'),
     rootName: z.string().min(1),
-    handle: z.custom<FileSystemDirectoryHandle>(),
+    handle: fileSystemDirectoryHandleReferenceSchema,
     readOnly: z.boolean(),
   }),
   z.object({
@@ -400,11 +402,14 @@ export type FileExplorerUploadFilesRequest = z.infer<typeof fileExplorerUploadFi
 export type FileExplorerDisposeSessionRequest = z.infer<typeof fileExplorerDisposeSessionRequestSchema>;
 
 export interface IFileExplorerWorker {
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy capabilities must remain top-level arguments.
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy values must remain top-level arguments.
   prepareSession(
-    request: FileExplorerPrepareSessionRequest | { readonly request: FileExplorerPrepareSessionRequest },
-    naidanSysfsRemoteReader?: NaidanSysfsRemoteReader,
-    storageDirectoryRemote?: WeshStorageDirectoryRemote,
+    options: WorkerCapability<
+      { request: FileExplorerPrepareSessionRequest },
+      'file-system-handle-clone'
+    >,
+    naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
+    storageDirectoryRemote?: WorkerProxy<WeshStorageDirectoryRemote>,
   ): Promise<FileExplorerPrepareSessionResponse>,
   readDirectory({ request }: { request: FileExplorerReadDirectoryRequest }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ request }: { request: FileExplorerReadPreviewRequest }): Promise<FileExplorerReadPreviewResponse>,

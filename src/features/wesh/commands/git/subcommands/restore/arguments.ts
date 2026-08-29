@@ -1,5 +1,7 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 
 import type { RestoreRequest } from "@/features/wesh/commands/git/restore-operation";
+import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
 
 export function parseRestoreArguments({ args }: {
     args: readonly string[];
@@ -9,8 +11,9 @@ export function parseRestoreArguments({ args }: {
   let sourceExpression: string | undefined;
   let parsingOptions = true;
   const operands: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]!;
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['S', 'W'], valueOptions: ['s'] });
+  for (let index = 0; index < normalizedArgs.length; index += 1) {
+    const arg = normalizedArgs[index]!;
     if (parsingOptions && arg === '--') {
       parsingOptions = false;
       continue;
@@ -24,9 +27,9 @@ export function parseRestoreArguments({ args }: {
       continue;
     }
     if (parsingOptions && (arg === '--source' || arg === '-s')) {
-      const value = args[index + 1];
+      const value = normalizedArgs[index + 1];
       if (value === undefined)
-        throw new Error(`option '${arg}' requires a value`);
+        throw new GitUsageError({ message: `option '${arg}' requires a value` });
       sourceExpression = value;
       index += 1;
       continue;
@@ -34,11 +37,11 @@ export function parseRestoreArguments({ args }: {
     if (parsingOptions && arg.startsWith('--source=')) {
       sourceExpression = arg.slice('--source='.length);
       if (sourceExpression.length === 0)
-        throw new Error("option '--source' requires a value");
+        throw new GitUsageError({ message: "option '--source' requires a value" });
       continue;
     }
     if (parsingOptions && arg.startsWith('-'))
-      throw new Error(`unknown option: ${arg}`);
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
     operands.push(arg);
   }
   if (!staged && !worktree)

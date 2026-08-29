@@ -46,13 +46,13 @@ export async function runApply({ context, args }: {
         previousEntries: plan.originalEntries,
         targetEntries: written.entries,
         paths: written.touchedPaths,
-        contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }),
+        contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }),
       });
       return { exitCode: 0 };
     }
 
     const plan = await planIndexChanges({ context, repository, sections, reverse: parsedArgs.reverse });
-    if (parsedArgs.index) {
+    if (parsedArgs.index && !parsedArgs.cached) {
       await validateIndexMatchesWorktree({
         context,
         repository,
@@ -64,14 +64,14 @@ export async function runApply({ context, args }: {
     if (parsedArgs.check) return { exitCode: 0 };
 
     const written = await writePlannedObjects({ context, repository, plan });
-    if (parsedArgs.index) {
+    if (parsedArgs.index && !parsedArgs.cached) {
       await replaceTrackedWorktreePaths({
         files: context.files,
         repository,
         previousEntries: plan.originalEntries,
         targetEntries: written.entries,
         paths: written.touchedPaths,
-        contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }),
+        contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }),
       });
     }
     await writeIndex({ files: context.files, repository, entries: written.entries });

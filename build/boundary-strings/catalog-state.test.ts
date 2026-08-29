@@ -2,23 +2,20 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createBoundaryStringCatalogState } from './catalog-state';
 import { createBoundaryStringDiagnosticError } from './diagnostics';
-import type { BoundaryStringMessageCatalog } from './message-catalog';
+import { BOUNDARY_STRING_LOCALES, type BoundaryStringMessageCatalog } from './message-catalog';
 
 function catalog({ key }: {
   key: string;
 }): BoundaryStringMessageCatalog {
   const message = {
     key,
-    modulesByLocale: {
-      en: {
-        filePath: `/messages/${key}/en.ts`,
-        sourceModuleId: `/messages/${key}/en.ts`,
+    modulesByLocale: Object.fromEntries(BOUNDARY_STRING_LOCALES.map((locale) => [
+      locale,
+      {
+        filePath: `/messages/${key}/${locale}.ts`,
+        sourceModuleId: `/messages/${key}/${locale}.ts`,
       },
-      ja: {
-        filePath: `/messages/${key}/ja.ts`,
-        sourceModuleId: `/messages/${key}/ja.ts`,
-      },
-    },
+    ])) as BoundaryStringMessageCatalog['messages'][number]['modulesByLocale'],
   };
   return {
     messages: [message],

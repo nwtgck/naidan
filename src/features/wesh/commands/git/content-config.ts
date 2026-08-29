@@ -10,6 +10,7 @@ export async function resolveContentConfigForContext({ context, repository }: {
     files: context.files,
     repository,
     homePath: context.env.get('HOME') ?? '/',
+    cwd: context.cwd,
     env: context.env,
   });
 }

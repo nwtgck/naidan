@@ -139,6 +139,22 @@ describe('ChatPaneHeader', () => {
     expect(wrapper.emitted('print')).toEqual([[]]);
   });
 
+  it('emits delete-chat and closes the more actions menu', async () => {
+    const wrapper = mountHeader({
+      chat: makeChat(),
+      groups: [makeGroup()],
+    });
+
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    const deleteButton = wrapper.find('[data-testid="delete-chat-button"]');
+    expect(deleteButton.exists()).toBe(true);
+
+    await deleteButton.trigger('click');
+
+    expect(wrapper.emitted('delete-chat')).toEqual([[]]);
+    expect(wrapper.find('[data-testid="delete-chat-button"]').exists()).toBe(false);
+  });
+
   it('emits open-file-explorer from the more actions menu', async () => {
     const wrapper = mountHeader({
       chat: makeChat(),

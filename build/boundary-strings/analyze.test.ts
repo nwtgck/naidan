@@ -178,7 +178,7 @@ ChatInput__type_a_message();
       sourceCode: `\
 import { ChatInput__type_a_message } from '@/strings/messages/ChatInput__type_a_message/en';
 
-export const en = { ChatInput__type_a_message };
+export const catalog = { ChatInput__type_a_message };
 `,
     })).toEqual([]);
   });

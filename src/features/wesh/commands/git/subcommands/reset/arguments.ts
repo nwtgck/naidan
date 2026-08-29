@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 
 type ResetMode = 'soft' | 'mixed' | 'hard';
 export function parseResetArguments({ args }: {
@@ -13,8 +14,11 @@ export function parseResetArguments({ args }: {
   let pathOperands: readonly string[] | undefined;
   const separatorIndex = args.indexOf('--');
   const optionAndRevisionArgs = separatorIndex < 0 ? args : args.slice(0, separatorIndex);
-  if (separatorIndex >= 0)
-    pathOperands = args.slice(separatorIndex + 1);
+  if (separatorIndex >= 0) {
+    const operands = args.slice(separatorIndex + 1);
+    if (operands.length > 0)
+      pathOperands = operands;
+  }
   for (const arg of optionAndRevisionArgs) {
     if (arg === '--soft')
       mode = 'soft';
@@ -23,7 +27,7 @@ export function parseResetArguments({ args }: {
     else if (arg === '--hard')
       mode = 'hard';
     else if (arg.startsWith('-'))
-      throw new Error(`unknown option: ${arg}`);
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
     else if (!hasRevision) {
       revisionExpression = arg;
       hasRevision = true;

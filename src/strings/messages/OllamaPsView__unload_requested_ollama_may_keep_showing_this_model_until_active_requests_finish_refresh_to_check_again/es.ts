@@ -1,0 +1,1 @@
+export const OllamaPsView__unload_requested_ollama_may_keep_showing_this_model_until_active_requests_finish_refresh_to_check_again = (): string => 'Se solicitó quitar el modelo de la memoria. Ollama puede seguir mostrándolo hasta que terminen las solicitudes activas; actualiza para comprobarlo de nuevo.';

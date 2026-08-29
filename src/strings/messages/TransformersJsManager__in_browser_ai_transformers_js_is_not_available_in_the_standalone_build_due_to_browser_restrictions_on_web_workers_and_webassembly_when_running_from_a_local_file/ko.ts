@@ -1,0 +1,1 @@
+export const TransformersJsManager__in_browser_ai_transformers_js_is_not_available_in_the_standalone_build_due_to_browser_restrictions_on_web_workers_and_webassembly_when_running_from_a_local_file = (): string => '로컬 파일에서 실행할 때 Web Worker와 WebAssembly에 대한 브라우저 제한 때문에 Standalone 빌드에서는 브라우저 내 AI(Transformers.js)를 사용할 수 없습니다.';

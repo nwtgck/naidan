@@ -1,0 +1,1 @@
+export const StorageTab__storage_migration_description = (): string => 'Ao trocar o armazenamento, todas as conversas, grupos de conversas e configurações serão migrados para o novo local. O processo será iniciado automaticamente após a confirmação.';

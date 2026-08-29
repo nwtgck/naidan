@@ -50,12 +50,6 @@ export type FileProtocolStandaloneReleaseReport = Readonly<{
   }>;
 }>;
 
-type ReleaseArchiveInput = Readonly<{
-  outputDirectory: string;
-  releaseReport: FileProtocolStandaloneReleaseReport;
-  debugReport: Awaited<ReturnType<typeof createStandaloneWorkerDebugBuildReport>>;
-}>;
-
 export type FileProtocolStandaloneReleaseValidationOptions = Readonly<{
   outputDirectory: string;
   workers: readonly ReleaseWorkerDefinition[];
@@ -70,7 +64,6 @@ export type FileProtocolStandaloneReleaseValidationOptions = Readonly<{
   releaseReportFile: string;
   sanitizeModuleId?: (moduleId: string) => string;
   bootstrapSourceBytes?: number;
-  createArchive?: (input: ReleaseArchiveInput) => void | Promise<void>;
 }>;
 
 async function walkFiles(root: string): Promise<string[]> {
@@ -111,11 +104,8 @@ function assertNonEmptyArray(value: readonly unknown[], name: string): void {
  * Validate the complete standalone Worker distribution before packaging it.
  *
  * This intentionally runs in writeBundle rather than closeBundle. Rollup/Vite
- * has written every output file at this point, while a thrown validation error
- * still prevents the caller-provided archive callback from running. The final
- * Naidan integration should route its existing ZIP implementation through
- * createArchive instead of keeping an independent unconditional closeBundle
- * packager.
+ * has written every output file at this point. A thrown validation error still
+ * prevents the later sequential release-packaging hook from publishing files.
  */
 export function createFileProtocolStandaloneReleaseValidationPlugin({
   outputDirectory,
@@ -131,7 +121,6 @@ export function createFileProtocolStandaloneReleaseValidationPlugin({
   releaseReportFile,
   sanitizeModuleId = moduleId => moduleId,
   bootstrapSourceBytes = 0,
-  createArchive,
 }: FileProtocolStandaloneReleaseValidationOptions): Plugin {
   if (!outputDirectory) throw new TypeError('outputDirectory is required');
   assertNonEmptyArray(workers, 'workers');
@@ -279,7 +268,6 @@ export function createFileProtocolStandaloneReleaseValidationPlugin({
       if (failures.length > 0) {
         throw new Error(`Standalone Worker release validation failed:\n${failures.map(failure => `- ${failure}`).join('\n')}`);
       }
-      if (createArchive) await createArchive({ outputDirectory: resolvedOutput, releaseReport, debugReport });
     },
   };
   return plugin;

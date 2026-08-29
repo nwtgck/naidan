@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Comlink from 'comlink';
+import { wrapWorkerRemote } from '@/utils/worker-transport';
 
 const { createStandaloneWorkerMock, createStorageDirectoryRemoteMock } = vi.hoisted(() => ({
   createStandaloneWorkerMock: vi.fn(),
@@ -14,11 +15,11 @@ vi.mock('@/features/wesh/storage-directory/remote', () => ({
   createWeshStorageDirectoryRemoteForMounts: createStorageDirectoryRemoteMock,
 }));
 
-vi.mock('comlink', async (importOriginal) => {
-  const original = await importOriginal<typeof import('comlink')>();
+vi.mock('@/utils/worker-transport', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/utils/worker-transport')>();
   return {
     ...original,
-    wrap: vi.fn(),
+    wrapWorkerRemote: vi.fn(),
   };
 });
 
@@ -44,7 +45,7 @@ describe('standalone File Explorer Worker client lifecycle', () => {
       [Comlink.releaseProxy]: vi.fn().mockResolvedValue(undefined),
     } as unknown as Comlink.Remote<IFileExplorerWorker>;
     createStandaloneWorkerMock.mockResolvedValue(worker);
-    vi.mocked(Comlink.wrap).mockReturnValue(remote);
+    vi.mocked(wrapWorkerRemote).mockReturnValue(remote);
 
     await expect(createFileExplorerWorkerClient({
       root: {

@@ -1,1 +1,1 @@
-export const ChatAttachMenu__folder_link = (): string => 'フォルダー（リンク）';
+export const ChatAttachMenu__folder_link = (): string => 'フォルダ（リンク）';

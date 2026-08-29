@@ -59,6 +59,24 @@ git tag`,
     expect(lines.slice(4)).toEqual(['']);
   });
 
+  it('continues deleting later tags when one requested tag is missing', async () => {
+    const deletion = await execute({
+      script: `\
+${setup}
+git tag one
+git tag two
+git tag -d one missing two`,
+    });
+    expect(deletion.result.exitCode).toBe(1);
+    expect(deletion.stdout.text).toMatch(/Deleted tag 'one' \(was [0-9a-f]{7}\)\nDeleted tag 'two' \(was [0-9a-f]{7}\)\n/u);
+    expect(deletion.stderr.text).toBe("error: tag 'missing' not found.\n");
+
+    const remaining = await execute({ script: 'git tag' });
+    expect(remaining.result.exitCode).toBe(0);
+    expect(remaining.stdout.text).toBe('');
+    expect(remaining.stderr.text).toBe('');
+  });
+
   it('creates an annotated tag object with non-interactive -m', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -158,6 +176,68 @@ git tag`,
     expect(result.exitCode).toBe(0);
     expect(stderr.text).toBe('');
     expect(stdout.text).toBe('\uE000\n\u{10000}\n');
+  });
+
+  it('drops empty repeated -m paragraphs from annotated tag messages', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+export GIT_COMMITTER_DATE='1000000100 +0000'
+git tag -a ann -m '' -m one -m '' -mtwo -m ''
+git show --no-patch ann`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain(`\
+one
+
+two
+
+commit `);
+  });
+
+  it('joins repeated -m values as message paragraphs', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+export GIT_COMMITTER_DATE='1000000100 +0000'
+git tag -a ann -m one -mtwo
+git show --no-patch ann`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain(`\
+one
+
+two
+
+commit `);
+  });
+
+
+  it('preflights repository config before listing, deleting, or parsing tag options', async () => {
+    const setup = await execute({
+      script: `\
+git init -q /tag-malformed
+git -C /tag-malformed config user.name Tester
+git -C /tag-malformed config user.email tester@example.com
+printf base > /tag-malformed/a
+git -C /tag-malformed add a
+git -C /tag-malformed commit -m base >/dev/null
+git -C /tag-malformed tag one
+printf '\n[bad\n' >> /tag-malformed/.git/config`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    for (const args of ['', '-d one', '--definitely-invalid']) {
+      const result = await execute({ script: `git -C /tag-malformed tag ${args}` });
+      expect(result.result.exitCode).toBe(128);
+      expect(result.stdout.text).toBe('');
+      expect(result.stderr.text).toContain('bad config line');
+    }
+
+    const preserved = await execute({ script: 'test -e /tag-malformed/.git/refs/tags/one' });
+    expect(preserved.result.exitCode).toBe(0);
   });
 
 });

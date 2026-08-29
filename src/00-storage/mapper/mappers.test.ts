@@ -496,6 +496,34 @@ describe('Settings Mapping', () => {
     expect(domain.experimental?.locale).toBeUndefined();
   });
 
+  it.each(['zh-Hans', 'pt-BR'] as const)(
+    'preserves persisted locale tag %s exactly through settings mapping',
+    (locale) => {
+      const domain: Settings = {
+        endpoint: { type: 'openai', url: 'http://localhost' },
+        defaultModelId: 'gpt-4',
+        titleGeneration: {
+          endpoint: 'same_scope',
+          model: 'same_scope',
+          lmParameters: {
+            ...EMPTY_LM_PARAMETERS,
+          },
+        },
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+        experimental: { locale },
+      };
+
+      const dto = settingsToDto({ domain });
+      expect(dto.experimental?.locale).toBe(locale);
+
+      const parsed = SettingsSchemaDto.parse(dto);
+      expect(parsed.experimental?.locale).toBe(locale);
+      expect(settingsToDomain({ dto: parsed }).experimental?.locale).toBe(locale);
+    },
+  );
+
   it('roundtrips title generation reasoning parameters through settings DTO', () => {
     const domain: Settings = {
       endpoint: { type: 'openai', url: 'http://localhost' },

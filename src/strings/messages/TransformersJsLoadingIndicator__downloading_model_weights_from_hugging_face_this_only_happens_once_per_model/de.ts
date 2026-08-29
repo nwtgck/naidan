@@ -1,0 +1,1 @@
+export const TransformersJsLoadingIndicator__downloading_model_weights_from_hugging_face_this_only_happens_once_per_model = (): string => 'Modellgewichte werden von Hugging Face heruntergeladen. Dies geschieht nur einmal pro Modell.';

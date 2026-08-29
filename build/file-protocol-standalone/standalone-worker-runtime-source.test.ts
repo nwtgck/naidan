@@ -9,6 +9,9 @@ function createSource() {
     readyMessageType: '__testReady',
     errorMessageType: '__testError',
     diagnosticsGlobalName: '__TEST_STANDALONE__',
+    packageLocaleMetaName: 'test-package-locale',
+    packageLocaleGlobalName: '__TEST_PACKAGE_LOCALE__',
+    supportedPackageLocales: ['en', 'ja'],
   });
 }
 
@@ -21,6 +24,19 @@ describe('createStandaloneWorkerRuntimeModuleSource', () => {
     expect(source).toContain('const READY_MESSAGE_TYPE = "__testReady"');
     expect(source).toContain('const ERROR_MESSAGE_TYPE = "__testError"');
     expect(source).toContain('const namespaceName = "__TEST_STANDALONE__"');
+    expect(source).toContain('__TEST_PACKAGE_LOCALE__');
+    expect(source).toContain('test-package-locale');
+    expect(source).toContain('new Set(["en","ja"])');
+  });
+
+  it('sets the package locale in the Worker before importing the logical entry', () => {
+    const source = createSource();
+    const setLocaleIndex = source.indexOf('self[PACKAGE_LOCALE_GLOBAL_NAME] = packageLocale');
+    const importEntryIndex = source.indexOf('await System.import(logicalWorkerEntryUrl)');
+
+    expect(setLocaleIndex).toBeGreaterThan(-1);
+    expect(importEntryIndex).toBeGreaterThan(setLocaleIndex);
+    expect(source).toContain('packageLocale: resolvePackageLocale(),');
   });
 
   it('keeps the generic Blob bootstrap small in responsibility and loads the logical entry through SystemJS', () => {

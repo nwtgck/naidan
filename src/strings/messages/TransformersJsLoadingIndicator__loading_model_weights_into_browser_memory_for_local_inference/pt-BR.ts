@@ -1,0 +1,1 @@
+export const TransformersJsLoadingIndicator__loading_model_weights_into_browser_memory_for_local_inference = (): string => 'Carregando os pesos do modelo na memória do navegador para inferência local.';

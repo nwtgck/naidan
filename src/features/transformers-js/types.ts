@@ -1,6 +1,5 @@
-/* eslint-disable no-restricted-imports -- Worker-facing transformers.js type references are centralized here to keep service and worker contracts aligned. */
-import type { AutoProcessor, AutoTokenizer, AutoModelForCausalLM, AutoModelForImageTextToText } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
+import type { WorkerProxy } from '@/utils/worker-transport';
 
 /**
  * Shared types for Transformers.js service and worker
@@ -23,11 +22,20 @@ export interface ScannedModelFile {
   url: string,
 }
 
+export interface ScanPretrainedOptions {
+  revision?: string,
+}
+
+export interface ScanModelOptions extends ScanPretrainedOptions {
+  dtype?: 'q4f16',
+  device?: 'wasm',
+}
+
 export type ScanTask =
-  | { type: 'tokenizer', modelId: string, options: Parameters<typeof AutoTokenizer.from_pretrained>[1] }
-  | { type: 'processor', modelId: string, options: Parameters<typeof AutoProcessor.from_pretrained>[1] }
-  | { type: 'causal-lm', modelId: string, options: Parameters<typeof AutoModelForCausalLM.from_pretrained>[1] }
-  | { type: 'image-text-to-text', modelId: string, options: Parameters<typeof AutoModelForImageTextToText.from_pretrained>[1] };
+  | { type: 'tokenizer', modelId: string, options: ScanPretrainedOptions }
+  | { type: 'processor', modelId: string, options: ScanPretrainedOptions }
+  | { type: 'causal-lm', modelId: string, options: ScanModelOptions }
+  | { type: 'image-text-to-text', modelId: string, options: ScanModelOptions };
 
 export interface ScanOptions {
   tasks: ScanTask[],
@@ -42,12 +50,24 @@ export interface TransformersJsScannerWorkerClient {
   dispose(): Promise<void>,
 }
 
+export type WorkerToolJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | WorkerToolJsonValue[]
+  | WorkerToolJsonObject;
+
+export interface WorkerToolJsonObject {
+  [key: string]: WorkerToolJsonValue,
+}
+
 export interface WorkerToolDefinition {
   type: 'function',
   function: {
     name: string,
     description: string,
-    parameters: Record<string, unknown>,
+    parameters: WorkerToolJsonObject,
   },
 }
 
@@ -310,11 +330,11 @@ export interface TransformersJsProductionInvestigationObservation extends Transf
 // without importing the entire worker file.
 export interface ITransformersJsWorker {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  downloadModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<void>,
+  downloadModel(modelId: string, progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<void>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  prefetchUrls(urls: string[], progressCallback: (x: ProgressInfo) => void): Promise<TransformersJsPrefetchResult>,
+  prefetchUrls(urls: string[], progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<TransformersJsPrefetchResult>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  loadModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<ModelLoadResult>,
+  loadModel(modelId: string, progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<ModelLoadResult>,
   unloadModel(): Promise<void>,
   interrupt(): Promise<void>,
   resetCache(): Promise<void>,
@@ -322,16 +342,16 @@ export interface ITransformersJsWorker {
   generateText(
     messages: ChatMessage[],
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-    onChunk: (chunk: string) => void,
+    onChunk: WorkerProxy<(chunk: string) => void>,
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-    onToolCalls: (toolCalls: ToolCall[]) => void,
+    onToolCalls: WorkerProxy<(toolCalls: ToolCall[]) => void>,
     params?: LmParameters,
     tools?: WorkerToolDefinition[]
   ): Promise<void>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runModelSupportInvestigationScenario(
     scenario: TransformersJsProductionInvestigationScenario,
-    progressCallback: TransformersJsProgressCallback,
+    progressCallback: WorkerProxy<TransformersJsProgressCallback>,
   ): Promise<TransformersJsProductionInvestigationObservation>,
 }
 

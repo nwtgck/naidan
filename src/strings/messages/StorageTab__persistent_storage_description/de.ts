@@ -1,0 +1,1 @@
+export const StorageTab__persistent_storage_description = (): string => 'Aktiviere persistenten Speicher, damit der Browser bei knappem Speicherplatz den Chatverlauf und die Einstellungen nicht automatisch löscht.';

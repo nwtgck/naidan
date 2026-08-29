@@ -1,6 +1,6 @@
 import { normalizePath } from "@/features/wesh/path";
 import type { WeshCommandContext } from "@/features/wesh/types";
-import { parseConfigKey } from "./config";
+import { parseConfigKey, registerGitCommandConfigEntries, type GitCommandConfigEntry } from "./config";
 
 export async function parseGitInvocation({ context }: { context: WeshCommandContext }): Promise<{
   context: WeshCommandContext,
@@ -8,6 +8,7 @@ export async function parseGitInvocation({ context }: { context: WeshCommandCont
 }> {
   let cwd = context.cwd;
   const env = new Map(context.env);
+  const commandConfigEntries: GitCommandConfigEntry[] = [];
   let index = 0;
   while (index < context.args.length) {
     const arg = context.args[index]!;
@@ -20,28 +21,25 @@ export async function parseGitInvocation({ context }: { context: WeshCommandCont
       if (assignment === undefined) throw new Error("option '-c' requires a value");
       const separator = assignment.indexOf('=');
       const key = separator < 0 ? assignment : assignment.slice(0, separator);
-      const value = separator < 0 ? '' : assignment.slice(separator + 1);
+      const value: GitCommandConfigEntry['value'] = separator < 0
+        ? { kind: 'implicit-boolean' }
+        : { kind: 'explicit', value: assignment.slice(separator + 1) };
       parseConfigKey({ key });
-      const rawCount = env.get('GIT_CONFIG_COUNT') ?? '0';
-      if (!/^(?:0|[1-9][0-9]*)$/u.test(rawCount)) throw new Error('invalid GIT_CONFIG_COUNT');
-      const count = Number(rawCount);
-      env.set(`GIT_CONFIG_KEY_${count}`, key);
-      env.set(`GIT_CONFIG_VALUE_${count}`, value);
-      env.set('GIT_CONFIG_COUNT', String(count + 1));
+      commandConfigEntries.push({ key, value });
       index += 2;
       continue;
     }
     if (arg === '--git-dir' || arg.startsWith('--git-dir=')) {
       const path = arg === '--git-dir' ? context.args[index + 1] : arg.slice('--git-dir='.length);
       if (path === undefined || path.length === 0) throw new Error("option '--git-dir' requires a value");
-      env.set('GIT_DIR', normalizePath({ cwd, path }));
+      env.set('GIT_DIR', path);
       index += arg === '--git-dir' ? 2 : 1;
       continue;
     }
     if (arg === '--work-tree' || arg.startsWith('--work-tree=')) {
       const path = arg === '--work-tree' ? context.args[index + 1] : arg.slice('--work-tree='.length);
       if (path === undefined || path.length === 0) throw new Error("option '--work-tree' requires a value");
-      env.set('GIT_WORK_TREE', normalizePath({ cwd, path }));
+      env.set('GIT_WORK_TREE', path);
       index += arg === '--work-tree' ? 2 : 1;
       continue;
     }
@@ -71,6 +69,7 @@ export async function parseGitInvocation({ context }: { context: WeshCommandCont
     }
     index += 2;
   }
+  registerGitCommandConfigEntries({ env, entries: commandConfigEntries });
   return { context: { ...context, cwd, env }, args: context.args.slice(index) };
 }
 

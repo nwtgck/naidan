@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { StorageType } from '@/01-models/types';
+import type { WorkerProxy } from '@/utils/worker-transport';
 
 import {
   searchOptionsSchema,
@@ -32,7 +33,7 @@ export interface IGlobalSearchWorker {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy arguments cannot be nested in the request object.
   configureStorage(
     storageType: StorageType,
-    remoteContentReader?: GlobalSearchRemoteContentReader,
+    remoteContentReader?: WorkerProxy<GlobalSearchRemoteContentReader>,
   ): Promise<void>;
 
   searchChatContent({ request }: {

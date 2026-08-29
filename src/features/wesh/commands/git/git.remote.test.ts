@@ -53,6 +53,218 @@ origin\t../source (push)
 `);
   });
 
+  it('lists config-only remotes and preserves verbose fetch/push URL multiplicity', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config remote.configonly.fetch '+refs/heads/*:refs/remotes/configonly/*'
+git config remote.pushonly.pushurl push-only
+git config --add remote.origin.url fetch-one
+git config --add remote.origin.url fetch-two
+git config --add remote.origin.pushurl push-one
+git config --add remote.origin.pushurl push-two
+git remote
+printf '%s\n' GETURL
+git remote get-url origin
+git remote get-url configonly
+git remote get-url pushonly
+printf '%s\n' VERBOSE
+git remote -v`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+configonly
+origin
+pushonly
+GETURL
+fetch-one
+configonly
+pushonly
+VERBOSE
+configonly\t
+origin\tfetch-one (fetch)
+origin\tpush-one (push)
+origin\tpush-two (push)
+pushonly\t
+pushonly\tpush-only (push)
+`);
+  });
+
+  it('uses remote-section existence for add and set-url diagnostics', async () => {
+    const setup = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config remote.configonly.fetch '+refs/heads/*:refs/remotes/configonly/*'`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const duplicateAdd = await execute({ script: 'git remote add configonly url' });
+    expect(duplicateAdd.result.exitCode).toBe(3);
+    expect(duplicateAdd.stdout.text).toBe('');
+    expect(duplicateAdd.stderr.text).toBe('error: remote configonly already exists.\n');
+
+    const setUrl = await execute({ script: `\
+git remote set-url configonly configured-url
+git remote get-url configonly` });
+    expect(setUrl.result.exitCode).toBe(0);
+    expect(setUrl.stderr.text).toBe('');
+    expect(setUrl.stdout.text).toBe('configured-url\n');
+
+    const missing = await execute({ script: 'git remote set-url missing new-url' });
+    expect(missing.result.exitCode).toBe(2);
+    expect(missing.stdout.text).toBe('');
+    expect(missing.stderr.text).toBe("error: No such remote 'missing'\n");
+  });
+
+  it('refuses set-url when the remote URL has multiple values', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config --add remote.origin.url one
+git config --add remote.origin.url two
+git remote set-url origin new`,
+    });
+
+    expect(result.exitCode).toBe(128);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe(`\
+warning: remote.origin.url has multiple values
+fatal: could not set 'remote.origin.url' to 'new'
+`);
+
+    const values = await execute({ script: 'git config --get-all remote.origin.url' });
+    expect(values.result.exitCode).toBe(0);
+    expect(values.stderr.text).toBe('');
+    expect(values.stdout.text).toBe(`\
+one
+two
+`);
+  });
+
+  it('accepts a trailing option terminator for supported remote subcommands', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git remote add origin one --
+git remote get-url origin --
+git remote set-url origin two --
+git remote get-url origin --
+git remote remove origin --
+git remote`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+one
+two
+`);
+  });
+
+  it('returns exit 2 for get-url of an undefined remote', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git remote get-url missing`,
+    });
+    expect(result.exitCode).toBe(2);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe("error: No such remote 'missing'\n");
+  });
+
+  it('removes tracking config, remote refs, and remote reflogs with the remote', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q source
+cd source
+git config user.name Tester
+git config user.email tester@example.com
+printf base > base.txt
+git add base.txt
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m base >/dev/null
+cd /
+git clone -q source repo
+cd repo
+git branch topic
+git config branch.topic.remote origin
+git config branch.topic.merge refs/heads/master
+git config branch.topic.pushRemote origin
+git config branch.topic.rebase true
+git config branch.topic.description keep
+git fetch -q origin
+git remote remove origin
+printf '%s\n' CONFIG
+git config --list
+printf '%s\n' REMOTE_REFS
+git branch -r
+test ! -e .git/logs/refs/remotes/origin/master`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain('CONFIG\n');
+    expect(stdout.text).toContain('branch.topic.rebase=true\n');
+    expect(stdout.text).toContain('branch.topic.description=keep\n');
+    expect(stdout.text).not.toContain('branch.topic.remote=');
+    expect(stdout.text).not.toContain('branch.topic.merge=');
+    expect(stdout.text).not.toContain('branch.topic.pushremote=');
+    expect(stdout.text).toContain('REMOTE_REFS\n');
+    expect(stdout.text.slice(stdout.text.indexOf('REMOTE_REFS\n') + 'REMOTE_REFS\n'.length)).toBe('');
+  });
+
+  it('returns exit 2 when removing an undefined remote', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git remote remove missing`,
+    });
+    expect(result.exitCode).toBe(2);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe("error: No such remote: 'missing'\n");
+  });
+
+  it('lists global remotes but keeps mutation/get-url existence local to the repository', async () => {
+    const listed = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config --global remote.global.url global-url
+git remote -v`,
+    });
+    expect(listed.result.exitCode).toBe(0);
+    expect(listed.stderr.text).toBe('');
+    expect(listed.stdout.text).toBe('global\tglobal-url (fetch)\nglobal\tglobal-url (push)\n');
+
+    const missingLocal = await execute({ script: 'git remote get-url global' });
+    expect(missingLocal.result.exitCode).toBe(2);
+    expect(missingLocal.stdout.text).toBe('');
+    expect(missingLocal.stderr.text).toBe("error: No such remote 'global'\n");
+
+    const added = await execute({ script: 'git remote add global local-url' });
+    expect(added.result.exitCode).toBe(0);
+    expect(added.stdout.text).toBe('');
+    expect(added.stderr.text).toBe('');
+
+    const effective = await execute({ script: `\
+git remote get-url global
+git remote -v` });
+    expect(effective.result.exitCode).toBe(0);
+    expect(effective.stderr.text).toBe('');
+    expect(effective.stdout.text).toBe(`\
+global-url
+global\tglobal-url (fetch)
+global\tglobal-url (push)
+global\tlocal-url (push)
+`);
+  });
+
   it('reports canonical long-status upstream relationships', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -282,6 +494,55 @@ cat .git/refs/heads/master`,
   });
 
 
+  it('enforces force-with-lease when deleting a stale remote branch', async () => {
+    const setup = await execute({
+      script: `\
+git init -q source
+cd source
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > a.txt
+git add a.txt
+export GIT_AUTHOR_DATE='981173106 +0000'
+export GIT_COMMITTER_DATE='981173106 +0000'
+git commit -m base >/dev/null
+cd /
+git init -q --bare remote.git
+cd /source
+git remote add origin /remote.git
+git push -q -u origin master
+cd /
+git clone -q remote.git other
+cd /other
+git config user.name Tester
+git config user.email tester@example.com
+printf 'other\n' >> a.txt
+git add a.txt
+export GIT_AUTHOR_DATE='981259506 +0000'
+export GIT_COMMITTER_DATE='981259506 +0000'
+git commit -m other >/dev/null
+git push -q origin master`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const before = await execute({ script: 'cat /remote.git/refs/heads/master' });
+    expect(before.result.exitCode).toBe(0);
+
+    const rejected = await execute({ script: 'cd /source; git push --delete --force-with-lease origin master' });
+    expect(rejected.result.exitCode).toBe(128);
+    expect(rejected.stdout.text).toBe('');
+    expect(rejected.stderr.text).toContain('stale info');
+
+    const after = await execute({
+      script: `\
+cat /remote.git/refs/heads/master
+cat /source/.git/refs/remotes/origin/master`,
+    });
+    expect(after.result.exitCode).toBe(0);
+    expect(after.stdout.text.split('\n')[0]).toBe(before.stdout.text.trimEnd());
+    expect(after.stdout.text.split('\n')[1]).not.toBe(before.stdout.text.trimEnd());
+  });
+
   it('reports upstream identity and divergence in porcelain branch status', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -324,6 +585,62 @@ git status --porcelain=v1 --branch`,
     expect(lines[2]).toBe('# branch.upstream origin/master');
     expect(lines[3]).toBe('# branch.ab +1 -1');
     expect(lines[4]).toBe('## master...origin/master [ahead 1, behind 1]');
+  });
+
+  it('accepts --ff-only with --rebase and lets ff-only reject divergence after fetch', async () => {
+    const setup = await execute({
+      script: `\
+git init -q source
+cd source
+git config user.name Tester
+git config user.email tester@example.com
+printf 'base\n' > base.txt
+git add base.txt
+export GIT_AUTHOR_DATE='981173106 +0000'
+export GIT_COMMITTER_DATE='981173106 +0000'
+git commit -m base >/dev/null
+cd /
+git init -q --bare remote.git
+cd /source
+git remote add origin /remote.git
+git push -q -u origin master
+cd /
+git clone -q remote.git other
+cd /other
+git config user.name Tester
+git config user.email tester@example.com
+printf 'remote\n' > remote.txt
+git add remote.txt
+export GIT_AUTHOR_DATE='981259506 +0000'
+export GIT_COMMITTER_DATE='981259506 +0000'
+git commit -m remote >/dev/null
+git push -q origin master
+cd /source
+printf 'local\n' > local.txt
+git add local.txt
+export GIT_AUTHOR_DATE='981345906 +0000'
+export GIT_COMMITTER_DATE='981345906 +0000'
+git commit -m local >/dev/null`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const headBefore = await execute({ script: 'cd /source; git rev-parse HEAD' });
+    expect(headBefore.result.exitCode).toBe(0);
+
+    const rejected = await execute({ script: 'cd /source; git pull --ff-only --rebase origin master' });
+    expect(rejected.result.exitCode).toBe(128);
+    expect(rejected.stderr.text).toContain('Not possible to fast-forward');
+
+    const verify = await execute({
+      script: `\
+cd /source
+git rev-parse HEAD
+git rev-parse refs/remotes/origin/master`,
+    });
+    expect(verify.result.exitCode).toBe(0);
+    const [headAfter, fetchedRemote] = verify.stdout.text.trimEnd().split('\n');
+    expect(headAfter).toBe(headBefore.stdout.text.trimEnd());
+    expect(fetchedRemote).not.toBe(headAfter);
   });
 
   it('pulls a local tracking branch by fast-forwarding through the shared primitive', async () => {

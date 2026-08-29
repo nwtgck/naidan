@@ -1,9 +1,11 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { normalizePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
 import type { GitFiles } from '@/features/wesh/commands/git/files';
 import { pathExists } from '@/features/wesh/commands/git/files';
 import { readIndex, writeIndex } from '@/features/wesh/commands/git/index-file';
 import { joinPath, relativeToWorktree, discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
+import { readEffectiveConfig } from '@/features/wesh/commands/git/config';
 
 interface DirectoryMovePlan {
   directories: readonly { sourcePath: string, destinationPath: string }[],
@@ -126,6 +128,14 @@ export async function runMv({ context, args }: {
   context: WeshCommandContext,
   args: readonly string[],
 }): Promise<WeshCommandResult> {
+  const repository = await discoverRepositoryFromContext({ context });
+  await readEffectiveConfig({
+    files: context.files,
+    repository,
+    homePath: context.env.get('HOME') ?? '/',
+    cwd: context.cwd,
+    env: context.env,
+  });
   let parsingOptions = true;
   const operands: string[] = [];
   for (const arg of args) {
@@ -133,12 +143,11 @@ export async function runMv({ context, args }: {
       parsingOptions = false;
       continue;
     }
-    if (parsingOptions && arg.startsWith('-')) throw new Error(`unsupported mv argument: ${arg}`);
+    if (parsingOptions && arg.startsWith('-')) throw new GitUsageError({ message: `unsupported mv argument: ${arg}` });
     operands.push(arg);
   }
-  if (operands.length !== 2) throw new Error('git mv requires exactly two paths');
+  if (operands.length !== 2) throw new GitUsageError({ message: 'usage: git mv [--] <source> <destination>', prefix: 'none' });
 
-  const repository = await discoverRepositoryFromContext({ context });
   const sourceAbsolutePath = normalizePath({ cwd: context.cwd, path: operands[0]! });
   const requestedDestinationAbsolutePath = normalizePath({ cwd: context.cwd, path: operands[1]! });
   const destinationAbsolutePath = await resolveMoveDestination({

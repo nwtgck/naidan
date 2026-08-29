@@ -7,6 +7,7 @@ import type {
   ProgressInfo,
   ScanTask,
   WorkerToolDefinition,
+  WorkerToolJsonObject,
   TransformersJsWorkerClient,
   TransformersJsProgressCallback,
   TransformersJsChunkCallback,
@@ -119,7 +120,7 @@ function cloneWorkerTools({ tools }: { tools: WorkerToolDefinition[] | undefined
     function: {
       name: tool.function.name,
       description: tool.function.description,
-      parameters: JSON.parse(JSON.stringify(tool.function.parameters)) as Record<string, unknown>,
+      parameters: JSON.parse(JSON.stringify(tool.function.parameters)) as WorkerToolJsonObject,
     },
   }));
 }

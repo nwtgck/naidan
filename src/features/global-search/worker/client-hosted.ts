@@ -1,6 +1,6 @@
-import * as Comlink from 'comlink';
 import { GLOBAL_SEARCH_WORKER_NAME } from '@/constants';
 import type { StorageType } from '@/01-models/types';
+import { releaseWorkerRemote, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
 
 import {
   globalSearchWorkerSearchChatContentResponseSchema,
@@ -21,14 +21,14 @@ export async function createGlobalSearchWorkerClient({
       name: GLOBAL_SEARCH_WORKER_NAME,
     },
   );
-  const remote = Comlink.wrap<IGlobalSearchWorker>(worker);
+  const remote = wrapWorkerRemote<IGlobalSearchWorker>({ endpoint: worker });
   const remoteContentReader = (() => {
     switch (storageType) {
     case 'opfs':
       return undefined;
     case 'local':
     case 'memory':
-      return Comlink.proxy(createGlobalSearchRemoteContentReader({ storageType }));
+      return workerProxy({ value: createGlobalSearchRemoteContentReader({ storageType }) });
     default: {
       const _ex: never = storageType;
       throw new Error(`Unhandled Global Search storage type: ${_ex}`);
@@ -40,7 +40,7 @@ export async function createGlobalSearchWorkerClient({
     await remote.configureStorage(storageType, remoteContentReader);
   } catch (error) {
     try {
-      await remote[Comlink.releaseProxy]();
+      await releaseWorkerRemote({ remote });
     } catch {
       // Preserve the storage configuration error.
     } finally {
@@ -61,7 +61,7 @@ export async function createGlobalSearchWorkerClient({
     },
     async dispose() {
       try {
-        await remote[Comlink.releaseProxy]();
+        await releaseWorkerRemote({ remote });
       } finally {
         worker.terminate();
       }

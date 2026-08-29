@@ -1,3 +1,10 @@
+import { expandGitShortOptions } from '@/features/wesh/commands/git/short-options';
+import { parseGitMaxCount } from '@/features/wesh/commands/git/max-count';
+import { compileGitBasicRegex } from '@/features/wesh/commands/git/basic-regex';
+import type { GitBasicRegex } from '@/features/wesh/commands/git/basic-regex';
+import { compileGitExtendedRegex } from '@/features/wesh/commands/git/extended-regex';
+import type { GitExtendedRegex } from '@/features/wesh/commands/git/extended-regex';
+
 export type GitLogDecorationMode = 'none' | 'short' | 'full';
 
 export interface GitLogArguments {
@@ -11,9 +18,9 @@ export interface GitLogArguments {
   showPatch: boolean,
   sinceTimestamp: number | undefined,
   untilTimestamp: number | undefined,
-  grepPattern: RegExp | undefined,
+  grepPatterns: readonly GitBasicRegex[],
   pickaxeString: string | undefined,
-  pickaxeRegex: RegExp | undefined,
+  pickaxeRegex: GitExtendedRegex | undefined,
   revisionTerms: readonly string[],
   pathOperands: readonly string[],
 }
@@ -23,6 +30,9 @@ function parseLogDateBoundary({ value }: {
 }): number {
   if (/^@-?[0-9]+$/u.test(value))
     return Number.parseInt(value.slice(1), 10);
+  const rawTimestamp = /^([0-9]{9,})(?:[ \t]+[+-][0-9]{4})?$/u.exec(value);
+  if (rawTimestamp !== null)
+    return Number.parseInt(rawTimestamp[1]!, 10);
   const milliseconds = Date.parse(value);
   if (!Number.isFinite(milliseconds))
     throw new Error(`invalid date format: ${value}`);
@@ -39,15 +49,16 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
   let showPatch = false;
   let sinceTimestamp: number | undefined;
   let untilTimestamp: number | undefined;
-  let grepPattern: RegExp | undefined;
+  const grepPatterns: GitBasicRegex[] = [];
   let pickaxeString: string | undefined;
-  let pickaxeRegex: RegExp | undefined;
+  let pickaxeRegex: GitExtendedRegex | undefined;
   let parsingOptions = true;
   let readingPaths = false;
   const revisionTerms: string[] = [];
   const pathOperands: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]!;
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['p'], valueOptions: ['n', 'S', 'G'] });
+  for (let index = 0; index < normalizedArgs.length; index += 1) {
+    const arg = normalizedArgs[index]!;
     if (parsingOptions && arg === '--') {
       parsingOptions = false;
       readingPaths = true;
@@ -79,36 +90,29 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
     } else if (parsingOptions && arg === '--no-color') {
       // Output is uncolored by Wesh Git.
     } else if (parsingOptions && (arg === '-n' || arg === '--max-count')) {
-      const value = args[index + 1];
-      if (value === undefined || !/^[0-9]+$/u.test(value))
+      const value = normalizedArgs[index + 1];
+      if (value === undefined)
         throw new Error(`option '${arg}' requires a numeric value`);
-      maxCount = Number.parseInt(value, 10);
+      maxCount = parseGitMaxCount({ value, option: arg });
       index += 1;
     } else if (parsingOptions && /^-[0-9]+$/u.test(arg)) {
-      maxCount = Number.parseInt(arg.slice(1), 10);
+      maxCount = parseGitMaxCount({ value: arg.slice(1), option: '-n' });
     } else if (parsingOptions && arg.startsWith('--max-count=')) {
       const value = arg.slice('--max-count='.length);
-      if (!/^[0-9]+$/u.test(value))
-        throw new Error(`invalid max-count: ${value}`);
-      maxCount = Number.parseInt(value, 10);
-    } else if (parsingOptions && (arg === '--format' || arg === '--pretty')) {
-      const value = args[index + 1];
-      if (value === undefined)
-        throw new Error(`option '${arg}' requires a value`);
-      format = value.startsWith('format:') ? value.slice('format:'.length) : value;
+      maxCount = parseGitMaxCount({ value, option: '--max-count' });
+    } else if (parsingOptions && arg === '--pretty') {
+      format = undefined;
       oneline = false;
-      index += 1;
+    } else if (parsingOptions && arg === '--format') {
+      throw new Error('unsupported log argument: --format');
     } else if (parsingOptions && (arg.startsWith('--format=') || arg.startsWith('--pretty='))) {
       const value = arg.slice(arg.indexOf('=') + 1);
-      if (value === 'oneline') {
-        format = '%H %s';
-        oneline = true;
-      } else {
-        format = value.startsWith('format:') ? value.slice('format:'.length) : value;
-        oneline = false;
-      }
+      format = value === 'oneline'
+        ? '%H %s'
+        : value.startsWith('format:') ? value.slice('format:'.length) : value;
+      oneline = false;
     } else if (parsingOptions && (arg === '--since' || arg === '--after' || arg === '--until' || arg === '--before')) {
-      const value = args[index + 1];
+      const value = normalizedArgs[index + 1];
       if (value === undefined)
         throw new Error(`option '${arg}' requires a value`);
       const timestamp = parseLogDateBoundary({ value });
@@ -122,37 +126,43 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
     } else if (parsingOptions && (arg.startsWith('--until=') || arg.startsWith('--before='))) {
       untilTimestamp = parseLogDateBoundary({ value: arg.slice(arg.indexOf('=') + 1) });
     } else if (parsingOptions && arg === '-S') {
-      const value = args[index + 1];
-      if (value === undefined)
-        throw new Error("option '-S' requires a value");
+      const value = normalizedArgs[index + 1];
+      if (value === undefined || value.length === 0)
+        throw new Error("option '-S' requires a non-empty value");
       pickaxeString = value;
       index += 1;
     } else if (parsingOptions && arg.startsWith('-S')) {
-      pickaxeString = arg.slice(2);
+      const value = arg.slice(2);
+      if (value.length === 0) throw new Error("option '-S' requires a non-empty value");
+      pickaxeString = value;
     } else if (parsingOptions && arg === '-G') {
-      const value = args[index + 1];
-      if (value === undefined)
-        throw new Error("option '-G' requires a value");
-      pickaxeRegex = new RegExp(value, 'u');
+      const value = normalizedArgs[index + 1];
+      if (value === undefined || value.length === 0)
+        throw new Error("option '-G' requires a non-empty value");
+      pickaxeRegex = compileGitExtendedRegex({ pattern: value });
       index += 1;
     } else if (parsingOptions && arg.startsWith('-G')) {
-      pickaxeRegex = new RegExp(arg.slice(2), 'u');
+      const value = arg.slice(2);
+      if (value.length === 0) throw new Error("option '-G' requires a non-empty value");
+      pickaxeRegex = compileGitExtendedRegex({ pattern: value });
     } else if (parsingOptions && (arg === '--grep')) {
-      const value = args[index + 1];
+      const value = normalizedArgs[index + 1];
       if (value === undefined)
         throw new Error(`option '${arg}' requires a value`);
-      grepPattern = new RegExp(value, 'u');
+      grepPatterns.push(compileGitBasicRegex({ pattern: value }));
       index += 1;
     } else if (parsingOptions && arg.startsWith('--grep=')) {
-      grepPattern = new RegExp(arg.slice('--grep='.length), 'u');
+      grepPatterns.push(compileGitBasicRegex({ pattern: arg.slice('--grep='.length) }));
     } else if (parsingOptions && arg.startsWith('-')) {
       throw new Error(`unsupported log argument: ${arg}`);
     } else {
       revisionTerms.push(arg);
     }
   }
+  if (pickaxeString !== undefined && pickaxeRegex !== undefined)
+    throw new Error("options '-G' and '-S' cannot be used together");
   if (graph && (showStat || showPatch || pathOperands.length > 0 || sinceTimestamp !== undefined
-        || untilTimestamp !== undefined || grepPattern !== undefined || pickaxeString !== undefined
+        || untilTimestamp !== undefined || grepPatterns.length > 0 || pickaxeString !== undefined
         || pickaxeRegex !== undefined)) {
     throw new Error('log --graph does not support diff or history filtering options yet');
   }
@@ -167,7 +177,7 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
     showPatch,
     sinceTimestamp,
     untilTimestamp,
-    grepPattern,
+    grepPatterns,
     pickaxeString,
     pickaxeRegex,
     revisionTerms,

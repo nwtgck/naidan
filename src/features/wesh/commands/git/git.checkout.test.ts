@@ -75,4 +75,24 @@ M  a
 content=one
 `);
   });
+
+  it('treats a trailing -- without paths as a branch-mode option terminator', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+git reset --hard HEAD >/dev/null
+git branch topic HEAD~1
+git checkout topic -- >/dev/null 2>/dev/null
+git branch --show-current
+cat a`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+topic
+one
+`);
+  });
+
 });

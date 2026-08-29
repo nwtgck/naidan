@@ -1,1 +1,1 @@
-export const ChatAttachMenu__folder_copy = (): string => 'フォルダー（コピー）';
+export const ChatAttachMenu__folder_copy = (): string => 'フォルダ（コピー）';

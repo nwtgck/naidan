@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__folders_enabled_details = (): string => 'Für dieses Browserprofil standardmäßig aktiviert. Deaktiviere die Funktion, um den Tab „Ordner“ auszublenden, ohne gespeicherte Ordnerdaten zu ändern.';

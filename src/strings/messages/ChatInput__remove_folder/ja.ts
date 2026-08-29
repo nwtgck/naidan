@@ -1,1 +1,1 @@
-export const ChatInput__remove_folder = (): string => 'フォルダーを削除';
+export const ChatInput__remove_folder = (): string => 'フォルダを削除';

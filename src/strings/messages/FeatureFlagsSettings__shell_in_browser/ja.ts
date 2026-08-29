@@ -1,1 +1,1 @@
-export const FeatureFlagsSettings__shell_in_browser = (): string => 'ブラウザー内シェル';
+export const FeatureFlagsSettings__shell_in_browser = (): string => 'ブラウザ内シェル';

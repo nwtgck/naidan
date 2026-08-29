@@ -109,6 +109,57 @@ dir/b.ts
 `);
   });
 
+  it('supports POSIX character classes in wildcard pathspecs', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+mkdir files
+printf one > files/file1.txt
+printf alpha > files/filea.txt
+printf dash > files/file-.txt
+git add .
+git ls-files -- 'files/file[[:digit:]].txt'
+printf '%s\n' ---
+git ls-files -- 'files/file[![:digit:]].txt'`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+files/file1.txt
+---
+files/file-.txt
+files/filea.txt
+`);
+  });
+
+  it('matches wildcard pathspecs in the Git UTF-8 byte domain', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+printf one > café.txt
+printf two > cafあ.txt
+git add .
+printf '%s\n' ONE
+git -c core.quotepath=false ls-files -- 'caf?.txt'
+printf '%s\n' TWO
+git -c core.quotepath=false ls-files -- 'caf??.txt'
+printf '%s\n' THREE
+git -c core.quotepath=false ls-files -- 'caf???.txt'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+ONE
+TWO
+café.txt
+THREE
+cafあ.txt
+`);
+  });
+
   it('supports literal, glob, and exclude pathspec magic without changing default wildcard semantics', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

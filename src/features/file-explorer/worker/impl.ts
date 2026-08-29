@@ -1,4 +1,5 @@
 
+import type { WorkerServerApi } from '@/utils/worker-transport';
 import { WeshVFS } from '@/features/wesh/vfs';
 import { openFileReadStream } from '@/features/wesh/utils/fs';
 import { NaidanSysfsProvider } from '@/features/wesh/naidan-sysfs/provider';
@@ -32,6 +33,8 @@ import {
   isFileSystemEntryLookupMiss,
   writeReadableStreamToFileHandle,
 } from '@/utils/file-system-stream';
+import { createFileSystemDirectoryHandleReferenceResolver } from '@/utils/file-system-handle-transport';
+import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
 import {
   fileExplorerCancelDirectoryArchiveRequestSchema,
   fileExplorerAnalyzeZipUploadRequestSchema,
@@ -214,9 +217,10 @@ async function createSessionFromRoot({
   storageDirectoryRemote,
 }: {
   root: FileExplorerWorkerRootDescriptor,
-  naidanSysfsRemoteReader: Parameters<typeof createRemoteNaidanSysfsStorageReader>[0]['remoteReader'] | undefined,
+  naidanSysfsRemoteReader: NaidanSysfsRemoteReader | undefined,
   storageDirectoryRemote: WeshStorageDirectoryRemote | undefined,
 }): Promise<FileExplorerSession> {
+  const directoryHandleResolver = createFileSystemDirectoryHandleReferenceResolver();
   switch (root.kind) {
   case 'opfs-root':
     return {
@@ -229,7 +233,7 @@ async function createSessionFromRoot({
     return {
       kind: 'native-directory',
       rootName: root.rootName,
-      rootHandle: root.handle,
+      rootHandle: await directoryHandleResolver.resolve({ reference: root.handle }),
       readOnly: root.readOnly,
     };
   case 'storage-directory': {
@@ -262,7 +266,7 @@ async function createSessionFromRoot({
       case 'directory':
         await vfs.mount({
           path: mount.path,
-          handle: mount.handle,
+          handle: await directoryHandleResolver.resolve({ reference: mount.handle }),
           readOnly: mount.readOnly,
         });
         break;
@@ -1181,14 +1185,10 @@ async function listZipUploadExistingEntries({
   return entries;
 }
 
-export function createFileExplorerWorker(): IFileExplorerWorker {
+export function createFileExplorerWorker(): WorkerServerApi<IFileExplorerWorker> {
   return {
-    // This method implements the existing Comlink RPC contract shared with hosted and standalone clients.
-    // eslint-disable-next-line local-rules-named-args/require-named-args
-    async prepareSession(requestOrOptions, naidanSysfsRemoteReader, storageDirectoryRemote) {
-      const request = 'request' in requestOrOptions
-        ? requestOrOptions.request
-        : requestOrOptions;
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy values must remain top-level arguments.
+    async prepareSession({ request }, naidanSysfsRemoteReader, storageDirectoryRemote) {
       const validated = fileExplorerPrepareSessionRequestSchema.parse(request);
       const sessionId = createSessionId();
       sessions.set(sessionId, await createSessionFromRoot({

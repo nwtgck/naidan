@@ -9,12 +9,13 @@ import { readHead, updateHead, writeOrigHead } from "@/features/wesh/commands/gi
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { resolveCommitRevision } from "@/features/wesh/commands/git/revision";
 import { readTreeIntoIndex } from "@/features/wesh/commands/git/tree";
-import { replaceTrackedWorktree } from "@/features/wesh/commands/git/worktree";
 import { parseResetArguments } from "./arguments";
 import { readCommitIndex } from "@/features/wesh/commands/git/commit-index";
 import { collectStatus } from "@/features/wesh/commands/git/status";
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
+import { forceReplaceIndexAndWorktree } from "@/features/wesh/commands/git/index-worktree";
+import { clearMergeState, readMergeState } from "@/features/wesh/commands/git/merge-state";
 
 export async function runReset({ context, args }: {
     context: WeshCommandContext;
@@ -23,6 +24,13 @@ export async function runReset({ context, args }: {
   await assertSupportedRepositoryContentPolicy({ context });
   const repository = await discoverRepositoryFromContext({ context });
   const { mode, revisionExpression, pathOperands } = parseResetArguments({ args });
+  const mergeState = pathOperands === undefined
+    ? await readMergeState({ files: context.files, repository })
+    : undefined;
+  if (mergeState !== undefined && mode === 'soft') {
+    await context.text().error({ text: 'fatal: Cannot do a soft reset in the middle of a merge.\n' });
+    return { exitCode: 128 };
+  }
   if (pathOperands !== undefined) {
     const currentIndex = await readIndex({ files: context.files, repository });
     const sourceEntries = await readCommitIndex({ context, repository, revisionExpression });
@@ -83,9 +91,27 @@ export async function runReset({ context, args }: {
     throw new Error(`Unhandled reset mode: ${_ex}`);
   }
   }
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const identity = resolveGitReflogIdentity({ env: context.env, config });
   const timestamp = resolveGitTimestamp({ env: context.env, role: 'COMMITTER' });
+  switch (mode) {
+  case 'hard':
+    await forceReplaceIndexAndWorktree({
+      files: context.files,
+      repository,
+      currentIndexEntries: previousIndex,
+      targetEntries: targetIndex,
+      contentConfig: await resolveContentConfigForContext({ context, repository }),
+    });
+    break;
+  case 'soft':
+  case 'mixed':
+    break;
+  default: {
+    const _ex: never = mode;
+    throw new Error(`Unhandled reset mode before ref update: ${_ex}`);
+  }
+  }
   await writeOrigHead({ files: context.files, repository, objectId: oldHead.objectId });
   await updateHead({
     files: context.files,
@@ -102,6 +128,8 @@ export async function runReset({ context, args }: {
     return { exitCode: 0 };
   case 'mixed': {
     await writeIndex({ files: context.files, repository, entries: targetIndex });
+    if (mergeState !== undefined)
+      await clearMergeState({ files: context.files, repository });
     const status = await collectStatus({ context });
     const unstaged = status.entries.filter(entry => entry.worktreeStatus === 'M' || entry.worktreeStatus === 'D');
     if (unstaged.length > 0) {
@@ -113,14 +141,7 @@ export async function runReset({ context, args }: {
     return { exitCode: 0 };
   }
   case 'hard':
-    await replaceTrackedWorktree({
-      files: context.files,
-      repository,
-      previousEntries: previousIndex,
-      targetEntries: targetIndex,
-      contentConfig: await resolveContentConfigForContext({ context, repository }),
-    });
-    await writeIndex({ files: context.files, repository, entries: targetIndex });
+    await clearMergeState({ files: context.files, repository });
     await context.text().print({
       text: `HEAD is now at ${targetObjectId.slice(0, 7)} ${commitSubject({ commit: targetCommit })}\n`,
     });

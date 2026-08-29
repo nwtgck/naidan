@@ -1,1 +1,1 @@
-export const fileExplorer__new_folder = (): string => '新しいフォルダー';
+export const fileExplorer__new_folder = (): string => '新しいフォルダ';

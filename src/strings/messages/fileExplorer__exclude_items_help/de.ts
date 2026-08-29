@@ -1,0 +1,1 @@
+export const fileExplorer__exclude_items_help = (): string => 'Wähle Dateien oder Unterverzeichnisse aus, die ausgeschlossen werden sollen. Beim Ausschließen eines Verzeichnisses wird auch dessen gesamter Inhalt ausgeschlossen.';

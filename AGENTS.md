@@ -4,6 +4,7 @@
 *   **Strong Typing**: Prefer strict static typing to catch errors at build-time. Avoid `any`.
 *   **Keyed Promise Aggregation**: Use `promiseAllKeyed` from `@/utils/promise` instead of `Promise.all` for a fixed set of concurrent operations that produce values. Use `Promise.all` only for fixed operations that produce no values or for dynamic collections.
 *   **LM Terminology**: Use `LM` rather than `LLM` for generative language-model domain terminology, regardless of model size. In identifiers, use `Lm` or `lm` (for example, `LmProvider` and `lmParameters`). User-facing prose may intentionally use `LLM` when it is clearer to a general audience; explain ambiguous cases to the user before changing them.
+*   **Japanese UI Terminology**: For Japanese user-facing copy, follow `src/strings/terminology.tsv` and `src/strings/messages/AGENTS.md`. The TSV is a compact record of established concept, usage-context, and wording decisions, not a mechanical English-to-Japanese replacement table. Natural and accurate Japanese for the actual meaning and context takes priority. For concepts not yet represented in Naidan, use human-reviewed Google product UI and general-user help as the primary external reference because this project considers their wording the closest practical reference for forms familiar to Japanese users.
 *   **Exhaustive Type Checking**: Use `switch` statements with a `default` block assigning to `never` (e.g., `const _ex: never = val;`) when handling union types to ensure all cases are handled.
 
 # Exhaustive Object Handling
@@ -45,6 +46,26 @@ Use inline `Record<PropertyKey, never>` for rest-property checks. Do not create 
 # UI is not a data mirror
 
 Do not mechanically mirror DTO or domain state into UI. Prefer the user workflow. For example, inherited controls may stay visible so the user can see the effective value and editing that control can intentionally materialize a local override. Add comments/tests for these UX contracts so they are not simplified away as a data-model cleanup.
+
+## UI for unavailable features
+
+### Principle
+
+When a feature is unavailable, prefer keeping its UI visible and disabling unavailable actions rather than removing or hiding the UI.
+
+### Why
+
+- People using Naidan can understand the features and options Naidan provides.
+- UI position and structure stay more consistent across environments and configurations.
+- Fewer structural UI branches reduce opportunities for behavior to diverge or regress.
+
+For example, when a choice cannot be changed in the current environment, keep the choice UI and its effective value visible while disabling the change action.
+
+### Exceptions
+
+Hiding or structurally separating UI is appropriate when keeping it visible would mislead people using Naidan, when safety requires stronger isolation, or when a branch meaningfully contains a problem or dependency.
+
+The goal is not to eliminate branching itself. Prefer reducing unnecessary structural branches and representing unavailable states through disabled existing UI when that remains accurate and safe.
 
 *   **Verification**: Run `npm run typecheck`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions. `npm run test:only-failed` is mandatory and must always be run before commit.
 *   **Targeted Testing**: Test specific files or directories (multiple paths supported) by passing them as arguments: `npm run test:only-failed -- <paths...>`.

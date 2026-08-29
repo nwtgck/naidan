@@ -1,0 +1,1 @@
+export const StorageTab__local_storage_loses_attachments = (): string => 'Local Storage unterstützt keine dauerhafte Dateispeicherung. Daher sind die aktuellen Anhänge nach dem Wechsel nicht mehr zugänglich. Möchtest du fortfahren?';

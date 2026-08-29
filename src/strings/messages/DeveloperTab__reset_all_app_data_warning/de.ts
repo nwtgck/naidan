@@ -1,0 +1,1 @@
+export const DeveloperTab__reset_all_app_data_warning = (): string => 'Möchtest du wirklich alle Anwendungsdaten zurücksetzen? Dadurch werden alle Chats, Chatgruppen und Einstellungen am aktuellen Speicherort gelöscht.';

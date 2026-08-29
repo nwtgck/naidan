@@ -105,7 +105,7 @@ async function writeUnmergedCombinedDiff({ context, repository, path, entries, q
     regularFileMode: firstParent.mode,
   });
   if (content.mode !== firstParent.mode) throw new Error(`combined diff mode change is not supported yet: ${path}`);
-  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }) });
+  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }) });
   const resultBytes = attributes.clean({ path, bytes: content.bytes, indexBytes: firstObject.body });
   await writeTwoParentCombinedDiff({
     handle: context.stdout,
@@ -122,7 +122,7 @@ async function snapshotWorktreeForIndex({ context, repository, entries }: {
   entries: readonly GitIndexEntry[],
 }): Promise<GitDiffSnapshot> {
   const result: GitDiffSnapshot = new Map();
-  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }) });
+  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }) });
   for (const entry of entries) {
     if (entry.stage !== 0) throw new Error(`unmerged index entry is not supported yet: ${entry.path}`);
     if (entry.mode === 0o160000) {
@@ -233,12 +233,14 @@ export async function runDiff({ context, args }: {
     revisions,
     pathOperands,
   } = parseDiffArguments({ args });
+  if ((nameOnly && nameStatus) || (check && (nameOnly || nameStatus)))
+    throw new Error("options '--name-only', '--name-status', '--check', and '-s' cannot be used together");
 
   const repository = await discoverRepositoryFromContext({ context });
   if (!repositoryHasWorktree({ repository }) && !cached && revisions.length < 2) {
     assertRepositoryHasUsableWorktree({ context, repository });
   }
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const quoteNonAscii = quoteNonAsciiFromConfig({ config });
   const indexEntries = await readIndex({ files: context.files, repository });
   const stageZeroEntries = indexEntries.filter(entry => entry.stage === 0);
@@ -295,15 +297,16 @@ export async function runDiff({ context, args }: {
   const exactRenames = exactRenamesForPaths({ paths, left, right });
   const exactRenameSources = new Set(exactRenames.map(rename => rename.sourcePath));
   const exactRenameDestinations = new Set(exactRenames.map(rename => rename.destinationPath));
+  const hasDifferences = paths.length > 0 || unmergedPaths.length > 0;
+  const differenceExitCode = exitCode && hasDifferences ? 1 : 0;
+  if (quiet) return { exitCode: hasDifferences ? 1 : 0 };
   if (check) {
     const hasErrors = await checkWhitespaceErrors({ context, paths, left, right });
-    return { exitCode: hasErrors ? 2 : 0 };
+    return { exitCode: (hasErrors ? 2 : 0) | differenceExitCode };
   }
-  if (quiet) return { exitCode: paths.length === 0 && unmergedPaths.length === 0 ? 0 : 1 };
-  if (stat) {
-    if (nameOnly || nameStatus) throw new Error('combined diff stat/name output is not supported yet');
+  if (stat && !nameOnly && !nameStatus) {
     await writeDiffStat({ context, paths, left, right, quoteNonAscii, unmergedPaths });
-    return { exitCode: 0 };
+    return { exitCode: differenceExitCode };
   }
   if (nameOnly) {
     const separator = nul ? '\0' : '\n';
@@ -326,7 +329,7 @@ export async function runDiff({ context, args }: {
       });
       await context.text().print({ text: outputPaths.map(path => `${renderPath({ path })}${separator}`).join('') });
     }
-    return { exitCode: 0 };
+    return { exitCode: differenceExitCode };
   }
   if (nameStatus) {
     const normal = new Map(paths.map(path => {
@@ -375,7 +378,7 @@ export async function runDiff({ context, args }: {
         }).join(''),
       });
     }
-    return { exitCode: 0 };
+    return { exitCode: differenceExitCode };
   }
   const outputRows = [
     ...paths
@@ -403,7 +406,7 @@ export async function runDiff({ context, args }: {
     }
     }
   }
-  return { exitCode: exitCode && outputRows.length > 0 ? 1 : 0 };
+  return { exitCode: differenceExitCode };
 }
 
 export const TEST_ONLY = {

@@ -125,6 +125,26 @@ three
 `);
   });
 
+  it('accepts repeated -R short flags as a Git short-option cluster', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+printf 'one\nTWO\nthree\n' > f.txt
+git add f.txt
+git apply --cached -RR
+printf '%s\n' STATUS
+git status --porcelain=v1`,
+      stdinText: changeSecondLine,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+STATUS
+ M f.txt
+`);
+  });
+
   it('--reverse can remove a staged application while preserving the worktree', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -145,6 +165,38 @@ git status --porcelain=v1`,
 CACHED
 STATUS
  M f.txt
+`);
+  });
+
+  it('--cached overrides --index worktree mutation and validation', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+printf 'one\nlocal\nthree\n' > f.txt
+git apply --cached --index
+printf '%s\n' STATUS
+git status --porcelain=v1
+printf '%s\n' WORKTREE
+cat f.txt
+printf '%s\n' INDEX
+git diff --cached -- f.txt`,
+      stdinText: changeSecondLine,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain(`\
+STATUS
+MM f.txt
+WORKTREE
+one
+local
+three
+INDEX
+`);
+    expect(stdout.text).toContain(`\
+-two
++TWO
 `);
   });
 

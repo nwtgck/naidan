@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__shell_disabled_details = (): string => 'Desactivado para este perfil del navegador. Actívalo para volver a mostrar Shell en el navegador en el menú de herramientas del chat.';

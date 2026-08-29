@@ -1,0 +1,1 @@
+export const StandaloneVerificationPage__copied_diagnostics_may_contain_local_file_paths_in_browser_provided_error_stacks_or_resource_timing_entries = (): string => 'Los diagnósticos copiados pueden contener rutas de archivos locales en pilas de errores o entradas de temporización de recursos proporcionadas por el navegador.';

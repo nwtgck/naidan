@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
 import { readEffectiveConfig } from '@/features/wesh/commands/git/config';
 import { readIndex, readIndexRaw } from '@/features/wesh/commands/git/index-file';
@@ -5,6 +6,7 @@ import { matchRepositoryPaths } from '@/features/wesh/commands/git/pathspec';
 import { quoteGitPath, quoteNonAsciiFromConfig } from '@/features/wesh/commands/git/path-output';
 import { relativeToWorktree, discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
 import { writeHandleBytes } from '@/features/wesh/commands/git/files';
+import { expandGitShortOptions } from '@/features/wesh/commands/git/short-options';
 
 const textEncoder = new TextEncoder();
 
@@ -25,7 +27,8 @@ export async function runLsFiles({ context, args }: {
   let fullName = false;
   let parsingOptions = true;
   const operands: string[] = [];
-  for (const arg of args) {
+  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['s', 'c', 'z'], valueOptions: [] });
+  for (const arg of normalizedArgs) {
     if (parsingOptions && arg === '--') {
       parsingOptions = false;
       continue;
@@ -43,7 +46,7 @@ export async function runLsFiles({ context, args }: {
       nul = true;
       continue;
     }
-    if (parsingOptions && arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
+    if (parsingOptions && arg.startsWith('-')) throw new GitUsageError({ message: `unknown option: ${arg}` });
     operands.push(arg);
   }
 
@@ -71,7 +74,7 @@ export async function runLsFiles({ context, args }: {
     return { exitCode: 0 };
   }
 
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const quoteNonAscii = quoteNonAsciiFromConfig({ config });
   let entries = await readIndex({ files: context.files, repository });
   if (operands.length > 0) {

@@ -1,7 +1,13 @@
 import { z } from 'zod';
 
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
+import type { WorkerCapability, WorkerProxy } from '@/utils/worker-transport';
 import { idToRaw } from '@/01-models/ids';
+import {
+  createOpfsDirectoryHandleLocator,
+  fileSystemDirectoryHandleReferenceSchema,
+  type FileSystemDirectoryHandleReference,
+} from '@/utils/file-system-handle-transport';
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
 import type { StorageDirectoryWorkerMountGrant } from '@/00-storage/service/storage-file-system/types';
 import type { WeshStorageDirectoryRemote } from '@/features/wesh/storage-directory/types';
@@ -14,7 +20,7 @@ import {
 export const weshWorkerDirectoryMountSchema = z.object({
   type: z.literal('directory'),
   path: z.string().min(1),
-  handle: z.custom<FileSystemDirectoryHandle>(),
+  handle: fileSystemDirectoryHandleReferenceSchema,
   readOnly: z.boolean(),
 });
 
@@ -60,7 +66,7 @@ export const weshWorkerMountSchema = resolveMissingAsUndefined(z.discriminatedUn
 ]));
 
 export const weshWorkerInitRequestSchema = resolveMissingAsUndefined(z.object({
-  rootHandle: z.custom<FileSystemDirectoryHandle | 'readonly'>(),
+  rootHandle: z.union([fileSystemDirectoryHandleReferenceSchema, z.literal('readonly')]),
   mounts: z.array(weshWorkerMountSchema),
   user: z.string().min(1),
   initialEnv: z.record(z.string(), z.string()),
@@ -150,15 +156,15 @@ export interface IWeshWorker {
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   init(
-    request: WeshWorkerInitRequest,
-    naidanSysfsRemoteReader?: NaidanSysfsRemoteReader,
-    storageDirectoryRemote?: WeshStorageDirectoryRemote,
+    request: WorkerCapability<WeshWorkerInitRequest, 'file-system-handle-clone'>,
+    naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
+    storageDirectoryRemote?: WorkerProxy<WeshStorageDirectoryRemote>,
   ): Promise<void>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   startExecution(
     request: WeshWorkerExecuteRequest,
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-    onEvent?: (event: WeshWorkerRemoteExecutionEvent) => void | Promise<void>
+    onEvent?: WorkerProxy<(event: WeshWorkerRemoteExecutionEvent) => void | Promise<void>>
   ): Promise<WeshWorkerStartExecutionResponse>,
   awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>,
   interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>,
@@ -240,6 +246,63 @@ export async function mapWeshMountsToWorkerMounts({ mounts, storageDirectoryExec
     }
     }
   }));
+}
+
+export async function mapWeshMountsToOpfsWorkerMounts({
+  mounts,
+  opfsRoot,
+}: {
+  mounts: WeshMount[],
+  opfsRoot: FileSystemDirectoryHandle,
+}): Promise<WeshWorkerMount[]> {
+  const result: WeshWorkerMount[] = [];
+  for (const mount of mounts) {
+    switch (mount.type) {
+    case 'directory':
+      result.push({
+        type: 'directory',
+        path: mount.path,
+        handle: await createOpfsDirectoryHandleLocator({
+          opfsRoot,
+          handle: mount.handle,
+        }),
+        readOnly: mount.readOnly,
+      });
+      break;
+    case 'naidan_sysfs':
+      result.push({
+        type: 'naidan_sysfs',
+        path: mount.path,
+        readOnly: true,
+        storageType: mount.storageType,
+        visibility: mount.visibility,
+        binaryObjectAccess: mount.binaryObjectAccess,
+        currentChatId: idToRaw({ id: mount.currentChatId }),
+        currentChatGroupId: mount.currentChatGroupId === undefined
+          ? undefined
+          : idToRaw({ id: mount.currentChatGroupId }),
+      });
+      break;
+    default: {
+      const _ex: never = mount;
+      throw new Error(`Unsupported Wesh mount type: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+  return result;
+}
+
+export async function mapWeshRootHandleToOpfsReference({
+  rootHandle,
+  opfsRoot,
+}: {
+  rootHandle: FileSystemDirectoryHandle | 'readonly',
+  opfsRoot: FileSystemDirectoryHandle,
+}): Promise<FileSystemDirectoryHandleReference | 'readonly'> {
+  if (rootHandle === 'readonly') {
+    return 'readonly';
+  }
+  return createOpfsDirectoryHandleLocator({ opfsRoot, handle: rootHandle });
 }
 
 export function mapRemoteWeshWorkerExecutionEventToClientEvent({ event }: {
