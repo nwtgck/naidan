@@ -1,6 +1,7 @@
 import { mount, flushPromises } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImportExportModal from './ImportExportModal.vue';
 
 const mocks = vi.hoisted(() => ({
@@ -53,6 +54,10 @@ async function exportNow({ wrapper }: { wrapper: ReturnType<typeof mountModal> }
 }
 
 describe('ImportExportModal.vue', () => {
+  beforeAll(async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.exportData.mockResolvedValue({
