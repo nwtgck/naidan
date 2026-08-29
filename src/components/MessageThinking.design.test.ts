@@ -14,6 +14,15 @@ describe('MessageThinking Design', () => {
     replies: { items: [] },
   });
 
+  it('isolates its internal stacking layers from surrounding UI', () => {
+    const message = createMessageWithThinking('<think>Testing</think>Hello');
+    const wrapper = mount(MessageThinking, {
+      props: { message },
+    });
+
+    expect(wrapper.get('[data-testid="thinking-block"]').classes()).toContain('isolate');
+  });
+
   it('does not have uppercase header', () => {
     const message = createMessageWithThinking('<think>Testing</think>Hello');
     const wrapper = mount(MessageThinking, {
