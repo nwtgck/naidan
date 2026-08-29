@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readCommit } from "@/features/wesh/commands/git/commits";
 import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
@@ -43,18 +44,18 @@ export async function runStash({ context, args }: {
       } else if (arg === '-m' || arg === '--message') {
         const value = rest[index + 1];
         if (value === undefined)
-          throw new Error(`option '${arg}' requires a value`);
+          throw new GitUsageError({ message: `option '${arg}' requires a value` });
         message = value;
         index += 1;
       } else if (arg.startsWith('--message=')) {
         message = arg.slice('--message='.length);
       } else {
-        throw new Error(`unknown option: ${arg}`);
+        throw new GitUsageError({ message: `unknown option: ${arg}` });
       }
     }
     if (pathOperands.length > 0)
       throw new Error('stash push pathspecs are not supported yet');
-    const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+    const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
     const created = await createStash({
       files: context.files,
       repository,
@@ -106,7 +107,7 @@ export async function runStash({ context, args }: {
       if (parsingOptions && arg === '--index')
         restoreIndex = true;
       else if (parsingOptions && arg.startsWith('-'))
-        throw new Error(`unknown option: ${arg}`);
+        throw new GitUsageError({ message: `unknown option: ${arg}` });
       else
         operands.push(arg);
     }
@@ -161,7 +162,7 @@ export async function runStash({ context, args }: {
         continue;
       }
       if (parsingOptions && arg.startsWith('-'))
-        throw new Error(`unknown option: ${arg}`);
+        throw new GitUsageError({ message: `unknown option: ${arg}` });
       if (expression !== undefined)
         throw new Error('Too many revisions specified');
       expression = arg;
@@ -171,7 +172,7 @@ export async function runStash({ context, args }: {
     const baseObjectId = commit.parentObjectIds[0];
     if (baseObjectId === undefined)
       throw new Error('stash commit has invalid parents');
-    const stashShowConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+    const stashShowConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
     const stashShowQuoteNonAscii = quoteNonAsciiFromConfig({ config: stashShowConfig });
     if (showStat) {
       await writeRevisionStat({ context, repository, leftRevision: baseObjectId, rightRevision: stash.objectId, pathOperands: [], quoteNonAscii: stashShowQuoteNonAscii });

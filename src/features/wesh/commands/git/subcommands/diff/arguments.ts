@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 export interface GitDiffArguments {
   cached: boolean,
   nameOnly: boolean,
@@ -63,7 +64,7 @@ export function parseDiffArguments({ args }: { args: readonly string[] }): GitDi
     case '--no-ext-diff':
       break;
     default:
-      if (arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
+      if (arg.startsWith('-')) throw new GitUsageError({ message: `unknown option: ${arg}` });
       revisions.push(arg);
       break;
     }

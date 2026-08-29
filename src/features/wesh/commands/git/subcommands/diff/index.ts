@@ -105,7 +105,7 @@ async function writeUnmergedCombinedDiff({ context, repository, path, entries, q
     regularFileMode: firstParent.mode,
   });
   if (content.mode !== firstParent.mode) throw new Error(`combined diff mode change is not supported yet: ${path}`);
-  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }) });
+  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }) });
   const resultBytes = attributes.clean({ path, bytes: content.bytes, indexBytes: firstObject.body });
   await writeTwoParentCombinedDiff({
     handle: context.stdout,
@@ -122,7 +122,7 @@ async function snapshotWorktreeForIndex({ context, repository, entries }: {
   entries: readonly GitIndexEntry[],
 }): Promise<GitDiffSnapshot> {
   const result: GitDiffSnapshot = new Map();
-  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }) });
+  const attributes = await loadWorktreeAttributes({ files: context.files, repository, contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }) });
   for (const entry of entries) {
     if (entry.stage !== 0) throw new Error(`unmerged index entry is not supported yet: ${entry.path}`);
     if (entry.mode === 0o160000) {
@@ -240,7 +240,7 @@ export async function runDiff({ context, args }: {
   if (!repositoryHasWorktree({ repository }) && !cached && revisions.length < 2) {
     assertRepositoryHasUsableWorktree({ context, repository });
   }
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const quoteNonAscii = quoteNonAsciiFromConfig({ config });
   const indexEntries = await readIndex({ files: context.files, repository });
   const stageZeroEntries = indexEntries.filter(entry => entry.stage === 0);

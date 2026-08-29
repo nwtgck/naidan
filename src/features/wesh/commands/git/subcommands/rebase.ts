@@ -1,3 +1,5 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
+import { getConfigValue, readEffectiveConfig } from '@/features/wesh/commands/git/config';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readCommit } from "@/features/wesh/commands/git/commits";
 import { findMergeBases, isAncestor } from "@/features/wesh/commands/git/graph";
@@ -12,8 +14,8 @@ import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands
 
 
 type RebaseStartArguments = {
-  upstreamExpression: string;
-  ontoExpression: string;
+  upstreamExpression: string | undefined;
+  ontoExpression: string | undefined;
   branchExpression: string | undefined;
   explicitOnto: boolean;
 };
@@ -31,7 +33,7 @@ function parseRebaseStartArguments({ args }: { args: readonly string[] }): Rebas
     if (parsingOptions && arg === '--onto') {
       const value = args[index + 1];
       if (value === undefined)
-        throw new Error('git rebase --onto requires <newbase> <upstream> [<branch>]');
+        throw new GitUsageError({ message: 'usage: git rebase --onto <newbase> <upstream> [<branch>]', prefix: 'none' });
       ontoExpression = value;
       index += 1;
       continue;
@@ -41,15 +43,13 @@ function parseRebaseStartArguments({ args }: { args: readonly string[] }): Rebas
       continue;
     }
     if (parsingOptions && arg.startsWith('-'))
-      throw new Error(`unknown option: ${arg}`);
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
     operands.push(arg);
   }
-  if (operands.length !== 1 && operands.length !== 2) {
-    if (ontoExpression !== undefined)
-      throw new Error('git rebase --onto requires <newbase> <upstream> [<branch>]');
-    throw new Error('git rebase requires <upstream> [<branch>]');
+  if (operands.length > 2 || (ontoExpression !== undefined && operands.length === 0)) {
+    throw new GitUsageError({ message: 'usage: git rebase [--onto <newbase>] [<upstream> [<branch>]]', prefix: 'none' });
   }
-  const upstreamExpression = operands[0]!;
+  const upstreamExpression = operands[0];
   return {
     upstreamExpression,
     ontoExpression: ontoExpression ?? upstreamExpression,
@@ -69,12 +69,10 @@ export async function runRebase({ context, args }: {
     return abortRebase({ context });
   if (args.length === 1 && args[0] === '--skip')
     return skipRebase({ context });
-  const {
-    upstreamExpression,
-    ontoExpression,
-    branchExpression,
-    explicitOnto,
-  } = parseRebaseStartArguments({ args });
+  const parsed = parseRebaseStartArguments({ args });
+  let upstreamExpression = parsed.upstreamExpression;
+  let ontoExpression = parsed.ontoExpression;
+  const { branchExpression, explicitOnto } = parsed;
   const repository = await discoverRepositoryFromContext({ context });
   if (await readRebaseState({ files: context.files, repository }) !== undefined) {
     await context.text().error({ text: 'fatal: It seems that there is already a rebase-merge directory\n' });
@@ -88,9 +86,6 @@ export async function runRebase({ context, args }: {
   const currentHead = await readHead({ files: context.files, repository });
   if (currentHead.objectId === undefined)
     throw new Error('rebase requires HEAD to reference a commit');
-  const preflightFailure = await validateRebaseStartWorktree({ context, repository, headObjectId: currentHead.objectId });
-  if (preflightFailure !== undefined)
-    return preflightFailure;
   let headRefName: string;
   let origHeadObjectId: string;
   let branchDisplay: string;
@@ -110,8 +105,41 @@ export async function runRebase({ context, args }: {
     origHeadObjectId = branchObjectId;
     branchDisplay = headRefName.slice('refs/heads/'.length);
   }
+  if (upstreamExpression === undefined) {
+    const branchName = branchNameFromHead({ head: currentHead });
+    if (branchName === undefined) {
+      await context.text().print({
+        text: `You are not currently on a branch.\nPlease specify which branch you want to rebase against.\nSee git-rebase(1) for details.\n\n    git rebase '<branch>'\n\n`,
+      });
+      return { exitCode: 1 };
+    }
+    const config = await readEffectiveConfig({
+      files: context.files,
+      repository,
+      homePath: context.env.get('HOME') ?? '/',
+      cwd: context.cwd,
+      env: context.env,
+    });
+    const remoteName = getConfigValue({ config, key: `branch.${branchName}.remote` });
+    const mergeRefName = getConfigValue({ config, key: `branch.${branchName}.merge` });
+    if (remoteName === undefined || mergeRefName?.startsWith('refs/heads/') !== true) {
+      await context.text().print({
+        text: `There is no tracking information for the current branch.\nPlease specify which branch you want to rebase against.\nSee git-rebase(1) for details.\n\n    git rebase '<branch>'\n\nIf you wish to set tracking information for this branch you can do so with:\n\n    git branch --set-upstream-to=<remote>/<branch> ${branchName}\n\n`,
+      });
+      return { exitCode: 1 };
+    }
+    const upstreamBranchName = mergeRefName.slice('refs/heads/'.length);
+    upstreamExpression = remoteName === '.' ? mergeRefName : `refs/remotes/${remoteName}/${upstreamBranchName}`;
+    ontoExpression = upstreamExpression;
+  }
+
+  const preflightFailure = await validateRebaseStartWorktree({ context, repository, headObjectId: currentHead.objectId });
+  if (preflightFailure !== undefined)
+    return preflightFailure;
+
   const upstreamObjectId = await resolveCommitRevision({ files: context.files, repository, expression: upstreamExpression });
   await readCommit({ files: context.files, repository, objectId: upstreamObjectId });
+  if (ontoExpression === undefined) throw new Error('rebase onto expression was not resolved');
   const ontoObjectId = await resolveCommitRevision({ files: context.files, repository, expression: ontoExpression });
   await readCommit({ files: context.files, repository, objectId: ontoObjectId });
   if (!explicitOnto && await isAncestor({

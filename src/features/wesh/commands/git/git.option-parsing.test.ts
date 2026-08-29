@@ -497,6 +497,54 @@ git show --no-patch -- a`,
   });
 
 
+  it('accepts Git-compatible signed and leading-whitespace max-count values', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${repositorySetup}
+printf '%s\n' LOG
+git log --format='%s' -n ' +01'
+printf '%s\n' REFLOG
+git reflog --max-count=' +01'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain(`\
+LOG
+initial
+REFLOG
+`);
+    expect(stdout.text).toContain('HEAD@{0}: commit (initial): initial');
+  });
+
+  it("rejects max-count values outside Git's signed 32-bit range", async () => {
+    const log = await execute({
+      script: `\
+git init -q log-repo
+git -C log-repo config user.name Tester
+git -C log-repo config user.email tester@example.com
+printf 'one\n' > log-repo/a
+git -C log-repo add a
+git -C log-repo commit -m initial >/dev/null
+git -C log-repo log -2147483648`,
+    });
+    const reflog = await execute({
+      script: `\
+git init -q reflog-repo
+git -C reflog-repo config user.name Tester
+git -C reflog-repo config user.email tester@example.com
+printf 'one\n' > reflog-repo/a
+git -C reflog-repo add a
+git -C reflog-repo commit -m initial >/dev/null
+git -C reflog-repo reflog -2147483648`,
+    });
+
+    expect(log.result.exitCode).not.toBe(0);
+    expect(log.stderr.text).toContain('requires a numeric value');
+    expect(reflog.result.exitCode).not.toBe(0);
+    expect(reflog.stderr.text).toContain('requires a numeric value');
+  });
+
   it('treats negative reflog max-count values as unlimited like Git', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -566,9 +614,28 @@ ${repositorySetup}
 git branch --show-current --list`,
     });
 
-    expect(result.exitCode).toBe(128);
+    expect(result.exitCode).toBe(129);
     expect(stdout.text).toBe('');
-    expect(stderr.text).toBe('fatal: options are incompatible\n');
+    expect(stderr.text).toContain('usage: git branch');
+  });
+
+
+  it('lets branch --show-current ignore operands and list scope like Git', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${repositorySetup}
+git branch --show-current ignored
+git branch --show-current -r ignored
+git branch --show-current -a -- ignored`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+master
+master
+master
+`);
   });
 
 

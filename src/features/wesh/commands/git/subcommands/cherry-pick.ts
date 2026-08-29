@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import type { GitReplayRequest } from "@/features/wesh/commands/git/replay-operation";
 import { executeReplay } from "@/features/wesh/commands/git/replay-operation";
@@ -22,7 +23,7 @@ function parseCherryPickArguments({ args }: { args: readonly string[] }): GitRep
     if (parsingOptions && (arg === '-m' || arg === '--mainline')) {
       const value = args[index + 1];
       if (value === undefined || !/^[1-9][0-9]*$/u.test(value))
-        throw new Error(`option '${arg}' requires a positive parent number`);
+        throw new GitUsageError({ message: `option '${arg}' requires a positive parent number` });
       mainlineParentNumber = Number.parseInt(value, 10);
       index += 1;
       continue;
@@ -34,16 +35,16 @@ function parseCherryPickArguments({ args }: { args: readonly string[] }): GitRep
     if (parsingOptions && arg.startsWith('--mainline=')) {
       const value = arg.slice('--mainline='.length);
       if (!/^[1-9][0-9]*$/u.test(value))
-        throw new Error("option '--mainline' requires a positive parent number");
+        throw new GitUsageError({ message: "option '--mainline' requires a positive parent number" });
       mainlineParentNumber = Number.parseInt(value, 10);
       continue;
     }
     if (parsingOptions && arg.startsWith('-'))
-      throw new Error(`unsupported cherry-pick option: ${arg}`);
+      throw new GitUsageError({ message: `unsupported cherry-pick option: ${arg}` });
     operands.push(arg);
   }
   if (operands.length === 0)
-    throw new Error('cherry-pick requires at least one commit');
+    throw new GitUsageError({ message: 'usage: git cherry-pick [--no-edit] [-m <parent-number>] <commit>...', prefix: 'none' });
   return { action: 'start', operands, mainlineParentNumber };
 }
 

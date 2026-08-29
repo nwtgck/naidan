@@ -46,7 +46,7 @@ export async function runApply({ context, args }: {
         previousEntries: plan.originalEntries,
         targetEntries: written.entries,
         paths: written.touchedPaths,
-        contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }),
+        contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }),
       });
       return { exitCode: 0 };
     }
@@ -71,7 +71,7 @@ export async function runApply({ context, args }: {
         previousEntries: plan.originalEntries,
         targetEntries: written.entries,
         paths: written.touchedPaths,
-        contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env }),
+        contentConfig: await readWorktreeContentConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env }),
       });
     }
     await writeIndex({ files: context.files, repository, entries: written.entries });

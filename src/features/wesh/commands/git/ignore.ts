@@ -2,7 +2,8 @@ import type { GitFiles } from './files';
 import { pathExists, readFileText } from './files';
 import type { GitRepository } from './repository';
 import { joinPath, relativeToWorktree } from './repository';
-import { compileGitPattern } from './wildmatch';
+import { compileGitWildmatch } from './wildmatch';
+import type { GitWildmatchMatcher } from './wildmatch';
 
 interface GitIgnoreRule {
   basePath: string,
@@ -10,7 +11,7 @@ interface GitIgnoreRule {
   negated: boolean,
   directoryOnly: boolean,
   hasSlash: boolean,
-  regex: RegExp,
+  matcher: GitWildmatchMatcher,
 }
 
 export interface GitIgnoreMatcher {
@@ -54,7 +55,11 @@ function parseRule({ line, basePath }: { line: string, basePath: string }): GitI
     negated,
     directoryOnly,
     hasSlash,
-    regex: compileGitPattern({ pattern: value, basenameAnywhere: !hasSlash }),
+    matcher: compileGitWildmatch({
+      pattern: value,
+      slashMode: 'wildcards-exclude-slash',
+      anchorMode: hasSlash ? 'full' : 'basename-anywhere',
+    }),
   };
 }
 
@@ -77,7 +82,7 @@ function ruleMatches({ rule, path, isDirectory }: {
   if (rule.directoryOnly && !isDirectory) return false;
   const relative = relativeToBase({ path, basePath: rule.basePath });
   if (relative.length === 0) return false;
-  return rule.regex.test(relative);
+  return rule.matcher.matches({ value: relative });
 }
 
 function evaluateRules({ rules, path, isDirectory }: {

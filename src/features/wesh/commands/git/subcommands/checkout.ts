@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import type { CheckoutLikeArguments } from "@/features/wesh/commands/git/checkout-like";
 import { executeCheckoutLike } from "@/features/wesh/commands/git/checkout-like";
@@ -15,7 +16,7 @@ function parseCheckoutBranchArguments({ args }: { args: readonly string[] }): Ch
     if (arg === '-b') {
       const value = normalizedArgs[index + 1];
       if (value === undefined)
-        throw new Error(`option '${arg}' requires a value`);
+        throw new GitUsageError({ message: `option '${arg}' requires a value` });
       createBranchName = value;
       index += 1;
       continue;
@@ -27,7 +28,7 @@ function parseCheckoutBranchArguments({ args }: { args: readonly string[] }): Ch
     if (arg === '--')
       throw new Error('path checkout is not supported by git checkout yet');
     if (arg.startsWith('-'))
-      throw new Error(`unknown option: ${arg}`);
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
     operands.push(arg);
   }
   if (createBranchName !== undefined) {
@@ -49,6 +50,7 @@ export async function runCheckout({ context, args }: {
     args: readonly string[];
 }): Promise<WeshCommandResult> {
   await assertSupportedRepositoryContentPolicy({ context });
+  if (args.length === 0) return { exitCode: 0 };
   const separatorIndex = args.indexOf('--');
   if (separatorIndex < 0)
     return executeCheckoutLike({ context, parsed: parseCheckoutBranchArguments({ args }) });
