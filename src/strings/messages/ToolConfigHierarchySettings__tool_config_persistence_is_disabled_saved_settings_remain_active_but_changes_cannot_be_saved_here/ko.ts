@@ -1,0 +1,1 @@
+export const ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here = (): string => '도구 구성 영구 저장이 비활성화되어 있습니다. 저장된 설정은 계속 적용되지만 여기에서 변경 사항을 저장할 수 없습니다.';

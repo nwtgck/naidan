@@ -1,0 +1,1 @@
+export const useSettings__request_to_use_storage_type_was_ignored = ({ savedStorageType, requestedStorageType }: { savedStorageType: string; requestedStorageType: string }): string => `Der Speichertyp ist bereits auf „${savedStorageType}“ gesetzt. Die Anfrage, „${requestedStorageType}“ über einen Query-Parameter zu verwenden, wurde ignoriert.`;

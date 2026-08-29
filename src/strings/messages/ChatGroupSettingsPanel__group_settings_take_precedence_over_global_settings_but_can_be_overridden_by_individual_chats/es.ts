@@ -1,0 +1,1 @@
+export const ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats = (): string => 'La configuración del grupo tiene prioridad sobre la configuración global, pero los chats individuales pueden sobrescribirla.';

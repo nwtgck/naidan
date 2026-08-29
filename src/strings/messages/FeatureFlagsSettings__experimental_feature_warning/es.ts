@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__experimental_feature_warning = (): string => 'Esta función es experimental. Las futuras actualizaciones pueden incluir cambios incompatibles o eliminar la compatibilidad con los datos y comportamientos introducidos por esta opción.';

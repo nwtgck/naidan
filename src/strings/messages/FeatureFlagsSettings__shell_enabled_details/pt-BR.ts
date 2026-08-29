@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__shell_enabled_details = (): string => 'Ativado por padrão para este perfil do navegador. Desative para remover o Shell no navegador do menu de ferramentas da conversa.';

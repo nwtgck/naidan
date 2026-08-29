@@ -1,0 +1,1 @@
+export const useSettings__invalid_storage_type_falling_back_to_default_detection = (): string => 'Se encontró un tipo de almacenamiento no válido en localStorage. Se usará la detección predeterminada.';

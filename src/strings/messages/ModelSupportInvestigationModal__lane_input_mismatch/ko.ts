@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__lane_input_mismatch = ({ mismatchIndex }: { mismatchIndex: number | undefined }): string => `Reference와 Production의 입력 토큰이 ${mismatchIndex === undefined ? "더 짧은 접두부의 경계" : `인덱스 ${mismatchIndex}`}에서 달라집니다`;

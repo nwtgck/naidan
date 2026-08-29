@@ -25,12 +25,27 @@ const selectedLocale = computed({
   },
 });
 
-const languages = [
-  // Keep locale names self-identifying. If users accidentally switch to a
-  // language they cannot read, these fixed labels still show how to return.
-  { value: 'en', label: 'English' },
-  { value: 'ja', label: '日本語' },
-] as const;
+// Keep locale names self-identifying. If users accidentally switch to a
+// language they cannot read, these fixed labels still show how to return.
+const languageLabels: Record<UiLocale, string> = {
+  en: 'English',
+  ja: '日本語',
+  'zh-Hans': '简体中文',
+  'pt-BR': 'Português (Brasil)',
+  es: 'Español',
+  ko: '한국어',
+  de: 'Deutsch',
+};
+
+const languages = (Object.entries(languageLabels) as [UiLocale, string][])
+  .map(([value, label]) => ({ value, label }))
+  // Plain string comparison intentionally keeps the order independent of the
+  // browser and active locale.
+  .toSorted((left, right) => {
+    if (left.label < right.label) return -1;
+    if (left.label > right.label) return 1;
+    return 0;
+  });
 
 const currentLanguageLabel = computed(() => {
   return languages.find(lang => lang.value === selectedLocale.value)?.label ?? 'English';

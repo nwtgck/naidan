@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__model_file_plan_summary = ({ eligibleCount, candidateCount, registryFailureCount }: { eligibleCount: number; candidateCount: number; registryFailureCount: number }): string => `${candidateCount}개 후보 중 ${eligibleCount}개가 필수 리포지토리 파일을 모두 보유 · Registry 실패 ${registryFailureCount}건`;

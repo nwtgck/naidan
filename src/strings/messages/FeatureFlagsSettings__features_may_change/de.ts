@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__features_may_change = (): string => 'Experimentelle Funktionen können sich in zukünftigen Versionen ändern oder entfernt werden. Prüfe die Details vor der Aktivierung.';

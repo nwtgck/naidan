@@ -1,0 +1,1 @@
+export const StorageTab__ephemeral_description = (): string => 'Armazenamento somente em memória. Todos os dados serão perdidos ao recarregar a página ou fechar a aba. Nenhum dado persistente será deixado.';

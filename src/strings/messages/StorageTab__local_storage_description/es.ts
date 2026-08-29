@@ -1,0 +1,1 @@
+export const StorageTab__local_storage_description = (): string => 'Guarda los datos localmente en el almacenamiento estándar del navegador. Tamaño limitado (5–10 MB). Las imágenes enviadas NO se conservan.';

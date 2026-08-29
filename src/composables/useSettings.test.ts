@@ -122,39 +122,50 @@ describe('useSettings Initialization and Bootstrap', () => {
     expect(mockScheduledIdleTasks).toHaveLength(1);
   });
 
-  it('uses the browser locale without persisting it during initialization', async () => {
-    vi.stubGlobal('navigator', { language: 'ja-JP' });
-    localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+  it.each([
+    ['ja-JP', 'ja'],
+    ['zh', 'zh-Hans'],
+    ['zh-CN', 'zh-Hans'],
+    ['pt-BR', 'pt-BR'],
+  ] as const)(
+    'uses browser locale %s as %s without persisting it during initialization',
+    async (browserLocale, expectedLocale) => {
+      vi.stubGlobal('navigator', { language: browserLocale });
+      localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
 
-    const { init, settings } = useSettings();
-    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+      const { init, settings } = useSettings();
+      await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
 
-    expect(currentLocale.value).toBe('ja');
-    expect(settings.value.experimental?.locale).toBeUndefined();
-    expect(mocks.updateSettings).not.toHaveBeenCalled();
-  });
+      expect(currentLocale.value).toBe(expectedLocale);
+      expect(settings.value.experimental?.locale).toBeUndefined();
+      expect(mocks.updateSettings).not.toHaveBeenCalled();
+    },
+  );
 
-  it('persists an explicitly selected locale in experimental settings', async () => {
-    const current = {
-      ...DEFAULT_SETTINGS,
-      endpoint: { type: 'openai' as const, url: '' },
-      storageType: 'local' as const,
-      experimental: {
-        fakeLm: 'disabled' as const,
-      },
-    };
-    mocks.loadSettings.mockResolvedValue(current);
-    const { setLocale, settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
-    __testOnlySetSettings({ newSettings: current });
+  it.each(['ja', 'zh-Hans', 'pt-BR'] as const)(
+    'persists explicitly selected locale %s in experimental settings',
+    async (locale) => {
+      const current = {
+        ...DEFAULT_SETTINGS,
+        endpoint: { type: 'openai' as const, url: '' },
+        storageType: 'local' as const,
+        experimental: {
+          fakeLm: 'disabled' as const,
+        },
+      };
+      mocks.loadSettings.mockResolvedValue(current);
+      const { setLocale, settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
+      __testOnlySetSettings({ newSettings: current });
 
-    await setLocale({ locale: 'ja' });
+      await setLocale({ locale });
 
-    expect(settings.value.experimental).toEqual({
-      fakeLm: 'disabled',
-      locale: 'ja',
-    });
-    expect(currentLocale.value).toBe('ja');
-  });
+      expect(settings.value.experimental).toEqual({
+        fakeLm: 'disabled',
+        locale,
+      });
+      expect(currentLocale.value).toBe(locale);
+    },
+  );
 
   it('applies overlapping explicit locale changes in request order', async () => {
     const current = {
@@ -182,6 +193,11 @@ describe('useSettings Initialization and Bootstrap', () => {
           Test__locale_change_queue: () => 'Language',
         }),
         ja: japaneseLoader,
+        'zh-Hans': async () => ({ Test__locale_change_queue: () => 'Language' }),
+        'pt-BR': async () => ({ Test__locale_change_queue: () => 'Language' }),
+        es: async () => ({ Test__locale_change_queue: () => 'Language' }),
+        ko: async () => ({ Test__locale_change_queue: () => 'Language' }),
+        de: async () => ({ Test__locale_change_queue: () => 'Language' }),
       },
     });
 

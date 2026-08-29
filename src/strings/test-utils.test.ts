@@ -27,6 +27,11 @@ describe('ensureAllStringsForTest', () => {
       loaders: {
         en: resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
         ja: resolvedModule({ module: { ChatInput__type_a_message: () => 'メッセージを入力...' } }),
+        'zh-Hans': resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
+        'pt-BR': resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
+        es: resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
+        ko: resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
+        de: resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
       },
     });
 
@@ -43,6 +48,11 @@ describe('ensureAllStringsForTest', () => {
       loaders: {
         en: resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
         ja: resolvedModule({ module: { ChatInput__type_a_message: () => 'メッセージを入力...' } }),
+        'zh-Hans': resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
+        'pt-BR': resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
+        es: resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
+        ko: resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
+        de: resolvedModule({ module: { ChatInput__type_a_message: () => 'Type a message...' } }),
       },
     });
 

@@ -1,0 +1,1 @@
+export const OllamaManagementView__view_and_unload_models_currently_held_in_memory_by_this_ollama_server = (): string => 'Modelle anzeigen und entladen, die dieser Ollama-Server derzeit im Arbeitsspeicher hält.';

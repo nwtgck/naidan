@@ -1,0 +1,1 @@
+export const fileExplorer__unsupported_items_were_skipped = ({ count }: { count: number }): string => `Se ${count === 1 ? 'omitió' : 'omitieron'} ${count.toLocaleString()} ${count === 1 ? 'elemento no compatible' : 'elementos no compatibles'}.`;

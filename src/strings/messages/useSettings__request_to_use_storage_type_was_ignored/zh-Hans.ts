@@ -1,0 +1,1 @@
+export const useSettings__request_to_use_storage_type_was_ignored = ({ savedStorageType, requestedStorageType }: { savedStorageType: string; requestedStorageType: string }): string => `存储类型已设置为“${savedStorageType}”。通过查询参数使用“${requestedStorageType}”的请求已被忽略。`;

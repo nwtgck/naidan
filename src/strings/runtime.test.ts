@@ -12,6 +12,7 @@ import {
   registerStringBoundary,
   setLocale,
   TEST_ONLY,
+  type StringBoundaryLoaders,
   type StringBoundaryModule,
 } from './runtime';
 
@@ -19,6 +20,26 @@ function resolvedModule({ module }: {
   module: StringBoundaryModule;
 }): () => Promise<StringBoundaryModule> {
   return async () => module;
+}
+
+function registerTestStringBoundary({ boundaryId, keys, loaders }: {
+  boundaryId: string;
+  keys: readonly string[];
+  loaders: Pick<StringBoundaryLoaders, 'en' | 'ja'>;
+}): void {
+  registerStringBoundary({
+    boundaryId,
+    keys,
+    loaders: {
+      en: loaders.en,
+      ja: loaders.ja,
+      'zh-Hans': loaders.en,
+      'pt-BR': loaders.en,
+      es: loaders.en,
+      ko: loaders.en,
+      de: loaders.en,
+    },
+  });
 }
 
 beforeEach(() => {
@@ -46,6 +67,30 @@ describe('Boundary Strings runtime', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([
+    ['zh', 'zh-Hans'],
+    ['zh-CN', 'zh-Hans'],
+    ['zh-Hans-SG', 'zh-Hans'],
+    ['pt', 'pt-BR'],
+    ['pt-BR', 'pt-BR'],
+    ['es-MX', 'es'],
+    ['ko-KR', 'ko'],
+    ['de-AT', 'de'],
+  ] as const)('maps browser locale %s to supported locale %s', (browserLocale, expected) => {
+    vi.stubGlobal('navigator', { language: browserLocale });
+    expect(TEST_ONLY.resolveBrowserLocale()).toBe(expected);
+    vi.unstubAllGlobals();
+  });
+
+  it.each(['jam', 'esu', 'kok', 'del', 'zh-TW', 'zh-Hant', 'pt-PT'] as const)(
+    'falls back instead of confusing unsupported browser locale %s with a supported locale',
+    (browserLocale) => {
+      vi.stubGlobal('navigator', { language: browserLocale });
+      expect(TEST_ONLY.resolveBrowserLocale()).toBe('en');
+      vi.unstubAllGlobals();
+    },
+  );
+
   it('constrains locale preparation before a foreign package loader can run', async () => {
     const meta = document.createElement('meta');
     meta.name = STANDALONE_PACKAGE_LOCALE_META_NAME;
@@ -58,7 +103,7 @@ describe('Boundary Strings runtime', () => {
       const japaneseLoader = vi.fn(resolvedModule({
         module: { ChatInput__cancel: () => 'キャンセル' },
       }));
-      registerStringBoundary({
+      registerTestStringBoundary({
         boundaryId: 'package-constrained-boundary',
         keys: ['ChatInput__cancel'],
         loaders: {
@@ -105,7 +150,7 @@ describe('Boundary Strings runtime', () => {
     const cancelModule = new Promise<StringBoundaryModule>((resolve) => {
       resolveCancel = resolve;
     });
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'message-boundary',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -113,7 +158,7 @@ describe('Boundary Strings runtime', () => {
         ja: resolvedModule({ module: { ChatInput__type_a_message: () => 'メッセージを入力...' } }),
       },
     });
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'cancel-boundary',
       keys: ['ChatInput__cancel'],
       loaders: {
@@ -166,7 +211,7 @@ describe('Boundary Strings runtime', () => {
     const boundaryModule = new Promise<StringBoundaryModule>((resolve) => {
       resolveBoundary = resolve;
     });
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input-boundary',
       keys: ['ChatInput__type_a_message', 'ChatInput__cancel'],
       loaders: {
@@ -216,7 +261,7 @@ describe('Boundary Strings runtime', () => {
     const cancelModule = new Promise<StringBoundaryModule>((resolve) => {
       resolveCancel = resolve;
     });
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'message-boundary',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -224,7 +269,7 @@ describe('Boundary Strings runtime', () => {
         ja: resolvedModule({ module: { ChatInput__type_a_message: () => 'メッセージを入力...' } }),
       },
     });
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'cancel-boundary',
       keys: ['ChatInput__cancel'],
       loaders: {
@@ -262,7 +307,7 @@ describe('Boundary Strings runtime', () => {
   });
 
   it('rerenders all message consumers when the locale changes', async () => {
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input-boundary',
       keys: ['ChatInput__type_a_message', 'ChatInput__cancel'],
       loaders: {
@@ -316,7 +361,7 @@ describe('Boundary Strings runtime', () => {
   });
 
   it('reactively replaces a loaded message after boundary re-registration', async () => {
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input-boundary',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -334,7 +379,7 @@ describe('Boundary Strings runtime', () => {
     }));
     expect(wrapper.text()).toBe('Old message');
 
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input-boundary',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -350,7 +395,7 @@ describe('Boundary Strings runtime', () => {
   });
 
   it('rejects a boundary pack that omits a registered message', async () => {
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'incomplete-boundary',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -374,7 +419,7 @@ describe('Boundary Strings runtime', () => {
     const smallLoader = vi.fn(resolvedModule({
       module: { ChatInput__type_a_message: () => 'Type a message...' },
     }));
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'large-boundary',
       keys: ['ChatInput__type_a_message', 'ChatInput__cancel'],
       loaders: {
@@ -382,7 +427,7 @@ describe('Boundary Strings runtime', () => {
         ja: resolvedModule({ module: {} }),
       },
     });
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'small-boundary',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -400,7 +445,7 @@ describe('Boundary Strings runtime', () => {
     const englishLoader = vi.fn(resolvedModule({
       module: { ChatInput__type_a_message: () => 'Type a message...' },
     }));
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -416,7 +461,7 @@ describe('Boundary Strings runtime', () => {
   });
 
   it('ensures a parameterized imperative message is loaded', async () => {
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input-errors',
       keys: ['ChatInput__failed_to_copy'],
       loaders: {
@@ -443,7 +488,7 @@ describe('Boundary Strings runtime', () => {
     const englishLoader = vi.fn(resolvedModule({
       module: { ChatInput__type_a_message: () => 'Type a message...' },
     }));
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -460,7 +505,7 @@ describe('Boundary Strings runtime', () => {
   });
 
   it('updates the document language when the locale changes', async () => {
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'language-selector',
       keys: ['LanguageSelector__language'],
       loaders: {
@@ -475,7 +520,7 @@ describe('Boundary Strings runtime', () => {
   });
 
   it('clears loaded messages when a boundary registration is replaced', async () => {
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -485,7 +530,7 @@ describe('Boundary Strings runtime', () => {
     });
     await expect(ensureStrings.ChatInput__type_a_message()).resolves.toBe('Old message');
 
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -498,7 +543,7 @@ describe('Boundary Strings runtime', () => {
   });
 
   it('preserves a shared message from another loaded boundary when one registration is replaced', async () => {
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'first-chat-input',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -506,7 +551,7 @@ describe('Boundary Strings runtime', () => {
         ja: resolvedModule({ module: { ChatInput__type_a_message: () => '最初' } }),
       },
     });
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'second-chat-input',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -517,7 +562,7 @@ describe('Boundary Strings runtime', () => {
     await TEST_ONLY.ensureBoundaryLoaded({ boundaryId: 'first-chat-input', locale: 'en' });
     await TEST_ONLY.ensureBoundaryLoaded({ boundaryId: 'second-chat-input', locale: 'en' });
 
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'first-chat-input',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -534,7 +579,7 @@ describe('Boundary Strings runtime', () => {
     const japaneseLoader = vi.fn(resolvedModule({
       module: { LanguageSelector__language: () => '言語' },
     }));
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'language-selector',
       keys: ['LanguageSelector__language'],
       loaders: {
@@ -557,7 +602,7 @@ describe('Boundary Strings runtime', () => {
     const japaneseLoader = vi.fn(resolvedModule({
       module: { LanguageSelector__language: () => '言語' },
     }));
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'language-selector',
       keys: ['LanguageSelector__language'],
       loaders: {
@@ -582,7 +627,7 @@ describe('Boundary Strings runtime', () => {
     const newLoader = vi.fn(resolvedModule({
       module: { ChatInput__type_a_message: () => 'New message' },
     }));
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -592,7 +637,7 @@ describe('Boundary Strings runtime', () => {
     });
 
     const messagePromise = ensureStrings.ChatInput__type_a_message();
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -613,7 +658,7 @@ describe('Boundary Strings runtime', () => {
     const oldModule = new Promise<StringBoundaryModule>((_resolve, reject) => {
       rejectOld = reject;
     });
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -623,7 +668,7 @@ describe('Boundary Strings runtime', () => {
     });
     await vi.advanceTimersByTimeAsync(200);
 
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'chat-input',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -650,7 +695,7 @@ describe('Boundary Strings runtime', () => {
     const secondJapaneseLoader = vi.fn(resolvedModule({
       module: { ChatInput__cancel: () => 'キャンセル' },
     }));
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'first-boundary',
       keys: ['ChatInput__type_a_message'],
       loaders: {
@@ -660,7 +705,7 @@ describe('Boundary Strings runtime', () => {
     });
 
     const switching = setLocale({ locale: 'ja' });
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'second-boundary',
       keys: ['ChatInput__cancel'],
       loaders: {
@@ -682,7 +727,7 @@ describe('Boundary Strings runtime', () => {
     const japaneseModule = new Promise<StringBoundaryModule>((resolve) => {
       resolveJapanese = resolve;
     });
-    registerStringBoundary({
+    registerTestStringBoundary({
       boundaryId: 'language-selector',
       keys: ['LanguageSelector__language'],
       loaders: {

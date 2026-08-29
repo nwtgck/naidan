@@ -1,0 +1,1 @@
+export const GlobalToolsSettings__tool_defaults_can_be_overridden = (): string => 'Lege die Standardwerte für alle Chats fest. Chatgruppen und einzelne Chats können jedes Tool unabhängig überschreiben.';

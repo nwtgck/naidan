@@ -1,0 +1,1 @@
+export const TransformersJsManager__models_are_cached_locally_in_the_browser_opfs_for_offline_use = (): string => 'Os modelos são armazenados em cache localmente no navegador (OPFS) para uso offline.';

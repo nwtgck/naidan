@@ -1,0 +1,1 @@
+export const fileExplorer__unsupported_items_were_skipped = ({ count }: { count: number }): string => `${count.toLocaleString()} ${count === 1 ? 'nicht unterstütztes Element wurde' : 'nicht unterstützte Elemente wurden'} übersprungen.`;

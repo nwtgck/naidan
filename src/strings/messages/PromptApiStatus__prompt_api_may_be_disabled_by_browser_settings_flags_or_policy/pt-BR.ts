@@ -1,0 +1,1 @@
+export const PromptApiStatus__prompt_api_may_be_disabled_by_browser_settings_flags_or_policy = (): string => 'A Prompt API pode estar desativada pelas configurações do navegador, opções experimentais ou política da organização.';

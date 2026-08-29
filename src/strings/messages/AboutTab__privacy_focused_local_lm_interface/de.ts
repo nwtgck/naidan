@@ -1,0 +1,1 @@
+export const AboutTab__privacy_focused_local_lm_interface = (): string => 'Eine datenschutzorientierte LLM-Oberfläche für die lokale Nutzung, die direkt aus einem portablen Verzeichnis ausgeführt werden kann.';

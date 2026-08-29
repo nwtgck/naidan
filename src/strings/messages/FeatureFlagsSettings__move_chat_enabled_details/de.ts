@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__move_chat_enabled_details = (): string => 'Nach dem Senden einer Nachricht wird der Chat an den Anfang seiner Gruppe verschoben. Chats auf oberster Ebene werden direkt unter die Chatgruppen verschoben.';

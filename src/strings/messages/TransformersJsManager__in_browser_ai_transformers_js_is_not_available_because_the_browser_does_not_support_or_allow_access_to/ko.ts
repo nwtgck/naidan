@@ -1,0 +1,1 @@
+export const TransformersJsManager__in_browser_ai_transformers_js_is_not_available_because_the_browser_does_not_support_or_allow_access_to = (): string => '브라우저가 다음 기능을 지원하지 않거나 접근을 허용하지 않아 브라우저 내 AI(Transformers.js)를 사용할 수 없습니다:';

@@ -1,0 +1,1 @@
+export const ServerSetupGuide__download_the_latest_binary_or_build_from_source = (): string => 'Lade die neueste Binärdatei von der llama.cpp-Releases-Seite herunter oder erstelle sie aus dem Quellcode.';

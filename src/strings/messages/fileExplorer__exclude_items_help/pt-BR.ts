@@ -1,0 +1,1 @@
+export const fileExplorer__exclude_items_help = (): string => 'Escolha arquivos ou subdiretórios que não devem ser incluídos. Ao não incluir um diretório, todo o conteúdo abaixo dele também ficará de fora.';

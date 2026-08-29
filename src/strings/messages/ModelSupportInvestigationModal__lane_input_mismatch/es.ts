@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__lane_input_mismatch = ({ mismatchIndex }: { mismatchIndex: number | undefined }): string => `Los tokens de entrada de Reference y Production divergen en ${mismatchIndex === undefined ? "el límite del prefijo más corto" : `índice ${mismatchIndex}`}`;

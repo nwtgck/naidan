@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__shell_enabled_details = (): string => 'Für dieses Browserprofil standardmäßig aktiviert. Deaktiviere die Funktion, um „Shell im Browser“ aus dem Chat-Tool-Menü auszublenden.';

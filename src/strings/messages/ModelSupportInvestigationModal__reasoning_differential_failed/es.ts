@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__reasoning_differential_failed = ({ effort, name, message }: { effort: "none" | "high", name: string, message: string }): string => `El diferencial de esfuerzo de razonamiento en Production falló en ${effort}: ${name}: ${message}`;

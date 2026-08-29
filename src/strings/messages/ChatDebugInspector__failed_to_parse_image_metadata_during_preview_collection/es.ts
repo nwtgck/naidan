@@ -1,0 +1,1 @@
+export const ChatDebugInspector__failed_to_parse_image_metadata_during_preview_collection = (): string => 'No se pudieron analizar los metadatos de la imagen durante la recopilación de la vista previa.';

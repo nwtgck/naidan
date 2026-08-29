@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__tool_persistence_disabled_details = (): string => 'As configurações salvas continuam ativas. As configurações globais e de grupo de conversas são somente leitura, enquanto novas alterações de conversa duram apenas durante a sessão atual do navegador.';

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  BOUNDARY_STRING_LOCALES,
   boundaryStringMessageFilePath,
   classifyBoundaryStringFile,
   createBoundaryStringProjectPaths,
@@ -17,7 +18,7 @@ const messageKey = 'ChatInput__type_a_message';
 function createFixtureRoot(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-boundary-strings-'));
   temporaryDirectories.push(root);
-  for (const locale of ['en', 'ja']) {
+  for (const locale of BOUNDARY_STRING_LOCALES) {
     const directory = path.join(root, 'src/strings/messages', messageKey);
     fs.mkdirSync(directory, { recursive: true });
     fs.writeFileSync(
@@ -27,10 +28,10 @@ function createFixtureRoot(): string {
   }
   const catalogDirectory = path.join(root, 'src/strings/catalogs');
   fs.mkdirSync(catalogDirectory, { recursive: true });
-  for (const locale of ['en', 'ja']) {
+  for (const locale of BOUNDARY_STRING_LOCALES) {
     fs.writeFileSync(
       path.join(catalogDirectory, `${locale}.ts`),
-      `import { ${messageKey} } from '@/strings/messages/${messageKey}/${locale}';\n\nexport const ${locale} = {\n  ${messageKey},\n};\n`,
+      `import { ${messageKey} } from '@/strings/messages/${messageKey}/${locale}';\n\nexport const catalog = {\n  ${messageKey},\n};\n`,
     );
   }
   return root;
@@ -69,16 +70,13 @@ describe('Boundary Strings message catalog', () => {
     expect(catalog.messages).toHaveLength(1);
     expect(message).toEqual({
       key: messageKey,
-      modulesByLocale: {
-        en: {
-          filePath: path.join(root, `src/strings/messages/${messageKey}/en.ts`),
-          sourceModuleId: `/src/strings/messages/${messageKey}/en.ts`,
+      modulesByLocale: Object.fromEntries(BOUNDARY_STRING_LOCALES.map((locale) => [
+        locale,
+        {
+          filePath: path.join(root, `src/strings/messages/${messageKey}/${locale}.ts`),
+          sourceModuleId: `/src/strings/messages/${messageKey}/${locale}.ts`,
         },
-        ja: {
-          filePath: path.join(root, `src/strings/messages/${messageKey}/ja.ts`),
-          sourceModuleId: `/src/strings/messages/${messageKey}/ja.ts`,
-        },
-      },
+      ])),
     });
     expect(catalog.messagesByKey.get(messageKey)).toBe(message);
   });
@@ -115,10 +113,23 @@ describe('Boundary Strings message catalog', () => {
     const catalogPath = path.join(root, 'src/strings/catalogs/en.ts');
     fs.writeFileSync(
       catalogPath,
-      fs.readFileSync(catalogPath, 'utf8').replace('export const en', 'const en'),
+      fs.readFileSync(catalogPath, 'utf8').replace('export const catalog', 'const catalog'),
     );
     expect(() => readFixtureCatalog({ root })).toThrow(
-      'English catalog must export exactly one "en" object.',
+      'English catalog must export exactly one "catalog" object.',
+    );
+  });
+
+  it('requires a locale-independent catalog export name', () => {
+    const root = createFixtureRoot();
+    const catalogPath = path.join(root, 'src/strings/catalogs/ja.ts');
+    fs.writeFileSync(
+      catalogPath,
+      fs.readFileSync(catalogPath, 'utf8').replace('export const catalog', 'export const ja'),
+    );
+
+    expect(() => readFixtureCatalog({ root })).toThrow(
+      'Japanese catalog "catalog" was not found.',
     );
   });
 
@@ -159,7 +170,7 @@ describe('Boundary Strings message catalog', () => {
   it('rejects locale catalogs with a different key set', () => {
     const root = createFixtureRoot();
     const catalogPath = path.join(root, 'src/strings/catalogs/ja.ts');
-    fs.writeFileSync(catalogPath, 'export const ja = {};\n');
+    fs.writeFileSync(catalogPath, 'export const catalog = {};\n');
     expect(() => readFixtureCatalog({ root })).toThrow(
       `Japanese catalog does not match the English catalog (missing: ${messageKey}).`,
     );

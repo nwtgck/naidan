@@ -1,0 +1,1 @@
+export const StorageTab__persistent_storage_description = (): string => 'Ative o armazenamento persistente para impedir que o navegador exclua automaticamente o histórico de conversas e as configurações quando houver pressão de armazenamento.';

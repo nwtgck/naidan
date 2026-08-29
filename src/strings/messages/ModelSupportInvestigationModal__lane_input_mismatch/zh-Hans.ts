@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__lane_input_mismatch = ({ mismatchIndex }: { mismatchIndex: number | undefined }): string => `Reference 与 Production 的输入 token 在${mismatchIndex === undefined ? "较短前缀的边界" : `索引 ${mismatchIndex}`}处出现差异`;

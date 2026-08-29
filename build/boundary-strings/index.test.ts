@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { build, createServer, type PluginOption, type ViteDevServer } from 'vite';
 
 import { createBoundaryStringsPlugin } from './index';
+import { BOUNDARY_STRING_LOCALES, type BoundaryStringLocale } from './message-catalog';
 
 const temporaryDirectories: string[] = [];
 const fixtureServers: ViteDevServer[] = [];
@@ -25,19 +26,19 @@ function createFixtureRoot(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-boundary-build-'));
   temporaryDirectories.push(root);
 
-  for (const locale of ['en', 'ja']) {
+  for (const locale of BOUNDARY_STRING_LOCALES) {
     writeFile({
       filePath: path.join(root, `src/strings/catalogs/${locale}.ts`),
       source: `\
 import { ${messageKey} } from '@/strings/messages/${messageKey}/${locale}';
 
-export const ${locale} = {
+export const catalog = {
   ${messageKey},
 };
 `,
     });
   }
-  for (const locale of ['en', 'ja']) {
+  for (const locale of BOUNDARY_STRING_LOCALES) {
     writeFile({
       filePath: path.join(root, `src/strings/messages/${messageKey}/${locale}.ts`),
       source: `export const ${messageKey} = (): string => ${JSON.stringify(`${locale} message`)};\n`,
@@ -198,7 +199,7 @@ async function waitForStructureRevision({ action, server }: {
 
 function writeCatalog({ keys, locale, root }: {
   keys: readonly string[];
-  locale: 'en' | 'ja';
+  locale: BoundaryStringLocale;
   root: string;
 }): void {
   const imports = keys.map((key) => {
@@ -208,7 +209,7 @@ function writeCatalog({ keys, locale, root }: {
   writeFile({
     filePath: path.join(root, `src/strings/catalogs/${locale}.ts`),
     source: `\
-${imports}${imports.length === 0 ? '' : '\n\n'}export const ${locale} = {
+${imports}${imports.length === 0 ? '' : '\n\n'}export const catalog = {
 ${entries}${entries.length === 0 ? '' : '\n'}};
 `,
   });
@@ -355,7 +356,7 @@ export const message = lazyStrings.${messageKey}();
     });
     const moduleIds = chunks.flatMap((chunk) => Object.keys(chunk.modules));
 
-    for (const locale of ['en', 'ja']) {
+    for (const locale of BOUNDARY_STRING_LOCALES) {
       const suffix = `/src/strings/messages/${messageKey}/${locale}.ts`;
       expect(moduleIds.filter((moduleId) => moduleId.replaceAll('\\', '/').endsWith(suffix))).toHaveLength(1);
     }
@@ -451,7 +452,7 @@ export const message = lazyStrings.${messageKey}();
       code: initialTransform?.code ?? '',
     });
 
-    for (const locale of ['en', 'ja'] as const) {
+    for (const locale of BOUNDARY_STRING_LOCALES) {
       writeFile({
         filePath: path.join(root, `src/strings/messages/${nextMessageKey}/${locale}.ts`),
         source: `export const ${nextMessageKey} = (): string => ${JSON.stringify(`${locale} next`)};\n`,
@@ -500,7 +501,7 @@ export const message = lazyStrings.${nextMessageKey}();
 
     await waitForStructureRevision({
       action: () => {
-        for (const locale of ['en', 'ja'] as const) {
+        for (const locale of BOUNDARY_STRING_LOCALES) {
           writeFile({
             filePath: path.join(root, `src/strings/messages/${nextMessageKey}/${locale}.ts`),
             source: `export const ${nextMessageKey} = (): string => ${JSON.stringify(`${locale} next`)};\n`,
@@ -535,8 +536,9 @@ export const message = lazyStrings.${messageKey}();
           force: true,
           recursive: true,
         });
-        writeCatalog({ keys: [], locale: 'en', root });
-        writeCatalog({ keys: [], locale: 'ja', root });
+        for (const locale of BOUNDARY_STRING_LOCALES) {
+          writeCatalog({ keys: [], locale, root });
+        }
       },
       server,
     });

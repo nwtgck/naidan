@@ -1,0 +1,1 @@
+export const TransformersJsManager__delete_model_warning = ({ modelId }: { modelId: string }): string => `„${modelId}“ wirklich löschen? Dadurch werden alle zugehörigen Dateien aus dem lokalen Browserspeicher entfernt.`;

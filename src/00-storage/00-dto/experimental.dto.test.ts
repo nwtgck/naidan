@@ -92,8 +92,10 @@ describe('optionalExperimentalFieldSchemaDto', () => {
   });
 
   it('accepts supported persisted locales and records unsupported values as unreadable', () => {
-    const supported = OptionalExperimentalSettingsSchemaDto.parse({ locale: 'ja' });
-    expect(supported?.locale).toBe('ja');
+    for (const locale of ['en', 'ja', 'zh-Hans', 'pt-BR', 'es', 'ko', 'de'] as const) {
+      const supported = OptionalExperimentalSettingsSchemaDto.parse({ locale });
+      expect(supported?.locale).toBe(locale);
+    }
 
     const unsupported = OptionalExperimentalSettingsSchemaDto.parse({ locale: 'fr' });
     expect(unsupported?.locale).toBeUndefined();

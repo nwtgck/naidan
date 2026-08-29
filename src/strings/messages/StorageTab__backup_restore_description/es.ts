@@ -1,0 +1,1 @@
+export const StorageTab__backup_restore_description = (): string => 'Haz una copia de seguridad de todo el historial de chats y la configuración en un archivo ZIP, o restaura una exportación anterior.';

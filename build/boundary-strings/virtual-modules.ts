@@ -187,7 +187,8 @@ export function createBoundaryRegistrationModuleSource({ boundary, compactionSta
     const loader = compactionState === undefined
       ? `() => import(${moduleId})`
       : `() => import(${moduleId}).then((module) => module.default)`;
-    return `  ${locale}: ${loader}`;
+    // Quote locale keys because valid BCP 47 tags can contain hyphens.
+    return `  ${JSON.stringify(locale)}: ${loader}`;
   }).join(',\n')}\n}`;
 
   return `\

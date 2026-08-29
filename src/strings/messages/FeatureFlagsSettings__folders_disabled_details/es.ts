@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__folders_disabled_details = (): string => 'Desactivado para este perfil del navegador. Actívalo para restaurar la pestaña Carpetas y volver a acceder a las carpetas guardadas.';

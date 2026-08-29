@@ -1,0 +1,1 @@
+export const useBinaryActions__delete_binary_object_warning = ({ name }: { name: string }): string => `Tem certeza de que deseja excluir "${name}"? Esta ação não pode ser desfeita. Qualquer mensagem de chat que faça referência a este arquivo o mostrará como ausente.`;

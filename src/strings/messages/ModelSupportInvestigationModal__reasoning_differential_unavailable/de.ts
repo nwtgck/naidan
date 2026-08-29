@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__reasoning_differential_unavailable = ({ reason }: { reason: string }): string => `Differenz der Production-Reasoning-Intensität nicht verfügbar: ${reason}`;

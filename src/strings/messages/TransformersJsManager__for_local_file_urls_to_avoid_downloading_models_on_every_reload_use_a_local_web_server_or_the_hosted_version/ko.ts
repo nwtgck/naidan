@@ -1,0 +1,1 @@
+export const TransformersJsManager__for_local_file_urls_to_avoid_downloading_models_on_every_reload_use_a_local_web_server_or_the_hosted_version = (): string => '기능을 비활성화하는 경우가 많습니다. 다시 로드할 때마다 모델을 다운로드하지 않으려면 로컬 웹 서버 또는 Hosted 버전을 사용하세요.';

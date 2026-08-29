@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__tool_persistence_disabled_details = (): string => 'Gespeicherte Einstellungen bleiben aktiv. Globale und Chatgruppen-Einstellungen sind schreibgeschützt, neue Chat-Änderungen gelten nur für die aktuelle Browsersitzung.';

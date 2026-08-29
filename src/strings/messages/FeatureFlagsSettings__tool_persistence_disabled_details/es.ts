@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__tool_persistence_disabled_details = (): string => 'La configuración guardada sigue activa. La configuración global y de grupo de chats es de solo lectura, mientras que los cambios nuevos del chat duran solo durante la sesión actual del navegador.';

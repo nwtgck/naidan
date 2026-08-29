@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__cache_revision_unknown = (): string => 'Der Cache-Pfad zeichnet die angeforderte Revision auf, aber Abschlussmarker prüfen die Dateibytes nicht unabhängig gegen den aufgelösten Commit-SHA.';

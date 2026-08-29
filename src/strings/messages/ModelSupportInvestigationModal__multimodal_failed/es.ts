@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__multimodal_failed = ({ strategy, name, message }: { strategy: string, name: string, message: string }): string => `La prueba multimodal de Production falló (${strategy}): ${name}: ${message}`;

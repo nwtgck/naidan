@@ -1,0 +1,1 @@
+export const ToolConfigHierarchySettings__tool_config_persistence_is_disabled_saved_settings_remain_active_but_changes_cannot_be_saved_here = (): string => 'La persistencia de la configuración de herramientas está desactivada. La configuración guardada sigue activa, pero los cambios no se pueden guardar aquí.';

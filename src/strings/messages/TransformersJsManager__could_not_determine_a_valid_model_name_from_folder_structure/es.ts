@@ -1,0 +1,1 @@
+export const TransformersJsManager__could_not_determine_a_valid_model_name_from_folder_structure = (): string => 'No se pudo determinar un nombre de modelo válido a partir de la estructura de carpetas.';

@@ -1,0 +1,1 @@
+export const StandaloneVerificationPage__checks_file_protocol_startup_routing_styles_lazy_chunks_systemjs_and_repeated_worker_creation_without_changing_chats_or_settings = (): string => '检查 file 协议启动、路由、样式、延迟加载分块、SystemJS 和重复创建 Worker，且不会更改聊天或设置。';

@@ -1,0 +1,1 @@
+export const TransformersJsManager__delete_model_warning = ({ modelId }: { modelId: string }): string => `¿Seguro que quieres eliminar «${modelId}»? Esto eliminará todos los archivos asociados del almacenamiento local del navegador.`;

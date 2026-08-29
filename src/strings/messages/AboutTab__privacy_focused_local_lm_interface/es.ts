@@ -1,0 +1,1 @@
+export const AboutTab__privacy_focused_local_lm_interface = (): string => 'Una interfaz de LLM centrada en la privacidad para uso local, diseñada para ejecutarse directamente desde un directorio portátil.';

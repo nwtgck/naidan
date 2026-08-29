@@ -1,0 +1,1 @@
+export const DeveloperTab__reset_all_app_data_warning = (): string => 'Tem certeza de que deseja redefinir todos os dados do aplicativo? Isso excluirá todas as conversas, grupos de conversas e configurações do local de armazenamento atual.';

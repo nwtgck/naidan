@@ -1,0 +1,1 @@
+export const StorageTab__backup_restore_description = (): string => 'Faça backup de todo o histórico de conversas e das configurações em um arquivo ZIP ou restaure a partir de uma exportação anterior.';

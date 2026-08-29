@@ -1,0 +1,1 @@
+export const FeatureFlagsSettings__move_chat_enabled_details = (): string => 'Al enviar un mensaje, el chat se mueve a la parte superior de su grupo. Los chats de nivel superior se colocan justo debajo de los grupos de chats.';

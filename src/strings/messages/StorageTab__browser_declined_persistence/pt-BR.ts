@@ -1,0 +1,1 @@
+export const StorageTab__browser_declined_persistence = (): string => 'O navegador recusou a solicitação de armazenamento persistente. Isso pode acontecer se o site ainda tiver pouco uso ou se as configurações do navegador impedirem a persistência.';
