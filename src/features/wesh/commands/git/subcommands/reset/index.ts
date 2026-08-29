@@ -91,7 +91,7 @@ export async function runReset({ context, args }: {
     throw new Error(`Unhandled reset mode: ${_ex}`);
   }
   }
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const identity = resolveGitReflogIdentity({ env: context.env, config });
   const timestamp = resolveGitTimestamp({ env: context.env, role: 'COMMITTER' });
   switch (mode) {

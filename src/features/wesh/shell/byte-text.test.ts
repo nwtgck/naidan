@@ -164,6 +164,13 @@ describe('shell byte text', () => {
     });
   });
 
+  it('preserves UTF-8 BOM bytes instead of treating them as decoder metadata', () => {
+    const bytes = Uint8Array.of(0xef, 0xbb, 0xbf, 0x61);
+    const text = decodeShellBytesToText({ bytes });
+    expect(text).toBe('\ufeffa');
+    expect([...encodeShellTextToBytes({ text })]).toEqual([...bytes]);
+  });
+
   it('encodes raw-byte sentinels without changing valid surrogate pairs', () => {
     const text = `A😀${String.fromCharCode(0xdcff)}B`;
     expect([...encodeShellTextToBytes({ text })]).toEqual([

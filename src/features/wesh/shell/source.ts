@@ -98,7 +98,7 @@ export function createShebangStrippedShellSource({ source }: {
       }
       }
     };
-    let state: 'checking-prefix' | 'passthrough' | 'complete' = 'checking-prefix';
+    let state: 'checking-prefix' | 'skipping-shebang' | 'passthrough' | 'complete' = 'checking-prefix';
     let prefix = new Uint8Array(0);
     let pendingOutput = new Uint8Array(0);
 
@@ -127,20 +127,40 @@ export function createShebangStrippedShellSource({ source }: {
           return pending;
         }
 
-        switch (state) {
-        case 'complete':
-          return undefined;
-        case 'passthrough':
-          return readSource({ maximumBytes });
-        case 'checking-prefix':
-          break;
-        default: {
-          const _ex: never = state;
-          throw new Error(`Unhandled shebang source state: ${_ex}`);
-        }
-        }
-
         while (true) {
+          switch (state) {
+          case 'complete':
+            return undefined;
+          case 'passthrough':
+            return readSource({ maximumBytes });
+          case 'skipping-shebang': {
+            const next = await readSource({ maximumBytes });
+            if (next === undefined) {
+              state = 'complete';
+              return undefined;
+            }
+            if (next.length === 0) {
+              throw new Error('Shell source returned an empty chunk before end of source');
+            }
+            const newlineIndex = next.indexOf(0x0a);
+            if (newlineIndex < 0) {
+              continue;
+            }
+            state = 'passthrough';
+            const output = next.subarray(newlineIndex + 1);
+            if (output.length > 0) {
+              return output;
+            }
+            return readSource({ maximumBytes });
+          }
+          case 'checking-prefix':
+            break;
+          default: {
+            const _ex: never = state;
+            throw new Error(`Unhandled shebang source state: ${_ex}`);
+          }
+          }
+
           const newlineIndex = prefix.indexOf(0x0a);
           if (newlineIndex >= 0) {
             state = 'passthrough';
@@ -154,7 +174,12 @@ export function createShebangStrippedShellSource({ source }: {
             return readSource({ maximumBytes });
           }
 
-          if (prefix.length >= 2 && !(prefix[0] === 0x23 && prefix[1] === 0x21)) {
+          if (prefix.length >= 2) {
+            if (prefix[0] === 0x23 && prefix[1] === 0x21) {
+              state = 'skipping-shebang';
+              prefix = new Uint8Array(0);
+              continue;
+            }
             state = 'passthrough';
             pendingOutput = prefix;
             prefix = new Uint8Array(0);
@@ -168,9 +193,6 @@ export function createShebangStrippedShellSource({ source }: {
           const next = await readSource({ maximumBytes });
           if (next === undefined) {
             state = 'complete';
-            if (prefix.length >= 2 && prefix[0] === 0x23 && prefix[1] === 0x21) {
-              return undefined;
-            }
             pendingOutput = prefix;
             prefix = new Uint8Array(0);
             return takePendingOutput({ maximumBytes });
@@ -205,6 +227,70 @@ function stripShebangText({ text }: { text: string }): string {
 }
 
 const SHELL_SOURCE_READ_CHUNK_BYTES = 64 * 1024;
+const NUL_BYTE = 0x00;
+
+function createParserVisibleByteView({ rawBytes }: {
+  rawBytes: Uint8Array,
+}): Uint8Array {
+  const firstNul = rawBytes.indexOf(NUL_BYTE);
+  if (firstNul < 0) {
+    return rawBytes;
+  }
+
+  let visibleLength = firstNul;
+  for (let index = firstNul + 1; index < rawBytes.length; index += 1) {
+    if (rawBytes[index] !== NUL_BYTE) {
+      visibleLength += 1;
+    }
+  }
+
+  const visibleBytes = new Uint8Array(visibleLength);
+  visibleBytes.set(rawBytes.subarray(0, firstNul), 0);
+  let outputIndex = firstNul;
+  for (let index = firstNul + 1; index < rawBytes.length; index += 1) {
+    const byte = rawBytes[index];
+    if (byte === undefined) {
+      throw new Error(`Missing shell source byte at offset ${index}`);
+    }
+    if (byte === NUL_BYTE) {
+      continue;
+    }
+    visibleBytes[outputIndex] = byte;
+    outputIndex += 1;
+  }
+  return visibleBytes;
+}
+
+function findRawByteOffsetForParserByteBoundary({ rawBytes, parserVisibleBytes, parserByteOffset }: {
+  rawBytes: Uint8Array,
+  parserVisibleBytes: Uint8Array,
+  parserByteOffset: number,
+}): number {
+  if (!Number.isSafeInteger(parserByteOffset) || parserByteOffset < 0) {
+    throw new Error(`Invalid shell source parser-byte offset: ${parserByteOffset}`);
+  }
+  if (parserByteOffset === 0) {
+    return 0;
+  }
+  if (parserVisibleBytes === rawBytes) {
+    if (parserByteOffset > rawBytes.length) {
+      throw new Error(`Shell parser consumed beyond available source bytes: ${parserByteOffset}`);
+    }
+    return parserByteOffset;
+  }
+
+  let visibleBytes = 0;
+  for (let index = 0; index < rawBytes.length; index += 1) {
+    if (rawBytes[index] === NUL_BYTE) {
+      continue;
+    }
+    visibleBytes += 1;
+    if (visibleBytes === parserByteOffset) {
+      return index + 1;
+    }
+  }
+  throw new Error(`Shell parser consumed beyond available source bytes: ${parserByteOffset}`);
+}
 
 class ShellSourceByteBuffer {
   private storage: Uint8Array<ArrayBuffer> = new Uint8Array(0);
@@ -326,21 +412,46 @@ export function createShellSourceReader({ source }: {
     }> = [];
 
     const appendProjection = (): string => {
+      const rawBytes = retainedBytes.view().subarray(projectedBytes);
+      const parserVisibleBytes = createParserVisibleByteView({ rawBytes });
       const projection = decodeShellUtf8Text({
-        bytes: retainedBytes.view().subarray(projectedBytes),
+        bytes: parserVisibleBytes,
         completion,
       });
-      if (projection.consumedBytes > 0) {
-        if (projection.text.length === 0) {
-          throw new Error('Shell source projected bytes without parser-visible text');
+      let consumedRawBytes = findRawByteOffsetForParserByteBoundary({
+        rawBytes,
+        parserVisibleBytes,
+        parserByteOffset: projection.consumedBytes,
+      });
+      switch (completion) {
+      case 'complete':
+        if (projection.consumedBytes !== parserVisibleBytes.length) {
+          throw new Error('Complete shell source left parser-visible bytes unprojected');
         }
-        projectionSegments.push({
-          textCharacters: projection.text.length,
-          rawBytes: projection.consumedBytes,
-        });
+        consumedRawBytes = rawBytes.length;
+        break;
+      case 'may-continue':
+        break;
+      default: {
+        const _ex: never = completion;
+        throw new Error(`Unhandled shell source completion: ${_ex}`);
+      }
+      }
+      if (consumedRawBytes > 0) {
+        if (projection.text.length === 0) {
+          const previousSegment = projectionSegments.at(-1);
+          if (previousSegment !== undefined) {
+            previousSegment.rawBytes += consumedRawBytes;
+          }
+        } else {
+          projectionSegments.push({
+            textCharacters: projection.text.length,
+            rawBytes: consumedRawBytes,
+          });
+        }
       }
       retainedText += projection.text;
-      projectedBytes += projection.consumedBytes;
+      projectedBytes += consumedRawBytes;
       return projection.text;
     };
 
@@ -409,16 +520,22 @@ export function createShellSourceReader({ source }: {
             rawBytesConsumed,
             rawBytesConsumed + segment.rawBytes,
           );
-          const partialBytes = findShellUtf8ByteOffsetForTextBoundary({
-            bytes: segmentBytes,
+          const parserVisibleBytes = createParserVisibleByteView({ rawBytes: segmentBytes });
+          const partialParserBytes = findShellUtf8ByteOffsetForTextBoundary({
+            bytes: parserVisibleBytes,
             completion: 'complete',
             characters: remainingCharacters,
           });
+          const partialRawBytes = findRawByteOffsetForParserByteBoundary({
+            rawBytes: segmentBytes,
+            parserVisibleBytes,
+            parserByteOffset: partialParserBytes,
+          });
           projectionSegments[fullyConsumedSegments] = {
             textCharacters: segment.textCharacters - remainingCharacters,
-            rawBytes: segment.rawBytes - partialBytes,
+            rawBytes: segment.rawBytes - partialRawBytes,
           };
-          rawBytesConsumed += partialBytes;
+          rawBytesConsumed += partialRawBytes;
           remainingCharacters = 0;
         }
         if (fullyConsumedSegments > 0) {
@@ -457,8 +574,10 @@ export function createShellSourceReader({ source }: {
 }
 
 /**
- * Whole-source bridge for call sites that still require one immutable string.
- * Shell execution itself should consume ShellSourceReader incrementally.
+ * Whole-source bridge for call sites that still require one parser-visible immutable string.
+ * Byte-backed sources use the same projection as incremental shell parsing; callers that need
+ * byte identity must consume the underlying ShellSource instead. Shell execution itself should
+ * consume ShellSourceReader incrementally.
  */
 export async function readShellSourceToText({ source }: {
   source: ShellSource,

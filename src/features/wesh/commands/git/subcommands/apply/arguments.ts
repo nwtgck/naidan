@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
 
 interface ApplyArguments {
@@ -36,7 +37,7 @@ export function parseApplyArguments({ args }: { args: readonly string[] }): Appl
         index = true;
         break;
       default:
-        throw new Error(`unknown option for git apply: ${arg}`);
+        throw new GitUsageError({ message: `unknown option for git apply: ${arg}` });
       }
       continue;
     }

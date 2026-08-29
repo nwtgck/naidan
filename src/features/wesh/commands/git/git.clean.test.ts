@@ -37,7 +37,30 @@ git clean`,
     });
     expect(result.exitCode).toBe(128);
     expect(stdout.text).toBe('');
-    expect(stderr.text).toBe('fatal: clean.requireForce defaults to true and neither -i, -n, nor -f given; refusing to clean\n');
+    expect(stderr.text).toBe('fatal: clean.requireForce is true and -f not given: refusing to clean\n');
+  });
+
+  it('honors clean.requireForce=false without requiring -f', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config clean.requireForce false
+printf 'untracked\n' > file.txt
+git clean
+git status --porcelain=v1`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('Removing file.txt\n');
+  });
+
+  it('discovers the repository before applying the clean force guard', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'git clean' });
+    expect(result.exitCode).toBe(128);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('fatal: not a git repository');
+    expect(stderr.text).not.toContain('clean.requireForce');
   });
 
   it('dry-runs and removes only eligible untracked paths while respecting ignored files and -d', async () => {
@@ -74,8 +97,8 @@ Would remove tracked/new.txt
 Removing root.txt
 Removing tracked/new.txt
 ?? fresh/file.txt
-Would remove fresh/file.txt
-Removing fresh/file.txt
+Would remove fresh/
+Removing fresh/
 `);
   });
 
@@ -101,8 +124,7 @@ git status --porcelain=v1`,
 Would remove dir/a.tmp
 Would remove root.tmp
 Would remove sub/c.tmp
-Removing dir/a.tmp
-Removing dir/b.txt
+Removing dir/
 STATUS
 ?? root.tmp
 ?? sub/c.tmp
@@ -164,6 +186,111 @@ STATUS
 ?? dir/deep/c.tmp
 ?? other.tmp
 `);
+  });
+
+
+  it('removes empty untracked directories with -d', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+mkdir empty
+git clean -nd
+git clean -fd`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+Would remove empty/
+Removing empty/
+`);
+  });
+
+  it('does not mistake an arbitrary .git file for a nested repository', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+mkdir fake
+printf not-a-repository > fake/.git
+printf untracked > fake/file
+git clean -fd`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('Removing fake/\n');
+  });
+
+  it('requires double force before removing an untracked nested Git repository', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+mkdir nested
+git -C nested init -q
+printf nested > nested/file
+git clean -fd
+git clean -ffd`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('Removing nested/\n');
+  });
+
+  it('reports and removes wholly untracked directories as directory units with -d', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+printf 'ignored.tmp\n' > .gitignore
+git add .gitignore
+git config user.name Tester
+git config user.email tester@example.com
+git commit -m initial >/dev/null
+mkdir -p fresh/deep mixed
+printf a > fresh/a
+printf b > fresh/deep/b
+printf u > mixed/untracked
+printf i > mixed/ignored.tmp
+git clean -nd
+git clean -fd
+printf '%s\n' STATUS
+git status --porcelain=v1`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+Would remove fresh/
+Would remove mixed/untracked
+Removing fresh/
+Removing mixed/untracked
+STATUS
+`);
+  });
+
+
+  it('preflights repository config even for dry-run and before option errors', async () => {
+    const setup = await execute({
+      script: `\
+git init -q /clean-malformed
+printf '\n[bad\n' >> /clean-malformed/.git/config`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    for (const args of ['-n', '--definitely-invalid']) {
+      const result = await execute({ script: `git -C /clean-malformed clean ${args}` });
+      expect(result.result.exitCode).toBe(128);
+      expect(result.stdout.text).toBe('');
+      expect(result.stderr.text).toContain('bad config line');
+    }
+
+    const outside = await execute({ script: 'cd /; git clean --definitely-invalid' });
+    expect(outside.result.exitCode).toBe(128);
+    expect(outside.stderr.text).toContain('not a git repository');
   });
 
 });

@@ -71,8 +71,8 @@ A  hello.txt
   it('keeps staged and unstaged changes distinct in short status', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
-git init -q repo
-cd repo
+git init -q /repo
+cd /repo
 git config user.name Tester
 git config user.email tester@example.com
 printf 'one\\n' > tracked.txt
@@ -114,6 +114,10 @@ git rev-parse master
 git rev-parse --short HEAD
 git rev-parse --short=12 HEAD
 git rev-parse --short=1 HEAD
+git rev-parse --short=+8 HEAD
+git rev-parse '--short= 8' HEAD
+git rev-parse --short=12x HEAD
+git rev-parse --short=2147483648 HEAD
 git rev-parse HEAD:hello.txt
 mkdir subdir
 cd subdir
@@ -127,6 +131,10 @@ git rev-parse --git-dir`,
 7cac307b38298843a48a70fb0489f3618383cba1
 7cac307b38298843a48a70fb0489f3618383cba1
 7cac307
+7cac307b3829
+7cac
+7cac307b
+7cac307b
 7cac307b3829
 7cac
 ce013625030ba8dba906f756967f9e9ca394464a
@@ -231,6 +239,48 @@ master
 0000000000000000000000000000000000000000 7cac307b38298843a48a70fb0489f3618383cba1 Tester <tester@example.com> 981173106 +0000\tbranch: Created from master
 Deleted branch topic (was 7cac307).
 `);
+  });
+
+
+  it('honors explicit-empty core.logallrefupdates and rejects a valueless override', async () => {
+    await execute({
+      script: `\
+git init -q /repo
+git -C /repo config user.name Tester
+git -C /repo config user.email tester@example.com
+printf 'hello\n' > /repo/hello.txt
+git -C /repo add hello.txt
+git -C /repo commit -m initial >/dev/null`,
+    });
+
+    const disabled = await execute({
+      script: `\
+git -C /repo -c core.logallrefupdates= branch no-log &&
+test ! -e /repo/.git/logs/refs/heads/no-log &&
+git -C /repo -c core.logallrefupdates= checkout -b checkout-no-log master &&
+test ! -e /repo/.git/logs/refs/heads/checkout-no-log &&
+git -C /repo checkout master &&
+git -C /repo -c core.logallrefupdates= branch rename-source &&
+test ! -e /repo/.git/logs/refs/heads/rename-source &&
+git -C /repo -c core.logallrefupdates= branch -m rename-source renamed &&
+test ! -e /repo/.git/logs/refs/heads/renamed`,
+    });
+    expect(disabled.result.exitCode).toBe(0);
+    expect(disabled.stderr.text).not.toContain('fatal:');
+
+    const always = await execute({
+      script: `\
+git -C /repo -c core.logallrefupdates=always branch always-log &&
+test -e /repo/.git/logs/refs/heads/always-log`,
+    });
+    expect(always.result.exitCode).toBe(0);
+    expect(always.stderr.text).not.toContain('fatal:');
+
+    const missingValue = await execute({
+      script: 'git -C /repo -c core.logallrefupdates branch rejected',
+    });
+    expect(missingValue.result.exitCode).not.toBe(0);
+    expect(missingValue.stderr.text).toContain("missing value for 'core.logallrefupdates'");
   });
 
 
@@ -348,6 +398,89 @@ ae11b21 refs/heads/master@{0}: commit: second
 `);
   });
 
+
+  it('resolves shorthand remote-tracking reflog names to refs/remotes', async () => {
+    const result = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'hello\n' > hello.txt
+git add hello.txt
+git commit -m initial >/dev/null
+mkdir -p .git/refs/remotes/origin .git/logs/refs/remotes/origin
+cp .git/refs/heads/master .git/refs/remotes/origin/master
+cp .git/logs/refs/heads/master .git/logs/refs/remotes/origin/master
+git reflog show origin/master`,
+    });
+
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stderr.text).toBe('');
+    expect(result.stdout.text).toContain('refs/remotes/origin/master@{0}:');
+  });
+
+  it('applies numeric reflog selectors to the selected reflog', async () => {
+    const result = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'one\n' > file.txt
+git add file.txt
+git commit -m one >/dev/null
+printf 'two\n' >> file.txt
+git commit -am two >/dev/null
+git reflog show master@{1}
+git reflog show HEAD@{1}
+git reflog show @{1}`,
+    });
+
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stderr.text).toBe('');
+    const lines = result.stdout.text.trim().split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain('master@{1}: commit (initial): one');
+    expect(lines[1]).toContain('HEAD@{1}: commit (initial): one');
+    expect(lines[2]).toContain('refs/heads/master@{1}: commit (initial): one');
+  });
+
+  it('rejects reflog selectors beyond the available history', async () => {
+    const result = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'one\n' > file.txt
+git add file.txt
+git commit -m one >/dev/null
+git reflog show master@{1}`,
+    });
+
+    expect(result.result.exitCode).toBe(128);
+    expect(result.stdout.text).toBe('');
+    expect(result.stderr.text).toContain("log for 'master' only has 1 entries");
+  });
+
+  it('rejects unknown reflog names instead of treating missing logs as empty', async () => {
+    const missing = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'hello\n' > hello.txt
+git add hello.txt
+git commit -m initial >/dev/null
+git reflog show missing`,
+    });
+
+    expect(missing.result.exitCode).toBe(128);
+    expect(missing.stdout.text).toBe('');
+    expect(missing.stderr.text).toContain("ambiguous argument 'missing'");
+  });
 
   it('reads and updates packed refs through the ref primitive', async () => {
     const { result, stdout, stderr } = await execute({
@@ -484,6 +617,28 @@ refs/heads/main
 `);
   });
 
+  it('updates existing branch and HEAD reflogs when renaming with core.logallrefupdates=false', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf base > tracked.txt
+git add tracked.txt
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m base >/dev/null
+git config core.logallrefupdates false
+git branch -m renamed
+tail -n 1 .git/logs/refs/heads/renamed
+tail -n 2 .git/logs/HEAD`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain('Branch: renamed refs/heads/master to refs/heads/renamed');
+    expect(stdout.text.match(/Branch: renamed refs\/heads\/master to refs\/heads\/renamed/gu)).toHaveLength(3);
+  });
+
   it('renames an unborn current branch without creating a ref or reflog', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -555,6 +710,54 @@ GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commi
     expect(shortened.stdout.text).toMatch(/^[0-9a-f]{8}\n$/u);
   });
 
+  it('passes unknown rev-parse options through like Git unless single-revision mode is active', async () => {
+    const setup = await execute({ script: 'git init -q /rev-parse-options' });
+    expect(setup.result.exitCode).toBe(0);
+
+    const passthrough = await execute({ script: 'git -C /rev-parse-options rev-parse --definitely-invalid' });
+    expect(passthrough.result.exitCode).toBe(0);
+    expect(passthrough.stdout.text).toBe('--definitely-invalid\n');
+    expect(passthrough.stderr.text).toBe('');
+
+    const verified = await execute({ script: 'git -C /rev-parse-options rev-parse --verify --definitely-invalid' });
+    expect(verified.result.exitCode).toBe(128);
+    expect(verified.stdout.text).toBe('');
+    expect(verified.stderr.text).toContain('Needed a single revision');
+  });
+
+  it('preflights malformed config before rev-parse and reflog semantics', async () => {
+    const setup = await execute({
+      script: `\
+git init -q /plumbing-config-malformed
+printf '\n[bad\n' >> /plumbing-config-malformed/.git/config`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    for (const command of ['rev-parse --git-dir', 'reflog', 'rev-parse --definitely-invalid']) {
+      const result = await execute({ script: `git -C /plumbing-config-malformed ${command}` });
+      expect(result.result.exitCode).toBe(128);
+      expect(result.stdout.text).toBe('');
+      expect(result.stderr.text).toContain('bad config line');
+    }
+  });
+
+  it('allows empty rev-parse but requires a revision for --verify and --short', async () => {
+    const setup = await execute({ script: 'git init -q /rev-parse-empty' });
+    expect(setup.result.exitCode).toBe(0);
+
+    const empty = await execute({ script: 'git -C /rev-parse-empty rev-parse' });
+    expect(empty.result.exitCode).toBe(0);
+    expect(empty.stdout.text).toBe('');
+    expect(empty.stderr.text).toBe('');
+
+    for (const args of ['--verify', '--verify --', '--short', '--short --']) {
+      const rejected = await execute({ script: `git -C /rev-parse-empty rev-parse ${args}` });
+      expect(rejected.result.exitCode).toBe(128);
+      expect(rejected.stdout.text).toBe('');
+      expect(rejected.stderr.text).toContain('Needed a single revision');
+    }
+  });
+
   it('requires one revision when --short is active', async () => {
     const setup = await execute({
       script: `\
@@ -606,6 +809,135 @@ git branch -d unmerged merged`,
   unmerged
 `);
   });
+  it('preflights malformed config before read-only branch operations and option errors', async () => {
+    const setup = await execute({
+      script: `\
+git init -q /branch-read-malformed
+printf '\n[bad\n' >> /branch-read-malformed/.git/config`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    for (const args of ['--list', '--show-current', '--definitely-invalid']) {
+      const result = await execute({ script: `git -C /branch-read-malformed branch ${args}` });
+      expect(result.result.exitCode).toBe(128);
+      expect(result.stdout.text).toBe('');
+      expect(result.stderr.text).toContain('bad config line');
+    }
+  });
+
+  it('preflights malformed local config before force-deleting a branch', async () => {
+    const setup = await execute({
+      script: `\
+git init -q /branch-delete-malformed
+git -C /branch-delete-malformed config user.name Tester
+git -C /branch-delete-malformed config user.email tester@example.com
+printf base > /branch-delete-malformed/a
+git -C /branch-delete-malformed add a
+git -C /branch-delete-malformed commit -m base >/dev/null
+git -C /branch-delete-malformed branch topic
+printf '\n[bad\n' >> /branch-delete-malformed/.git/config`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const deletion = await execute({ script: 'git -C /branch-delete-malformed branch -D topic' });
+    expect(deletion.result.exitCode).toBe(128);
+    expect(deletion.stderr.text).toContain('bad config line');
+
+    const preserved = await execute({ script: 'test -e /branch-delete-malformed/.git/refs/heads/topic' });
+    expect(preserved.result.exitCode).toBe(0);
+  });
+
+  it('preflights malformed config before deleting a remote-tracking branch', async () => {
+    const setup = await execute({
+      script: `\
+git init -q /remote-branch-delete-malformed
+git -C /remote-branch-delete-malformed config user.name Tester
+git -C /remote-branch-delete-malformed config user.email tester@example.com
+printf base > /remote-branch-delete-malformed/a
+git -C /remote-branch-delete-malformed add a
+git -C /remote-branch-delete-malformed commit -m base >/dev/null
+mkdir -p /remote-branch-delete-malformed/.git/refs/remotes/origin
+cp /remote-branch-delete-malformed/.git/refs/heads/master /remote-branch-delete-malformed/.git/refs/remotes/origin/topic
+printf '\n[bad\n' >> /remote-branch-delete-malformed/.git/config`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const deletion = await execute({
+      script: 'git -C /remote-branch-delete-malformed branch -r -D origin/topic',
+    });
+    expect(deletion.result.exitCode).toBe(128);
+    expect(deletion.stderr.text).toContain('bad config line');
+
+    const preserved = await execute({
+      script: 'test -e /remote-branch-delete-malformed/.git/refs/remotes/origin/topic',
+    });
+    expect(preserved.result.exitCode).toBe(0);
+  });
+
+  it('preflights malformed global config before force-deleting a branch', async () => {
+    const setup = await execute({
+      script: `\
+git init -q /branch-delete-global-malformed
+git -C /branch-delete-global-malformed config user.name Tester
+git -C /branch-delete-global-malformed config user.email tester@example.com
+printf base > /branch-delete-global-malformed/a
+git -C /branch-delete-global-malformed add a
+git -C /branch-delete-global-malformed commit -m base >/dev/null
+git -C /branch-delete-global-malformed branch topic
+printf '[bad\n' > /bad-global-config`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const deletion = await execute({
+      script: 'GIT_CONFIG_GLOBAL=/bad-global-config git -C /branch-delete-global-malformed branch -D topic',
+    });
+    expect(deletion.result.exitCode).toBe(128);
+    expect(deletion.stderr.text).toContain('bad config line');
+
+    const preserved = await execute({ script: 'test -e /branch-delete-global-malformed/.git/refs/heads/topic' });
+    expect(preserved.result.exitCode).toBe(0);
+  });
+
+  it('preflights malformed config before renaming an unborn current branch', async () => {
+    const setup = await execute({
+      script: `\
+git init -q /unborn-rename-malformed
+printf '\n[bad\n' >> /unborn-rename-malformed/.git/config`,
+    });
+    expect(setup.result.exitCode).toBe(0);
+
+    const rename = await execute({ script: 'git -C /unborn-rename-malformed branch -m main' });
+    expect(rename.result.exitCode).toBe(128);
+    expect(rename.stderr.text).toContain('bad config line');
+
+    const head = await execute({ script: 'cat /unborn-rename-malformed/.git/HEAD' });
+    expect(head.result.exitCode).toBe(0);
+    expect(head.stdout.text).toBe('ref: refs/heads/master\n');
+  });
+
+  it('removes local branch config when deleting the branch', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf base > a
+git add a
+git commit -m base >/dev/null
+git branch topic
+git config branch.topic.remote origin
+git config branch.topic.merge refs/heads/topic
+git config branch.topic.description keep-me
+git branch -D topic
+git config --list`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain('Deleted branch topic (was ');
+    expect(stdout.text).not.toContain('branch.topic.');
+  });
+
   it('uses an existing upstream ref as the safe-delete merge base', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -706,6 +1038,67 @@ ALL
   bug/x
   remotes/origin/bug/x
 NOMATCH
+`);
+  });
+
+  it('supports POSIX character classes in branch list patterns', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf x > a
+git add a
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m base >/dev/null
+git branch feat1
+git branch feata
+git branch feat-
+git branch feat_
+git branch --list 'feat[[:digit:]]'
+printf '%s\n' ---
+git branch --list 'feat[![:digit:]]'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+  feat1
+---
+  feat-
+  feat_
+  feata
+`);
+  });
+
+  it('matches branch wildcards in the Git UTF-8 byte domain', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf x > a
+git add a
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m base >/dev/null
+git branch café
+git branch cafあ
+printf '%s\n' ONE
+git branch --list 'caf?'
+printf '%s\n' TWO
+git branch --list 'caf??'
+printf '%s\n' THREE
+git branch --list 'caf???'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+ONE
+TWO
+  café
+THREE
+  cafあ
 `);
   });
 

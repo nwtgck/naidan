@@ -4,6 +4,11 @@ import type { StandaloneBuildDiagnostics } from './diagnostics.js';
 import type { NormalizedWorkerDefinition } from './worker-definition.js';
 import { createStandaloneWorkerRuntimeModuleSource } from '../standalone-worker-runtime-source.js';
 import { FILE_PROTOCOL_STANDALONE_GLOBAL_NAME } from '../../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol.js';
+import {
+  STANDALONE_PACKAGE_LOCALE_META_NAME,
+  STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME,
+} from '../../../src/features/file-protocol-standalone/logic/package-locale-contract.js';
+import { UI_LOCALES } from '../../../src/01-models/ui-locale.js';
 
 type WorkerEntryRecord = NormalizedWorkerDefinition & Readonly<{referenceId: string; resolvedVirtualId: string}>;
 
@@ -58,6 +63,9 @@ export function createWorkerEntryPlugin({ workers, diagnostics, systemRuntimePat
           readyMessageType: READY_MESSAGE_TYPE,
           errorMessageType: ERROR_MESSAGE_TYPE,
           diagnosticsGlobalName: FILE_PROTOCOL_STANDALONE_GLOBAL_NAME,
+          packageLocaleMetaName: STANDALONE_PACKAGE_LOCALE_META_NAME,
+          packageLocaleGlobalName: STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME,
+          supportedPackageLocales: UI_LOCALES,
         });
       }
       const record = [...workerRecords.values()].find(candidate => candidate.resolvedVirtualId === id);

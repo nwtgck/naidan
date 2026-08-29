@@ -11,7 +11,6 @@ import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream';
 import { promisify } from 'node:util';
 import { JSDOM } from 'jsdom';
-import JSZip from 'jszip';
 import pkg from './package.json';
 import { createStandaloneFacadeAliases } from './build/standalone-facades.js';
 import { createNaidanStandalonePlugin } from './build/file-protocol-standalone/plugin.js';
@@ -25,6 +24,9 @@ import { createBoundaryStringsPlugin } from './build/boundary-strings';
 import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core';
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
+import { createZipPackages } from './build/zip-packages';
+import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
+import { UI_LOCALES } from './src/01-models/ui-locale';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -372,10 +374,22 @@ export default defineConfig(({ mode }) => {
               ? moduleId
               : `<naidan>/${relative}`;
           },
-          createArchive: () => createZipPackage({
-            outDir,
-            zipFileName: 'naidan-standalone.zip',
-            folderName: `naidan-standalone-${pkg.version}`,
+        },
+        releasePackaging: {
+          packageRelease: ({ variants }) => createZipPackages({
+            sourceDirectory: path.resolve(__dirname, outDir),
+            archiveDirectory: path.resolve(__dirname, 'dist'),
+            version: pkg.version,
+            packages: variants.map((variant) => ({
+              zipFileName: variant.locale === undefined
+                ? 'naidan-standalone.zip'
+                : `naidan-standalone-${variant.locale}.zip`,
+              folderName: variant.locale === undefined
+                ? `naidan-standalone-${pkg.version}`
+                : `naidan-standalone-${variant.locale}-${pkg.version}`,
+              excludedFileNames: new Set(variant.excludedFileNames),
+              fileOverrides: new Map([['index.html', variant.indexHtml]]),
+            })),
           }),
         },
       }),
@@ -409,8 +423,10 @@ export default defineConfig(({ mode }) => {
           // Cache all assets to ensure offline support for future extensions (onnx, gguf, zstd, etc.)
           // We use '**/*' to avoid missing any critical files as per Murphy's Law.
           globPatterns: ['**/*'],
-          // Exclude source maps to save user bandwidth and storage.
-          globIgnores: ['**/*.map'],
+          // Exclude source maps to save user bandwidth and storage. Locale-specific
+          // standalone ZIPs are served by hosted deployments but intentionally not
+          // precached; the universal naidan-standalone.zip stays cached for offline use.
+          globIgnores: ['**/*.map', '**/naidan-standalone-*.zip'],
           maximumFileSizeToCacheInBytes: 100 * 1024 * 1024,
         },
       }),
@@ -466,27 +482,6 @@ export default defineConfig(({ mode }) => {
 });
 
 /**
- * Recursive helper to add directory contents to JSZip
- */
-function addDirectoryToZip(zip: JSZip, basePath: string, relativePath = '') {
-  const fullPath = path.join(basePath, relativePath);
-  const items = fs.readdirSync(fullPath);
-
-  for (const item of items) {
-    const itemPath = path.join(fullPath, item);
-    const itemRelativePath = path.join(relativePath, item);
-    const stat = fs.statSync(itemPath);
-
-    if (stat.isDirectory()) {
-      addDirectoryToZip(zip, basePath, itemRelativePath);
-    } else {
-      const content = fs.readFileSync(itemPath);
-      zip.file(itemRelativePath, content);
-    }
-  }
-}
-
-/**
  * Plugin to zip the build output
  */
 const zipPackagerPlugin = ({ outDir, zipFileName, folderName }: {
@@ -501,21 +496,23 @@ const zipPackagerPlugin = ({ outDir, zipFileName, folderName }: {
 });
 
 /**
- * Plugin to copy the standalone zip to the hosted build output
+ * Copy the universal and locale-specific standalone packages to hosted output.
  */
 const copyZipPlugin = () => ({
   name: 'copy-zip-plugin',
   async closeBundle() {
-    const zipSourcePath = path.resolve(__dirname, 'dist/naidan-standalone.zip');
     const hostedDistDir = path.resolve(__dirname, 'dist/hosted');
-    const zipDestPath = path.join(hostedDistDir, 'naidan-standalone.zip');
-
-    if (fs.existsSync(zipSourcePath)) {
-      if (!fs.existsSync(hostedDistDir)) fs.mkdirSync(hostedDistDir, { recursive: true });
-      fs.copyFileSync(zipSourcePath, zipDestPath);
-      console.log(`  \u2713 Copied standalone zip to hosted output: ${zipDestPath}`);
-    } else {
-      console.warn('  ! Standalone zip not found. Run "npm run build:standalone" first if you want to include the offline version.');
+    const copiedFileNames = copyStandalonePackagesToHosted({
+      sourceDirectory: path.resolve(__dirname, 'dist'),
+      hostedDirectory: hostedDistDir,
+      locales: UI_LOCALES,
+    });
+    if (copiedFileNames.length === 0) {
+      console.warn('  ! Standalone zips not found. Run the standalone build first if you want to include the offline version.');
+      return;
+    }
+    for (const fileName of copiedFileNames) {
+      console.log(`  \u2713 Copied standalone zip to hosted output: ${path.join(hostedDistDir, fileName)}`);
     }
   },
 });
@@ -525,30 +522,10 @@ async function createZipPackage({ outDir, zipFileName, folderName }: {
   zipFileName: string,
   folderName: string,
 }): Promise<void> {
-  console.log(`  \u231B Creating ${zipFileName} package...`);
-  const distDir = path.resolve(__dirname, outDir);
-  const zipPath = path.resolve(__dirname, `dist/${zipFileName}`);
-
-  if (!fs.existsSync(distDir)) return;
-
-  const zip = new JSZip();
-  const folder = zip.folder(folderName);
-  if (folder) {
-    addDirectoryToZip(folder, distDir);
-    folder.file('VERSION.txt', pkg.version);
-  }
-
-  const content = await zip.generateAsync({
-    type: 'nodebuffer',
-    compression: 'DEFLATE',
-    compressionOptions: { level: 9 },
+  await createZipPackages({
+    sourceDirectory: path.resolve(__dirname, outDir),
+    archiveDirectory: path.resolve(__dirname, 'dist'),
+    version: pkg.version,
+    packages: [{ zipFileName, folderName }],
   });
-
-  const zipDir = path.dirname(zipPath);
-  if (!fs.existsSync(zipDir)) fs.mkdirSync(zipDir, { recursive: true });
-
-  const temporaryZipPath = `${zipPath}.tmp-${process.pid}`;
-  fs.writeFileSync(temporaryZipPath, content);
-  fs.renameSync(temporaryZipPath, zipPath);
-  console.log(`  \u2713 Created package: ${zipPath}`);
 }

@@ -3,10 +3,12 @@ import path from 'node:path';
 
 import * as ts from 'typescript';
 
+import { UI_LOCALES, type UiLocale } from '../../src/01-models/ui-locale.js';
+
 import { createBoundaryStringDiagnosticError } from './diagnostics';
 
-export const BOUNDARY_STRING_LOCALES = ['en', 'ja'] as const;
-export type BoundaryStringLocale = (typeof BOUNDARY_STRING_LOCALES)[number];
+export const BOUNDARY_STRING_LOCALES = UI_LOCALES;
+export type BoundaryStringLocale = UiLocale;
 
 export type BoundaryStringLocaleModuleDefinition = {
   filePath: string;

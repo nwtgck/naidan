@@ -42,7 +42,7 @@ export async function continueMerge({ context }: {
   if (head.objectId === undefined)
     throw new Error('cannot continue merge on an unborn branch');
   const treeObjectId = await writeTreeFromIndex({ files: context.files, repository, entries });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const created = await createCommit({
     files: context.files,
     repository,
@@ -211,7 +211,7 @@ export async function integrateDivergentMerge({ context, repository, headObjectI
   });
   await writeIndex({ files: context.files, repository, entries: plan.nextIndexEntries });
   const treeObjectId = await writeTreeFromIndex({ files: context.files, repository, entries: plan.nextIndexEntries });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const created = await createCommit({
     files: context.files,
     repository,

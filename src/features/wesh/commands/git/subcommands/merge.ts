@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readCommit } from "@/features/wesh/commands/git/commits";
 import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
@@ -39,7 +40,7 @@ export async function runMerge({ context, args }: {
     else if (parsingOptions && arg === '--ff')
       fastForwardMode = 'default';
     else if (parsingOptions && arg.startsWith('-'))
-      throw new Error(`unsupported merge option: ${arg}`);
+      throw new GitUsageError({ message: `unsupported merge option: ${arg}` });
     else
       operands.push(arg);
   }
@@ -117,7 +118,7 @@ export async function runMerge({ context, args }: {
     throw new Error(`Unhandled fast-forward mode: ${_ex}`);
   }
   }
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const result = await fastForwardHead({
     files: context.files,
     repository,

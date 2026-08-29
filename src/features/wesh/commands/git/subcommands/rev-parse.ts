@@ -1,12 +1,29 @@
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { assertRepositoryHasUsableWorktree, repositoryCwdIsInsideWorktree, repositoryHasWorktree, discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { resolveRevision, resolveRevisionPath } from "@/features/wesh/commands/git/revision";
+import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
+
+function relativePath({ from, to }: { from: string, to: string }): string {
+  const fromParts = from.split('/').filter(Boolean);
+  const toParts = to.split('/').filter(Boolean);
+  let shared = 0;
+  while (shared < fromParts.length && shared < toParts.length && fromParts[shared] === toParts[shared]) shared += 1;
+  const parts = [...fromParts.slice(shared).map(() => '..'), ...toParts.slice(shared)];
+  return parts.length === 0 ? '.' : parts.join('/');
+}
 
 export async function runRevParse({ context, args }: {
   context: WeshCommandContext,
   args: readonly string[],
 }): Promise<WeshCommandResult> {
   const repository = await discoverRepositoryFromContext({ context });
+  await readEffectiveConfig({
+    files: context.files,
+    repository,
+    homePath: context.env.get('HOME') ?? '/',
+    cwd: context.cwd,
+    env: context.env,
+  });
   let shortLength: number | undefined;
   let verify = false;
   let printedSpecial = false;
@@ -40,21 +57,28 @@ export async function runRevParse({ context, args }: {
       continue;
     }
     if (arg === '--git-dir') {
-      const relative = context.cwd === repository.gitDirPath
-        ? '.'
-        : repository.gitDirPath === `${repository.worktreePath}/.git` && context.cwd === repository.worktreePath
-          ? '.git'
-          : repository.gitDirPath;
+      const explicitGitDir = context.env.get('GIT_DIR');
+      const relative = explicitGitDir !== undefined
+        ? explicitGitDir
+        : context.cwd === repository.gitDirPath
+          ? '.'
+          : repository.gitDirPath === `${repository.worktreePath}/.git` && context.cwd === repository.worktreePath
+            ? '.git'
+            : repository.gitDirPath;
       await context.text().print({ text: `${relative}\n` });
       printedSpecial = true;
       continue;
     }
     if (arg === '--git-common-dir') {
-      const relative = context.cwd === repository.commonDirPath
-        ? '.'
-        : repository.commonDirPath === `${repository.worktreePath}/.git` && context.cwd === repository.worktreePath
-          ? '.git'
-          : repository.commonDirPath;
+      const explicitGitDir = context.env.get('GIT_DIR');
+      const relative = explicitGitDir !== undefined && repository.commonDirPath === repository.gitDirPath
+        ? explicitGitDir
+        : context.cwd === repository.commonDirPath
+          ? '.'
+          : repository.commonDirPath === repository.gitDirPath
+            && repositoryCwdIsInsideWorktree({ context, repository })
+            ? relativePath({ from: context.cwd, to: repository.commonDirPath })
+            : repository.commonDirPath;
       await context.text().print({ text: `${relative}\n` });
       printedSpecial = true;
       continue;
@@ -64,18 +88,26 @@ export async function runRevParse({ context, args }: {
       continue;
     }
     if (arg.startsWith('--short=')) {
-      const match = /^([0-9]+)/u.exec(arg.slice('--short='.length));
-      const requestedLength = match === null ? 0 : Number.parseInt(match[1]!, 10);
+      const rawLength = arg.slice('--short='.length);
+      const match = /^[\t\n\v\f\r ]*([+-]?[0-9]+)/u.exec(rawLength);
+      const parsed = match === null ? 0n : BigInt(match[1]!);
+      const requestedLength = parsed < -2147483648n || parsed > 2147483647n ? 0 : Number(parsed);
       shortLength = Math.min(40, Math.max(4, requestedLength));
       continue;
     }
-    if (arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
+    if (arg.startsWith('-')) {
+      if (!verify && shortLength === undefined) {
+        await context.text().print({ text: `${arg}\n` });
+        printedSpecial = true;
+      }
+      continue;
+    }
     expressions.push(arg);
   }
-  if (!printedSpecial && expressions.length === 0 && pathArguments === undefined)
-    throw new Error('no revision specified');
   if ((verify || shortLength !== undefined) && expressions.length !== 1)
     throw new Error('Needed a single revision');
+  if (!printedSpecial && expressions.length === 0 && pathArguments === undefined)
+    return { exitCode: 0 };
   for (const expression of expressions) {
     const objectId = expression.includes(':')
       ? (await resolveRevisionPath({ files: context.files, repository, expression })).objectId

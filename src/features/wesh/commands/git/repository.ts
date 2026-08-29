@@ -452,6 +452,21 @@ export async function initializeRepository({ files, targetPath }: {
   };
 }
 
+export async function discoverRepositoryFromContextIfPresent({ context }: {
+  context: WeshCommandContext,
+}): Promise<GitRepository | undefined> {
+  try {
+    return await discoverRepositoryFromContext({ context });
+  } catch (error) {
+    if (context.env.has('GIT_DIR')) throw error;
+    if (error instanceof Error
+      && error.message === 'not a git repository (or any of the parent directories): .git') {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
 export async function discoverRepositoryAtPath({ files, path }: {
   files: GitFiles,
   path: string,

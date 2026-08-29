@@ -2,6 +2,8 @@ import { mount } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { STANDALONE_PACKAGE_LOCALE_META_NAME } from '@/features/file-protocol-standalone/logic/package-locale';
+
 import {
   currentLocale,
   ensureStrings,
@@ -42,6 +44,40 @@ describe('Boundary Strings runtime', () => {
     expect(getItem).not.toHaveBeenCalled();
     getItem.mockRestore();
     vi.unstubAllGlobals();
+  });
+
+  it('constrains locale preparation before a foreign package loader can run', async () => {
+    const meta = document.createElement('meta');
+    meta.name = STANDALONE_PACKAGE_LOCALE_META_NAME;
+    meta.content = 'ja';
+    document.head.append(meta);
+    try {
+      const englishLoader = vi.fn(resolvedModule({
+        module: { ChatInput__cancel: () => 'Cancel' },
+      }));
+      const japaneseLoader = vi.fn(resolvedModule({
+        module: { ChatInput__cancel: () => 'キャンセル' },
+      }));
+      registerStringBoundary({
+        boundaryId: 'package-constrained-boundary',
+        keys: ['ChatInput__cancel'],
+        loaders: {
+          en: englishLoader,
+          ja: japaneseLoader,
+        },
+      });
+      TEST_ONLY.usedBoundaryIds.add('package-constrained-boundary');
+
+      expect(TEST_ONLY.resolveEffectiveLocale({ locale: 'en' })).toBe('ja');
+      await setLocale({ locale: 'en' });
+
+      expect(englishLoader).not.toHaveBeenCalled();
+      expect(japaneseLoader).toHaveBeenCalledTimes(1);
+      expect(currentLocale.value).toBe('ja');
+      expect(document.documentElement.lang).toBe('ja');
+    } finally {
+      meta.remove();
+    }
   });
 
   it('does not expose message accessors through Promise or object protocol properties', async () => {

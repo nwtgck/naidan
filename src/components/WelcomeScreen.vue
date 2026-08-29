@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { ShieldCheckIcon, DownloadIcon, GhostIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
+import { usePortableAppDownload } from '@/features/file-protocol-standalone/composables/usePortableAppDownload';
 import { lazyStrings } from '@/strings';
 
 defineProps<{
@@ -14,6 +15,7 @@ defineEmits<{
 
 const { settings } = useSettings();
 const appVersion = __APP_VERSION__;
+const portableAppDownload = usePortableAppDownload({ version: appVersion });
 
 // Access the build mode global defined in vite.config.ts
 const isHosted = (() => {
@@ -106,8 +108,8 @@ defineExpose({
           <!-- Standalone Build Link (Only in Hosted Mode) -->
           <div v-if="isHosted" tw-class="flex justify-center pt-1">
             <a
-              href="./naidan-standalone.zip"
-              :download="'naidan-standalone-v' + appVersion + '.zip'"
+              :href="portableAppDownload.href"
+              :download="portableAppDownload.fileName"
               tw-class="group/btn flex items-center gap-2 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-emerald-200 dark:hover:border-emerald-500/30 hover:shadow-md transition-all duration-300"
               :title="lazyStrings.WelcomeScreen__download_standalone_portable_version()"
             >

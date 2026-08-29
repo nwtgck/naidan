@@ -139,6 +139,11 @@ jobs:
       - name: Verify individual artifact inputs
         run: |
           test -f dist/naidan-standalone.zip
+          mapfile -t STANDALONE_LOCALES < <(npm exec -- tsx --eval "import { UI_LOCALES } from './src/01-models/ui-locale.ts'; process.stdout.write(UI_LOCALES.join('\n'));")
+          test "${#STANDALONE_LOCALES[@]}" -gt 0
+          for LOCALE in "${STANDALONE_LOCALES[@]}"; do
+            test -f "dist/naidan-standalone-${LOCALE}.zip"
+          done
           test -f dist/debug-file-protocol-standalone-build-report.json
           test -d dist/debug-tailwind-standalone
           test -f dist/naidan-hosted.zip
@@ -150,12 +155,23 @@ jobs:
           name: full-dist-build
           path: dist/
 
-      - name: Upload standalone artifact
+      - name: Upload universal standalone package artifact
         uses: actions/upload-artifact@v7
         with:
-          name: naidan-standalone
+          name: standalone-universal-package
           path: |
             dist/naidan-standalone.zip
+            dist/debug-file-protocol-standalone-build-report.json
+            dist/debug-tailwind-standalone/
+          if-no-files-found: error
+
+      - name: Upload all standalone locale packages artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: standalone-all-locale-packages
+          path: |
+            dist/naidan-standalone.zip
+            dist/naidan-standalone-*.zip
             dist/debug-file-protocol-standalone-build-report.json
             dist/debug-tailwind-standalone/
           if-no-files-found: error
@@ -206,6 +222,15 @@ jobs:
           /naidan-standalone.zip
             Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"
           EOF
+          for ZIP_PATH in dist/hosted/naidan-standalone-*.zip; do
+            [ -f "$ZIP_PATH" ] || continue
+            ZIP_NAME=$(basename "$ZIP_PATH")
+            ZIP_STEM=${ZIP_NAME%.zip}
+            cat << EOF >> dist/hosted/_headers
+          /${ZIP_NAME}
+            Content-Disposition: attachment; filename="${ZIP_STEM}-v${VERSION}.zip"
+          EOF
+          done
 
       - name: Publish to Cloudflare Pages
         id: cloudflare_pages_deploy
@@ -260,6 +285,15 @@ jobs:
           /naidan-standalone.zip
             Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"
           EOF
+          for ZIP_PATH in dist/hosted/naidan-standalone-*.zip; do
+            [ -f "$ZIP_PATH" ] || continue
+            ZIP_NAME=$(basename "$ZIP_PATH")
+            ZIP_STEM=${ZIP_NAME%.zip}
+            cat << EOF >> dist/hosted/_headers
+          /${ZIP_NAME}
+            Content-Disposition: attachment; filename="${ZIP_STEM}-v${VERSION}.zip"
+          EOF
+          done
 
       - name: Publish to Cloudflare Pages (local-only)
         id: cloudflare_pages_deploy_local
@@ -362,6 +396,15 @@ jobs:
           /naidan-standalone.zip
             Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"
           EOF
+          for ZIP_PATH in dist/hosted/naidan-standalone-*.zip; do
+            [ -f "$ZIP_PATH" ] || continue
+            ZIP_NAME=$(basename "$ZIP_PATH")
+            ZIP_STEM=${ZIP_NAME%.zip}
+            cat << EOF >> dist/hosted/_headers
+          /${ZIP_NAME}
+            Content-Disposition: attachment; filename="${ZIP_STEM}-v${VERSION}.zip"
+          EOF
+          done
 
       - name: Publish to Cloudflare Pages (Curated)
         id: cloudflare_pages_deploy_curated
@@ -411,6 +454,11 @@ jobs:
       - name: Rename zips with tag for release
         run: |
           TAG=${{ steps.get_tag.outputs.TAG_NAME }}
+          for ZIP_PATH in dist/naidan-standalone-*.zip; do
+            [ -f "$ZIP_PATH" ] || continue
+            ZIP_STEM=${ZIP_PATH%.zip}
+            mv "$ZIP_PATH" "${ZIP_STEM}-${TAG}.zip"
+          done
           mv dist/naidan-standalone.zip dist/naidan-standalone-${TAG}.zip
           mv dist/naidan-hosted.zip dist/naidan-hosted-${TAG}.zip
 
@@ -419,6 +467,7 @@ jobs:
         with:
           files: |
             dist/naidan-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
+            dist/naidan-standalone-*-${{ steps.get_tag.outputs.TAG_NAME }}.zip
             dist/naidan-hosted-${{ steps.get_tag.outputs.TAG_NAME }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

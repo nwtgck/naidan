@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { sortGitUtf8Strings } from "@/features/wesh/commands/git/utf8-order";
@@ -23,7 +24,7 @@ export async function runFetch({ context, args }: {
     if (parsingOptions && (arg === '-q' || arg === '--quiet')) quiet = true;
     else if (parsingOptions && arg === '--all') all = true;
     else if (parsingOptions && (arg === '--prune' || arg === '-p')) prune = true;
-    else if (parsingOptions && arg.startsWith('-')) throw new Error(`unknown option: ${arg}`);
+    else if (parsingOptions && arg.startsWith('-')) throw new GitUsageError({ message: `unknown option: ${arg}` });
     else operands.push(arg);
   }
   if (operands.length > 1) throw new Error('too many arguments');
@@ -33,6 +34,7 @@ export async function runFetch({ context, args }: {
     files: context.files,
     repository,
     homePath: context.env.get('HOME') ?? '/',
+    cwd: context.cwd,
     env: context.env,
   });
   let remoteNames: string[];

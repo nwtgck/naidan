@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { normalizePath } from "@/features/wesh/path";
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { pathExists } from "@/features/wesh/commands/git/files";
@@ -47,7 +48,7 @@ export async function runAdd({ context, args }: {
       continue;
     }
     if (parsingOptions && arg.startsWith('-'))
-      throw new Error(`unknown option ${arg}`);
+      throw new GitUsageError({ message: `unknown option ${arg}` });
     operands.push(arg);
   }
   const currentEntries = await readIndex({ files: context.files, repository });

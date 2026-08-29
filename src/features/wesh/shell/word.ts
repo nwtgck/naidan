@@ -155,6 +155,13 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
     }
     }
 
+    if (character === '$' && raw[index + 1] === '"') {
+      if (current.length > 0) flushCurrent();
+      mode = 'double';
+      index += 1;
+      continue;
+    }
+
     if (character === '$' && raw[index + 1] === "'") {
       if (current.length > 0) flushCurrent();
       let cursor = index + 2;
@@ -217,31 +224,51 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
 export function parseDoubleQuotedParameterOperandParts({ raw }: {
   raw: string,
 }): ParsedShellWordPart[] {
-  const parts: ParsedShellWordPart[] = [];
-  let current = '';
+  type OperandQuoteMode = 'outer-double' | 'inner-double';
 
-  const flushExpandable = (): void => {
+  const parts: ParsedShellWordPart[] = [];
+  let mode: OperandQuoteMode = 'outer-double';
+  let current = '';
+  let currentExpandVariables = true;
+
+  const flushCurrent = (): void => {
     if (current.length === 0) return;
     parts.push({
       text: current,
       quoted: true,
-      expandVariables: true,
+      expandVariables: currentExpandVariables,
     });
     current = '';
   };
 
+  const appendText = ({ text, expandVariables }: {
+    text: string,
+    expandVariables: boolean,
+  }): void => {
+    if (current.length > 0 && currentExpandVariables !== expandVariables) {
+      flushCurrent();
+    }
+    currentExpandVariables = expandVariables;
+    current += text;
+  };
+
   const appendLiteral = ({ text }: { text: string }): void => {
-    flushExpandable();
-    parts.push({
-      text,
-      quoted: true,
-      expandVariables: false,
-    });
+    appendText({ text, expandVariables: false });
   };
 
   for (let index = 0; index < raw.length; index += 1) {
     const character = raw[index];
     if (character === undefined) continue;
+
+    switch (mode) {
+    case 'outer-double':
+    case 'inner-double':
+      break;
+    default: {
+      const _ex: never = mode;
+      throw new Error(`Unhandled parameter operand quote mode: ${_ex}`);
+    }
+    }
 
     if (character === '`') {
       const substitution = findBackquoteSubstitution({
@@ -249,15 +276,22 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
         startIndex: index,
       });
       if (substitution !== undefined) {
-        current += raw.slice(index, substitution.endIndex + 1);
+        appendText({
+          text: raw.slice(index, substitution.endIndex + 1),
+          expandVariables: true,
+        });
         index = substitution.endIndex;
         continue;
       }
     }
 
     if (character === '$') {
-      if (raw[index + 1] === "'") {
-        flushExpandable();
+      if (raw[index + 1] === '"') {
+        continue;
+      }
+
+      if (mode === 'outer-double' && raw[index + 1] === "'") {
+        flushCurrent();
         let cursor = index + 2;
         let content = '';
         while (cursor < raw.length) {
@@ -286,7 +320,10 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
           startIndex: index,
         });
         if (endIndex >= 0) {
-          current += raw.slice(index, endIndex + 1);
+          appendText({
+            text: raw.slice(index, endIndex + 1),
+            expandVariables: true,
+          });
           index = endIndex;
           continue;
         }
@@ -307,7 +344,10 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
           : undefined;
         const endIndex = arithmetic?.endIndex ?? substitution?.endIndex;
         if (endIndex !== undefined) {
-          current += raw.slice(index, endIndex + 1);
+          appendText({
+            text: raw.slice(index, endIndex + 1),
+            expandVariables: true,
+          });
           index = endIndex;
           continue;
         }
@@ -315,16 +355,43 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
     }
 
     if (character === '"') {
-      flushExpandable();
+      flushCurrent();
+      switch (mode) {
+      case 'outer-double':
+        mode = 'inner-double';
+        break;
+      case 'inner-double':
+        mode = 'outer-double';
+        break;
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled parameter operand quote mode: ${_ex}`);
+      }
+      }
       continue;
     }
 
     if (character === '\\') {
       const nextCharacter = raw[index + 1];
       if (nextCharacter === '\n') {
-        flushExpandable();
+        flushCurrent();
         index += 1;
         continue;
+      }
+      switch (mode) {
+      case 'inner-double':
+        if (nextCharacter !== undefined) {
+          appendLiteral({ text: nextCharacter });
+          index += 1;
+          continue;
+        }
+        break;
+      case 'outer-double':
+        break;
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled parameter operand quote mode: ${_ex}`);
+      }
       }
       if (
         nextCharacter !== undefined &&
@@ -336,10 +403,10 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
       }
     }
 
-    current += character;
+    appendText({ text: character, expandVariables: true });
   }
 
-  flushExpandable();
+  flushCurrent();
   if (parts.length === 0) {
     parts.push({
       text: '',

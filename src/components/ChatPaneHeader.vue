@@ -4,7 +4,7 @@ import {
   XIcon, GitForkIcon,
   ArrowUpIcon, Settings2Icon, DownloadIcon, MoreVerticalIcon, BugIcon, PencilIcon,
   FolderIcon, FolderInputIcon, ChevronRightIcon, HammerIcon, SearchIcon, ImageIcon,
-  PrinterIcon, LinkIcon, TerminalIcon, ListIcon,
+  PrinterIcon, LinkIcon, TerminalIcon, ListIcon, Trash2Icon,
 } from 'lucide-vue-next';
 import type { MediaShelfVisibility } from '@/composables/useLayout';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
@@ -58,6 +58,7 @@ const emit = defineEmits<{
   (e: 'open-file-explorer'): void,
   (e: 'toggle-wesh-terminal'): void,
   (e: 'toggle-debug'): void,
+  (e: 'delete-chat'): void,
 }>();
 
 const showMoreMenu = ref(false);
@@ -82,6 +83,11 @@ useEventTargetListener(document, 'pointerdown', (event) => handleDocumentPointer
 function emitMoveToGroup({ groupId }: { groupId: ChatGroupId | null }) {
   emit('move-to-group', groupId);
   showMoveMenu.value = false;
+}
+
+function emitDeleteChat() {
+  emit('delete-chat');
+  showMoreMenu.value = false;
 }
 
 function emitMoreAction({ action }: {
@@ -383,6 +389,14 @@ defineExpose({
           >
             <BugIcon tw-class="w-4 h-4" />
             <span>{{ lazyStrings.ChatPaneHeader__debug_mode() }}</span>
+          </button>
+          <button
+            @click="emitDeleteChat()"
+            tw-class="w-full flex items-center gap-3 px-4 py-2.5 mt-1 border-t border-gray-100 dark:border-gray-700 text-[11px] font-bold uppercase tracking-wider transition-colors text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+            data-testid="delete-chat-button"
+          >
+            <Trash2Icon tw-class="w-4 h-4" />
+            <span>{{ lazyStrings.ChatPaneHeader__delete_chat() }}</span>
           </button>
         </div>
       </Transition>

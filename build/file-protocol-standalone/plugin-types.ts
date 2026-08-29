@@ -1,4 +1,5 @@
 import type { FileProtocolStandaloneReleaseValidationOptions } from './release-validation.js';
+import type { FileProtocolStandaloneReleasePackagingOptions } from './plugin/release-packaging.js';
 
 export type NaidanStandaloneWorkerDefinition = Readonly<{
   name: string;
@@ -25,6 +26,11 @@ type NaidanStandaloneReleaseValidationOptions = Omit<
   'workers' | 'runtimeFileNames' | 'sourceAudit'
 >;
 
+type NaidanStandaloneReleasePackagingOptions = Omit<
+  FileProtocolStandaloneReleasePackagingOptions,
+  'outputDirectory' | 'workerEntryModuleIds'
+>;
+
 export type NaidanStandalonePluginOptions = Readonly<{
   workers: readonly NaidanStandaloneWorkerDefinition[];
   systemRuntimePath: string;
@@ -34,4 +40,5 @@ export type NaidanStandalonePluginOptions = Readonly<{
   policies?: NaidanStandalonePolicies;
   sourceAudit?: NaidanStandaloneSourceAudit;
   releaseValidation?: NaidanStandaloneReleaseValidationOptions;
+  releasePackaging?: NaidanStandaloneReleasePackagingOptions;
 }>;

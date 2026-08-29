@@ -501,6 +501,34 @@ git ls-files`,
     expect(stderr.text).toBe('fatal: unsupported content-changing attribute: filter=custom\n');
   });
 
+  it('supports POSIX character classes in attribute patterns', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+${identity}
+printf 'file[[:digit:]].txt text eol=crlf\n' > .gitattributes
+printf 'a\nb\n' > file1.txt
+printf 'a\nb\n' > filea.txt
+git add .
+GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m initial >/dev/null
+printf dirty > file1.txt
+printf dirty > filea.txt
+git restore file1.txt filea.txt
+cat file1.txt
+printf '%s\n' ---
+cat filea.txt`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect([...stdout.text].map(character => character.charCodeAt(0))).toEqual([
+      97, 13, 10, 98, 13, 10,
+      45, 45, 45, 10,
+      97, 10, 98, 10,
+    ]);
+  });
+
   it('supports a quoted pathname pattern containing spaces', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

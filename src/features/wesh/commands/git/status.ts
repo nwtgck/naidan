@@ -310,7 +310,7 @@ export async function collectStatus({ context }: {
     destination.renameSourcePath = source.path;
   }
   const branchName = branchNameFromHead({ head });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   let upstreamName: string | undefined;
   let upstreamObjectId: string | undefined;
   let ahead: number | undefined;

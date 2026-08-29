@@ -38,6 +38,7 @@ import { createExternalWasmGuardPlugin } from './plugin/external-wasm.js';
 import { createVitePreloadHelperCompatibilityPlugin } from './plugin/preload-helper.js';
 import { createEffectFreeEmptyCssPruningPlugin } from './plugin/empty-css.js';
 import { createSystemJsOutputPlugin } from './plugin/systemjs-output.js';
+import { createFileProtocolStandaloneReleasePackagingPlugin } from './plugin/release-packaging.js';
 import {
   createFileProtocolStandaloneReleaseValidationPlugin,
   type FileProtocolStandaloneSourceAuditSummary,
@@ -74,10 +75,14 @@ export function createNaidanStandalonePlugin({
   policies = {},
   sourceAudit = { mode: 'inline' },
   releaseValidation,
+  releasePackaging,
 }: NaidanStandalonePluginOptions): PluginOption {
   if (!systemRuntimePath) throw new TypeError('systemRuntimePath is required');
   if (!Number.isFinite(startupSlowNoticeDelayMs) || startupSlowNoticeDelayMs < 0) {
     throw new TypeError('startupSlowNoticeDelayMs must be a non-negative finite number');
+  }
+  if (releasePackaging !== undefined && releaseValidation === undefined) {
+    throw new TypeError('releasePackaging requires releaseValidation');
   }
   if (!sourceAudit || !['inline', 'external'].includes(sourceAudit.mode)) {
     throw new TypeError('sourceAudit.mode must be "inline" or "external"');
@@ -191,6 +196,13 @@ export function createNaidanStandalonePlugin({
       workers: normalizedWorkers.map(({ name, entry }) => ({ name, sourceEntry: entry })),
       runtimeFileNames: [systemRuntimeFileName],
     })]),
+    ...(releaseValidation === undefined || releasePackaging === undefined ? [] : [
+      createFileProtocolStandaloneReleasePackagingPlugin({
+        ...releasePackaging,
+        outputDirectory: releaseValidation.outputDirectory,
+        workerEntryModuleIds: normalizedWorkers.map(worker => worker.entry),
+      }),
+    ]),
   ];
 }
 

@@ -176,7 +176,7 @@ export async function runClone({ context, args }: {
       }
       await setHeadSymbolic({ files: context.files, repository: destinationRepository, refName: `refs/heads/${checkoutBranch}` });
     } else if (checkoutObjectId !== undefined) {
-      const config = await readEffectiveConfig({ files: context.files, repository: destinationRepository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+      const config = await readEffectiveConfig({ files: context.files, repository: destinationRepository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
       await moveHeadReference({
         files: context.files,
         repository: destinationRepository,

@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Wesh } from "@/features/wesh/index";
 import { MockFileSystemDirectoryHandle } from "@/features/wesh/mocks/InMemoryFileSystem";
 import {
+  createReadHandleFromStream,
+  createWriteHandleFromStream,
+} from "@/features/wesh/utils/stream";
+import {
   createTestReadHandleFromBytes,
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
@@ -355,6 +359,28 @@ a
     expect(await readFile({ path: "follow-target.bak" })).toBe("foo\n");
   });
 
+  it("reports the lexical resolved target with F under --follow-symlinks", async () => {
+    await writeFile({ path: "target-name", data: "foo\n" });
+    await wesh.vfs.mkdir({ path: "/sub" });
+    await wesh.vfs.symlink({ path: "/sub/link", targetPath: "../target-name" });
+
+    const ordinary = await execute({
+      script: "sed --follow-symlinks -n F sub/link",
+    });
+    const inPlace = await execute({
+      script: "sed --follow-symlinks -i -n F sub/link",
+    });
+
+    expect(ordinary.stdout.text).toBe("sub/../target-name\n");
+    expect(ordinary.stderr.text).toBe("");
+    expect(ordinary.result.exitCode).toBe(0);
+    expect(inPlace.stdout.text).toBe("");
+    expect(inPlace.stderr.text).toBe("");
+    expect(inPlace.result.exitCode).toBe(0);
+    expect((await wesh.vfs.lstat({ path: "/sub/link" })).type).toBe("symlink");
+    expect(await readFile({ path: "target-name" })).toBe("sub/../target-name\n");
+  });
+
   it("stops after a --follow-symlinks resolution failure", async () => {
     await wesh.vfs.symlink({ path: "/dangling-link", targetPath: "missing-target" });
     await writeFile({ path: "later-file", data: "foo\n" });
@@ -409,6 +435,55 @@ ij$
     expect(invalidOption.stdout.text).toBe("");
     expect(invalidOption.stderr.text).not.toBe("");
     expect(invalidOption.result.exitCode).toBe(1);
+  });
+
+  it("wraps list widths with GNU unsigned 32-bit semantics", async () => {
+    const stdinText = `${"abcdefghijklmnopqrstuvwxyz0123456789".repeat(4)}\n`;
+    const explicitTen = await execute({
+      script: "sed -n -e 'l 10'",
+      stdinText,
+    });
+    const wrappedExplicitTen = await execute({
+      script: "sed -n -e 'l 4294967306'",
+      stdinText,
+    });
+    const optionTen = await execute({
+      script: "sed -n -l10 -e l",
+      stdinText,
+    });
+    const wrappedOptionTen = await execute({
+      script: "sed -n -l4294967306 -e l",
+      stdinText,
+    });
+    const implicitWidth = await execute({
+      script: "sed -n -l10 -e 'l 4294967295'",
+      stdinText,
+    });
+    const wrappedOne = await execute({
+      script: "sed -n -e 'l 18446744073709551617'",
+      stdinText,
+    });
+    const explicitOne = await execute({
+      script: "sed -n -e 'l 1'",
+      stdinText,
+    });
+
+    expect(wrappedExplicitTen.stdout.text).toBe(explicitTen.stdout.text);
+    expect(wrappedOptionTen.stdout.text).toBe(optionTen.stdout.text);
+    expect(implicitWidth.stdout.text).toBe(optionTen.stdout.text);
+    expect(wrappedOne.stdout.text).toBe(explicitOne.stdout.text);
+    for (const outcome of [
+      explicitTen,
+      wrappedExplicitTen,
+      optionTen,
+      wrappedOptionTen,
+      implicitWidth,
+      wrappedOne,
+      explicitOne,
+    ]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
   });
 
   it("does not continue delimited commands across -e source boundaries", async () => {
@@ -558,6 +633,24 @@ beta
     expect(missingSource.stdout.text).toBe("");
     expect(missingSource.stderr.text).not.toBe("");
     expect(missingSource.result.exitCode).toBe(4);
+  });
+
+  it("treats an empty --file value as a missing script filename", async () => {
+    await writeFile({ path: "input.txt", data: "alpha\n" });
+
+    const emptyFile = await execute({
+      script: "sed --file= input.txt",
+    });
+    const emptyExpression = await execute({
+      script: "sed --expression= input.txt",
+    });
+
+    expect(emptyFile.stdout.text).toBe("");
+    expect(emptyFile.stderr.text).not.toBe("");
+    expect(emptyFile.result.exitCode).toBe(4);
+    expect(emptyExpression.stdout.text).toBe("alpha\n");
+    expect(emptyExpression.stderr.text).toBe("");
+    expect(emptyExpression.result.exitCode).toBe(0);
   });
 
   it("preserves malformed UTF-8 literals in script files", async () => {
@@ -763,6 +856,20 @@ beta
 `);
   });
 
+  it("processes repeated in-place file operands sequentially", async () => {
+    await writeFile({ path: "repeat.txt", data: "a\n" });
+
+    const { result, stdout, stderr } = await execute({
+      script: "sed -i.bak 's/a/aa/' repeat.txt repeat.txt",
+    });
+
+    expect(stdout.text).toBe("");
+    expect(stderr.text).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(await readFile({ path: "repeat.txt" })).toBe("aaa\n");
+    expect(await readFile({ path: "repeat.txt.bak" })).toBe("aa\n");
+  });
+
   it("expands stars in in-place backup suffixes with the input filename", async () => {
     await writeFile({ path: "input.txt", data: "alpha\n" });
 
@@ -822,6 +929,47 @@ beta
     expect(fatalEdit.stderr.text).not.toBe("");
     expect(fatalEdit.result.exitCode).toBe(4);
     expect(await readFile({ path: "after-fatal.txt" })).toBe("foo\n");
+  });
+
+  it("carries empty hold-space terminator state across separate files", async () => {
+    await writeFile({ path: "separate-first", data: "a" });
+    await writeFile({ path: "separate-empty", data: "" });
+    await writeFile({ path: "separate-second", data: "b\n" });
+
+    const separated = await execute({
+      script: "sed -s -n 'x;p' separate-first separate-empty separate-second",
+    });
+    const getDoesNotChangeHoldTermination = await execute({
+      script: "sed -s -n 'g;p' separate-first separate-empty separate-second",
+    });
+
+    await writeFile({ path: "in-place-first", data: "a" });
+    await writeFile({ path: "in-place-empty", data: "" });
+    await writeFile({ path: "in-place-second", data: "b\n" });
+    const inPlace = await execute({
+      script: "sed -i 'x' in-place-first in-place-empty in-place-second",
+    });
+
+    expect(separated.stdout.buffer).toEqual(Uint8Array.from([0x0a]));
+    expect(separated.stderr.text).toBe("");
+    expect(separated.result.exitCode).toBe(0);
+    expect(getDoesNotChangeHoldTermination.stdout.buffer).toEqual(
+      Uint8Array.from([0x0a, 0x0a]),
+    );
+    expect(getDoesNotChangeHoldTermination.stderr.text).toBe("");
+    expect(getDoesNotChangeHoldTermination.result.exitCode).toBe(0);
+    expect(inPlace.stdout.text).toBe("");
+    expect(inPlace.stderr.text).toBe("");
+    expect(inPlace.result.exitCode).toBe(0);
+    expect(await readFileBytes({ path: "in-place-first" })).toEqual(
+      Uint8Array.from([0x0a]),
+    );
+    expect(await readFileBytes({ path: "in-place-empty" })).toEqual(
+      new Uint8Array(),
+    );
+    expect(await readFileBytes({ path: "in-place-second" })).toEqual(
+      new Uint8Array(),
+    );
   });
 
   it("supports newline escapes in in-place HTML-like replacements", async () => {
@@ -1680,6 +1828,48 @@ beta
     );
   });
 
+  it("distinguishes cycle-start directory input errors from in-cycle lookahead", async () => {
+    await writeFile({ path: "one.txt", data: "a\n" });
+    await writeFile({ path: "later.txt", data: "z\n" });
+    await wesh.vfs.mkdir({ path: "/input-dir", recursive: true });
+    await wesh.vfs.symlink({ path: "/input-dir-link", targetPath: "input-dir" });
+
+    const cycleStart = await execute({
+      script: "sed -n p one.txt input-dir later.txt",
+    });
+    const internalNext = await execute({
+      script: "sed -n 'n;p' one.txt input-dir later.txt",
+    });
+    const internalAppend = await execute({
+      script: "sed -n 'N;p' one.txt input-dir later.txt",
+    });
+    const lastLookahead = await execute({
+      script: "sed -n '$p' one.txt input-dir-link later.txt",
+    });
+    const separate = await execute({
+      script: "sed -s -n p one.txt input-dir later.txt",
+    });
+
+    expect(cycleStart.stdout.text).toBe("a\n");
+    expect(cycleStart.stderr.text).toContain("input-dir");
+    expect(cycleStart.result.exitCode).toBe(4);
+
+    expect(internalNext.stdout.text).toBe("z\n");
+    expect(internalAppend.stdout.text).toBe(`\
+a
+z
+`);
+    expect(lastLookahead.stdout.text).toBe("z\n");
+    for (const outcome of [internalNext, internalAppend, lastLookahead]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+
+    expect(separate.stdout.text).toBe("a\n");
+    expect(separate.stderr.text).toContain("input-dir");
+    expect(separate.result.exitCode).toBe(4);
+  });
+
   it("resolves last-line addresses only when control flow reaches them", async () => {
     await writeFile({ path: "good.txt", data: "good\n" });
 
@@ -1777,6 +1967,279 @@ Yc
     }
   });
 
+  it("keeps R cursors by lexical operand and separate from r reads", async () => {
+    await writeFile({
+      path: "extra.txt",
+      data: `\
+A
+B
+C
+D
+`,
+    });
+    await wesh.vfs.symlink({ path: "/extra-link", targetPath: "extra.txt" });
+    await writeFile({ path: "first.txt", data: "x\n" });
+    await writeFile({ path: "second.txt", data: "y\n" });
+
+    const samePath = await execute({
+      script: "sed -e 'R extra.txt' -e 'R extra.txt'",
+      stdinText: "x\n",
+    });
+    const lexicalAlias = await execute({
+      script: "sed -e 'R ./extra.txt' -e 'R extra.txt'",
+      stdinText: "x\n",
+    });
+    const symlinkAlias = await execute({
+      script: "sed -e 'R extra-link' -e 'R extra.txt'",
+      stdinText: "x\n",
+    });
+    const addressed = await execute({
+      script: "sed -e '1R extra.txt' -e '2R extra.txt'",
+      stdinText: `\
+x
+y
+`,
+    });
+    const branchSkipped = await execute({
+      script: "sed -e 'b done' -e 'R extra.txt' -e ':done' -e 'R extra.txt'",
+      stdinText: `\
+x
+y
+`,
+    });
+    const wholeThenLine = await execute({
+      script: "sed -e 'r extra.txt' -e 'R extra.txt'",
+      stdinText: "x\n",
+    });
+    const combinedInputs = await execute({
+      script: "sed -n -e 'R extra.txt' first.txt second.txt",
+    });
+    const separateInputs = await execute({
+      script: "sed -s -n -e 'R extra.txt' first.txt second.txt",
+    });
+
+    expect(samePath.stdout.text).toBe(`\
+x
+A
+B
+`);
+    expect(lexicalAlias.stdout.text).toBe(`\
+x
+A
+A
+`);
+    expect(symlinkAlias.stdout.text).toBe(`\
+x
+A
+A
+`);
+    expect(addressed.stdout.text).toBe(`\
+x
+A
+y
+B
+`);
+    expect(branchSkipped.stdout.text).toBe(`\
+x
+A
+y
+B
+`);
+    expect(wholeThenLine.stdout.text).toBe(`\
+x
+A
+B
+C
+D
+A
+`);
+    expect(combinedInputs.stdout.text).toBe(`\
+A
+B
+`);
+    expect(separateInputs.stdout.text).toBe(`\
+A
+A
+`);
+    for (const outcome of [
+      samePath,
+      lexicalAlias,
+      symlinkAlias,
+      addressed,
+      branchSkipped,
+      wholeThenLine,
+      combinedInputs,
+      separateInputs,
+    ]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it("preserves R cursor terminators for newline and null-delimited data", async () => {
+    await writeFile({
+      path: "extra.txt",
+      data: `\
+A
+B
+C`,
+    });
+
+    const newlineDelimited = await execute({
+      script: "sed -e 'R extra.txt' -e 'R extra.txt' -e 'R extra.txt'",
+      stdinText: "x\n",
+    });
+
+    await writeFile({ path: "extra.txt", data: "A\0B\0C" });
+    const nullDelimited = await execute({
+      script: "sed -z -e 'R extra.txt' -e 'R extra.txt' -e 'R extra.txt'",
+      stdinBytes: new TextEncoder().encode("x\0"),
+    });
+
+    expect([...newlineDelimited.stdout.buffer]).toEqual([
+      ...new TextEncoder().encode(`\
+x
+A
+B
+C`),
+    ]);
+    expect([...nullDelimited.stdout.buffer]).toEqual([
+      ...new TextEncoder().encode("x\0A\0B\0C"),
+    ]);
+    for (const outcome of [newlineDelimited, nullDelimited]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it("treats directory r and R targets as fatal at GNU-compatible phases", async () => {
+    await wesh.vfs.mkdir({ path: "/read-dir", recursive: true });
+
+    const immediate = await execute({
+      script: "sed -e p -e 'R read-dir' -e 'a AFTER'",
+      stdinText: "x\n",
+    });
+    const deferred = await execute({
+      script: "sed -e p -e 'r read-dir' -e 'a AFTER'",
+      stdinText: "x\n",
+    });
+
+    await writeFile({ path: "input.txt", data: "foo\n" });
+    await writeFile({ path: "later.txt", data: "foo\n" });
+    const inPlace = await execute({
+      script: "sed -i -e 's/foo/bar/' -e 'r read-dir' input.txt later.txt",
+    });
+
+    expect(immediate.stdout.text).toBe("x\n");
+    expect(immediate.stderr.text).toContain("read-dir");
+    expect(immediate.result.exitCode).toBe(4);
+    expect(deferred.stdout.text).toBe(`\
+x
+x
+`);
+    expect(deferred.stderr.text).toContain("read-dir");
+    expect(deferred.result.exitCode).toBe(4);
+
+    const deferredUnterminated = await execute({
+      script: "sed 'r read-dir'",
+      stdinText: "unterminated",
+    });
+    const deferredUnterminatedNull = await execute({
+      script: "sed -z 'r read-dir'",
+      stdinBytes: new TextEncoder().encode("unterminated"),
+    });
+    expect(deferredUnterminated.stdout.text).toBe("unterminated\n");
+    expect(deferredUnterminated.stderr.text).toContain("read-dir");
+    expect(deferredUnterminated.result.exitCode).toBe(4);
+    expect([...deferredUnterminatedNull.stdout.buffer]).toEqual([
+      ...new TextEncoder().encode("unterminated"),
+      0,
+    ]);
+    expect(deferredUnterminatedNull.stderr.text).toContain("read-dir");
+    expect(deferredUnterminatedNull.result.exitCode).toBe(4);
+    expect(inPlace.stdout.text).toBe("");
+    expect(inPlace.stderr.text).toContain("read-dir");
+    expect(inPlace.result.exitCode).toBe(4);
+    expect(await readFile({ path: "input.txt" })).toBe("foo\n");
+    expect(await readFile({ path: "later.txt" })).toBe("foo\n");
+  });
+
+  it("orders deferred reads across N, D, and Q cycle boundaries", async () => {
+    await writeFile({ path: "deferred-read.txt", data: `\
+A
+B` });
+
+    const wholeBeforeN = await execute({
+      script: "sed -e 'r deferred-read.txt' -e N",
+      stdinText: `\
+a
+b
+`,
+    });
+    const lineBeforeN = await execute({
+      script: "sed -e 'R deferred-read.txt' -e N",
+      stdinText: `\
+a
+b
+`,
+    });
+    const wholeAtNEof = await execute({
+      script: "sed -e 'r deferred-read.txt' -e N",
+      stdinText: "x\n",
+    });
+    const wholeAcrossD = await execute({
+      script: "sed -e N -e 'r deferred-read.txt' -e D",
+      stdinText: `\
+a
+b
+c
+`,
+    });
+    const wholeBeforeQ = await execute({
+      script: "sed -e 'r deferred-read.txt' -e 'Q 7'",
+      stdinText: `\
+a
+b
+`,
+    });
+    const lineBeforeQ = await execute({
+      script: "sed -e 'R deferred-read.txt' -e 'Q 7'",
+      stdinText: `\
+a
+b
+`,
+    });
+
+    expect(wholeBeforeN.stdout.text).toBe(`\
+A
+Ba
+b
+`);
+    expect(lineBeforeN.stdout.text).toBe(`\
+A
+a
+b
+`);
+    expect(wholeAtNEof.stdout.text).toBe(`\
+x
+A
+B`);
+    expect(wholeAcrossD.stdout.text).toBe(`\
+A
+Bc
+A
+B`);
+    for (const outcome of [wholeBeforeN, lineBeforeN, wholeAtNEof, wholeAcrossD]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+    for (const outcome of [wholeBeforeQ, lineBeforeQ]) {
+      expect(outcome.stdout.text).toBe("");
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(7);
+    }
+  });
+
   it("does not add a null terminator for an empty queued read", async () => {
     const missingLine = await execute({
       script: "sed -z 'R missing.txt'",
@@ -1852,6 +2315,11 @@ b
 a
 b`,
     });
+    await writeFile({ path: "unterminated-first", data: "a" });
+    await writeFile({ path: "terminated-second", data: "b\n" });
+    const consecutiveFiles = await execute({
+      script: "sed -n -e 'w consecutive.txt' unterminated-first terminated-second",
+    });
 
     expect(await readFile({ path: "out.txt" })).toBe(`\
 a
@@ -1861,11 +2329,178 @@ b
     expect(await readFile({ path: "exact.txt" })).toBe(`\
 a
 b`);
-    for (const outcome of [selected, firstLine, noFinalNewline]) {
+    expect(await readFile({ path: "consecutive.txt" })).toBe(`\
+a
+b
+`);
+    for (const outcome of [selected, firstLine, noFinalNewline, consecutiveFiles]) {
       expect(outcome.stdout.text).toBe("");
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }
+  });
+
+  it("keeps unterminated write state isolated per output path and shared across write commands", async () => {
+    await writeFile({ path: "first.input", data: "a" });
+    await writeFile({ path: "second.input", data: "b\n" });
+    await writeFile({ path: "third.input", data: "c\n" });
+
+    const independentPaths = await execute({
+      script:
+        "sed -n -e '/a/w left.txt' -e '/b/w right.txt' -e '/c/w left.txt' first.input second.input third.input",
+    });
+    const sharedPath = await execute({
+      script:
+        "sed -n -e '/a/w shared.txt' -e 's/b/B/w shared.txt' first.input second.input",
+    });
+
+    expect(await readFile({ path: "left.txt" })).toBe(`\
+a
+c
+`);
+    expect(await readFile({ path: "right.txt" })).toBe("b\n");
+    expect(await readFile({ path: "shared.txt" })).toBe(`\
+a
+B
+`);
+    for (const outcome of [independentPaths, sharedPath]) {
+      expect(outcome.stdout.text).toBe("");
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
+  it("initializes write targets in script order before input consumption", async () => {
+    await writeFile({ path: "opened.txt", data: "OLD\n" });
+
+    const beforeMissingInput = await execute({
+      script: "sed -n -e 'w opened.txt' missing-input.txt",
+    });
+    const invalidBeforeValid = await execute({
+      script:
+        "sed -n -e 'w missing-parent/out.txt' -e 'w unopened.txt'",
+      stdinText: "input\n",
+    });
+
+    expect(await readFile({ path: "opened.txt" })).toBe("");
+    expect(beforeMissingInput.stderr.text).toContain("missing-input.txt");
+    expect(beforeMissingInput.result.exitCode).toBe(2);
+    expect(invalidBeforeValid.stderr.text).not.toBe("");
+    expect(invalidBeforeValid.result.exitCode).toBe(4);
+    await expect(readFile({ path: "unopened.txt" })).rejects.toBeDefined();
+  });
+
+  it("initializes write targets before resolving branch labels", async () => {
+    await writeFile({ path: "opened-before-label.txt", data: "OLD\n" });
+
+    const missingLabel = await execute({
+      script: `\
+sed -n -e 'w opened-before-label.txt
+b missing'
+`,
+      stdinText: "input\n",
+    });
+    const outputFailure = await execute({
+      script: `\
+sed -n -e 'b missing
+w missing-parent/out.txt'
+`,
+      stdinText: "input\n",
+    });
+
+    expect(await readFile({ path: "opened-before-label.txt" })).toBe("");
+    expect(missingLabel.stderr.text).toContain(
+      "can't find label for jump to 'missing'",
+    );
+    expect(missingLabel.result.exitCode).toBe(4);
+    expect(outputFailure.stderr.text).not.toContain(
+      "can't find label for jump to 'missing'",
+    );
+    expect(outputFailure.stderr.text).not.toBe("");
+    expect(outputFailure.result.exitCode).toBe(4);
+  });
+
+  it("applies write-target compile side effects before a later syntax error", async () => {
+    await writeFile({ path: "before-syntax-error.txt", data: "OLD\n" });
+    await writeFile({ path: "after-syntax-error.txt", data: "OLD\n" });
+
+    const writeBeforeError = await execute({
+      script: `\
+sed -n -e 'w before-syntax-error.txt
+@'
+`,
+      stdinText: "input\n",
+    });
+    const writeAfterError = await execute({
+      script: `\
+sed -n -e '@
+w after-syntax-error.txt'
+`,
+      stdinText: "input\n",
+    });
+    const outputFailureBeforeError = await execute({
+      script: `\
+sed -n -e 'w missing-parent/out.txt
+@'
+`,
+      stdinText: "input\n",
+    });
+
+    expect(await readFile({ path: "before-syntax-error.txt" })).toBe("");
+    expect(await readFile({ path: "after-syntax-error.txt" })).toBe("OLD\n");
+    expect(writeBeforeError.result.exitCode).toBe(1);
+    expect(writeAfterError.result.exitCode).toBe(1);
+    expect(outputFailureBeforeError.result.exitCode).toBe(4);
+  });
+
+  it("preserves script-source compile ordering before later script-file errors", async () => {
+    await writeFile({ path: "source-order-out.txt", data: "OLD\n" });
+
+    const writeBeforeMissingScript = await execute({
+      script:
+        "sed -n -e 'w source-order-out.txt' -f missing-script.sed",
+      stdinText: "input\n",
+    });
+    await writeFile({ path: "source-order-untouched.txt", data: "OLD\n" });
+    const syntaxBeforeMissingScript = await execute({
+      script:
+        "sed -n -e '@' -f missing-script.sed -e 'w source-order-untouched.txt'",
+      stdinText: "input\n",
+    });
+
+    expect(await readFile({ path: "source-order-out.txt" })).toBe("");
+    expect(writeBeforeMissingScript.result.exitCode).toBe(4);
+    expect(await readFile({ path: "source-order-untouched.txt" })).toBe("OLD\n");
+    expect(syntaxBeforeMissingScript.result.exitCode).toBe(1);
+  });
+
+  it("initializes write targets before rejecting in-place commands without input files", async () => {
+    await writeFile({ path: "opened-without-input.txt", data: "OLD\n" });
+
+    const noInput = await execute({
+      script: "sed -i -n -e 'w opened-without-input.txt'",
+    });
+    const missingLabel = await execute({
+      script: `\
+sed -i -n -e 'w opened-without-input.txt
+b missing'
+`,
+    });
+    const outputFailure = await execute({
+      script: "sed -i -n -e 'w missing-parent/out.txt'",
+    });
+
+    expect(await readFile({ path: "opened-without-input.txt" })).toBe("");
+    expect(noInput.stderr.text).toContain("no input files");
+    expect(noInput.result.exitCode).toBe(4);
+    expect(missingLabel.stderr.text).toContain(
+      "can't find label for jump to 'missing'",
+    );
+    expect(missingLabel.stderr.text).not.toContain("no input files");
+    expect(missingLabel.result.exitCode).toBe(4);
+    expect(outputFailure.stderr.text).not.toContain("no input files");
+    expect(outputFailure.stderr.text).not.toBe("");
+    expect(outputFailure.result.exitCode).toBe(4);
   });
 
   it("writes only successful substitutions with the s command w flag", async () => {
@@ -2506,6 +3141,18 @@ four
       script: String.raw`sed 's/a/X/00'`,
       stdinText: "a a a\n",
     });
+    const wrappedOccurrence = await execute({
+      script: String.raw`sed 's/a/X/18446744073709551617'`,
+      stdinText: "a a a\n",
+    });
+    const wrappedFollowing = await execute({
+      script: String.raw`sed 's/a/X/18446744073709551618g'`,
+      stdinText: "a a a\n",
+    });
+    const wrappedZeroOccurrence = await execute({
+      script: String.raw`sed 's/a/X/18446744073709551616'`,
+      stdinText: "a a a\n",
+    });
     const ignoreCase = await execute({
       script: String.raw`sed 's/alpha/X/Ig'`,
       stdinText: "Alpha alpha ALPHA\n",
@@ -2515,20 +3162,26 @@ four
     expect(following.stdout.text).toBe("a X X\n");
     expect(leadingZeroNumbered.stdout.text).toBe("X a a\n");
     expect(leadingZeroFollowing.stdout.text).toBe("a X X\n");
+    expect(wrappedOccurrence.stdout.text).toBe("X a a\n");
+    expect(wrappedFollowing.stdout.text).toBe("a X X\n");
     expect(ignoreCase.stdout.text).toBe("X X X\n");
     for (const outcome of [
       numbered,
       following,
       leadingZeroNumbered,
       leadingZeroFollowing,
+      wrappedOccurrence,
+      wrappedFollowing,
       ignoreCase,
     ]) {
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }
-    expect(zeroOccurrence.stdout.text).toBe("");
-    expect(zeroOccurrence.stderr.text).toContain("invalid substitute occurrence");
-    expect(zeroOccurrence.result.exitCode).toBe(1);
+    for (const outcome of [zeroOccurrence, wrappedZeroOccurrence]) {
+      expect(outcome.stdout.text).toBe("");
+      expect(outcome.stderr.text).toContain("invalid substitute occurrence");
+      expect(outcome.result.exitCode).toBe(1);
+    }
   });
 
   it("supports GNU zero-address ranges from the first input record", async () => {
@@ -2550,6 +3203,100 @@ later match
     expect(standalone.stdout.text).toBe("");
     expect(standalone.stderr.text).toContain("invalid usage of line address 0");
     expect(standalone.result.exitCode).toBe(1);
+  });
+
+  it("wraps numeric addresses with GNU unsigned 64-bit semantics", async () => {
+    const wrappedZero = await execute({
+      script: String.raw`sed -n '18446744073709551616p'`,
+      stdinText: `\
+a
+b
+`,
+    });
+    const wrappedOne = await execute({
+      script: String.raw`sed -n '18446744073709551617p'`,
+      stdinText: `\
+a
+b
+`,
+    });
+    const wrappedStep = await execute({
+      script: String.raw`sed -n '18446744073709551617~2p'`,
+      stdinText: `\
+a
+b
+c
+`,
+    });
+    const wrappedOffset = await execute({
+      script: String.raw`sed -n '1,+18446744073709551615p'`,
+      stdinText: `\
+a
+b
+c
+`,
+    });
+    const wrappedZeroStep = await execute({
+      script: String.raw`sed -n '1~18446744073709551616p'`,
+      stdinText: `\
+1
+2
+3
+4
+5
+`,
+    });
+    const wrappedModulo = await execute({
+      script: String.raw`sed -n '2,~18446744073709551618p'`,
+      stdinText: `\
+1
+2
+3
+4
+5
+`,
+    });
+    const wrappedZeroStepRangeEnd = await execute({
+      script: String.raw`sed -n '1,0~18446744073709551616p'`,
+      stdinText: `\
+1
+2
+3
+4
+5
+`,
+    });
+
+    expect(wrappedZero.stdout.text).toBe("");
+    expect(wrappedZero.stderr.text).toContain("invalid usage of line address 0");
+    expect(wrappedZero.result.exitCode).toBe(1);
+    expect(wrappedOne.stdout.text).toBe("a\n");
+    expect(wrappedStep.stdout.text).toBe(`\
+a
+c
+`);
+    expect(wrappedOffset.stdout.text).toBe(`\
+a
+b
+`);
+    expect(wrappedZeroStep.stdout.text).toBe("1\n");
+    expect(wrappedModulo.stdout.text).toBe(`\
+2
+3
+4
+`);
+    expect(wrappedZeroStepRangeEnd.stdout.text).toBe("1\n");
+    for (const outcome of [
+      wrappedOne,
+      wrappedStep,
+      wrappedOffset,
+      wrappedZeroStep,
+      wrappedModulo,
+      wrappedZeroStepRangeEnd,
+    ]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
   });
 
   it("matches GNU sed range termination rules", async () => {
@@ -3249,6 +3996,79 @@ b
     }
   });
 
+  it("cooperatively stops long branch loops when the process is signaled", async () => {
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const execution = wesh.execute({
+      script: String.raw`sed -n ':again;bagain'`,
+      stdin: createTestReadHandleFromText({ text: "x\n" }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(await wesh.signalForegroundProcessGroup({ signal: 2 })).toBe(true);
+    const result = await execution;
+
+    expect(result.exitCode).toBe(130);
+    expect(result.waitStatus).toEqual({ kind: "signaled", signal: 2 });
+  }, 2_000);
+
+  it("flushes unbuffered output before an interrupted branch loop", async () => {
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const execution = wesh.execute({
+      script: String.raw`sed -u -n 'p;:again;bagain'`,
+      stdin: createTestReadHandleFromText({ text: "x\n" }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(await wesh.signalForegroundProcessGroup({ signal: 2 })).toBe(true);
+    const result = await execution;
+
+    expect(stdout.text).toBe("x\n");
+    expect(stderr.text).toBe("");
+    expect(result.exitCode).toBe(130);
+    expect(result.waitStatus).toEqual({ kind: "signaled", signal: 2 });
+  }, 2_000);
+
+  it("keeps the original in-place file when a long branch loop is interrupted", async () => {
+    await writeFile({ path: "input.txt", data: "x\n" });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const execution = wesh.execute({
+      script: String.raw`sed -i -n ':again;bagain' input.txt`,
+      stdin: createTestReadHandleFromText({ text: "" }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(await wesh.signalForegroundProcessGroup({ signal: 2 })).toBe(true);
+    const result = await execution;
+
+    expect(result.exitCode).toBe(130);
+    expect(result.waitStatus).toEqual({ kind: "signaled", signal: 2 });
+    expect(await readFile({ path: "input.txt" })).toBe("x\n");
+    for await (const [name] of rootHandle.entries()) {
+      expect(name.startsWith(".input.txt.sed-")).toBe(false);
+    }
+  }, 2_000);
+
+  it("does not reject finite command loops after an arbitrary step count", async () => {
+    const recordCount = 34_000;
+    const execution = await execute({
+      script: String.raw`sed -n ':again;n;$!bagain;d'`,
+      stdinText: "x\n".repeat(recordCount),
+    });
+
+    expect(execution.stdout.text).toBe("");
+    expect(execution.stderr.text).toBe("");
+    expect(execution.result.exitCode).toBe(0);
+  });
+
   it("appends the next input line to pattern space with N", async () => {
     const { result, stdout, stderr } = await execute({
       script: String.raw`sed -n 'N;=;p'`,
@@ -3320,6 +4140,20 @@ Xd
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }
+  });
+
+  it("preserves the substitution-success flag across a multiline D restart", async () => {
+    const execution = await execute({
+      script: String.raw`sed -n ':top;t hit;N;s/^a/A/;D;:hit;p'`,
+      stdinText: `\
+a
+b
+`,
+    });
+
+    expect(execution.stdout.text).toBe("b\n");
+    expect(execution.stderr.text).toBe("");
+    expect(execution.result.exitCode).toBe(0);
   });
 
   it("prints and deletes the first line of a multiline pattern space with P and D", async () => {
@@ -3451,6 +4285,47 @@ one
     }
   });
 
+  it("reports prefetched input metadata after evaluating the last-line address", async () => {
+    await writeFile({ path: "left.txt", data: "left\n" });
+    await writeFile({ path: "right.txt", data: "right\n" });
+
+    const execution = await execute({
+      script: "sed -n '$p;F' left.txt right.txt",
+    });
+
+    expect(execution.stdout.text).toBe(`\
+right.txt
+right
+right.txt
+`);
+    expect(execution.stderr.text).toBe("");
+    expect(execution.result.exitCode).toBe(0);
+  });
+
+  it("normalizes q and Q status arguments like GNU sed", async () => {
+    const cases = [
+      { command: "q 255", expected: 255 },
+      { command: "q 256", expected: 0 },
+      { command: "q 257", expected: 1 },
+      { command: "Q 511", expected: 255 },
+      { command: "Q 999", expected: 231 },
+      { command: "q 4294967295", expected: 0 },
+      { command: "q 4294967297", expected: 1 },
+      { command: "Q 18446744073709551617", expected: 1 },
+      { command: "Q 999999999999999999999999999999999999", expected: 0 },
+    ] as const;
+
+    for (const { command, expected } of cases) {
+      const execution = await execute({
+        script: `sed -n '${command}'`,
+        stdinText: "x\n",
+      });
+      expect(execution.stdout.text).toBe("");
+      expect(execution.stderr.text).toBe("");
+      expect(execution.result.exitCode).toBe(expected);
+    }
+  });
+
   it("supports list, clear-pattern, file-name, and quiet-quit commands", async () => {
     await writeFile({
       path: "left.txt",
@@ -3518,6 +4393,39 @@ right.txt
     expect(quit.result.exitCode).toBe(7);
     for (const outcome of [listed, wrapped, cleared, named, stdinNamed, quit]) {
       expect(outcome.stderr.text).toBe("");
+    }
+  });
+
+  it("preserves GNU record terminator state when z clears pattern space", async () => {
+    const terminatedLine = await execute({
+      script: String.raw`sed -n 'z;p'`,
+      stdinText: "a\n",
+    });
+    const unterminatedLine = await execute({
+      script: String.raw`sed -n 'z;p'`,
+      stdinText: "a",
+    });
+    const terminatedNull = await execute({
+      script: String.raw`sed -z -n 'z;p'`,
+      stdinBytes: Uint8Array.from([0x61, 0x00]),
+    });
+    const unterminatedNull = await execute({
+      script: String.raw`sed -z -n 'z;p'`,
+      stdinBytes: Uint8Array.from([0x61]),
+    });
+
+    expect(terminatedLine.stdout.buffer).toEqual(Uint8Array.from([0x0a]));
+    expect(unterminatedLine.stdout.buffer).toEqual(new Uint8Array());
+    expect(terminatedNull.stdout.buffer).toEqual(Uint8Array.from([0x00]));
+    expect(unterminatedNull.stdout.buffer).toEqual(new Uint8Array());
+    for (const outcome of [
+      terminatedLine,
+      unterminatedLine,
+      terminatedNull,
+      unterminatedNull,
+    ]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
     }
   });
 
@@ -3603,6 +4511,8 @@ betA
 AlphA
 betA
 `);
+    expect(shortUnbuffered.stdout.chunkCount).toBe(2);
+    expect(longUnbuffered.stdout.chunkCount).toBe(2);
     expect(bundled.stdout.text).toBe(`\
 bbb:aaa
 `);
@@ -3615,6 +4525,55 @@ bbb:aaa
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }
+  });
+
+  it("flushes unbuffered output before n waits for more input", async () => {
+    let inputController: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const stdin = createReadHandleFromStream({
+      source: new ReadableStream<Uint8Array>({
+        start(controller) {
+          inputController = controller;
+        },
+      }),
+    });
+    let resolveFirstWrite: (() => void) | undefined;
+    const firstWrite = new Promise<void>((resolve) => {
+      resolveFirstWrite = resolve;
+    });
+    let stdoutText = "";
+    const stdout = createWriteHandleFromStream({
+      target: new WritableStream<Uint8Array>({
+        write(chunk) {
+          stdoutText += new TextDecoder().decode(chunk);
+          resolveFirstWrite?.();
+          resolveFirstWrite = undefined;
+        },
+      }),
+    });
+    const stderr = createTestWriteCaptureHandle();
+
+    const execution = wesh.execute({
+      script: String.raw`sed -u -n ':again;p;n;$!bagain'`,
+      stdin,
+      stdout,
+      stderr: stderr.handle,
+    });
+    if (inputController === undefined)
+      throw new Error("stdin controller not initialized");
+    inputController.enqueue(new TextEncoder().encode("one\n"));
+
+    await Promise.race([
+      firstWrite,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("sed -u did not flush before n waited")), 1_000),
+      ),
+    ]);
+    expect(stdoutText).toBe("one\n");
+
+    inputController.close();
+    const result = await execution;
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe("");
   });
 
   it("supports NUL-delimited records with -z and --null-data", async () => {

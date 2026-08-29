@@ -11,6 +11,7 @@ async function readRepositoryContentPolicyConfig({ context }: {
     files: context.files,
     repository,
     homePath: context.env.get('HOME') ?? '/',
+    cwd: context.cwd,
     env: context.env,
   });
 }
@@ -19,10 +20,10 @@ async function readCloneContentPolicyConfig({ context }: {
   context: WeshCommandContext;
 }): Promise<GitConfig> {
   const config: GitConfig = new Map();
-  for (const entry of await readGlobalConfigEntries({ files: context.files, homePath: context.env.get('HOME') ?? '/' })) {
+  for (const entry of await readGlobalConfigEntries({ files: context.files, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env })) {
     config.set(entry.key, entry.value);
   }
-  for (const entry of readCommandConfigEntries({ env: context.env, resolveImplicitBoolean: true })) config.set(entry.key, entry.value);
+  for (const entry of readCommandConfigEntries({ env: context.env })) config.set(entry.key, entry.value);
   return config;
 }
 

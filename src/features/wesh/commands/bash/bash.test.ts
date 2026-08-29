@@ -1,30 +1,82 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
-import { readShellSourceToText } from '@/features/wesh/shell/source';
+import type { ShellSource } from '@/features/wesh/shell/source';
 import type { ShellInvocation } from '@/features/wesh/shell/invocation';
 import type { WeshFileHandle } from '@/features/wesh/types';
 import {
+  createTestReadHandleFromBytes,
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
-import { createBashCommandDefinition } from './index';
+import { createBashCommandDefinition, TEST_ONLY } from './index';
 
-async function readFileHandleText({ handle }: {
-  handle: WeshFileHandle,
-}): Promise<string | undefined> {
-  const stat = await handle.stat();
-  if (stat.type !== 'file') {
-    return undefined;
+async function readRawShellSourceToText({ source }: {
+  source: ShellSource,
+}): Promise<string> {
+  switch (source.kind) {
+  case 'text':
+    return source.text;
+  case 'bytes':
+  case 'handle': {
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      let chunk: Uint8Array | undefined;
+      switch (source.kind) {
+      case 'bytes':
+        chunk = await source.read({ maximumBytes: 64 * 1024 });
+        break;
+      case 'handle': {
+        const buffer = new Uint8Array(64 * 1024);
+        const { bytesRead } = await source.handle.read({
+          buffer,
+          offset: 0,
+          length: buffer.length,
+          position: undefined,
+        });
+        chunk = bytesRead === 0 ? undefined : buffer.subarray(0, bytesRead);
+        break;
+      }
+      default: {
+        const _ex: never = source;
+        throw new Error(`Unhandled shell source: ${JSON.stringify(_ex)}`);
+      }
+      }
+      if (chunk === undefined) {
+        break;
+      }
+      chunks.push(new Uint8Array(chunk));
+    }
+    const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const combined = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return new TextDecoder().decode(combined);
   }
-  const buffer = new Uint8Array(stat.size);
-  const { bytesRead } = await handle.read({
-    buffer,
-    offset: 0,
-    length: buffer.length,
-    position: undefined,
-  });
-  return new TextDecoder().decode(buffer.subarray(0, bytesRead));
+  default: {
+    const _ex: never = source;
+    throw new Error(`Unhandled shell source: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
+function createTestCharacterDeviceHandleFromBytes({ bytes }: {
+  bytes: Uint8Array,
+}): WeshFileHandle {
+  const base = createTestReadHandleFromBytes({ bytes });
+  return {
+    read: args => base.read(args),
+    write: args => base.write(args),
+    close: () => base.close(),
+    async stat() {
+      return { ...await base.stat(), type: 'chardev' };
+    },
+    truncate: args => base.truncate(args),
+    ioctl: args => base.ioctl(args),
+  };
 }
 
 describe('bash command entrypoint', () => {
@@ -45,9 +97,7 @@ describe('bash command entrypoint', () => {
       definition: createBashCommandDefinition({
         executeShellInvocation: async ({ context: _context, invocation }) => {
           invocations.push(invocation);
-          capturedSourceTexts.push(invocation.source.kind === 'handle'
-            ? await readFileHandleText({ handle: invocation.source.handle })
-            : await readShellSourceToText({ source: invocation.source }));
+          capturedSourceTexts.push(await readRawShellSourceToText({ source: invocation.source }));
           return { exitCode: 23 };
         },
       }),
@@ -163,6 +213,137 @@ printf 'ok\\n'
     expect(invocations).toHaveLength(0);
   });
 
+  it('detects Bash binary prefixes across short positioned reads', async () => {
+    const bytes = new Uint8Array([
+      ...new TextEncoder().encode('a'.repeat(78)),
+      0,
+      0x0a,
+    ]);
+    const positions: number[] = [];
+    const handle = {
+      async read({ buffer, offset = 0, length = buffer.length - offset, position = 0 }: {
+        buffer: Uint8Array,
+        offset?: number,
+        length?: number,
+        position?: number,
+      }) {
+        positions.push(position);
+        const bytesRead = Math.min(7, length, bytes.length - position);
+        if (bytesRead <= 0) return { bytesRead: 0 };
+        buffer.set(bytes.subarray(position, position + bytesRead), offset);
+        return { bytesRead };
+      },
+    } as unknown as WeshFileHandle;
+
+    await expect(TEST_ONLY.hasBashBinaryScriptPrefix({ handle })).resolves.toBe(true);
+    expect(positions).toEqual([0, 7, 14, 21, 28, 35, 42, 49, 56, 63, 70, 77]);
+  });
+
+  it('does not consume FIFO script bytes while probing regular-file binary prefixes', async () => {
+    const sourceText = "printf 'from fifo\\n'\n";
+    const fifoHandle = createTestReadHandleFromText({ text: sourceText });
+    wesh.vfs.registerSpecialFile({
+      path: '/script.fifo',
+      type: 'fifo',
+      handler: () => fifoHandle,
+    });
+
+    try {
+      const { result, stderr } = await execute({
+        script: 'bash /script.fifo',
+        stdin: '',
+      });
+
+      expect(result.exitCode).toBe(23);
+      expect(stderr.text).toBe('');
+      expect(invocations).toHaveLength(1);
+      expect(capturedSourceTexts[0]).toBe(sourceText);
+    } finally {
+      wesh.vfs.unregisterSpecialFile({ path: '/script.fifo' });
+    }
+  });
+
+  it('does not apply regular-file binary-prefix rejection to FIFO scripts', async () => {
+    const sourceBytes = new Uint8Array([
+      ...new TextEncoder().encode('echo '),
+      0,
+      ...new TextEncoder().encode('bad\n'),
+    ]);
+    const fifoHandle = createTestReadHandleFromBytes({ bytes: sourceBytes });
+    wesh.vfs.registerSpecialFile({
+      path: '/binary-looking.fifo',
+      type: 'fifo',
+      handler: () => fifoHandle,
+    });
+
+    try {
+      const { result, stderr } = await execute({
+        script: 'bash /binary-looking.fifo',
+        stdin: '',
+      });
+
+      expect(result.exitCode).toBe(23);
+      expect(stderr.text).toBe('');
+      expect(invocations).toHaveLength(1);
+      expect(capturedSourceTexts[0]).toBe('echo \0bad\n');
+    } finally {
+      wesh.vfs.unregisterSpecialFile({ path: '/binary-looking.fifo' });
+    }
+  });
+
+  it('replays a non-binary character-device prefix after sequential probing', async () => {
+    const sourceText = `#${'x'.repeat(100)}\nprintf 'from chardev\\n'\n`;
+    const chardevHandle = createTestCharacterDeviceHandleFromBytes({
+      bytes: new TextEncoder().encode(sourceText),
+    });
+    wesh.vfs.registerSpecialFile({
+      path: '/script.chardev',
+      type: 'chardev',
+      handler: () => chardevHandle,
+    });
+
+    try {
+      const { result, stderr } = await execute({
+        script: 'bash /script.chardev',
+        stdin: '',
+      });
+
+      expect(result.exitCode).toBe(23);
+      expect(stderr.text).toBe('');
+      expect(invocations).toHaveLength(1);
+      expect(capturedSourceTexts[0]).toBe(sourceText);
+    } finally {
+      wesh.vfs.unregisterSpecialFile({ path: '/script.chardev' });
+    }
+  });
+
+  it('applies Bash binary-prefix rejection to character-device scripts', async () => {
+    const sourceBytes = new Uint8Array([
+      ...new TextEncoder().encode('echo '),
+      0,
+      ...new TextEncoder().encode('bad\n'),
+    ]);
+    const chardevHandle = createTestCharacterDeviceHandleFromBytes({ bytes: sourceBytes });
+    wesh.vfs.registerSpecialFile({
+      path: '/binary-looking.chardev',
+      type: 'chardev',
+      handler: () => chardevHandle,
+    });
+
+    try {
+      const { result, stderr } = await execute({
+        script: 'bash /binary-looking.chardev',
+        stdin: '',
+      });
+
+      expect(result.exitCode).toBe(126);
+      expect(stderr.text).toBe('/binary-looking.chardev: /binary-looking.chardev: cannot execute binary file\n');
+      expect(invocations).toHaveLength(0);
+    } finally {
+      wesh.vfs.unregisterSpecialFile({ path: '/binary-looking.chardev' });
+    }
+  });
+
   it('rejects Bash binary script prefixes without consuming the file cursor', async () => {
     const binaryScript = await rootHandle.getFileHandle('binary.sh', { create: true });
     const writable = await binaryScript.createWritable();
@@ -182,7 +363,7 @@ printf after
     });
 
     expect(result.exitCode).toBe(126);
-    expect(stderr.text).toBe('bash: /binary.sh: cannot execute binary file\n');
+    expect(stderr.text).toBe('/binary.sh: /binary.sh: cannot execute binary file\n');
     expect(invocations).toHaveLength(0);
   });
 

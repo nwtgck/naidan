@@ -270,6 +270,21 @@ body from stdin
   });
 
 
+  it('treats an explicit empty commit.gpgSign override as false', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+printf 'two\n' > a.txt
+git add a.txt
+git -c commit.gpgSign= commit -m unsigned >/dev/null
+git log -1 --format='%s'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('unsigned\n');
+  });
+
   it('refuses configured commit signing before -a mutates the index', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

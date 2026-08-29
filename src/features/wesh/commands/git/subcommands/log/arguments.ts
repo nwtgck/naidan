@@ -1,5 +1,9 @@
 import { expandGitShortOptions } from '@/features/wesh/commands/git/short-options';
 import { parseGitMaxCount } from '@/features/wesh/commands/git/max-count';
+import { compileGitBasicRegex } from '@/features/wesh/commands/git/basic-regex';
+import type { GitBasicRegex } from '@/features/wesh/commands/git/basic-regex';
+import { compileGitExtendedRegex } from '@/features/wesh/commands/git/extended-regex';
+import type { GitExtendedRegex } from '@/features/wesh/commands/git/extended-regex';
 
 export type GitLogDecorationMode = 'none' | 'short' | 'full';
 
@@ -14,9 +18,9 @@ export interface GitLogArguments {
   showPatch: boolean,
   sinceTimestamp: number | undefined,
   untilTimestamp: number | undefined,
-  grepPatterns: readonly RegExp[],
+  grepPatterns: readonly GitBasicRegex[],
   pickaxeString: string | undefined,
-  pickaxeRegex: RegExp | undefined,
+  pickaxeRegex: GitExtendedRegex | undefined,
   revisionTerms: readonly string[],
   pathOperands: readonly string[],
 }
@@ -26,6 +30,9 @@ function parseLogDateBoundary({ value }: {
 }): number {
   if (/^@-?[0-9]+$/u.test(value))
     return Number.parseInt(value.slice(1), 10);
+  const rawTimestamp = /^([0-9]{9,})(?:[ \t]+[+-][0-9]{4})?$/u.exec(value);
+  if (rawTimestamp !== null)
+    return Number.parseInt(rawTimestamp[1]!, 10);
   const milliseconds = Date.parse(value);
   if (!Number.isFinite(milliseconds))
     throw new Error(`invalid date format: ${value}`);
@@ -42,9 +49,9 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
   let showPatch = false;
   let sinceTimestamp: number | undefined;
   let untilTimestamp: number | undefined;
-  const grepPatterns: RegExp[] = [];
+  const grepPatterns: GitBasicRegex[] = [];
   let pickaxeString: string | undefined;
-  let pickaxeRegex: RegExp | undefined;
+  let pickaxeRegex: GitExtendedRegex | undefined;
   let parsingOptions = true;
   let readingPaths = false;
   const revisionTerms: string[] = [];
@@ -89,7 +96,7 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
       maxCount = parseGitMaxCount({ value, option: arg });
       index += 1;
     } else if (parsingOptions && /^-[0-9]+$/u.test(arg)) {
-      maxCount = Number.parseInt(arg.slice(1), 10);
+      maxCount = parseGitMaxCount({ value: arg.slice(1), option: '-n' });
     } else if (parsingOptions && arg.startsWith('--max-count=')) {
       const value = arg.slice('--max-count='.length);
       maxCount = parseGitMaxCount({ value, option: '--max-count' });
@@ -120,34 +127,40 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
       untilTimestamp = parseLogDateBoundary({ value: arg.slice(arg.indexOf('=') + 1) });
     } else if (parsingOptions && arg === '-S') {
       const value = normalizedArgs[index + 1];
-      if (value === undefined)
-        throw new Error("option '-S' requires a value");
+      if (value === undefined || value.length === 0)
+        throw new Error("option '-S' requires a non-empty value");
       pickaxeString = value;
       index += 1;
     } else if (parsingOptions && arg.startsWith('-S')) {
-      pickaxeString = arg.slice(2);
+      const value = arg.slice(2);
+      if (value.length === 0) throw new Error("option '-S' requires a non-empty value");
+      pickaxeString = value;
     } else if (parsingOptions && arg === '-G') {
       const value = normalizedArgs[index + 1];
-      if (value === undefined)
-        throw new Error("option '-G' requires a value");
-      pickaxeRegex = new RegExp(value, 'u');
+      if (value === undefined || value.length === 0)
+        throw new Error("option '-G' requires a non-empty value");
+      pickaxeRegex = compileGitExtendedRegex({ pattern: value });
       index += 1;
     } else if (parsingOptions && arg.startsWith('-G')) {
-      pickaxeRegex = new RegExp(arg.slice(2), 'u');
+      const value = arg.slice(2);
+      if (value.length === 0) throw new Error("option '-G' requires a non-empty value");
+      pickaxeRegex = compileGitExtendedRegex({ pattern: value });
     } else if (parsingOptions && (arg === '--grep')) {
       const value = normalizedArgs[index + 1];
       if (value === undefined)
         throw new Error(`option '${arg}' requires a value`);
-      grepPatterns.push(new RegExp(value, 'u'));
+      grepPatterns.push(compileGitBasicRegex({ pattern: value }));
       index += 1;
     } else if (parsingOptions && arg.startsWith('--grep=')) {
-      grepPatterns.push(new RegExp(arg.slice('--grep='.length), 'u'));
+      grepPatterns.push(compileGitBasicRegex({ pattern: arg.slice('--grep='.length) }));
     } else if (parsingOptions && arg.startsWith('-')) {
       throw new Error(`unsupported log argument: ${arg}`);
     } else {
       revisionTerms.push(arg);
     }
   }
+  if (pickaxeString !== undefined && pickaxeRegex !== undefined)
+    throw new Error("options '-G' and '-S' cannot be used together");
   if (graph && (showStat || showPatch || pathOperands.length > 0 || sinceTimestamp !== undefined
         || untilTimestamp !== undefined || grepPatterns.length > 0 || pickaxeString !== undefined
         || pickaxeRegex !== undefined)) {

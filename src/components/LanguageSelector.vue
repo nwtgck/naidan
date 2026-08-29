@@ -8,8 +8,10 @@ import {
 } from '@/strings';
 import { useSettings } from '@/composables/useSettings';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
+import { resolveStandalonePackageLocale } from '@/features/file-protocol-standalone/logic/package-locale';
 
 const settingsStore = useSettings();
+const isPackageLocaleConstrained = resolveStandalonePackageLocale() !== undefined;
 const isOpen = ref(false);
 const dropdownRef = ref<HTMLElement | null>(null);
 
@@ -74,7 +76,7 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="dropdownRef" tw-class="relative inline-block text-left" data-testid="language-selector">
+  <div v-if="!isPackageLocaleConstrained" ref="dropdownRef" tw-class="relative inline-block text-left" data-testid="language-selector">
     <button
       type="button"
       :disabled="isChangingLocale"

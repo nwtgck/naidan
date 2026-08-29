@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { collectStatus } from "@/features/wesh/commands/git/status";
 import { formatPorcelainV1Branch, printLongStatus, renderPorcelainV1, renderPorcelainV2, renderShortStatus } from "@/features/wesh/commands/git/status-output";
@@ -38,7 +39,7 @@ export async function runStatus({ context, args }: {
       nul = true;
       break;
     default:
-      throw new Error(`unknown option: ${arg}`);
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
     }
   }
   if (nul && format === 'long')

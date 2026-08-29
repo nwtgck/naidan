@@ -41,7 +41,7 @@ export async function createReplayCommit({ context, repository, kind, sourceObje
   const entries = await readIndex({ files: context.files, repository });
   const treeObjectId = await writeTreeFromIndex({ files: context.files, repository, entries });
   const sourceCommit = await readCommit({ files: context.files, repository, objectId: sourceObjectId });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   let authorOverride;
   switch (kind) {
   case 'cherry-pick':
@@ -347,7 +347,7 @@ async function restoreReplayHead({ context, repository, objectId }: {
     targetEntries,
     contentConfig: await resolveContentConfigForContext({ context, repository }),
   });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', env: context.env });
+  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   await updateHead({
     files: context.files,
     repository,

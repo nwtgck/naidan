@@ -1,3 +1,4 @@
+import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { expandGitShortOptions } from '@/features/wesh/commands/git/short-options';
 
 export type BranchDeleteMode = 'none' | 'safe' | 'force';
@@ -54,7 +55,7 @@ export function parseBranchArguments({ args }: { args: readonly string[] }): Bra
     else if (parsingOptions && arg === '--no-color')
       continue;
     else if (parsingOptions && arg.startsWith('-'))
-      throw new Error(`unknown option: ${arg}`);
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
     else
       operands.push(arg);
   }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePortableAppDownload } from '@/features/file-protocol-standalone/composables/usePortableAppDownload';
 import type { NaidanLicense } from '@/01-models/naidan-license';
 import { ref, onMounted } from 'vue';
 import { InfoIcon, ShieldCheckIcon, Loader2Icon, GithubIcon, DownloadIcon, ExternalLinkIcon } from 'lucide-vue-next';
@@ -7,6 +8,7 @@ import { lazyStrings } from '@/strings';
 
 const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 const appVersion = __APP_VERSION__;
+const portableAppDownload = usePortableAppDownload({ version: appVersion });
 
 const ossLicenses = ref<readonly NaidanLicense[]>([]);
 const isLoadingLicenses = ref(false);
@@ -80,8 +82,8 @@ defineExpose({
 
         <a
           v-if="!isStandalone"
-          href="./naidan-standalone.zip"
-          :download="'naidan-standalone-v' + appVersion + '.zip'"
+          :href="portableAppDownload.href"
+          :download="portableAppDownload.fileName"
           tw-class="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-3xl transition-all group no-underline"
         >
           <div tw-class="p-3 bg-green-100 dark:bg-green-800/50 rounded-2xl text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform">
