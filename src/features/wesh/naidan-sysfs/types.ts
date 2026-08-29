@@ -1,7 +1,10 @@
 import type { Chat, ChatContent, ChatGroup, ChatMeta, ChatSummary, Hierarchy, SidebarItem } from '@/01-models/types';
 import type { BinaryObjectId, ChatGroupId, ChatId } from '@/01-models/ids';
-// eslint-disable-next-line local-rules/enforce-dependency-directions -- TODO(dependency-direction): Replace the DTO dependency with the storage service API.
-import type { ChatContentDto, ChatGroupDto, ChatMetaDto } from '@/00-storage/00-dto/dto';
+import type {
+  NaidanSysfsRemoteChatContentValue,
+  NaidanSysfsRemoteChatGroupValue,
+  NaidanSysfsRemoteChatMetaValue,
+} from './remote-reader-schema';
 import type { NaidanSysfsBinaryObjectAccess, NaidanSysfsVisibility, WeshDirEntry, WeshFileHandle, WeshOpenFlags, WeshStat } from '@/features/wesh/types';
 
 export interface NaidanSysfsBinaryObject {
@@ -27,13 +30,13 @@ export interface NaidanSysfsStorageReader {
 }
 
 export interface NaidanSysfsRemoteChatMetaPayload {
-  dto: ChatMetaDto,
+  dto: NaidanSysfsRemoteChatMetaValue,
   groupId: string | null | undefined,
 }
 
 export interface NaidanSysfsRemoteChatPayload {
   metadata: NaidanSysfsRemoteChatMetaPayload,
-  content: ChatContentDto,
+  content: NaidanSysfsRemoteChatContentValue,
 }
 
 export interface NaidanSysfsRemoteChatSidebarItem {
@@ -43,7 +46,7 @@ export interface NaidanSysfsRemoteChatSidebarItem {
 }
 
 export interface NaidanSysfsRemoteChatGroupPayload {
-  dto: ChatGroupDto,
+  dto: NaidanSysfsRemoteChatGroupValue,
   items: NaidanSysfsRemoteChatSidebarItem[],
 }
 
@@ -61,7 +64,7 @@ export interface NaidanSysfsRemoteReader {
   listChats(): Promise<Array<{ id: string, title: string | null, updatedAt: number, groupId?: string | null }>>,
   listChatGroups(): Promise<NaidanSysfsRemoteChatGroupPayload[]>,
   loadChatMeta({ chatId }: { chatId: string }): Promise<NaidanSysfsRemoteChatMetaPayload | undefined>,
-  loadChatContent({ chatId }: { chatId: string }): Promise<ChatContentDto | undefined>,
+  loadChatContent({ chatId }: { chatId: string }): Promise<NaidanSysfsRemoteChatContentValue | undefined>,
   loadChat({ chatId }: { chatId: string }): Promise<NaidanSysfsRemoteChatPayload | undefined>,
   loadChatGroup({ chatGroupId }: { chatGroupId: string }): Promise<NaidanSysfsRemoteChatGroupPayload | undefined>,
   listBinaryObjects(): Promise<NaidanSysfsBinaryObject[]>,

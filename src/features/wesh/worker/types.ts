@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/utils/zod/missingAsUndefined';
+import type { WorkerCapability, WorkerProxy } from '@/utils/worker-transport';
 import { idToRaw } from '@/01-models/ids';
 import {
   createOpfsDirectoryHandleLocator,
@@ -135,14 +136,14 @@ export interface IWeshWorker {
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   init(
-    request: WeshWorkerInitRequest,
-    naidanSysfsRemoteReader?: NaidanSysfsRemoteReader,
+    request: WorkerCapability<WeshWorkerInitRequest, 'file-system-handle-clone'>,
+    naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
   ): Promise<void>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   startExecution(
     request: WeshWorkerExecuteRequest,
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-    onEvent?: (event: WeshWorkerRemoteExecutionEvent) => void | Promise<void>
+    onEvent?: WorkerProxy<(event: WeshWorkerRemoteExecutionEvent) => void | Promise<void>>
   ): Promise<WeshWorkerStartExecutionResponse>,
   awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>,
   interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>,

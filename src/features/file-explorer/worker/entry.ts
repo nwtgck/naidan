@@ -1,7 +1,11 @@
-import * as Comlink from 'comlink';
+import { exposeWorkerRemote } from '@/utils/worker-transport';
 import { createFileExplorerWorker } from './impl';
+import type { IFileExplorerWorker } from './types';
 
-Comlink.expose(createFileExplorerWorker());
+exposeWorkerRemote<IFileExplorerWorker>({
+  api: createFileExplorerWorker(),
+  endpoint: undefined,
+});
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

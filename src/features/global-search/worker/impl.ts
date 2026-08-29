@@ -1,3 +1,4 @@
+import type { WorkerServerApi } from '@/utils/worker-transport';
 import { idToRaw, toChatId } from '@/01-models/ids';
 import type { ChatContent, StorageType } from '@/01-models/types';
 import { OPFSStorageProvider } from '@/00-storage/service/opfs-storage';
@@ -19,7 +20,7 @@ interface GlobalSearchContentReader {
   }): Promise<ChatContent | null>;
 }
 
-export function createGlobalSearchWorker(): IGlobalSearchWorker {
+export function createGlobalSearchWorker(): WorkerServerApi<IGlobalSearchWorker> {
   let storageType: StorageType | undefined;
   let contentReader: GlobalSearchContentReader | undefined;
 

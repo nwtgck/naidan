@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { WorkerCapability, WorkerProxy } from '@/utils/worker-transport';
 import type { NaidanSysfsRemoteReader } from '@/features/wesh/naidan-sysfs/types';
 import { fileSystemDirectoryHandleReferenceSchema } from '@/utils/file-system-handle-transport';
 import { weshWorkerMountSchema } from '@/features/wesh/worker/types';
@@ -372,8 +373,11 @@ export type FileExplorerDisposeSessionRequest = z.infer<typeof fileExplorerDispo
 export interface IFileExplorerWorker {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy values must remain top-level arguments.
   prepareSession(
-    options: { request: FileExplorerPrepareSessionRequest },
-    naidanSysfsRemoteReader?: NaidanSysfsRemoteReader,
+    options: WorkerCapability<
+      { request: FileExplorerPrepareSessionRequest },
+      'file-system-handle-clone'
+    >,
+    naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
   ): Promise<FileExplorerPrepareSessionResponse>,
   readDirectory({ request }: { request: FileExplorerReadDirectoryRequest }): Promise<FileExplorerReadDirectoryResponse>,
   readPreview({ request }: { request: FileExplorerReadPreviewRequest }): Promise<FileExplorerReadPreviewResponse>,
