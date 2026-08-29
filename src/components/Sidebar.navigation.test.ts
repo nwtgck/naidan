@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
@@ -15,6 +15,7 @@ const mockOpenChat = vi.fn();
 const mockOpenChatGroup = vi.fn();
 const mockSetChatGroupCollapsed = vi.fn();
 const mockPersistSidebarStructure = vi.fn();
+const mockDeleteChat = vi.fn();
 
 const mockActiveFocusArea = ref('chat');
 const mockSetActiveFocusArea = vi.fn(({ area }: { area: FocusArea }) => {
@@ -88,7 +89,7 @@ vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
 vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
   useChatLifecycle: () => ({
     createNewChat: vi.fn(),
-    deleteChat: vi.fn(),
+    deleteChat: mockDeleteChat,
     deleteAllChats: vi.fn(),
     TEST_ONLY: {},
   }),
@@ -171,6 +172,79 @@ describe('Sidebar Keyboard Navigation', () => {
     mockOpenChatGroup.mockClear();
     mockSetChatGroupCollapsed.mockClear();
     mockSetActiveFocusArea.mockClear();
+    mockDeleteChat.mockClear();
+  });
+
+  it('navigates to the previous chat group after deleting the grouped current chat', async () => {
+    const groupId = toChatGroupId({ raw: 'delete-group' });
+    const chatId = toChatId({ raw: 'delete-current' });
+    mockChatGroups.value = [{
+      id: groupId,
+      name: 'Delete Group',
+      isCollapsed: false,
+      updatedAt: 0,
+      items: [{ id: `chat:${idToRaw({ id: chatId })}`, type: 'chat', chat: { id: chatId, title: 'Delete Current', groupId, updatedAt: 0 } }],
+    }];
+    mockChats.value = [];
+    mockCurrentChat.value = { id: idToRaw({ id: chatId }) };
+    await router.push(`/chat/${idToRaw({ id: chatId })}`);
+
+    const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
+    await nextTick();
+    await wrapper.get(`[data-testid="delete-chat-button-${idToRaw({ id: chatId })}"]`).trigger('click');
+    await flushPromises();
+
+    expect(mockDeleteChat).toHaveBeenCalledWith({
+      id: chatId,
+      injectAddToast: undefined,
+    });
+    expect(router.currentRoute.value.path).toBe(`/chat-group/${idToRaw({ id: groupId })}`);
+  });
+
+  it('navigates home after deleting an ungrouped current chat from the sidebar', async () => {
+    const chatId = toChatId({ raw: 'delete-ungrouped-current' });
+    mockChatGroups.value = [];
+    mockChats.value = [{ id: chatId, title: 'Delete Ungrouped Current', updatedAt: 0 }];
+    mockCurrentChat.value = { id: idToRaw({ id: chatId }) };
+    await router.push(`/chat/${idToRaw({ id: chatId })}`);
+
+    const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
+    await nextTick();
+    await wrapper.get(`[data-testid="delete-chat-button-${idToRaw({ id: chatId })}"]`).trigger('click');
+    await flushPromises();
+
+    expect(mockDeleteChat).toHaveBeenCalledWith({
+      id: chatId,
+      injectAddToast: undefined,
+    });
+    expect(router.currentRoute.value.path).toBe('/');
+  });
+
+  it('keeps the current route when deleting a different grouped chat', async () => {
+    const groupId = toChatGroupId({ raw: 'delete-other-group' });
+    const currentChatId = toChatId({ raw: 'keep-current' });
+    const deletedChatId = toChatId({ raw: 'delete-other' });
+    mockChatGroups.value = [{
+      id: groupId,
+      name: 'Delete Other Group',
+      isCollapsed: false,
+      updatedAt: 0,
+      items: [{ id: `chat:${idToRaw({ id: deletedChatId })}`, type: 'chat', chat: { id: deletedChatId, title: 'Delete Other', groupId, updatedAt: 0 } }],
+    }];
+    mockChats.value = [{ id: currentChatId, title: 'Keep Current', updatedAt: 0 }];
+    mockCurrentChat.value = { id: idToRaw({ id: currentChatId }) };
+    await router.push(`/chat/${idToRaw({ id: currentChatId })}`);
+
+    const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
+    await nextTick();
+    await wrapper.get(`[data-testid="delete-chat-button-${idToRaw({ id: deletedChatId })}"]`).trigger('click');
+    await flushPromises();
+
+    expect(mockDeleteChat).toHaveBeenCalledWith({
+      id: deletedChatId,
+      injectAddToast: undefined,
+    });
+    expect(router.currentRoute.value.path).toBe(`/chat/${idToRaw({ id: currentChatId })}`);
   });
 
   it('navigates down on ArrowDown only when area is sidebar', async () => {

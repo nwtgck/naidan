@@ -701,10 +701,13 @@ watch([() => currentChat.value?.id, () => currentChatGroup.value?.id], ([chatId,
   }
 });
 
-async function handleDeleteChat({ id }: { id: ChatId }) {
+async function handleDeleteChat({ id, groupId }: { id: ChatId, groupId: ChatGroupId | undefined }) {
   const isCurrent = currentChat.value?.id === id;
+  const redirectAfterDelete = groupId
+    ? `/chat-group/${idToRaw({ id: groupId })}`
+    : '/';
   await deleteChat({ id });
-  if (isCurrent) router.push('/');
+  if (isCurrent) await router.push(redirectAfterDelete);
 }
 
 function startEditing({ id, title }: { id: ChatId, title: string | null }) {
@@ -1219,7 +1222,7 @@ defineExpose({
                               <Loader2Icon v-if="isProcessing({ chatId: nestedItem.chat.id })" tw-class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                               <div v-if="editingId !== nestedItem.chat.id" class="touch-visible" tw-class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
                                 <button @click.stop="startEditing({ id: nestedItem.chat.id, title: nestedItem.chat.title })" tw-class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon tw-class="w-3 h-3" /></button>
-                                <button @click.stop="handleDeleteChat({ id: nestedItem.chat.id })" tw-class="p-1 hover:text-red-500"><Trash2Icon tw-class="w-3 h-3" /></button>
+                                <button @click.stop="handleDeleteChat({ id: nestedItem.chat.id, groupId: element.chatGroup.id })" tw-class="p-1 hover:text-red-500" :data-testid="'delete-chat-button-' + idToRaw({ id: nestedItem.chat.id })"><Trash2Icon tw-class="w-3 h-3" /></button>
                               </div>
                             </div>
                           </div>
@@ -1276,7 +1279,7 @@ defineExpose({
                   <Loader2Icon v-if="isProcessing({ chatId: element.chat.id })" tw-class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                   <div v-if="editingId !== element.chat.id" class="touch-visible" tw-class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
                     <button @click.stop="startEditing({ id: element.chat.id, title: element.chat.title })" tw-class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon tw-class="w-3 h-3" /></button>
-                    <button @click.stop="handleDeleteChat({ id: element.chat.id })" tw-class="p-1 hover:text-red-500"><Trash2Icon tw-class="w-3 h-3" /></button>
+                    <button @click.stop="handleDeleteChat({ id: element.chat.id, groupId: undefined })" tw-class="p-1 hover:text-red-500" :data-testid="'delete-chat-button-' + idToRaw({ id: element.chat.id })"><Trash2Icon tw-class="w-3 h-3" /></button>
                   </div>
                 </div>
               </div>

@@ -12,6 +12,7 @@ import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatTitle } from '@/composables/chat/useChatTitle';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { useChatPaneState } from '@/composables/chat/ui/useChatPaneState';
+import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
 import {
   getChatContextCompactProgress,
@@ -123,6 +124,7 @@ const chatGroups = useChatGroups();
 const chatModels = useChatModels();
 const chatTitle = useChatTitle();
 const chatMetadata = useChatMetadata();
+const chatLifecycle = useChatLifecycle();
 const { getSortedImageModels } = useImageGeneration();
 const props = defineProps<{
   chatId: ChatId,
@@ -330,6 +332,19 @@ async function handleMoveToGroup({ groupId }: { groupId: ChatGroupId | null }) {
     chatId: chatValue.id,
     chatGroupId: groupId ?? undefined,
   });
+}
+
+async function handleDeleteChat() {
+  const chatValue = chat.value;
+  if (!chatValue) return;
+  const redirectAfterDelete = chatValue.groupId
+    ? `/chat-group/${idToRaw({ id: chatValue.groupId })}`
+    : '/';
+  await chatLifecycle.deleteChat({
+    id: chatValue.id,
+    injectAddToast: undefined,
+  });
+  await router.push(redirectAfterDelete);
 }
 
 async function handleSaveTitle({ title }: { title: string }) {
@@ -1398,6 +1413,7 @@ watch(
       @open-file-explorer="openChatFileExplorer()"
       @toggle-wesh-terminal="toggleChatWeshTerminal"
       @toggle-debug="handleToggleDebug()"
+      @delete-chat="handleDeleteChat()"
     />
 
     <!-- Chat Settings Panel -->

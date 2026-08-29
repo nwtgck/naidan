@@ -238,6 +238,24 @@ describe('Sidebar Collapse Functionality', () => {
     expect(mockCreateNewChat).toHaveBeenCalledWith(expect.objectContaining({ groupId: 'group1' }));
   });
 
+  it('shows "New Chat in Group" button when collapsed on chat group settings', async () => {
+    isSidebarOpen.value = false;
+    mockCurrentChat.value = null;
+    mockCurrentChatGroup.value = { id: 'group1' };
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'group1' }), name: 'Test Group', isCollapsed: false, updatedAt: 0, items: [] }];
+
+    const wrapper = mount(Sidebar, {
+      global: { plugins: [router], stubs: { 'lucide-vue-next': true, 'Logo': true } },
+    });
+    await nextTick();
+
+    const groupBtn = wrapper.find('[data-testid="new-chat-in-group-button"]');
+    expect(groupBtn.exists()).toBe(true);
+
+    await groupBtn.trigger('click');
+    expect(mockCreateNewChat).toHaveBeenCalledWith(expect.objectContaining({ groupId: 'group1' }));
+  });
+
   it('hides "New Chat in Group" button when sidebar is open', async () => {
     isSidebarOpen.value = true;
     mockCurrentChat.value = { id: '1', groupId: 'group1' };
