@@ -3,22 +3,31 @@ export function createStandaloneWorkerRuntimeModuleSource({
   readyMessageType,
   errorMessageType,
   diagnosticsGlobalName,
+  packageLocaleMetaName,
+  packageLocaleGlobalName,
+  supportedPackageLocales,
 }: Readonly<{
   initMessageType: string;
   readyMessageType: string;
   errorMessageType: string;
   diagnosticsGlobalName: string;
+  packageLocaleMetaName: string;
+  packageLocaleGlobalName: string;
+  supportedPackageLocales: readonly string[];
 }>): string {
   return `
 const INIT_MESSAGE_TYPE = ${JSON.stringify(initMessageType)};
 const READY_MESSAGE_TYPE = ${JSON.stringify(readyMessageType)};
 const ERROR_MESSAGE_TYPE = ${JSON.stringify(errorMessageType)};
+const PACKAGE_LOCALE_META_NAME = ${JSON.stringify(packageLocaleMetaName)};
+const SUPPORTED_PACKAGE_LOCALES = new Set(${JSON.stringify(supportedPackageLocales)});
 
 const bootstrapSource = ${JSON.stringify(`
 (() => {
   const INIT_MESSAGE_TYPE = ${JSON.stringify(initMessageType)};
   const READY_MESSAGE_TYPE = ${JSON.stringify(readyMessageType)};
   const ERROR_MESSAGE_TYPE = ${JSON.stringify(errorMessageType)};
+  const PACKAGE_LOCALE_GLOBAL_NAME = ${JSON.stringify(packageLocaleGlobalName)};
   let initialized = false;
 
   function serializeError(error) {
@@ -36,6 +45,11 @@ const bootstrapSource = ${JSON.stringify(`
     const controlPort = event.ports && event.ports[0];
     if (!controlPort) throw new Error('Standalone Worker initialization requires a MessagePort');
     try {
+      const packageLocale = event.data.packageLocale;
+      if (packageLocale !== undefined) {
+        if (typeof packageLocale !== 'string') throw new TypeError('Standalone Worker package locale must be a string');
+        self[PACKAGE_LOCALE_GLOBAL_NAME] = packageLocale;
+      }
       const logicalWorkerEntryUrl = new URL(String(event.data.workerEntryUrl)).href;
       const systemRuntimeUrl = new URL(String(event.data.systemRuntimeUrl)).href;
       const nativeImportScripts = self.importScripts.bind(self);
@@ -127,6 +141,22 @@ function getBootstrapObjectUrl() {
   return bootstrapObjectUrl;
 }
 
+function resolvePackageLocale() {
+  if (typeof document === 'undefined') return undefined;
+  const metas = Array.from(document.getElementsByTagName('meta')).filter(
+    meta => meta.getAttribute('name') === PACKAGE_LOCALE_META_NAME
+  );
+  if (metas.length === 0) return undefined;
+  if (metas.length !== 1) {
+    throw new Error('Expected at most one standalone package locale metadata element, found ' + metas.length);
+  }
+  const locale = metas[0].getAttribute('content');
+  if (!SUPPORTED_PACKAGE_LOCALES.has(locale)) {
+    throw new Error('Unsupported standalone package locale: ' + String(locale));
+  }
+  return locale;
+}
+
 function deserializeError(serialized, fallbackMessage) {
   const error = new Error(serialized && serialized.message || fallbackMessage);
   if (serialized && serialized.name) error.name = serialized.name;
@@ -216,6 +246,7 @@ export async function createStandaloneWorkerFromUrls({
         type: INIT_MESSAGE_TYPE,
         workerEntryUrl: String(workerEntryUrl),
         systemRuntimeUrl: String(systemRuntimeUrl),
+        packageLocale: resolvePackageLocale(),
       }, [channel.port2]);
     });
     mutableDiagnostics.initializationSuccesses += 1;

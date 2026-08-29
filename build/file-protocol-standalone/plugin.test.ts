@@ -125,6 +125,38 @@ describe('createNaidanStandalonePlugin', () => {
     expect(names.filter(name => name === 'naidan-file-protocol-standalone-release-validation')).toHaveLength(1);
   });
 
+  it('composes release packaging after release validation and makes it sequential', () => {
+    const plugins = createNaidanStandalonePlugin({
+      ...createOptions(),
+      releaseValidation: {
+        outputDirectory: '/tmp/naidan-standalone-output',
+        debugReportFile: '/tmp/naidan-standalone-debug.json',
+        releaseReportFile: '/tmp/naidan-standalone-release.json',
+      },
+      releasePackaging: {
+        packageRelease: async () => {},
+      },
+    }) as Plugin[];
+
+    const names = plugins.map(plugin => plugin.name);
+    expect(names.indexOf('naidan-file-protocol-standalone-release-packaging'))
+      .toBe(names.indexOf('naidan-file-protocol-standalone-release-validation') + 1);
+    const packaging = findPlugin(plugins, 'naidan-file-protocol-standalone-release-packaging');
+    if (typeof packaging.writeBundle !== 'object' || packaging.writeBundle === null) {
+      throw new Error('Expected ordered release-packaging writeBundle hook');
+    }
+    expect(packaging.writeBundle.sequential).toBe(true);
+  });
+
+  it('does not allow release packaging without release validation', () => {
+    expect(() => createNaidanStandalonePlugin({
+      ...createOptions(),
+      releasePackaging: {
+        packageRelease: async () => {},
+      },
+    })).toThrow('releasePackaging requires releaseValidation');
+  });
+
   it('keeps the external-audit plugin topology and critical hook ordering explicit', () => {
     const plugins = createNaidanStandalonePlugin({
       ...createOptions(),
@@ -191,6 +223,32 @@ describe('createNaidanStandalonePlugin', () => {
       'naidan-file-protocol-standalone-worker-realm-global-guard',
     ).enforce).toBe('pre');
   });
+
+  it('propagates package locale through the shared standalone Worker runtime', async () => {
+    const plugins = createNaidanStandalonePlugin(createOptions());
+    const workerEntries = findPlugin(plugins, 'naidan-file-protocol-standalone-worker-entries');
+    const resolveId = workerEntries.resolveId;
+    const load = workerEntries.load;
+    if (typeof resolveId !== 'function' || typeof load !== 'function') {
+      throw new Error('Expected Worker entry plugin hooks');
+    }
+
+    const resolvedId = await resolveId.call(
+      {} as never,
+      'virtual:naidan-standalone-worker-runtime',
+      undefined,
+      {} as never,
+    );
+    if (typeof resolvedId !== 'string') throw new Error('Expected resolved Worker runtime module ID');
+    const loaded = await load.call({} as never, resolvedId, {} as never);
+    const source = typeof loaded === 'string' ? loaded : loaded?.code;
+    if (typeof source !== 'string') throw new Error('Expected generated Worker runtime source');
+
+    expect(source).toContain('naidan-package-locale');
+    expect(source).toContain('__NAIDAN_STANDALONE_PACKAGE_LOCALE__');
+    expect(source).toContain('packageLocale: resolvePackageLocale(),');
+  });
+
 
   it('keeps the default source audit inline when the option is omitted', () => {
     const names = pluginNames(createNaidanStandalonePlugin({

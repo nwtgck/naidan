@@ -7,6 +7,7 @@
  * inconsistencies.
  */
 import type { ToolConfig, ToolExecutionResult } from '@/01-models/tool';
+import type { UiLocale } from '@/01-models/ui-locale';
 import type {
   AttachmentId,
   BinaryObjectId,
@@ -23,7 +24,7 @@ import type {
 export type Role = 'user' | 'assistant' | 'system' | 'tool';
 export type StorageType = 'local' | 'opfs' | 'memory';
 export type ToolConfigPersistence = 'disabled' | 'enabled';
-export type UiLocale = 'en' | 'ja';
+export type { UiLocale };
 
 export type Reasoning = {
   effort: 'none' | 'low' | 'medium' | 'high' | undefined,

@@ -2,6 +2,7 @@ import { readonly, shallowReactive, shallowRef } from 'vue';
 
 import type { Strings, StringKey } from '@/strings/catalogs/en';
 import type { UiLocale } from '@/strings/types';
+import { resolveStandalonePackageLocale } from '@/features/file-protocol-standalone/logic/package-locale';
 
 export type StringBoundaryModule = Partial<Strings> & Partial<Record<string, Strings[StringKey]>>;
 
@@ -60,7 +61,13 @@ function applyDocumentLocale({ locale }: {
   }
 }
 
-const initialLocale = resolveBrowserLocale();
+function resolveEffectiveLocale({ locale }: {
+  locale: UiLocale;
+}): UiLocale {
+  return resolveStandalonePackageLocale() ?? locale;
+}
+
+const initialLocale = resolveEffectiveLocale({ locale: resolveBrowserLocale() });
 const currentLocaleState = shallowRef<UiLocale>(initialLocale);
 applyDocumentLocale({ locale: initialLocale });
 export const currentLocale = readonly(currentLocaleState);
@@ -419,6 +426,7 @@ export const ensureStrings = new Proxy({}, {
 export async function prepareLocale({ locale }: {
   locale: UiLocale;
 }): Promise<void> {
+  const effectiveLocale = resolveEffectiveLocale({ locale });
   while (true) {
     promoteScheduledBoundaryWarmups();
     const activeBoundaryIds = new Set([
@@ -426,11 +434,11 @@ export async function prepareLocale({ locale }: {
       ...warmedBoundaryIds,
     ]);
     await Promise.all([...activeBoundaryIds].map(async (boundaryId) => {
-      await ensureBoundaryLoaded({ boundaryId, locale });
+      await ensureBoundaryLoaded({ boundaryId, locale: effectiveLocale });
     }));
 
     const hasUnpreparedBoundary = [...usedBoundaryIds, ...warmedBoundaryIds].some((boundaryId) => {
-      return !loadedBoundaryModules[locale].has(boundaryId);
+      return !loadedBoundaryModules[effectiveLocale].has(boundaryId);
     });
     if (!hasUnpreparedBoundary && scheduledBoundaryWarmups.size === 0) {
       return;
@@ -441,15 +449,16 @@ export async function prepareLocale({ locale }: {
 export async function setLocale({ locale }: {
   locale: UiLocale;
 }): Promise<void> {
+  const effectiveLocale = resolveEffectiveLocale({ locale });
   const request = ++localeSwitchRequest;
-  await prepareLocale({ locale });
+  await prepareLocale({ locale: effectiveLocale });
   if (request !== localeSwitchRequest) {
     return;
   }
 
-  if (currentLocaleState.value !== locale) {
-    currentLocaleState.value = locale;
-    applyDocumentLocale({ locale });
+  if (currentLocaleState.value !== effectiveLocale) {
+    currentLocaleState.value = effectiveLocale;
+    applyDocumentLocale({ locale: effectiveLocale });
   }
 }
 
@@ -470,6 +479,7 @@ export const TEST_ONLY = {
   loadingBoundaries,
   registries,
   resolveBrowserLocale,
+  resolveEffectiveLocale,
   reset(): void {
     clearRegistry({ registry: registries.en });
     clearRegistry({ registry: registries.ja });

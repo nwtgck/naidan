@@ -14,6 +14,7 @@ import {
   createBoundaryStringsPackModuleSource,
   parseResolvedBoundaryModuleId,
   parseResolvedPackModuleId,
+  parseResolvedPackModuleIdentity,
   resolveBoundaryStringsVirtualId,
   type BoundaryStringBoundaryDefinition,
 } from './virtual-modules';
@@ -64,6 +65,13 @@ describe('Boundary Strings virtual modules', () => {
     })).toEqual({
       boundaryId,
       locale: 'ja',
+      version,
+    });
+    expect(parseResolvedPackModuleIdentity({
+      id: `\0virtual:naidan-boundary-strings/pack/pt-BR/${boundaryId}/${version}`,
+    })).toEqual({
+      boundaryId,
+      locale: 'pt-BR',
       version,
     });
     expect(() => parseResolvedPackModuleId({
