@@ -1,4 +1,6 @@
 import { Template } from '@huggingface/jinja';
+import { toToolCallId } from '@/01-models/ids';
+import type { ChatMessage } from '@/01-models/types';
 import { describe, expect, it, vi } from 'vitest';
 import { resolveGenerationBudget } from './generation-budget';
 import {
@@ -15,11 +17,24 @@ import { TEST_ONLY as evidenceFixtureTestOnly } from './model-support-investigat
 
 const { LFM2_5_MODEL_SUPPORT_EVIDENCE: evidence } = evidenceFixtureTestOnly;
 type StandardToolCallTokenizer = Parameters<typeof detectStandardToolCallProtocol>[0]['tokenizer'];
-type StandardToolCallMessages = Parameters<typeof formatStandardMessagesForToolCallProtocol>[0]['messages'];
+type EvidenceToolCall = {
+  readonly id: string,
+  readonly type: 'function',
+  readonly function: {
+    readonly name: string,
+    readonly arguments: string,
+  },
+};
+type EvidenceMessage = {
+  readonly role: string,
+  readonly content: string,
+  readonly tool_calls?: readonly EvidenceToolCall[],
+  readonly tool_call_id?: string,
+};
 type EvidenceTemplateCase = {
   readonly caseId: string,
   readonly status: 'passed' | 'failed',
-  readonly messages: StandardToolCallMessages,
+  readonly messages: readonly EvidenceMessage[],
   readonly tools?: readonly Record<string, unknown>[],
   readonly addGenerationPrompt: boolean,
   readonly renderedText?: string,
@@ -43,10 +58,30 @@ const FAILED_TOOL_HISTORY_CASE_IDS = [
 ] as const;
 
 function templateCase({ caseId }: { caseId: string }): EvidenceTemplateCase {
-  const found = (evidence.templateBehavior.cases as readonly EvidenceTemplateCase[])
-    .find(testCase => testCase.caseId === caseId);
+  const cases: readonly EvidenceTemplateCase[] = evidence.templateBehavior.cases;
+  const found = cases.find(testCase => testCase.caseId === caseId);
   if (!found) throw new Error(`Missing LFM2.5 Evidence template case: ${caseId}`);
   return found;
+}
+
+function evidenceMessagesToChatMessages({ messages }: {
+  messages: readonly EvidenceMessage[],
+}): ChatMessage[] {
+  return messages.map(message => ({
+    role: message.role,
+    content: message.content,
+    tool_calls: message.tool_calls?.map(toolCall => ({
+      id: toToolCallId({ raw: toolCall.id }),
+      type: toolCall.type,
+      function: {
+        name: toolCall.function.name,
+        arguments: toolCall.function.arguments,
+      },
+    })),
+    tool_call_id: message.tool_call_id === undefined
+      ? undefined
+      : toToolCallId({ raw: message.tool_call_id }),
+  }));
 }
 
 function renderEvidenceTemplate({
@@ -251,7 +286,7 @@ Use the weather tool for Tokyo.`);
     it.each(FAILED_TOOL_HISTORY_CASE_IDS)('repairs the recorded %s failure by mapping stored JSON arguments before render', (caseId) => {
       const testCase = templateCase({ caseId });
       const formatted = formatStandardMessagesForToolCallProtocol({
-        messages: testCase.messages,
+        messages: evidenceMessagesToChatMessages({ messages: testCase.messages }),
         protocol: 'delimited-pythonic',
       });
       const rendered = renderEvidenceTemplate({
@@ -273,7 +308,7 @@ Use the weather tool for Tokyo.`);
       const testCase = templateCase({ caseId: 'assistant-tool-call-history' });
       if (!testCase.tools) throw new Error('Expected tools in Evidence case.');
       const formatted = formatStandardMessagesForToolCallProtocol({
-        messages: testCase.messages,
+        messages: evidenceMessagesToChatMessages({ messages: testCase.messages }),
         protocol: 'delimited-pythonic',
       });
       const rendered = renderEvidenceTemplate({
@@ -314,7 +349,7 @@ Use the weather tool for Tokyo.`);
           role: 'assistant',
           content: '',
           tool_calls: [{
-            id: 'call_complex',
+            id: toToolCallId({ raw: 'call_complex' }),
             type: 'function',
             function: { name: 'complex_tool', arguments: JSON.stringify(argumentsObject) },
           }],
@@ -349,12 +384,12 @@ Use the weather tool for Tokyo.`);
           content: '',
           tool_calls: [
             {
-              id: 'call_first',
+              id: toToolCallId({ raw: 'call_first' }),
               type: 'function',
               function: { name: 'first_tool', arguments: '{}' },
             },
             {
-              id: 'call_second',
+              id: toToolCallId({ raw: 'call_second' }),
               type: 'function',
               function: { name: 'second_tool', arguments: JSON.stringify({ value: 'second' }) },
             },
