@@ -1,7 +1,7 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { canonicalizeExistingPath } from '@/features/wesh/path';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
 
 const pwdLogicalOption = {
@@ -42,12 +42,7 @@ const pwdArgvPolicy: StandardArgvPolicy = {
   occurrenceRetention: 'none',
 };
 
-export const pwdCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'pwd',
-    description: 'Print name of current/working directory',
-    usage: 'pwd [-LP]',
-  },
+export const pwdCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,

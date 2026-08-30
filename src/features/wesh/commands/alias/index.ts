@@ -1,4 +1,4 @@
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { formatAliasDefinition, isValidAliasName } from '@/features/wesh/commands/_shared/alias';
 import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
 
@@ -13,12 +13,7 @@ async function printAliases({ context }: { context: WeshCommandContext }): Promi
   }
 }
 
-export const aliasCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'alias',
-    description: 'Define or display shell aliases',
-    usage: 'alias [-p] [name[=value] ...]',
-  },
+export const aliasCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     if (isStandaloneCommandHelpRequest({
       args: context.args,

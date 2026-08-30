@@ -11,7 +11,7 @@ import {
   type WeshCharacterLocaleMode,
 } from '@/features/wesh/commands/_shared/locale';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
 import { openFileReadStream, openHandleReadStream, writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
 import { iterateUtf8RecordEntries } from '@/features/wesh/utils/text-records';
@@ -2185,12 +2185,7 @@ const sortArgvSpec: StandardArgvParserSpec = {
   ],
 };
 
-export const sortCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'sort',
-    description: 'Sort lines of text files',
-    usage: 'sort [OPTION]... [FILE]...',
-  },
+export const sortCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: context.args,

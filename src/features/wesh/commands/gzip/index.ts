@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
@@ -30,12 +30,7 @@ const gzipArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-export const gzipCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'gzip',
-    description: 'Compress files',
-    usage: 'gzip [file...]',
-  },
+export const gzipCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardArgvAtFirstEarlyExit({

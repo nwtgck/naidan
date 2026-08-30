@@ -1,7 +1,7 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type ParsedStandardArgv, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { normalizePath, resolvePath } from '@/features/wesh/path';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
 const RANDOM_TOKEN_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const RANDOM_BYTE_ACCEPTANCE_LIMIT = Math.floor(256 / RANDOM_TOKEN_ALPHABET.length)
@@ -268,12 +268,7 @@ function resolveMktempDirectorySelection({
   return { tmpDir, useDefaultTmpDir, hasTmpDirOption: parsed.deferred.length > 0 };
 }
 
-export const mktempCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'mktemp',
-    description: 'Create a temporary file or directory',
-    usage: 'mktemp [OPTION]... [TEMPLATE]',
-  },
+export const mktempCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

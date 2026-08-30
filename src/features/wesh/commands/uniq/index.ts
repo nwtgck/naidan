@@ -7,7 +7,7 @@ import type { WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/l
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshEfficientFileWriter,
   WeshFileHandle,
@@ -735,12 +735,7 @@ async function inputAndOutputReferToSameFile({
   }
 }
 
-export const uniqCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'uniq',
-    description: 'Report or omit repeated lines',
-    usage: 'uniq [OPTION]... [INPUT [OUTPUT]]',
-  },
+export const uniqCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const uniqArgvSpec: StandardArgvParserSpec = {
       options: [

@@ -2,7 +2,7 @@ import { parseStandardArgv } from '@/features/wesh/argv';
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
 const historyArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -76,12 +76,7 @@ function parseHistoryCount({
   return BigInt(significantDigits);
 }
 
-export const historyCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'history',
-    description: 'Display the command history list',
-    usage: 'history [n]',
-  },
+export const historyCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardOptionParsingAtFirstPositional({

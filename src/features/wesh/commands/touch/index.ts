@@ -1,6 +1,6 @@
 import { getOptionalCoreMethod } from '@/features/wesh/commands/_shared/core-capability';
 import { isPathNotFoundError, isPathTypeMismatchError } from '@/features/wesh/commands/_shared/path-errors';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshStat } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshStat } from '@/features/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import {
   findFirstStandardSemanticIssue,
@@ -309,12 +309,7 @@ function findTouchPreHelpSemanticIssue({
   }
 }
 
-export const touchCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'touch',
-    description: 'Update file timestamps or create empty files',
-    usage: 'touch [-chm] [-d STRING] [-r FILE] [-t STAMP] path...',
-  },
+export const touchCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: context.args,

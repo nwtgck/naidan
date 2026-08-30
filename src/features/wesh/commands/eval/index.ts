@@ -1,6 +1,6 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
 
 const evalArgvSpec: StandardArgvParserSpec = {
@@ -19,12 +19,7 @@ const evalArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-export const evalCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'eval',
-    description: 'Evaluate arguments as shell code',
-    usage: 'eval [arg...]',
-  },
+export const evalCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: evalArgvSpec }),

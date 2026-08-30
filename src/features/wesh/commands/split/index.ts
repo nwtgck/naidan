@@ -3,7 +3,7 @@ import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-
 import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { canonicalizeExistingPath, resolvePath } from '@/features/wesh/path';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
 import { buildSplitOptions, parseSplitOperands, splitArgvSpec, type SplitMode } from './parse';
 import { createSplitSuffixGenerator, isSuffixExhaustedError } from './suffix';
@@ -299,12 +299,7 @@ async function executeSplit({
   }
 }
 
-export const splitCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'split',
-    description: 'Split a file into pieces',
-    usage: 'split [OPTION]... [FILE [PREFIX]]',
-  },
+export const splitCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardArgvAtFirstEarlyExit({

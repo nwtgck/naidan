@@ -1,5 +1,5 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { openHandleReadStream, openFileReadStream, writeAllBytesToHandle, writeAllStreamToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
@@ -196,12 +196,7 @@ const catArgvPolicy: StandardArgvPolicy = {
   occurrenceRetention: 'none',
 };
 
-export const catCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'cat',
-    description: 'Concatenate files and print on the standard output',
-    usage: 'cat [OPTION]... [FILE]...',
-  },
+export const catCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

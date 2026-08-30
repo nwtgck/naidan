@@ -8,7 +8,7 @@ import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/comman
 import { getWeshTextDisplayWidth } from '@/features/wesh/utils/display-width';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshProcessSnapshot,
 } from '@/features/wesh/types';
@@ -379,12 +379,7 @@ function formatProcesses({
   return lines.length === 0 ? '' : `${lines.join('\n')}\n`;
 }
 
-export const psCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'ps',
-    description: 'Report process status',
-    usage: 'ps [-eA] [-p PIDLIST] [-o FORMAT]',
-  },
+export const psCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: context.args,

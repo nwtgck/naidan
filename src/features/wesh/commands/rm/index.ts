@@ -1,5 +1,5 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type ParsedStandardArgv, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
 import { createAffirmativeResponseReader } from '@/features/wesh/commands/_shared/confirmation';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
@@ -276,12 +276,7 @@ function appendDisplayPath({
   return `${parent.replace(/\/+$/u, '')}/${child}`;
 }
 
-export const rmCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'rm',
-    description: 'Remove files or directories',
-    usage: 'rm [OPTION]... FILE...',
-  },
+export const rmCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

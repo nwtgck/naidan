@@ -4,7 +4,7 @@ import { createAffirmativeResponseReader } from '@/features/wesh/commands/_share
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { normalizePath } from '@/features/wesh/path';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   return normalizePath({ cwd, path });
@@ -277,12 +277,7 @@ async function resolveExplicitTargetDirectory({
   }
 }
 
-export const lnCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'ln',
-    description: 'Make links between files',
-    usage: 'ln -s [-f] [-n] [-T] [-r] TARGET LINK_NAME',
-  },
+export const lnCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

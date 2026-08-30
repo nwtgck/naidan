@@ -1,5 +1,5 @@
 import { createWeshOwnedBytes } from '@/features/wesh/types';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import {
   parseStandardArgv,
   type ArgvOptionOccurrence,
@@ -283,12 +283,7 @@ const tailArgvSpec: StandardArgvParserSpec = {
   ],
 };
 
-export const tailCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'tail',
-    description: 'Output the last part of files',
-    usage: 'tail [OPTION]... [FILE]...',
-  },
+export const tailCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const normalizedArgs = normalizeLeadingPositiveLegacyCount({
       args: context.args,

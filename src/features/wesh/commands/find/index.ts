@@ -14,7 +14,7 @@ import {
 } from '@/features/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshEntryRef,
   WeshFileType,
@@ -2394,12 +2394,7 @@ function hasPruneAction({
   return hasExpressionAction({ expr, action: 'prune' });
 }
 
-export const findCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'find',
-    description: 'Search for files in a directory hierarchy',
-    usage: 'find [path...] [expression]',
-  },
+export const findCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const characterLocaleMode = resolveCharacterLocaleMode({ env: context.env });
     const earlyExitRequest = findEarlyExitRequest({

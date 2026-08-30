@@ -8,7 +8,7 @@ import { findCopyMovePreHelpSemanticError } from '@/features/wesh/commands/_shar
 import { createAffirmativeResponseReader } from '@/features/wesh/commands/_shared/confirmation';
 import { getCoreUmaskOrDefault, getOptionalCoreMethod } from '@/features/wesh/commands/_shared/core-capability';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { parseUpdateLongOption, resolveExistingDestinationUpdate, type UpdateMode } from '@/features/wesh/commands/_shared/update';
@@ -174,12 +174,7 @@ const cpArgvSpec: StandardArgvParserSpec = {
   ],
 };
 
-export const cpCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'cp',
-    description: 'Copy files',
-    usage: 'cp [-R] [-H|-L|-P] [-f|-n] [-T] [-t DIR] source... destination',
-  },
+export const cpCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const text = context.text();
     const readAffirmativeResponse = createAffirmativeResponseReader({ input: text.input });

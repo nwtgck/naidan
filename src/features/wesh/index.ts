@@ -1,6 +1,7 @@
 import { ReadonlyDirectoryHandle } from './readonly-directory-handle';
 import type {
   WeshCommandDefinition,
+  WeshCommandFunction,
   WeshCommandResult,
   WeshIVirtualFileSystem,
   WeshCommandContext,
@@ -61,7 +62,7 @@ import { createWriteHandleFromStream } from './utils/stream';
 import { WeshOverlayMap } from './utils/overlay-map';
 
 import { builtinCommands } from './commands';
-import { helpCommandDefinition } from './commands/help';
+import { helpCommandDefinition } from './commands/help/definition';
 
 interface WeshJob {
   id: number,
@@ -445,6 +446,12 @@ export class Wesh {
   private cwd: string = '/';
   private history: string[] = [];
   private commands: Map<string, WeshCommandDefinition> = new Map();
+  private readonly commandLoads = new WeakMap<WeshCommandDefinition, Promise<WeshCommandFunction>>();
+  private readonly builtinCommandPreloadQueue: readonly WeshCommandDefinition[] = [
+    ...builtinCommands,
+    helpCommandDefinition,
+  ];
+  private builtinCommandPreloadIndex = 0;
   private jobs: Map<number, WeshJob> = new Map();
   private nextJobId: number = 1;
   private shellFds: Map<number, WeshFileHandle> = new Map();
@@ -543,6 +550,46 @@ export class Wesh {
     this.commands.set(definition.meta.name, definition);
   }
 
+  private loadCommandDefinition({ definition }: {
+    definition: WeshCommandDefinition,
+  }): Promise<WeshCommandFunction> {
+    const existing = this.commandLoads.get(definition);
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const loading = definition.load();
+    this.commandLoads.set(definition, loading);
+    return loading;
+  }
+
+  async preloadNextBuiltinCommand(): Promise<{ hasMore: boolean }> {
+    while (this.builtinCommandPreloadIndex < this.builtinCommandPreloadQueue.length) {
+      const definition = this.builtinCommandPreloadQueue[this.builtinCommandPreloadIndex];
+      this.builtinCommandPreloadIndex += 1;
+      if (definition === undefined) {
+        break;
+      }
+      if (this.commands.get(definition.meta.name) !== definition) {
+        continue;
+      }
+      if (this.commandLoads.has(definition)) {
+        continue;
+      }
+
+      try {
+        await this.loadCommandDefinition({ definition });
+      } catch (error: unknown) {
+        console.error(`Failed to preload Wesh command: ${definition.meta.name}`, error);
+      }
+      return {
+        hasMore: this.builtinCommandPreloadIndex < this.builtinCommandPreloadQueue.length,
+      };
+    }
+
+    return { hasMore: false };
+  }
+
   getShellState(): WeshShellStateSnapshot {
     return {
       cwd: this.cwd,
@@ -592,8 +639,8 @@ export class Wesh {
 
   private registerInternalCommand({ name, fn }: { name: string, fn: ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult> }) {
     this.commands.set(name, {
-      fn,
       meta: { name, description: 'Built-in command', usage: name },
+      load: async () => fn,
     });
   }
 
@@ -608,7 +655,7 @@ export class Wesh {
         description: `Run commands using the ${name} shell compatibility entrypoint`,
         usage: `${name} [-c command] [file [argument...]]`,
       },
-      fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+      load: async () => async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
         if (context.args.length === 1 && context.args[0] === '--help') {
           await context.text().print({
             text: `\
@@ -5700,7 +5747,19 @@ usage: ${name} [-c command] [file [argument...]]
     };
 
     try {
-      const result = await definition.fn({ context });
+      const commandFunction = await this.loadCommandDefinition({ definition });
+      const preExecutionSignalResult = await this.buildSignalCommandResultIfAny({
+        pid,
+        environment,
+        stdin: cmdStdin,
+        stdout: cmdStdout,
+        stderr: cmdStderr,
+      });
+      if (preExecutionSignalResult !== undefined) {
+        return preExecutionSignalResult;
+      }
+
+      const result = await commandFunction({ context });
       if (fileDescriptorSnapshotRequested) {
         const activeFds = new Set(proc.fds.keys());
         for (const fd of Array.from(environment.fds.keys())) {

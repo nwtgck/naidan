@@ -1,6 +1,6 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
 const timeArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -91,12 +91,7 @@ async function writeTimingReport({
   });
 }
 
-export const timeCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'time',
-    description: 'Measure command execution time',
-    usage: 'time [-p] COMMAND [ARG]...',
-  },
+export const timeCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { optionArgs, commandArgs } = splitTimeArguments({ args: context.args });
     const parsed = parseStandardArgv({

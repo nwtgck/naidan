@@ -1,7 +1,7 @@
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { resolvePath } from '@/features/wesh/path';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
 const envArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -205,12 +205,7 @@ function parseEnvArguments({ args }: { args: string[] }): ParsedEnvArguments {
   };
 }
 
-export const envCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'env',
-    description: 'Run a command in a modified environment',
-    usage: 'env [-i] [-0] [-u name] [-C dir] [name=value ...] [command [argument ...]]',
-  },
+export const envCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseEnvArguments({ args: context.args });
     switch (parsed.kind) {

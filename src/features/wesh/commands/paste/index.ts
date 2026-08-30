@@ -1,6 +1,6 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { resolvePath } from '@/features/wesh/path';
 import { openFileReadStream, openHandleReadStream, writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
@@ -233,12 +233,7 @@ async function openPasteSource({
   };
 }
 
-export const pasteCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'paste',
-    description: 'Merge lines of files in parallel or serially',
-    usage: 'paste [OPTION]... [FILE]...',
-  },
+export const pasteCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

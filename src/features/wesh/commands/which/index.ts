@@ -2,7 +2,7 @@ import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type 
 import { formatResolvedCommand, resolveCommands } from '@/features/wesh/command-resolution';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
 const whichAllOption = {
   semantic: { kind: 'effects', effects: [{ key: 'all', value: true }] },
@@ -34,12 +34,7 @@ const whichArgvPolicy: StandardArgvPolicy = {
   occurrenceRetention: 'none',
 };
 
-export const whichCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'which',
-    description: 'Locate a command',
-    usage: 'which [-as] command...',
-  },
+export const whichCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,

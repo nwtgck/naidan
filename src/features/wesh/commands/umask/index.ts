@@ -3,7 +3,7 @@ import { parseFilePermissionMode } from '@/features/wesh/commands/_shared/file-m
 import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
 } from '@/features/wesh/types';
 
@@ -96,12 +96,7 @@ async function writeUmaskError({
   return { exitCode };
 }
 
-export const umaskCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'umask',
-    description: 'Display the file creation mask',
-    usage: 'umask [-p] [-S]',
-  },
+export const umaskCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     if (isStandaloneCommandHelpRequest({ args: context.args, acceptedForms: [['--help']] })) {
       await writeCommandHelp({ context, command: 'umask' });

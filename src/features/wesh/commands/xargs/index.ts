@@ -16,7 +16,7 @@ import {
   iterateXargsTextIgnoringNulSuffixes,
   XargsInputError,
 } from '@/features/wesh/commands/xargs/stream-input';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult, WeshFileHandle } from '@/features/wesh/types';
 import { openFileReadStream, openHandleReadStream } from '@/features/wesh/utils/fs';
 
 const DEFAULT_MAX_CHARS = 131072;
@@ -1255,12 +1255,7 @@ async function executeInvocationStream({
   return { exitCode: lastExitCode };
 }
 
-export const xargsCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'xargs',
-    description: 'Build and run command lines from standard input',
-    usage: 'xargs [-0rtx] [-a FILE] [-d DELIM] [-E EOFSTR] [-n MAX] [-L MAX] [-s MAX] [-I REPLSTR] [COMMAND [INITIAL-ARGS]...]',
-  },
+export const xargsCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { xargsArgs, commandArgs } = splitXargsArguments({ args: context.args });
     const normalizedXargsArgs = normalizeXargsDeprecatedOptionalShortBundles({

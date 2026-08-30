@@ -2372,7 +2372,7 @@ function:<missing>
     wesh.registerCommand({
       definition: {
         meta: { name: 'custom-command', description: 'test command', usage: 'custom-command' },
-        fn: async ({ context }) => {
+        load: async () => async ({ context }) => {
           await context.text().print({ text: 'registered\n' });
           return { exitCode: 0 };
         },

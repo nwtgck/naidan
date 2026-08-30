@@ -11,7 +11,7 @@ import { getOptionalCoreMethod } from '@/features/wesh/commands/_shared/core-cap
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { parseUpdateLongOption, resolveExistingDestinationUpdate, type UpdateMode } from '@/features/wesh/commands/_shared/update';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
 
 type MvOverwriteMode = 'default' | 'force' | 'interactive' | 'no-clobber';
 
@@ -427,12 +427,7 @@ const mvArgvSpec: StandardArgvParserSpec = {
   ],
 };
 
-export const mvCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'mv',
-    description: 'Move or rename files',
-    usage: 'mv source destination',
-  },
+export const mvCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: context.args,

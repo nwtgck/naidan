@@ -267,7 +267,7 @@ export function createBashCommandDefinition({ executeShellInvocation }: {
       description: 'Run commands using the bash shell compatibility entrypoint',
       usage: 'bash [-c command] [file [argument...]]',
     },
-    fn: async ({ context }) => {
+    load: async () => async ({ context }) => {
       const parsed = parseBashArgv({ args: context.args });
       switch (parsed.kind) {
       case 'help':

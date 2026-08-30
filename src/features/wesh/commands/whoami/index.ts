@@ -1,6 +1,6 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_VERSION_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
 
 const whoamiHelpOption = {
@@ -30,12 +30,7 @@ const whoamiArgvPolicy: StandardArgvPolicy = {
   occurrenceRetention: 'none',
 };
 
-export const whoamiCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'whoami',
-    description: 'Print the user name associated with the current effective user ID',
-    usage: 'whoami',
-  },
+export const whoamiCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

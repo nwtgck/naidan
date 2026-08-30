@@ -5,7 +5,7 @@ import {
   stopStandardArgvAtFirstEarlyExit,
 } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { containsNonAsciiDateWhitespace } from '@/features/wesh/commands/_shared/date-whitespace';
 
 type IsoPrecision = 'date' | 'hours' | 'minutes' | 'seconds' | 'ns';
@@ -746,12 +746,7 @@ function formatIsoOutput({
   }
 }
 
-export const dateCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'date',
-    description: 'Print the system date and time',
-    usage: 'date [-u] [-d STRING] [-I[TIMESPEC]] [--rfc-3339=TIMESPEC] [+FORMAT]',
-  },
+export const dateCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: normalizeDateIsoShortBundles({ args: context.args }),

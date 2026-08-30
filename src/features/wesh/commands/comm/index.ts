@@ -2,7 +2,7 @@ import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } fr
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { resolvePath } from '@/features/wesh/path';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { openFileReadStream, openHandleReadStream, writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
 
@@ -322,12 +322,7 @@ const commArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-export const commCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'comm',
-    description: 'Compare two sorted files line by line',
-    usage: 'comm [OPTION]... FILE1 FILE2',
-  },
+export const commCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: commArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),

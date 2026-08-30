@@ -1,7 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import {
   canonicalizeExistingPath,
   canonicalizePathAllowingMissingComponents,
@@ -344,12 +344,7 @@ const realpathArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-export const realpathCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'realpath',
-    description: 'Print the resolved absolute path name',
-    usage: 'realpath [OPTION]... FILE...',
-  },
+export const realpathCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardArgvAtFirstEarlyExit({

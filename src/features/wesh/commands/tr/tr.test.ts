@@ -5,7 +5,7 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
-import { trCommandDefinition } from './index';
+import { trCommandDefinition } from './definition';
 
 vi.mock('@/features/wesh/commands', () => ({
   builtinCommands: [],

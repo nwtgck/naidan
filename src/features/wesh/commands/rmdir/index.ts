@@ -2,7 +2,7 @@ import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type 
 import { writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { stripTrailingSlashes } from '@/features/wesh/commands/_shared/path';
 import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
 const rmdirParentsShortForm = { kind: 'short', name: 'p', value: { kind: 'none' } } as const;
 // GNU rmdir accepts --path as a hidden alias of --parents. Keep it executable in
@@ -51,12 +51,7 @@ const rmdirArgvPolicy: StandardArgvPolicy = {
   occurrenceRetention: 'none',
 };
 
-export const rmdirCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'rmdir',
-    description: 'Remove empty directories',
-    usage: 'rmdir directory...',
-  },
+export const rmdirCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

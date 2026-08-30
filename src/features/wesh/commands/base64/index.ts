@@ -2,7 +2,7 @@ import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/
 import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, HELP_EARLY_EXIT_OPTIONS, parseStandardArgv, stopArgvAtFirstEarlyExit, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
@@ -311,12 +311,7 @@ const base64ArgvPolicy: StandardArgvPolicy = {
   occurrenceRetention: 'none',
 };
 
-export const base64CommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'base64',
-    description: 'Base64 encode or decode data',
-    usage: 'base64 [OPTION]... [FILE]',
-  },
+export const base64CommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({ args: context.args, catalog: base64ArgvCatalog, policy: base64ArgvPolicy, earlyExitOptions: HELP_EARLY_EXIT_OPTIONS }),

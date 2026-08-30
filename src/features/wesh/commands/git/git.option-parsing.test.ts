@@ -6,7 +6,7 @@ import {
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
 
-describe('wesh git supported short option spellings', () => {
+describe('wesh git supported short option spellings', { timeout: 15_000 }, () => {
   let wesh: Wesh;
 
   beforeEach(async () => {

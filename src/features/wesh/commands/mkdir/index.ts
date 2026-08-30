@@ -1,5 +1,5 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import { getCoreUmaskOrDefault } from '@/features/wesh/commands/_shared/core-capability';
 import { parseFilePermissionMode } from '@/features/wesh/commands/_shared/file-mode';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
@@ -127,12 +127,7 @@ async function createDirectoriesLexically({
   }
 }
 
-export const mkdirCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'mkdir',
-    description: 'Create directories',
-    usage: 'mkdir [OPTION]... DIRECTORY...',
-  },
+export const mkdirCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

@@ -2,7 +2,7 @@ import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { encodeCommandDataText } from '@/features/wesh/commands/_shared/data-codec';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 
 type PrintfConversionSpec =
@@ -1326,12 +1326,7 @@ function isShellIdentifier({ value }: { value: string }): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/u.test(value);
 }
 
-export const printfCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'printf',
-    description: 'Format and print data',
-    usage: 'printf [-v var] FORMAT [ARGUMENT]...',
-  },
+export const printfCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     if (context.args.length === 1 && context.args[0] === '--help') {
       await writeCommandHelp({

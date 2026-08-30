@@ -1,17 +1,12 @@
 import { parseStandardArgv } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
 import { renderList, renderTable } from './format';
 import { readCommandInput } from './input';
 import { columnArgvSpec, normalizeOptions } from './options';
 
-export const columnCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'column',
-    description: 'Columnate lists or create aligned tables',
-    usage: 'column [OPTION]... [FILE]...',
-  },
+export const columnCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,

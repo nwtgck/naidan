@@ -1,7 +1,7 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshEfficientFileWriter,
   WeshFileHandle,
@@ -135,12 +135,7 @@ async function writeTeeOutput({
   }
 }
 
-export const teeCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'tee',
-    description: 'Read from standard input and write to standard output and files',
-    usage: 'tee [OPTION]... [FILE]...',
-  },
+export const teeCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

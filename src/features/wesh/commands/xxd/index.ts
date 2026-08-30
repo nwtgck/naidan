@@ -1,7 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
 import { XxdOperandError, withXxdOperandError } from './errors';
@@ -289,12 +289,7 @@ const xxdArgvSpec: StandardArgvParserSpec = {
   ],
 };
 
-export const xxdCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'xxd',
-    description: 'Make a hex dump',
-    usage: 'xxd [OPTION]... [INFILE [OUTFILE]]',
-  },
+export const xxdCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,

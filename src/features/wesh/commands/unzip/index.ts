@@ -11,7 +11,7 @@ import { createWeshZipRandomAccessSource } from '@/features/wesh/zip-stream';
 import { decodeWeshZipEntryName } from '@/features/wesh/commands/_shared/zip-entry-name';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
 } from '@/features/wesh/types';
 import {
@@ -1103,12 +1103,7 @@ async function extractEntries({
   return exitCode;
 }
 
-export const unzipCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'unzip',
-    description: 'List, test and extract compressed files in a ZIP archive',
-    usage: 'unzip [-ltpnjoq] [-d dir] archive[.zip] [file ...]',
-  },
+export const unzipCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const preArchiveOptions = analyzeOptionsBeforeArchive({
       args: context.args,

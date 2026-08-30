@@ -5,7 +5,7 @@ import {
 } from '@/features/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshStat,
 } from '@/features/wesh/types';
@@ -962,28 +962,12 @@ function getExpressionTokens({
   }
 }
 
-function createTestCommandDefinition({
+export function createTestCommandImplementation({
   commandName,
 }: {
   commandName: TestCommandName,
-}): WeshCommandDefinition {
+}): WeshCommandImplementation {
   return {
-    meta: {
-      name: commandName,
-      description: 'Evaluate shell conditional expressions',
-      usage: (() => {
-        switch (commandName) {
-        case '[':
-          return '[ EXPRESSION ]';
-        case 'test':
-          return 'test EXPRESSION';
-        default: {
-          const _ex: never = commandName;
-          throw new Error(`Unhandled test command name: ${_ex}`);
-        }
-        }
-      })(),
-    },
     fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
 
       const tokenResult = getExpressionTokens({
@@ -1046,14 +1030,6 @@ function createTestCommandDefinition({
     },
   };
 }
-
-export const testCommandDefinition = createTestCommandDefinition({
-  commandName: 'test',
-});
-
-export const leftBracketCommandDefinition = createTestCommandDefinition({
-  commandName: '[',
-});
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.

@@ -2,7 +2,7 @@ import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type 
 import { writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
 const sleepHelpOption = {
   semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
@@ -139,12 +139,7 @@ function parseSleepOperand({
   };
 }
 
-export const sleepCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'sleep',
-    description: 'Delay for a specified amount of time',
-    usage: 'sleep NUMBER[SUFFIX]...',
-  },
+export const sleepCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

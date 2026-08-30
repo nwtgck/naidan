@@ -7,7 +7,7 @@ import { decodeCommandDataBytes, decodeCommandDataBytesAsSingleByte } from '@/fe
 import { compileBasicRegularExpression } from '@/features/wesh/commands/_shared/posix-regexp';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { resolvePath } from '@/features/wesh/path';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { writeAllStreamToFile } from '@/features/wesh/utils/fs';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
@@ -1071,12 +1071,7 @@ async function writeSections({
   return createdPaths;
 }
 
-export const csplitCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'csplit',
-    description: 'Split a file into sections determined by context lines',
-    usage: 'csplit [OPTION]... FILE PATTERN...',
-  },
+export const csplitCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardArgvAtFirstEarlyExit({

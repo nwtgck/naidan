@@ -1,5 +1,5 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import {
   consumeGzipInput,
@@ -70,12 +70,7 @@ function mergeExitCode({
   return Math.max(current, next);
 }
 
-export const zcatCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'zcat',
-    description: 'Decompress and print files to standard output',
-    usage: 'zcat [OPTION]... [FILE]...',
-  },
+export const zcatCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

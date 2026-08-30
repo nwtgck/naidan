@@ -1,5 +1,5 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { basenamePath } from '@/features/wesh/commands/_shared/path';
 
@@ -47,12 +47,7 @@ const basenameArgvPolicy: StandardArgvPolicy = {
   occurrenceRetention: 'none',
 };
 
-export const basenameCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'basename',
-    description: 'Strip directory and suffix from filenames',
-    usage: 'basename [OPTION]... NAME...',
-  },
+export const basenameCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

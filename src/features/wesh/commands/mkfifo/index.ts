@@ -3,7 +3,7 @@ import { getCoreUmaskOrDefault } from '@/features/wesh/commands/_shared/core-cap
 import { parseFilePermissionMode } from '@/features/wesh/commands/_shared/file-mode';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
 const mkfifoModeOption = {
   semantic: { kind: 'required-value', key: 'mode', parse: undefined },
@@ -49,12 +49,7 @@ async function pathExists({
   }
 }
 
-export const mkfifoCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'mkfifo',
-    description: 'Make FIFOs (named pipes)',
-    usage: 'mkfifo [OPTION]... NAME...',
-  },
+export const mkfifoCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

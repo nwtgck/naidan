@@ -19,7 +19,7 @@ import {
 } from "@/features/wesh/commands/_shared/usage";
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshFileHandle,
 } from "@/features/wesh/types";
@@ -4608,12 +4608,7 @@ async function executeSedLine({
   };
 }
 
-export const sedCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: "sed",
-    description: "Stream editor for filtering and transforming text",
-    usage: "sed [OPTION]... {script-only-if-no-other-script} [input-file]...",
-  },
+export const sedCommandImplementation: WeshCommandImplementation = {
   fn: async ({
     context,
   }: {

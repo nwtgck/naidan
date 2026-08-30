@@ -8,7 +8,7 @@ import {
 import { STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { resolvePath } from '@/features/wesh/path';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { readAllFileBytes } from '@/features/wesh/utils/fs';
 import { compareDiffInputs, type DiffCompareSettings } from './compare';
 import {
@@ -593,12 +593,7 @@ async function compareOperandPair({
   return result.different ? 'different' : 'same';
 }
 
-export const diffCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'diff',
-    description: 'Compare files line by line',
-    usage: 'diff [OPTION]... FILE1 FILE2',
-  },
+export const diffCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const flagWithArgument = findUnexpectedLongFlagArgument({ args: context.args });
     if (flagWithArgument !== undefined) {

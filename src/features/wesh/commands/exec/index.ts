@@ -1,7 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
 import { isStandaloneCommandHelpRequest, writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
 
 const execArgvSpec: StandardArgvParserSpec = {
@@ -23,12 +23,7 @@ const execArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
-export const execCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'exec',
-    description: 'Replace the shell command context or persist file-descriptor changes',
-    usage: 'exec [-cl] [-a name] [command [arg...]]',
-  },
+export const execCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     if (isStandaloneCommandHelpRequest({
       args: context.args,

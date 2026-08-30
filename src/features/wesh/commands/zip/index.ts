@@ -19,7 +19,7 @@ import {
 } from '@/features/wesh/zip-stream';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshEntryRef,
   WeshFileHandle,
@@ -722,12 +722,7 @@ async function disposeCentralDirectoryStoreSafely({
   }
 }
 
-export const zipCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'zip',
-    description: 'Package and compress files into ZIP archives',
-    usage: 'zip [-rjq0-9] zipfile file...',
-  },
+export const zipCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const splitArgs = splitZipArgs({ args: context.args });
     if (!splitArgs.ok) {

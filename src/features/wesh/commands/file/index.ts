@@ -12,7 +12,7 @@ import {
   formatFileMimeType,
 } from './format';
 import type { FileCommandClassification } from './types';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { getWeshCodePointDisplayWidth } from '@/features/wesh/utils/display-width';
 
 const fileArgvSpec: StandardArgvParserSpec = {
@@ -234,12 +234,7 @@ async function describePath({
   }
 }
 
-export const fileCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'file',
-    description: 'Determine file type',
-    usage: 'file [-b] [-F SEPARATOR] [-i] [-L] [--brief] [--mime] [--mime-type] [--mime-encoding] [--help] FILE...',
-  },
+export const fileCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgv = parseFileArgv({ args: context.args });
     const { parsed, helpMode } = parsedArgv;

@@ -1,4 +1,4 @@
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { resolvePath } from '@/features/wesh/path';
@@ -1121,12 +1121,7 @@ async function applyPatchSections({
   return { exitCode, outputs };
 }
 
-export const patchCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'patch',
-    description: 'Apply a diff file to original files',
-    usage: 'patch [OPTION]... [ORIGFILE [PATCHFILE]]',
-  },
+export const patchCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     let effectiveDirectory = context.cwd;
     try {

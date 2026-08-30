@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import type { StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
 import { writeAllBytesToHandle } from '@/features/wesh/utils/fs';
@@ -267,12 +267,7 @@ async function writeEscapedArguments({
   }
 }
 
-export const echoCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'echo',
-    description: 'Display a line of text',
-    usage: 'echo [-neE] [string...]',
-  },
+export const echoCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const posixlyCorrect = context.env.has('POSIXLY_CORRECT');
     if (!posixlyCorrect && context.args.length === 1 && context.args[0] === '--help') {

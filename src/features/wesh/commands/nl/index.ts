@@ -4,7 +4,7 @@ import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/feat
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import { compileBasicRegularExpression } from '@/features/wesh/commands/_shared/posix-regexp';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/features/wesh/types';
 import { openHandleReadStream, openFileReadStream } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
 
@@ -859,12 +859,7 @@ function shouldForwardSignal({
   }
 }
 
-export const nlCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'nl',
-    description: 'Number lines of files',
-    usage: 'nl [OPTION]... [FILE]...',
-  },
+export const nlCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgv = parseNlArgv({ args: context.args });
     const { parsed, parsedArgs, helpMode } = parsedArgv;

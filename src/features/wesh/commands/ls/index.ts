@@ -1,6 +1,6 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type {
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshCommandContext,
   WeshEntryRef,
@@ -227,12 +227,7 @@ function getClassifyModeFromRawValue({ value }: { value: StandardArgvRawValue })
 }
 
 
-export const lsCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'ls',
-    description: 'List directory contents',
-    usage: 'ls [path...] [-l] [-a] [-A] [-R] [-1] [-h] [-L] [-H]',
-  },
+export const lsCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

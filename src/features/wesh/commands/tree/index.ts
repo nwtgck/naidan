@@ -1,4 +1,4 @@
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { parseTreeArgv, treeArgvSpec } from './argv';
 import { createTreeOutputWriter } from './output';
@@ -120,12 +120,7 @@ async function runTree({
   }
 }
 
-export const treeCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'tree',
-    description: 'List contents of directories in a tree-like format',
-    usage: 'tree [OPTION]... [DIRECTORY...]',
-  },
+export const treeCommandImplementation: WeshCommandImplementation = {
   fn: runTree,
 };
 

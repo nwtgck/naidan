@@ -89,6 +89,10 @@ export const weshWorkerCommandEntrySchema = z.object({
   usage: z.string(),
 });
 
+export const weshWorkerPreloadCommandResponseSchema = z.object({
+  status: z.enum(['busy', 'advanced', 'done']),
+});
+
 export const weshWorkerListDirectoryRequestSchema = z.object({
   path: z.string().min(1),
 });
@@ -109,6 +113,7 @@ export type WeshWorkerExecutionSummary = z.infer<typeof weshWorkerExecutionSumma
 export type WeshWorkerMount = z.infer<typeof weshWorkerMountSchema>;
 export type WeshWorkerShellState = z.infer<typeof weshWorkerShellStateSchema>;
 export type WeshWorkerCommandEntry = z.infer<typeof weshWorkerCommandEntrySchema>;
+export type WeshWorkerPreloadCommandResponse = z.infer<typeof weshWorkerPreloadCommandResponseSchema>;
 export type WeshWorkerListDirectoryRequest = z.infer<typeof weshWorkerListDirectoryRequestSchema>;
 export type WeshWorkerDirectoryEntry = z.infer<typeof weshWorkerDirectoryEntrySchema>;
 
@@ -151,6 +156,7 @@ export interface IWeshWorker {
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>,
   getShellState(): Promise<WeshWorkerShellState>,
   listCommands(): Promise<WeshWorkerCommandEntry[]>,
+  preloadNextCommand(): Promise<WeshWorkerPreloadCommandResponse>,
   listDirectory({ request }: { request: WeshWorkerListDirectoryRequest }): Promise<WeshWorkerDirectoryEntry[]>,
   interrupt(): Promise<boolean>,
   dispose(): Promise<void>,

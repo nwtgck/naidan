@@ -4,7 +4,7 @@ import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshFileHandle,
 } from '@/features/wesh/types';
@@ -397,12 +397,7 @@ const foldArgvSpec: StandardArgvParserSpec = {
   ],
 };
 
-export const foldCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'fold',
-    description: 'Wrap input lines to fit in specified width',
-    usage: 'fold [OPTION]... [FILE]...',
-  },
+export const foldCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardArgvAtFirstEarlyExit({

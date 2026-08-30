@@ -1,6 +1,6 @@
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import type {
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshCommandContext,
   WeshEntryRef,
@@ -1862,12 +1862,7 @@ async function classifyGrepInputStream({
   }
 }
 
-export const grepCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: "grep",
-    description: "Search for patterns in files",
-    usage: "grep [OPTION]... PATTERNS [FILE]...",
-  },
+export const grepCommandImplementation: WeshCommandImplementation = {
   fn: async ({
     context,
   }: {

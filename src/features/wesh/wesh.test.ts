@@ -69,13 +69,13 @@ describe('Wesh Shell', () => {
     wesh.registerCommand({
       definition: {
         meta: { name: 'true', description: 'Success', usage: 'true' },
-        fn: async () => ({ exitCode: 0 }),
+        load: async () => async () => ({ exitCode: 0 }),
       },
     });
     wesh.registerCommand({
       definition: {
         meta: { name: 'false', description: 'Fail', usage: 'false' },
-        fn: async () => ({ exitCode: 1 }),
+        load: async () => async () => ({ exitCode: 1 }),
       },
     });
   });
@@ -1241,7 +1241,7 @@ trap -p`,
           description: 'Send SIGINT to the current process group',
           usage: 'signal-int',
         },
-        fn: async ({ context }) => {
+        load: async () => async ({ context }) => {
           await context.process.signalGroup({
             signal: 2,
           });
@@ -1535,7 +1535,7 @@ echo "$PIPE_VALUE"`,
           description: 'Capture process identity for testing',
           usage: 'capture-proc',
         },
-        fn: async ({ context }) => {
+        load: async () => async ({ context }) => {
           seenProcesses.push({
             pid: context.process.getPid(),
             pgid: context.process.getGroupId(),
@@ -1816,7 +1816,7 @@ first
           description: 'Send SIGPIPE to the current process',
           usage: 'signal-pipe',
         },
-        fn: async ({ context }) => {
+        load: async () => async ({ context }) => {
           await context.process.signalSelf({
             signal: 13,
           });
@@ -1857,7 +1857,7 @@ signal-pipe`,
           description: 'Send SIGINT to the current process group',
           usage: 'signal-int',
         },
-        fn: async ({ context }) => {
+        load: async () => async ({ context }) => {
           await context.process.signalGroup({
             signal: 2,
           });

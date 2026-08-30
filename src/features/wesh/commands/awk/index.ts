@@ -8,7 +8,7 @@ import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit, sto
 import { parseAwkProgram } from '@/features/wesh/commands/awk/parser';
 import { createAwkRuntime, executeAwkBegin, executeAwkEnd, executeAwkRecord, flushAwkRuntimeCommandPipes, flushAwkRuntimeIo, getAwkRuntimeArrayEntryAsString, getAwkRuntimeVariableAsString, isAwkFunctionExitControl } from '@/features/wesh/commands/awk/runtime';
 import type { AwkValue } from '@/features/wesh/commands/awk/types';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { openHandleReadStream, openFileReadStream, readAllFileBytes, readAllHandleBytes, writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { createReadHandleFromStream, createWriteHandleFromStream, iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
 import { iterateByteRecordEntries } from '@/features/wesh/utils/text-records';
@@ -341,12 +341,7 @@ function parseAssignment({
   return { ok: true, name, value };
 }
 
-export const awkCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'awk',
-    description: 'Pattern scanning and processing language',
-    usage: 'awk [-F FS] [-v VAR=VALUE] [-f PROGRAM_FILE] [--] PROGRAM [FILE]...',
-  },
+export const awkCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const optionStoppedArgs = stopStandardOptionParsingAtFirstPositional({
       args: context.args,

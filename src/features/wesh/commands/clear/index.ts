@@ -1,6 +1,6 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
 const clearKeepScrollbackOption = {
   semantic: { kind: 'effects', effects: [{ key: 'keepScrollback', value: true }] },
@@ -29,12 +29,7 @@ const clearArgvPolicy: StandardArgvPolicy = {
   occurrenceRetention: 'none',
 };
 
-export const clearCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'clear',
-    description: 'Clear the terminal screen',
-    usage: 'clear',
-  },
+export const clearCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,

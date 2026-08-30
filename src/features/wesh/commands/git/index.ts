@@ -23,7 +23,7 @@ import { runPush } from './subcommands/push';
 import { runConfig } from './subcommands/config';
 import { runRevParse } from './subcommands/rev-parse';
 import { runReflog } from './subcommands/reflog';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { runDiff } from './subcommands/diff';
 import { runLsFiles } from './subcommands/ls-files';
 import { runRemote } from './subcommands/remote';
@@ -146,12 +146,7 @@ async function executeSubcommand({ context, command, args }: {
   }
 }
 
-export const gitCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'git',
-    description: 'Git-compatible version control commands',
-    usage: 'git [--version] [--help] <command> [<args>]',
-  },
+export const gitCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     try {
       const invocation = await parseGitInvocation({ context });

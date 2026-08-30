@@ -4,7 +4,7 @@ import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/comman
 import { resolvePath } from '@/features/wesh/path';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshFileHandle,
 } from '@/features/wesh/types';
@@ -300,12 +300,7 @@ async function writeOutputChunks({
   await flush();
 }
 
-export const statCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'stat',
-    description: 'Display file status from the Wesh virtual filesystem',
-    usage: 'stat [-L] [-c FORMAT | --printf FORMAT] FILE...',
-  },
+export const statCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopArgvAtFirstEarlyExit({

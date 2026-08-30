@@ -1,11 +1,6 @@
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
-export const colonCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: ':',
-    description: 'Do nothing',
-    usage: ': [arguments...]',
-  },
+export const colonCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context: _context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     return { exitCode: 0 };
   },

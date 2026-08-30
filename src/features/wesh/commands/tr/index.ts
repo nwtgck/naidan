@@ -1,7 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { openHandleReadStream, writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
 
@@ -942,12 +942,7 @@ async function writeTrWarning({
   await context.text().error({ text: `tr: warning: ${message}\n` });
 }
 
-export const trCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'tr',
-    description: 'Translate or delete characters',
-    usage: 'tr [OPTION]... SET1 [SET2]',
-  },
+export const trCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const splitArgs = splitTrArgs({ args: context.args });
     const parsed = parseStandardArgv({
