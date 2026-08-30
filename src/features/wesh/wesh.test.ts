@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Wesh } from './index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -86,7 +87,7 @@ describe('Wesh Shell', () => {
     await home.getDirectoryHandle('user', { create: true });
     await rootHandle.getFileHandle('note.txt', { create: true });
     await wesh.execute({
-      script: 'alias ll="ls -l"; cd /home/user',
+      source: createTextShellSource({ text: 'alias ll="ls -l"; cd /home/user' }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: createTestWriteCaptureHandle().handle,
       stderr: createTestWriteCaptureHandle().handle,
@@ -113,7 +114,7 @@ describe('Wesh Shell', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    const result = await wesh.execute({ script: 'echo hello', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    const result = await wesh.execute({ source: createTextShellSource({ text: 'echo hello' }), stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('hello');
     expect(result.exitCode).toBe(0);
   });
@@ -123,10 +124,10 @@ describe('Wesh Shell', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    await wesh.execute({ script: 'MYVAR=test', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: 'MYVAR=test' }), stdin, stdout: stdout.handle, stderr: stderr.handle });
 
     const stdout2 = createTestWriteCaptureHandle();
-    const result = await wesh.execute({ script: 'echo $MYVAR', stdin, stdout: stdout2.handle, stderr: stderr.handle });
+    const result = await wesh.execute({ source: createTextShellSource({ text: 'echo $MYVAR' }), stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('test');
     expect(result.exitCode).toBe(0);
   });
@@ -136,7 +137,7 @@ describe('Wesh Shell', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    const result = await wesh.execute({ script: 'echo A; echo B', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    const result = await wesh.execute({ source: createTextShellSource({ text: 'echo A; echo B' }), stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('A');
     expect(stdout.text).toContain('B');
     expect(result.exitCode).toBe(0);
@@ -147,13 +148,13 @@ describe('Wesh Shell', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    const result = await wesh.execute({ script: 'echo A && echo B', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    const result = await wesh.execute({ source: createTextShellSource({ text: 'echo A && echo B' }), stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('A');
     expect(stdout.text).toContain('B');
     expect(result.exitCode).toBe(0);
 
     const stdout2 = createTestWriteCaptureHandle();
-    const resultFail = await wesh.execute({ script: 'false && echo B', stdin, stdout: stdout2.handle, stderr: stderr.handle });
+    const resultFail = await wesh.execute({ source: createTextShellSource({ text: 'false && echo B' }), stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(resultFail.exitCode).not.toBe(0);
     expect(stdout2.text).not.toContain('B');
   });
@@ -163,11 +164,11 @@ describe('Wesh Shell', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    await wesh.execute({ script: 'if true; then echo yes; else echo no; fi', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: 'if true; then echo yes; else echo no; fi' }), stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('yes');
 
     const stdout2 = createTestWriteCaptureHandle();
-    await wesh.execute({ script: 'if false; then echo yes; else echo no; fi', stdin, stdout: stdout2.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: 'if false; then echo yes; else echo no; fi' }), stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('no');
   });
 
@@ -176,7 +177,7 @@ describe('Wesh Shell', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    await wesh.execute({ script: 'for i in A B; do echo $i; done', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: 'for i in A B; do echo $i; done' }), stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('A');
     expect(stdout.text).toContain('B');
   });
@@ -187,7 +188,7 @@ describe('Wesh Shell', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 i=0
 while true; do
   echo $i
@@ -195,7 +196,7 @@ while true; do
   if [[ $i == 3 ]]; then
     break
   fi
-done`,
+done` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -216,12 +217,12 @@ done`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 i=0
 until [[ $i == 3 ]]; do
   echo $i
   i=$((i + 1))
-done`,
+done` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -242,13 +243,13 @@ done`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 for item in a skip b; do
   if [[ $item == skip ]]; then
     continue
   fi
   echo $item
-done`,
+done` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -268,7 +269,7 @@ b
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 for outer in 1 2; do
   for inner in a skip stop z; do
     if [[ $inner == skip ]]; then
@@ -279,7 +280,7 @@ for outer in 1 2; do
     fi
     echo "$outer:$inner"
   done
-done`,
+done` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -296,7 +297,7 @@ done`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 for outer in 1 2; do
   for inner in keep skip done; do
     if [[ $inner == skip ]]; then
@@ -305,7 +306,7 @@ for outer in 1 2; do
     echo "$outer:$inner"
   done
 done
-echo after`,
+echo after` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -326,7 +327,7 @@ after
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: 'break 2',
+      source: createTextShellSource({ text: 'break 2' }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -343,7 +344,7 @@ after
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: 'continue',
+      source: createTextShellSource({ text: 'continue' }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -360,7 +361,7 @@ after
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: 'return 7',
+      source: createTextShellSource({ text: 'return 7' }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -377,11 +378,11 @@ after
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 printf 'a\nb\n' | while read line; do
   seen=$line
 done
-echo "$seen"`,
+echo "$seen"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -398,13 +399,13 @@ echo "$seen"`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 while read line; do
   seen=$line
 done <<EOF
 alpha
 EOF
-echo "$seen"`,
+echo "$seen"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -448,10 +449,10 @@ echo "$seen"`,
     const stderr = createTestWriteCaptureHandle();
 
     const resultPromise = wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 while read line; do
   echo "<$line>"
-done`,
+done` }),
       stdin,
       stdout,
       stderr: stderr.handle,
@@ -564,13 +565,13 @@ done`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 greet() {
   echo "hello $1"
   return 7
 }
 greet world
-echo $?`,
+echo $?` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -590,12 +591,12 @@ hello world
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 function set_value {
   VALUE=inside
 }
 set_value
-echo "$VALUE"`,
+echo "$VALUE"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -612,11 +613,11 @@ echo "$VALUE"`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 function greet() {
   echo "hello $1"
 }
-greet world`,
+greet world` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -633,12 +634,12 @@ greet world`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 set_value() {
   VALUE=inside
 }
 set_value | cat
-echo "$VALUE"`,
+echo "$VALUE"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -655,7 +656,7 @@ echo "$VALUE"`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: 'return 4',
+      source: createTextShellSource({ text: 'return 4' }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -672,13 +673,13 @@ echo "$VALUE"`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 propagate() {
   false
   return
 }
 propagate
-echo $?`,
+echo $?` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -695,14 +696,14 @@ echo $?`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 early() {
   echo before
   return 4
   echo after
 }
 early
-echo $?`,
+echo $?` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -722,7 +723,7 @@ before
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 stop_loop() {
   break
 }
@@ -730,7 +731,7 @@ for item in one two; do
   echo "start:$item"
   stop_loop
   echo "after:$item"
-done`,
+done` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -747,7 +748,7 @@ done`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 skip_rest() {
   continue
 }
@@ -755,7 +756,7 @@ for item in one two; do
   echo "start:$item"
   skip_rest
   echo "after:$item"
-done`,
+done` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -775,7 +776,7 @@ start:two
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 value=beta
 case "$value" in
   alpha)
@@ -787,7 +788,7 @@ case "$value" in
   *)
     echo fallback
     ;;
-esac`,
+esac` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -804,7 +805,7 @@ esac`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 value=delta
 case "$value" in
   alpha)
@@ -816,7 +817,7 @@ case "$value" in
   *)
     echo fallback
     ;;
-esac`,
+esac` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -833,9 +834,9 @@ esac`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 value=$(printf 'one\ntwo\n\n')
-echo "<$value>"`,
+echo "<$value>"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -855,12 +856,12 @@ two>
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 show_args() {
   echo "$#:$1:$2"
 }
 show_args $(printf 'one two')
-show_args "$(printf 'one two')"`,
+show_args "$(printf 'one two')"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -880,8 +881,8 @@ show_args "$(printf 'one two')"`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
-echo "$(printf '%s' "$(printf inner)")"`,
+      source: createTextShellSource({ text: `\
+echo "$(printf '%s' "$(printf inner)")"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -898,12 +899,12 @@ echo "$(printf '%s' "$(printf inner)")"`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 VAR=parent
 value=$(VAR=child; helper() { echo nested; }; echo "$VAR")
 echo "$value"
 echo "$VAR"
-helper`,
+helper` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -923,10 +924,10 @@ parent
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 value=$(trap -- 'echo child-exit' EXIT; echo body)
 echo "$value"
-trap -p`,
+trap -p` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -946,11 +947,11 @@ child-exit
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 value=alphabet
 if [[ -n $value && $value == alpha* ]]; then
   echo match
-fi`,
+fi` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -967,11 +968,11 @@ fi`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 value=alphabet
 if [[ ! -z $value && ($value == alpha* || $value == beta*) ]]; then
   echo grouped
-fi`,
+fi` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -988,12 +989,12 @@ fi`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 i=1
 ((i++))
 echo "$i"
 ((i == 2))
-echo $?`,
+echo $?` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1013,12 +1014,12 @@ echo $?`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 i=0
 while ((i < 3)); do
   echo "$i"
   ((i += 1))
-done`,
+done` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1039,7 +1040,7 @@ done`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 unset MISSING
 value=alphabet-suffix
 echo "\${MISSING:-fallback}"
@@ -1047,7 +1048,7 @@ echo "\${MISSING:=assigned}"
 echo "$MISSING"
 echo "\${value:+alt}"
 echo "\${value#alpha}"
-echo "\${value%suffix}"`,
+echo "\${value%suffix}"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1071,9 +1072,9 @@ alphabet-
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 echo pre{a,b}post
-echo "{a,b}"`,
+echo "{a,b}"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1093,14 +1094,14 @@ preapost prebpost
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 value=expanded
 cat <<EOF
 $value
 EOF
 cat <<'EOF'
 $value
-EOF`,
+EOF` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1119,7 +1120,7 @@ $value
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    await wesh.execute({ script: 'echo "file content" > test.txt', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: 'echo "file content" > test.txt' }), stdin, stdout: stdout.handle, stderr: stderr.handle });
 
     const handle = await rootHandle.getFileHandle('test.txt');
     const file = await handle.getFile();
@@ -1127,7 +1128,7 @@ $value
     expect(text).toContain('file content');
 
     const stdout2 = createTestWriteCaptureHandle();
-    const catResult = await wesh.execute({ script: 'cat test.txt', stdin, stdout: stdout2.handle, stderr: stderr.handle });
+    const catResult = await wesh.execute({ source: createTextShellSource({ text: 'cat test.txt' }), stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('file content');
     expect(catResult.exitCode).toBe(0);
   });
@@ -1138,11 +1139,11 @@ $value
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 while read line; do
   seen=$line
 done < <(printf 'alpha\nbeta\n')
-echo "$seen"`,
+echo "$seen"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1159,11 +1160,11 @@ echo "$seen"`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 cat > >(cat > captured.txt) <<EOF
 alpha
 beta
-EOF`,
+EOF` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1187,7 +1188,7 @@ beta
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 describe_value() {
   case "$1" in
     alpha) echo first ;;
@@ -1195,7 +1196,7 @@ describe_value() {
     *) echo other ;;
   esac
 }
-describe_value beta`,
+describe_value beta` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1212,12 +1213,12 @@ describe_value beta`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 install_trap() {
   trap -- 'echo from-function' EXIT
 }
 install_trap
-trap -p`,
+trap -p` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1251,12 +1252,12 @@ trap -p`,
     });
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 install_int_trap() {
   trap -- 'echo function-int >&2' INT
 }
 install_int_trap
-signal-int`,
+signal-int` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1277,7 +1278,7 @@ signal-int`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 cat > lines.txt <<'EOF'
 alpha
 beta
@@ -1285,7 +1286,7 @@ gamma
 EOF
 while IFS= read -r line; do
   echo "<$line>"
-done < lines.txt`,
+done < lines.txt` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1306,14 +1307,14 @@ done < lines.txt`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 while read line; do
   echo "item:$line"
 done > loop.txt <<EOF
 alpha
 beta
 EOF
-cat loop.txt`,
+cat loop.txt` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1333,7 +1334,7 @@ item:beta
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 total=0
 while read line; do
   case "$line" in
@@ -1350,7 +1351,7 @@ add:2
 add:3
 emit
 EOF
-echo "$total"`,
+echo "$total"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1370,7 +1371,7 @@ sum=5
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 summarize() {
   total=0
   while read line; do
@@ -1386,7 +1387,7 @@ summarize() {
   done
 }
 printf 'add:2\nadd:3\nemit\n' | summarize
-echo "$total"`,
+echo "$total"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1405,16 +1406,16 @@ sum=5
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    await wesh.execute({ script: 'VAR=parent', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: 'VAR=parent' }), stdin, stdout: stdout.handle, stderr: stderr.handle });
 
     const stdout2 = createTestWriteCaptureHandle();
-    await wesh.execute({ script: '(VAR=child; echo $VAR); echo $VAR', stdin, stdout: stdout2.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: '(VAR=child; echo $VAR); echo $VAR' }), stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('child');
     expect(stdout2.text).toContain('parent');
 
     // Check that child assignment didn't leak
     const stdout3 = createTestWriteCaptureHandle();
-    await wesh.execute({ script: 'echo $VAR', stdin, stdout: stdout3.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: 'echo $VAR' }), stdin, stdout: stdout3.handle, stderr: stderr.handle });
     expect(stdout3.text).toBe('parent\n');
   });
 
@@ -1424,9 +1425,9 @@ sum=5
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 (tempfn() { echo child; })
-tempfn`,
+tempfn` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1442,11 +1443,11 @@ tempfn`,
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    await wesh.execute({ script: `\
+    await wesh.execute({ source: createTextShellSource({ text: `\
 cat <<EOF
 hello
 world
-EOF`, stdin, stdout: stdout.handle, stderr: stderr.handle });
+EOF` }), stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('hello');
     expect(stdout.text).toContain('world');
   });
@@ -1456,7 +1457,7 @@ EOF`, stdin, stdout: stdout.handle, stderr: stderr.handle });
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    await wesh.execute({ script: 'cat <<< "hello world"', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: 'cat <<< "hello world"' }), stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('hello world');
   });
 
@@ -1465,7 +1466,7 @@ EOF`, stdin, stdout: stdout.handle, stderr: stderr.handle });
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    await wesh.execute({ script: 'cat <(echo "subst")', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: 'cat <(echo "subst")' }), stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('subst');
   });
 
@@ -1474,10 +1475,10 @@ EOF`, stdin, stdout: stdout.handle, stderr: stderr.handle });
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    await wesh.execute({ script: 'export TEST_MAP=1', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: 'export TEST_MAP=1' }), stdin, stdout: stdout.handle, stderr: stderr.handle });
 
     const stdout2 = createTestWriteCaptureHandle();
-    await wesh.execute({ script: 'env', stdin, stdout: stdout2.handle, stderr: stderr.handle });
+    await wesh.execute({ source: createTextShellSource({ text: 'env' }), stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('TEST_MAP=1');
   });
 
@@ -1492,7 +1493,7 @@ EOF`, stdin, stdout: stdout.handle, stderr: stderr.handle });
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: 'cat large.txt | head -n 1',
+      source: createTextShellSource({ text: 'cat large.txt | head -n 1' }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1509,9 +1510,9 @@ EOF`, stdin, stdout: stdout.handle, stderr: stderr.handle });
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 echo value | read PIPE_VALUE
-echo "$PIPE_VALUE"`,
+echo "$PIPE_VALUE"` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1546,7 +1547,7 @@ echo "$PIPE_VALUE"`,
     });
 
     const result = await wesh.execute({
-      script: 'capture-proc | capture-proc',
+      source: createTextShellSource({ text: 'capture-proc | capture-proc' }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1567,7 +1568,7 @@ echo "$PIPE_VALUE"`,
 
     for (let index = 0; index < 100; index += 1) {
       const result = await wesh.execute({
-        script: 'true',
+        source: createTextShellSource({ text: 'true' }),
         stdin: createTestReadHandleFromText({ text: '' }),
         stdout: createTestWriteCaptureHandle().handle,
         stderr: createTestWriteCaptureHandle().handle,
@@ -1584,11 +1585,11 @@ echo "$PIPE_VALUE"`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 echo "$(printf command-substitution)"
 (printf subshell)
 printf pipeline | cat
-cat <(printf process-substitution)`,
+cat <(printf process-substitution)` }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1612,7 +1613,7 @@ cat <(printf process-substitution)`,
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: 'find work -type f -exec true {} \\;',
+      source: createTextShellSource({ text: 'find work -type f -exec true {} \\;' }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1629,9 +1630,9 @@ cat <(printf process-substitution)`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo bye' EXIT
-trap -p`,
+trap -p` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1648,10 +1649,10 @@ trap -p`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo parent' EXIT
 (trap -- 'echo child' EXIT; trap -p)
-trap -p`,
+trap -p` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1669,10 +1670,10 @@ trap -p`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo err-trap' ERR
 false
-printf 'after\\n'`,
+printf 'after\\n'` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1692,12 +1693,12 @@ after
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo err-trap' ERR
 false && printf unreachable
 if false; then printf unreachable; fi
 false || printf 'or-branch\\n'
-printf 'after\\n'`,
+printf 'after\\n'` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1717,9 +1718,9 @@ after
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo exit-trap' EXIT
-echo body`,
+echo body` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1739,9 +1740,9 @@ exit-trap
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo $? >&2' EXIT
-false`,
+false` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1760,10 +1761,10 @@ false`,
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo parent-exit' EXIT
 (trap -- 'echo child-exit' EXIT)
-echo body`,
+echo body` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1789,9 +1790,9 @@ parent-exit
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo pipe-trap >&2' PIPE
-cat large.txt | head -n 1`,
+cat large.txt | head -n 1` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1826,9 +1827,9 @@ first
     });
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo $? >&2' PIPE
-signal-pipe`,
+signal-pipe` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1867,9 +1868,9 @@ signal-pipe`,
     });
 
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo int-trap >&2' INT
-signal-int`,
+signal-int` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1892,9 +1893,9 @@ int-trap
     const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo shell-int >&2' INT
-sleep 1`,
+sleep 1` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1922,9 +1923,9 @@ shell-int
     const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- '' INT
-sleep 0.05`,
+sleep 0.05` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1950,8 +1951,8 @@ sleep 0.05`,
     const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
-      script: `\
-sleep 1`,
+      source: createTextShellSource({ text: `\
+sleep 1` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1971,9 +1972,9 @@ sleep 1`,
     const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo pipeline-int >&2' INT
-sleep 1 | cat`,
+sleep 1 | cat` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1999,7 +2000,7 @@ sleep 1 | cat`,
     const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
-      script: 'cat',
+      source: createTextShellSource({ text: 'cat' }),
       stdin: read,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -2031,7 +2032,7 @@ sleep 1 | cat`,
     const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
-      script: 'cat /dev/hold',
+      source: createTextShellSource({ text: 'cat /dev/hold' }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -2058,7 +2059,7 @@ sleep 1 | cat`,
     const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
-      script: 'echo blocked-stdout',
+      source: createTextShellSource({ text: 'echo blocked-stdout' }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -2087,7 +2088,7 @@ sleep 1 | cat`,
     const stderr = createBlockingWriteHandle();
 
     const execution = wesh.execute({
-      script: 'echo blocked-stderr >&2',
+      source: createTextShellSource({ text: 'echo blocked-stderr >&2' }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -2116,9 +2117,9 @@ sleep 1 | cat`,
     const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 trap -- 'echo pipeline-blocked >&2' INT
-printf 'alpha\n' | cat`,
+printf 'alpha\n' | cat` }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,

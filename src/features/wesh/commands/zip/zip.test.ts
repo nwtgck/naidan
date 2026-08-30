@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { TEST_ONLY as ZIP_TEST_ONLY } from './index';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
@@ -155,7 +156,7 @@ describe('wesh zip and unzip', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: stdinText }),
       stdout: stdout.handle,
       stderr: stderr.handle,

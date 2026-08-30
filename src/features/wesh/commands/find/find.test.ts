@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_ONLY } from './index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { Wesh } from '@/features/wesh/index';
 import {
   MockFileSystemDirectoryHandle,
@@ -68,7 +69,7 @@ describe('wesh find', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,

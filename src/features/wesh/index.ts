@@ -4341,16 +4341,11 @@ usage: ${name} [-c command] [file [argument...]]
    */
   async execute({
     source,
-    script,
     stdin,
     stdout,
     stderr,
   }: {
-    // TODO(wesh-shell-source-migration): This field is temporarily optional and accepts text
-    // while out-of-boundary callers still use the legacy `script` field. Once those owners can
-    // migrate, remove `script`, remove `string | undefined`, and require `source: ShellSource`.
-    source?: ShellSource | string,
-    script?: string,
+    source: ShellSource,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
     stderr: WeshFileHandle,
@@ -4358,20 +4353,6 @@ usage: ${name} [-c command] [file [argument...]]
     if (this.shellPid === 0) await this.init();
 
     try {
-      const resolvedSource = (() => {
-        if (source !== undefined && script !== undefined) {
-          throw new Error('Specify either source or script, not both');
-        }
-        if (source !== undefined) {
-          return typeof source === 'string'
-            ? createTextShellSource({ text: source })
-            : source;
-        }
-        if (script !== undefined) {
-          return createTextShellSource({ text: script });
-        }
-        throw new Error('Missing shell source');
-      })();
       const environment = this.createExecutionEnvironment({
         shellPid: this.shellPid,
         pgid: this.shellPid,
@@ -4399,7 +4380,7 @@ usage: ${name} [-c command] [file [argument...]]
       }
 
       const result = await this.executeShellInState({
-        source: resolvedSource,
+        source,
         environment,
         stdin: shellStdin,
         stdout: shellStdout,

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { Wesh } from "@/features/wesh/index";
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from "@/features/wesh/mocks/InMemoryFileSystem";
 import {
   createReadHandleFromStream,
@@ -78,7 +79,7 @@ describe("wesh sed", () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin:
         stdinBytes === undefined
           ? createTestReadHandleFromText({ text: stdinText ?? "" })
@@ -4000,7 +4001,7 @@ b
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const execution = wesh.execute({
-      script: String.raw`sed -n ':again;bagain'`,
+      source: createTextShellSource({ text: String.raw`sed -n ':again;bagain'` }),
       stdin: createTestReadHandleFromText({ text: "x\n" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -4018,7 +4019,7 @@ b
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const execution = wesh.execute({
-      script: String.raw`sed -u -n 'p;:again;bagain'`,
+      source: createTextShellSource({ text: String.raw`sed -u -n 'p;:again;bagain'` }),
       stdin: createTestReadHandleFromText({ text: "x\n" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -4039,7 +4040,7 @@ b
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const execution = wesh.execute({
-      script: String.raw`sed -i -n ':again;bagain' input.txt`,
+      source: createTextShellSource({ text: String.raw`sed -i -n ':again;bagain' input.txt` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -4553,7 +4554,7 @@ bbb:aaa
     const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
-      script: String.raw`sed -u -n ':again;p;n;$!bagain'`,
+      source: createTextShellSource({ text: String.raw`sed -u -n ':again;p;n;$!bagain'` }),
       stdin,
       stdout,
       stderr: stderr.handle,

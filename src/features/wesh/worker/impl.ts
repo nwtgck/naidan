@@ -4,6 +4,7 @@ import { workerTransfer } from '@/utils/worker-transport';
 import { createFileSystemDirectoryHandleReferenceResolver } from '@/utils/file-system-handle-transport';
 
 import { Wesh } from '@/features/wesh';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { NaidanSysfsProvider } from '@/features/wesh/naidan-sysfs/provider';
 import {
   createOpfsNaidanSysfsStorageReader,
@@ -264,7 +265,7 @@ export function createWeshWorker(): WorkerServerApi<IWeshWorker> {
         try {
           await emit({ event: { type: 'started' } });
           const result = await wesh.execute({
-            script: validated.script,
+            source: createTextShellSource({ text: validated.script }),
             stdin,
             stdout: stdoutCapture.handle,
             stderr: stderrCapture.handle,

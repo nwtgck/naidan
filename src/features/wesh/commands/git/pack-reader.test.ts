@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import {
   MockFileSystemDirectoryHandle,
   type MockFileSystemFileHandle,
@@ -87,7 +88,7 @@ async function execute({ wesh, script }: { wesh: Wesh, script: string }) {
   const stdout = createTestWriteCaptureHandle();
   const stderr = createTestWriteCaptureHandle();
   const result = await wesh.execute({
-    script,
+    source: createTextShellSource({ text: script }),
     stdin: createTestReadHandleFromText({ text: '' }),
     stdout: stdout.handle,
     stderr: stderr.handle,

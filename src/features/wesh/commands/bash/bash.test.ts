@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
-import type { ShellSource } from '@/features/wesh/shell/source';
+import { createTextShellSource, type ShellSource } from '@/features/wesh/shell/source';
 import type { ShellInvocation } from '@/features/wesh/shell/invocation';
 import type { WeshFileHandle } from '@/features/wesh/types';
 import {
@@ -111,7 +111,7 @@ describe('bash command entrypoint', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: stdin }),
       stdout: stdout.handle,
       stderr: stderr.handle,

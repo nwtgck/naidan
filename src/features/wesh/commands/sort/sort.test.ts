@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { TEST_ONLY as SORT_INDEX_TEST_ONLY } from './index';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
@@ -93,7 +94,7 @@ describe('wesh sort', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: stdinText ?? '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1313,7 +1314,7 @@ describe('wesh sort Linux character classification compatibility', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: stdinText }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1410,7 +1411,7 @@ describe('wesh sort UTF-8 lexical compatibility', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: 'sort',
+      source: createTextShellSource({ text: 'sort' }),
       stdin: createTestReadHandleFromText({ text: '\u{10000}\n\uE000\n' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1428,7 +1429,7 @@ describe('wesh sort UTF-8 lexical compatibility', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: 'sort -n',
+      source: createTextShellSource({ text: 'sort -n' }),
       stdin: createTestReadHandleFromText({ text: '2\u{10000}\n2\uE000\n' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -1448,7 +1449,7 @@ describe('wesh sort key character positions', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: 'LC_ALL=C.utf8 sort -k1.2,1.2',
+      source: createTextShellSource({ text: 'LC_ALL=C.utf8 sort -k1.2,1.2' }),
       stdin: createTestReadHandleFromText({ text: `\
 éA
 ê0
@@ -1473,7 +1474,7 @@ describe('wesh sort key character positions', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: 'LC_ALL=C sort -k1.2,1.4',
+      source: createTextShellSource({ text: 'LC_ALL=C sort -k1.2,1.4' }),
       stdin: createTestReadHandleFromText({ text: `\
 #
 !\t4KiB
@@ -1503,7 +1504,7 @@ _ # Feb
     const significantStdout = createTestWriteCaptureHandle();
     const ignoredStdout = createTestWriteCaptureHandle();
     const significant = await wesh.execute({
-      script: 'LC_ALL=C sort -f -k1,1 -s',
+      source: createTextShellSource({ text: 'LC_ALL=C sort -f -k1,1 -s' }),
       stdin: createTestReadHandleFromText({ text: `\
  -1 inf
 ! z
@@ -1513,7 +1514,7 @@ _ # Feb
       stderr: createTestWriteCaptureHandle().handle,
     });
     const ignored = await wesh.execute({
-      script: 'LC_ALL=C sort -b -f -k1,1 -s',
+      source: createTextShellSource({ text: 'LC_ALL=C sort -b -f -k1,1 -s' }),
       stdin: createTestReadHandleFromText({ text: `\
  -1 inf
 ! z

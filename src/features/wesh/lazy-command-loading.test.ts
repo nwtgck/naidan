@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { Wesh } from "./index";
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from "./mocks/InMemoryFileSystem";
 import { createTestReadHandleFromText, createTestWriteCaptureHandle } from "./utils/test-stream";
 import type { WeshCommandFunction } from "./types";
@@ -15,7 +16,7 @@ async function execute({ wesh, script }: { wesh: Wesh, script: string }) {
   const stdout = createTestWriteCaptureHandle();
   const stderr = createTestWriteCaptureHandle();
   const result = await wesh.execute({
-    script,
+    source: createTextShellSource({ text: script }),
     stdin: createTestReadHandleFromText({ text: "" }),
     stdout: stdout.handle,
     stderr: stderr.handle,

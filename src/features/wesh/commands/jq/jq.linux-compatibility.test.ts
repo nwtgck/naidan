@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { Wesh } from "@/features/wesh/index";
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import type { JsonValue } from "@/features/wesh/commands/jq/ast";
 import { MockFileSystemDirectoryHandle } from "@/features/wesh/mocks/InMemoryFileSystem";
 import {
@@ -30,7 +31,7 @@ describe("wesh jq Linux compatibility regressions", () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: `jq ${options} '${filter}'`,
+      source: createTextShellSource({ text: `jq ${options} '${filter}'` }),
       stdin: createTestReadHandleFromText({ text: stdinText ?? "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -4947,7 +4948,7 @@ x
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await environmentWesh.execute({
-      script: `jq -nc '[env.FOO, $ENV.FOO, env.EMPTY, $ENV.EMPTY]'`,
+      source: createTextShellSource({ text: `jq -nc '[env.FOO, $ENV.FOO, env.EMPTY, $ENV.EMPTY]'` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -5759,9 +5760,9 @@ b
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: String.raw`printf '1\n\n2\n' > first.json
+      source: createTextShellSource({ text: String.raw`printf '1\n\n2\n' > first.json
 printf '{\n  "value": 3\n}\n4\n' > second.json
-jq -nc 'inputs | [., input_filename, input_line_number]' first.json second.json`,
+jq -nc 'inputs | [., input_filename, input_line_number]' first.json second.json` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -5781,7 +5782,7 @@ jq -nc 'inputs | [., input_filename, input_line_number]' first.json second.json`
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 printf '1' > number-first.json
 printf '2\n' > number-second.json
 jq -c '[., input_filename, input_line_number]' number-first.json number-second.json
@@ -5791,7 +5792,7 @@ jq -c '[., input_filename, input_line_number]' structured-first.json structured-
 printf 'a' > raw-first.txt
 printf 'b\n' > raw-second.txt
 jq -Rc '[., input_filename, input_line_number]' raw-first.txt raw-second.txt
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -5811,10 +5812,10 @@ jq -Rc '[., input_filename, input_line_number]' raw-first.txt raw-second.txt
     const structuredStdout = createTestWriteCaptureHandle();
     const structuredStderr = createTestWriteCaptureHandle();
     const structured = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 printf '{}' > first.json
 jq -nc 'first(inputs)' first.json missing.json
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: structuredStdout.handle,
       stderr: structuredStderr.handle,
@@ -5822,10 +5823,10 @@ jq -nc 'first(inputs)' first.json missing.json
     const primitiveStdout = createTestWriteCaptureHandle();
     const primitiveStderr = createTestWriteCaptureHandle();
     const primitive = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 printf '1' > first.json
 jq -nc 'first(inputs)' first.json missing.json
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: primitiveStdout.handle,
       stderr: primitiveStderr.handle,
@@ -5833,11 +5834,11 @@ jq -nc 'first(inputs)' first.json missing.json
     const continuedStdout = createTestWriteCaptureHandle();
     const continuedStderr = createTestWriteCaptureHandle();
     const continued = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 printf '1' > first.json
 printf '2\n' > second.json
 jq -nc 'first(inputs)' first.json second.json
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: continuedStdout.handle,
       stderr: continuedStderr.handle,
@@ -5845,10 +5846,10 @@ jq -nc 'first(inputs)' first.json second.json
     const rawStdout = createTestWriteCaptureHandle();
     const rawStderr = createTestWriteCaptureHandle();
     const raw = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 printf 'a' > first.txt
 jq -Rnc 'first(inputs)' first.txt missing.txt
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: rawStdout.handle,
       stderr: rawStderr.handle,
@@ -5876,7 +5877,7 @@ jq -Rnc 'first(inputs)' first.txt missing.txt
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 printf '1,' > first.json
 printf '2\n3\n' > second.json
 jq -nc 'try input catch "caught", inputs' first.json second.json
@@ -5889,7 +5890,7 @@ jq -nc 'try input catch "caught", inputs' first.json second.json
 printf '{' > first.json
 printf ']\n2\n' > second.json
 jq -nc 'try input catch "caught", inputs' first.json second.json
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -5914,7 +5915,7 @@ true
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 printf '[1,,' > first.json
 jq -nc 'try input catch "caught"' first.json missing.json
 printf '[1,,' > first.json
@@ -5922,7 +5923,7 @@ printf '2]\n0\n1\n' > second.json
 jq -nc 'try input catch "caught", try input catch "caught2", inputs' first.json second.json
 printf '[1,,2] 0\n1\n' > same-line.json
 jq -nc 'try input catch "caught", inputs' same-line.json
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -5945,7 +5946,7 @@ jq -nc 'try input catch "caught", inputs' same-line.json
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 printf '[[1,2],[3,4[' > first.json
 printf ']] 6\n1' > second.json
 printf '139\n' > third.json
@@ -5959,7 +5960,7 @@ jq -nc 'try input catch "caught1", try input catch "caught2", inputs' first.json
 printf '[1{ ' > first.json
 printf '2\n1254\n' > second.json
 jq -nc 'try input catch "caught", inputs' first.json second.json
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -5989,9 +5990,9 @@ jq -nc 'try input catch "caught", inputs' first.json second.json
     const splitOffset = 4094;
     const input = `${malformedPrefix}${" ".repeat(splitOffset - malformedPrefix.length)}é\n1\n`;
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 jq -nc 'try input catch empty, inputs'
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: input }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6011,9 +6012,9 @@ jq -nc 'try input catch empty, inputs'
     const splitOffset = 4094;
     const input = `${malformedPrefix}${" ".repeat(splitOffset - malformedPrefix.length)}é\n1\n`;
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 jq -nc 'try input catch "first", try input catch ., inputs'
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: input }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6036,9 +6037,9 @@ jq -nc 'try input catch "first", try input catch ., inputs'
     const tokenTail = "x".repeat(4095);
     const input = `${malformedPrefix}${" ".repeat(splitOffset - malformedPrefix.length)}é${tokenTail} 1\n2\n`;
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 jq -nc 'try input catch "first", try input catch ., inputs'
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: input }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6064,9 +6065,9 @@ jq -nc 'try input catch "first", try input catch ., inputs'
     );
     const input = `${beforeSecond}${secondPadding}é\n1\n`;
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 jq -nc 'try input catch "first", try input catch ("second:" + .), try input catch ("third:" + .), inputs'
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: input }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6086,12 +6087,12 @@ jq -nc 'try input catch "first", try input catch ("second:" + .), try input catc
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 printf '%s\n' '"bad\\q" 0' '1' > invalid-string.json
 jq -nc 'try input catch "caught", inputs' invalid-string.json
 printf '%s\n' 'bad 0' '1' > bare-word.json
 jq -nc 'try input catch "caught", inputs' bare-word.json
-`,
+` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6111,10 +6112,10 @@ jq -nc 'try input catch "caught", inputs' bare-word.json
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: String.raw`printf '1\n' > first.json
+      source: createTextShellSource({ text: String.raw`printf '1\n' > first.json
 printf '2\n' > second.json
 jq -nc 'inputs as $x | [$x, input_filename, input_line_number]' first.json second.json
-jq -nc 'inputs | . as $x | [$x, input_filename, input_line_number]' first.json second.json`,
+jq -nc 'inputs | . as $x | [$x, input_filename, input_line_number]' first.json second.json` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6134,12 +6135,12 @@ jq -nc 'inputs | . as $x | [$x, input_filename, input_line_number]' first.json s
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: String.raw`printf '\n1\n' > first.json
+      source: createTextShellSource({ text: String.raw`printf '\n1\n' > first.json
 printf '\n\n2\n' > second.json
 jq -nc '(inputs + 1) | [., input_filename, input_line_number]' first.json second.json
 jq -nc 'if inputs then [., input_filename, input_line_number] else empty end' first.json second.json
 jq -nc 'foreach inputs as $x (0; . + $x; [., input_filename, input_line_number])' first.json second.json
-jq -nc '{value: inputs, source: input_filename, line: input_line_number}' first.json second.json`,
+jq -nc '{value: inputs, source: input_filename, line: input_line_number}' first.json second.json` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -6164,14 +6165,14 @@ jq -nc '{value: inputs, source: input_filename, line: input_line_number}' first.
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: String.raw`printf '\n2\n' > first.json
+      source: createTextShellSource({ text: String.raw`printf '\n2\n' > first.json
 printf '\n\n3\n' > second.json
 jq -nc 'select(inputs) | [., input_filename, input_line_number]' first.json second.json
 jq -nc 'range(0; inputs) | [., input_filename, input_line_number]' first.json second.json
 jq -nc 'setpath(["x"]; inputs) | [., input_filename, input_line_number]' first.json second.json
 jq -nc '.x = inputs | [., input_filename, input_line_number]' first.json second.json
 jq -nc '.x |= inputs | [., input_filename, input_line_number]' first.json second.json
-jq -nc 'try error(inputs) catch [., input_filename, input_line_number]' first.json second.json`,
+jq -nc 'try error(inputs) catch [., input_filename, input_line_number]' first.json second.json` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
