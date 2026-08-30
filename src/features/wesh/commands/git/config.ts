@@ -1,3 +1,4 @@
+import { compileGitExtendedRegex, testGitExtendedRegex, type GitExtendedRegex } from "./extended-regex";
 import type { GitFiles } from "./files";
 import { pathExists, readFileText, replaceTextViaLock } from "./files";
 import type { GitRepository } from "./repository";
@@ -8,6 +9,61 @@ export type GitConfigValue =
   | { readonly kind: 'explicit', readonly value: string };
 
 export type GitConfig = Map<string, GitConfigValue>;
+
+export interface GitConfigValuePattern {
+  readonly regex: GitExtendedRegex,
+  readonly inverted: boolean,
+}
+
+function configWholeValueRegexSource({ source }: { source: string }): string {
+  let result = '';
+  let escaped = false;
+  let inCharacterClass = false;
+  for (const character of source) {
+    if (escaped) {
+      result += character;
+      escaped = false;
+      continue;
+    }
+    if (character === '\\') {
+      result += character;
+      escaped = true;
+      continue;
+    }
+    if (character === '[' && !inCharacterClass) {
+      inCharacterClass = true;
+      result += character;
+      continue;
+    }
+    if (character === ']' && inCharacterClass) {
+      inCharacterClass = false;
+      result += character;
+      continue;
+    }
+    result += character === '$' && !inCharacterClass ? '(?![\\s\\S])' : character;
+  }
+  return result;
+}
+
+export function compileGitConfigValuePattern({ pattern }: { pattern: string }): GitConfigValuePattern {
+  const inverted = pattern.startsWith('!');
+  const regexPattern = inverted ? pattern.slice(1) : pattern;
+  const compiled = compileGitExtendedRegex({ pattern: regexPattern });
+  return {
+    regex: {
+      byteRegex: new RegExp(configWholeValueRegexSource({ source: compiled.byteRegex.source }), 'su'),
+    },
+    inverted,
+  };
+}
+
+export function configValueMatchesPattern({ value, valuePattern }: {
+  value: string,
+  valuePattern: GitConfigValuePattern,
+}): boolean {
+  const matches = testGitExtendedRegex({ regex: valuePattern.regex, value });
+  return valuePattern.inverted ? !matches : matches;
+}
 
 export interface GitCommandConfigEntry {
   readonly key: string,
@@ -546,13 +602,34 @@ function findConfigEntryPhysicalRanges({ lines, section, subsection, name }: {
   return matches;
 }
 
+function findMatchingConfigEntryPhysicalRanges({ currentText, lines, section, subsection, name, valuePattern }: {
+  currentText: string,
+  lines: readonly string[],
+  section: string,
+  subsection: string | undefined,
+  name: string,
+  valuePattern: GitConfigValuePattern | undefined,
+}): ConfigEntryPhysicalRange[] {
+  const ranges = findConfigEntryPhysicalRanges({ lines, section, subsection, name });
+  if (valuePattern === undefined) return ranges;
+
+  const normalizedKey = normalizeConfigKey({ section, subsection, name });
+  const entries = parseConfigEntries({ text: currentText }).filter(entry => entry.key === normalizedKey);
+  if (entries.length !== ranges.length) throw new Error(`config entry range mismatch for '${normalizedKey}'`);
+  return ranges.filter((_range, index) => configValueMatchesPattern({
+    value: getRawConfigValue({ value: entries[index]!.value }),
+    valuePattern,
+  }));
+}
+
 export type GitSetConfigValueResult = 'set' | 'multiple';
 
-async function setConfigValueAtPath({ files, path, key, value }: {
+async function setConfigValueAtPath({ files, path, key, value, valuePattern }: {
   files: GitFiles,
   path: string,
   key: string,
   value: string,
+  valuePattern: GitConfigValuePattern | undefined,
 }): Promise<GitSetConfigValueResult> {
   assertPersistableConfigValue({ key, value });
   const { section, subsection, name } = parseConfigKey({ key });
@@ -560,7 +637,14 @@ async function setConfigValueAtPath({ files, path, key, value }: {
   const lines = currentText.replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
 
   const targetSection = findLastConfigSectionPhysicalRange({ lines, section, subsection });
-  const matchingEntryRanges = findConfigEntryPhysicalRanges({ lines, section, subsection, name });
+  const matchingEntryRanges = findMatchingConfigEntryPhysicalRanges({
+    currentText,
+    lines,
+    section,
+    subsection,
+    name,
+    valuePattern,
+  });
   if (matchingEntryRanges.length > 1) return 'multiple';
 
   if (matchingEntryRanges.length === 1) {
@@ -578,24 +662,38 @@ async function setConfigValueAtPath({ files, path, key, value }: {
   return 'set';
 }
 
-export async function setLocalConfigValue({ files, repository, key, value }: {
+export async function setLocalConfigValue({ files, repository, key, value, valuePattern }: {
   files: GitFiles,
   repository: GitRepository,
   key: string,
   value: string,
+  valuePattern: GitConfigValuePattern | undefined,
 }): Promise<GitSetConfigValueResult> {
-  return setConfigValueAtPath({ files, path: joinPath({ base: repository.commonDirPath, child: 'config' }), key, value });
+  return setConfigValueAtPath({
+    files,
+    path: joinPath({ base: repository.commonDirPath, child: 'config' }),
+    key,
+    value,
+    valuePattern,
+  });
 }
 
-export async function setGlobalConfigValue({ files, homePath, cwd, env, key, value }: {
+export async function setGlobalConfigValue({ files, homePath, cwd, env, key, value, valuePattern }: {
   files: GitFiles,
   homePath: string,
   cwd: string,
   env: ReadonlyMap<string, string>,
   key: string,
   value: string,
+  valuePattern: GitConfigValuePattern | undefined,
 }): Promise<GitSetConfigValueResult> {
-  return setConfigValueAtPath({ files, path: globalConfigPath({ homePath, cwd, env }), key, value });
+  return setConfigValueAtPath({
+    files,
+    path: globalConfigPath({ homePath, cwd, env }),
+    key,
+    value,
+    valuePattern,
+  });
 }
 
 async function addConfigValueAtPath({ files, path, key, value }: {
@@ -639,16 +737,25 @@ export async function addGlobalConfigValue({ files, homePath, cwd, env, key, val
   await addConfigValueAtPath({ files, path: globalConfigPath({ homePath, cwd, env }), key, value });
 }
 
-async function unsetConfigValueAtPath({ files, path, key, all }: {
+async function unsetConfigValueAtPath({ files, path, key, all, valuePattern }: {
   files: GitFiles,
   path: string,
   key: string,
   all: boolean,
+  valuePattern: GitConfigValuePattern | undefined,
 }): Promise<'missing' | 'multiple' | 'removed'> {
   const { section, subsection, name } = parseConfigKey({ key });
   if (!await pathExists({ files, path })) return 'missing';
-  const lines = (await readFileText({ files, path })).replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
-  const matches = findConfigEntryPhysicalRanges({ lines, section, subsection, name });
+  const currentText = await readFileText({ files, path });
+  const lines = currentText.replace(/\r\n/gu, '\n').replace(/\n$/u, '').split('\n');
+  const matches = findMatchingConfigEntryPhysicalRanges({
+    currentText,
+    lines,
+    section,
+    subsection,
+    name,
+    valuePattern,
+  });
   if (matches.length === 0) return 'missing';
   if (!all && matches.length > 1) return 'multiple';
   const removal = all ? matches : [matches[0]!];
@@ -659,24 +766,38 @@ async function unsetConfigValueAtPath({ files, path, key, all }: {
   return 'removed';
 }
 
-export async function unsetLocalConfigValue({ files, repository, key, all }: {
+export async function unsetLocalConfigValue({ files, repository, key, all, valuePattern }: {
   files: GitFiles,
   repository: GitRepository,
   key: string,
   all: boolean,
+  valuePattern: GitConfigValuePattern | undefined,
 }): Promise<'missing' | 'multiple' | 'removed'> {
-  return unsetConfigValueAtPath({ files, path: joinPath({ base: repository.commonDirPath, child: 'config' }), key, all });
+  return unsetConfigValueAtPath({
+    files,
+    path: joinPath({ base: repository.commonDirPath, child: 'config' }),
+    key,
+    all,
+    valuePattern,
+  });
 }
 
-export async function unsetGlobalConfigValue({ files, homePath, cwd, env, key, all }: {
+export async function unsetGlobalConfigValue({ files, homePath, cwd, env, key, all, valuePattern }: {
   files: GitFiles,
   homePath: string,
   cwd: string,
   env: ReadonlyMap<string, string>,
   key: string,
   all: boolean,
+  valuePattern: GitConfigValuePattern | undefined,
 }): Promise<'missing' | 'multiple' | 'removed'> {
-  return unsetConfigValueAtPath({ files, path: globalConfigPath({ homePath, cwd, env }), key, all });
+  return unsetConfigValueAtPath({
+    files,
+    path: globalConfigPath({ homePath, cwd, env }),
+    key,
+    all,
+    valuePattern,
+  });
 }
 
 export async function removeLocalConfigSection({ files, repository, section, subsection }: {

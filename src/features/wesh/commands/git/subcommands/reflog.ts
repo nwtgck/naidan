@@ -1,11 +1,19 @@
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { joinPath, discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { readReflog } from "@/features/wesh/commands/git/reflog";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
 import { parseGitMaxCount } from "@/features/wesh/commands/git/max-count";
 import { resolveRevision } from "@/features/wesh/commands/git/revision";
 import { readHead, readRef } from "@/features/wesh/commands/git/refs";
 import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
+
+const REFLOG_SHORT_ARGV_CATALOG = defineArgvCatalog<'max-count'>({
+  nonExecutableLongOptions: [],
+  definitions: [{
+    semantic: 'max-count',
+    forms: [{ kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'count' } }],
+  }],
+});
 
 
 interface ReflogSelection {
@@ -37,23 +45,63 @@ export async function runReflog({ context, args }: {
   let maxCount = Number.POSITIVE_INFINITY;
   let optionTerminated = false;
   const operands: string[] = [];
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: [], valueOptions: ['n'] });
-  for (let index = 0; index < normalizedArgs.length; index += 1) {
-    const arg = normalizedArgs[index]!;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
     if (optionTerminated)
       throw new Error('reflog pathspecs are not supported yet');
     if (arg === '--') {
       optionTerminated = true;
-    } else if (arg === '-n' || arg === '--max-count') {
-      const value = normalizedArgs[index + 1];
+      continue;
+    }
+    if (/^-[0-9]+$/u.test(arg)) {
+      maxCount = parseGitMaxCount({ value: arg.slice(1), option: '-n' });
+      continue;
+    }
+    if (arg.startsWith('-') && !arg.startsWith('--') && arg.length > 1) {
+      let bodyOffset = 1;
+      while (bodyOffset < arg.length) {
+        const analysis = analyzeArgvShortForm({ token: arg, bodyOffset, prefix: '-', catalog: REFLOG_SHORT_ARGV_CATALOG });
+        switch (analysis.kind) {
+        case 'unknown':
+          throw new Error(`unsupported reflog argument: ${arg}`);
+        case 'matched':
+          break;
+        default: {
+          const _ex: never = analysis;
+          throw new Error(`Unhandled reflog short-option analysis: ${JSON.stringify(_ex)}`);
+        }
+        }
+        switch (analysis.value.kind) {
+        case 'inline':
+          maxCount = parseGitMaxCount({ value: analysis.value.rawValue, option: analysis.option });
+          break;
+        case 'following-required': {
+          const value = args[index + 1];
+          if (value === undefined) throw new Error(`option '${analysis.option}' requires a numeric value`);
+          maxCount = parseGitMaxCount({ value, option: analysis.option });
+          index += 1;
+          break;
+        }
+        case 'none':
+        case 'following-optional':
+          throw new Error(`Reflog -n produced invalid value claim: ${analysis.value.kind}`);
+        default: {
+          const _ex: never = analysis.value;
+          throw new Error(`Unhandled reflog -n value: ${JSON.stringify(_ex)}`);
+        }
+        }
+        bodyOffset = analysis.nextBodyOffset;
+      }
+      continue;
+    }
+    if (arg === '--max-count') {
+      const value = args[index + 1];
       if (value === undefined) throw new Error(`option '${arg}' requires a numeric value`);
       maxCount = parseGitMaxCount({ value, option: arg });
       index += 1;
     } else if (arg.startsWith('--max-count=')) {
       const value = arg.slice('--max-count='.length);
       maxCount = parseGitMaxCount({ value, option: '--max-count' });
-    } else if (/^-[0-9]+$/u.test(arg)) {
-      maxCount = parseGitMaxCount({ value: arg.slice(1), option: '-n' });
     } else if (arg.startsWith('-')) {
       throw new Error(`unsupported reflog argument: ${arg}`);
     } else {

@@ -1,55 +1,101 @@
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 
 import type { RestoreRequest } from "@/features/wesh/commands/git/restore-operation";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+
+type RestoreDeferredSemantic = 'source';
+
+const RESTORE_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<RestoreDeferredSemantic>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'staged', value: true }] },
+      forms: [
+        { kind: 'short', name: 'S', value: { kind: 'none' } },
+        { kind: 'long', name: 'staged', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'worktree', value: true }] },
+      forms: [
+        { kind: 'short', name: 'W', value: { kind: 'none' } },
+        { kind: 'long', name: 'worktree', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'deferred', tag: 'source' },
+      forms: [
+        { kind: 'short', name: 's', value: { kind: 'required-attached-or-following', missingValueName: 'source' } },
+        { kind: 'long', name: 'source', value: { kind: 'required', missingValueName: 'source' } },
+      ],
+    },
+  ],
+});
+
+const RESTORE_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 export function parseRestoreArguments({ args }: {
     args: readonly string[];
 }): RestoreRequest {
-  let staged = false;
-  let worktree = false;
-  let sourceExpression: string | undefined;
-  let parsingOptions = true;
-  const operands: string[] = [];
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['S', 'W'], valueOptions: ['s'] });
-  for (let index = 0; index < normalizedArgs.length; index += 1) {
-    const arg = normalizedArgs[index]!;
-    if (parsingOptions && arg === '--') {
-      parsingOptions = false;
-      continue;
+  const parsed = parseStandardArgv({ args, catalog: RESTORE_ARGV_CATALOG, policy: RESTORE_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    switch (diagnostic.kind) {
+    case 'missing_option_value':
+      throw new GitUsageError({ message: `option '${diagnostic.option}' requires a value` });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'ambiguous_long_option':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled restore argv diagnostic: ${JSON.stringify(_ex)}`);
     }
-    if (parsingOptions && (arg === '--staged' || arg === '-S')) {
-      staged = true;
-      continue;
     }
-    if (parsingOptions && (arg === '--worktree' || arg === '-W')) {
-      worktree = true;
-      continue;
-    }
-    if (parsingOptions && (arg === '--source' || arg === '-s')) {
-      const value = normalizedArgs[index + 1];
-      if (value === undefined)
-        throw new GitUsageError({ message: `option '${arg}' requires a value` });
-      sourceExpression = value;
-      index += 1;
-      continue;
-    }
-    if (parsingOptions && arg.startsWith('--source=')) {
-      sourceExpression = arg.slice('--source='.length);
-      if (sourceExpression.length === 0)
-        throw new GitUsageError({ message: "option '--source' requires a value" });
-      continue;
-    }
-    if (parsingOptions && arg.startsWith('-'))
-      throw new GitUsageError({ message: `unknown option: ${arg}` });
-    operands.push(arg);
   }
-  if (!staged && !worktree)
-    worktree = true;
+
+  let sourceExpression: string | undefined;
+  for (const occurrence of parsed.deferred) {
+    switch (occurrence.semantic.tag) {
+    case 'source':
+      switch (occurrence.value.kind) {
+      case 'inline':
+        if (occurrence.value.rawValue.length === 0)
+          throw new GitUsageError({ message: "option '--source' requires a value" });
+        sourceExpression = occurrence.value.rawValue;
+        break;
+      case 'next-argv':
+        sourceExpression = occurrence.value.rawValue;
+        break;
+      case 'none':
+        throw new Error('Restore source option did not claim a value');
+      default: {
+        const _ex: never = occurrence.value;
+        throw new Error(`Unhandled restore source value: ${JSON.stringify(_ex)}`);
+      }
+      }
+      break;
+    default: {
+      const _ex: never = occurrence.semantic.tag;
+      throw new Error(`Unhandled restore deferred semantic: ${_ex}`);
+    }
+    }
+  }
+
+  const staged = parsed.optionValues.staged === true;
+  const worktree = parsed.optionValues.worktree === true || !staged;
+  const operands = [...parsed.positionals];
   if (operands.length === 0)
     throw new Error('you must specify path(s) to restore');
   return { staged, worktree, sourceExpression, operands };
 }
+
 
 export const TEST_ONLY = {
 };

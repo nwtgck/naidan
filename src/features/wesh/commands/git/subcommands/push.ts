@@ -4,31 +4,56 @@ import { getConfigValue, readEffectiveConfig, setLocalConfigValue } from "@/feat
 import { deleteLocalRemoteBranch, pushLocalBranch } from "@/features/wesh/commands/git/local-transport";
 import { branchNameFromHead, readHead } from "@/features/wesh/commands/git/refs";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+
+const PUSH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'setUpstream', value: true }] },
+      forms: [
+        { kind: 'short', name: 'u', value: { kind: 'none' } },
+        { kind: 'long', name: 'set-upstream', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
+      forms: [
+        { kind: 'short', name: 'q', value: { kind: 'none' } },
+        { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'forceWithLease', value: true }] },
+      forms: [{ kind: 'long', name: 'force-with-lease', value: { kind: 'none' } }],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'deleteBranch', value: true }] },
+      forms: [{ kind: 'long', name: 'delete', value: { kind: 'none' } }],
+    },
+  ],
+});
+
+const PUSH_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 export async function runPush({ context, args }: {
   context: WeshCommandContext,
   args: readonly string[],
 }): Promise<WeshCommandResult> {
-  let setUpstream = false;
-  let forceWithLease = false;
-  let deleteBranch = false;
-  let quiet = false;
-  const operands: string[] = [];
-  let parsingOptions = true;
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['u', 'q'], valueOptions: [] });
-  for (const arg of normalizedArgs) {
-    if (parsingOptions && arg === '--') {
-      parsingOptions = false;
-      continue;
-    }
-    if (parsingOptions && (arg === '-u' || arg === '--set-upstream')) setUpstream = true;
-    else if (parsingOptions && arg === '--force-with-lease') forceWithLease = true;
-    else if (parsingOptions && arg === '--delete') deleteBranch = true;
-    else if (parsingOptions && (arg === '-q' || arg === '--quiet')) quiet = true;
-    else if (parsingOptions && arg.startsWith('-')) throw new GitUsageError({ message: `unknown option: ${arg}` });
-    else operands.push(arg);
+  const parsed = parseStandardArgv({ args, catalog: PUSH_ARGV_CATALOG, policy: PUSH_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
   }
+  const setUpstream = parsed.optionValues.setUpstream === true;
+  const forceWithLease = parsed.optionValues.forceWithLease === true;
+  const deleteBranch = parsed.optionValues.deleteBranch === true;
+  const quiet = parsed.optionValues.quiet === true;
+  const operands = parsed.positionals;
   const repository = await discoverRepositoryFromContext({ context });
   const head = await readHead({ files: context.files, repository });
   const currentBranch = branchNameFromHead({ head });
@@ -72,12 +97,13 @@ export async function runPush({ context, args }: {
     config,
   });
   if (setUpstream) {
-    await setLocalConfigValue({ files: context.files, repository, key: `branch.${sourceBranch}.remote`, value: remoteName });
+    await setLocalConfigValue({ files: context.files, repository, key: `branch.${sourceBranch}.remote`, value: remoteName, valuePattern: undefined });
     await setLocalConfigValue({
       files: context.files,
       repository,
       key: `branch.${sourceBranch}.merge`,
       value: `refs/heads/${destinationBranch}`,
+      valuePattern: undefined,
     });
     await context.text().print({ text: `branch '${sourceBranch}' set up to track '${remoteName}/${destinationBranch}'.\n` });
   }

@@ -9,7 +9,12 @@ import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repo
 import { resolveRevision, resolveRevisionPath } from "@/features/wesh/commands/git/revision";
 import { parseAnnotatedTagObject } from "@/features/wesh/commands/git/tag-object";
 import { formatLogDate, parseAuthorForLog } from "@/features/wesh/commands/git/log-format";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+
+const SHOW_SHORT_ARGV_CATALOG = defineArgvCatalog<'no-patch'>({
+  nonExecutableLongOptions: [],
+  definitions: [{ semantic: 'no-patch', forms: [{ kind: 'short', name: 's', value: { kind: 'none' } }] }],
+});
 
 export async function runShow({ context, args }: {
     context: WeshCommandContext;
@@ -21,13 +26,45 @@ export async function runShow({ context, args }: {
   let diffMode: 'patch' | 'no-patch' | 'stat' = 'patch';
   let optionTerminated = false;
   const operands: string[] = [];
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['s'], valueOptions: [] });
-  for (const arg of normalizedArgs) {
+  for (const arg of args) {
     if (optionTerminated)
       throw new Error('show pathspecs are not supported yet');
     if (arg === '--') {
       optionTerminated = true;
-    } else if (arg === '--no-patch' || arg === '-s')
+      continue;
+    }
+    if (arg.startsWith('-') && !arg.startsWith('--') && arg.length > 1) {
+      let bodyOffset = 1;
+      while (bodyOffset < arg.length) {
+        const analysis = analyzeArgvShortForm({ token: arg, bodyOffset, prefix: '-', catalog: SHOW_SHORT_ARGV_CATALOG });
+        switch (analysis.kind) {
+        case 'unknown':
+          throw new Error(`unsupported show argument: ${arg}`);
+        case 'matched':
+          break;
+        default: {
+          const _ex: never = analysis;
+          throw new Error(`Unhandled show short-option analysis: ${JSON.stringify(_ex)}`);
+        }
+        }
+        switch (analysis.value.kind) {
+        case 'none':
+          diffMode = 'no-patch';
+          break;
+        case 'inline':
+        case 'following-required':
+        case 'following-optional':
+          throw new Error(`Show -s unexpectedly claimed a value: ${analysis.value.kind}`);
+        default: {
+          const _ex: never = analysis.value;
+          throw new Error(`Unhandled show -s value: ${JSON.stringify(_ex)}`);
+        }
+        }
+        bodyOffset = analysis.nextBodyOffset;
+      }
+      continue;
+    }
+    if (arg === '--no-patch')
       diffMode = 'no-patch';
     else if (arg === '--stat') {
       diffMode = 'stat';

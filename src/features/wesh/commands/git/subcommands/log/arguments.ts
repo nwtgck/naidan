@@ -1,4 +1,4 @@
-import { expandGitShortOptions } from '@/features/wesh/commands/git/short-options';
+import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
 import { parseGitMaxCount } from '@/features/wesh/commands/git/max-count';
 import { compileGitBasicRegex } from '@/features/wesh/commands/git/basic-regex';
 import type { GitBasicRegex } from '@/features/wesh/commands/git/basic-regex';
@@ -6,6 +6,18 @@ import { compileGitExtendedRegex } from '@/features/wesh/commands/git/extended-r
 import type { GitExtendedRegex } from '@/features/wesh/commands/git/extended-regex';
 
 export type GitLogDecorationMode = 'none' | 'short' | 'full';
+
+type LogShortSemantic = 'patch' | 'max-count' | 'pickaxe-string' | 'pickaxe-regex';
+
+const LOG_SHORT_ARGV_CATALOG = defineArgvCatalog<LogShortSemantic>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    { semantic: 'patch', forms: [{ kind: 'short', name: 'p', value: { kind: 'none' } }] },
+    { semantic: 'max-count', forms: [{ kind: 'short', name: 'n', value: { kind: 'required-attached-or-following', missingValueName: 'count' } }] },
+    { semantic: 'pickaxe-string', forms: [{ kind: 'short', name: 'S', value: { kind: 'required-attached-or-following', missingValueName: 'string' } }] },
+    { semantic: 'pickaxe-regex', forms: [{ kind: 'short', name: 'G', value: { kind: 'required-attached-or-following', missingValueName: 'regex' } }] },
+  ],
+});
 
 export interface GitLogArguments {
   format: string | undefined,
@@ -56,9 +68,8 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
   let readingPaths = false;
   const revisionTerms: string[] = [];
   const pathOperands: string[] = [];
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['p'], valueOptions: ['n', 'S', 'G'] });
-  for (let index = 0; index < normalizedArgs.length; index += 1) {
-    const arg = normalizedArgs[index]!;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
     if (parsingOptions && arg === '--') {
       parsingOptions = false;
       readingPaths = true;
@@ -66,6 +77,119 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
     }
     if (readingPaths) {
       pathOperands.push(arg);
+      continue;
+    }
+    if (parsingOptions && /^-[0-9]+$/u.test(arg)) {
+      maxCount = parseGitMaxCount({ value: arg.slice(1), option: '-n' });
+      continue;
+    }
+    if (parsingOptions && arg.startsWith('-') && !arg.startsWith('--') && arg.length > 1) {
+      let bodyOffset = 1;
+      while (bodyOffset < arg.length) {
+        const analysis = analyzeArgvShortForm({ token: arg, bodyOffset, prefix: '-', catalog: LOG_SHORT_ARGV_CATALOG });
+        switch (analysis.kind) {
+        case 'unknown':
+          throw new Error(`unsupported log argument: ${arg}`);
+        case 'matched':
+          break;
+        default: {
+          const _ex: never = analysis;
+          throw new Error(`Unhandled log short-option analysis: ${JSON.stringify(_ex)}`);
+        }
+        }
+        switch (analysis.semantic) {
+        case 'patch':
+          switch (analysis.value.kind) {
+          case 'none':
+            showPatch = true;
+            break;
+          case 'inline':
+          case 'following-required':
+          case 'following-optional':
+            throw new Error(`Log -p unexpectedly claimed a value: ${analysis.value.kind}`);
+          default: {
+            const _ex: never = analysis.value;
+            throw new Error(`Unhandled log -p value: ${JSON.stringify(_ex)}`);
+          }
+          }
+          break;
+        case 'max-count':
+          switch (analysis.value.kind) {
+          case 'inline':
+            maxCount = parseGitMaxCount({ value: analysis.value.rawValue, option: analysis.option });
+            break;
+          case 'following-required': {
+            const value = args[index + 1];
+            if (value === undefined)
+              throw new Error(`option '${analysis.option}' requires a numeric value`);
+            maxCount = parseGitMaxCount({ value, option: analysis.option });
+            index += 1;
+            break;
+          }
+          case 'none':
+          case 'following-optional':
+            throw new Error(`Log -n produced invalid value claim: ${analysis.value.kind}`);
+          default: {
+            const _ex: never = analysis.value;
+            throw new Error(`Unhandled log -n value: ${JSON.stringify(_ex)}`);
+          }
+          }
+          break;
+        case 'pickaxe-string':
+          switch (analysis.value.kind) {
+          case 'inline':
+            if (analysis.value.rawValue.length === 0)
+              throw new Error("option '-S' requires a non-empty value");
+            pickaxeString = analysis.value.rawValue;
+            break;
+          case 'following-required': {
+            const value = args[index + 1];
+            if (value === undefined || value.length === 0)
+              throw new Error("option '-S' requires a non-empty value");
+            pickaxeString = value;
+            index += 1;
+            break;
+          }
+          case 'none':
+          case 'following-optional':
+            throw new Error(`Log -S produced invalid value claim: ${analysis.value.kind}`);
+          default: {
+            const _ex: never = analysis.value;
+            throw new Error(`Unhandled log -S value: ${JSON.stringify(_ex)}`);
+          }
+          }
+          break;
+        case 'pickaxe-regex':
+          switch (analysis.value.kind) {
+          case 'inline':
+            if (analysis.value.rawValue.length === 0)
+              throw new Error("option '-G' requires a non-empty value");
+            pickaxeRegex = compileGitExtendedRegex({ pattern: analysis.value.rawValue });
+            break;
+          case 'following-required': {
+            const value = args[index + 1];
+            if (value === undefined || value.length === 0)
+              throw new Error("option '-G' requires a non-empty value");
+            pickaxeRegex = compileGitExtendedRegex({ pattern: value });
+            index += 1;
+            break;
+          }
+          case 'none':
+          case 'following-optional':
+            throw new Error(`Log -G produced invalid value claim: ${analysis.value.kind}`);
+          default: {
+            const _ex: never = analysis.value;
+            throw new Error(`Unhandled log -G value: ${JSON.stringify(_ex)}`);
+          }
+          }
+          break;
+        default: {
+          const _ex: never = analysis.semantic;
+          throw new Error(`Unhandled log short semantic: ${_ex}`);
+        }
+        }
+        bodyOffset = analysis.nextBodyOffset;
+      }
       continue;
     }
     if (parsingOptions && arg === '--oneline') {
@@ -85,18 +209,16 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
       allRefs = true;
     } else if (parsingOptions && arg === '--stat') {
       showStat = true;
-    } else if (parsingOptions && (arg === '-p' || arg === '--patch')) {
+    } else if (parsingOptions && arg === '--patch') {
       showPatch = true;
     } else if (parsingOptions && arg === '--no-color') {
       // Output is uncolored by Wesh Git.
-    } else if (parsingOptions && (arg === '-n' || arg === '--max-count')) {
-      const value = normalizedArgs[index + 1];
+    } else if (parsingOptions && arg === '--max-count') {
+      const value = args[index + 1];
       if (value === undefined)
         throw new Error(`option '${arg}' requires a numeric value`);
       maxCount = parseGitMaxCount({ value, option: arg });
       index += 1;
-    } else if (parsingOptions && /^-[0-9]+$/u.test(arg)) {
-      maxCount = parseGitMaxCount({ value: arg.slice(1), option: '-n' });
     } else if (parsingOptions && arg.startsWith('--max-count=')) {
       const value = arg.slice('--max-count='.length);
       maxCount = parseGitMaxCount({ value, option: '--max-count' });
@@ -112,7 +234,7 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
         : value.startsWith('format:') ? value.slice('format:'.length) : value;
       oneline = false;
     } else if (parsingOptions && (arg === '--since' || arg === '--after' || arg === '--until' || arg === '--before')) {
-      const value = normalizedArgs[index + 1];
+      const value = args[index + 1];
       if (value === undefined)
         throw new Error(`option '${arg}' requires a value`);
       const timestamp = parseLogDateBoundary({ value });
@@ -125,28 +247,8 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
       sinceTimestamp = parseLogDateBoundary({ value: arg.slice(arg.indexOf('=') + 1) });
     } else if (parsingOptions && (arg.startsWith('--until=') || arg.startsWith('--before='))) {
       untilTimestamp = parseLogDateBoundary({ value: arg.slice(arg.indexOf('=') + 1) });
-    } else if (parsingOptions && arg === '-S') {
-      const value = normalizedArgs[index + 1];
-      if (value === undefined || value.length === 0)
-        throw new Error("option '-S' requires a non-empty value");
-      pickaxeString = value;
-      index += 1;
-    } else if (parsingOptions && arg.startsWith('-S')) {
-      const value = arg.slice(2);
-      if (value.length === 0) throw new Error("option '-S' requires a non-empty value");
-      pickaxeString = value;
-    } else if (parsingOptions && arg === '-G') {
-      const value = normalizedArgs[index + 1];
-      if (value === undefined || value.length === 0)
-        throw new Error("option '-G' requires a non-empty value");
-      pickaxeRegex = compileGitExtendedRegex({ pattern: value });
-      index += 1;
-    } else if (parsingOptions && arg.startsWith('-G')) {
-      const value = arg.slice(2);
-      if (value.length === 0) throw new Error("option '-G' requires a non-empty value");
-      pickaxeRegex = compileGitExtendedRegex({ pattern: value });
     } else if (parsingOptions && (arg === '--grep')) {
-      const value = normalizedArgs[index + 1];
+      const value = args[index + 1];
       if (value === undefined)
         throw new Error(`option '${arg}' requires a value`);
       grepPatterns.push(compileGitBasicRegex({ pattern: value }));

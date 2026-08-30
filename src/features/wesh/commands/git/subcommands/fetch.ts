@@ -4,29 +4,51 @@ import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { sortGitUtf8Strings } from "@/features/wesh/commands/git/utf8-order";
 import { fetchLocalRemote } from "@/features/wesh/commands/git/local-transport";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+
+const FETCH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'prune', value: true }] },
+      forms: [
+        { kind: 'short', name: 'p', value: { kind: 'none' } },
+        { kind: 'long', name: 'prune', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
+      forms: [
+        { kind: 'short', name: 'q', value: { kind: 'none' } },
+        { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'all', value: true }] },
+      forms: [{ kind: 'long', name: 'all', value: { kind: 'none' } }],
+    },
+  ],
+});
+
+const FETCH_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 export async function runFetch({ context, args }: {
   context: WeshCommandContext,
   args: readonly string[],
 }): Promise<WeshCommandResult> {
-  let quiet = false;
-  let all = false;
-  let prune = false;
-  const operands: string[] = [];
-  let parsingOptions = true;
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['p', 'q'], valueOptions: [] });
-  for (const arg of normalizedArgs) {
-    if (parsingOptions && arg === '--') {
-      parsingOptions = false;
-      continue;
-    }
-    if (parsingOptions && (arg === '-q' || arg === '--quiet')) quiet = true;
-    else if (parsingOptions && arg === '--all') all = true;
-    else if (parsingOptions && (arg === '--prune' || arg === '-p')) prune = true;
-    else if (parsingOptions && arg.startsWith('-')) throw new GitUsageError({ message: `unknown option: ${arg}` });
-    else operands.push(arg);
+  const parsed = parseStandardArgv({ args, catalog: FETCH_ARGV_CATALOG, policy: FETCH_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
   }
+  const quiet = parsed.optionValues.quiet === true;
+  const all = parsed.optionValues.all === true;
+  const prune = parsed.optionValues.prune === true;
+  const operands = parsed.positionals;
   if (operands.length > 1) throw new Error('too many arguments');
   if (all && operands.length > 0) throw new Error('fetch --all does not take a repository argument');
   const repository = await discoverRepositoryFromContext({ context });

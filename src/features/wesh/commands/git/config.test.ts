@@ -25,6 +25,7 @@ two`, 'one\rtwo'])('round-trips Git-supported control characters in config value
       repository: repository(),
       key: 'remote.origin.url',
       value,
+      valuePattern: undefined,
     })).resolves.toBe('set');
     expect(await readLocalConfigEntries({ files, repository: repository() })).toEqual([{
       key: 'remote.origin.url',
@@ -41,6 +42,7 @@ two`, 'one\rtwo'])('round-trips Git-supported control characters in config value
       repository: repository(),
       key: 'remote.origin.url',
       value: 'one\0two',
+      valuePattern: undefined,
     })).rejects.toThrow("config value for 'remote.origin.url' contains NUL");
     expect(await readLocalConfigEntries({ files, repository: repository() })).toEqual([]);
   });

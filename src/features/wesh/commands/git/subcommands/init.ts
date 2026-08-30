@@ -1,10 +1,33 @@
 import { normalizePath } from "@/features/wesh/path";
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { initializeBareRepository, initializeRepository, joinPath } from "@/features/wesh/commands/git/repository";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 import { parseConfig, readGlobalConfigEntries } from "@/features/wesh/commands/git/config";
 import { pathExists, readFileText } from "@/features/wesh/commands/git/files";
 import { GitUsageError } from "@/features/wesh/commands/git/errors";
+
+const INIT_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
+      forms: [
+        { kind: 'short', name: 'q', value: { kind: 'none' } },
+        { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'bare', value: true }] },
+      forms: [{ kind: 'long', name: 'bare', value: { kind: 'none' } }],
+    },
+  ],
+});
+
+const INIT_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 async function preflightTargetConfig({ context, targetPath, bare }: {
   context: WeshCommandContext,
@@ -29,21 +52,14 @@ export async function runInit({ context, args }: {
     cwd: context.cwd,
     env: context.env,
   });
-  let quiet = false;
-  let bare = false;
-  const operands: string[] = [];
-  let parsingOptions = true;
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['q'], valueOptions: [] });
-  for (const arg of normalizedArgs) {
-    if (parsingOptions && arg === '--') {
-      parsingOptions = false;
-      continue;
-    }
-    if (parsingOptions && (arg === '-q' || arg === '--quiet')) quiet = true;
-    else if (parsingOptions && arg === '--bare') bare = true;
-    else if (parsingOptions && arg.startsWith('-')) throw new GitUsageError({ message: `unknown option: ${arg}` });
-    else operands.push(arg);
+  const parsed = parseStandardArgv({ args, catalog: INIT_ARGV_CATALOG, policy: INIT_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
   }
+  const quiet = parsed.optionValues.quiet === true;
+  const bare = parsed.optionValues.bare === true;
+  const operands = parsed.positionals;
   if (operands.length > 1) throw new GitUsageError({ message: 'usage: git init [-q | --quiet] [--bare] [<directory>]', prefix: 'none' });
   const targetPath = normalizePath({ cwd: context.cwd, path: operands[0] ?? '.' });
   await preflightTargetConfig({ context, targetPath, bare });

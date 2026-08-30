@@ -4,33 +4,51 @@ import type { CheckoutLikeArguments } from "@/features/wesh/commands/git/checkou
 import { executeCheckoutLike } from "@/features/wesh/commands/git/checkout-like";
 import { executeRestore } from "@/features/wesh/commands/git/restore-operation";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+
+const CHECKOUT_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: { kind: 'required-value', key: 'createBranchName', parse: undefined },
+      forms: [{ kind: 'short', name: 'b', value: { kind: 'required-attached-or-following', missingValueName: 'branch' } }],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'detach', value: true }] },
+      forms: [{ kind: 'long', name: 'detach', value: { kind: 'none' } }],
+    },
+  ],
+});
+
+const CHECKOUT_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 function parseCheckoutBranchArguments({ args }: { args: readonly string[] }): CheckoutLikeArguments {
-  let createBranchName: string | undefined;
-  let detach = false;
-  const operands: string[] = [];
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: [], valueOptions: ['b'] });
-  for (let index = 0; index < normalizedArgs.length; index += 1) {
-    const arg = normalizedArgs[index]!;
-    if (arg === '-b') {
-      const value = normalizedArgs[index + 1];
-      if (value === undefined)
-        throw new GitUsageError({ message: `option '${arg}' requires a value` });
-      createBranchName = value;
-      index += 1;
-      continue;
+  const parsed = parseStandardArgv({ args, catalog: CHECKOUT_ARGV_CATALOG, policy: CHECKOUT_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    switch (diagnostic.kind) {
+    case 'missing_option_value':
+      throw new GitUsageError({ message: `option '${diagnostic.option}' requires a value` });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'ambiguous_long_option':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled checkout argv diagnostic: ${JSON.stringify(_ex)}`);
     }
-    if (arg === '--detach') {
-      detach = true;
-      continue;
     }
-    if (arg === '--')
-      throw new Error('path checkout is not supported by git checkout yet');
-    if (arg.startsWith('-'))
-      throw new GitUsageError({ message: `unknown option: ${arg}` });
-    operands.push(arg);
   }
+  const createBranchValue = parsed.optionValues.createBranchName;
+  const createBranchName = typeof createBranchValue === 'string' ? createBranchValue : undefined;
+  const detach = parsed.optionValues.detach === true;
+  const operands = parsed.positionals;
   if (createBranchName !== undefined) {
     if (detach)
       throw new Error('options are incompatible');
@@ -44,6 +62,7 @@ function parseCheckoutBranchArguments({ args }: { args: readonly string[] }): Ch
     throw new Error('git checkout requires exactly one branch or revision');
   return { createBranchName: undefined, detach, targetExpression: operands[0]!, missingBranchBehavior: 'resolve-revision' };
 }
+
 
 export async function runCheckout({ context, args }: {
     context: WeshCommandContext;

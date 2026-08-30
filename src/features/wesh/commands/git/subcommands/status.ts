@@ -3,43 +3,105 @@ import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/type
 import { collectStatus } from "@/features/wesh/commands/git/status";
 import { formatPorcelainV1Branch, printLongStatus, renderPorcelainV1, renderPorcelainV2, renderShortStatus } from "@/features/wesh/commands/git/status-output";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+
+type StatusDeferredSemantic = 'short' | 'porcelain' | 'branch' | 'nul';
+
+const STATUS_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<StatusDeferredSemantic>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: { kind: 'deferred', tag: 'short' },
+      forms: [
+        { kind: 'short', name: 's', value: { kind: 'none' } },
+        { kind: 'long', name: 'short', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'deferred', tag: 'porcelain' },
+      forms: [{ kind: 'long', name: 'porcelain', value: { kind: 'optional-inline' } }],
+    },
+    {
+      semantic: { kind: 'deferred', tag: 'branch' },
+      forms: [
+        { kind: 'short', name: 'b', value: { kind: 'none' } },
+        { kind: 'long', name: 'branch', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'deferred', tag: 'nul' },
+      forms: [{ kind: 'short', name: 'z', value: { kind: 'none' } }],
+    },
+  ],
+});
+
+const STATUS_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'none',
+};
+
 
 export async function runStatus({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];
 }): Promise<WeshCommandResult> {
   await assertSupportedRepositoryContentPolicy({ context });
+  const separatorIndex = args.indexOf('--');
+  if (separatorIndex >= 0 && separatorIndex !== args.length - 1)
+    throw new Error('status pathspecs are not supported yet');
+  const parsedArgs = separatorIndex < 0 ? args : args.slice(0, separatorIndex);
+  const parsed = parseStandardArgv({ args: parsedArgs, catalog: STATUS_ARGV_CATALOG, policy: STATUS_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    throw new GitUsageError({ message: `unknown option: ${parsedArgs[diagnostic.argvIndex] ?? diagnostic.option}` });
+  }
+  if (parsed.positionals.length > 0)
+    throw new GitUsageError({ message: `unknown option: ${parsed.positionals[0]}` });
+
   let format: 'long' | 'short' | 'porcelain-v1' | 'porcelain-v2' = 'long';
   let branch = false;
   let nul = false;
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['s', 'b', 'z'], valueOptions: [] });
-  const separatorIndex = normalizedArgs.indexOf('--');
-  const optionArgs = separatorIndex < 0 ? normalizedArgs : normalizedArgs.slice(0, separatorIndex);
-  if (separatorIndex >= 0 && separatorIndex !== normalizedArgs.length - 1)
-    throw new Error('status pathspecs are not supported yet');
-  for (const arg of optionArgs) {
-    switch (arg) {
-    case '-s':
-    case '--short':
+  for (const occurrence of parsed.deferred) {
+    switch (occurrence.semantic.tag) {
+    case 'short':
       format = 'short';
       break;
-    case '--porcelain':
-    case '--porcelain=v1':
-      format = 'porcelain-v1';
+    case 'porcelain':
+      switch (occurrence.value.kind) {
+      case 'none':
+        format = 'porcelain-v1';
+        break;
+      case 'inline':
+        switch (occurrence.value.rawValue) {
+        case 'v1':
+          format = 'porcelain-v1';
+          break;
+        case 'v2':
+          format = 'porcelain-v2';
+          break;
+        default:
+          throw new GitUsageError({ message: `unknown option: ${parsedArgs[occurrence.argvIndex]}` });
+        }
+        break;
+      case 'next-argv':
+        throw new Error('Status --porcelain unexpectedly claimed a following value');
+      default: {
+        const _ex: never = occurrence.value;
+        throw new Error(`Unhandled status porcelain value: ${JSON.stringify(_ex)}`);
+      }
+      }
       break;
-    case '--porcelain=v2':
-      format = 'porcelain-v2';
-      break;
-    case '-b':
-    case '--branch':
+    case 'branch':
       branch = true;
       break;
-    case '-z':
+    case 'nul':
       nul = true;
       break;
-    default:
-      throw new GitUsageError({ message: `unknown option: ${arg}` });
+    default: {
+      const _ex: never = occurrence.semantic.tag;
+      throw new Error(`Unhandled status deferred semantic: ${_ex}`);
+    }
     }
   }
   if (nul && format === 'long')

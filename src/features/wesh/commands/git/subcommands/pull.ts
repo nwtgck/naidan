@@ -12,37 +12,53 @@ import { integrateDivergentMerge } from "@/features/wesh/commands/git/merge-oper
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
 import { printCheckoutConflicts } from "@/features/wesh/commands/git/checkout-like";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+
+const PULL_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
+      forms: [
+        { kind: 'short', name: 'q', value: { kind: 'none' } },
+        { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'ffOnly', value: true }] },
+      forms: [{ kind: 'long', name: 'ff-only', value: { kind: 'none' } }],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'rebase', value: true }] },
+      forms: [{ kind: 'long', name: 'rebase', value: { kind: 'none' } }],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'rebase', value: false }] },
+      forms: [{ kind: 'long', name: 'no-rebase', value: { kind: 'none' } }],
+    },
+  ],
+});
+
+const PULL_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 export async function runPull({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];
 }): Promise<WeshCommandResult> {
   await assertSupportedRepositoryContentPolicy({ context });
-  let ffOnly = false;
-  let rebase = false;
-  let quiet = false;
-  const operands: string[] = [];
-  let parsingOptions = true;
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['q'], valueOptions: [] });
-  for (const arg of normalizedArgs) {
-    if (parsingOptions && arg === '--') {
-      parsingOptions = false;
-      continue;
-    }
-    if (parsingOptions && arg === '--ff-only')
-      ffOnly = true;
-    else if (parsingOptions && arg === '--rebase')
-      rebase = true;
-    else if (parsingOptions && arg === '--no-rebase')
-      rebase = false;
-    else if (parsingOptions && (arg === '-q' || arg === '--quiet'))
-      quiet = true;
-    else if (parsingOptions && arg.startsWith('-'))
-      throw new GitUsageError({ message: `unknown option: ${arg}` });
-    else
-      operands.push(arg);
+  const parsed = parseStandardArgv({ args, catalog: PULL_ARGV_CATALOG, policy: PULL_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
   }
+  const ffOnly = parsed.optionValues.ffOnly === true;
+  const rebase = parsed.optionValues.rebase === true;
+  const quiet = parsed.optionValues.quiet === true;
+  const operands = parsed.positionals;
   if (operands.length > 2)
     throw new Error('too many arguments');
   const repository = await discoverRepositoryFromContext({ context });

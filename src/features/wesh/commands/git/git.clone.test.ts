@@ -307,6 +307,20 @@ test ! -e cloned`,
   });
 
 
+  it('accepts an explicit empty --branch value before branch resolution', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q source
+git clone --branch= source cloned
+test ! -e cloned`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('fatal: Remote branch  not found in upstream origin\n');
+  });
+
+
   it('accepts --depth on a plain local path with Git-compatible ignored-depth semantics', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

@@ -10,7 +10,22 @@ import { resolveContentConfigForContext } from "@/features/wesh/commands/git/con
 import { collectStatus } from "@/features/wesh/commands/git/status";
 import { printLongStatus } from "@/features/wesh/commands/git/status-output";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+
+type StashPushShortSemantic = 'include-untracked' | 'message';
+
+const STASH_PUSH_SHORT_ARGV_CATALOG = defineArgvCatalog<StashPushShortSemantic>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    { semantic: 'include-untracked', forms: [{ kind: 'short', name: 'u', value: { kind: 'none' } }] },
+    { semantic: 'message', forms: [{ kind: 'short', name: 'm', value: { kind: 'required-attached-or-following', missingValueName: 'message' } }] },
+  ],
+});
+
+const STASH_SHOW_SHORT_ARGV_CATALOG = defineArgvCatalog<'patch'>({
+  nonExecutableLongOptions: [],
+  definitions: [{ semantic: 'patch', forms: [{ kind: 'short', name: 'p', value: { kind: 'none' } }] }],
+});
 
 export async function runStash({ context, args }: {
     context: WeshCommandContext;
@@ -19,9 +34,7 @@ export async function runStash({ context, args }: {
   const subcommand = args[0] === undefined || args[0].startsWith('-') ? 'push' : args[0];
   await assertSupportedRepositoryContentPolicy({ context, cleanMutation: subcommand === 'push' });
   const rawRest = subcommand === 'push' && (args[0] === undefined || args[0].startsWith('-')) ? args : args.slice(1);
-  const rest = subcommand === 'push'
-    ? expandGitShortOptions({ args: rawRest, flagOptions: ['u'], valueOptions: ['m'] })
-    : rawRest;
+  const rest = rawRest;
   const repository = await discoverRepositoryFromContext({ context });
   switch (subcommand) {
   case 'push': {
@@ -39,9 +52,68 @@ export async function runStash({ context, args }: {
         pathOperands.push(arg);
         continue;
       }
-      if (arg === '-u' || arg === '--include-untracked') {
+      if (arg.startsWith('-') && !arg.startsWith('--') && arg.length > 1) {
+        let bodyOffset = 1;
+        while (bodyOffset < arg.length) {
+          const analysis = analyzeArgvShortForm({ token: arg, bodyOffset, prefix: '-', catalog: STASH_PUSH_SHORT_ARGV_CATALOG });
+          switch (analysis.kind) {
+          case 'unknown':
+            throw new GitUsageError({ message: `unknown option: ${arg}` });
+          case 'matched':
+            break;
+          default: {
+            const _ex: never = analysis;
+            throw new Error(`Unhandled stash push short-option analysis: ${JSON.stringify(_ex)}`);
+          }
+          }
+          switch (analysis.semantic) {
+          case 'include-untracked':
+            switch (analysis.value.kind) {
+            case 'none':
+              includeUntracked = true;
+              break;
+            case 'inline':
+            case 'following-required':
+            case 'following-optional':
+              throw new Error(`Stash -u unexpectedly claimed a value: ${analysis.value.kind}`);
+            default: {
+              const _ex: never = analysis.value;
+              throw new Error(`Unhandled stash -u value: ${JSON.stringify(_ex)}`);
+            }
+            }
+            break;
+          case 'message':
+            switch (analysis.value.kind) {
+            case 'inline':
+              message = analysis.value.rawValue;
+              break;
+            case 'following-required': {
+              const value = rest[index + 1];
+              if (value === undefined)
+                throw new GitUsageError({ message: `option '${analysis.option}' requires a value` });
+              message = value;
+              index += 1;
+              break;
+            }
+            case 'none':
+            case 'following-optional':
+              throw new Error(`Stash -m produced invalid value claim: ${analysis.value.kind}`);
+            default: {
+              const _ex: never = analysis.value;
+              throw new Error(`Unhandled stash -m value: ${JSON.stringify(_ex)}`);
+            }
+            }
+            break;
+          default: {
+            const _ex: never = analysis.semantic;
+            throw new Error(`Unhandled stash push short semantic: ${_ex}`);
+          }
+          }
+          bodyOffset = analysis.nextBodyOffset;
+        }
+      } else if (arg === '--include-untracked') {
         includeUntracked = true;
-      } else if (arg === '-m' || arg === '--message') {
+      } else if (arg === '--message') {
         const value = rest[index + 1];
         if (value === undefined)
           throw new GitUsageError({ message: `option '${arg}' requires a value` });
@@ -137,18 +209,49 @@ export async function runStash({ context, args }: {
     return { exitCode: 0 };
   }
   case 'show': {
-    const showArgs = expandGitShortOptions({ args: rest, flagOptions: ['p'], valueOptions: [] });
     let expression: string | undefined;
     let showStat = false;
     let showPatch = true;
     let patchExplicitlyRequested = false;
     let parsingOptions = true;
-    for (const arg of showArgs) {
+    for (const arg of rest) {
       if (parsingOptions && arg === '--') {
         parsingOptions = false;
         continue;
       }
-      if (parsingOptions && (arg === '-p' || arg === '--patch')) {
+      if (parsingOptions && arg.startsWith('-') && !arg.startsWith('--') && arg.length > 1) {
+        let bodyOffset = 1;
+        while (bodyOffset < arg.length) {
+          const analysis = analyzeArgvShortForm({ token: arg, bodyOffset, prefix: '-', catalog: STASH_SHOW_SHORT_ARGV_CATALOG });
+          switch (analysis.kind) {
+          case 'unknown':
+            throw new GitUsageError({ message: `unknown option: ${arg}` });
+          case 'matched':
+            break;
+          default: {
+            const _ex: never = analysis;
+            throw new Error(`Unhandled stash show short-option analysis: ${JSON.stringify(_ex)}`);
+          }
+          }
+          switch (analysis.value.kind) {
+          case 'none':
+            showPatch = true;
+            patchExplicitlyRequested = true;
+            break;
+          case 'inline':
+          case 'following-required':
+          case 'following-optional':
+            throw new Error(`Stash show -p unexpectedly claimed a value: ${analysis.value.kind}`);
+          default: {
+            const _ex: never = analysis.value;
+            throw new Error(`Unhandled stash show -p value: ${JSON.stringify(_ex)}`);
+          }
+          }
+          bodyOffset = analysis.nextBodyOffset;
+        }
+        continue;
+      }
+      if (parsingOptions && arg === '--patch') {
         showPatch = true;
         patchExplicitlyRequested = true;
         continue;

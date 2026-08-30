@@ -6,7 +6,41 @@ import { matchRepositoryPaths } from '@/features/wesh/commands/git/pathspec';
 import { quoteGitPath, quoteNonAsciiFromConfig } from '@/features/wesh/commands/git/path-output';
 import { relativeToWorktree, discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
 import { writeHandleBytes } from '@/features/wesh/commands/git/files';
-import { expandGitShortOptions } from '@/features/wesh/commands/git/short-options';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+
+const LS_FILES_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'stage', value: true }] },
+      forms: [
+        { kind: 'short', name: 's', value: { kind: 'none' } },
+        { kind: 'long', name: 'stage', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'cached', value: true }] },
+      forms: [
+        { kind: 'short', name: 'c', value: { kind: 'none' } },
+        { kind: 'long', name: 'cached', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'nul', value: true }] },
+      forms: [{ kind: 'short', name: 'z', value: { kind: 'none' } }],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'fullName', value: true }] },
+      forms: [{ kind: 'long', name: 'full-name', value: { kind: 'none' } }],
+    },
+  ],
+});
+
+const LS_FILES_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 const textEncoder = new TextEncoder();
 
@@ -22,33 +56,16 @@ export async function runLsFiles({ context, args }: {
   context: WeshCommandContext,
   args: readonly string[],
 }): Promise<WeshCommandResult> {
-  let stage = false;
-  let nul = false;
-  let fullName = false;
-  let parsingOptions = true;
-  const operands: string[] = [];
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['s', 'c', 'z'], valueOptions: [] });
-  for (const arg of normalizedArgs) {
-    if (parsingOptions && arg === '--') {
-      parsingOptions = false;
-      continue;
-    }
-    if (parsingOptions && (arg === '-s' || arg === '--stage')) {
-      stage = true;
-      continue;
-    }
-    if (parsingOptions && (arg === '-c' || arg === '--cached')) continue;
-    if (parsingOptions && arg === '--full-name') {
-      fullName = true;
-      continue;
-    }
-    if (parsingOptions && arg === '-z') {
-      nul = true;
-      continue;
-    }
-    if (parsingOptions && arg.startsWith('-')) throw new GitUsageError({ message: `unknown option: ${arg}` });
-    operands.push(arg);
+  const parsed = parseStandardArgv({ args, catalog: LS_FILES_ARGV_CATALOG, policy: LS_FILES_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
   }
+  const stage = parsed.optionValues.stage === true;
+  const nul = parsed.optionValues.nul === true;
+  const fullName = parsed.optionValues.fullName === true;
+  const operands = parsed.positionals;
+
 
   const repository = await discoverRepositoryFromContext({ context });
   const cwdRelative = relativeToWorktree({ repository, absolutePath: context.cwd });

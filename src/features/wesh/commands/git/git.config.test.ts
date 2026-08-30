@@ -271,6 +271,139 @@ git config --get-all remote.origin.fetch`,
     );
   });
 
+  it('filters config reads with Git extended value patterns', async () => {
+    const result = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config --add demo.value one
+git config --add demo.value two
+git config --add demo.value three
+git config --get demo.value '^t'
+git config --get-all demo.value '^t'
+git config --get-all demo.value '!^t'`,
+    });
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stderr.text).toBe('');
+    expect(result.stdout.text).toBe(`\
+three
+two
+three
+one
+`);
+  });
+
+  it('uses whole-value newline matching for config value patterns', async () => {
+    const result = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config demo.multiline 'a
+b'
+git config --get demo.multiline '^a.b$'`,
+    });
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stderr.text).toBe('');
+    expect(result.stdout.text).toBe(`\
+a
+b
+`);
+  });
+
+  it('uses absolute end-of-value anchors while allowing dot to match a trailing newline', async () => {
+    await execute({
+      script: `\
+git init -q repo
+cd repo
+git config demo.trailing 'x
+'`,
+    });
+
+    const beforeNewline = await execute({ script: "git config --get demo.trailing 'x$'" });
+    expect(beforeNewline.stderr.text).toBe('');
+    expect(beforeNewline.stdout.text).toBe('');
+    expect(beforeNewline.result.exitCode).toBe(1);
+
+    const includingNewline = await execute({ script: "git config --get demo.trailing '^x.$'" });
+    expect(includingNewline.result.exitCode).toBe(0);
+    expect(includingNewline.stderr.text).toBe('');
+    expect(includingNewline.stdout.text).toBe('x\n\n');
+  });
+
+  it('selects a unique existing value when setting with a value pattern and appends on no match', async () => {
+    await execute({
+      script: `\
+git init -q repo
+cd repo
+git config --add demo.value one
+git config --add demo.value two
+git config --add demo.value three`,
+    });
+
+    const selected = await execute({
+      script: `\
+git config demo.value TWO '^two$'
+git config demo.value FOUR '^missing$'
+git config --get-all demo.value`,
+    });
+    expect(selected.result.exitCode).toBe(0);
+    expect(selected.stderr.text).toBe('');
+    expect(selected.stdout.text).toBe(`\
+one
+TWO
+three
+FOUR
+`);
+
+    const multiple = await execute({ script: "git config demo.value replacement '.*'" });
+    expect(multiple.result.exitCode).toBe(5);
+    expect(multiple.stdout.text).toBe('');
+    expect(multiple.stderr.text).toBe('warning: demo.value has multiple values\n');
+  });
+
+  it('applies value patterns to unset operations and reports invalid patterns with exit 6', async () => {
+    await execute({
+      script: `\
+git init -q repo
+cd repo
+git config --add demo.value one
+git config --add demo.value two
+git config --add demo.value three`,
+    });
+
+    const removed = await execute({
+      script: `\
+git config --unset demo.value '^two$'
+git config --unset-all demo.value '^t'
+git config --get-all demo.value`,
+    });
+    expect(removed.result.exitCode).toBe(0);
+    expect(removed.stderr.text).toBe('');
+    expect(removed.stdout.text).toBe('one\n');
+
+    const invalid = await execute({ script: "git config --get-all demo.value '['" });
+    expect(invalid.result.exitCode).toBe(6);
+    expect(invalid.stdout.text).toBe('');
+    expect(invalid.stderr.text).toBe('error: invalid pattern: [\n');
+  });
+
+  it.each([
+    "git -C repo config --get demo.value '['",
+    "git -C repo config demo.value replacement '['",
+    "git -C repo config --unset demo.value '['",
+  ])('reports malformed repository config before an invalid value pattern for %s', async command => {
+    await execute({
+      script: `\
+git init -q repo
+printf '[bad\n' >> repo/.git/config`,
+    });
+
+    const result = await execute({ script: command });
+    expect(result.result.exitCode).toBe(128);
+    expect(result.stdout.text).toBe('');
+    expect(result.stderr.text).toContain('bad config');
+  });
+
   it('refuses a single-value set when a key has multiple values', async () => {
     await execute({
       script: `\

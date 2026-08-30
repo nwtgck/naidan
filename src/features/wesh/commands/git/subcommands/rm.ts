@@ -7,35 +7,49 @@ import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repo
 import { removeWorktreePaths } from "@/features/wesh/commands/git/worktree";
 import { collectStatus } from "@/features/wesh/commands/git/status";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+
+const RM_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'force', value: true }] },
+      forms: [
+        { kind: 'short', name: 'f', value: { kind: 'none' } },
+        { kind: 'long', name: 'force', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'recursive', value: true }] },
+      forms: [{ kind: 'short', name: 'r', value: { kind: 'none' } }],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'cached', value: true }] },
+      forms: [{ kind: 'long', name: 'cached', value: { kind: 'none' } }],
+    },
+  ],
+});
+
+const RM_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 export async function runRm({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];
 }): Promise<WeshCommandResult> {
   await assertSupportedRepositoryContentPolicy({ context });
-  let force = false;
-  let cached = false;
-  let recursive = false;
-  let parsingOptions = true;
-  const operands: string[] = [];
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['f', 'r'], valueOptions: [] });
-  for (const arg of normalizedArgs) {
-    if (parsingOptions && arg === '--') {
-      parsingOptions = false;
-      continue;
-    }
-    if (parsingOptions && (arg === '-f' || arg === '--force'))
-      force = true;
-    else if (parsingOptions && arg === '--cached')
-      cached = true;
-    else if (parsingOptions && arg === '-r')
-      recursive = true;
-    else if (parsingOptions && arg.startsWith('-'))
-      throw new GitUsageError({ message: `unknown option: ${arg}` });
-    else
-      operands.push(arg);
+  const parsed = parseStandardArgv({ args, catalog: RM_ARGV_CATALOG, policy: RM_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
   }
+  const force = parsed.optionValues.force === true;
+  const cached = parsed.optionValues.cached === true;
+  const recursive = parsed.optionValues.recursive === true;
+  const operands = parsed.positionals;
   if (operands.length === 0)
     throw new Error('No pathspec was given. Which files should I remove?');
   const repository = await discoverRepositoryFromContext({ context });

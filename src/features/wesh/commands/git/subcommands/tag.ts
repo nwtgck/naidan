@@ -9,8 +9,44 @@ import { discoverRepositoryFromContext } from '@/features/wesh/commands/git/repo
 import type { GitRepository } from '@/features/wesh/commands/git/repository';
 import { resolveRevision } from '@/features/wesh/commands/git/revision';
 import { compareGitUtf8Strings } from '@/features/wesh/commands/git/utf8-order';
-import { expandGitShortOptions } from '@/features/wesh/commands/git/short-options';
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 import { appendMessageParagraph, cleanupMessage } from '@/features/wesh/commands/git/commit-message';
+
+type TagDeferredSemantic = 'message';
+
+const TAG_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<TagDeferredSemantic>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'annotated', value: true }] },
+      forms: [
+        { kind: 'short', name: 'a', value: { kind: 'none' } },
+        { kind: 'long', name: 'annotate', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'deleteMode', value: true }] },
+      forms: [
+        { kind: 'short', name: 'd', value: { kind: 'none' } },
+        { kind: 'long', name: 'delete', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'deferred', tag: 'message' },
+      forms: [
+        { kind: 'short', name: 'm', value: { kind: 'required-attached-or-following', missingValueName: 'message' } },
+        { kind: 'long', name: 'message', value: { kind: 'required', missingValueName: 'message' } },
+      ],
+    },
+  ],
+});
+
+const TAG_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
+
 
 const textEncoder = new TextEncoder();
 
@@ -63,32 +99,56 @@ export async function runTag({ context, args }: {
     cwd: context.cwd,
     env: context.env,
   });
-  let annotated = false;
-  let deleteMode = false;
-  let message: string | undefined;
-  let parsingOptions = true;
-  const operands: string[] = [];
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['a', 'd'], valueOptions: ['m'] });
-  for (let index = 0; index < normalizedArgs.length; index += 1) {
-    const arg = normalizedArgs[index]!;
-    if (parsingOptions && arg === '--') {
-      parsingOptions = false;
-      continue;
+  const parsed = parseStandardArgv({ args, catalog: TAG_ARGV_CATALOG, policy: TAG_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    switch (diagnostic.kind) {
+    case 'missing_option_value':
+      throw new GitUsageError({ message: `option '${diagnostic.option}' requires a value` });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'ambiguous_long_option':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unsupported tag argument: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled tag argv diagnostic: ${JSON.stringify(_ex)}`);
     }
-    if (parsingOptions && (arg === '-a' || arg === '--annotate')) annotated = true;
-    else if (parsingOptions && (arg === '-d' || arg === '--delete')) deleteMode = true;
-    else if (parsingOptions && (arg === '-m' || arg === '--message')) {
-      const value = normalizedArgs[index + 1];
-      if (value === undefined) throw new GitUsageError({ message: `option '${arg}' requires a value` });
+    }
+  }
+
+  let annotated = parsed.optionValues.annotated === true;
+  const deleteMode = parsed.optionValues.deleteMode === true;
+  let message: string | undefined;
+  for (const occurrence of parsed.deferred) {
+    switch (occurrence.semantic.tag) {
+    case 'message': {
+      const value = (() => {
+        switch (occurrence.value.kind) {
+        case 'inline':
+        case 'next-argv':
+          return occurrence.value.rawValue;
+        case 'none':
+          throw new Error('Tag message option did not claim a value');
+        default: {
+          const _ex: never = occurrence.value;
+          throw new Error(`Unhandled tag message value: ${JSON.stringify(_ex)}`);
+        }
+        }
+      })();
       message = appendMessageParagraph({ current: message, value });
       annotated = true;
-      index += 1;
-    } else if (parsingOptions && arg.startsWith('--message=')) {
-      message = appendMessageParagraph({ current: message, value: arg.slice('--message='.length) });
-      annotated = true;
-    } else if (parsingOptions && arg.startsWith('-')) throw new GitUsageError({ message: `unsupported tag argument: ${arg}` });
-    else operands.push(arg);
+      break;
+    }
+    default: {
+      const _ex: never = occurrence.semantic.tag;
+      throw new Error(`Unhandled tag deferred semantic: ${_ex}`);
+    }
+    }
   }
+  const operands = parsed.positionals;
+
 
   if (message !== undefined) message = cleanupMessage({ text: message });
 

@@ -92,12 +92,13 @@ export async function runRemote({ context, args }: {
       await context.text().error({ text: `error: remote ${name} already exists.\n` });
       return { exitCode: 3 };
     }
-    await setLocalConfigValue({ files: context.files, repository, key: `remote.${name}.url`, value: commandArgs[2]! });
+    await setLocalConfigValue({ files: context.files, repository, key: `remote.${name}.url`, value: commandArgs[2]!, valuePattern: undefined });
     await setLocalConfigValue({
       files: context.files,
       repository,
       key: `remote.${name}.fetch`,
       value: `+refs/heads/*:refs/remotes/${name}/*`,
+      valuePattern: undefined,
     });
     return { exitCode: 0 };
   }
@@ -121,7 +122,7 @@ export async function runRemote({ context, args }: {
     }
     const key = `remote.${name}.url`;
     const value = commandArgs[2]!;
-    const setResult = await setLocalConfigValue({ files: context.files, repository, key, value });
+    const setResult = await setLocalConfigValue({ files: context.files, repository, key, value, valuePattern: undefined });
     switch (setResult) {
     case 'set':
       return { exitCode: 0 };
@@ -152,11 +153,11 @@ export async function runRemote({ context, args }: {
       else branchesUsingPushRemote.add(match[1]!);
     }
     for (const branchName of branchesUsingRemote) {
-      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.remote`, all: true });
-      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.merge`, all: true });
+      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.remote`, all: true, valuePattern: undefined });
+      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.merge`, all: true, valuePattern: undefined });
     }
     for (const branchName of branchesUsingPushRemote) {
-      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.pushremote`, all: true });
+      await unsetLocalConfigValue({ files: context.files, repository, key: `branch.${branchName}.pushremote`, all: true, valuePattern: undefined });
     }
     const remoteRefPrefix = `refs/remotes/${name}`;
     for (const ref of await listRefs({ files: context.files, repository, prefix: 'refs' })) {

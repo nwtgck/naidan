@@ -9,7 +9,40 @@ import { stageWorktreePaths } from "@/features/wesh/commands/git/stage";
 import { collectPathsForAdd, listWorktreeEntries, worktreeAbsolutePath } from "@/features/wesh/commands/git/worktree";
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+
+const ADD_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'all', value: true }] },
+      forms: [
+        { kind: 'short', name: 'A', value: { kind: 'none' } },
+        { kind: 'long', name: 'all', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'update', value: true }] },
+      forms: [
+        { kind: 'short', name: 'u', value: { kind: 'none' } },
+        { kind: 'long', name: 'update', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'force', value: true }] },
+      forms: [
+        { kind: 'short', name: 'f', value: { kind: 'none' } },
+        { kind: 'long', name: 'force', value: { kind: 'none' } },
+      ],
+    },
+  ],
+});
+
+const ADD_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 export async function runAdd({ context, args }: {
     context: WeshCommandContext;
@@ -17,40 +50,18 @@ export async function runAdd({ context, args }: {
 }): Promise<WeshCommandResult> {
   await assertSupportedRepositoryContentPolicy({ context, cleanMutation: true });
   const repository = await discoverRepositoryFromContext({ context });
-  let mode: 'paths' | 'all' | 'update' = 'paths';
-  let allModeSeen = false;
-  let updateModeSeen = false;
-  let force = false;
-  let parsingOptions = true;
-  const operands: string[] = [];
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['A', 'u', 'f'], valueOptions: [] });
-  for (const arg of normalizedArgs) {
-    if (parsingOptions && arg === '--') {
-      parsingOptions = false;
-      continue;
-    }
-    if (parsingOptions && (arg === '-A' || arg === '--all')) {
-      if (updateModeSeen)
-        throw new Error("options '-A' and '-u' cannot be used together");
-      allModeSeen = true;
-      mode = 'all';
-      continue;
-    }
-    if (parsingOptions && (arg === '-u' || arg === '--update')) {
-      if (allModeSeen)
-        throw new Error("options '-A' and '-u' cannot be used together");
-      updateModeSeen = true;
-      mode = 'update';
-      continue;
-    }
-    if (parsingOptions && (arg === '-f' || arg === '--force')) {
-      force = true;
-      continue;
-    }
-    if (parsingOptions && arg.startsWith('-'))
-      throw new GitUsageError({ message: `unknown option ${arg}` });
-    operands.push(arg);
+  const parsed = parseStandardArgv({ args, catalog: ADD_ARGV_CATALOG, policy: ADD_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    throw new GitUsageError({ message: `unknown option ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
   }
+  const allModeSeen = parsed.optionValues.all === true;
+  const updateModeSeen = parsed.optionValues.update === true;
+  if (allModeSeen && updateModeSeen)
+    throw new Error("options '-A' and '-u' cannot be used together");
+  const mode: 'paths' | 'all' | 'update' = allModeSeen ? 'all' : updateModeSeen ? 'update' : 'paths';
+  const force = parsed.optionValues.force === true;
+  const operands = parsed.positionals;
   const currentEntries = await readIndex({ files: context.files, repository });
   const trackedPaths = new Set(currentEntries.map(entry => entry.path));
   let selected: Set<string>;
