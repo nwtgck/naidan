@@ -156,6 +156,58 @@ describe('TransformersJsProvider', () => {
       );
     });
 
+    it('should execute multiple tool calls before continuing generation', async () => {
+      mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
+
+      const toolCalls: ToolCall[] = [
+        {
+          id: toToolCallId({ raw: 'call_workspace' }),
+          type: 'function',
+          function: { name: 'shell_execute', arguments: '{"shell_script":"ls -la /workspace"}' },
+        },
+        {
+          id: toToolCallId({ raw: 'call_tmp' }),
+          type: 'function',
+          function: { name: 'shell_execute', arguments: '{"shell_script":"ls -la /tmp"}' },
+        },
+      ];
+      setupGenerateTextMock(toolCalls);
+
+      const execute = vi.fn(async ({ args }: { args: { shell_script: string } }) => ({
+        status: 'success' as const,
+        content: `result for ${args.shell_script}`,
+      }));
+      const tool = {
+        name: 'shell_execute',
+        description: 'Run shell',
+        parametersSchema: z.object({ shell_script: z.string() }),
+        execute,
+      };
+
+      const { TransformersJsProvider } = await import('./provider');
+      const provider = new TransformersJsProvider();
+      await provider.chat({
+        model: 'model',
+        messages: [{ role: 'user', content: 'Use shell tools.' }],
+        onChunk: vi.fn(),
+        tools: [tool],
+      });
+
+      expect(execute).toHaveBeenCalledTimes(2);
+      expect(execute.mock.calls.map(([request]) => request.args)).toEqual([
+        { shell_script: 'ls -la /workspace' },
+        { shell_script: 'ls -la /tmp' },
+      ]);
+      expect(mockService.generateText).toHaveBeenCalledTimes(2);
+      const continuationMessages = mockService.generateText.mock.calls[1]![0].messages as Array<Record<string, unknown>>;
+      const assistant = continuationMessages.find(message => message['role'] === 'assistant') as { tool_calls?: ToolCall[] } | undefined;
+      expect(assistant?.tool_calls).toEqual(toolCalls);
+      expect(continuationMessages.filter(message => message['role'] === 'tool')).toEqual([
+        expect.objectContaining({ tool_call_id: 'call_workspace', content: 'result for ls -la /workspace' }),
+        expect.objectContaining({ tool_call_id: 'call_tmp', content: 'result for ls -la /tmp' }),
+      ]);
+    });
+
     it('should report an error when the tool is not found', async () => {
       mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
 

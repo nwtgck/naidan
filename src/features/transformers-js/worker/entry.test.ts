@@ -366,19 +366,24 @@ describe('transformers-js.worker', () => {
         is_encoder_decoder: false,
       },
     });
-    const applyChatTemplate = vi.fn()
-      .mockReturnValueOnce({
+    const templateInputs = [
+      {
         input_ids: { data: BigInt64Array.from([10n, 11n]) },
         attention_mask: { data: BigInt64Array.from([1n, 1n]) },
-      })
-      .mockReturnValueOnce({
+      },
+      {
         input_ids: { data: BigInt64Array.from([10n, 11n, 20n, 21n, 30n]) },
         attention_mask: { data: BigInt64Array.from([1n, 1n, 1n, 1n, 1n]) },
-      })
-      .mockReturnValueOnce({
+      },
+      {
         input_ids: { data: BigInt64Array.from([50n, 51n, 52n]) },
         attention_mask: { data: BigInt64Array.from([1n, 1n, 1n]) },
-      });
+      },
+    ];
+    const applyChatTemplate = vi.fn((_messages, options: { tokenize?: boolean, return_dict?: boolean } | undefined) => {
+      if (options?.tokenize === false) return '<|im_start|>assistant\n';
+      return templateInputs.shift();
+    });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({
       apply_chat_template: applyChatTemplate,
       decode,
@@ -470,33 +475,44 @@ describe('transformers-js.worker', () => {
         },
       },
     });
-    expect(applyChatTemplate).toHaveBeenNthCalledWith(2, [
-      { role: 'user', content: 'hello' },
-      { role: 'assistant', content: 'observed production output' },
-      { role: 'user', content: 'Continue with one short sentence.' },
-    ], expect.objectContaining({ add_generation_prompt: true }));
-    expect(applyChatTemplate).toHaveBeenNthCalledWith(3, [
-      { role: 'user', content: 'Use the weather tool for Tokyo.' },
-      {
-        role: 'assistant',
-        content: '',
-        tool_calls: [{
-          id: 'call_model_support_probe_1',
-          type: 'function',
-          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-        }],
-      },
-      {
-        role: 'tool',
-        tool_call_id: 'call_model_support_probe_1',
-        content: '{"temperatureC":20,"condition":"clear"}',
-      },
-    ], expect.objectContaining({
-      add_generation_prompt: true,
-      tools: expect.arrayContaining([expect.objectContaining({
-        function: expect.objectContaining({ name: 'lookup_weather' }),
-      })]),
-    }));
+    const tokenizedTemplateCalls = applyChatTemplate.mock.calls.filter(([, options]) => (
+      options?.return_dict === true && options?.tokenize !== false
+    ));
+    expect(tokenizedTemplateCalls[1]).toEqual([
+      [
+        { role: 'user', content: 'hello', tool_calls: undefined, tool_call_id: undefined },
+        { role: 'assistant', content: 'observed production output', tool_calls: undefined, tool_call_id: undefined },
+        { role: 'user', content: 'Continue with one short sentence.', tool_calls: undefined, tool_call_id: undefined },
+      ],
+      expect.objectContaining({ add_generation_prompt: true }),
+    ]);
+    expect(tokenizedTemplateCalls[2]).toEqual([
+      [
+        { role: 'user', content: 'Use the weather tool for Tokyo.', tool_calls: undefined, tool_call_id: undefined },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{
+            id: 'call_model_support_probe_1',
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          }],
+          tool_call_id: undefined,
+        },
+        {
+          role: 'tool',
+          tool_call_id: 'call_model_support_probe_1',
+          content: '{"temperatureC":20,"condition":"clear"}',
+          tool_calls: undefined,
+        },
+      ],
+      expect.objectContaining({
+        add_generation_prompt: true,
+        tools: expect.arrayContaining([expect.objectContaining({
+          function: expect.objectContaining({ name: 'lookup_weather' }),
+        })]),
+      }),
+    ]);
     expect(dispose).toHaveBeenCalledOnce();
   });
 
@@ -787,6 +803,7 @@ describe('transformers-js.worker', () => {
     let capturedCallback: ((output: string) => void) | undefined;
     let tokensToEmit: string[];
     let mockApplyTemplate: ReturnType<typeof vi.fn>;
+    let mockGenerate: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
       // Outer beforeEach already ran vi.resetModules() + vi.clearAllMocks()
@@ -802,13 +819,19 @@ describe('transformers-js.worker', () => {
       );
 
       mockApplyTemplate = vi.fn().mockReturnValue({ input_ids: [1, 2, 3] });
+      mockGenerate = vi.fn().mockImplementation(async () => {
+        for (const token of tokensToEmit) capturedCallback?.(token);
+        return { past_key_values: {} };
+      });
       const mockModel = {
-        generate: vi.fn().mockImplementation(async () => {
-          for (const token of tokensToEmit) capturedCallback?.(token);
-          return { past_key_values: {} };
-        }),
+        generate: mockGenerate,
         dispose: vi.fn(),
         device: 'webgpu',
+        config: {
+          model_type: 'example',
+          is_encoder_decoder: false,
+          max_position_embeddings: 128_000,
+        },
       };
 
       (tfMock.AutoModelForCausalLM.from_pretrained as any).mockResolvedValue(mockModel);
@@ -820,6 +843,19 @@ describe('transformers-js.worker', () => {
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
       await workerObj.loadModel('standard-model', vi.fn());
+    });
+
+    it('uses the remaining declared model context instead of a fixed 1024-token fallback', async () => {
+      mockApplyTemplate.mockImplementation((_messages, options) => {
+        if (options?.tokenize === false) return '<|im_start|>assistant\n';
+        return { input_ids: { dims: [1, 2_048] } };
+      });
+
+      await workerObj.generateText([], vi.fn(), vi.fn(), undefined, undefined);
+
+      expect(mockGenerate).toHaveBeenCalledWith(expect.objectContaining({
+        max_new_tokens: 125_952,
+      }));
     });
 
     it('emits tool calls when <tool_call> tags appear in output', async () => {
@@ -839,6 +875,35 @@ describe('transformers-js.worker', () => {
       expect(calls).toHaveLength(1);
       expect(calls[0].function.name).toBe('search');
       expect(JSON.parse(calls[0].function.arguments)).toEqual({ query: 'hello' });
+    });
+
+    it('waits for the remote tool-call callback before resolving generation', async () => {
+      const payload = JSON.stringify({ name: 'search', arguments: { query: 'hello' } });
+      tokensToEmit = [`<tool_call>${payload}</tool_call>`];
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'search', description: 'Search', parameters: {} } },
+      ];
+
+      let releaseToolCalls!: () => void;
+      const toolCallsDelivered = new Promise<void>(resolve => {
+        releaseToolCalls = resolve;
+      });
+      const onToolCalls = vi.fn(() => toolCallsDelivered);
+      let generationResolved = false;
+
+      const generation = workerObj
+        .generateText([], vi.fn(), onToolCalls, undefined, tools)
+        .then(() => {
+          generationResolved = true;
+        });
+
+      await vi.waitFor(() => expect(onToolCalls).toHaveBeenCalledOnce());
+      await Promise.resolve();
+      expect(generationResolved).toBe(false);
+
+      releaseToolCalls();
+      await generation;
+      expect(generationResolved).toBe(true);
     });
 
     it('streams non-tool text through onChunk', async () => {
@@ -868,6 +933,211 @@ describe('transformers-js.worker', () => {
       expect(onChunk).toHaveBeenCalledWith('world');
     });
 
+    it('restores a prompt-owned <think> opening tag without model-specific routing', async () => {
+      mockApplyTemplate.mockImplementation((_messages, options) => {
+        if (options?.tokenize !== false) return { input_ids: [1, 2, 3] };
+        if (options?.add_generation_prompt === false) {
+          return `\
+<|im_start|>user
+question<|im_end|>
+`;
+        }
+        return `\
+<|im_start|>user
+question<|im_end|>
+<|im_start|>assistant
+<think>
+`;
+      });
+      tokensToEmit = ['reasoning', '</thi', 'nk>', 'answer'];
+
+      const rawTokenLog = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      try {
+        const onChunk = vi.fn();
+        await workerObj.generateText([], onChunk, vi.fn(), undefined, undefined);
+
+        const emitted = (onChunk.mock.calls as [string][]).map(([chunk]) => chunk).join('');
+        expect(emitted).toBe('<think>reasoning</think>answer');
+        const rawChunks = rawTokenLog.mock.calls
+          .filter(([label]) => label === '[transformersJsWorker] raw token:')
+          .map(([, chunk]) => chunk);
+        expect(rawChunks).toEqual(tokensToEmit.map(token => JSON.stringify(token)));
+        expect(rawChunks).not.toContain(JSON.stringify('<think>'));
+      } finally {
+        rawTokenLog.mockRestore();
+      }
+    });
+
+    it('does not change standard output when the rendered generation prompt does not end in <think>', async () => {
+      mockApplyTemplate.mockImplementation((_messages, options) => {
+        if (options?.tokenize !== false) return { input_ids: [1, 2, 3] };
+        if (options?.add_generation_prompt === false) {
+          return `\
+<|im_start|>user
+literal <think> text<|im_end|>
+`;
+        }
+        return `\
+<|im_start|>user
+literal <think> text<|im_end|>
+<|im_start|>assistant
+`;
+      });
+      tokensToEmit = ['ordinary ', 'answer'];
+
+      const onChunk = vi.fn();
+      await workerObj.generateText([], onChunk, vi.fn(), undefined, undefined);
+
+      const emitted = (onChunk.mock.calls as [string][]).map(([chunk]) => chunk).join('');
+      expect(emitted).toBe('ordinary answer');
+    });
+
+    it('falls back to the existing standard stream when prompt observation fails', async () => {
+      mockApplyTemplate.mockImplementation((_messages, options) => {
+        if (options?.tokenize === false) throw new Error('render observation unavailable');
+        return { input_ids: [1, 2, 3] };
+      });
+      tokensToEmit = ['ordinary answer'];
+
+      const onChunk = vi.fn();
+      await workerObj.generateText([], onChunk, vi.fn(), undefined, undefined);
+
+      expect(onChunk).toHaveBeenCalledOnce();
+      expect(onChunk).toHaveBeenCalledWith('ordinary answer');
+    });
+
+    it('parses a template-declared delimited Pythonic tool protocol and preserves continuation shape', async () => {
+      mockApplyTemplate.mockImplementation((messages, options) => {
+        const messageList = messages as Array<Record<string, any>>;
+        const probeToolCall = messageList
+          .flatMap(message => Array.isArray(message['tool_calls']) ? message['tool_calls'] : [])
+          .find(toolCall => toolCall?.function?.name === '__naidan_tool_protocol_probe__');
+
+        if (options?.tokenize === false && probeToolCall) {
+          return `\
+<|startoftext|><|im_start|>assistant
+<|tool_call_start|>[__naidan_tool_protocol_probe__(value='__naidan_tool_protocol_probe_value__')]<|tool_call_end|><|im_end|>
+<|im_start|>tool
+__naidan_tool_protocol_probe_result__<|im_end|>
+<|im_start|>assistant
+<think>
+`;
+        }
+        if (options?.tokenize === false && options?.add_generation_prompt === false) {
+          return `\
+<|startoftext|><|im_start|>user
+Use shell tools.<|im_end|>
+`;
+        }
+        if (options?.tokenize === false) {
+          return `\
+<|startoftext|><|im_start|>user
+Use shell tools.<|im_end|>
+<|im_start|>assistant
+<think>
+`;
+        }
+
+        for (const message of messageList) {
+          for (const toolCall of message['tool_calls'] ?? []) {
+            if (typeof toolCall.function.arguments === 'string') {
+              throw new Error('Tool call arguments must be a mapping');
+            }
+          }
+        }
+        return { input_ids: [1, 2, 3] };
+      });
+
+      tokensToEmit = [
+        'The user wants shell access. ',
+        "directory.</think><|tool_call_start|>[shell_execute(shell_script='ls ",
+        '-la ',
+        "/workspace'), ",
+        "shell_execute(shell_script='ls ",
+        '-la ',
+        "/tmp')]<|tool_call_end|>",
+      ];
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
+      ];
+      const onChunk = vi.fn();
+      const onToolCalls = vi.fn();
+      const rawTokenLog = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      let rawGeneratedText = '';
+      try {
+        await workerObj.generateText(
+          [{ role: 'user', content: 'Use shell tools.' }],
+          onChunk,
+          onToolCalls,
+          undefined,
+          tools,
+        );
+        rawGeneratedText = rawTokenLog.mock.calls
+          .filter(([label]) => label === '[transformersJsWorker] raw token:')
+          .map(([, chunk]) => JSON.parse(chunk as string) as string)
+          .join('');
+      } finally {
+        rawTokenLog.mockRestore();
+      }
+
+      expect(rawGeneratedText).toContain("<|tool_call_start|>[shell_execute(shell_script='ls -la /workspace')");
+      expect(rawGeneratedText).toContain('<|tool_call_end|>');
+      expect(onToolCalls).toHaveBeenCalledOnce();
+      const [calls] = onToolCalls.mock.calls[0]!;
+      expect(calls.map((call: any) => ({
+        name: call.function.name,
+        arguments: JSON.parse(call.function.arguments),
+      }))).toEqual([
+        { name: 'shell_execute', arguments: { shell_script: 'ls -la /workspace' } },
+        { name: 'shell_execute', arguments: { shell_script: 'ls -la /tmp' } },
+      ]);
+      const emitted = (onChunk.mock.calls as [string][]).map(([chunk]) => chunk).join('');
+      expect(emitted).toBe('<think>The user wants shell access. directory.</think>');
+      expect(emitted).not.toContain('<|tool_call_start|>');
+      const firstTurnProtocolProbes = mockApplyTemplate.mock.calls.filter(([probeMessages]) => (
+        (probeMessages as Array<Record<string, any>>).some(message => (
+          (message['tool_calls'] as Array<Record<string, any>> | undefined)?.some(toolCall => (
+            toolCall?.['function']?.['name'] === '__naidan_tool_protocol_probe__'
+          ))
+        ))
+      ));
+      expect(firstTurnProtocolProbes).toHaveLength(1);
+
+      mockApplyTemplate.mockClear();
+      tokensToEmit = ['final answer'];
+      await workerObj.generateText(
+        [
+          { role: 'user', content: 'Use shell tools.' },
+          { role: 'assistant', content: emitted, tool_calls: calls },
+          { role: 'tool', tool_call_id: calls[0].id, content: 'workspace result' },
+          { role: 'tool', tool_call_id: calls[1].id, content: 'tmp result' },
+        ],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        tools,
+      );
+
+      const tokenizingCall = mockApplyTemplate.mock.calls.find(([, options]) => options?.tokenize !== false);
+      expect(tokenizingCall).toBeDefined();
+      const [continuationMessages] = tokenizingCall!;
+      const continuationMessageList = continuationMessages as Array<Record<string, any>>;
+      expect(continuationMessageList.some(message => (
+        (message['tool_calls'] as Array<Record<string, any>> | undefined)?.some(toolCall => (
+          toolCall?.['function']?.['name'] === '__naidan_tool_protocol_probe__'
+        ))
+      ))).toBe(false);
+      const assistantMessage = continuationMessageList.find(message => message['role'] === 'assistant');
+      expect(assistantMessage?.['tool_calls']).toEqual([
+        expect.objectContaining({ function: { name: 'shell_execute', arguments: { shell_script: 'ls -la /workspace' } } }),
+        expect.objectContaining({ function: { name: 'shell_execute', arguments: { shell_script: 'ls -la /tmp' } } }),
+      ]);
+      expect(continuationMessageList.filter(message => message['role'] === 'tool')).toEqual([
+        expect.objectContaining({ tool_call_id: calls[0].id, content: 'workspace result' }),
+        expect.objectContaining({ tool_call_id: calls[1].id, content: 'tmp result' }),
+      ]);
+    });
+
     it('passes tools to apply_chat_template for standard models', async () => {
       tokensToEmit = [];
       const tools: WorkerToolDefinition[] = [
@@ -876,8 +1146,9 @@ describe('transformers-js.worker', () => {
 
       await workerObj.generateText([], vi.fn(), vi.fn(), undefined, tools);
 
-      const [, templateOptions] = mockApplyTemplate.mock.calls[0]!;
-      expect(templateOptions).toMatchObject({ tools });
+      const actualGenerationCall = mockApplyTemplate.mock.calls.find(([, options]) => options?.return_dict === true);
+      expect(actualGenerationCall).toBeDefined();
+      expect(actualGenerationCall?.[1]).toMatchObject({ tools });
     });
   });
 

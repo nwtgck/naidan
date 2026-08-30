@@ -617,6 +617,7 @@ async function runObservedProductionTurn({
     tokenizer: loadedTokenizer,
     messages,
     onChunk: ({ chunk }) => streamChunks.push(chunk),
+    onRawChunk: () => {},
     onToolCalls: ({ toolCalls: observedToolCalls }) => toolCalls.push(...observedToolCalls),
     params: {
       temperature: 0,
@@ -1331,15 +1332,31 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
           elapsedMs: Math.round(performance.now() - generationStart),
         },
       });
+      const pendingToolCalls: ToolCall[] = [];
       await strategy.generate({
         model,
         tokenizer,
         messages,
         onChunk: ({ chunk }) => {
-          console.debug('[transformersJsWorker] raw token:', JSON.stringify(chunk));
+          switch (strategy.kind) {
+          case 'standard':
+            break;
+          case 'gpt-oss':
+          case 'qwen3_5':
+          case 'gemma4':
+            console.debug('[transformersJsWorker] raw token:', JSON.stringify(chunk));
+            break;
+          default: {
+            const _ex: never = strategy.kind;
+            throw new Error(`Unhandled generation strategy: ${String(_ex)}`);
+          }
+          }
           onChunk(chunk);
         },
-        onToolCalls: ({ toolCalls }) => onToolCalls(toolCalls),
+        onRawChunk: ({ chunk }) => {
+          console.debug('[transformersJsWorker] raw token:', JSON.stringify(chunk));
+        },
+        onToolCalls: ({ toolCalls }) => pendingToolCalls.push(...toolCalls),
         params,
         tools,
         runtimeState: generationRuntimeState,
@@ -1347,6 +1364,9 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         debugLog,
         observationSink: undefined,
       });
+      if (pendingToolCalls.length > 0) {
+        await onToolCalls(pendingToolCalls);
+      }
       debugLog({
         event: 'generation complete',
         details: {
