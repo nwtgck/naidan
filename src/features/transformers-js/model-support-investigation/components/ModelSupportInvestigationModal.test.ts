@@ -67,14 +67,24 @@ const completedRun: ModelSupportInvestigationRun = {
         error: undefined,
       },
     },
+    threading: {
+      requestedThreads: 4,
+      effectiveThreads: 1,
+      effectiveThreadsBasis: 'runtime-env-after-control',
+      proxy: false,
+      childWorkerLifecycle: 'not-observed',
+      childWorkerLifecycleReason: 'Emscripten pthread worker lifecycle is not exposed by the public runtime API',
+    },
     control: {
       fixtureId: 'identity-float32-v1',
       fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
       executionProvider: 'wasm',
+      status: 'passed',
       inputName: 'x',
       outputName: 'y',
       inputValue: 7,
       outputValue: 7,
+      error: undefined,
     },
     webGpuControl: {
       fixtureId: 'identity-float32-v1',
@@ -129,6 +139,7 @@ const completedRun: ModelSupportInvestigationRun = {
       contentType: 'application/json',
       value: { model_type: 'new_chat_model' },
     }],
+    fileFailures: [],
     config: { model_type: 'new_chat_model' },
     modelType: 'new_chat_model',
     architectures: ['NewChatForCausalLM'],
@@ -210,6 +221,8 @@ const completedRun: ModelSupportInvestigationRun = {
     status: 'passed',
     failureStage: undefined,
     events: [],
+    inputStrategyAttempts: [],
+    selectedInputStrategy: undefined,
     inputTokenCount: 2,
     inputTokenIds: [1, 2],
     inputTensors: [],
@@ -217,6 +230,7 @@ const completedRun: ModelSupportInvestigationRun = {
     generatedTokenIds: [42],
     generatedText: 'answer',
     naturalGeneration: {
+      status: "observed",
       forced: false,
       maxNewTokens: 16,
       doSample: false,
@@ -269,6 +283,10 @@ const completedRun: ModelSupportInvestigationRun = {
       modelId: 'org/model',
       resolvedRevision: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       candidate: { device: 'webgpu', dtype: 'q4' },
+      loadAttempts: [
+        { candidate: { device: 'webgpu', dtype: 'q4f16' }, status: 'failed', error: { name: 'Error', message: 'q4f16 load failed', stack: 'stack-q4f16' } },
+        { candidate: { device: 'webgpu', dtype: 'q4' }, status: 'passed', error: undefined },
+      ],
       route: {
         autoClass: 'AutoModelForCausalLM',
         processor: 'tokenizer',
@@ -276,19 +294,26 @@ const completedRun: ModelSupportInvestigationRun = {
         modelType: 'new_chat_model',
       },
       isEncoderDecoder: false,
-      messages: [{ role: 'user', content: 'Template probe user message.' }],
-      inputKeys: ['input_ids'],
-      inputTensors: [],
-      inputTokenIds: [1, 2],
-      pastKeyValuesProvided: false,
-      inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
-      outputPastKeyValuesSummary: { kind: 'object', valueType: 'object', constructorName: 'Object', ownKeyCount: 1, ownKeys: ['layer_0'], arrayLength: undefined, truncated: false },
-      generatedSequenceTokenIds: [1, 2, 45],
-      generatedTokenIds: [45],
-      generatedText: 'production',
-      streamChunks: ['production'],
-      toolCalls: [],
-      effectiveGenerationConfig: { maxNewTokens: 16, temperature: 0, topP: 1, doSample: false },
+      firstTurn: {
+        status: "passed",
+        turn: {
+          messages: [{ role: 'user', content: 'Template probe user message.' }],
+          inputKeys: ['input_ids'],
+          inputTensors: [],
+          inputTokenIds: [1, 2],
+          fullConversationInput: { status: 'unavailable', reason: 'test fixture does not observe reconstructed full conversation input' },
+          cacheDecision: { status: 'unavailable', reason: 'test fixture does not observe cache decision' },
+          pastKeyValuesProvided: false,
+          inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
+          outputPastKeyValuesSummary: { kind: 'object', valueType: 'object', constructorName: 'Object', ownKeyCount: 1, ownKeys: ['layer_0'], arrayLength: undefined, truncated: false },
+          generatedSequenceTokenIds: [1, 2, 45],
+          generatedTokenIds: [45],
+          generatedText: 'production',
+          streamChunks: ['production'],
+          toolCalls: [],
+          effectiveGenerationConfig: { maxNewTokens: 16, temperature: 0, topP: 1, doSample: false },
+        },
+      },
       continuity: {
         status: 'failed',
         assistantMessage: { role: 'assistant', content: 'production' },
@@ -305,6 +330,7 @@ const completedRun: ModelSupportInvestigationRun = {
           { role: 'tool', tool_call_id: fixtureToolCallId, content: '{"temperatureC":20,"condition":"clear"}' },
         ],
         expectedInputTokenIds: [50, 51, 52],
+        comparisonInputSource: 'reconstructed-full-conversation',
         inputTokenExactMatch: true,
         firstInputMismatchIndex: undefined,
         turn: {
@@ -312,6 +338,8 @@ const completedRun: ModelSupportInvestigationRun = {
           inputKeys: ['input_ids'],
           inputTensors: [],
           inputTokenIds: [50, 51, 52],
+          fullConversationInput: { status: 'unavailable', reason: 'test fixture does not observe reconstructed full conversation input' },
+          cacheDecision: { status: 'unavailable', reason: 'test fixture does not observe cache decision' },
           pastKeyValuesProvided: false,
           inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           outputPastKeyValuesSummary: { kind: 'object', valueType: 'object', constructorName: 'Object', ownKeyCount: 1, ownKeys: ['layer_0'], arrayLength: undefined, truncated: false },
@@ -330,14 +358,14 @@ const completedRun: ModelSupportInvestigationRun = {
         disabledEffort: 'none',
         enabledEffort: 'high',
         disabledTurn: {
-          messages: [], inputKeys: ['input_ids'], inputTensors: [], inputTokenIds: [70, 0], pastKeyValuesProvided: false,
+          messages: [], inputKeys: ['input_ids'], inputTensors: [], inputTokenIds: [70, 0], fullConversationInput: { status: 'unavailable', reason: 'test fixture does not observe reconstructed full conversation input' }, cacheDecision: { status: 'unavailable', reason: 'test fixture does not observe cache decision' }, pastKeyValuesProvided: false,
           inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           outputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           generatedSequenceTokenIds: [70, 0, 80], generatedTokenIds: [80], generatedText: 'none', streamChunks: ['none'], toolCalls: [],
           effectiveGenerationConfig: { maxNewTokens: 16, temperature: 0, topP: 1, doSample: false },
         },
         enabledTurn: {
-          messages: [], inputKeys: ['input_ids'], inputTensors: [], inputTokenIds: [70, 1], pastKeyValuesProvided: false,
+          messages: [], inputKeys: ['input_ids'], inputTensors: [], inputTokenIds: [70, 1], fullConversationInput: { status: 'unavailable', reason: 'test fixture does not observe reconstructed full conversation input' }, cacheDecision: { status: 'unavailable', reason: 'test fixture does not observe cache decision' }, pastKeyValuesProvided: false,
           inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           outputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           generatedSequenceTokenIds: [70, 1, 81], generatedTokenIds: [81], generatedText: 'high', streamChunks: ['high'], toolCalls: [],
@@ -370,6 +398,8 @@ const completedRun: ModelSupportInvestigationRun = {
             { name: 'pixel_values', dtype: 'float32', dims: [1, 3, 1, 1], location: 'gpu-buffer' },
           ],
           inputTokenIds: [7, 8],
+          fullConversationInput: { status: 'unavailable', reason: 'test fixture does not observe reconstructed full conversation input' },
+          cacheDecision: { status: 'unavailable', reason: 'test fixture does not observe cache decision' },
           pastKeyValuesProvided: false,
           inputPastKeyValuesSummary: { kind: 'nullish', valueType: 'undefined', constructorName: undefined, ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
           outputPastKeyValuesSummary: { kind: 'object', valueType: 'object', constructorName: 'Object', ownKeyCount: 0, ownKeys: [], arrayLength: undefined, truncated: false },
@@ -452,10 +482,11 @@ describe('ModelSupportInvestigationModal', () => {
     expect(wrapper.text()).toContain('may be fingerprinting information');
     expect(wrapper.text()).toContain('Same-origin ONNX Runtime module, WASM, and control inference verified');
     expect(wrapper.get('[data-testid="model-support-lane-comparison"]').text()).toContain('AutoModelForCausalLM · tokenizer · standard · new_chat_model');
+    expect(wrapper.get('[data-testid="model-support-production-load-attempts"]').text()).toContain('webgpu/q4f16: failed (Error: q4f16 load failed) → webgpu/q4: passed');
     expect(wrapper.get('[data-testid="model-support-lane-comparison"]').text()).toContain('match exactly (2 tokens)');
     expect(wrapper.get('[data-testid="model-support-production-tool-result-continuation"]').text()).toContain('exact template match');
     expect(wrapper.get('[data-testid="model-support-production-tool-result-continuation"]').text()).toContain('generated=1 token(s)');
-    expect(wrapper.get('[data-testid="model-support-production-tool-result-continuation"]').text()).toContain('tool-loop termination not observed');
+    expect(wrapper.get('[data-testid="model-support-production-tool-result-continuation"]').text()).toContain('actual cross-turn tool KV reuse not observed');
     expect(wrapper.get('[data-testid="model-support-production-reasoning"]').text()).toContain('none=2 input token(s)');
     expect(wrapper.get('[data-testid="model-support-production-reasoning"]').text()).toContain('first mismatch at 1');
     expect(wrapper.get('[data-testid="model-support-production-reasoning"]').text()).toContain('output quality was not evaluated');
@@ -464,8 +495,11 @@ describe('ModelSupportInvestigationModal', () => {
     expect(wrapper.get('[data-testid="model-support-production-multimodal"]').text()).toContain('generated=1 token(s)');
     expect(wrapper.get('[data-testid="model-support-production-multimodal"]').text()).toContain('output quality was not evaluated');
     expect(wrapper.get('[data-testid="model-support-step-runtime-assets"]').text()).toContain('Passed');
+    expect(wrapper.get('[data-testid="model-support-wasm-control"]').text()).toContain('passed');
     expect(wrapper.get('[data-testid="model-support-webgpu-control"]').text()).toContain('passed');
     expect(wrapper.get('[data-testid="model-support-runtime-environment"]').text()).toContain('GPU Vendor');
+    expect(wrapper.get('[data-testid="model-support-runtime-environment"]').text()).toContain('Wasm threads=4→1');
+    expect(wrapper.get('[data-testid="model-support-runtime-environment"]').text()).toContain('pthread lifecycle=not-observed');
     expect(wrapper.get('[data-testid="model-support-step-repository-information"]').text()).toContain('Passed');
     expect(wrapper.text()).toContain('org/model@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     expect(wrapper.text()).toContain('3 files · text-generation');
@@ -489,6 +523,156 @@ describe('ModelSupportInvestigationModal', () => {
 
     wrapper.unmount();
     expect(workerMocks.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows persistence serialization evidence without implying physical storage I/O', async () => {
+    const persistenceRun = structuredClone(completedRun);
+    persistenceRun.persistenceRoundTrip = {
+      status: 'observed',
+      fixtureId: 'tool-call-history-v1',
+      method: 'chat-content-dto-json-roundtrip-v1',
+      serializedByteLength: 321,
+      serializedSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      originalMessages: [],
+      restoredMessages: [],
+      exactModelVisibleMatch: false,
+      firstMismatchIndex: 2,
+    };
+    workerMocks.runPartialInvestigation.mockResolvedValue(persistenceRun);
+
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await flushPromises();
+
+    const summary = wrapper.get('[data-testid="model-support-persistence-roundtrip"]').text();
+    expect(summary).toContain('Persistence serialization contract');
+    expect(summary).toContain('mismatch at 2');
+    expect(summary).toContain('JSON=321 bytes');
+    expect(summary).toContain('physical storage I/O=not observed');
+    wrapper.unmount();
+  });
+
+  it('shows the Production cache decision and decoded reconstructed-prefix mismatch context', async () => {
+    const continuityRun = structuredClone(completedRun);
+    const observation = continuityRun.productionLane.observation;
+    if (observation === undefined || observation.firstTurn.status !== 'passed') {
+      throw new Error('Production first-turn fixture is unavailable');
+    }
+    const secondTurn = {
+      ...structuredClone(observation.firstTurn.turn),
+      messages: [
+        { role: 'user' as const, content: 'Template probe user message.' },
+        { role: 'assistant' as const, content: 'production' },
+        { role: 'user' as const, content: 'Continue with one short sentence.' },
+      ],
+      inputTokenIds: [1, 9, 10],
+      fullConversationInput: { status: 'observed' as const, inputTokenIds: [1, 9, 10] },
+      cacheDecision: { status: 'reused' as const, reason: 'qwen3_5-no-tool-continuation' },
+      pastKeyValuesProvided: true,
+    };
+    observation.continuity = {
+      status: 'passed',
+      assistantMessage: { role: 'assistant', content: 'production' },
+      followUpMessage: { role: 'user', content: 'Continue with one short sentence.' },
+      secondTurn,
+      prefixComparison: {
+        mode: 'full-input-prefix',
+        expectedPrefixTokenIds: [1, 2, 45],
+        secondInputTokenIds: [1, 9, 10],
+        reconstructedFullInputTokenIds: [1, 9, 10],
+        comparisonInputSource: 'reconstructed-full-conversation',
+        exactPrefixMatch: false,
+        firstMismatchIndex: 1,
+        firstMismatchContext: {
+          startIndex: 0,
+          expectedTokenIds: [1, 2, 45],
+          actualTokenIds: [1, 9, 10],
+          expectedText: '<expected-prefix>',
+          actualText: '<actual-prefix>',
+        },
+      },
+    };
+    workerMocks.runPartialInvestigation.mockResolvedValue(continuityRun);
+
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await flushPromises();
+
+    const summary = wrapper.get('[data-testid="model-support-production-continuity"]').text();
+    expect(summary).toContain('qwen3_5-no-tool-continuation');
+    expect(summary).toContain('reconstructed-full-conversation');
+    expect(summary).toContain('<expected-prefix>');
+    expect(summary).toContain('<actual-prefix>');
+    wrapper.unmount();
+  });
+
+  it('shows runtime observations that were checkpointed before preflight failed', async () => {
+    const partialRuntimeRun: ModelSupportInvestigationRun = structuredClone(completedRun);
+    partialRuntimeRun.status = 'failed';
+    partialRuntimeRun.runtimeAssets = undefined;
+    partialRuntimeRun.runtimeAssetsPartial = {
+      variant: 'asyncify',
+      baseUrl: 'https://naidan.example/app/transformers/',
+      mjsUrl: 'https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify.mjs',
+      wasmUrl: 'https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify.wasm',
+      physicalWasmUrl: 'https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify.wasm',
+      applicationOrigin: 'https://naidan.example',
+      mjsOrigin: 'https://naidan.example',
+      wasmOrigin: 'https://naidan.example',
+      physicalWasmOrigin: 'https://naidan.example',
+      environment: completedRun.runtimeAssets?.environment,
+      wasmByteLength: undefined,
+      control: {
+        fixtureId: 'identity-float32-v1',
+        fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
+        executionProvider: 'wasm',
+        status: 'failed',
+        inputName: 'x',
+        outputName: 'y',
+        inputValue: 7,
+        outputValue: undefined,
+        error: 'Wasm control failed',
+      },
+      webGpuControl: {
+        fixtureId: 'identity-float32-v1',
+        fixtureSha256: '19be871867d45a5bb90b850518b38262a67d14cfccc147f6566f15308c273443',
+        executionProvider: 'webgpu',
+        status: 'passed',
+        inputName: 'x',
+        outputName: 'y',
+        inputValue: 7,
+        outputValue: 7,
+        error: undefined,
+      },
+      currentStage: undefined,
+      stageObservations: [
+        { stage: 'origin-validation', status: 'passed', detail: 'Same-origin URLs verified' },
+        { stage: 'environment', status: 'passed', detail: 'Environment observed' },
+        { stage: 'module-import', status: 'failed', detail: 'Runtime module import failed', error: 'Import failed' },
+        { stage: 'wasm-control', status: 'failed', detail: 'Wasm control failed', error: 'Wasm control failed' },
+        { stage: 'webgpu-control', status: 'passed', detail: 'WebGPU control passed' },
+      ],
+    };
+    partialRuntimeRun.steps = partialRuntimeRun.steps.map(step => step.id === 'runtime-assets'
+      ? { ...step, status: 'failed', detail: 'Runtime module import failed' }
+      : step);
+    workerMocks.runPartialInvestigation.mockResolvedValue(partialRuntimeRun);
+
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="model-support-step-runtime-assets"]').text()).toContain('Failed');
+    expect(wrapper.get('[data-testid="model-support-runtime-environment"]').text()).toContain('GPU Vendor');
+    expect(wrapper.get('[data-testid="model-support-wasm-control"]').text()).toContain('failed');
+    expect(wrapper.get('[data-testid="model-support-wasm-control"]').text()).toContain('Wasm control failed');
+    expect(wrapper.get('[data-testid="model-support-webgpu-control"]').text()).toContain('passed');
+
+    wrapper.unmount();
   });
 
   it('keeps raw progress event churn out of the current operation while showing forward-progress diagnostics', async () => {

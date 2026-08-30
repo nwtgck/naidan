@@ -122,17 +122,17 @@ describe('inspectTemplateBehavior', () => {
     expect(result.cases.find(item => item.caseId === 'tools-generation')).toMatchObject({
       status: 'failed',
       failureStage: 'template-selection',
-      error: 'tool template unavailable',
+      error: expect.objectContaining({ name: 'Error', message: 'tool template unavailable' }),
     });
     expect(result.cases.find(item => item.caseId === 'assistant-tool-call-history')).toMatchObject({
       status: 'failed',
       failureStage: 'template-selection',
-      error: 'tool template unavailable',
+      error: expect.objectContaining({ name: 'Error', message: 'tool template unavailable' }),
     });
     expect(result.cases.find(item => item.caseId === 'tool-result-continuation')).toMatchObject({
       status: 'failed',
       failureStage: 'template-selection',
-      error: 'tool template unavailable',
+      error: expect.objectContaining({ name: 'Error', message: 'tool template unavailable' }),
     });
     expect(result.toolTemplateProvenance).toMatchObject({
       status: 'unavailable',
@@ -186,7 +186,7 @@ Template probe user message.<|im_end|>
       selectedTemplate: 'default template',
       renderedText: 'rendered before tokenization',
       failureStage: 'tokenize',
-      error: 'tokenization failed',
+      error: expect.objectContaining({ name: 'Error', message: 'tokenization failed' }),
     });
   });
 

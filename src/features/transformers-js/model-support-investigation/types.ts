@@ -1,4 +1,8 @@
-import type { TransformersJsProductionInvestigationObservation } from '@/features/transformers-js/types';
+import type {
+  TransformersJsProductionInvestigationError,
+  TransformersJsProductionInvestigationObservation,
+  TransformersJsProductionInvestigationPartialObservation,
+} from '@/features/transformers-js/types';
 import type { WorkerProxy } from '@/utils/worker-transport';
 
 export type ModelSupportInvestigationJsonValue =
@@ -37,15 +41,29 @@ export interface ModelSupportInvestigationStep {
   detail: string | undefined,
 }
 
-export interface ModelSupportInvestigationRuntimeControl {
-  fixtureId: 'identity-float32-v1',
-  fixtureSha256: string,
-  executionProvider: 'wasm',
-  inputName: 'x',
-  outputName: 'y',
-  inputValue: 7,
-  outputValue: number,
-}
+export type ModelSupportInvestigationRuntimeControl =
+  | {
+      fixtureId: 'identity-float32-v1',
+      fixtureSha256: string,
+      executionProvider: 'wasm',
+      status: 'passed',
+      inputName: 'x',
+      outputName: 'y',
+      inputValue: 7,
+      outputValue: number,
+      error: undefined,
+    }
+  | {
+      fixtureId: 'identity-float32-v1',
+      fixtureSha256: string,
+      executionProvider: 'wasm',
+      status: 'failed',
+      inputName: 'x',
+      outputName: 'y',
+      inputValue: 7,
+      outputValue: number | undefined,
+      error: string,
+    };
 
 export interface ModelSupportInvestigationWebGpuRuntimeControl {
   fixtureId: 'identity-float32-v1',
@@ -74,8 +92,49 @@ export interface ModelSupportInvestigationRuntimeEnvironment {
   },
 }
 
+export interface ModelSupportInvestigationRuntimeAssetIdentity {
+  manifestBuildId: string,
+  manifestUrl: string | undefined,
+  observedManifestBuildId: string | undefined,
+  versions: {
+    transformers: string,
+    onnxRuntimeWeb: string,
+    onnxRuntimeCommon: string,
+    onnxRuntimeWebBundledCommon: string,
+  },
+  mjs: {
+    url: string,
+    expectedByteLength: number,
+    observedByteLength: number | undefined,
+    expectedSha256: string,
+    observedSha256: string | undefined,
+  },
+  wasm: {
+    logicalUrl: string,
+    physicalUrl: string,
+    expectedByteLength: number,
+    observedByteLength: number | undefined,
+    expectedSha256: string,
+    observedSha256: string | undefined,
+    expectedPhysicalByteLength: number,
+    observedPhysicalByteLength: number | undefined,
+    expectedPhysicalSha256: string,
+    observedPhysicalSha256: string | undefined,
+  },
+}
+
+export interface ModelSupportInvestigationWasmThreadingObservation {
+  requestedThreads: number | undefined,
+  effectiveThreads: number | undefined,
+  effectiveThreadsBasis: "runtime-env-after-control" | "unavailable",
+  proxy: boolean | undefined,
+  childWorkerLifecycle: "not-observed",
+  childWorkerLifecycleReason: string,
+}
+
 export interface ModelSupportInvestigationRuntimeAssets {
   variant: "standard" | "asyncify",
+  assetIdentity?: ModelSupportInvestigationRuntimeAssetIdentity,
   baseUrl: string,
   mjsUrl: string,
   wasmUrl: string,
@@ -84,8 +143,57 @@ export interface ModelSupportInvestigationRuntimeAssets {
   wasmOrigin: string,
   applicationOrigin: string,
   environment: ModelSupportInvestigationRuntimeEnvironment,
+  threading?: ModelSupportInvestigationWasmThreadingObservation,
   control: ModelSupportInvestigationRuntimeControl,
   webGpuControl: ModelSupportInvestigationWebGpuRuntimeControl,
+}
+
+export type ModelSupportInvestigationRuntimePreflightStage =
+  | "origin-validation"
+  | "environment"
+  | "module-import"
+  | "wasm-fetch"
+  | "wasm-validation"
+  | "wasm-control"
+  | "webgpu-control";
+
+export type ModelSupportInvestigationRuntimePreflightStageObservation =
+  | {
+      stage: ModelSupportInvestigationRuntimePreflightStage,
+      status: "passed",
+      detail: string,
+    }
+  | {
+      stage: ModelSupportInvestigationRuntimePreflightStage,
+      status: "failed",
+      detail: string,
+      error: string,
+    }
+  | {
+      stage: ModelSupportInvestigationRuntimePreflightStage,
+      status: "not-run",
+      detail: string,
+      reason: string,
+    };
+
+export interface ModelSupportInvestigationRuntimeAssetsPartial {
+  variant: "standard" | "asyncify",
+  assetIdentity?: ModelSupportInvestigationRuntimeAssetIdentity,
+  baseUrl: string,
+  mjsUrl: string,
+  wasmUrl: string,
+  physicalWasmUrl: string,
+  applicationOrigin: string,
+  mjsOrigin: string | undefined,
+  wasmOrigin: string | undefined,
+  physicalWasmOrigin: string | undefined,
+  environment: ModelSupportInvestigationRuntimeEnvironment | undefined,
+  threading?: ModelSupportInvestigationWasmThreadingObservation,
+  wasmByteLength: number | undefined,
+  control: ModelSupportInvestigationRuntimeControl | undefined,
+  webGpuControl: ModelSupportInvestigationWebGpuRuntimeControl | undefined,
+  currentStage: ModelSupportInvestigationRuntimePreflightStage | undefined,
+  stageObservations: ModelSupportInvestigationRuntimePreflightStageObservation[],
 }
 
 export interface ModelSupportInvestigationRepositoryFile {
@@ -128,6 +236,12 @@ export interface ModelSupportInvestigationDeclarationFile {
   value: ModelSupportInvestigationJsonValue,
 }
 
+export interface ModelSupportInvestigationDeclarationFileFailure {
+  path: string,
+  url: string,
+  error: ModelSupportInvestigationLoadAttemptError,
+}
+
 export interface ModelSupportInvestigationClassCapability {
   autoClass: ModelSupportInvestigationAutoClassName,
   supports: boolean | undefined,
@@ -138,6 +252,7 @@ export interface ModelSupportInvestigationModelDeclarations {
   normalizedModelId: string,
   resolvedRevision: string,
   files: ModelSupportInvestigationDeclarationFile[],
+  fileFailures: ModelSupportInvestigationDeclarationFileFailure[],
   config: ModelSupportInvestigationJsonObject,
   modelType: string | undefined,
   architectures: string[],
@@ -178,7 +293,7 @@ export interface ModelSupportInvestigationTemplateCase {
   renderedText: string | undefined,
   inputIds: number[] | undefined,
   failureStage: 'template-selection' | 'render' | 'tokenize' | undefined,
-  error: string | undefined,
+  error: ModelSupportInvestigationLoadAttemptError | undefined,
 }
 
 export type ModelSupportInvestigationToolTemplateProvenance =
@@ -253,7 +368,7 @@ export interface ModelSupportInvestigationCandidateFilePlan {
   device: ModelSupportInvestigationCandidateDevice,
   dtype: ModelSupportInvestigationCandidateDtype,
   registryStatus: "planned" | "failed",
-  registryError: string | undefined,
+  registryError: ModelSupportInvestigationLoadAttemptError | undefined,
   registryReturnedFileCount: number,
   duplicatePaths: string[],
   files: ModelSupportInvestigationPlannedFile[],
@@ -314,6 +429,21 @@ export interface ModelSupportInvestigationInputTensorMetadata {
   location: string | undefined,
 }
 
+export type ModelSupportInvestigationTextInputStrategy =
+  | "chat-template-tensor-dict"
+  | "observed-token-ids-transformers-tensor"
+  | "fixed-plain-text-tokenizer-tensor-dict";
+
+export interface ModelSupportInvestigationInputStrategyAttempt {
+  strategy: ModelSupportInvestigationTextInputStrategy,
+  status: "passed" | "failed",
+  failureStage: "input-build" | "first-generation" | undefined,
+  inputTokenIds: number[],
+  inputTensors: ModelSupportInvestigationInputTensorMetadata[],
+  inputText?: string,
+  error: ModelSupportInvestigationLoadAttemptError | undefined,
+}
+
 export interface ModelSupportInvestigationLoadedModelObservation {
   modelType: string | undefined,
   isEncoderDecoder: boolean | undefined,
@@ -329,14 +459,23 @@ export interface ModelSupportInvestigationLoadedModelObservation {
   },
 }
 
-export interface ModelSupportInvestigationNaturalGenerationObservation {
-  forced: false,
-  maxNewTokens: 16,
-  doSample: false,
-  generatedTokenIds: number[],
-  generatedText: string,
-  termination: "limit-reached" | "ended-before-limit",
-}
+export type ModelSupportInvestigationNaturalGenerationObservation =
+  | {
+      status: "observed",
+      forced: false,
+      maxNewTokens: 16,
+      doSample: false,
+      generatedTokenIds: number[],
+      generatedText: string,
+      termination: "limit-reached" | "ended-before-limit",
+    }
+  | {
+      status: "failed",
+      forced: false,
+      maxNewTokens: 16,
+      doSample: false,
+      error: ModelSupportInvestigationLoadAttemptError,
+    };
 
 export interface ModelSupportInvestigationNormalizedToolCall {
   name: string,
@@ -429,18 +568,46 @@ export type ModelSupportInvestigationToolProtocolProbe =
     error: ModelSupportInvestigationLoadAttemptError,
   };
 
-export interface ModelSupportInvestigationLoadAttemptError {
-  name: string,
-  message: string,
-  stack: string | undefined,
-  thrownType?: string,
-  serializedOriginalThrownValue?: string,
-  cause?: ModelSupportInvestigationLoadAttemptError,
+export type ModelSupportInvestigationLoadAttemptError = TransformersJsProductionInvestigationError;
+
+export interface ModelSupportInvestigationPersistenceMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool',
+  content: string,
+  tool_calls: Array<{
+    id: string,
+    type: 'function',
+    function: {
+      name: string,
+      arguments: string,
+    },
+  }> | undefined,
+  tool_call_id: string | undefined,
 }
+
+export type ModelSupportInvestigationPersistenceRoundTrip =
+  | {
+      status: 'observed',
+      fixtureId: 'tool-call-history-v1',
+      method: 'chat-content-dto-json-roundtrip-v1',
+      modelVisibleProjectionMethod?: 'build-chat-generation-messages-v1',
+      serializedByteLength: number,
+      serializedSha256: string,
+      originalMessages: ModelSupportInvestigationPersistenceMessage[],
+      restoredMessages: ModelSupportInvestigationPersistenceMessage[],
+      exactModelVisibleMatch: boolean,
+      firstMismatchIndex: number | undefined,
+    }
+  | {
+      status: 'failed',
+      fixtureId: 'tool-call-history-v1',
+      method: 'chat-content-dto-json-roundtrip-v1',
+      error: ModelSupportInvestigationLoadAttemptError,
+    };
 
 export interface ModelSupportInvestigationCandidateRequiredFileCoverage {
   expectedPaths: string[],
   completePaths: string[],
+  sizeMismatchPaths: string[],
   incompletePaths: string[],
   missingPaths: string[],
   revisionProvenance: 'unknown',
@@ -469,6 +636,9 @@ export interface ModelSupportInvestigationLoadAttempt {
   status: "passed" | "failed" | "blocked",
   failureStage: ModelSupportInvestigationLoadAttemptStage | undefined,
   events: ModelSupportInvestigationLoadAttemptEvent[],
+  inputStrategyAttempts: ModelSupportInvestigationInputStrategyAttempt[],
+  interruptedInputStrategy?: ModelSupportInvestigationTextInputStrategy,
+  selectedInputStrategy: ModelSupportInvestigationTextInputStrategy | undefined,
   inputTokenCount: number | undefined,
   inputTokenIds: number[],
   inputTensors: ModelSupportInvestigationInputTensorMetadata[],
@@ -482,10 +652,39 @@ export interface ModelSupportInvestigationLoadAttempt {
   error: ModelSupportInvestigationLoadAttemptError | undefined,
 }
 
+export interface ModelSupportInvestigationLoadAttemptCheckpoint {
+  attemptId: string,
+  candidateId: ModelSupportInvestigationCandidateId,
+  device: ModelSupportInvestigationCandidateDevice,
+  dtype: ModelSupportInvestigationCandidateDtype,
+  autoClass: ModelSupportInvestigationGenerationAutoClassName | undefined,
+  resolvedRevision: string,
+  startedAt: string,
+  checkpointedAt: string,
+  status: "running",
+  currentStage: ModelSupportInvestigationLoadAttemptStage,
+  events: ModelSupportInvestigationLoadAttemptEvent[],
+  inputStrategyAttempts: ModelSupportInvestigationInputStrategyAttempt[],
+  activeInputStrategy: ModelSupportInvestigationTextInputStrategy | undefined,
+  activeInputText?: string,
+  selectedInputStrategy: ModelSupportInvestigationTextInputStrategy | undefined,
+  inputTokenCount: number | undefined,
+  inputTokenIds: number[],
+  inputTensors: ModelSupportInvestigationInputTensorMetadata[],
+  loadedModel: ModelSupportInvestigationLoadedModelObservation | undefined,
+  generatedTokenIds: number[],
+  generatedText: string | undefined,
+  naturalGeneration: ModelSupportInvestigationNaturalGenerationObservation | undefined,
+  toolProtocolProbe: ModelSupportInvestigationToolProtocolProbe | undefined,
+  modelType: string | undefined,
+  error: ModelSupportInvestigationLoadAttemptError | undefined,
+}
+
 
 export interface ModelSupportInvestigationProductionLane {
-  status: 'passed' | 'failed' | 'not-run',
+  status: 'passed' | 'failed' | 'running' | 'not-run',
   observation: TransformersJsProductionInvestigationObservation | undefined,
+  partialObservation?: TransformersJsProductionInvestigationPartialObservation,
   error: ModelSupportInvestigationLoadAttemptError | undefined,
 }
 
@@ -534,6 +733,32 @@ export interface ModelSupportInvestigationCacheRangeSample {
   error: ModelSupportInvestigationLoadAttemptError | undefined,
 }
 
+export interface ModelSupportInvestigationCacheTransportAttempt {
+  method: "HEAD" | "range-0-0",
+  status: "observed" | "unsupported" | "failed",
+  requestUrl: string,
+  responseUrl: string | undefined,
+  responseStatus: number | undefined,
+  redirected: boolean | undefined,
+  redirectChain: string[] | undefined,
+  redirectChainReason: string,
+  contentLength: string | undefined,
+  contentRange: string | undefined,
+  contentType: string | undefined,
+  acceptRanges: string | undefined,
+  etag: string | undefined,
+  lastModified: string | undefined,
+  corsVisibility: "readable" | "unresolved",
+  error: ModelSupportInvestigationLoadAttemptError | undefined,
+}
+
+export interface ModelSupportInvestigationCacheTransportObservation {
+  status: "observed" | "fallback-metadata",
+  attempts: ModelSupportInvestigationCacheTransportAttempt[],
+  repositorySize: number | undefined,
+  reason: string,
+}
+
 export interface ModelSupportInvestigationCacheFileProvenance {
   cachePath: string,
   repositoryPath: string,
@@ -541,6 +766,7 @@ export interface ModelSupportInvestigationCacheFileProvenance {
   localSize: number,
   repositorySize: number | undefined,
   status: "bounded-samples-matched" | "mismatched" | "partial",
+  transport?: ModelSupportInvestigationCacheTransportObservation,
   ranges: ModelSupportInvestigationCacheRangeSample[],
   reason: string,
 }
@@ -594,16 +820,25 @@ export interface ModelSupportInvestigationRun {
   currentOperation: string,
   steps: ModelSupportInvestigationStep[],
   runtimeAssets: ModelSupportInvestigationRuntimeAssets | undefined,
+  runtimeAssetsPartial?: ModelSupportInvestigationRuntimeAssetsPartial,
   repository: ModelSupportInvestigationRepository | undefined,
   cache: ModelSupportInvestigationCacheInventory | undefined,
   declarations: ModelSupportInvestigationModelDeclarations | undefined,
   templateBehavior: ModelSupportInvestigationTemplateBehavior | undefined,
+  persistenceRoundTrip?: ModelSupportInvestigationPersistenceRoundTrip,
   modelFilePlan: ModelSupportInvestigationModelFilePlan | undefined,
   loadAttempts: ModelSupportInvestigationLoadAttempt[],
+  activeLoadAttempt?: ModelSupportInvestigationLoadAttemptCheckpoint,
   productionLane: ModelSupportInvestigationProductionLane,
   laneComparison: ModelSupportInvestigationLaneComparison | undefined,
+  stepErrors?: Partial<Record<ModelSupportInvestigationStepId, ModelSupportInvestigationLoadAttemptError[]>>,
   error: string | undefined,
 }
+
+export type ModelSupportInvestigationPlanningWorkerRun = Omit<
+  ModelSupportInvestigationRun,
+  'loadAttempts' | 'activeLoadAttempt' | 'productionLane' | 'laneComparison'
+>;
 
 export type ModelSupportInvestigationEvidenceReadinessStatus =
   | "implementation-ready"
@@ -645,6 +880,7 @@ export type ModelSupportInvestigationSupportBoundary =
   | "transformers-js-capability"
   | "environment-runtime"
   | "naidan-production-adapter"
+  | "cross-boundary"
   | "unresolved";
 
 export interface ModelSupportInvestigationSupportBoundaryAssessment {
@@ -744,7 +980,8 @@ export interface IModelSupportInvestigationWorker {
   runPartialInvestigation(
     modelId: string,
     onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
-  ): Promise<ModelSupportInvestigationRun>,
+    onRunCheckpoint: WorkerProxy<({ run }: { run: ModelSupportInvestigationPlanningWorkerRun }) => void>,
+  ): Promise<ModelSupportInvestigationPlanningWorkerRun>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runCandidateAttempt(
     repository: ModelSupportInvestigationRepository,
@@ -754,6 +991,7 @@ export interface IModelSupportInvestigationWorker {
     candidate: ModelSupportInvestigationCandidateFilePlan,
     onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
     onAttemptEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationLoadAttemptEvent }) => void>,
+    onAttemptCheckpoint: WorkerProxy<({ attempt }: { attempt: ModelSupportInvestigationLoadAttemptCheckpoint }) => void>,
   ): Promise<ModelSupportInvestigationLoadAttempt>,
 }
 

@@ -26,6 +26,7 @@ import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-p
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
 import { createZipPackages } from './build/zip-packages';
 import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
+import { createHostedTransformersRuntimeAssetsPlugin } from './build/transformers-runtime-assets';
 import { UI_LOCALES } from './src/01-models/ui-locale';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
@@ -329,7 +330,7 @@ export default defineConfig(({ mode }) => {
       }),
       stripPrivacyFetchBrokerDevInjectedScriptsPlugin(),
       privacyFetchBrokerDevHeadersPlugin(),
-      !isStandalone && viteStaticCopy({
+      !isStandalone && !isHosted && viteStaticCopy({
         targets: [
           {
             src: 'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded{,.asyncify}.{mjs,wasm}',
@@ -338,6 +339,7 @@ export default defineConfig(({ mode }) => {
           },
         ],
       }),
+      isHosted && createHostedTransformersRuntimeAssetsPlugin({ rootDir: __dirname }),
       ...createLicenseModulePlugins({
         getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
         onBuildDependenciesCollected({ dependencies }) {

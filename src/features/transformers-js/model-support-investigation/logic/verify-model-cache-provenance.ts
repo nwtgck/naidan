@@ -4,12 +4,14 @@ import type {
   ModelSupportInvestigationCacheInventory,
   ModelSupportInvestigationCacheProvenance,
   ModelSupportInvestigationCacheRangeSample,
+  ModelSupportInvestigationCacheTransportAttempt,
+  ModelSupportInvestigationCacheTransportObservation,
   ModelSupportInvestigationRepository,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
 
 export const MODEL_CACHE_PROVENANCE_RANGE_BYTES = 32 * 1024;
-export const MODEL_CACHE_PROVENANCE_MAXIMUM_FILE_COUNT = 64;
+export const MODEL_CACHE_PROVENANCE_MAXIMUM_FILE_COUNT = 3;
 
 function remoteFileUrl({ repository, repositoryPath }: {
   repository: ModelSupportInvestigationRepository,
@@ -59,6 +61,162 @@ function rangesForFile({ size, rangeBytes }: { size: number, rangeBytes: number 
     { offset: size - rangeBytes, length: rangeBytes },
   ];
   return ranges.filter((range, index) => ranges.findIndex(item => item.offset === range.offset) === index);
+}
+
+function sanitizedTransportUrl({ value }: { value: string }): string {
+  try {
+    const url = new URL(value);
+    url.search = "";
+    url.hash = "";
+    return url.href;
+  } catch {
+    return value.split(/[?#]/u, 1)[0] ?? value;
+  }
+}
+
+function transportAttemptFromResponse({
+  method,
+  requestUrl,
+  response,
+  status,
+}: {
+  method: ModelSupportInvestigationCacheTransportAttempt["method"],
+  requestUrl: string,
+  response: Response,
+  status: ModelSupportInvestigationCacheTransportAttempt["status"],
+}): ModelSupportInvestigationCacheTransportAttempt {
+  return {
+    method,
+    status,
+    requestUrl: sanitizedTransportUrl({ value: requestUrl }),
+    responseUrl: response.url.length === 0 ? undefined : sanitizedTransportUrl({ value: response.url }),
+    responseStatus: response.status,
+    redirected: response.redirected,
+    redirectChain: undefined,
+    redirectChainReason: "The browser Fetch API exposes the final response URL and redirected flag, not the complete redirect chain",
+    contentLength: response.headers.get("content-length") ?? undefined,
+    contentRange: response.headers.get("content-range") ?? undefined,
+    contentType: response.headers.get("content-type") ?? undefined,
+    acceptRanges: response.headers.get("accept-ranges") ?? undefined,
+    etag: response.headers.get("etag") ?? undefined,
+    lastModified: response.headers.get("last-modified") ?? undefined,
+    corsVisibility: "readable",
+    error: undefined,
+  };
+}
+
+function failedTransportAttempt({
+  method,
+  requestUrl,
+  error,
+}: {
+  method: ModelSupportInvestigationCacheTransportAttempt["method"],
+  requestUrl: string,
+  error: unknown,
+}): ModelSupportInvestigationCacheTransportAttempt {
+  return {
+    method,
+    status: "failed",
+    requestUrl: sanitizedTransportUrl({ value: requestUrl }),
+    responseUrl: undefined,
+    responseStatus: undefined,
+    redirected: undefined,
+    redirectChain: undefined,
+    redirectChainReason: "No readable response was available; the browser did not expose a redirect chain",
+    contentLength: undefined,
+    contentRange: undefined,
+    contentType: undefined,
+    acceptRanges: undefined,
+    etag: undefined,
+    lastModified: undefined,
+    corsVisibility: "unresolved",
+    error: serializeInvestigationError({ error }),
+  };
+}
+
+function repositoryMetadataTransport({ repositorySize, reason }: {
+  repositorySize: number | undefined,
+  reason: string,
+}): ModelSupportInvestigationCacheTransportObservation {
+  return {
+    status: "fallback-metadata",
+    attempts: [],
+    repositorySize,
+    reason,
+  };
+}
+
+async function observeLightweightTransport({
+  requestUrl,
+  repositorySize,
+  repositoryFetch,
+}: {
+  requestUrl: string,
+  repositorySize: number | undefined,
+  repositoryFetch: typeof fetch,
+}): Promise<ModelSupportInvestigationCacheTransportObservation> {
+  const attempts: ModelSupportInvestigationCacheTransportAttempt[] = [];
+  try {
+    const response = await repositoryFetch(requestUrl, {
+      method: "HEAD",
+      cache: "no-store",
+      credentials: "omit",
+      redirect: "follow",
+    });
+    await cancelResponseBody({ response });
+    const unsupported = response.status === 405 || response.status === 501;
+    attempts.push(transportAttemptFromResponse({
+      method: "HEAD",
+      requestUrl,
+      response,
+      status: unsupported ? "unsupported" : "observed",
+    }));
+    if (!unsupported) {
+      return {
+        status: "observed",
+        attempts,
+        repositorySize,
+        reason: "HEAD exposed lightweight transport metadata without reading a response body",
+      };
+    }
+  } catch (error) {
+    attempts.push(failedTransportAttempt({ method: "HEAD", requestUrl, error }));
+  }
+
+  try {
+    const response = await repositoryFetch(requestUrl, {
+      cache: "no-store",
+      credentials: "omit",
+      redirect: "follow",
+      headers: { Range: "bytes=0-0" },
+    });
+    const supported = response.status === 206;
+    const attempt = transportAttemptFromResponse({
+      method: "range-0-0",
+      requestUrl,
+      response,
+      status: supported ? "observed" : "unsupported",
+    });
+    await cancelResponseBody({ response });
+    attempts.push(attempt);
+    if (supported) {
+      return {
+        status: "observed",
+        attempts,
+        repositorySize,
+        reason: "A one-byte Range request exposed lightweight transport metadata; its body was cancelled without being saved",
+      };
+    }
+  } catch (error) {
+    attempts.push(failedTransportAttempt({ method: "range-0-0", requestUrl, error }));
+  }
+
+  return {
+    status: "fallback-metadata",
+    attempts,
+    repositorySize,
+    reason: "HEAD and one-byte Range transport observation were unavailable; frozen repository metadata is retained as the fallback",
+  };
 }
 
 async function cancelResponseBody({ response }: { response: Response }): Promise<void> {
@@ -243,6 +401,10 @@ async function verifyFile({
       localSize: fileEntry.size,
       repositorySize,
       status: "mismatched",
+      transport: repositoryMetadataTransport({
+        repositorySize,
+        reason: "Repository size already proves the cache file differs, so no transport request was needed",
+      }),
       ranges: [],
       reason: `Local size ${fileEntry.size} differs from repository size ${repositorySize}`,
     };
@@ -261,11 +423,20 @@ async function verifyFile({
         localSize: localFile.size,
         repositorySize,
         status: "mismatched",
+        transport: repositoryMetadataTransport({
+          repositorySize,
+          reason: "The OPFS file disagrees with the local inventory before a transport request is necessary",
+        }),
         ranges: [],
         reason: `Actual OPFS file size ${localFile.size} differs from inventory size ${fileEntry.size}`,
       };
     }
     const requestUrl = remoteFileUrl({ repository, repositoryPath });
+    const transport = await observeLightweightTransport({
+      requestUrl,
+      repositorySize,
+      repositoryFetch,
+    });
     const ranges: ModelSupportInvestigationCacheRangeSample[] = [];
     for (const range of rangesForFile({ size: localFile.size, rangeBytes })) {
       ranges.push(await sampleRange({
@@ -286,6 +457,7 @@ async function verifyFile({
       localSize: fileEntry.size,
       repositorySize,
       status: hasMismatch ? "mismatched" : allMatched ? "bounded-samples-matched" : "partial",
+      transport,
       ranges,
       reason: hasMismatch
         ? "At least one bounded local and remote sample hash differed"
@@ -301,6 +473,10 @@ async function verifyFile({
       localSize: fileEntry.size,
       repositorySize,
       status: "partial",
+      transport: repositoryMetadataTransport({
+        repositorySize,
+        reason: "The cache file could not be opened or sampled; only frozen repository metadata is available",
+      }),
       ranges: [{
         offset: 0,
         length: 0,
@@ -382,5 +558,7 @@ export async function verifyModelCacheProvenance({
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  observeLightweightTransport,
   rangesForFile,
+  sanitizedTransportUrl,
 };

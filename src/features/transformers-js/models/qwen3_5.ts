@@ -130,7 +130,19 @@ export function buildQwen3_5NoToolContinuationPrompt({
   return `${trimmedPromptHistory}\n${serializeQwen3_5UserTurnForContinuation({ message, reasoningMode })}`;
 }
 
-export function isQwen3_5NoToolContinuationCandidate({
+export type Qwen3_5NoToolContinuationEligibility =
+  | { status: 'eligible' }
+  | {
+      status: 'ineligible',
+      reason:
+        | 'missing-conversation-state'
+        | 'model-mismatch'
+        | 'message-count-mismatch'
+        | 'last-message-is-not-user'
+        | 'tool-history-present',
+    };
+
+export function assessQwen3_5NoToolContinuationEligibility({
   messages,
   conversationState,
   activeModelId,
@@ -138,17 +150,31 @@ export function isQwen3_5NoToolContinuationCandidate({
   messages: ChatMessage[],
   conversationState: Qwen3_5ConversationState | undefined,
   activeModelId: string | null,
-}): boolean {
-  if (!conversationState || conversationState.modelId !== activeModelId) return false;
-  if (messages.length !== conversationState.messageCount + 1) return false;
+}): Qwen3_5NoToolContinuationEligibility {
+  if (conversationState === undefined) {
+    return { status: 'ineligible', reason: 'missing-conversation-state' };
+  }
+  if (conversationState.modelId !== activeModelId) {
+    return { status: 'ineligible', reason: 'model-mismatch' };
+  }
+  if (messages.length !== conversationState.messageCount + 1) {
+    return { status: 'ineligible', reason: 'message-count-mismatch' };
+  }
 
   const lastMessage = messages.at(-1);
-  if (!lastMessage || lastMessage.role !== 'user') return false;
+  if (!lastMessage || lastMessage.role !== 'user') {
+    return { status: 'ineligible', reason: 'last-message-is-not-user' };
+  }
 
-  return messages.every((message, index) => {
-    if (index === messages.length - 1) return true;
-    return !message.tool_calls?.length && !message.tool_call_id;
-  });
+  const hasToolHistory = messages.some((message, index) => (
+    index !== messages.length - 1
+    && ((message.tool_calls?.length ?? 0) > 0 || message.tool_call_id !== undefined)
+  ));
+  if (hasToolHistory) {
+    return { status: 'ineligible', reason: 'tool-history-present' };
+  }
+
+  return { status: 'eligible' };
 }
 
 export function applyQwen3_5ConversationState({
@@ -394,4 +420,5 @@ export const TEST_ONLY = {
   applyQwen3_5ContinuationState,
   shouldRetryQwen3_5WithoutContinuation,
   buildQwen3_5ToolContinuationPrompt,
+  assessQwen3_5NoToolContinuationEligibility,
 };

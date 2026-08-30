@@ -93,10 +93,7 @@ export type TransformersJsPrefetchFileResult =
       path: string | undefined,
       failureStage: TransformersJsPrefetchFailureStage,
       httpStatus: number | undefined,
-      error: {
-        name: string,
-        message: string,
-      },
+      error: TransformersJsProductionInvestigationError,
     };
 
 export interface TransformersJsPrefetchResult {
@@ -134,14 +131,37 @@ export type TransformersJsProductionInvestigationStrategy =
   | 'qwen3_5'
   | 'gemma4';
 
+export interface TransformersJsProductionInvestigationCandidate {
+  device: TransformersJsProductionInvestigationDevice,
+  dtype: TransformersJsProductionInvestigationDtype,
+}
+
+export interface TransformersJsProductionInvestigationErrorCause {
+  name: string,
+  message: string,
+  stack?: string,
+  thrownType?: string,
+  serializedOriginalThrownValue?: string,
+}
+
+export interface TransformersJsProductionInvestigationError extends TransformersJsProductionInvestigationErrorCause {
+  cause?: TransformersJsProductionInvestigationErrorCause,
+  causeChain?: TransformersJsProductionInvestigationErrorCause[],
+}
+
+export type TransformersJsProductionInvestigationCandidateLoadError = TransformersJsProductionInvestigationError;
+
+export interface TransformersJsProductionInvestigationCandidateLoadAttempt {
+  candidate: TransformersJsProductionInvestigationCandidate,
+  status: 'passed' | 'failed',
+  error: TransformersJsProductionInvestigationCandidateLoadError | undefined,
+}
+
 export interface TransformersJsProductionInvestigationScenario {
   modelId: string,
   resolvedRevision: string,
   cacheRevisionAliases: TransformersJsCacheRevisionAlias[],
-  candidate: {
-    device: TransformersJsProductionInvestigationDevice,
-    dtype: TransformersJsProductionInvestigationDtype,
-  },
+  candidates: [TransformersJsProductionInvestigationCandidate, ...TransformersJsProductionInvestigationCandidate[]],
   messages: ChatMessage[],
   followUpMessage: ChatMessage,
   toolResultContinuation: {
@@ -185,11 +205,33 @@ export interface TransformersJsOpaqueStructureSummary {
   truncated: boolean,
 }
 
+export type TransformersJsProductionInvestigationFullConversationInput =
+  | {
+      status: 'observed',
+      inputTokenIds: number[],
+    }
+  | {
+      status: 'unavailable',
+      reason: string,
+    };
+
+export type TransformersJsProductionInvestigationCacheDecision =
+  | {
+      status: 'reused' | 'not-reused' | 'not-applicable',
+      reason: string,
+    }
+  | {
+      status: 'unavailable',
+      reason: string,
+    };
+
 export interface TransformersJsProductionInvestigationTurnObservation {
   messages: ChatMessage[],
   inputKeys: string[],
   inputTensors: TransformersJsProductionInvestigationInputTensorMetadata[],
   inputTokenIds: number[],
+  fullConversationInput: TransformersJsProductionInvestigationFullConversationInput,
+  cacheDecision: TransformersJsProductionInvestigationCacheDecision,
   pastKeyValuesProvided: boolean,
   inputPastKeyValuesSummary: TransformersJsOpaqueStructureSummary,
   outputPastKeyValuesSummary: TransformersJsOpaqueStructureSummary,
@@ -206,6 +248,16 @@ export interface TransformersJsProductionInvestigationTurnObservation {
   },
 }
 
+export type TransformersJsProductionInvestigationFirstTurnObservation =
+  | {
+      status: 'passed',
+      turn: TransformersJsProductionInvestigationTurnObservation,
+    }
+  | {
+      status: 'failed',
+      error: TransformersJsProductionInvestigationError,
+    };
+
 export type TransformersJsProductionInvestigationContinuityObservation =
   | {
       status: 'passed',
@@ -216,18 +268,28 @@ export type TransformersJsProductionInvestigationContinuityObservation =
         mode: 'full-input-prefix' | 'cache-suffix' | 'not-applicable-encoder-decoder',
         expectedPrefixTokenIds: number[],
         secondInputTokenIds: number[],
+        reconstructedFullInputTokenIds: number[] | undefined,
+        comparisonInputSource: 'reconstructed-full-conversation' | 'actual-model-input' | 'not-applicable',
         exactPrefixMatch: boolean | undefined,
         firstMismatchIndex: number | undefined,
+        firstMismatchContext: {
+          startIndex: number,
+          expectedTokenIds: number[],
+          actualTokenIds: number[],
+          expectedText: string,
+          actualText: string,
+        } | undefined,
       },
     }
   | {
       status: 'failed',
       assistantMessage: ChatMessage,
       followUpMessage: ChatMessage,
-      error: {
-        name: string,
-        message: string,
-      },
+      error: TransformersJsProductionInvestigationError,
+    }
+  | {
+      status: 'not-run',
+      reason: string,
     };
 
 export type TransformersJsProductionInvestigationToolResultContinuationObservation =
@@ -237,6 +299,7 @@ export type TransformersJsProductionInvestigationToolResultContinuationObservati
       strategy: TransformersJsProductionInvestigationStrategy,
       messages: ChatMessage[],
       expectedInputTokenIds: number[],
+      comparisonInputSource: 'reconstructed-full-conversation' | 'actual-model-input',
       inputTokenExactMatch: boolean,
       firstInputMismatchIndex: number | undefined,
       turn: TransformersJsProductionInvestigationTurnObservation,
@@ -244,17 +307,26 @@ export type TransformersJsProductionInvestigationToolResultContinuationObservati
   | {
       status: 'failed',
       source: 'reference-parser-roundtrip',
-      strategy: TransformersJsProductionInvestigationStrategy,
+      strategy: TransformersJsProductionInvestigationStrategy | undefined,
       messages: ChatMessage[],
       expectedInputTokenIds: number[],
-      error: {
-        name: string,
-        message: string,
-      },
+      error: TransformersJsProductionInvestigationError,
     }
   | {
       status: 'not-run',
       reason: string,
+    };
+
+export type TransformersJsProductionInvestigationReasoningEffortObservation =
+  | {
+      effort: 'none' | 'high',
+      status: 'passed',
+      inputTokenCount: number,
+    }
+  | {
+      effort: 'none' | 'high',
+      status: 'failed',
+      error: TransformersJsProductionInvestigationError,
     };
 
 export type TransformersJsProductionInvestigationReasoningObservation =
@@ -275,10 +347,9 @@ export type TransformersJsProductionInvestigationReasoningObservation =
       strategy: 'qwen3_5',
       failedEffort: 'none' | 'high',
       disabledTurn: TransformersJsProductionInvestigationTurnObservation | undefined,
-      error: {
-        name: string,
-        message: string,
-      },
+      enabledTurn: TransformersJsProductionInvestigationTurnObservation | undefined,
+      effortAttempts: TransformersJsProductionInvestigationReasoningEffortObservation[],
+      error: TransformersJsProductionInvestigationError,
     }
   | {
       status: 'unavailable',
@@ -298,10 +369,7 @@ export type TransformersJsProductionInvestigationMultimodalObservation =
       source: 'fixed-synthetic-fixture-and-existing-production-strategy',
       strategy: 'gemma4',
       fixture: Omit<TransformersJsProductionInvestigationScenario['multimodalFixture'], 'dataUrl'>,
-      error: {
-        name: string,
-        message: string,
-      },
+      error: TransformersJsProductionInvestigationError,
     }
   | {
       status: 'unavailable',
@@ -309,10 +377,30 @@ export type TransformersJsProductionInvestigationMultimodalObservation =
       reason: string,
     };
 
-export interface TransformersJsProductionInvestigationObservation extends TransformersJsProductionInvestigationTurnObservation {
+export interface TransformersJsProductionInvestigationPartialObservation {
   modelId: string,
   resolvedRevision: string,
-  candidate: TransformersJsProductionInvestigationScenario['candidate'],
+  candidate: TransformersJsProductionInvestigationCandidate | undefined,
+  loadAttempts?: TransformersJsProductionInvestigationCandidateLoadAttempt[],
+  route: {
+    autoClass: TransformersJsProductionInvestigationAutoClass,
+    processor: TransformersJsProductionInvestigationProcessor,
+    strategy: TransformersJsProductionInvestigationStrategy,
+    modelType: string | undefined,
+  } | undefined,
+  isEncoderDecoder: boolean | undefined,
+  firstTurn: TransformersJsProductionInvestigationFirstTurnObservation | undefined,
+  continuity: TransformersJsProductionInvestigationContinuityObservation | undefined,
+  toolResultContinuation: TransformersJsProductionInvestigationToolResultContinuationObservation | undefined,
+  reasoning: TransformersJsProductionInvestigationReasoningObservation | undefined,
+  multimodal: TransformersJsProductionInvestigationMultimodalObservation | undefined,
+}
+
+export interface TransformersJsProductionInvestigationObservation {
+  modelId: string,
+  resolvedRevision: string,
+  candidate: TransformersJsProductionInvestigationCandidate,
+  loadAttempts?: TransformersJsProductionInvestigationCandidateLoadAttempt[],
   route: {
     autoClass: TransformersJsProductionInvestigationAutoClass,
     processor: TransformersJsProductionInvestigationProcessor,
@@ -320,6 +408,7 @@ export interface TransformersJsProductionInvestigationObservation extends Transf
     modelType: string | undefined,
   },
   isEncoderDecoder: boolean,
+  firstTurn: TransformersJsProductionInvestigationFirstTurnObservation,
   continuity: TransformersJsProductionInvestigationContinuityObservation,
   toolResultContinuation: TransformersJsProductionInvestigationToolResultContinuationObservation,
   reasoning: TransformersJsProductionInvestigationReasoningObservation,
@@ -352,6 +441,7 @@ export interface ITransformersJsWorker {
   runModelSupportInvestigationScenario(
     scenario: TransformersJsProductionInvestigationScenario,
     progressCallback: WorkerProxy<TransformersJsProgressCallback>,
+    observationCheckpointCallback: WorkerProxy<({ observation }: { observation: TransformersJsProductionInvestigationPartialObservation }) => void>,
   ): Promise<TransformersJsProductionInvestigationObservation>,
 }
 

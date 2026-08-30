@@ -70,7 +70,7 @@ export function createInitialInvestigationCheckpoint({
       templateBehavior: undefined,
       modelFilePlan: undefined,
       loadAttempts: [],
-      productionLane: { status: "not-run", observation: undefined, error: undefined },
+      productionLane: { status: "not-run", observation: undefined, partialObservation: undefined, error: undefined },
       laneComparison: undefined,
       error: "Investigation has not completed",
     },

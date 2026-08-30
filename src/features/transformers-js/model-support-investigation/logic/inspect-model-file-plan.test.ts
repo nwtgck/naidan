@@ -34,6 +34,7 @@ function declarations(): ModelSupportInvestigationModelDeclarations {
     normalizedModelId: "org/model",
     resolvedRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     files: [],
+    fileFailures: [],
     config: { model_type: "probe" },
     modelType: "probe",
     architectures: ["ProbeForCausalLM"],
@@ -166,7 +167,10 @@ describe("inspectModelFilePlan", () => {
     expect(result.candidates[0]).toMatchObject({
       candidateId: "webgpu-q4f16",
       registryStatus: "failed",
-      registryError: "unsupported session layout",
+      registryError: expect.objectContaining({
+        name: "Error",
+        message: "unsupported session layout",
+      }),
       eligibility: "registry-failed",
     });
     expect(result.candidates[1]?.eligibility).toBe("eligible");

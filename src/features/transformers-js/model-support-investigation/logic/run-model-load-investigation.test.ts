@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   ModelSupportInvestigationCandidateFilePlan,
   ModelSupportInvestigationLoadAttempt,
+  ModelSupportInvestigationLoadAttemptCheckpoint,
   ModelSupportInvestigationRun,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { runModelLoadInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-model-load-investigation";
+import { CandidateAttemptTimeoutError } from "@/features/transformers-js/model-support-investigation/logic/candidate-attempt-timeout";
 
 function candidate(candidateId: "webgpu-q4f16" | "webgpu-q4" | "wasm-q4"): ModelSupportInvestigationCandidateFilePlan {
   const [device, dtype] = candidateId === "webgpu-q4f16"
@@ -46,7 +48,10 @@ function run({ supportedClass = true, candidates = [candidate("webgpu-q4f16"), c
     completedAt: "before",
     status: "passed",
     currentOperation: "before",
-    steps: [{ id: "loading-investigation", status: "not-run", detail: undefined }],
+    steps: [
+      { id: "runtime-assets", status: "passed", detail: "runtime passed" },
+      { id: "loading-investigation", status: "not-run", detail: undefined },
+    ],
     runtimeAssets: undefined,
     repository: {
       requestedModelId: "org/model",
@@ -66,6 +71,7 @@ function run({ supportedClass = true, candidates = [candidate("webgpu-q4f16"), c
       normalizedModelId: "org/model",
       resolvedRevision: "a".repeat(40),
       files: [],
+      fileFailures: [],
       config: { model_type: "llama" },
       modelType: "llama",
       architectures: [],
@@ -95,7 +101,7 @@ function run({ supportedClass = true, candidates = [candidate("webgpu-q4f16"), c
       candidates,
     },
     loadAttempts: [],
-    productionLane: { status: "not-run", observation: undefined, error: undefined },
+    productionLane: { status: "not-run", observation: undefined, partialObservation: undefined, error: undefined },
     laneComparison: undefined,
     error: undefined,
   };
@@ -118,12 +124,70 @@ function attempt({ candidatePlan, status }: {
     status,
     failureStage: status === "passed" ? undefined : "model-load",
     events: [],
+    inputStrategyAttempts: [],
+    selectedInputStrategy: undefined,
     inputTokenCount: undefined,
     inputTokenIds: [],
     inputTensors: [],
     loadedModel: undefined,
     generatedTokenIds: status === "passed" ? [42] : [],
     generatedText: status === "passed" ? "answer" : undefined,
+    naturalGeneration: undefined,
+    toolProtocolProbe: undefined,
+    modelType: "llama",
+    error: undefined,
+  };
+}
+
+
+function checkpoint({ candidatePlan }: {
+  candidatePlan: ModelSupportInvestigationCandidateFilePlan,
+}): ModelSupportInvestigationLoadAttemptCheckpoint {
+  return {
+    attemptId: `attempt-${candidatePlan.candidateId}`,
+    candidateId: candidatePlan.candidateId,
+    device: candidatePlan.device,
+    dtype: candidatePlan.dtype,
+    autoClass: "AutoModelForCausalLM",
+    resolvedRevision: "a".repeat(40),
+    startedAt: "before",
+    checkpointedAt: "during",
+    status: "running",
+    currentStage: "first-generation",
+    events: [{
+      stage: "model-load",
+      status: "passed",
+      detail: `${candidatePlan.candidateId}: model loaded`,
+      at: "during",
+    }],
+    inputStrategyAttempts: [],
+    activeInputStrategy: "chat-template-tensor-dict",
+    selectedInputStrategy: undefined,
+    inputTokenCount: 2,
+    inputTokenIds: [1, 2],
+    inputTensors: [{ name: "input_ids", dtype: "int64", dims: [1, 2], location: "cpu" }],
+    loadedModel: {
+      modelType: "llama",
+      isEncoderDecoder: false,
+      sessions: [{ name: "model", inputNames: ["input_ids"], outputNames: ["logits"] }],
+      sessionFileCorrelations: [{
+        sessionName: "model",
+        status: "exact",
+        matchBasis: "exact-session-name-to-core-onnx-basename",
+        coreFilePaths: ["onnx/model.onnx"],
+        externalDataPaths: [],
+      }],
+      effectiveMinimumGenerationConfig: {
+        maxNewTokens: 1,
+        doSample: false,
+        bosTokenId: 1,
+        eosTokenId: 2,
+        padTokenId: 0,
+        decoderStartTokenId: undefined,
+      },
+    },
+    generatedTokenIds: [],
+    generatedText: undefined,
     naturalGeneration: undefined,
     toolProtocolProbe: undefined,
     modelType: "llama",
@@ -151,6 +215,33 @@ describe("runModelLoadInvestigation", () => {
     expect(result.loadAttempts).toHaveLength(2);
     expect(result.steps.find(step => step.id === "loading-investigation")?.status).toBe("passed");
     expect(result.currentOperation).toBe("Minimum real-model generation evidence collected");
+  });
+
+  it("still probes the real model when Runtime Integrity Preflight failed", async () => {
+    const partialRun = run();
+    partialRun.steps = partialRun.steps.map(step => (
+      step.id === "runtime-assets" ? { ...step, status: "failed", detail: "runtime failed" } : step
+    ));
+    partialRun.status = "failed";
+    partialRun.error = "runtime failed";
+    const runAttempt = vi.fn(async ({ candidate: candidatePlan }: { candidate: ModelSupportInvestigationCandidateFilePlan }) => (
+      attempt({ candidatePlan, status: "passed" })
+    ));
+
+    const result = await runModelLoadInvestigation({
+      partialRun,
+      runAttempt,
+      onEvent: vi.fn(),
+      now: () => "after",
+      createAttemptId: () => "unexpected",
+    });
+
+    expect(runAttempt).toHaveBeenCalledOnce();
+    expect(result.steps.find(step => step.id === "runtime-assets")?.status).toBe("failed");
+    expect(result.steps.find(step => step.id === "loading-investigation")?.status).toBe("passed");
+    expect(result.loadAttempts[0]?.status).toBe("passed");
+    expect(result.status).toBe("failed");
+    expect(result.error).toBe("runtime failed");
   });
 
   it("blocks without invoking a Worker when no generative class is supported", async () => {
@@ -229,4 +320,54 @@ describe("runModelLoadInvestigation", () => {
     expect(result.steps.find(step => step.id === "loading-investigation")?.detail)
       .toContain("loaded successfully, but deterministic generation input was unavailable");
   });
+  it("retains structured model-load evidence when a candidate times out during generation", async () => {
+    const candidatePlan = candidate("webgpu-q4f16");
+    const onRunUpdate = vi.fn();
+    const runAttempt = vi.fn(async ({ onAttemptCheckpoint }: {
+      onAttemptCheckpoint: ({ attempt }: { attempt: ModelSupportInvestigationLoadAttemptCheckpoint }) => void,
+    }) => {
+      onAttemptCheckpoint({ attempt: checkpoint({ candidatePlan }) });
+      throw new CandidateAttemptTimeoutError({
+        stage: "first-generation",
+        events: [{ stage: "model-load", status: "passed", detail: "model loaded", at: "during" }],
+        timeoutMs: 20_000,
+      });
+    });
+
+    const result = await runModelLoadInvestigation({
+      partialRun: run({ candidates: [candidatePlan] }),
+      runAttempt,
+      onEvent: vi.fn(),
+      onRunUpdate,
+      now: () => "after",
+      createAttemptId: () => "unexpected",
+    });
+
+    expect(onRunUpdate).toHaveBeenCalledWith({
+      run: expect.objectContaining({
+        activeLoadAttempt: expect.objectContaining({
+          candidateId: "webgpu-q4f16",
+          loadedModel: expect.objectContaining({ modelType: "llama" }),
+        }),
+      }),
+    });
+    expect(result.activeLoadAttempt).toBeUndefined();
+    expect(result.loadAttempts[0]).toMatchObject({
+      attemptId: "attempt-webgpu-q4f16",
+      candidateId: "webgpu-q4f16",
+      status: "failed",
+      failureStage: "first-generation",
+      interruptedInputStrategy: "chat-template-tensor-dict",
+      inputTokenIds: [1, 2],
+      loadedModel: {
+        modelType: "llama",
+        sessionFileCorrelations: [{
+          status: "exact",
+          coreFilePaths: ["onnx/model.onnx"],
+        }],
+      },
+      error: { name: "CandidateAttemptTimeoutError" },
+    });
+  });
+
 });

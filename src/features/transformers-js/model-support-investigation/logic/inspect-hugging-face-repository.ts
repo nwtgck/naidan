@@ -62,8 +62,27 @@ export async function inspectHuggingFaceRepository({
     throw new Error(`Hugging Face repository metadata request failed: ${response.status} ${response.statusText}`);
   }
 
+  const responseUrl = response.url || apiUrl;
+  const contentType = response.headers.get('content-type') ?? undefined;
+  if (contentType?.toLowerCase().includes('text/html') === true) {
+    throw new Error(`Hugging Face repository metadata resolved to HTML instead of JSON: ${responseUrl}`);
+  }
+
+  const text = await response.text();
+  const trimmed = text.trimStart().toLowerCase();
+  if (trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')) {
+    throw new Error(`Hugging Face repository metadata returned HTML-like content instead of JSON: ${responseUrl}`);
+  }
+
+  let parsedMetadata: unknown;
+  try {
+    parsedMetadata = JSON.parse(text);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Hugging Face repository metadata is not valid JSON at ${responseUrl}: ${detail}`, { cause: error });
+  }
   const metadataJson = investigationJsonObjectSchema.parse(parseInvestigationJson({
-    value: await response.json(),
+    value: parsedMetadata,
     label: 'Hugging Face repository metadata',
   }));
   const metadata = repositoryMetadataSchema.parse(metadataJson);
@@ -84,7 +103,7 @@ export async function inspectHuggingFaceRepository({
     requestedRevision,
     resolvedRevision,
     apiUrl,
-    responseUrl: response.url || apiUrl,
+    responseUrl,
     fileCount: files.length,
     files,
     pipelineTag: metadata.pipeline_tag,

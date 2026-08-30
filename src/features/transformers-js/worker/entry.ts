@@ -18,12 +18,19 @@ import type {
   ITransformersJsWorker,
   WorkerToolDefinition,
   TransformersJsProductionInvestigationAutoClass,
-  TransformersJsProductionInvestigationDtype,
+  TransformersJsProductionInvestigationCandidate,
+  TransformersJsProductionInvestigationCandidateLoadAttempt,
+  TransformersJsProductionInvestigationCandidateLoadError,
   TransformersJsProductionInvestigationDevice,
+  TransformersJsProductionInvestigationError,
   TransformersJsOpaqueStructureSummary,
   TransformersJsProductionInvestigationInputTensorMetadata,
   TransformersJsProductionInvestigationObservation,
+  TransformersJsProductionInvestigationPartialObservation,
   TransformersJsProductionInvestigationProcessor,
+  TransformersJsProductionInvestigationReasoningObservation,
+  TransformersJsProductionInvestigationReasoningEffortObservation,
+  TransformersJsProductionInvestigationStrategy,
   TransformersJsProductionInvestigationTurnObservation,
   TransformersJsProgressCallback,
   TransformersJsPrefetchFailureStage,
@@ -296,16 +303,14 @@ function assertGemma4RuntimeSupport({ modelId }: { modelId: string }): void {
   );
 }
 
-type ProductionLoadCandidate = {
-  device: TransformersJsProductionInvestigationDevice,
-  dtype: TransformersJsProductionInvestigationDtype,
-};
+type ProductionLoadCandidate = TransformersJsProductionInvestigationCandidate;
 
 type ProductionLoadRoute = {
   cleanModelId: string,
   autoClass: TransformersJsProductionInvestigationAutoClass,
   processor: TransformersJsProductionInvestigationProcessor,
   candidate: ProductionLoadCandidate,
+  loadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[],
 };
 
 function normalizeProductionModelId({ modelId }: { modelId: string }): string {
@@ -400,11 +405,15 @@ async function loadProductionRuntime({
   revision,
   candidates,
   progressCallback,
+  serializeError,
+  onCandidateAttempt = () => undefined,
 }: {
   modelId: string,
   revision: string | undefined,
   candidates: ProductionLoadCandidate[],
   progressCallback: TransformersJsProgressCallback,
+  serializeError: ({ error }: { error: unknown }) => TransformersJsProductionInvestigationCandidateLoadError,
+  onCandidateAttempt?: ({ attempt }: { attempt: TransformersJsProductionInvestigationCandidateLoadAttempt }) => void,
 }): Promise<ProductionLoadRoute> {
   const cleanModelId = normalizeProductionModelId({ modelId });
   const isLocal = cleanModelId.startsWith('user/');
@@ -417,6 +426,7 @@ async function loadProductionRuntime({
     run: async () => {
       let selectedCandidate: ProductionLoadCandidate | undefined;
       let lastError: unknown;
+      const loadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[] = [];
       for (const candidate of candidates) {
         const startedAt = performance.now();
         debugLog({
@@ -439,6 +449,13 @@ async function loadProductionRuntime({
             progressCallback: rawProgressCallback,
           });
           selectedCandidate = candidate;
+          const attempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
+            candidate,
+            status: 'passed',
+            error: undefined,
+          };
+          loadAttempts.push(attempt);
+          onCandidateAttempt({ attempt });
           debugLog({
             event: 'worker tryLoad success',
             details: {
@@ -453,6 +470,13 @@ async function loadProductionRuntime({
           break;
         } catch (error) {
           lastError = typeof error === 'number' ? new Error(`Numeric error ${error}`) : error;
+          const attempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
+            candidate,
+            status: 'failed',
+            error: serializeError({ error: lastError }),
+          };
+          loadAttempts.push(attempt);
+          onCandidateAttempt({ attempt });
           debugLog({
             event: 'worker tryLoad failure',
             details: {
@@ -484,6 +508,7 @@ async function loadProductionRuntime({
         autoClass,
         processor,
         candidate: selectedCandidate,
+        loadAttempts,
       };
     },
   });
@@ -518,6 +543,38 @@ function inputTensorMetadata({ inputs }: {
 function generatedSequenceTokenIds({ result }: { result: unknown }): number[] {
   if (result === undefined || result === null || typeof result !== 'object') return [];
   return numberArrayFromTensorLike({ value: Reflect.get(result, 'sequences') });
+}
+
+function buildTokenMismatchContext({
+  tokenizer,
+  expectedTokenIds,
+  actualTokenIds,
+  mismatchIndex,
+}: {
+  tokenizer: PreTrainedTokenizer,
+  expectedTokenIds: number[],
+  actualTokenIds: number[],
+  mismatchIndex: number,
+}): Extract<TransformersJsProductionInvestigationObservation['continuity'], { status: 'passed' }>['prefixComparison']['firstMismatchContext'] {
+  const radius = 8;
+  const startIndex = Math.max(0, mismatchIndex - radius);
+  const endIndex = mismatchIndex + radius + 1;
+  const expectedWindow = expectedTokenIds.slice(startIndex, endIndex);
+  const actualWindow = actualTokenIds.slice(startIndex, endIndex);
+  const decode = ({ tokenIds }: { tokenIds: number[] }): string => {
+    try {
+      return tokenizer.decode(tokenIds, { skip_special_tokens: false });
+    } catch (error) {
+      return `<decode failed: ${error instanceof Error ? error.message : String(error)}>`;
+    }
+  };
+  return {
+    startIndex,
+    expectedTokenIds: expectedWindow,
+    actualTokenIds: actualWindow,
+    expectedText: decode({ tokenIds: expectedWindow }),
+    actualText: decode({ tokenIds: actualWindow }),
+  };
 }
 
 function opaqueStructureSummary({ value }: { value: unknown }): TransformersJsOpaqueStructureSummary {
@@ -592,12 +649,27 @@ async function runObservedProductionTurn({
   let inputKeys: string[] = [];
   let inputTensors: TransformersJsProductionInvestigationInputTensorMetadata[] = [];
   let inputTokenIds: number[] = [];
+  let fullConversationInput: TransformersJsProductionInvestigationTurnObservation['fullConversationInput'] = {
+    status: 'unavailable',
+    reason: 'generation-strategy-did-not-report-full-conversation-input',
+  };
+  let cacheDecision: TransformersJsProductionInvestigationTurnObservation['cacheDecision'] = {
+    status: 'unavailable',
+    reason: 'generation-strategy-did-not-report-cache-decision',
+  };
   let pastKeyValuesProvided = false;
   let inputPastKeyValuesSummary = opaqueStructureSummary({ value: undefined });
   let outputPastKeyValuesSummary = opaqueStructureSummary({ value: undefined });
   let sequenceTokenIds: number[] = [];
 
   const observationSink: GenerationStrategyObservationSink = {
+    onFullConversationInputPrepared({ inputs, cacheDecision: observedCacheDecision }) {
+      fullConversationInput = {
+        status: 'observed',
+        inputTokenIds: numberArrayFromTensorLike({ value: inputs['input_ids'] }),
+      };
+      cacheDecision = observedCacheDecision;
+    },
     onGenerateStart({ inputs, pastKeyValues }) {
       inputKeys = Object.keys(inputs).sort();
       inputTensors = inputTensorMetadata({ inputs });
@@ -643,6 +715,8 @@ async function runObservedProductionTurn({
     inputKeys,
     inputTensors,
     inputTokenIds,
+    fullConversationInput,
+    cacheDecision,
     pastKeyValuesProvided,
     inputPastKeyValuesSummary,
     outputPastKeyValuesSummary,
@@ -935,7 +1009,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
   },
 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback must be a top-level remote argument to remain transferable.
-  async runModelSupportInvestigationScenario(scenario, progressCallback): Promise<TransformersJsProductionInvestigationObservation> {
+  async runModelSupportInvestigationScenario(scenario, progressCallback, observationCheckpointCallback): Promise<TransformersJsProductionInvestigationObservation> {
     await this.unloadModel();
     env.customCache = createOpfsModelCache({ revisionAliases: scenario.cacheRevisionAliases });
     activeModelId = scenario.modelId;
@@ -958,11 +1032,46 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       const { compareTokenSequences } = tokenComparison;
       const { createModelSupportToolResultContinuationMessages, MODEL_SUPPORT_TOOL_DEFINITIONS } = toolProtocolFixture;
       progressCallback({ info: { status: 'model-support-production-model-load' } });
+      const partialObservation: TransformersJsProductionInvestigationPartialObservation = {
+        modelId: scenario.modelId,
+        resolvedRevision: scenario.resolvedRevision,
+        candidate: undefined,
+        loadAttempts: [],
+        route: undefined,
+        isEncoderDecoder: undefined,
+        firstTurn: undefined,
+        continuity: undefined,
+        toolResultContinuation: undefined,
+        reasoning: undefined,
+        multimodal: undefined,
+      };
+      const publishObservationCheckpoint = (): void => {
+        observationCheckpointCallback({ observation: structuredClone(partialObservation) });
+      };
+      publishObservationCheckpoint();
       const route = await loadProductionRuntime({
         modelId: scenario.modelId,
         revision: scenario.resolvedRevision,
-        candidates: [scenario.candidate],
+        candidates: scenario.candidates,
         progressCallback,
+        serializeError: ({ error }) => serializeInvestigationError({ error }),
+        onCandidateAttempt: ({ attempt }) => {
+          const loadAttempts = partialObservation.loadAttempts ?? [];
+          loadAttempts.push(structuredClone(attempt));
+          partialObservation.loadAttempts = loadAttempts;
+          switch (attempt.status) {
+          case 'passed':
+            partialObservation.candidate = structuredClone(attempt.candidate);
+            break;
+          case 'failed':
+            break;
+          default: {
+            const _exhaustive: never = attempt.status;
+            throw new Error(`Unhandled Production load attempt status: ${_exhaustive}`);
+          }
+          }
+          publishObservationCheckpoint();
+        },
       });
       const loadedModel = model;
       const loadedTokenizer = tokenizer;
@@ -977,63 +1086,137 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         hasTools: false,
       });
       const isEncoderDecoder = Reflect.get(Reflect.get(loadedModel, 'config') ?? {}, 'is_encoder_decoder') === true;
-      progressCallback({ info: { status: 'model-support-production-first-turn' } });
-      const firstTurn = await runObservedProductionTurn({
-        loadedModel,
-        loadedTokenizer,
-        strategy,
-        messages: scenario.messages,
-        maxNewTokens: scenario.maxNewTokens,
-        isEncoderDecoder,
-        tools: undefined,
-      });
-      const assistantMessage: ChatMessage = {
-        role: 'assistant',
-        content: firstTurn.generatedText,
+      partialObservation.candidate = route.candidate;
+      partialObservation.route = {
+        autoClass: route.autoClass,
+        processor: route.processor,
+        strategy: strategy.kind,
+        modelType,
       };
-      const secondTurnMessages = [
-        ...scenario.messages,
-        assistantMessage,
-        scenario.followUpMessage,
-      ];
+      partialObservation.isEncoderDecoder = isEncoderDecoder;
+      publishObservationCheckpoint();
+      progressCallback({ info: { status: 'model-support-production-first-turn' } });
+      const firstTurn: TransformersJsProductionInvestigationObservation['firstTurn'] = await (async () => {
+        resetGenerationContinuationState();
+        try {
+          const turn = await runObservedProductionTurn({
+            loadedModel,
+            loadedTokenizer,
+            strategy,
+            messages: scenario.messages,
+            maxNewTokens: scenario.maxNewTokens,
+            isEncoderDecoder,
+            tools: undefined,
+          });
+          return { status: 'passed', turn };
+        } catch (error) {
+          const serialized = serializeInvestigationError({ error, maxLength: 1024 });
+          return {
+            status: 'failed',
+            error: serialized,
+          };
+        }
+      })();
+      partialObservation.firstTurn = firstTurn;
+      publishObservationCheckpoint();
 
-      let continuity: TransformersJsProductionInvestigationObservation['continuity'];
-      progressCallback({ info: { status: 'model-support-production-continuity' } });
-      try {
-        const secondTurn = await runObservedProductionTurn({
-          loadedModel,
-          loadedTokenizer,
-          strategy,
-          messages: secondTurnMessages,
-          maxNewTokens: scenario.maxNewTokens,
-          isEncoderDecoder,
-          tools: undefined,
-        });
-        const prefixComparison = classifyContinuityPrefix({
-          isEncoderDecoder,
-          firstGeneratedSequenceTokenIds: firstTurn.generatedSequenceTokenIds,
-          secondInputTokenIds: secondTurn.inputTokenIds,
-          secondTurnPastKeyValuesProvided: secondTurn.pastKeyValuesProvided,
-        });
-        continuity = {
-          status: 'passed',
-          assistantMessage,
-          followUpMessage: scenario.followUpMessage,
-          secondTurn,
-          prefixComparison,
-        };
-      } catch (error) {
-        const serialized = serializeInvestigationError({ error, maxLength: 1024 });
-        continuity = {
-          status: 'failed',
-          assistantMessage,
-          followUpMessage: scenario.followUpMessage,
-          error: {
-            name: serialized.name,
-            message: serialized.message,
-          },
-        };
-      }
+      const continuity: TransformersJsProductionInvestigationObservation['continuity'] = await (async () => {
+        progressCallback({ info: { status: 'model-support-production-continuity' } });
+        switch (firstTurn.status) {
+        case 'failed':
+          return {
+            status: 'not-run',
+            reason: `First Production turn failed: ${firstTurn.error.name}: ${firstTurn.error.message}`,
+          };
+        case 'passed': {
+          const assistantMessage: ChatMessage = {
+            role: 'assistant',
+            content: firstTurn.turn.generatedText,
+          };
+          const secondTurnMessages = [
+            ...scenario.messages,
+            assistantMessage,
+            scenario.followUpMessage,
+          ];
+          try {
+            const secondTurn = await runObservedProductionTurn({
+              loadedModel,
+              loadedTokenizer,
+              strategy,
+              messages: secondTurnMessages,
+              maxNewTokens: scenario.maxNewTokens,
+              isEncoderDecoder,
+              tools: undefined,
+            });
+            const reconstructedFullInputTokenIds = (() => {
+              switch (secondTurn.fullConversationInput.status) {
+              case 'observed':
+                return secondTurn.fullConversationInput.inputTokenIds;
+              case 'unavailable':
+                return undefined;
+              default: {
+                const _ex: never = secondTurn.fullConversationInput;
+                return _ex;
+              }
+              }
+            })();
+            const classifiedPrefix = classifyContinuityPrefix({
+              isEncoderDecoder,
+              firstGeneratedSequenceTokenIds: firstTurn.turn.generatedSequenceTokenIds,
+              secondInputTokenIds: secondTurn.inputTokenIds,
+              reconstructedFullInputTokenIds,
+              secondTurnPastKeyValuesProvided: secondTurn.pastKeyValuesProvided,
+            });
+            const comparisonInputTokenIds = (() => {
+              switch (classifiedPrefix.comparisonInputSource) {
+              case 'reconstructed-full-conversation':
+                return classifiedPrefix.reconstructedFullInputTokenIds;
+              case 'actual-model-input':
+                return classifiedPrefix.secondInputTokenIds;
+              case 'not-applicable':
+                return undefined;
+              default: {
+                const _ex: never = classifiedPrefix.comparisonInputSource;
+                return _ex;
+              }
+              }
+            })();
+            const prefixComparison = classifiedPrefix.firstMismatchIndex === undefined || comparisonInputTokenIds === undefined
+              ? classifiedPrefix
+              : {
+                ...classifiedPrefix,
+                firstMismatchContext: buildTokenMismatchContext({
+                  tokenizer: loadedTokenizer,
+                  expectedTokenIds: classifiedPrefix.expectedPrefixTokenIds,
+                  actualTokenIds: comparisonInputTokenIds,
+                  mismatchIndex: classifiedPrefix.firstMismatchIndex,
+                }),
+              };
+            return {
+              status: 'passed',
+              assistantMessage,
+              followUpMessage: scenario.followUpMessage,
+              secondTurn,
+              prefixComparison,
+            };
+          } catch (error) {
+            const serialized = serializeInvestigationError({ error, maxLength: 1024 });
+            return {
+              status: 'failed',
+              assistantMessage,
+              followUpMessage: scenario.followUpMessage,
+              error: serialized,
+            };
+          }
+        }
+        default: {
+          const _ex: never = firstTurn;
+          return _ex;
+        }
+        }
+      })();
+      partialObservation.continuity = continuity;
+      publishObservationCheckpoint();
 
       const toolResultContinuation = await (async (): Promise<TransformersJsProductionInvestigationObservation['toolResultContinuation']> => {
         const continuationScenario = scenario.toolResultContinuation;
@@ -1049,12 +1232,14 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
           toolCall: continuationScenario.toolCall,
           toolResultContent: continuationScenario.toolResultContent,
         });
-        const toolStrategy = selectGenerationStrategy({
-          modelType,
-          activeModelId,
-          hasTools: true,
-        });
+        let toolStrategyKind: TransformersJsProductionInvestigationStrategy | undefined;
         try {
+          const toolStrategy = selectGenerationStrategy({
+            modelType,
+            activeModelId,
+            hasTools: true,
+          });
+          toolStrategyKind = toolStrategy.kind;
           const turn = await runObservedProductionTurn({
             loadedModel,
             loadedTokenizer,
@@ -1064,16 +1249,35 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
             isEncoderDecoder,
             tools: MODEL_SUPPORT_TOOL_DEFINITIONS,
           });
+          const { comparisonInputSource, comparisonInputTokenIds } = (() => {
+            switch (turn.fullConversationInput.status) {
+            case 'observed':
+              return {
+                comparisonInputSource: 'reconstructed-full-conversation' as const,
+                comparisonInputTokenIds: turn.fullConversationInput.inputTokenIds,
+              };
+            case 'unavailable':
+              return {
+                comparisonInputSource: 'actual-model-input' as const,
+                comparisonInputTokenIds: turn.inputTokenIds,
+              };
+            default: {
+              const _ex: never = turn.fullConversationInput;
+              return _ex;
+            }
+            }
+          })();
           const comparison = compareTokenSequences({
             expected: continuationScenario.expectedInputTokenIds,
-            actual: turn.inputTokenIds,
+            actual: comparisonInputTokenIds,
           });
           return {
             status: 'passed',
             source: 'reference-parser-roundtrip',
-            strategy: toolStrategy.kind,
+            strategy: toolStrategyKind,
             messages,
             expectedInputTokenIds: continuationScenario.expectedInputTokenIds,
+            comparisonInputSource,
             inputTokenExactMatch: comparison.exactMatch,
             firstInputMismatchIndex: comparison.firstMismatchIndex,
             turn,
@@ -1083,16 +1287,15 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
           return {
             status: 'failed',
             source: 'reference-parser-roundtrip',
-            strategy: toolStrategy.kind,
+            strategy: toolStrategyKind,
             messages,
             expectedInputTokenIds: continuationScenario.expectedInputTokenIds,
-            error: {
-              name: serialized.name,
-              message: serialized.message,
-            },
+            error: serialized,
           };
         }
       })();
+      partialObservation.toolResultContinuation = toolResultContinuation;
+      publishObservationCheckpoint();
 
       progressCallback({ info: { status: 'model-support-production-reasoning-differential' } });
       const reasoning: TransformersJsProductionInvestigationObservation['reasoning'] = await (async () => {
@@ -1112,70 +1315,146 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         }
         }
 
-        resetGenerationContinuationState();
-        let disabledTurn: TransformersJsProductionInvestigationTurnObservation;
-        try {
-          disabledTurn = await runObservedProductionTurn({
-            loadedModel,
-            loadedTokenizer,
-            strategy,
-            messages: scenario.messages,
-            maxNewTokens: 1,
-            isEncoderDecoder,
-            tools: undefined,
-            reasoningEffort: 'none',
-          });
-        } catch (error) {
-          const serialized = serializeInvestigationError({ error, maxLength: 1024 });
-          return {
-            status: 'failed',
-            source: 'existing-production-strategy',
-            strategy: 'qwen3_5',
-            failedEffort: 'none',
-            disabledTurn: undefined,
-            error: { name: serialized.name, message: serialized.message },
-          };
-        }
+        type ReasoningEffortRunResult =
+          | {
+              effort: 'none' | 'high',
+              status: 'passed',
+              turn: TransformersJsProductionInvestigationTurnObservation,
+            }
+          | {
+              effort: 'none' | 'high',
+              status: 'failed',
+              error: TransformersJsProductionInvestigationError,
+            };
+        const runReasoningEffort = async ({ effort }: { effort: 'none' | 'high' }): Promise<ReasoningEffortRunResult> => {
+          resetGenerationContinuationState();
+          try {
+            return {
+              effort,
+              status: 'passed',
+              turn: await runObservedProductionTurn({
+                loadedModel,
+                loadedTokenizer,
+                strategy,
+                messages: scenario.messages,
+                maxNewTokens: 1,
+                isEncoderDecoder,
+                tools: undefined,
+                reasoningEffort: effort,
+              }),
+            };
+          } catch (error) {
+            const serialized = serializeInvestigationError({ error, maxLength: 1024 });
+            return {
+              effort,
+              status: 'failed',
+              error: serialized,
+            };
+          }
+        };
+        const summarizeReasoningEffort = ({ attempt }: { attempt: ReasoningEffortRunResult }): TransformersJsProductionInvestigationReasoningEffortObservation => {
+          switch (attempt.status) {
+          case 'passed':
+            return {
+              effort: attempt.effort,
+              status: 'passed',
+              inputTokenCount: attempt.turn.inputTokenIds.length,
+            };
+          case 'failed':
+            return {
+              effort: attempt.effort,
+              status: 'failed',
+              error: attempt.error,
+            };
+          default: {
+            const _ex: never = attempt;
+            return _ex;
+          }
+          }
+        };
 
-        resetGenerationContinuationState();
-        try {
-          const enabledTurn = await runObservedProductionTurn({
-            loadedModel,
-            loadedTokenizer,
-            strategy,
-            messages: scenario.messages,
-            maxNewTokens: 1,
-            isEncoderDecoder,
-            tools: undefined,
-            reasoningEffort: 'high',
-          });
-          const comparison = compareTokenSequences({
-            expected: disabledTurn.inputTokenIds,
-            actual: enabledTurn.inputTokenIds,
-          });
-          return {
-            status: 'observed',
-            source: 'existing-production-strategy',
-            strategy: 'qwen3_5',
-            disabledEffort: 'none',
-            enabledEffort: 'high',
-            disabledTurn,
-            enabledTurn,
-            inputTokenExactMatch: comparison.exactMatch,
-            firstInputMismatchIndex: comparison.firstMismatchIndex,
-          };
-        } catch (error) {
-          const serialized = serializeInvestigationError({ error, maxLength: 1024 });
-          return {
-            status: 'failed',
-            source: 'existing-production-strategy',
-            strategy: 'qwen3_5',
-            failedEffort: 'high',
-            disabledTurn,
-            error: { name: serialized.name, message: serialized.message },
-          };
+        const disabledAttempt = await runReasoningEffort({ effort: 'none' });
+        const enabledAttempt = await runReasoningEffort({ effort: 'high' });
+        const failedObservation = ({
+          firstFailure,
+          disabledTurn,
+          enabledTurn,
+        }: {
+          firstFailure: Extract<ReasoningEffortRunResult, { status: 'failed' }>,
+          disabledTurn: TransformersJsProductionInvestigationTurnObservation | undefined,
+          enabledTurn: TransformersJsProductionInvestigationTurnObservation | undefined,
+        }): TransformersJsProductionInvestigationReasoningObservation => ({
+          status: 'failed',
+          source: 'existing-production-strategy',
+          strategy: 'qwen3_5',
+          failedEffort: firstFailure.effort,
+          disabledTurn,
+          enabledTurn,
+          effortAttempts: [
+            summarizeReasoningEffort({ attempt: disabledAttempt }),
+            summarizeReasoningEffort({ attempt: enabledAttempt }),
+          ],
+          error: firstFailure.error,
+        });
+
+        switch (disabledAttempt.status) {
+        case 'passed':
+          switch (enabledAttempt.status) {
+          case 'passed': {
+            const comparison = compareTokenSequences({
+              expected: disabledAttempt.turn.inputTokenIds,
+              actual: enabledAttempt.turn.inputTokenIds,
+            });
+            return {
+              status: 'observed',
+              source: 'existing-production-strategy',
+              strategy: 'qwen3_5',
+              disabledEffort: 'none',
+              enabledEffort: 'high',
+              disabledTurn: disabledAttempt.turn,
+              enabledTurn: enabledAttempt.turn,
+              inputTokenExactMatch: comparison.exactMatch,
+              firstInputMismatchIndex: comparison.firstMismatchIndex,
+            };
+          }
+          case 'failed':
+            return failedObservation({
+              firstFailure: enabledAttempt,
+              disabledTurn: disabledAttempt.turn,
+              enabledTurn: undefined,
+            });
+          default: {
+            const _ex: never = enabledAttempt;
+            throw new Error(`Unhandled enabled reasoning attempt: ${((_ex satisfies never) as { readonly status: string }).status}`);
+          }
+          }
+        case 'failed':
+          switch (enabledAttempt.status) {
+          case 'passed':
+            return failedObservation({
+              firstFailure: disabledAttempt,
+              disabledTurn: undefined,
+              enabledTurn: enabledAttempt.turn,
+            });
+          case 'failed':
+            return failedObservation({
+              firstFailure: disabledAttempt,
+              disabledTurn: undefined,
+              enabledTurn: undefined,
+            });
+          default: {
+            const _ex: never = enabledAttempt;
+            throw new Error(`Unhandled enabled reasoning attempt: ${((_ex satisfies never) as { readonly status: string }).status}`);
+          }
+          }
+        default: {
+          const _ex: never = disabledAttempt;
+          throw new Error(`Unhandled disabled reasoning attempt: ${((_ex satisfies never) as { readonly status: string }).status}`);
+        }
         }
       })();
+      partialObservation.reasoning = reasoning;
+      publishObservationCheckpoint();
 
       progressCallback({ info: { status: 'model-support-production-multimodal' } });
       const multimodal: TransformersJsProductionInvestigationObservation['multimodal'] = await (async () => {
@@ -1219,7 +1498,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
               source: 'fixed-synthetic-fixture-and-existing-production-strategy',
               strategy: 'gemma4',
               fixture: { ...fixture, prompt, maxNewTokens },
-              error: { name: serialized.name, message: serialized.message },
+              error: serialized,
             };
           }
         }
@@ -1242,12 +1521,15 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         }
         }
       })();
+      partialObservation.multimodal = multimodal;
+      publishObservationCheckpoint();
 
       progressCallback({ info: { status: 'model-support-production-complete' } });
       return {
         modelId: scenario.modelId,
         resolvedRevision: scenario.resolvedRevision,
-        candidate: scenario.candidate,
+        candidate: route.candidate,
+        loadAttempts: route.loadAttempts,
         route: {
           autoClass: route.autoClass,
           processor: route.processor,
@@ -1255,7 +1537,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
           modelType,
         },
         isEncoderDecoder,
-        ...firstTurn,
+        firstTurn,
         continuity,
         toolResultContinuation,
         reasoning,

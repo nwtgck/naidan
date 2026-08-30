@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import type {
+  ModelSupportInvestigationLoadAttemptError,
   ModelSupportInvestigationRecovery,
   ModelSupportInvestigationRun,
 } from "@/features/transformers-js/model-support-investigation/types";
@@ -26,8 +27,75 @@ function safeFilePart({ value }: { value: string }): string {
   return sanitized || "model";
 }
 
-function toolResultContinuationError({ run }: { run: ModelSupportInvestigationRun }): { name: string, message: string } | undefined {
-  const observation = run.productionLane.observation?.toolResultContinuation;
+function productionObservation({ run }: { run: ModelSupportInvestigationRun }) {
+  return run.productionLane.observation ?? run.productionLane.partialObservation;
+}
+
+
+function attemptEvidenceRecords({ run }: { run: ModelSupportInvestigationRun }) {
+  return [
+    ...run.loadAttempts.map(attempt => ({
+      attemptId: attempt.attemptId,
+      candidateId: attempt.candidateId,
+      inputStrategyAttempts: attempt.inputStrategyAttempts,
+      naturalGeneration: attempt.naturalGeneration,
+      toolProtocolProbe: attempt.toolProtocolProbe,
+    })),
+    ...(run.activeLoadAttempt === undefined ? [] : [{
+      attemptId: run.activeLoadAttempt.attemptId,
+      candidateId: run.activeLoadAttempt.candidateId,
+      inputStrategyAttempts: run.activeLoadAttempt.inputStrategyAttempts,
+      naturalGeneration: run.activeLoadAttempt.naturalGeneration,
+      toolProtocolProbe: run.activeLoadAttempt.toolProtocolProbe,
+    }]),
+  ];
+}
+
+function inputStrategyErrorRecords({ run }: { run: ModelSupportInvestigationRun }) {
+  return attemptEvidenceRecords({ run }).flatMap(attempt => attempt.inputStrategyAttempts.flatMap((strategyAttempt) => {
+    const status = strategyAttempt.status;
+    switch (status) {
+    case "passed":
+      return [];
+    case "failed":
+      return [{
+        attemptId: attempt.attemptId,
+        candidateId: attempt.candidateId,
+        strategy: strategyAttempt.strategy,
+        failureStage: strategyAttempt.failureStage,
+        error: strategyAttempt.error,
+      }];
+    default: {
+      const _ex: never = status;
+      return _ex;
+    }
+    }
+  }));
+}
+
+function naturalGenerationErrorRecords({ run }: { run: ModelSupportInvestigationRun }) {
+  return attemptEvidenceRecords({ run }).flatMap((attempt) => {
+    const observation = attempt.naturalGeneration;
+    if (observation === undefined) return [];
+    switch (observation.status) {
+    case "observed":
+      return [];
+    case "failed":
+      return [{
+        attemptId: attempt.attemptId,
+        candidateId: attempt.candidateId,
+        error: observation.error,
+      }];
+    default: {
+      const _ex: never = observation;
+      return _ex;
+    }
+    }
+  });
+}
+
+function toolResultContinuationError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
+  const observation = productionObservation({ run })?.toolResultContinuation;
   if (observation === undefined) return undefined;
   switch (observation.status) {
   case "passed":
@@ -42,8 +110,25 @@ function toolResultContinuationError({ run }: { run: ModelSupportInvestigationRu
   }
 }
 
-function reasoningError({ run }: { run: ModelSupportInvestigationRun }): { name: string, message: string } | undefined {
-  const reasoning = run.productionLane.observation?.reasoning;
+function reasoningEffortErrorRecords({ run }: { run: ModelSupportInvestigationRun }): Array<{ effort: 'none' | 'high', error: ModelSupportInvestigationLoadAttemptError }> {
+  const reasoning = productionObservation({ run })?.reasoning;
+  if (reasoning === undefined || reasoning.status !== 'failed') return [];
+  return reasoning.effortAttempts.flatMap((attempt) => {
+    switch (attempt.status) {
+    case 'passed':
+      return [];
+    case 'failed':
+      return [{ effort: attempt.effort, error: attempt.error }];
+    default: {
+      const _ex: never = attempt;
+      return _ex;
+    }
+    }
+  });
+}
+
+function reasoningError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
+  const reasoning = productionObservation({ run })?.reasoning;
   if (reasoning === undefined) return undefined;
   switch (reasoning.status) {
   case "observed":
@@ -58,8 +143,8 @@ function reasoningError({ run }: { run: ModelSupportInvestigationRun }): { name:
   }
 }
 
-function multimodalError({ run }: { run: ModelSupportInvestigationRun }): { name: string, message: string } | undefined {
-  const multimodal = run.productionLane.observation?.multimodal;
+function multimodalError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
+  const multimodal = productionObservation({ run })?.multimodal;
   if (multimodal === undefined) return undefined;
   switch (multimodal.status) {
   case 'observed':
@@ -74,11 +159,42 @@ function multimodalError({ run }: { run: ModelSupportInvestigationRun }): { name
   }
 }
 
-function continuityError({ run }: { run: ModelSupportInvestigationRun }): { name: string, message: string } | undefined {
-  const continuity = run.productionLane.observation?.continuity;
+function firstTurnError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
+  const firstTurn = productionObservation({ run })?.firstTurn;
+  if (firstTurn === undefined) return undefined;
+  switch (firstTurn.status) {
+  case "passed":
+    return undefined;
+  case "failed":
+    return firstTurn.error;
+  default: {
+    const _ex: never = firstTurn;
+    throw new Error(`Unhandled Production first-turn status: ${String(_ex)}`);
+  }
+  }
+}
+
+function persistenceRoundTripError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
+  const persistence = run.persistenceRoundTrip;
+  if (persistence === undefined) return undefined;
+  switch (persistence.status) {
+  case 'observed':
+    return undefined;
+  case 'failed':
+    return persistence.error;
+  default: {
+    const _ex: never = persistence;
+    return _ex;
+  }
+  }
+}
+
+function continuityError({ run }: { run: ModelSupportInvestigationRun }): ModelSupportInvestigationLoadAttemptError | undefined {
+  const continuity = productionObservation({ run })?.continuity;
   if (continuity === undefined) return undefined;
   switch (continuity.status) {
   case "passed":
+  case "not-run":
     return undefined;
   case "failed":
     return continuity.error;
@@ -111,7 +227,7 @@ function postAttemptCacheErrorRecords({ run }: { run: ModelSupportInvestigationR
 }
 
 function toolProtocolProbeErrorRecords({ run }: { run: ModelSupportInvestigationRun }) {
-  return run.loadAttempts.flatMap((attempt) => {
+  return attemptEvidenceRecords({ run }).flatMap((attempt) => {
     const probe = attempt.toolProtocolProbe;
     if (probe === undefined) return [];
     switch (probe.status) {
@@ -177,15 +293,39 @@ export async function createPartialModelSupportEvidence({ run, recovery }: {
   const zip = new JSZip();
   const readiness = evaluateEvidenceReadiness({ run });
   const supportBoundaries = assessSupportBoundaries({ run });
-  const loadingSummary = run.loadAttempts.length === 0
-    ? "Model loading and generation stages marked not-run were not investigated by this build."
-    : `${run.loadAttempts.length} real-model load ${run.loadAttempts.length === 1 ? "attempt was" : "attempts were"} recorded.`;
+  const loadingSummary = run.activeLoadAttempt !== undefined
+    ? `${run.loadAttempts.length} completed real-model load ${run.loadAttempts.length === 1 ? "attempt was" : "attempts were"} recorded; ${run.activeLoadAttempt.candidateId} is checkpointed while ${run.activeLoadAttempt.currentStage} is still running.`
+    : run.loadAttempts.length === 0
+      ? "Model loading and generation stages marked not-run were not investigated by this build."
+      : `${run.loadAttempts.length} real-model load ${run.loadAttempts.length === 1 ? "attempt was" : "attempts were"} recorded.`;
   const productionSummary = (() => {
     switch (run.productionLane.status) {
-    case "passed":
-      return `Production Lane passed with ${run.productionLane.observation?.route.strategy ?? "an unknown"} strategy.`;
-    case "failed":
-      return "Production Lane failed after Reference Lane evidence was preserved.";
+    case "passed": {
+      const observation = run.productionLane.observation;
+      if (observation === undefined) return "Production Lane completed without a serializable observation.";
+      switch (observation.firstTurn.status) {
+      case "passed":
+        return `Production Lane generated successfully with ${observation.route.strategy} strategy.`;
+      case "failed":
+        return `Production Lane loaded and continued independent probes with ${observation.route.strategy} strategy after first-turn generation failed.`;
+      default: {
+        const _ex: never = observation.firstTurn;
+        return _ex;
+      }
+      }
+    }
+    case "running": {
+      const observation = productionObservation({ run });
+      return observation === undefined
+        ? "Production Lane is running; no structured probe checkpoint has been received yet."
+        : "Production Lane is running; completed probe evidence from the latest structured checkpoint is included.";
+    }
+    case "failed": {
+      const observation = productionObservation({ run });
+      return observation === undefined
+        ? "Production Lane failed after Reference Lane evidence was preserved."
+        : "Production Lane failed after preserving completed Production probe evidence from the latest checkpoint.";
+    }
     case "not-run":
       return "Production Lane was not run.";
     default: {
@@ -221,6 +361,7 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
   }
   zip.file("errors.json", `${JSON.stringify({
     runError: run.error,
+    stepErrors: run.stepErrors,
     loadAttemptErrors: run.loadAttempts
       .filter(attempt => attempt.error !== undefined)
       .map(attempt => ({
@@ -229,12 +370,25 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
         failureStage: attempt.failureStage,
         error: attempt.error,
       })),
+    activeLoadAttemptError: run.activeLoadAttempt?.error === undefined
+      ? undefined
+      : {
+        attemptId: run.activeLoadAttempt.attemptId,
+        candidateId: run.activeLoadAttempt.candidateId,
+        currentStage: run.activeLoadAttempt.currentStage,
+        error: run.activeLoadAttempt.error,
+      },
+    inputStrategyErrors: inputStrategyErrorRecords({ run }),
     postAttemptCacheErrors: postAttemptCacheErrorRecords({ run }),
+    naturalGenerationErrors: naturalGenerationErrorRecords({ run }),
     toolProtocolProbeErrors: toolProtocolProbeErrorRecords({ run }),
     productionLaneError: run.productionLane.error,
+    productionFirstTurnError: firstTurnError({ run }),
     productionContinuityError: continuityError({ run }),
+    persistenceRoundTripError: persistenceRoundTripError({ run }),
     productionToolResultContinuationError: toolResultContinuationError({ run }),
     productionReasoningError: reasoningError({ run }),
+    productionReasoningEffortErrors: reasoningEffortErrorRecords({ run }),
     productionMultimodalError: multimodalError({ run }),
     interruptionError: recovery?.interruption?.error,
   }, undefined, 2)}\n`);
@@ -242,7 +396,18 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
     eventKind: "investigation-event" as const,
     ...event,
   })) ?? [];
-  const attemptEvents = run.loadAttempts.flatMap(attempt => attempt.events.map(event => ({
+  const attemptEvents = [
+    ...run.loadAttempts.map(attempt => ({
+      attemptId: attempt.attemptId,
+      candidateId: attempt.candidateId,
+      events: attempt.events,
+    })),
+    ...(run.activeLoadAttempt === undefined ? [] : [{
+      attemptId: run.activeLoadAttempt.attemptId,
+      candidateId: run.activeLoadAttempt.candidateId,
+      events: run.activeLoadAttempt.events,
+    }]),
+  ].flatMap(attempt => attempt.events.map(event => ({
     eventKind: "load-attempt-event" as const,
     attemptId: attempt.attemptId,
     candidateId: attempt.candidateId,
@@ -252,11 +417,28 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
   zip.file("events.jsonl", allEvents.map(event => JSON.stringify(event)).join("\n") + (allEvents.length > 0 ? "\n" : ""));
   if (run.runtimeAssets !== undefined) {
     zip.file("runtime-assets/preflight.json", `${JSON.stringify(run.runtimeAssets, undefined, 2)}\n`);
+    if (run.runtimeAssets.assetIdentity !== undefined) {
+      zip.file("runtime-assets/asset-identity.json", `${JSON.stringify(run.runtimeAssets.assetIdentity, undefined, 2)}\n`);
+    }
     zip.file("runtime-assets/environment.json", `${JSON.stringify(run.runtimeAssets.environment, undefined, 2)}\n`);
     zip.file("runtime-assets/backend-controls.json", `${JSON.stringify({
       wasm: run.runtimeAssets.control,
       webgpu: run.runtimeAssets.webGpuControl,
     }, undefined, 2)}\n`);
+  } else if (run.runtimeAssetsPartial !== undefined) {
+    zip.file("runtime-assets/preflight-partial.json", `${JSON.stringify(run.runtimeAssetsPartial, undefined, 2)}\n`);
+    if (run.runtimeAssetsPartial.assetIdentity !== undefined) {
+      zip.file("runtime-assets/asset-identity.json", `${JSON.stringify(run.runtimeAssetsPartial.assetIdentity, undefined, 2)}\n`);
+    }
+    if (run.runtimeAssetsPartial.environment !== undefined) {
+      zip.file("runtime-assets/environment.json", `${JSON.stringify(run.runtimeAssetsPartial.environment, undefined, 2)}\n`);
+    }
+    if (run.runtimeAssetsPartial.control !== undefined || run.runtimeAssetsPartial.webGpuControl !== undefined) {
+      zip.file("runtime-assets/backend-controls.json", `${JSON.stringify({
+        wasm: run.runtimeAssetsPartial.control,
+        webgpu: run.runtimeAssetsPartial.webGpuControl,
+      }, undefined, 2)}\n`);
+    }
   }
   if (run.repository !== undefined) {
     zip.file("repository/repository.json", `${JSON.stringify(run.repository, undefined, 2)}\n`);
@@ -288,53 +470,43 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
 `,
     );
   }
-  switch (run.productionLane.status) {
-  case "passed":
-    if (run.productionLane.observation !== undefined) {
+  {
+    const observation = productionObservation({ run });
+    if (observation !== undefined) {
+      const isFullObservation = run.productionLane.observation !== undefined;
       zip.file(
-        "production-lane/observation.json",
-        `${JSON.stringify(run.productionLane.observation, undefined, 2)}
-`,
+        isFullObservation ? "production-lane/observation.json" : "production-lane/partial-observation.json",
+        `${JSON.stringify(observation, undefined, 2)}\n`,
       );
-      if (run.productionLane.observation.continuity !== undefined) {
-        zip.file(
-          "production-lane/continuity.json",
-          `${JSON.stringify(run.productionLane.observation.continuity, undefined, 2)}
-`,
-        );
+      if ((observation.loadAttempts?.length ?? 0) > 0) {
+        zip.file("production-lane/load-attempts.json", `${JSON.stringify(observation.loadAttempts, undefined, 2)}\n`);
       }
-      zip.file(
-        "production-lane/tool-result-continuation.json",
-        `${JSON.stringify(run.productionLane.observation.toolResultContinuation, undefined, 2)}
-`,
-      );
-      zip.file(
-        "production-lane/reasoning.json",
-        `${JSON.stringify(run.productionLane.observation.reasoning, undefined, 2)}
-`,
-      );
-      zip.file(
-        "production-lane/multimodal.json",
-        `${JSON.stringify(run.productionLane.observation.multimodal, undefined, 2)}
-`,
-      );
+      if (observation.firstTurn !== undefined) {
+        zip.file("production-lane/first-turn.json", `${JSON.stringify(observation.firstTurn, undefined, 2)}\n`);
+      }
+      if (observation.continuity !== undefined) {
+        zip.file("production-lane/continuity.json", `${JSON.stringify(observation.continuity, undefined, 2)}\n`);
+      }
+      if (observation.toolResultContinuation !== undefined) {
+        zip.file("production-lane/tool-result-continuation.json", `${JSON.stringify(observation.toolResultContinuation, undefined, 2)}\n`);
+      }
+      if (observation.reasoning !== undefined) {
+        zip.file("production-lane/reasoning.json", `${JSON.stringify(observation.reasoning, undefined, 2)}\n`);
+      }
+      if (observation.multimodal !== undefined) {
+        zip.file("production-lane/multimodal.json", `${JSON.stringify(observation.multimodal, undefined, 2)}\n`);
+      }
     }
-    break;
-  case "failed":
     if (run.productionLane.error !== undefined) {
-      zip.file(
-        "production-lane/error.json",
-        `${JSON.stringify(run.productionLane.error, undefined, 2)}
-`,
-      );
+      zip.file("production-lane/error.json", `${JSON.stringify(run.productionLane.error, undefined, 2)}\n`);
     }
-    break;
-  case "not-run":
-    break;
-  default: {
-    const _ex: never = run.productionLane.status;
-    throw new Error(`Unhandled Production Lane status: ${_ex}`);
   }
+  if (run.persistenceRoundTrip !== undefined) {
+    zip.file(
+      "continuity/persistence-roundtrip.json",
+      `${JSON.stringify(run.persistenceRoundTrip, undefined, 2)}
+`,
+    );
   }
   if (run.laneComparison !== undefined) {
     zip.file(
@@ -356,6 +528,10 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
       `${JSON.stringify(toolProtocolProbes, undefined, 2)}
 `,
     );
+  }
+  if (run.activeLoadAttempt !== undefined) {
+    zip.file("load-attempts/active.json", `${JSON.stringify(run.activeLoadAttempt, undefined, 2)}
+`);
   }
   if (run.loadAttempts.length > 0) {
     zip.file("load-attempts/index.json", `${JSON.stringify(run.loadAttempts, undefined, 2)}

@@ -1155,6 +1155,7 @@ import { ModelSupportInvestigationModal__no_supported_auto_classes } from '@/str
 import { ModelSupportInvestigationModal__not_run } from '@/strings/messages/ModelSupportInvestigationModal__not_run/de';
 import { ModelSupportInvestigationModal__opfs_inventory } from '@/strings/messages/ModelSupportInvestigationModal__opfs_inventory/de';
 import { ModelSupportInvestigationModal__opfs_inventory_summary } from '@/strings/messages/ModelSupportInvestigationModal__opfs_inventory_summary/de';
+import { ModelSupportInvestigationModal__persistence_roundtrip_summary } from '@/strings/messages/ModelSupportInvestigationModal__persistence_roundtrip_summary/de';
 import { ModelSupportInvestigationModal__passed } from '@/strings/messages/ModelSupportInvestigationModal__passed/de';
 import { ModelSupportInvestigationModal__repository } from '@/strings/messages/ModelSupportInvestigationModal__repository/de';
 import { ModelSupportInvestigationModal__repository_information } from '@/strings/messages/ModelSupportInvestigationModal__repository_information/de';
@@ -2786,6 +2787,7 @@ export const catalog = {
   ModelSupportInvestigationModal__not_run,
   ModelSupportInvestigationModal__opfs_inventory,
   ModelSupportInvestigationModal__opfs_inventory_summary,
+  ModelSupportInvestigationModal__persistence_roundtrip_summary,
   ModelSupportInvestigationModal__passed,
   ModelSupportInvestigationModal__repository,
   ModelSupportInvestigationModal__repository_information,

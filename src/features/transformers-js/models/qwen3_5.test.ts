@@ -23,6 +23,29 @@ describe('transformers-js-qwen3_5', () => {
     })).toBe(false);
   });
 
+  it('explains why a full next-turn conversation is not currently eligible for no-tool KV continuation', () => {
+    const decision = TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.assessQwen3_5NoToolContinuationEligibility({
+      messages: [
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: 'hi' },
+        { role: 'user', content: 'again' },
+      ],
+      conversationState: {
+        modelId: 'hf.co/onnx-community/Qwen3.5-2B-ONNX',
+        promptHistory: 'prompt-history',
+        messageCount: 1,
+        imageGridThw: undefined,
+        videoGridThw: undefined,
+      },
+      activeModelId: 'hf.co/onnx-community/Qwen3.5-2B-ONNX',
+    });
+
+    expect(decision).toEqual({
+      status: 'ineligible',
+      reason: 'message-count-mismatch',
+    });
+  });
+
   it('normalizes JSON-string tool arguments to objects for the chat template', () => {
     const normalized = TRANSFORMERS_JS_QWEN3_5_TEST_ONLY.normalizeQwen3_5ToolCallsForTemplate({
       toolCalls: [
