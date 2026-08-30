@@ -803,6 +803,7 @@ describe('transformers-js.worker', () => {
     let capturedCallback: ((output: string) => void) | undefined;
     let tokensToEmit: string[];
     let mockApplyTemplate: ReturnType<typeof vi.fn>;
+    let mockGenerate: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
       // Outer beforeEach already ran vi.resetModules() + vi.clearAllMocks()
@@ -818,13 +819,19 @@ describe('transformers-js.worker', () => {
       );
 
       mockApplyTemplate = vi.fn().mockReturnValue({ input_ids: [1, 2, 3] });
+      mockGenerate = vi.fn().mockImplementation(async () => {
+        for (const token of tokensToEmit) capturedCallback?.(token);
+        return { past_key_values: {} };
+      });
       const mockModel = {
-        generate: vi.fn().mockImplementation(async () => {
-          for (const token of tokensToEmit) capturedCallback?.(token);
-          return { past_key_values: {} };
-        }),
+        generate: mockGenerate,
         dispose: vi.fn(),
         device: 'webgpu',
+        config: {
+          model_type: 'example',
+          is_encoder_decoder: false,
+          max_position_embeddings: 128_000,
+        },
       };
 
       (tfMock.AutoModelForCausalLM.from_pretrained as any).mockResolvedValue(mockModel);
@@ -836,6 +843,19 @@ describe('transformers-js.worker', () => {
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
       await workerObj.loadModel('standard-model', vi.fn());
+    });
+
+    it('uses the remaining declared model context instead of a fixed 1024-token fallback', async () => {
+      mockApplyTemplate.mockImplementation((_messages, options) => {
+        if (options?.tokenize === false) return '<|im_start|>assistant\n';
+        return { input_ids: { dims: [1, 2_048] } };
+      });
+
+      await workerObj.generateText([], vi.fn(), vi.fn(), undefined, undefined);
+
+      expect(mockGenerate).toHaveBeenCalledWith(expect.objectContaining({
+        max_new_tokens: 125_952,
+      }));
     });
 
     it('emits tool calls when <tool_call> tags appear in output', async () => {

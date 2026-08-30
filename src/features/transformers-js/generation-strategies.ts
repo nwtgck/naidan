@@ -26,6 +26,7 @@ import {
   type Qwen3_5ConversationState,
 } from './models/qwen3_5';
 import type { WorkerToolDefinition } from './types';
+import { resolveGenerationBudget } from './generation-budget';
 import {
   createReasoningStreamNormalizer,
   detectReasoningStreamProtocol,
@@ -511,10 +512,19 @@ async function generateWithModel({
   stoppingCriteriaList.push(stoppingCriteria as never);
 
   observationSink?.onGenerateStart({ inputs, pastKeyValues });
+  const generationBudget = resolveGenerationBudget({
+    modelConfig: model.config,
+    inputs,
+    pastKeyValues,
+    maxCompletionTokens: params?.maxCompletionTokens,
+  });
+  const generationLength = generationBudget.maxNewTokens === undefined
+    ? {}
+    : { max_new_tokens: generationBudget.maxNewTokens };
   const result = await (model as unknown as TextGenerationModel).generate({
     ...inputs,
     past_key_values: pastKeyValues,
-    max_new_tokens: params?.maxCompletionTokens || 1024,
+    ...generationLength,
     temperature: params?.temperature ?? 0.6,
     top_p: params?.topP ?? 0.9,
     do_sample: (params?.temperature ?? 0.6) > 0,
