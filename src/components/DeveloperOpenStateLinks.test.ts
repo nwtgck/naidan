@@ -4,6 +4,7 @@ import { nextTick } from 'vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 import { urlImportExportLogic } from '@/features/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 vi.mock('@/features/import-export/url-logic', () => ({
   urlImportExportLogic: {
@@ -20,6 +21,10 @@ vi.mock('lucide-vue-next', () => ({
   ExternalLinkIcon: { template: '<span>ExternalLink</span>' },
   Loader2Icon: { template: '<span>Loader2</span>' },
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('DeveloperOpenStateLinks', () => {
   const addToast = vi.fn();

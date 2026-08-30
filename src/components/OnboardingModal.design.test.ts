@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import OnboardingModal from './OnboardingModal.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
 import { useTheme } from '@/features/theme/composables/useTheme';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 vi.mock('../features/lm/openai');
 vi.mock('../features/lm/ollama');

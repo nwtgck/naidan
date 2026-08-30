@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -7,6 +8,10 @@ import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 vi.mock('../composables/useChat');
 vi.mock('../composables/useSettings');

@@ -1,7 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('ContextCompactProgressStrip', () => {
   afterEach(() => {

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
@@ -28,6 +29,10 @@ const globalStubs = {
   ZoomInIcon: true, ZoomOutIcon: true, CopyIcon: true, CheckIcon: true, File: true, EyeIcon: true,
   RefreshCwIcon: true, Calendar: true, InfoIcon: true,
 };
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('BinaryObjectPreviewModal.vue', () => {
   beforeEach(() => {

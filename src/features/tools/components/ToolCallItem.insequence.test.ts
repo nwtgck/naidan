@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { computed, h } from 'vue';
 import ToolCallItem from './ToolCallItem.vue';
 import type { CombinedToolCall } from '@/01-models/types';
 import { useToolCallOutput } from '@/composables/chat/ui/useToolCallOutput';
 import { toMessageId, toToolCallId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 vi.mock('lucide-vue-next', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;

@@ -2,7 +2,7 @@ import { generateId } from '@/01-models/id';
 import { toChatId } from '@/01-models/ids';
 import type { ToolApprovalRequestId } from '@/01-models/ids';
 import { mount } from '@vue/test-utils';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
 import ChatApprovalPanel from './ChatApprovalPanel.vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { APPROVAL_ACTIONS } from '@/features/tools/approval';
@@ -34,7 +34,7 @@ function mountPanel({
 }
 
 describe('ChatApprovalPanel', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 

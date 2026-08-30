@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import ChatWeshTerminalModal from './ChatWeshTerminalModal.vue';
 import { toChatGroupId, toChatId, toVolumeId } from '@/01-models/ids';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const mocks = vi.hoisted(() => ({
   startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
@@ -64,6 +65,10 @@ function createDirectoryHandleMock({ name }: { name: string }): FileSystemDirect
   } as unknown as FileSystemDirectoryHandle;
   return handle;
 }
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('ChatWeshTerminalModal', () => {
   const tmpHandle = { name: 'tmp' } as unknown as FileSystemDirectoryHandle;

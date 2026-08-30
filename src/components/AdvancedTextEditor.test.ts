@@ -1,7 +1,12 @@
 import { mount } from '@vue/test-utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import AdvancedTextEditor from './AdvancedTextEditor.vue';
 import { nextTick } from 'vue';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('AdvancedTextEditor.vue', () => {
   const initialValue = `Line 1

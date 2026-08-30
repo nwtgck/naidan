@@ -1,8 +1,13 @@
 import { toMessageId } from '@/01-models/ids';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import SpeechControl from './SpeechControl.vue';
 import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED } from '@/utils/image-generation';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 // Mock speech service
 vi.mock('../logic/web-speech', () => ({

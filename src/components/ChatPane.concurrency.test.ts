@@ -1,6 +1,7 @@
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { nextTick, ref, computed, reactive } from 'vue';
@@ -11,6 +12,10 @@ import type { Attachment, LmParameters } from '@/01-models/types';
 
 import { setupScrollToMock } from '@/utils/test-utils';
 
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 vi.mock('@/composables/useAppPresentation', () => ({
   isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',

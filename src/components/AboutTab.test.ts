@@ -3,8 +3,13 @@ import path from 'node:path';
 import { flushPromises, mount } from '@vue/test-utils';
 import { parse } from '@vue/compiler-sfc';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 import AboutTab from './AboutTab.vue';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 vi.mock('virtual:naidan-licenses', () => ({
   default: [{

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import DebugWeshTerminalModal from './DebugWeshTerminalModal.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const mocks = vi.hoisted(() => ({
   startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
@@ -54,6 +55,10 @@ function createDirectoryHandleMock({ name }: { name: string }): FileSystemDirect
   } as unknown as FileSystemDirectoryHandle;
   return handle;
 }
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('DebugWeshTerminalModal', () => {
   beforeEach(() => {

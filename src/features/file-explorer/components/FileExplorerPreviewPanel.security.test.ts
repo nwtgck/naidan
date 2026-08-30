@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import FileExplorerPreviewPanel from './FileExplorerPreviewPanel.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composables/useFileExplorer';
 import { createHighlightWorker } from '@/features/highlight/worker/impl';
@@ -7,6 +8,10 @@ import type { FileExplorerContext, FileExplorerEntry } from '@/features/file-exp
 import { sanitizeHighlightHtml } from '@/logic/security/allowedHtml';
 import type { AllowedHtml } from '@/logic/security/allowedHtml';
 import type { FileExplorerRootDescriptor } from '@/features/file-explorer/worker/types';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const rootDescriptor: FileExplorerRootDescriptor = {
   kind: 'opfs-root',

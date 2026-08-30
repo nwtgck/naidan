@@ -9,6 +9,7 @@ import {
   setLocale as setStringLocale,
   type StringBoundaryModule,
 } from '@/strings/runtime';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64, mockPreloadFakeLmRuntime, mockScheduledIdleTasks } = vi.hoisted(() => ({
   mockAddErrorEvent: vi.fn(),
@@ -424,6 +425,7 @@ describe('useSettings Initialization and Bootstrap', () => {
   });
 
   it('should report error and fallback if invalid storage type is in localStorage', async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'invalid-type');
 
@@ -453,6 +455,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
 
     it('should ignore storage-type from override if already initialized and show confirm', async () => {
+      await ensureAllStringsForTest({ locale: 'en' });
       localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
 
       const { init } = useSettings();
@@ -501,6 +504,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
 
     it('should import data from dataZipBase64 during init', async () => {
+      await ensureAllStringsForTest({ locale: 'en' });
       const { init } = useSettings();
       await init({ storageTypeOverride: undefined, dataZipBase64: 'mock-base64-data' });
 

@@ -1,5 +1,6 @@
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
@@ -19,6 +20,10 @@ const router = createRouter({
 });
 
 import type { MessageNode, Chat } from '@/01-models/types';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 // Mock dependencies
 const mockSendMessage = vi.fn().mockResolvedValue(true);

@@ -5,6 +5,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem, ChatSidebarItem } from '@/01-models/types';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const { mockScrollIntoViewSafe } = vi.hoisted(() => ({
   mockScrollIntoViewSafe: vi.fn(),
@@ -159,6 +160,10 @@ vi.mock('vuedraggable', () => ({
     inheritAttrs: false,
   },
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('Sidebar Compact View & DND Integrity', () => {
   const router = createRouter({

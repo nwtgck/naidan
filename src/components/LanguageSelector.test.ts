@@ -1,9 +1,14 @@
 import { mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 import type { UiLocale } from '@/01-models/ui-locale';
 import { STANDALONE_PACKAGE_LOCALE_META_NAME } from '@/features/file-protocol-standalone/logic/package-locale';
 import LanguageSelector from './LanguageSelector.vue';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const mocks = vi.hoisted(() => ({
   setLocale: vi.fn(async (_args: { locale: UiLocale }) => {}),

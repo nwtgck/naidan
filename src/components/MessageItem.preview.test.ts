@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import MessageItem from './MessageItem.vue';
 import { storageService } from '@/00-storage/service';
 import type { MessageNode } from '@/01-models/types';
 import { toAttachmentId, toBinaryObjectId, toMessageId, toChatId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {

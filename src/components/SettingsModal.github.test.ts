@@ -1,10 +1,15 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import AboutTab from './AboutTab.vue';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Global constant mock
 (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
 (global as any).__APP_VERSION__ = '0.5.1-test';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('AboutTab GitHub Link', () => {
   it('should contain GitHub link with correct structure', async () => {

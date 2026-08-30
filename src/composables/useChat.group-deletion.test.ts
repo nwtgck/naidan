@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useChat } from './useChat';
 import { storageService } from '@/00-storage/service';
 import { reactive } from 'vue';
@@ -36,6 +37,10 @@ vi.mock('./useToast', () => ({
     addToast: vi.fn(),
   }),
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('useChat Group Deletion', () => {
   const chatStore = useChat();

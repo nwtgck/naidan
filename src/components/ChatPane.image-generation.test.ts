@@ -1,6 +1,6 @@
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { toChatId } from '@/01-models/ids';
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
@@ -253,7 +253,7 @@ vi.mock('vue-router', () => ({
 }));
 
 describe('ChatPane Image Generation Integration', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 

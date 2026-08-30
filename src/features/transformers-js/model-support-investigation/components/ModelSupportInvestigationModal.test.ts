@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { toToolCallId } from '@/01-models/ids';
@@ -404,7 +404,7 @@ const completedRun: ModelSupportInvestigationRun = {
 };
 
 describe('ModelSupportInvestigationModal', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 

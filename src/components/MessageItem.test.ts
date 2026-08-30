@@ -1,6 +1,7 @@
 import { generateId } from '@/01-models/id';
 import type { MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { flushPromises, mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode, UserMessageNode, AssistantMessageNode } from '@/01-models/types';
@@ -9,6 +10,10 @@ import { CheckIcon } from 'lucide-vue-next';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toMessageId, toChatId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {

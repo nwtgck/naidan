@@ -1,8 +1,13 @@
 import { mount } from '@vue/test-utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import AdvancedTextEditorV3 from './AdvancedTextEditorV3.vue';
 import { nextTick } from 'vue';
 import { setupScrollToMock } from '@/utils/test-utils';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 // Mock scrollTo
 setupScrollToMock();

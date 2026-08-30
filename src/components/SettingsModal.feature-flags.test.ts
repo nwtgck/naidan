@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { reactive, ref } from 'vue';
 import SettingsModal from './SettingsModal.vue';
 import { useRoute, useRouter } from 'vue-router';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const mockIsFeatureEnabled = vi.fn();
 

@@ -1,9 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
 import type { Chat, ChatGroup } from '@/01-models/types';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 function makeChat(overrides: Partial<Chat> = {}): Chat {
   return {

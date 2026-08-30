@@ -1,5 +1,6 @@
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useImageGeneration } from './useImageGeneration';
 
 import { SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
@@ -60,6 +61,10 @@ vi.mock('../features/lm/ollama', async (importOriginal) => {
       }
     },
   };
+});
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
 });
 
 describe('useImageGeneration', () => {

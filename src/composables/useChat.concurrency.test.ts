@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useChat } from './useChat';
 import { storageService } from '@/00-storage/service';
 import type { Chat, SidebarItem, Hierarchy, Settings } from '@/01-models/types';
@@ -135,6 +136,10 @@ vi.mock('../features/lm/ollama', () => ({
     };
   },
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('useChat Concurrency & Stale State Protection', () => {
   const chatStore = useChat();

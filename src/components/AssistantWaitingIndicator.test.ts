@@ -1,6 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('AssistantWaitingIndicator', () => {
   it('renders the label and three breathing orbs', async () => {

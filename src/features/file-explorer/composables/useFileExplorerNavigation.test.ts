@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { ref } from 'vue';
 import { flushPromises } from '@vue/test-utils';
 import { useFileExplorerNavigation } from './useFileExplorerNavigation';
@@ -238,6 +239,10 @@ function makeNav(root: MockExplorerDirectory, initialPath: string | undefined = 
     initialPath,
   });
 }
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('useFileExplorerNavigation', () => {
   let root: MockExplorerDirectory;

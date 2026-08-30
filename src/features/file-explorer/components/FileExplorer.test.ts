@@ -1,5 +1,6 @@
 import { defineComponent, h, Suspense } from 'vue';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, flushPromises } from '@vue/test-utils';
 import FileExplorer from './FileExplorer.vue';
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
@@ -410,6 +411,10 @@ function dispatchTouchPointerEvent({
   });
   target.dispatchEvent(event);
 }
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('FileExplorer.vue', () => {
   let root: MockExplorerDirectory;

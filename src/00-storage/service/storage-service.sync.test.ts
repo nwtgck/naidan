@@ -3,6 +3,13 @@ import { StorageService } from './index';
 import { SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
 import { toBinaryObjectId, toChatGroupId, toChatId, toVolumeId } from '@/01-models/ids';
 
+// eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only generic mock keeps Boundary Strings loading out of storage service tests without adding a runtime dependency.
+vi.mock('@/strings', () => ({
+  ensureStrings: new Proxy({}, {
+    get: () => async () => 'test boundary string',
+  }),
+}));
+
 // We mock the synchronizer to track calls to withLock and notify
 const { mockWithLock, mockNotify, mockSubscribe } = vi.hoisted(() => ({
   mockWithLock: vi.fn().mockImplementation(({ fn }) => fn()),
@@ -355,7 +362,7 @@ describe('StorageService Synchronization Wrapper', () => {
     await expect(service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: () => ({} as any) })).rejects.toThrow(diskError);
 
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
-      message: expect.stringContaining('An error occurred'),
+      message: 'test boundary string',
       details: diskError,
     }));
   });
