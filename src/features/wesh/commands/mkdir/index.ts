@@ -1,22 +1,53 @@
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import { getCoreUmaskOrDefault } from '@/features/wesh/commands/_shared/core-capability';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { parseFilePermissionMode } from '@/features/wesh/commands/_shared/file-mode';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 
-const mkdirArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'p', long: 'parents', effects: [{ key: 'parents', value: true }], help: { summary: 'make parent directories as needed' } },
-    { kind: 'flag', short: 'v', long: 'verbose', effects: [{ key: 'verbose', value: true }], help: { summary: 'print a message for each created directory', category: 'common' } },
-    { kind: 'value', short: 'm', long: 'mode', key: 'mode', valueName: 'MODE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'set file permission bits to MODE', valueName: 'MODE', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+const mkdirParentsOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'parents', value: true }] },
+  forms: [
+    { kind: 'short', name: 'p', value: { kind: 'none' } },
+    { kind: 'long', name: 'parents', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const mkdirVerboseOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'verbose', value: true }] },
+  forms: [
+    { kind: 'short', name: 'v', value: { kind: 'none' } },
+    { kind: 'long', name: 'verbose', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const mkdirModeOption = {
+  semantic: { kind: 'required-value', key: 'mode', parse: undefined },
+  forms: [
+    { kind: 'short', name: 'm', value: { kind: 'required-attached-or-following', missingValueName: 'MODE' } },
+    { kind: 'long', name: 'mode', value: { kind: 'required', missingValueName: 'MODE' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const mkdirHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+
+const mkdirArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: ['context', 'version'],
+  definitions: [mkdirParentsOption, mkdirVerboseOption, mkdirModeOption, mkdirHelpOption],
+});
+const mkdirArgvHelp = defineArgvHelpPresentation({
+  catalog: mkdirArgvCatalog,
+  rows: [
+    { forms: mkdirParentsOption.forms, summary: 'make parent directories as needed' },
+    { forms: mkdirVerboseOption.forms, summary: 'print a message for each created directory', category: 'common' },
+    { forms: mkdirModeOption.forms, summary: 'set file permission bits to MODE', valueName: 'MODE', category: 'common' },
+    { forms: mkdirHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const mkdirArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 async function pathExists({
@@ -104,8 +135,14 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: mkdirArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
-      spec: mkdirArgvSpec,
+      args: stopArgvAtFirstEarlyExit({
+        args: context.args,
+        catalog: mkdirArgvCatalog,
+        policy: mkdirArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
+      }),
+      catalog: mkdirArgvCatalog,
+      policy: mkdirArgvPolicy,
     });
 
     if (parsed.diagnostics.length > 0) {
@@ -113,7 +150,7 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'mkdir',
         message: `mkdir: ${parsed.diagnostics[0]!.message}`,
-        argvSpec: mkdirArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: mkdirArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -122,7 +159,7 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'mkdir',
-        argvSpec: mkdirArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: mkdirArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -154,7 +191,7 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'mkdir',
         message: 'mkdir: missing operand',
-        argvSpec: mkdirArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: mkdirArgvHelp }),
       });
       return { exitCode: 1 };
     }

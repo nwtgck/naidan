@@ -1,7 +1,6 @@
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import {
   canonicalizeExistingPath,
   canonicalizePathAllowingMissingComponents,
@@ -11,76 +10,93 @@ import {
 
 type ReadlinkMode = 'link' | 'canonicalize' | 'existing' | 'missing';
 
-const readlinkArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'f',
-      long: 'canonicalize',
-      effects: [{ key: 'mode', value: 'canonicalize' }],
-      help: { summary: 'canonicalize the path and resolve symlinks' },
-    },
-    {
-      kind: 'flag',
-      short: 'e',
-      long: 'canonicalize-existing',
-      effects: [{ key: 'mode', value: 'existing' }],
-      help: { summary: 'canonicalize the path, requiring every component to exist' },
-    },
-    {
-      kind: 'flag',
-      short: 'm',
-      long: 'canonicalize-missing',
-      effects: [{ key: 'mode', value: 'missing' }],
-      help: { summary: 'canonicalize the path, without requiring components to exist' },
-    },
-    {
-      kind: 'flag',
-      short: 'q',
-      long: 'quiet',
-      effects: [{ key: 'diagnosticMode', value: 'quiet' }],
-      help: { summary: 'suppress most error messages' },
-    },
-    {
-      kind: 'flag',
-      short: 's',
-      long: 'silent',
-      effects: [{ key: 'diagnosticMode', value: 'quiet' }],
-      help: { summary: 'suppress most error messages' },
-    },
-    {
-      kind: 'flag',
-      short: 'v',
-      long: 'verbose',
-      effects: [{ key: 'diagnosticMode', value: 'verbose' }],
-      help: { summary: 'report error messages' },
-    },
-    {
-      kind: 'flag',
-      short: 'n',
-      long: 'no-newline',
-      effects: [{ key: 'noNewline', value: true }],
-      help: { summary: 'do not print the trailing delimiter for one operand' },
-    },
-    {
-      kind: 'flag',
-      short: 'z',
-      long: 'zero',
-      effects: [{ key: 'zero', value: true }],
-      help: { summary: 'end each output line with NUL, not newline' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
+const readlinkCanonicalizeOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'mode', value: 'canonicalize' }] },
+  forms: [
+    { kind: 'short', name: 'f', value: { kind: 'none' } },
+    { kind: 'long', name: 'canonicalize', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const readlinkExistingOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'mode', value: 'existing' }] },
+  forms: [
+    { kind: 'short', name: 'e', value: { kind: 'none' } },
+    { kind: 'long', name: 'canonicalize-existing', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const readlinkMissingOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'mode', value: 'missing' }] },
+  forms: [
+    { kind: 'short', name: 'm', value: { kind: 'none' } },
+    { kind: 'long', name: 'canonicalize-missing', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const readlinkQuietOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'diagnosticMode', value: 'quiet' }] },
+  forms: [
+    { kind: 'short', name: 'q', value: { kind: 'none' } },
+    { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const readlinkSilentOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'diagnosticMode', value: 'quiet' }] },
+  forms: [
+    { kind: 'short', name: 's', value: { kind: 'none' } },
+    { kind: 'long', name: 'silent', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const readlinkVerboseOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'diagnosticMode', value: 'verbose' }] },
+  forms: [
+    { kind: 'short', name: 'v', value: { kind: 'none' } },
+    { kind: 'long', name: 'verbose', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const readlinkNoNewlineOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'noNewline', value: true }] },
+  forms: [
+    { kind: 'short', name: 'n', value: { kind: 'none' } },
+    { kind: 'long', name: 'no-newline', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const readlinkZeroOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'zero', value: true }] },
+  forms: [
+    { kind: 'short', name: 'z', value: { kind: 'none' } },
+    { kind: 'long', name: 'zero', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const readlinkHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+
+const readlinkArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: ['version'],
+  definitions: [
+    readlinkCanonicalizeOption, readlinkExistingOption, readlinkMissingOption,
+    readlinkQuietOption, readlinkSilentOption, readlinkVerboseOption,
+    readlinkNoNewlineOption, readlinkZeroOption, readlinkHelpOption,
+  ],
+});
+const readlinkArgvHelp = defineArgvHelpPresentation({
+  catalog: readlinkArgvCatalog,
+  rows: [
+    { forms: readlinkCanonicalizeOption.forms, summary: 'canonicalize the path and resolve symlinks' },
+    { forms: readlinkExistingOption.forms, summary: 'canonicalize the path, requiring every component to exist' },
+    { forms: readlinkMissingOption.forms, summary: 'canonicalize the path, without requiring components to exist' },
+    { forms: readlinkQuietOption.forms, summary: 'suppress most error messages' },
+    { forms: readlinkSilentOption.forms, summary: 'suppress most error messages' },
+    { forms: readlinkVerboseOption.forms, summary: 'report error messages' },
+    { forms: readlinkNoNewlineOption.forms, summary: 'do not print the trailing delimiter for one operand' },
+    { forms: readlinkZeroOption.forms, summary: 'end each output line with NUL, not newline' },
+    { forms: readlinkHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const readlinkArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 function describeReadlinkError({
@@ -153,12 +169,14 @@ export const readlinkCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: readlinkArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: readlinkArgvCatalog,
+        policy: readlinkArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: readlinkArgvSpec,
+      catalog: readlinkArgvCatalog,
+      policy: readlinkArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -168,7 +186,7 @@ export const readlinkCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'readlink',
         message: `readlink: ${diagnostic.message}`,
-        argvSpec: readlinkArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: readlinkArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -177,7 +195,7 @@ export const readlinkCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'readlink',
-        argvSpec: readlinkArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: readlinkArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -187,7 +205,7 @@ export const readlinkCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'readlink',
         message: 'readlink: missing operand',
-        argvSpec: readlinkArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: readlinkArgvHelp }),
       });
       return { exitCode: 1 };
     }

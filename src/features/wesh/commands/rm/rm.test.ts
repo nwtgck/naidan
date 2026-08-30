@@ -253,6 +253,18 @@ printf 'status=%s target=%s link=%s\n' "$?" "$(test -d nonrecursive-target; echo
     await expect(wesh.vfs.lstat({ path: '/force-wins.txt' })).rejects.toThrow();
   });
 
+  it('renders optional long-value grammar from the native argv catalog', async () => {
+    const help = await execute({ script: 'rm --help' });
+    const invalidHelpValue = await execute({ script: 'rm --help=bogus' });
+
+    expect(help.stdout.text).toContain('--interactive[=WHEN]');
+    expect(help.stdout.text).toContain('--preserve-root[=all]');
+    expect(help.stderr.text).toBe('');
+    expect(help.result.exitCode).toBe(0);
+    expect(invalidHelpValue.stderr.text).toContain("option '--help' doesn't allow an argument");
+    expect(invalidHelpValue.result.exitCode).toBe(1);
+  });
+
   it('supports GNU --interactive[=WHEN] semantics and option precedence', async () => {
     await writeFile({ path: 'never.txt', data: 'payload' });
     const never = await execute({ script: 'rm --interactive=never never.txt', stdin: 'n\n' });
@@ -398,5 +410,15 @@ rm: descend into directory 'tree'? rm: descend into directory 'tree/sub'? rm: re
   });
 
 
+
+  it('keeps unsupported --version in the GNU abbreviation namespace', async () => {
+    const ambiguous = await execute({ script: 'rm --v' });
+
+    expect(ambiguous.stdout.text).toBe('');
+    expect(ambiguous.stderr.text).toContain("option '--v' is ambiguous");
+    expect(ambiguous.stderr.text).toContain("'--verbose'");
+    expect(ambiguous.stderr.text).toContain("'--version'");
+    expect(ambiguous.result.exitCode).not.toBe(0);
+  });
 
 });

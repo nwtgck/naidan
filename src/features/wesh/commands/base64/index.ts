@@ -1,12 +1,11 @@
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, HELP_EARLY_EXIT_OPTIONS, parseStandardArgv, stopArgvAtFirstEarlyExit, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
 import { writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 
 function parseWrap({
   value,
@@ -257,44 +256,59 @@ async function decodeStream({
   await flush();
 }
 
-const base64ArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'd',
-      long: 'decode',
-      effects: [{ key: 'decode', value: true }],
-      help: { summary: 'decode data', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'i',
-      long: 'ignore-garbage',
-      effects: [{ key: 'ignoreGarbage', value: true }],
-      help: { summary: 'when decoding, ignore non-alphabet characters', category: 'common' },
-    },
-    {
-      kind: 'value',
-      short: 'w',
-      long: 'wrap',
-      key: 'wrap',
-      valueName: 'cols',
-      allowAttachedValue: true,
-      parseValue: ({ value }) => parseWrap({ value }),
-      help: { summary: 'wrap encoded lines after COLS character (default 76)', valueName: 'COLS', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
+const base64DecodeOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'decode', value: true }] },
+  forms: [
+    { kind: 'short', name: 'd', value: { kind: 'none' } },
+    { kind: 'long', name: 'decode', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const base64IgnoreGarbageOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'ignoreGarbage', value: true }] },
+  forms: [
+    { kind: 'short', name: 'i', value: { kind: 'none' } },
+    { kind: 'long', name: 'ignore-garbage', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const base64WrapOption = {
+  semantic: {
+    kind: 'required-value',
+    key: 'wrap',
+    parse: ({ rawValue }: { rawValue: string }) => {
+      const parsed = parseWrap({ value: rawValue });
+      return parsed.ok
+        ? { kind: 'parsed' as const, value: parsed.value }
+        : { kind: 'invalid' as const, message: parsed.message };
+    },
+  },
+  forms: [
+    { kind: 'short', name: 'w', value: { kind: 'required-attached-or-following', missingValueName: 'cols' } },
+    { kind: 'long', name: 'wrap', value: { kind: 'required', missingValueName: 'cols' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const base64HelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+
+const base64ArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: ['version'],
+  definitions: [base64DecodeOption, base64IgnoreGarbageOption, base64WrapOption, base64HelpOption],
+});
+const base64ArgvHelp = defineArgvHelpPresentation({
+  catalog: base64ArgvCatalog,
+  rows: [
+    { forms: base64DecodeOption.forms, summary: 'decode data', category: 'common' },
+    { forms: base64IgnoreGarbageOption.forms, summary: 'when decoding, ignore non-alphabet characters', category: 'common' },
+    { forms: base64WrapOption.forms, summary: 'wrap encoded lines after COLS character (default 76)', valueName: 'COLS', category: 'common' },
+    { forms: base64HelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+
+const base64ArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 export const base64CommandDefinition: WeshCommandDefinition = {
@@ -305,8 +319,9 @@ export const base64CommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: base64ArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
-      spec: base64ArgvSpec,
+      args: stopArgvAtFirstEarlyExit({ args: context.args, catalog: base64ArgvCatalog, policy: base64ArgvPolicy, earlyExitOptions: HELP_EARLY_EXIT_OPTIONS }),
+      catalog: base64ArgvCatalog,
+      policy: base64ArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -315,7 +330,7 @@ export const base64CommandDefinition: WeshCommandDefinition = {
         context,
         command: 'base64',
         message: `base64: ${diagnostic.message}`,
-        argvSpec: base64ArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: base64ArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -324,7 +339,7 @@ export const base64CommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'base64',
-        argvSpec: base64ArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: base64ArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -334,7 +349,7 @@ export const base64CommandDefinition: WeshCommandDefinition = {
         context,
         command: 'base64',
         message: `base64: extra operand '${parsed.positionals[1] ?? ''}'`,
-        argvSpec: base64ArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: base64ArgvHelp }),
       });
       return { exitCode: 1 };
     }

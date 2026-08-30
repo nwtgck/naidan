@@ -1,3 +1,4 @@
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type {
   WeshCommandDefinition,
   WeshCommandResult,
@@ -6,9 +7,7 @@ import type {
   WeshFileType,
   WeshStat,
 } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 
 type LsSymlinkMode = 'logical' | 'command-line' | 'physical';
 
@@ -40,37 +39,6 @@ function parseClassifyArgument({ value }: { value: string }): LsClassifyMode | u
       .map(entry => entry.mode),
   );
   return matchingModes.size === 1 ? [...matchingModes][0] : undefined;
-}
-
-function parseClassifyLongOption({ token }: { token: string }) {
-  const prefix = '--classify=';
-  if (!token.startsWith(prefix)) return undefined;
-
-  const value = token.slice(prefix.length);
-  const mode = parseClassifyArgument({ value });
-  const effects = (() => {
-    if (mode === undefined) return [{ key: 'classifyParseError', value }];
-    switch (mode) {
-    case 'always':
-      return [{ key: 'classify', value: true }];
-    case 'never':
-      return [];
-    default: {
-      const _ex: never = mode;
-      return _ex;
-    }
-    }
-  })();
-  return {
-    kind: 'matched' as const,
-    consumeCount: 1,
-    effects,
-    occurrences: [{
-      kind: 'special' as const,
-      option: '--classify',
-      effects,
-    }],
-  };
 }
 
 function compareCStrings({ left, right }: { left: string, right: string }): number {
@@ -106,25 +74,158 @@ function resolvePath({
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
-const lsArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'l', long: 'l', effects: [{ key: 'l', value: true }], help: { summary: 'use a long listing format', category: 'common' } },
-    { kind: 'flag', short: 'a', long: 'all', effects: [{ key: 'a', value: true }], help: { summary: 'include directory entries whose names begin with .', category: 'common' } },
-    { kind: 'flag', short: 'A', long: 'almost-all', effects: [{ key: 'almostAll', value: true }], help: { summary: 'include hidden entries except . and ..', category: 'common' } },
-    { kind: 'flag', short: 'R', long: 'recursive', effects: [{ key: 'R', value: true }], help: { summary: 'list subdirectories recursively', category: 'common' } },
-    { kind: 'flag', short: 'd', long: 'directory', effects: [{ key: 'directory', value: true }], help: { summary: 'list directories themselves, not their contents', category: 'common' } },
-    { kind: 'flag', short: 'F', long: 'classify', effects: [{ key: 'classify', value: true }], help: { summary: 'append indicator characters to entries', category: 'common' } },
-    { kind: 'flag', short: '1', long: '1', effects: [{ key: '1', value: true }], help: { summary: 'list one file per line', category: 'advanced' } },
-    { kind: 'flag', short: 'h', long: 'human-readable', effects: [{ key: 'h', value: true }], help: { summary: 'with -l, print sizes in human readable format', category: 'common' } },
-    { kind: 'flag', short: 'L', long: 'dereference', effects: [{ key: 'symlinkMode', value: 'logical' }], help: { summary: 'when listing symlinks, show the target type', category: 'advanced' } },
-    { kind: 'flag', short: 'H', long: 'dereference-command-line', effects: [{ key: 'symlinkMode', value: 'command-line' }], help: { summary: 'follow command-line symlinks', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+const lsLongOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'l', value: true }] },
+  forms: [{ kind: 'short', name: 'l', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsAllOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'a', value: true }] },
+  forms: [
+    { kind: 'short', name: 'a', value: { kind: 'none' } },
+    { kind: 'long', name: 'all', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [({ token }) => parseClassifyLongOption({ token })],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsAlmostAllOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'almostAll', value: true }] },
+  forms: [
+    { kind: 'short', name: 'A', value: { kind: 'none' } },
+    { kind: 'long', name: 'almost-all', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsRecursiveOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'R', value: true }] },
+  forms: [
+    { kind: 'short', name: 'R', value: { kind: 'none' } },
+    { kind: 'long', name: 'recursive', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsDirectoryOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'directory', value: true }] },
+  forms: [
+    { kind: 'short', name: 'd', value: { kind: 'none' } },
+    { kind: 'long', name: 'directory', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsOnePerLineOption = {
+  semantic: { kind: 'effects', effects: [{ key: '1', value: true }] },
+  forms: [{ kind: 'short', name: '1', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsHumanReadableOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'h', value: true }] },
+  forms: [
+    { kind: 'short', name: 'h', value: { kind: 'none' } },
+    { kind: 'long', name: 'human-readable', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsDereferenceOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'symlinkMode', value: 'logical' }] },
+  forms: [
+    { kind: 'short', name: 'L', value: { kind: 'none' } },
+    { kind: 'long', name: 'dereference', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsDereferenceCommandLineOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'symlinkMode', value: 'command-line' }] },
+  forms: [
+    { kind: 'short', name: 'H', value: { kind: 'none' } },
+    { kind: 'long', name: 'dereference-command-line', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsClassifyShortOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'classify', value: true }] },
+  forms: [{ kind: 'short', name: 'F', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsClassifyLongOption = {
+  semantic: { kind: 'deferred', tag: 'classify' },
+  forms: [{ kind: 'long', name: 'classify', value: { kind: 'optional-inline' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+
+const lsArgvCatalog = defineArgvCatalog<StandardArgvAction<'classify'>>({
+  // These are real GNU ls long options intentionally outside Wesh's supported subset.
+  // They still participate in GNU unique-prefix ambiguity so a supported option is
+  // never accepted under a prefix that real ls rejects as ambiguous.
+  nonExecutableLongOptions: [
+    'author',
+    'block-size',
+    'color',
+    'context',
+    'dereference-command-line-symlink-to-dir',
+    'dired',
+    'escape',
+    'file-type',
+    'format',
+    'full-time',
+    'group-directories-first',
+    'hide',
+    'hide-control-chars',
+    'hyperlink',
+    'ignore',
+    'ignore-backups',
+    'indicator-style',
+    'inode',
+    'kibibytes',
+    'literal',
+    'no-group',
+    'numeric-uid-gid',
+    'quote-name',
+    'quoting-style',
+    'reverse',
+    'show-control-chars',
+    'si',
+    'size',
+    'sort',
+    'tabsize',
+    'time',
+    'time-style',
+    'version',
+    'width',
+    'zero',
+  ],
+  definitions: [lsLongOption, lsAllOption, lsAlmostAllOption, lsRecursiveOption, lsDirectoryOption, lsClassifyShortOption, lsClassifyLongOption, lsOnePerLineOption, lsHumanReadableOption, lsDereferenceOption, lsDereferenceCommandLineOption, lsHelpOption],
+});
+
+const lsArgvHelp = defineArgvHelpPresentation({
+  catalog: lsArgvCatalog,
+  rows: [
+    { forms: lsLongOption.forms, summary: 'use a long listing format', category: 'common' },
+    { forms: lsAllOption.forms, summary: 'include directory entries whose names begin with .', category: 'common' },
+    { forms: lsAlmostAllOption.forms, summary: 'include hidden entries except . and ..', category: 'common' },
+    { forms: lsRecursiveOption.forms, summary: 'list subdirectories recursively', category: 'common' },
+    { forms: lsDirectoryOption.forms, summary: 'list directories themselves, not their contents', category: 'common' },
+    { forms: [...lsClassifyShortOption.forms, ...lsClassifyLongOption.forms], summary: 'append indicator characters to entries', valueName: 'WHEN', category: 'common' },
+    { forms: lsOnePerLineOption.forms, summary: 'list one file per line', category: 'advanced' },
+    { forms: lsHumanReadableOption.forms, summary: 'with -l, print sizes in human readable format', category: 'common' },
+    { forms: lsDereferenceOption.forms, summary: 'when listing symlinks, show the target type', category: 'advanced' },
+    { forms: lsDereferenceCommandLineOption.forms, summary: 'follow command-line symlinks', category: 'advanced' },
+    { forms: lsHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+
+const lsArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
+
+function getClassifyModeFromRawValue({ value }: { value: StandardArgvRawValue }): LsClassifyMode | undefined {
+  switch (value.kind) {
+  case 'none':
+    return 'always';
+  case 'inline':
+    return parseClassifyArgument({ value: value.rawValue });
+  case 'next-argv':
+    throw new Error('ls --classify must not claim a following argv value');
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled ls classify raw value: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
 
 export const lsCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -134,8 +235,14 @@ export const lsCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: lsArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
-      spec: lsArgvSpec,
+      args: stopArgvAtFirstEarlyExit({
+        args: context.args,
+        catalog: lsArgvCatalog,
+        policy: lsArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
+      }),
+      catalog: lsArgvCatalog,
+      policy: lsArgvPolicy,
     });
 
     const text = context.text();
@@ -145,29 +252,55 @@ export const lsCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'ls',
         message: `ls: ${diagnostic.message}`,
-        argvSpec: lsArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: lsArgvHelp }),
       });
       return { exitCode: 2 };
     }
 
-    const classifyParseError = typeof parsed.optionValues.classifyParseError === 'string'
-      ? parsed.optionValues.classifyParseError
-      : undefined;
-    if (classifyParseError !== undefined) {
-      await writeCommandUsageError({
-        context,
-        command: 'ls',
-        message: `ls: invalid argument '${classifyParseError}' for '--classify'`,
-        argvSpec: lsArgvSpec,
-      });
-      return { exitCode: 1 };
+    let classify = parsed.optionValues.classify === true;
+    for (const occurrence of parsed.deferred) {
+      const mode = getClassifyModeFromRawValue({ value: occurrence.value });
+      if (mode === undefined) {
+        const invalidValue = (() => {
+          switch (occurrence.value.kind) {
+          case 'none':
+            return '';
+          case 'inline':
+            return occurrence.value.rawValue;
+          case 'next-argv':
+            throw new Error('ls --classify must not claim a following argv value');
+          default: {
+            const _ex: never = occurrence.value;
+            throw new Error(`Unhandled ls classify raw value: ${JSON.stringify(_ex)}`);
+          }
+          }
+        })();
+        await writeCommandUsageError({
+          context,
+          command: 'ls',
+          message: `ls: invalid argument '${invalidValue}' for '--classify'`,
+          usageSummary: formatArgvUsageSummary({ presentation: lsArgvHelp }),
+        });
+        return { exitCode: 1 };
+      }
+      switch (mode) {
+      case 'always':
+        classify = true;
+        break;
+      case 'never':
+        break;
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled ls classify mode: ${_ex}`);
+      }
+      }
     }
 
     if (parsed.optionValues.help === true) {
       await writeCommandHelp({
         context,
         command: 'ls',
-        argvSpec: lsArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: lsArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -182,7 +315,6 @@ export const lsCommandDefinition: WeshCommandDefinition = {
     const h = parsed.optionValues.h === true;
     const d = parsed.optionValues.directory === true;
     const R = parsed.optionValues.R === true;
-    const classify = parsed.optionValues.classify === true;
     const explicitSymlinkMode = parsed.optionValues.symlinkMode as LsSymlinkMode | undefined;
     const symlinkMode = explicitSymlinkMode ?? (
       l || d || classify

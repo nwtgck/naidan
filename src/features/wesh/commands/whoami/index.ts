@@ -1,17 +1,33 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_VERSION_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
-const whoamiArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit' } },
-    { kind: 'flag', short: undefined, long: 'version', effects: [{ key: 'version', value: true }], help: { summary: 'output version information and exit', category: 'advanced' } },
+
+const whoamiHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const whoamiVersionOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'version', value: true }] },
+  forms: [{ kind: 'long', name: 'version', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+
+const whoamiArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [whoamiHelpOption, whoamiVersionOption],
+});
+const whoamiArgvHelp = defineArgvHelpPresentation({
+  catalog: whoamiArgvCatalog,
+  rows: [
+    { forms: whoamiHelpOption.forms, summary: 'display this help and exit' },
+    { forms: whoamiVersionOption.forms, summary: 'output version information and exit', category: 'advanced' },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+});
+
+const whoamiArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 export const whoamiCommandDefinition: WeshCommandDefinition = {
@@ -22,8 +38,14 @@ export const whoamiCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: whoamiArgvSpec, earlyExitOptions: STANDARD_HELP_VERSION_EARLY_EXIT_OPTIONS }),
-      spec: whoamiArgvSpec,
+      args: stopArgvAtFirstEarlyExit({
+        args: context.args,
+        catalog: whoamiArgvCatalog,
+        policy: whoamiArgvPolicy,
+        earlyExitOptions: HELP_VERSION_EARLY_EXIT_OPTIONS,
+      }),
+      catalog: whoamiArgvCatalog,
+      policy: whoamiArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -32,7 +54,7 @@ export const whoamiCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'whoami',
         message: `whoami: ${diagnostic.message}`,
-        argvSpec: whoamiArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: whoamiArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -41,7 +63,7 @@ export const whoamiCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'whoami',
-        argvSpec: whoamiArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: whoamiArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -56,7 +78,7 @@ export const whoamiCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'whoami',
         message: 'whoami: too many arguments',
-        argvSpec: whoamiArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: whoamiArgvHelp }),
       });
       return { exitCode: 1 };
     }

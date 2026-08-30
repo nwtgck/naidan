@@ -347,4 +347,14 @@ dir/file.txt
     expect(invalidFirst.stderr.text).not.toBe('');
   });
 
+  it('keeps unsupported --version in the GNU abbreviation namespace', async () => {
+    const ambiguous = await execute({ script: 'readlink --v' });
+
+    expect(ambiguous.stdout.text).toBe('');
+    expect(ambiguous.stderr.text).toContain("option '--v' is ambiguous");
+    expect(ambiguous.stderr.text).toContain("'--verbose'");
+    expect(ambiguous.stderr.text).toContain("'--version'");
+    expect(ambiguous.result.exitCode).not.toBe(0);
+  });
+
 });

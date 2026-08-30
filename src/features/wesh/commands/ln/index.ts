@@ -1,9 +1,8 @@
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { parseStandardArgv, type ArgvOptionOccurrence, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { parseBackupControlLongOption, resolveBackupControl, selectBackupSuffix, type BackupControl } from '@/features/wesh/commands/_shared/backup';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type ParsedStandardArgv, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { resolveBackupControl, selectBackupSuffix, type BackupControl } from '@/features/wesh/commands/_shared/backup-domain';
 import { createAffirmativeResponseReader } from '@/features/wesh/commands/_shared/confirmation';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { normalizePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
 
@@ -42,25 +41,187 @@ function relativePath({ fromDirectory, toPath }: { fromDirectory: string; toPath
   return parts.length === 0 ? '.' : parts.join('/');
 }
 
-const lnArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 's', long: 'symbolic', effects: [{ key: 'symbolic', value: true }], help: { summary: 'make symbolic links instead of hard links', category: 'common' } },
-    { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }, { key: 'interactive', value: false }], help: { summary: 'remove existing destination files', category: 'common' } },
-    { kind: 'flag', short: 'i', long: 'interactive', effects: [{ key: 'force', value: false }, { key: 'interactive', value: true }], help: { summary: 'prompt whether to remove destinations', category: 'common' } },
-    { kind: 'flag', short: 'b', long: 'backup', effects: [{ key: 'backup', value: true }], help: { summary: 'make a backup of each existing destination file', category: 'common' } },
-    { kind: 'value', short: 'S', long: 'suffix', key: 'backupSuffix', valueName: 'SUFFIX', allowAttachedValue: true, parseValue: undefined, help: { summary: 'override the usual backup suffix', valueName: 'SUFFIX', category: 'advanced' } },
-    { kind: 'flag', short: 'v', long: 'verbose', effects: [{ key: 'verbose', value: true }], help: { summary: 'print the name of each linked file', category: 'common' } },
-    { kind: 'flag', short: 'n', long: 'no-dereference', effects: [{ key: 'noDereference', value: true }], help: { summary: 'treat a destination symlink to a directory as a normal file', category: 'advanced' } },
-    { kind: 'flag', short: 'T', long: 'no-target-directory', effects: [{ key: 'noTargetDirectory', value: true }], help: { summary: 'treat LINK_NAME as a normal file always', category: 'advanced' } },
-    { kind: 'flag', short: 'r', long: 'relative', effects: [{ key: 'relative', value: true }], help: { summary: 'create symbolic links relative to link location', category: 'common' } },
-    { kind: 'value', short: 't', long: 'target-directory', key: 'targetDirectory', valueName: 'DIRECTORY', allowAttachedValue: true, parseValue: undefined, help: { summary: 'specify the DIRECTORY in which to create the links', valueName: 'DIRECTORY', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+type LnDeferredOption = 'backup' | 'target-directory';
+
+const lnSymbolicOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'symbolic', value: true }] },
+  forms: [
+    { kind: 'short', name: 's', value: { kind: 'none' } },
+    { kind: 'long', name: 'symbolic', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [({ token }) => parseBackupControlLongOption({ token })],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<LnDeferredOption>>;
+const lnForceOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'force', value: true }, { key: 'interactive', value: false }] },
+  forms: [
+    { kind: 'short', name: 'f', value: { kind: 'none' } },
+    { kind: 'long', name: 'force', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<LnDeferredOption>>;
+const lnInteractiveOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'force', value: false }, { key: 'interactive', value: true }] },
+  forms: [
+    { kind: 'short', name: 'i', value: { kind: 'none' } },
+    { kind: 'long', name: 'interactive', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<LnDeferredOption>>;
+const lnBackupOption = {
+  semantic: { kind: 'deferred', tag: 'backup' },
+  forms: [
+    { kind: 'short', name: 'b', value: { kind: 'none' } },
+    { kind: 'long', name: 'backup', value: { kind: 'optional-inline' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<LnDeferredOption>>;
+const lnSuffixOption = {
+  semantic: { kind: 'required-value', key: 'backupSuffix', parse: undefined },
+  forms: [
+    { kind: 'short', name: 'S', value: { kind: 'required-attached-or-following', missingValueName: 'SUFFIX' } },
+    { kind: 'long', name: 'suffix', value: { kind: 'required', missingValueName: 'SUFFIX' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<LnDeferredOption>>;
+const lnVerboseOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'verbose', value: true }] },
+  forms: [
+    { kind: 'short', name: 'v', value: { kind: 'none' } },
+    { kind: 'long', name: 'verbose', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<LnDeferredOption>>;
+const lnNoDereferenceOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'noDereference', value: true }] },
+  forms: [
+    { kind: 'short', name: 'n', value: { kind: 'none' } },
+    { kind: 'long', name: 'no-dereference', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<LnDeferredOption>>;
+const lnNoTargetDirectoryOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'noTargetDirectory', value: true }] },
+  forms: [
+    { kind: 'short', name: 'T', value: { kind: 'none' } },
+    { kind: 'long', name: 'no-target-directory', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<LnDeferredOption>>;
+const lnRelativeOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'relative', value: true }] },
+  forms: [
+    { kind: 'short', name: 'r', value: { kind: 'none' } },
+    { kind: 'long', name: 'relative', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<LnDeferredOption>>;
+const lnTargetDirectoryOption = {
+  semantic: { kind: 'deferred', tag: 'target-directory' },
+  forms: [
+    { kind: 'short', name: 't', value: { kind: 'required-attached-or-following', missingValueName: 'DIRECTORY' } },
+    { kind: 'long', name: 'target-directory', value: { kind: 'required', missingValueName: 'DIRECTORY' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<LnDeferredOption>>;
+const lnHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<LnDeferredOption>>;
+
+const lnArgvCatalog = defineArgvCatalog<StandardArgvAction<LnDeferredOption>>({
+  nonExecutableLongOptions: [
+    'directory',
+    'logical',
+    'physical',
+    'version',
+  ],
+  definitions: [
+    lnSymbolicOption, lnForceOption, lnInteractiveOption, lnBackupOption,
+    lnSuffixOption, lnVerboseOption, lnNoDereferenceOption,
+    lnNoTargetDirectoryOption, lnRelativeOption, lnTargetDirectoryOption,
+    lnHelpOption,
+  ],
+});
+
+const lnArgvHelp = defineArgvHelpPresentation({
+  catalog: lnArgvCatalog,
+  rows: [
+    { forms: lnSymbolicOption.forms, summary: 'make symbolic links instead of hard links', category: 'common' },
+    { forms: lnForceOption.forms, summary: 'remove existing destination files', category: 'common' },
+    { forms: lnInteractiveOption.forms, summary: 'prompt whether to remove destinations', category: 'common' },
+    { forms: lnBackupOption.forms, summary: 'make a backup of each existing destination file', valueName: 'CONTROL', category: 'common' },
+    { forms: lnSuffixOption.forms, summary: 'override the usual backup suffix', valueName: 'SUFFIX', category: 'advanced' },
+    { forms: lnVerboseOption.forms, summary: 'print the name of each linked file', category: 'common' },
+    { forms: lnNoDereferenceOption.forms, summary: 'treat a destination symlink to a directory as a normal file', category: 'advanced' },
+    { forms: lnNoTargetDirectoryOption.forms, summary: 'treat LINK_NAME as a normal file always', category: 'advanced' },
+    { forms: lnRelativeOption.forms, summary: 'create symbolic links relative to link location', category: 'common' },
+    { forms: lnTargetDirectoryOption.forms, summary: 'specify the DIRECTORY in which to create the links', valueName: 'DIRECTORY', category: 'common' },
+    { forms: lnHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+
+const lnArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
+
+function getRequiredLnDeferredValue({
+  value,
+  option,
+}: {
+  value: StandardArgvRawValue,
+  option: string,
+}): string {
+  switch (value.kind) {
+  case 'inline':
+  case 'next-argv':
+    return value.rawValue;
+  case 'none':
+    throw new Error(`${option} deferred occurrence is missing its required value`);
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled ${option} raw value: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
+function applyLnDeferredOptions({
+  parsed,
+}: {
+  parsed: ParsedStandardArgv<LnDeferredOption>,
+}): {
+  backupRequested: boolean,
+  backupControlRaw: string | undefined,
+  targetDirectories: readonly string[],
+} {
+  let backupRequested = false;
+  let backupControlRaw: string | undefined;
+  const targetDirectories: string[] = [];
+
+  for (const occurrence of parsed.deferred) {
+    switch (occurrence.semantic.tag) {
+    case 'backup':
+      backupRequested = true;
+      switch (occurrence.value.kind) {
+      case 'none':
+        break;
+      case 'inline':
+        backupControlRaw = occurrence.value.rawValue;
+        break;
+      case 'next-argv':
+        throw new Error('--backup must not claim a following argv value');
+      default: {
+        const _ex: never = occurrence.value;
+        throw new Error(`Unhandled --backup raw value: ${JSON.stringify(_ex)}`);
+      }
+      }
+      break;
+    case 'target-directory':
+      targetDirectories.push(getRequiredLnDeferredValue({
+        value: occurrence.value,
+        option: '--target-directory',
+      }));
+      break;
+    default: {
+      const _ex: never = occurrence.semantic.tag;
+      throw new Error(`Unhandled ln deferred option: ${_ex}`);
+    }
+    }
+  }
+
+  return { backupRequested, backupControlRaw, targetDirectories };
+}
 
 async function pathStatOrUndefined({
   context,
@@ -123,7 +284,16 @@ export const lnCommandDefinition: WeshCommandDefinition = {
     usage: 'ln -s [-f] [-n] [-T] [-r] TARGET LINK_NAME',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({ args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: lnArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }), spec: lnArgvSpec });
+    const parsed = parseStandardArgv({
+      args: stopArgvAtFirstEarlyExit({
+        args: context.args,
+        catalog: lnArgvCatalog,
+        policy: lnArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
+      }),
+      catalog: lnArgvCatalog,
+      policy: lnArgvPolicy,
+    });
     const text = context.text();
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
@@ -131,31 +301,29 @@ export const lnCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'ln',
         message: `ln: ${diagnostic.message}`,
-        argvSpec: lnArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: lnArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
-    const targetDirectoryOccurrences = parsed.occurrences.filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> => (
-      occurrence.kind === 'value' && occurrence.key === 'targetDirectory'
-    ));
-    const firstTargetDirectory = targetDirectoryOccurrences[0];
+    const deferredState = applyLnDeferredOptions({ parsed });
+    const firstTargetDirectory = deferredState.targetDirectories[0];
     const explicitTargetDirectoryPath = firstTargetDirectory === undefined
       ? undefined
       : await resolveExplicitTargetDirectory({
         context,
-        operand: String(firstTargetDirectory.value),
+        operand: firstTargetDirectory,
       });
     if (firstTargetDirectory !== undefined && explicitTargetDirectoryPath === undefined) {
       return { exitCode: 1 };
     }
-    if (targetDirectoryOccurrences.length > 1) {
+    if (deferredState.targetDirectories.length > 1) {
       await text.error({ text: 'ln: multiple target directories specified\n' });
       return { exitCode: 1 };
     }
 
     if (parsed.optionValues.help === true) {
-      await writeCommandHelp({ context, command: 'ln', argvSpec: lnArgvSpec });
+      await writeCommandHelp({ context, command: 'ln', optionLines: formatArgvOptionHelp({ presentation: lnArgvHelp }) });
       return { exitCode: 0 };
     }
 
@@ -164,14 +332,12 @@ export const lnCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'ln',
         message: 'ln: hard links are not supported; use -s',
-        argvSpec: lnArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: lnArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
-    const targetDirectory = typeof parsed.optionValues.targetDirectory === 'string'
-      ? parsed.optionValues.targetDirectory
-      : undefined;
+    const targetDirectory = firstTargetDirectory;
     const noTargetDirectory = parsed.optionValues.noTargetDirectory === true;
     if (targetDirectory !== undefined && noTargetDirectory) {
       await text.error({ text: "ln: cannot combine --target-directory and --no-target-directory\n" });
@@ -183,21 +349,18 @@ export const lnCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'ln',
         message: 'ln: missing file operand',
-        argvSpec: lnArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: lnArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
     const force = parsed.optionValues.force === true;
     const interactive = parsed.optionValues.interactive === true;
-    const backupRequested = parsed.optionValues.backup === true;
+    const backupRequested = deferredState.backupRequested;
     let backupControl: BackupControl = 'simple';
     if (backupRequested) {
-      const explicitBackupControl = typeof parsed.optionValues.backupControlRaw === 'string'
-        ? parsed.optionValues.backupControlRaw
-        : undefined;
       const backupControlResult = resolveBackupControl({
-        explicitValue: explicitBackupControl,
+        explicitValue: deferredState.backupControlRaw,
         environmentValue: context.env.get('VERSION_CONTROL'),
       });
       if (!backupControlResult.ok) {
@@ -217,7 +380,7 @@ export const lnCommandDefinition: WeshCommandDefinition = {
           context,
           command: 'ln',
           message: `ln: invalid argument '${backupControlResult.value}' for '${source}'`,
-          argvSpec: lnArgvSpec,
+          usageSummary: formatArgvUsageSummary({ presentation: lnArgvHelp }),
         });
         return { exitCode: 1 };
       }

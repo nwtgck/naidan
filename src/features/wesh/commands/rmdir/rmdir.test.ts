@@ -102,7 +102,42 @@ describe('wesh rmdir', () => {
     expect(stdout.text).toContain('Remove empty directories');
     expect(stdout.text).toContain('usage: rmdir directory...');
     expect(stdout.text).toContain('--help');
+    expect(stdout.text).not.toContain('--path');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('supports GNU unique-prefix long options without hiding unsupported ambiguity', async () => {
+    await createDir({ path: 'one/child' });
+    const shortestEquivalentPrefix = await execute({ script: 'rmdir --p one/child' });
+    expect(shortestEquivalentPrefix.result.exitCode).toBe(0);
+    expect(shortestEquivalentPrefix.stderr.text).toBe('');
+    await expect(wesh.vfs.lstat({ path: '/one' })).rejects.toThrow();
+
+    await createDir({ path: 'alias/child' });
+    const hiddenAlias = await execute({ script: 'rmdir --path alias/child' });
+    expect(hiddenAlias.result.exitCode).toBe(0);
+    expect(hiddenAlias.stderr.text).toBe('');
+    await expect(wesh.vfs.lstat({ path: '/alias' })).rejects.toThrow();
+
+    await createDir({ path: 'one' });
+    const abbreviated = await execute({ script: 'rmdir --par one' });
+    expect(abbreviated.result.exitCode).toBe(0);
+    expect(abbreviated.stderr.text).toBe('');
+
+    await createDir({ path: 'two' });
+    const ignorePrefix = await execute({ script: 'rmdir --ignore-fail two' });
+    expect(ignorePrefix.result.exitCode).toBe(0);
+    expect(ignorePrefix.stderr.text).toBe('');
+
+    const aliasDiagnostic = await execute({ script: 'rmdir --p=value' });
+    expect(aliasDiagnostic.stderr.text).toContain("option '--path' doesn't allow an argument");
+    expect(aliasDiagnostic.result.exitCode).toBe(1);
+
+    const ambiguous = await execute({ script: 'rmdir --v missing' });
+    expect(ambiguous.stderr.text).toContain("option '--v' is ambiguous");
+    expect(ambiguous.stderr.text).toContain("'--verbose'");
+    expect(ambiguous.stderr.text).toContain("'--version'");
+    expect(ambiguous.result.exitCode).toBe(1);
   });
 
   it('supports -p to remove empty parent directories', async () => {

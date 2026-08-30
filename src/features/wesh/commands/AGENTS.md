@@ -361,3 +361,20 @@ Bias against:
 - speculative shared modules
 - shallow compatibility claims
 - convenience-only rewrites of existing working code
+
+## Frozen argv-v2 Infrastructure
+
+The replacement generic argv contract under `src/features/wesh/argv-v2/` is frozen infrastructure for distributed command migration. The `v2` suffix is temporary: after legacy `argv/` consumers reach zero, delete the legacy subsystem and rename `argv-v2/` to `argv/`.
+
+- A command declared migrated to argv-v2 must have no direct or transitive dependency on `@/features/wesh/argv`. Treat transitive dependency isolation as a migration invariant; do not rely on visual inspection alone.
+- Migrated production code imports only the `@/features/wesh/argv-v2` barrel; do not deep-import v2 internals.
+- Use `parseStandardArgv` from argv-v2 for ordinary catalog-based option parsing when the command grammar fits it.
+- Treat non-empty argv-v2 `diagnostics` as parse failure before consuming `optionValues`, `deferred`, or positionals as command semantics; failed parses do not promise transactional rollback of those result fields.
+- Do not add a new shared syntax form, parser policy, callback hook, or command-specific mode from an individual command branch merely to make one command fit.
+- If the standard scanner can own syntax/value claims but a bounded semantic family must remain command-owned, use the existing `kind: 'deferred'` boundary.
+- If the command must own the argv cursor or parsing phase but can still reuse catalog/token mechanics, use `analyzeArgvShortForm` / `analyzeArgvLongForm` where it improves clarity.
+- These analyzer calls should remain direct rather than being hidden behind a generic callback framework. Future argv architecture reviews intentionally use their function names, together with `kind: 'deferred'`, as grep-able partial-use boundaries.
+- A fully command-local parser is valid when the command grammar is not naturally an option parser (for example expression or phase grammars). Do not force argv-v2 use solely to make the command appear in the partial-use grep.
+- If a real compatibility case cannot be represented cleanly with the frozen contract, keep the command-local workaround/boundary explicit and escalate the concrete real-command counterexample for argv architecture review. Reopen the shared contract only when the mechanic should intentionally propagate across consumers.
+
+The freeze is about API/grammar ownership, not about preserving current internal module layout or lookup representation. Files inside `argv-v2/` may be split/renamed and internal `Map`/linear/generated lookup choices may change without widening the shared grammar, provided the subsystem remains independently reviewable and dependency-isolated.

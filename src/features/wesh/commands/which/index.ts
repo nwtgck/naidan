@@ -1,19 +1,37 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import { formatResolvedCommand, resolveCommands } from '@/features/wesh/command-resolution';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
 
-const whichArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'a', long: undefined, effects: [{ key: 'all', value: true }], help: { summary: 'print all matching command locations', category: 'common' } },
-    { kind: 'flag', short: 's', long: undefined, effects: [{ key: 'silent', value: true }], help: { summary: 'return status only without printing locations', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+const whichAllOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'all', value: true }] },
+  forms: [{ kind: 'short', name: 'a', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const whichSilentOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'silent', value: true }] },
+  forms: [{ kind: 'short', name: 's', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const whichHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const whichArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [whichAllOption, whichSilentOption, whichHelpOption],
+});
+const whichArgvHelp = defineArgvHelpPresentation({
+  catalog: whichArgvCatalog,
+  rows: [
+    { forms: whichAllOption.forms, summary: 'print all matching command locations', category: 'common' },
+    { forms: whichSilentOption.forms, summary: 'return status only without printing locations', category: 'common' },
+    { forms: whichHelpOption.forms, summary: 'display this help and exit', category: 'common' },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+});
+const whichArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'none',
 };
 
 export const whichCommandDefinition: WeshCommandDefinition = {
@@ -24,11 +42,9 @@ export const whichCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardOptionParsingAtFirstPositional({
-        args: context.args,
-        spec: whichArgvSpec,
-      }),
-      spec: whichArgvSpec,
+      args: context.args,
+      catalog: whichArgvCatalog,
+      policy: whichArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -37,7 +53,7 @@ export const whichCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'which',
         message: `which: ${diagnostic.message}`,
-        argvSpec: whichArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: whichArgvHelp }),
       });
       return { exitCode: 2 };
     }
@@ -46,7 +62,7 @@ export const whichCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'which',
-        argvSpec: whichArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: whichArgvHelp }),
       });
       return { exitCode: 0 };
     }

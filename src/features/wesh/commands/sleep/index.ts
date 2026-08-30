@@ -1,24 +1,22 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
-const sleepArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+const sleepHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const sleepArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({ nonExecutableLongOptions: ['version'], definitions: [sleepHelpOption] });
+const sleepArgvHelp = defineArgvHelpPresentation({
+  catalog: sleepArgvCatalog,
+  rows: [{ forms: sleepHelpOption.forms, summary: 'display this help and exit', category: 'common' }],
+});
+const sleepArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 function parseHexadecimalFloat({
@@ -149,12 +147,14 @@ export const sleepCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: sleepArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: sleepArgvCatalog,
+        policy: sleepArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: sleepArgvSpec,
+      catalog: sleepArgvCatalog,
+      policy: sleepArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -163,7 +163,7 @@ export const sleepCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'sleep',
         message: `sleep: ${diagnostic.message}`,
-        argvSpec: sleepArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: sleepArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -172,7 +172,7 @@ export const sleepCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'sleep',
-        argvSpec: sleepArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: sleepArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -182,7 +182,7 @@ export const sleepCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'sleep',
         message: 'sleep: missing operand',
-        argvSpec: sleepArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: sleepArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -197,7 +197,7 @@ export const sleepCommandDefinition: WeshCommandDefinition = {
           context,
           command: 'sleep',
           message: `sleep: invalid time interval '${operand}'`,
-          argvSpec: sleepArgvSpec,
+          usageSummary: formatArgvUsageSummary({ presentation: sleepArgvHelp }),
         });
         return { exitCode: 1 };
       }

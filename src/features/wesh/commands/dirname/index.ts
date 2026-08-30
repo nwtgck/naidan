@@ -1,18 +1,31 @@
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { dirnamePath } from '@/features/wesh/commands/_shared/path';
 
-const dirnameArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'flag', short: 'z', long: 'zero', effects: [{ key: 'zero', value: true }], help: { summary: 'end each output line with NUL, not newline', category: 'common' } },
+const dirnameHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const dirnameZeroOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'zero', value: true }] },
+  forms: [
+    { kind: 'short', name: 'z', value: { kind: 'none' } },
+    { kind: 'long', name: 'zero', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const dirnameArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({ nonExecutableLongOptions: ['version'], definitions: [dirnameHelpOption, dirnameZeroOption] });
+const dirnameArgvHelp = defineArgvHelpPresentation({
+  catalog: dirnameArgvCatalog,
+  rows: [
+    { forms: dirnameZeroOption.forms, summary: 'end each output line with NUL, not newline', category: 'common' },
+    { forms: dirnameHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const dirnameArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 export const dirnameCommandDefinition: WeshCommandDefinition = {
@@ -23,12 +36,14 @@ export const dirnameCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: dirnameArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: dirnameArgvCatalog,
+        policy: dirnameArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: dirnameArgvSpec,
+      catalog: dirnameArgvCatalog,
+      policy: dirnameArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -37,7 +52,7 @@ export const dirnameCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'dirname',
         message: `dirname: ${diagnostic.message}`,
-        argvSpec: dirnameArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: dirnameArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -46,7 +61,7 @@ export const dirnameCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'dirname',
-        argvSpec: dirnameArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: dirnameArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -56,7 +71,7 @@ export const dirnameCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'dirname',
         message: 'dirname: missing operand',
-        argvSpec: dirnameArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: dirnameArgvHelp }),
       });
       return { exitCode: 1 };
     }

@@ -129,7 +129,7 @@ describe('wesh mktemp', () => {
     });
 
     expect(stdout.text).toContain('usage: mktemp [OPTION]... [TEMPLATE]');
-    expect(stdout.text).toContain('--tmpdir');
+    expect(stdout.text).toContain('--tmpdir[=DIR]');
     expect(stdout.text).toContain('--dry-run');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
@@ -188,13 +188,18 @@ describe('wesh mktemp', () => {
     const optionalAfter = await execute({
       script: 'cd /workspace && TMPDIR=tmp mktemp -u -p other --tmpdir probe.XXXX',
     });
+    const explicitAfter = await execute({
+      script: 'cd /workspace && TMPDIR=tmp mktemp -u --tmpdir -p other probe.XXXX',
+    });
 
     expect(deprecatedBefore.stdout.text.trim()).toMatch(/^tmp\/probe\.[A-Za-z0-9]{4}$/u);
     expect(deprecatedAfter.stdout.text.trim()).toMatch(/^tmp\/probe\.[A-Za-z0-9]{4}$/u);
     expect(optionalAfter.stdout.text.trim()).toMatch(/^tmp\/probe\.[A-Za-z0-9]{4}$/u);
+    expect(explicitAfter.stdout.text.trim()).toMatch(/^other\/probe\.[A-Za-z0-9]{4}$/u);
     expect(deprecatedBefore.result.exitCode).toBe(0);
     expect(deprecatedAfter.result.exitCode).toBe(0);
     expect(optionalAfter.result.exitCode).toBe(0);
+    expect(explicitAfter.result.exitCode).toBe(0);
   });
 
   it('supports --tmpdir without an attached directory argument', async () => {

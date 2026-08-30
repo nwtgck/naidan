@@ -1,19 +1,45 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { defineArgvCatalog, defineArgvHelpPresentation, formatArgvOptionHelp, formatArgvUsageSummary, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { canonicalizeExistingPath } from '@/features/wesh/path';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
-const pwdArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'L', long: 'logical', effects: [{ key: 'mode', value: 'logical' }], help: { summary: 'use the logical current directory' } },
-    { kind: 'flag', short: 'P', long: 'physical', effects: [{ key: 'mode', value: 'physical' }], help: { summary: 'avoid symbolic links in the current directory' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit' } },
+
+const pwdLogicalOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'mode', value: 'logical' }] },
+  forms: [
+    { kind: 'short', name: 'L', value: { kind: 'none' } },
+    { kind: 'long', name: 'logical', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const pwdPhysicalOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'mode', value: 'physical' }] },
+  forms: [
+    { kind: 'short', name: 'P', value: { kind: 'none' } },
+    { kind: 'long', name: 'physical', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const pwdHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+
+const pwdArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [pwdLogicalOption, pwdPhysicalOption, pwdHelpOption],
+});
+const pwdArgvHelp = defineArgvHelpPresentation({
+  catalog: pwdArgvCatalog,
+  rows: [
+    { forms: pwdLogicalOption.forms, summary: 'use the logical current directory' },
+    { forms: pwdPhysicalOption.forms, summary: 'avoid symbolic links in the current directory' },
+    { forms: pwdHelpOption.forms, summary: 'display this help and exit' },
+  ],
+});
+
+const pwdArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'none',
 };
 
 export const pwdCommandDefinition: WeshCommandDefinition = {
@@ -24,11 +50,9 @@ export const pwdCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardOptionParsingAtFirstPositional({
-        args: context.args,
-        spec: pwdArgvSpec,
-      }),
-      spec: pwdArgvSpec,
+      args: context.args,
+      catalog: pwdArgvCatalog,
+      policy: pwdArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -37,7 +61,7 @@ export const pwdCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'pwd',
         message: `pwd: ${diagnostic.message}`,
-        argvSpec: pwdArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: pwdArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -46,7 +70,7 @@ export const pwdCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'pwd',
-        argvSpec: pwdArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: pwdArgvHelp }),
       });
       return { exitCode: 0 };
     }

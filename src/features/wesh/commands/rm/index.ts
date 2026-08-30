@@ -1,104 +1,207 @@
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type ParsedStandardArgv, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { createAffirmativeResponseReader } from '@/features/wesh/commands/_shared/confirmation';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 
 type RmInteractiveMode = 'never' | 'always' | 'once';
 
-function parseInteractiveLongOption({
-  token,
-}: {
-  token: string,
-}) {
-  const prefix = '--interactive=';
-  if (!token.startsWith(prefix)) return undefined;
+type RmDeferredOption =
+  | 'force'
+  | 'interactive-always'
+  | 'interactive-once'
+  | 'interactive-long'
+  | 'preserve-root'
+  | 'no-preserve-root';
 
-  const value = token.slice(prefix.length);
-  switch (value) {
-  case 'always':
-  case 'once': {
-    const effects = [
-      { key: 'force', value: false },
-      { key: 'interactiveMode', value },
-    ];
-    return {
-      kind: 'matched' as const,
-      consumeCount: 1,
-      effects,
-      occurrences: [{
-        kind: 'special' as const,
-        option: '--interactive',
-        effects,
-      }],
-    };
+const rmRecursiveOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'recursive', value: true }] },
+  forms: [
+    { kind: 'short', name: 'r', value: { kind: 'none' } },
+    { kind: 'long', name: 'recursive', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+const rmRecursiveUpperOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'recursive', value: true }] },
+  forms: [{ kind: 'short', name: 'R', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+const rmDirOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'removeEmptyDirectories', value: true }] },
+  forms: [
+    { kind: 'short', name: 'd', value: { kind: 'none' } },
+    { kind: 'long', name: 'dir', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+const rmForceOption = {
+  semantic: { kind: 'deferred', tag: 'force' },
+  forms: [
+    { kind: 'short', name: 'f', value: { kind: 'none' } },
+    { kind: 'long', name: 'force', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+const rmInteractiveAlwaysOption = {
+  semantic: { kind: 'deferred', tag: 'interactive-always' },
+  forms: [{ kind: 'short', name: 'i', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+const rmInteractiveOnceOption = {
+  semantic: { kind: 'deferred', tag: 'interactive-once' },
+  forms: [{ kind: 'short', name: 'I', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+const rmInteractiveLongOption = {
+  semantic: { kind: 'deferred', tag: 'interactive-long' },
+  forms: [{ kind: 'long', name: 'interactive', value: { kind: 'optional-inline' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+const rmVerboseOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'verbose', value: true }] },
+  forms: [
+    { kind: 'short', name: 'v', value: { kind: 'none' } },
+    { kind: 'long', name: 'verbose', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+const rmOneFileSystemOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'oneFileSystem', value: true }] },
+  forms: [{ kind: 'long', name: 'one-file-system', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+const rmPreserveRootOption = {
+  semantic: { kind: 'deferred', tag: 'preserve-root' },
+  forms: [{ kind: 'long', name: 'preserve-root', value: { kind: 'optional-inline' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+const rmNoPreserveRootOption = {
+  semantic: { kind: 'deferred', tag: 'no-preserve-root' },
+  forms: [{ kind: 'long', name: 'no-preserve-root', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+const rmHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<RmDeferredOption>>;
+
+const rmArgvCatalog = defineArgvCatalog<StandardArgvAction<RmDeferredOption>>({
+  nonExecutableLongOptions: ['-presume-input-tty', 'version'],
+  definitions: [
+    rmRecursiveOption, rmRecursiveUpperOption, rmDirOption, rmForceOption,
+    rmInteractiveAlwaysOption, rmInteractiveOnceOption, rmInteractiveLongOption,
+    rmVerboseOption, rmOneFileSystemOption, rmPreserveRootOption,
+    rmNoPreserveRootOption, rmHelpOption,
+  ],
+});
+
+const rmArgvHelp = defineArgvHelpPresentation({
+  catalog: rmArgvCatalog,
+  rows: [
+    { forms: rmRecursiveOption.forms, summary: 'remove directories and their contents recursively' },
+    { forms: rmRecursiveUpperOption.forms, summary: 'remove directories and their contents recursively' },
+    { forms: rmDirOption.forms, summary: 'remove empty directories' },
+    { forms: rmForceOption.forms, summary: 'ignore nonexistent files and arguments, never prompt' },
+    { forms: rmInteractiveAlwaysOption.forms, summary: 'prompt before every removal' },
+    { forms: rmInteractiveOnceOption.forms, summary: 'prompt once before removing more than three files, or recursively' },
+    { forms: rmInteractiveLongOption.forms, summary: 'prompt according to WHEN: never, once, or always', valueName: 'WHEN' },
+    { forms: rmVerboseOption.forms, summary: 'explain what is being done' },
+    { forms: rmOneFileSystemOption.forms, summary: 'stay on this file system when removing recursively', category: 'advanced' },
+    { forms: rmPreserveRootOption.forms, summary: "do not remove '/'", valueName: 'all', category: 'advanced' },
+    { forms: rmNoPreserveRootOption.forms, summary: 'do not treat root specially', category: 'advanced' },
+    { forms: rmHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+
+const rmArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
+
+function getOptionalInlineValue({
+  value,
+  option,
+}: {
+  value: StandardArgvRawValue,
+  option: string,
+}): string | undefined {
+  switch (value.kind) {
+  case 'none':
+    return undefined;
+  case 'inline':
+    return value.rawValue;
+  case 'next-argv':
+    throw new Error(`${option} must not claim a following argv value`);
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled ${option} raw value: ${JSON.stringify(_ex)}`);
   }
-  case 'never': {
-    const effects = [{ key: 'interactiveMode', value }];
-    return {
-      kind: 'matched' as const,
-      consumeCount: 1,
-      effects,
-      occurrences: [{
-        kind: 'special' as const,
-        option: '--interactive',
-        effects,
-      }],
-    };
-  }
-  default:
-    return {
-      kind: 'matched' as const,
-      consumeCount: 1,
-      effects: [{ key: 'interactiveParseError', value }],
-      occurrences: [{
-        kind: 'special' as const,
-        option: '--interactive',
-        effects: [{ key: 'interactiveParseError', value }],
-      }],
-    };
   }
 }
 
-function parsePreserveRootLongOption({
-  token,
+function applyRmDeferredOptions({
+  parsed,
 }: {
-  token: string,
-}) {
-  const prefix = '--preserve-root=';
-  if (!token.startsWith(prefix)) return undefined;
+  parsed: ParsedStandardArgv<RmDeferredOption>,
+}): {
+  force: boolean,
+  interactiveMode: RmInteractiveMode,
+  interactiveParseError: string | undefined,
+  preserveRoot: boolean,
+  preserveRootAll: boolean,
+  preserveRootParseError: string | undefined,
+} {
+  let force = false;
+  let interactiveMode: RmInteractiveMode = 'never';
+  let interactiveParseError: string | undefined;
+  let preserveRoot = true;
+  let preserveRootAll = false;
+  let preserveRootParseError: string | undefined;
 
-  const value = token.slice(prefix.length);
-  if (value === 'all') {
-    const effects = [
-      { key: 'preserveRoot', value: true },
-      { key: 'preserveRootAll', value: true },
-    ];
-    return {
-      kind: 'matched' as const,
-      consumeCount: 1,
-      effects,
-      occurrences: [{
-        kind: 'special' as const,
-        option: '--preserve-root',
-        effects,
-      }],
-    };
+  for (const occurrence of parsed.deferred) {
+    switch (occurrence.semantic.tag) {
+    case 'force':
+      force = true;
+      interactiveMode = 'never';
+      break;
+    case 'interactive-always':
+      force = false;
+      interactiveMode = 'always';
+      break;
+    case 'interactive-once':
+      force = false;
+      interactiveMode = 'once';
+      break;
+    case 'interactive-long': {
+      const rawValue = getOptionalInlineValue({ value: occurrence.value, option: '--interactive' });
+      if (rawValue === undefined || rawValue === 'always') {
+        force = false;
+        interactiveMode = 'always';
+      } else if (rawValue === 'once') {
+        force = false;
+        interactiveMode = 'once';
+      } else if (rawValue === 'never') {
+        interactiveMode = 'never';
+      } else if (interactiveParseError === undefined) {
+        interactiveParseError = rawValue;
+      }
+      break;
+    }
+    case 'preserve-root': {
+      const rawValue = getOptionalInlineValue({ value: occurrence.value, option: '--preserve-root' });
+      if (rawValue === undefined) {
+        preserveRoot = true;
+      } else if (rawValue === 'all') {
+        preserveRoot = true;
+        preserveRootAll = true;
+      } else if (preserveRootParseError === undefined) {
+        preserveRootParseError = rawValue;
+      }
+      break;
+    }
+    case 'no-preserve-root':
+      preserveRoot = false;
+      break;
+    default: {
+      const _ex: never = occurrence.semantic.tag;
+      throw new Error(`Unhandled rm deferred option: ${_ex}`);
+    }
+    }
   }
 
-  const effects = [{ key: 'preserveRootParseError', value }];
-  return {
-    kind: 'matched' as const,
-    consumeCount: 1,
-    effects,
-    occurrences: [{
-      kind: 'special' as const,
-      option: '--preserve-root',
-      effects,
-    }],
-  };
+  return { force, interactiveMode, interactiveParseError, preserveRoot, preserveRootAll, preserveRootParseError };
 }
 
 function promptsBeforeEveryRemoval({
@@ -173,30 +276,6 @@ function appendDisplayPath({
   return `${parent.replace(/\/+$/u, '')}/${child}`;
 }
 
-const rmArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'r', long: 'recursive', effects: [{ key: 'recursive', value: true }], help: { summary: 'remove directories and their contents recursively' } },
-    { kind: 'flag', short: 'R', long: undefined, effects: [{ key: 'recursive', value: true }], help: { summary: 'remove directories and their contents recursively' } },
-    { kind: 'flag', short: 'd', long: 'dir', effects: [{ key: 'removeEmptyDirectories', value: true }], help: { summary: 'remove empty directories' } },
-    { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }, { key: 'interactiveMode', value: 'never' }], help: { summary: 'ignore nonexistent files and arguments, never prompt' } },
-    { kind: 'flag', short: 'i', long: undefined, effects: [{ key: 'force', value: false }, { key: 'interactiveMode', value: 'always' }], help: { summary: 'prompt before every removal' } },
-    { kind: 'flag', short: 'I', long: undefined, effects: [{ key: 'force', value: false }, { key: 'interactiveMode', value: 'once' }], help: { summary: 'prompt once before removing more than three files, or recursively' } },
-    { kind: 'flag', short: undefined, long: 'interactive', effects: [{ key: 'force', value: false }, { key: 'interactiveMode', value: 'always' }], help: { summary: 'prompt according to WHEN: never, once, or always' } },
-    { kind: 'flag', short: 'v', long: 'verbose', effects: [{ key: 'verbose', value: true }], help: { summary: 'explain what is being done' } },
-    { kind: 'flag', short: undefined, long: 'one-file-system', effects: [{ key: 'oneFileSystem', value: true }], help: { summary: 'stay on this file system when removing recursively', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'preserve-root', effects: [{ key: 'preserveRoot', value: true }], help: { summary: "do not remove '/'", category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'no-preserve-root', effects: [{ key: 'preserveRoot', value: false }], help: { summary: 'do not treat root specially', category: 'advanced' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [
-    ({ token }) => parseInteractiveLongOption({ token }),
-    ({ token }) => parsePreserveRootLongOption({ token }),
-  ],
-};
-
 export const rmCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'rm',
@@ -205,8 +284,14 @@ export const rmCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: rmArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
-      spec: rmArgvSpec,
+      args: stopArgvAtFirstEarlyExit({
+        args: context.args,
+        catalog: rmArgvCatalog,
+        policy: rmArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
+      }),
+      catalog: rmArgvCatalog,
+      policy: rmArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -215,26 +300,26 @@ export const rmCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'rm',
         message: `rm: ${diagnostic.message}`,
-        argvSpec: rmArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: rmArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
-    const interactiveParseError = parsed.optionValues.interactiveParseError;
-    if (typeof interactiveParseError === 'string') {
+    const deferredState = applyRmDeferredOptions({ parsed });
+
+    if (deferredState.interactiveParseError !== undefined) {
       await writeCommandUsageError({
         context,
         command: 'rm',
-        message: `rm: invalid argument '${interactiveParseError}' for '--interactive'`,
-        argvSpec: rmArgvSpec,
+        message: `rm: invalid argument '${deferredState.interactiveParseError}' for '--interactive'`,
+        usageSummary: formatArgvUsageSummary({ presentation: rmArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
-    const preserveRootParseError = parsed.optionValues.preserveRootParseError;
-    if (typeof preserveRootParseError === 'string') {
+    if (deferredState.preserveRootParseError !== undefined) {
       await context.text().error({
-        text: `rm: unrecognized --preserve-root argument: '${preserveRootParseError}'\n`,
+        text: `rm: unrecognized --preserve-root argument: '${deferredState.preserveRootParseError}'\n`,
       });
       return { exitCode: 1 };
     }
@@ -243,7 +328,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'rm',
-        argvSpec: rmArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: rmArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -251,11 +336,9 @@ export const rmCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     const recursive = parsed.optionValues.recursive === true;
     const removeEmptyDirectories = parsed.optionValues.removeEmptyDirectories === true;
-    const force = parsed.optionValues.force === true;
+    const force = deferredState.force;
     const verbose = parsed.optionValues.verbose === true;
-    const interactiveMode = typeof parsed.optionValues.interactiveMode === 'string'
-      ? parsed.optionValues.interactiveMode as RmInteractiveMode
-      : 'never';
+    const interactiveMode = deferredState.interactiveMode;
 
     if (parsed.positionals.length === 0) {
       if (force) return { exitCode: 0 };
@@ -263,7 +346,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'rm',
         message: 'rm: missing operand',
-        argvSpec: rmArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: rmArgvHelp }),
       });
       return { exitCode: 1 };
     }

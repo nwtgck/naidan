@@ -1,70 +1,50 @@
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { basenamePath } from '@/features/wesh/commands/_shared/path';
 
-function splitBasenameArguments({
-  args,
-}: {
-  args: string[],
-}): {
-  optionArguments: string[],
-  positionalArguments: string[],
-} {
-  let index = 0;
-
-  while (index < args.length) {
-    const token = args[index];
-    if (token === undefined) break;
-
-    if (token === '--') {
-      return {
-        optionArguments: args.slice(0, index),
-        positionalArguments: args.slice(index + 1),
-      };
-    }
-
-    if (token === '-' || !token.startsWith('-')) break;
-
-    if (token === '--suffix') {
-      index += Math.min(2, args.length - index);
-      continue;
-    }
-
-    if (token.startsWith('--suffix=')) {
-      index += 1;
-      continue;
-    }
-
-    if (token.startsWith('-') && !token.startsWith('--')) {
-      const suffixOptionIndex = token.slice(1).indexOf('s');
-      if (suffixOptionIndex >= 0 && suffixOptionIndex === token.length - 2) {
-        index += Math.min(2, args.length - index);
-        continue;
-      }
-    }
-
-    index += 1;
-  }
-
-  return {
-    optionArguments: args.slice(0, index),
-    positionalArguments: args.slice(index),
-  };
-}
-
-const basenameArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'flag', short: 'a', long: 'multiple', effects: [{ key: 'multiple', value: true }], help: { summary: 'support multiple arguments and treat each as NAME', category: 'common' } },
-    { kind: 'value', short: 's', long: 'suffix', key: 'suffix', valueName: 'SUFFIX', allowAttachedValue: true, parseValue: undefined, help: { summary: 'remove a trailing SUFFIX; implies -a', valueName: 'SUFFIX', category: 'common' } },
-    { kind: 'flag', short: 'z', long: 'zero', effects: [{ key: 'zero', value: true }], help: { summary: 'end each output line with NUL, not newline', category: 'common' } },
+const basenameHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const basenameMultipleOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'multiple', value: true }] },
+  forms: [
+    { kind: 'short', name: 'a', value: { kind: 'none' } },
+    { kind: 'long', name: 'multiple', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const basenameSuffixOption = {
+  semantic: { kind: 'required-value', key: 'suffix', parse: undefined },
+  forms: [
+    { kind: 'short', name: 's', value: { kind: 'required-attached-or-following', missingValueName: 'SUFFIX' } },
+    { kind: 'long', name: 'suffix', value: { kind: 'required', missingValueName: 'SUFFIX' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const basenameZeroOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'zero', value: true }] },
+  forms: [
+    { kind: 'short', name: 'z', value: { kind: 'none' } },
+    { kind: 'long', name: 'zero', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const basenameArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: ['version'],
+  definitions: [basenameHelpOption, basenameMultipleOption, basenameSuffixOption, basenameZeroOption],
+});
+const basenameArgvHelp = defineArgvHelpPresentation({
+  catalog: basenameArgvCatalog,
+  rows: [
+    { forms: basenameMultipleOption.forms, summary: 'support multiple arguments and treat each as NAME', category: 'common' },
+    { forms: basenameSuffixOption.forms, summary: 'remove a trailing SUFFIX; implies -a', valueName: 'SUFFIX', category: 'common' },
+    { forms: basenameZeroOption.forms, summary: 'end each output line with NUL, not newline', category: 'common' },
+    { forms: basenameHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const basenameArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'none',
 };
 
 export const basenameCommandDefinition: WeshCommandDefinition = {
@@ -74,16 +54,16 @@ export const basenameCommandDefinition: WeshCommandDefinition = {
     usage: 'basename [OPTION]... NAME...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const splitArguments = splitBasenameArguments({ args: context.args });
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
-        args: splitArguments.optionArguments,
-        spec: basenameArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+      args: stopArgvAtFirstEarlyExit({
+        args: context.args,
+        catalog: basenameArgvCatalog,
+        policy: basenameArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: basenameArgvSpec,
+      catalog: basenameArgvCatalog,
+      policy: basenameArgvPolicy,
     });
-    for (const positional of splitArguments.positionalArguments) parsed.positionals.push(positional);
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
@@ -91,7 +71,7 @@ export const basenameCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'basename',
         message: `basename: ${diagnostic.message}`,
-        argvSpec: basenameArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: basenameArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -100,7 +80,7 @@ export const basenameCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'basename',
-        argvSpec: basenameArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: basenameArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -116,7 +96,7 @@ export const basenameCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'basename',
         message: 'basename: missing operand',
-        argvSpec: basenameArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: basenameArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -126,7 +106,7 @@ export const basenameCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'basename',
         message: 'basename: extra operand',
-        argvSpec: basenameArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: basenameArgvHelp }),
       });
       return { exitCode: 1 };
     }

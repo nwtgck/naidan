@@ -570,4 +570,14 @@ name`,
     expect(invalidFirst.stderr.text).not.toBe('');
   });
 
+  it('keeps unsupported --file-system in the GNU abbreviation namespace', async () => {
+    const ambiguous = await execute({ script: 'stat --f' });
+
+    expect(ambiguous.stdout.text).toBe('');
+    expect(ambiguous.stderr.text).toContain("option '--f' is ambiguous");
+    expect(ambiguous.stderr.text).toContain("'--file-system'");
+    expect(ambiguous.stderr.text).toContain("'--format'");
+    expect(ambiguous.result.exitCode).not.toBe(0);
+  });
+
 });

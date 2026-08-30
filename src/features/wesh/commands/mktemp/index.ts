@@ -1,6 +1,5 @@
-import { parseStandardArgv, type ParsedStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type ParsedStandardArgv, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { normalizePath, resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
 
@@ -157,68 +156,117 @@ function createCandidatePath({
   };
 }
 
-function parseOptionalTmpdirToken({
-  token,
-}: {
-  token: string;
-  nextToken: string | undefined;
-}) {
-  if (token !== '--tmpdir') return undefined;
-  return {
-    kind: 'matched' as const,
-    consumeCount: 1,
-    effects: [{ key: 'defaultTmpDir', value: true }],
-    occurrences: [{
-      kind: 'special' as const,
-      option: '--tmpdir',
-      effects: [{ key: 'defaultTmpDir', value: true }],
-    }],
-  };
-}
+type MktempDeferredOption = 'tmpdir';
+
+const mktempDirectoryOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'directory', value: true }] },
+  forms: [
+    { kind: 'short', name: 'd', value: { kind: 'none' } },
+    { kind: 'long', name: 'directory', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<MktempDeferredOption>>;
+const mktempHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<MktempDeferredOption>>;
+const mktempTmpdirOption = {
+  semantic: { kind: 'deferred', tag: 'tmpdir' },
+  forms: [
+    { kind: 'short', name: 'p', value: { kind: 'required-attached-or-following', missingValueName: 'DIR' } },
+    { kind: 'long', name: 'tmpdir', value: { kind: 'optional-inline' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<MktempDeferredOption>>;
+const mktempQuietOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
+  forms: [
+    { kind: 'short', name: 'q', value: { kind: 'none' } },
+    { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<MktempDeferredOption>>;
+const mktempSuffixOption = {
+  semantic: { kind: 'required-value', key: 'suffix', parse: undefined },
+  forms: [{ kind: 'long', name: 'suffix', value: { kind: 'required', missingValueName: 'SUFF' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<MktempDeferredOption>>;
+const mktempDeprecatedTmpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'deprecatedTmp', value: true }] },
+  forms: [{ kind: 'short', name: 't', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<MktempDeferredOption>>;
+const mktempDryRunOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'dryRun', value: true }] },
+  forms: [
+    { kind: 'short', name: 'u', value: { kind: 'none' } },
+    { kind: 'long', name: 'dry-run', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<MktempDeferredOption>>;
+
+const mktempArgvCatalog = defineArgvCatalog<StandardArgvAction<MktempDeferredOption>>({
+  nonExecutableLongOptions: ['version'],
+  definitions: [
+    mktempDirectoryOption, mktempHelpOption, mktempTmpdirOption,
+    mktempQuietOption, mktempSuffixOption, mktempDeprecatedTmpOption,
+    mktempDryRunOption,
+  ],
+});
+const mktempArgvHelp = defineArgvHelpPresentation({
+  catalog: mktempArgvCatalog,
+  rows: [
+    { forms: mktempDirectoryOption.forms, summary: 'create a directory, not a file', category: 'common' },
+    { forms: mktempHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+    { forms: mktempTmpdirOption.forms, summary: 'interpret TEMPLATE relative to DIR', valueName: 'DIR', category: 'common' },
+    { forms: mktempQuietOption.forms, summary: 'suppress diagnostics on failure', category: 'common' },
+    { forms: mktempSuffixOption.forms, summary: 'append SUFF to TEMPLATE', valueName: 'SUFF', category: 'advanced' },
+    { forms: mktempDeprecatedTmpOption.forms, summary: 'interpret TEMPLATE as a single file name component under the temp directory', category: 'advanced' },
+    { forms: mktempDryRunOption.forms, summary: 'print a name without creating anything', category: 'common' },
+  ],
+});
+const mktempArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 function resolveMktempDirectorySelection({
   parsed,
 }: {
-  parsed: ParsedStandardArgv,
+  parsed: ParsedStandardArgv<MktempDeferredOption>,
 }): {
   tmpDir: string | undefined,
   useDefaultTmpDir: boolean,
+  hasTmpDirOption: boolean,
 } {
   if (parsed.optionValues.deprecatedTmp === true) {
-    return { tmpDir: undefined, useDefaultTmpDir: true };
+    return { tmpDir: undefined, useDefaultTmpDir: true, hasTmpDirOption: parsed.deferred.length > 0 };
   }
 
   let tmpDir: string | undefined;
   let useDefaultTmpDir = false;
-  for (const occurrence of parsed.occurrences) {
-    if (occurrence.kind === 'special' && occurrence.option === '--tmpdir') {
-      tmpDir = undefined;
-      useDefaultTmpDir = true;
-      continue;
+  for (const occurrence of parsed.deferred) {
+    switch (occurrence.semantic.tag) {
+    case 'tmpdir':
+      switch (occurrence.value.kind) {
+      case 'none':
+        tmpDir = undefined;
+        useDefaultTmpDir = true;
+        break;
+      case 'inline':
+      case 'next-argv':
+        tmpDir = occurrence.value.rawValue;
+        useDefaultTmpDir = false;
+        break;
+      default: {
+        const _ex: never = occurrence.value;
+        throw new Error(`Unhandled mktemp tmpdir value: ${JSON.stringify(_ex)}`);
+      }
+      }
+      break;
+    default: {
+      const _ex: never = occurrence.semantic.tag;
+      throw new Error(`Unhandled mktemp deferred option: ${_ex}`);
     }
-    if (occurrence.kind === 'value' && occurrence.key === 'tmpDir') {
-      tmpDir = String(occurrence.value);
-      useDefaultTmpDir = false;
     }
   }
-  return { tmpDir, useDefaultTmpDir };
+  return { tmpDir, useDefaultTmpDir, hasTmpDirOption: parsed.deferred.length > 0 };
 }
-
-const mktempArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'd', long: 'directory', effects: [{ key: 'directory', value: true }], help: { summary: 'create a directory, not a file', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'value', short: 'p', long: 'tmpdir', key: 'tmpDir', valueName: 'DIR', allowAttachedValue: true, parseValue: undefined, help: { summary: 'interpret TEMPLATE relative to DIR', valueName: 'DIR', category: 'common' } },
-    { kind: 'flag', short: 'q', long: 'quiet', effects: [{ key: 'quiet', value: true }], help: { summary: 'suppress diagnostics on failure', category: 'common' } },
-    { kind: 'value', short: undefined, long: 'suffix', key: 'suffix', valueName: 'SUFF', allowAttachedValue: true, parseValue: undefined, help: { summary: 'append SUFF to TEMPLATE', valueName: 'SUFF', category: 'advanced' } },
-    { kind: 'flag', short: 't', long: undefined, effects: [{ key: 'deprecatedTmp', value: true }], help: { summary: 'interpret TEMPLATE as a single file name component under the temp directory', category: 'advanced' } },
-    { kind: 'flag', short: 'u', long: 'dry-run', effects: [{ key: 'dryRun', value: true }], help: { summary: 'print a name without creating anything', category: 'common' } },
-  ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [parseOptionalTmpdirToken],
-};
 
 export const mktempCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -228,12 +276,14 @@ export const mktempCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: mktempArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: mktempArgvCatalog,
+        policy: mktempArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: mktempArgvSpec,
+      catalog: mktempArgvCatalog,
+      policy: mktempArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -242,7 +292,7 @@ export const mktempCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'mktemp',
         message: `mktemp: ${diagnostic.message}`,
-        argvSpec: mktempArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: mktempArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -251,7 +301,7 @@ export const mktempCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'mktemp',
-        argvSpec: mktempArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: mktempArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -261,7 +311,7 @@ export const mktempCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'mktemp',
         message: 'mktemp: too many templates',
-        argvSpec: mktempArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: mktempArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -280,9 +330,8 @@ export const mktempCommandDefinition: WeshCommandDefinition = {
     const suffix = (parsed.optionValues.suffix as string | undefined) ?? '';
 
     if ((
-      parsed.optionValues.tmpDir !== undefined
+      directorySelection.hasTmpDirOption
       || parsed.optionValues.deprecatedTmp === true
-      || parsed.optionValues.defaultTmpDir === true
     ) && rawTemplate.startsWith('/')) {
       await context.text().error({ text: 'mktemp: template must not be absolute when using -p, --tmpdir, or -t\n' });
       return { exitCode: 1 };

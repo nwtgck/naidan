@@ -308,6 +308,46 @@ ordering/a-dir:
     }
   });
 
+  it('matches GNU unique-prefix acceptance and real-option ambiguity', async () => {
+    await writeFile({ path: 'tree/sub/file.txt', data: 'file' });
+
+    const abbreviated = await execute({ script: 'ls --rec tree' });
+    const canonical = await execute({ script: 'ls --recursive tree' });
+    const recursiveAmbiguous = await execute({ script: 'ls --r tree' });
+    const directoryAmbiguous = await execute({ script: 'ls --di tree' });
+    const classifyAmbiguous = await execute({ script: 'ls --c tree' });
+    const unsupportedOnlyAmbiguous = await execute({ script: 'ls --q tree' });
+    const syntheticLong = await execute({ script: 'ls --1 tree' });
+
+    expect(abbreviated.stdout.text).toBe(canonical.stdout.text);
+    expect(abbreviated.stderr.text).toBe(canonical.stderr.text);
+    expect(abbreviated.result.exitCode).toBe(canonical.result.exitCode);
+
+    expect(recursiveAmbiguous.stderr.text).toContain("option '--r' is ambiguous");
+    expect(recursiveAmbiguous.stderr.text).toContain("'--recursive'");
+    expect(recursiveAmbiguous.stderr.text).toContain("'--reverse'");
+    expect(recursiveAmbiguous.result.exitCode).toBe(2);
+
+    expect(directoryAmbiguous.stderr.text).toContain("option '--di' is ambiguous");
+    expect(directoryAmbiguous.stderr.text).toContain("'--directory'");
+    expect(directoryAmbiguous.stderr.text).toContain("'--dired'");
+    expect(directoryAmbiguous.result.exitCode).toBe(2);
+
+    expect(classifyAmbiguous.stderr.text).toContain("option '--c' is ambiguous");
+    expect(classifyAmbiguous.stderr.text).toContain("'--classify'");
+    expect(classifyAmbiguous.stderr.text).toContain("'--color'");
+    expect(classifyAmbiguous.stderr.text).toContain("'--context'");
+    expect(classifyAmbiguous.result.exitCode).toBe(2);
+
+    expect(unsupportedOnlyAmbiguous.stderr.text).toContain("option '--q' is ambiguous");
+    expect(unsupportedOnlyAmbiguous.stderr.text).toContain("'--quote-name'");
+    expect(unsupportedOnlyAmbiguous.stderr.text).toContain("'--quoting-style'");
+    expect(unsupportedOnlyAmbiguous.result.exitCode).toBe(2);
+
+    expect(syntheticLong.stderr.text).toContain("unrecognized option '--1'");
+    expect(syntheticLong.result.exitCode).toBe(2);
+  });
+
   it('lists root-relative paths correctly from /', async () => {
     await writeFile({ path: 'root.txt', data: 'root' });
 

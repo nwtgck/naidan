@@ -174,4 +174,14 @@ echo $?`,
     expect(chainedMode.stderr.text).toBe('');
   });
 
+  it('keeps unsupported --version in the GNU abbreviation namespace', async () => {
+    const ambiguous = await execute({ script: 'mkdir --v' });
+
+    expect(ambiguous.stdout.text).toBe('');
+    expect(ambiguous.stderr.text).toContain("option '--v' is ambiguous");
+    expect(ambiguous.stderr.text).toContain("'--verbose'");
+    expect(ambiguous.stderr.text).toContain("'--version'");
+    expect(ambiguous.result.exitCode).toBe(1);
+  });
+
 });

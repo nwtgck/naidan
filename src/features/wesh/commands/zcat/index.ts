@@ -1,56 +1,63 @@
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
 import {
   consumeGzipInput,
   peekGzipInput,
 } from '@/features/wesh/commands/_shared/gzip-decompression';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { writeAllStreamToHandle } from '@/features/wesh/utils/fs';
 
-const zcatArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'c',
-      long: 'stdout',
-      effects: [{ key: 'stdout', value: true }],
-      help: { summary: 'write on standard output' },
-    },
-    {
-      kind: 'flag',
-      short: 'd',
-      long: 'decompress',
-      effects: [{ key: 'decompress', value: true }],
-      help: { summary: 'decompress input' },
-    },
-    {
-      kind: 'flag',
-      short: 'f',
-      long: 'force',
-      effects: [{ key: 'force', value: true }],
-      help: { summary: 'copy input unchanged when it is not gzip data' },
-    },
-    {
-      kind: 'flag',
-      short: 'q',
-      long: 'quiet',
-      effects: [{ key: 'quiet', value: true }],
-      help: { summary: 'suppress warning messages' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
+const zcatStdoutOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'stdout', value: true }] },
+  forms: [
+    { kind: 'short', name: 'c', value: { kind: 'none' } },
+    { kind: 'long', name: 'stdout', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const zcatDecompressOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'decompress', value: true }] },
+  forms: [
+    { kind: 'short', name: 'd', value: { kind: 'none' } },
+    { kind: 'long', name: 'decompress', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const zcatForceOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'force', value: true }] },
+  forms: [
+    { kind: 'short', name: 'f', value: { kind: 'none' } },
+    { kind: 'long', name: 'force', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const zcatQuietOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
+  forms: [
+    { kind: 'short', name: 'q', value: { kind: 'none' } },
+    { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const zcatHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const zcatArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [zcatStdoutOption, zcatDecompressOption, zcatForceOption, zcatQuietOption, zcatHelpOption],
+});
+const zcatArgvHelp = defineArgvHelpPresentation({
+  catalog: zcatArgvCatalog,
+  rows: [
+    { forms: zcatStdoutOption.forms, summary: 'write on standard output' },
+    { forms: zcatDecompressOption.forms, summary: 'decompress input' },
+    { forms: zcatForceOption.forms, summary: 'copy input unchanged when it is not gzip data' },
+    { forms: zcatQuietOption.forms, summary: 'suppress warning messages' },
+    { forms: zcatHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const zcatArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 function mergeExitCode({
@@ -71,12 +78,14 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: zcatArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: zcatArgvCatalog,
+        policy: zcatArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: zcatArgvSpec,
+      catalog: zcatArgvCatalog,
+      policy: zcatArgvPolicy,
     });
 
     const text = context.text();
@@ -86,7 +95,7 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'zcat',
         message: `zcat: ${diagnostic.message}`,
-        argvSpec: zcatArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: zcatArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -95,7 +104,7 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'zcat',
-        argvSpec: zcatArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: zcatArgvHelp }),
       });
       return { exitCode: 0 };
     }

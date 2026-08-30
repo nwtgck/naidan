@@ -388,7 +388,7 @@ beta
     expect(squeezeBlank.stdout.text).toBe('\u0001\t\n\n');
 
     const compat = await execute({
-      script: 'cat --u long-individual.txt',
+      script: 'cat -u long-individual.txt',
       stdinText: undefined,
     });
     expect(compat.stdout.text).toBe('\u0001\t\n\n');
@@ -467,4 +467,18 @@ beta
     expect(stderr.text).toContain('--help');
     expect(result.exitCode).toBe(1);
   });
+  it('accepts GNU long-name abbreviations without preserving synthetic long aliases', async () => {
+    const abbreviated = await execute({
+      script: "printf 'a\\n' | cat --show-a",
+      stdinText: undefined,
+    });
+    const synthetic = await execute({ script: 'cat --u', stdinText: undefined });
+
+    expect(abbreviated.stdout.text).toBe('a$\n');
+    expect(abbreviated.stderr.text).toBe('');
+    expect(abbreviated.result.exitCode).toBe(0);
+    expect(synthetic.stderr.text).toContain("unrecognized option '--u'");
+    expect(synthetic.result.exitCode).toBe(1);
+  });
+
 });

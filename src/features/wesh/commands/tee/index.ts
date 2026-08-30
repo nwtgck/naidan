@@ -1,3 +1,4 @@
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
@@ -5,21 +6,40 @@ import type {
   WeshEfficientFileWriter,
   WeshFileHandle,
 } from '@/features/wesh/types';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { openHandleReadStream } from '@/features/wesh/utils/fs';
 import { canonicalizeExistingPath, resolvePath } from '@/features/wesh/path';
 
-const teeArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'flag', short: 'a', long: 'append', effects: [{ key: 'append', value: true }], help: { summary: 'append to the given FILEs, do not overwrite', category: 'common' } },
+const teeHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const teeAppendOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'append', value: true }] },
+  forms: [
+    { kind: 'short', name: 'a', value: { kind: 'none' } },
+    { kind: 'long', name: 'append', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const teeArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [
+    'ignore-interrupts',
+    'output-error',
+    'version',
+  ],
+  definitions: [teeHelpOption, teeAppendOption],
+});
+const teeArgvHelp = defineArgvHelpPresentation({
+  catalog: teeArgvCatalog,
+  rows: [
+    { forms: teeAppendOption.forms, summary: 'append to the given FILEs, do not overwrite', category: 'common' },
+    { forms: teeHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const teeArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 
@@ -123,12 +143,14 @@ export const teeCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: teeArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: teeArgvCatalog,
+        policy: teeArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: teeArgvSpec,
+      catalog: teeArgvCatalog,
+      policy: teeArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -137,7 +159,7 @@ export const teeCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'tee',
         message: `tee: ${diagnostic.message}`,
-        argvSpec: teeArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: teeArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -146,7 +168,7 @@ export const teeCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'tee',
-        argvSpec: teeArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: teeArgvHelp }),
       });
       return { exitCode: 0 };
     }

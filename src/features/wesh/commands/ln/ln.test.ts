@@ -87,8 +87,15 @@ describe('wesh ln', () => {
     expect(help.stdout.text).toContain('Make links between files');
     expect(help.stdout.text).toContain('usage:');
     expect(help.stdout.text).toContain('--help');
+    expect(help.stdout.text).toContain('--backup[=CONTROL]');
+    expect(help.stdout.text).toContain('--target-directory=DIRECTORY');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
+
+    const invalidHelpValue = await execute({ script: 'ln --help=bogus' });
+    expect(invalidHelpValue.result.exitCode).toBe(1);
+    expect(invalidHelpValue.stdout.text).toBe('');
+    expect(invalidHelpValue.stderr.text).toContain("option '--help' doesn't allow an argument");
 
     expect(missing.stdout.text).toBe('');
     expect(missing.stderr.text).toContain('ln: missing file operand');
@@ -300,6 +307,30 @@ printf 'status=%s second=%s\n' "$?" "$(readlink destination/second)"
     expect(await readFile({ path: 'invalid' })).toBe('keep');
   });
 
+  it('preserves explicit backup control across bare backup forms', async () => {
+    await writeFile({ path: 'target', data: 'new' });
+    await writeFile({ path: 'numbered', data: 'old' });
+    const numbered = await execute({
+      script: 'ln -s --backup=numbered -b target numbered',
+    });
+    expect(numbered.result.exitCode).toBe(0);
+    expect(await readFile({ path: 'numbered.~1~' })).toBe('old');
+
+    await writeFile({ path: 'disabled-before', data: 'keep' });
+    const disabledBefore = await execute({
+      script: 'ln -s --backup=none -b target disabled-before',
+    });
+    expect(disabledBefore.result.exitCode).toBe(1);
+    expect(await readFile({ path: 'disabled-before' })).toBe('keep');
+
+    await writeFile({ path: 'disabled-after', data: 'keep' });
+    const disabledAfter = await execute({
+      script: 'ln -s -b --backup=none target disabled-after',
+    });
+    expect(disabledAfter.result.exitCode).toBe(1);
+    expect(await readFile({ path: 'disabled-after' })).toBe('keep');
+  });
+
   it('supports interactive replacement with GNU option precedence', async () => {
     await writeFile({ path: 'target', data: 'new' });
     await writeFile({ path: 'declined', data: 'old' });
@@ -363,6 +394,16 @@ printf 'status=%s second=%s\n' "$?" "$(readlink destination/second)"
     expect(hardLink.result.exitCode).toBe(1);
     await expect(wesh.vfs.lstat({ path: '/link' })).rejects.toThrow();
     expect(await readFile({ path: 'target' })).toBe('payload');
+  });
+
+  it('keeps unsupported --version in the GNU abbreviation namespace', async () => {
+    const ambiguous = await execute({ script: 'ln --v' });
+
+    expect(ambiguous.stdout.text).toBe('');
+    expect(ambiguous.stderr.text).toContain("option '--v' is ambiguous");
+    expect(ambiguous.stderr.text).toContain("'--verbose'");
+    expect(ambiguous.stderr.text).toContain("'--version'");
+    expect(ambiguous.result.exitCode).toBe(1);
   });
 
 });

@@ -1,45 +1,54 @@
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { stripTrailingSlashes } from '@/features/wesh/commands/_shared/path';
-import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
-const rmdirArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'p',
-      long: 'parents',
-      effects: [{ key: 'parents', value: true }],
-      help: { summary: 'remove DIRECTORY and its empty ancestors', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'v',
-      long: 'verbose',
-      effects: [{ key: 'verbose', value: true }],
-      help: { summary: 'output a diagnostic for every directory processed', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'ignore-fail-on-non-empty',
-      effects: [{ key: 'ignoreNonEmpty', value: true }],
-      help: { summary: 'ignore failures caused by non-empty directories', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
+const rmdirParentsShortForm = { kind: 'short', name: 'p', value: { kind: 'none' } } as const;
+// GNU rmdir accepts --path as a hidden alias of --parents. Keep it executable in
+// the same definition so unique-prefix resolution collapses --p / --pa as one
+// semantic option rather than reporting a false ambiguity. It stays out of help.
+const rmdirParentsPathAliasForm = { kind: 'long', name: 'path', value: { kind: 'none' } } as const;
+const rmdirParentsLongForm = { kind: 'long', name: 'parents', value: { kind: 'none' } } as const;
+const rmdirParentsOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'parents', value: true }] },
+  forms: [rmdirParentsShortForm, rmdirParentsPathAliasForm, rmdirParentsLongForm],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const rmdirVerboseOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'verbose', value: true }] },
+  forms: [
+    { kind: 'short', name: 'v', value: { kind: 'none' } },
+    { kind: 'long', name: 'verbose', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const rmdirIgnoreNonEmptyOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'ignoreNonEmpty', value: true }] },
+  forms: [{ kind: 'long', name: 'ignore-fail-on-non-empty', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const rmdirHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+
+const rmdirArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  // GNU rmdir also has --version. Wesh intentionally does not implement it, but
+  // it must still block prefixes such as --v/--ver from resolving to --verbose.
+  nonExecutableLongOptions: ['version'],
+  definitions: [rmdirParentsOption, rmdirVerboseOption, rmdirIgnoreNonEmptyOption, rmdirHelpOption],
+});
+const rmdirArgvHelp = defineArgvHelpPresentation({
+  catalog: rmdirArgvCatalog,
+  rows: [
+    { forms: [rmdirParentsShortForm, rmdirParentsLongForm], summary: 'remove DIRECTORY and its empty ancestors', category: 'common' },
+    { forms: rmdirVerboseOption.forms, summary: 'output a diagnostic for every directory processed', category: 'common' },
+    { forms: rmdirIgnoreNonEmptyOption.forms, summary: 'ignore failures caused by non-empty directories', category: 'advanced' },
+    { forms: rmdirHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const rmdirArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 export const rmdirCommandDefinition: WeshCommandDefinition = {
@@ -50,8 +59,14 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: rmdirArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
-      spec: rmdirArgvSpec,
+      args: stopArgvAtFirstEarlyExit({
+        args: context.args,
+        catalog: rmdirArgvCatalog,
+        policy: rmdirArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
+      }),
+      catalog: rmdirArgvCatalog,
+      policy: rmdirArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -60,7 +75,7 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'rmdir',
         message: `rmdir: ${diagnostic.message}`,
-        argvSpec: rmdirArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: rmdirArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -69,7 +84,7 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'rmdir',
-        argvSpec: rmdirArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: rmdirArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -80,7 +95,7 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'rmdir',
         message: 'rmdir: missing operand',
-        argvSpec: rmdirArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: rmdirArgvHelp }),
       });
       return { exitCode: 1 };
     }

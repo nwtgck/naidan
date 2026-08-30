@@ -1,35 +1,36 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import { getCoreUmaskOrDefault } from '@/features/wesh/commands/_shared/core-capability';
 import { parseFilePermissionMode } from '@/features/wesh/commands/_shared/file-mode';
 import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
 
-const mkfifoArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'value',
-      short: 'm',
-      long: 'mode',
-      key: 'mode',
-      valueName: 'MODE',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'set file permission bits to MODE', valueName: 'MODE', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
+const mkfifoModeOption = {
+  semantic: { kind: 'required-value', key: 'mode', parse: undefined },
+  forms: [
+    { kind: 'short', name: 'm', value: { kind: 'required-attached-or-following', missingValueName: 'MODE' } },
+    { kind: 'long', name: 'mode', value: { kind: 'required', missingValueName: 'MODE' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const mkfifoHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const mkfifoArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: ['context', 'version'],
+  definitions: [mkfifoModeOption, mkfifoHelpOption],
+});
+const mkfifoArgvHelp = defineArgvHelpPresentation({
+  catalog: mkfifoArgvCatalog,
+  rows: [
+    { forms: mkfifoModeOption.forms, summary: 'set file permission bits to MODE', valueName: 'MODE', category: 'common' },
+    { forms: mkfifoHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const mkfifoArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 async function pathExists({
@@ -56,12 +57,14 @@ export const mkfifoCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: mkfifoArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: mkfifoArgvCatalog,
+        policy: mkfifoArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: mkfifoArgvSpec,
+      catalog: mkfifoArgvCatalog,
+      policy: mkfifoArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -70,7 +73,7 @@ export const mkfifoCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'mkfifo',
         message: `mkfifo: ${diagnostic.message}`,
-        argvSpec: mkfifoArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: mkfifoArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -79,7 +82,7 @@ export const mkfifoCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'mkfifo',
-        argvSpec: mkfifoArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: mkfifoArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -103,7 +106,7 @@ export const mkfifoCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'mkfifo',
         message: 'mkfifo: missing operand',
-        argvSpec: mkfifoArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: mkfifoArgvHelp }),
       });
       return { exitCode: 1 };
     }

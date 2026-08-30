@@ -1,16 +1,32 @@
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 
-const clearArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: 'x', long: undefined, effects: [{ key: 'keepScrollback', value: true }], help: { summary: 'do not try to clear scrollback', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit' } },
+const clearKeepScrollbackOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'keepScrollback', value: true }] },
+  forms: [{ kind: 'short', name: 'x', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const clearHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+
+const clearArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [],
+  definitions: [clearKeepScrollbackOption, clearHelpOption],
+});
+const clearArgvHelp = defineArgvHelpPresentation({
+  catalog: clearArgvCatalog,
+  rows: [
+    { forms: clearKeepScrollbackOption.forms, summary: 'do not try to clear scrollback', category: 'common' },
+    { forms: clearHelpOption.forms, summary: 'display this help and exit' },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+});
+
+const clearArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'exact',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 export const clearCommandDefinition: WeshCommandDefinition = {
@@ -22,7 +38,8 @@ export const clearCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: clearArgvSpec,
+      catalog: clearArgvCatalog,
+      policy: clearArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -31,7 +48,7 @@ export const clearCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'clear',
         message: `clear: ${diagnostic.message}`,
-        argvSpec: clearArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: clearArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -40,7 +57,7 @@ export const clearCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'clear',
-        argvSpec: clearArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: clearArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -50,7 +67,7 @@ export const clearCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'clear',
         message: 'clear: too many arguments',
-        argvSpec: clearArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: clearArgvHelp }),
       });
       return { exitCode: 1 };
     }

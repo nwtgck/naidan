@@ -1,10 +1,8 @@
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
-import { parseStandardArgv } from '@/features/wesh/argv';
-import type { StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { openHandleReadStream, openFileReadStream, writeAllBytesToHandle, writeAllStreamToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 
 const CAT_OUTPUT_BUFFER_LENGTH = 64 * 1024;
 const NEWLINE_BYTE = 0x0a;
@@ -76,52 +74,126 @@ function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
   return path.startsWith('/') ? path : cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
-const catArgvSpec: StandardArgvParserSpec = {
-  options: [
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
-    { kind: 'flag', short: 'n', long: 'number', effects: [{ key: 'numberAllLines', value: true }], help: { summary: 'number all output lines', category: 'common' } },
-    { kind: 'flag', short: 'b', long: 'number-nonblank', effects: [{ key: 'numberNonBlankLines', value: true }], help: { summary: 'number nonempty output lines', category: 'common' } },
-    { kind: 'flag', short: 'E', long: 'show-ends', effects: [{ key: 'showEnds', value: true }], help: { summary: 'display $ at end of each line', category: 'common' } },
-    { kind: 'flag', short: 'T', long: 'show-tabs', effects: [{ key: 'showTabs', value: true }], help: { summary: 'display TAB characters as ^I', category: 'common' } },
-    { kind: 'flag', short: 'v', long: 'show-nonprinting', effects: [{ key: 'showNonPrinting', value: true }], help: { summary: 'show non-printing characters except TAB and LF', category: 'common' } },
-    {
-      kind: 'flag',
-      short: 'A',
-      long: 'show-all',
-      effects: [
-        { key: 'showEnds', value: true },
-        { key: 'showTabs', value: true },
-        { key: 'showNonPrinting', value: true },
-      ],
-      help: { summary: 'equivalent to -vET', category: 'common' },
-    },
-    {
-      kind: 'flag',
-      short: 'e',
-      long: undefined,
-      effects: [
-        { key: 'showEnds', value: true },
-        { key: 'showNonPrinting', value: true },
-      ],
-      help: { summary: 'equivalent to -vE', category: 'advanced' },
-    },
-    {
-      kind: 'flag',
-      short: 't',
-      long: undefined,
-      effects: [
-        { key: 'showTabs', value: true },
-        { key: 'showNonPrinting', value: true },
-      ],
-      help: { summary: 'equivalent to -vT', category: 'advanced' },
-    },
-    { kind: 'flag', short: 's', long: 'squeeze-blank', effects: [{ key: 'squeezeBlank', value: true }], help: { summary: 'suppress repeated empty output lines', category: 'common' } },
-    { kind: 'flag', short: 'u', long: 'u', effects: [], help: { summary: 'accepted for compatibility', category: 'advanced' } },
+const catHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const catNumberOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'numberAllLines', value: true }] },
+  forms: [
+    { kind: 'short', name: 'n', value: { kind: 'none' } },
+    { kind: 'long', name: 'number', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const catNumberNonBlankOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'numberNonBlankLines', value: true }] },
+  forms: [
+    { kind: 'short', name: 'b', value: { kind: 'none' } },
+    { kind: 'long', name: 'number-nonblank', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const catShowEndsOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'showEnds', value: true }] },
+  forms: [
+    { kind: 'short', name: 'E', value: { kind: 'none' } },
+    { kind: 'long', name: 'show-ends', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const catShowTabsOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'showTabs', value: true }] },
+  forms: [
+    { kind: 'short', name: 'T', value: { kind: 'none' } },
+    { kind: 'long', name: 'show-tabs', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const catShowNonPrintingOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'showNonPrinting', value: true }] },
+  forms: [
+    { kind: 'short', name: 'v', value: { kind: 'none' } },
+    { kind: 'long', name: 'show-nonprinting', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const catShowAllOption = {
+  semantic: {
+    kind: 'effects',
+    effects: [
+      { key: 'showEnds', value: true },
+      { key: 'showTabs', value: true },
+      { key: 'showNonPrinting', value: true },
+    ],
+  },
+  forms: [
+    { kind: 'short', name: 'A', value: { kind: 'none' } },
+    { kind: 'long', name: 'show-all', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const catShowEndsNonPrintingOption = {
+  semantic: {
+    kind: 'effects',
+    effects: [
+      { key: 'showEnds', value: true },
+      { key: 'showNonPrinting', value: true },
+    ],
+  },
+  forms: [{ kind: 'short', name: 'e', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const catShowTabsNonPrintingOption = {
+  semantic: {
+    kind: 'effects',
+    effects: [
+      { key: 'showTabs', value: true },
+      { key: 'showNonPrinting', value: true },
+    ],
+  },
+  forms: [{ kind: 'short', name: 't', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const catSqueezeBlankOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'squeezeBlank', value: true }] },
+  forms: [
+    { kind: 'short', name: 's', value: { kind: 'none' } },
+    { kind: 'long', name: 'squeeze-blank', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const catUnbufferedOption = {
+  semantic: { kind: 'effects', effects: [] },
+  forms: [{ kind: 'short', name: 'u', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const catArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: ['version'],
+  definitions: [
+    catHelpOption,
+    catNumberOption,
+    catNumberNonBlankOption,
+    catShowEndsOption,
+    catShowTabsOption,
+    catShowNonPrintingOption,
+    catShowAllOption,
+    catShowEndsNonPrintingOption,
+    catShowTabsNonPrintingOption,
+    catSqueezeBlankOption,
+    catUnbufferedOption,
+  ],
+});
+const catArgvHelp = defineArgvHelpPresentation({
+  catalog: catArgvCatalog,
+  rows: [
+    { forms: catNumberOption.forms, summary: 'number all output lines', category: 'common' },
+    { forms: catNumberNonBlankOption.forms, summary: 'number nonempty output lines', category: 'common' },
+    { forms: catShowEndsOption.forms, summary: 'display $ at end of each line', category: 'common' },
+    { forms: catShowTabsOption.forms, summary: 'display TAB characters as ^I', category: 'common' },
+    { forms: catShowNonPrintingOption.forms, summary: 'show non-printing characters except TAB and LF', category: 'common' },
+    { forms: catShowAllOption.forms, summary: 'equivalent to -vET', category: 'common' },
+    { forms: catShowEndsNonPrintingOption.forms, summary: 'equivalent to -vE', category: 'advanced' },
+    { forms: catShowTabsNonPrintingOption.forms, summary: 'equivalent to -vT', category: 'advanced' },
+    { forms: catSqueezeBlankOption.forms, summary: 'suppress repeated empty output lines', category: 'common' },
+    { forms: catUnbufferedOption.forms, summary: 'accepted for compatibility', category: 'advanced' },
+    { forms: catHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const catArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 export const catCommandDefinition: WeshCommandDefinition = {
@@ -132,8 +204,14 @@ export const catCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: catArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
-      spec: catArgvSpec,
+      args: stopArgvAtFirstEarlyExit({
+        args: context.args,
+        catalog: catArgvCatalog,
+        policy: catArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
+      }),
+      catalog: catArgvCatalog,
+      policy: catArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -142,7 +220,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'cat',
         message: `cat: ${diagnostic.message}`,
-        argvSpec: catArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: catArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -151,7 +229,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'cat',
-        argvSpec: catArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: catArgvHelp }),
       });
       return { exitCode: 0 };
     }
