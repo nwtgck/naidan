@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ModelSupportInvestigationRepository } from '@/features/transformers-js/model-support-investigation/types';
+import { detectReasoningStreamProtocol } from '@/features/transformers-js/reasoning-stream-protocol';
 import {
   inspectTemplateBehavior,
   type ModelSupportInvestigationTemplateTokenizer,
@@ -137,6 +138,36 @@ describe('inspectTemplateBehavior', () => {
       status: 'unavailable',
       source: 'chat-template-render',
     });
+  });
+
+  it('records enough rendered prompt evidence to reproduce prompt-open thinking without a browser', async () => {
+    const value = tokenizer();
+    value.apply_chat_template = vi.fn((_messages, options) => {
+      if (options?.tokenize === false) {
+        return `\
+<|startoftext|><|im_start|>user
+Template probe user message.<|im_end|>
+<|im_start|>assistant
+<think>
+`;
+      }
+      return [1, 2, 3];
+    }) as unknown as ModelSupportInvestigationTemplateTokenizer['apply_chat_template'];
+    const result = await inspectTemplateBehavior({
+      repository: repository(),
+      loadTokenizer: vi.fn().mockResolvedValue(value),
+    });
+    const userGeneration = result.cases.find(item => item.caseId === 'user-generation');
+
+    expect(userGeneration).toMatchObject({
+      status: 'passed',
+      addGenerationPrompt: true,
+    });
+    expect(userGeneration?.renderedText).toBeDefined();
+    expect(detectReasoningStreamProtocol({
+      renderedGenerationPrompt: userGeneration!.renderedText!,
+      renderedConversationPrompt: undefined,
+    })).toBe('prompt-open-think');
   });
 
   it('preserves selected template and rendered text when tokenization fails', async () => {

@@ -7,7 +7,6 @@ import {
   type Tensor,
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
-import { ToolCallStreamParser } from './tool-call-parser';
 import {
   buildGemma4TemplateInput,
   isGemma4Model,
@@ -27,6 +26,17 @@ import {
   type Qwen3_5ConversationState,
 } from './models/qwen3_5';
 import type { WorkerToolDefinition } from './types';
+import {
+  createReasoningStreamNormalizer,
+  detectReasoningStreamProtocol,
+  type ReasoningStreamProtocol,
+} from './reasoning-stream-protocol';
+import {
+  createStandardToolCallStreamParser,
+  detectStandardToolCallProtocol,
+  formatStandardMessagesForToolCallProtocol,
+  type StandardToolCallProtocol,
+} from './standard-tool-call-protocol';
 
 type ModelOutput = Record<string, unknown>;
 
@@ -68,6 +78,7 @@ interface GenerationStrategyContext {
   tokenizer: PreTrainedTokenizer,
   messages: ChatMessage[],
   onChunk: ({ chunk }: { chunk: string }) => void,
+  onRawChunk: ({ chunk }: { chunk: string }) => void,
   onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void,
   params: LmParameters | undefined,
   tools: WorkerToolDefinition[] | undefined,
@@ -82,7 +93,61 @@ interface GenerationStrategyContext {
 
 export interface GenerationStrategy {
   kind: 'standard' | 'gpt-oss' | 'qwen3_5' | 'gemma4',
-  generate({ model, tokenizer, messages, onChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog, observationSink }: GenerationStrategyContext): Promise<void>,
+  generate({ model, tokenizer, messages, onChunk, onRawChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog, observationSink }: GenerationStrategyContext): Promise<void>,
+}
+
+function detectStandardReasoningProtocol({
+  tokenizer,
+  formattedMessages,
+  templateOptions,
+  debugLog,
+}: {
+  tokenizer: PreTrainedTokenizer,
+  formattedMessages: Array<Record<string, unknown>>,
+  templateOptions: Record<string, unknown>,
+  debugLog: GenerationStrategyContext['debugLog'],
+}): ReasoningStreamProtocol {
+  try {
+    const renderedGenerationPrompt = tokenizer.apply_chat_template(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Transformers.js chat-template messages are structurally compatible with Naidan messages.
+      formattedMessages as any,
+      { ...templateOptions, tokenize: false, return_dict: false },
+    );
+    if (typeof renderedGenerationPrompt !== 'string') return 'generated-output';
+    const preliminaryProtocol = detectReasoningStreamProtocol({
+      renderedGenerationPrompt,
+      renderedConversationPrompt: undefined,
+    });
+    switch (preliminaryProtocol) {
+    case 'generated-output':
+      return preliminaryProtocol;
+    case 'prompt-open-think':
+      break;
+    default: {
+      const _ex: never = preliminaryProtocol;
+      throw new Error(`Unhandled reasoning stream protocol: ${String(_ex)}`);
+    }
+    }
+
+    const renderedConversationPrompt = tokenizer.apply_chat_template(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Transformers.js chat-template messages are structurally compatible with Naidan messages.
+      formattedMessages as any,
+      { ...templateOptions, add_generation_prompt: false, tokenize: false, return_dict: false },
+    );
+    if (typeof renderedConversationPrompt !== 'string') return 'generated-output';
+    return detectReasoningStreamProtocol({
+      renderedGenerationPrompt,
+      renderedConversationPrompt,
+    });
+  } catch (error) {
+    debugLog({
+      event: 'standard reasoning protocol observation unavailable',
+      details: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    return 'generated-output';
+  }
 }
 
 export function selectGenerationStrategy({
@@ -114,18 +179,21 @@ const standardGenerationStrategy: GenerationStrategy = {
     tokenizer,
     messages,
     onChunk,
+    onRawChunk,
     onToolCalls,
     params,
     tools,
     stoppingCriteria,
+    debugLog,
     observationSink,
   }: GenerationStrategyContext) {
-    const formattedMessages = messages.map(message => ({
-      role: message.role,
-      content: typeof message.content === 'string' ? message.content : '',
-      tool_calls: message.tool_calls,
-      tool_call_id: message.tool_call_id,
-    }));
+    const toolCallProtocol: StandardToolCallProtocol = tools && tools.length > 0
+      ? detectStandardToolCallProtocol({ tokenizer, debugLog })
+      : 'json-tagged';
+    const formattedMessages = formatStandardMessagesForToolCallProtocol({
+      messages,
+      protocol: toolCallProtocol,
+    });
 
     const templateOptions: Record<string, unknown> = {
       add_generation_prompt: true,
@@ -135,18 +203,38 @@ const standardGenerationStrategy: GenerationStrategy = {
       templateOptions['tools'] = tools;
     }
 
+    const reasoningProtocol = detectStandardReasoningProtocol({
+      tokenizer,
+      formattedMessages,
+      templateOptions,
+      debugLog,
+    });
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const inputs = tokenizer.apply_chat_template(formattedMessages as any, templateOptions) as Record<string, unknown>;
-    const toolCallParser = tools && tools.length > 0 ? new ToolCallStreamParser({ onText: ({ text }) => onChunk({ chunk: text }) }) : null;
-    const streamer = new TextStreamer(tokenizer, {
-      skip_prompt: true,
-      skip_special_tokens: true,
-      callback_function: (output: string) => {
+    const toolCallParser = tools && tools.length > 0
+      ? createStandardToolCallStreamParser({
+        protocol: toolCallProtocol,
+        tools,
+        onText: ({ text }) => onChunk({ chunk: text }),
+      })
+      : null;
+    const reasoningStream = createReasoningStreamNormalizer({
+      protocol: reasoningProtocol,
+      onOutput: ({ output }) => {
         if (toolCallParser) {
           toolCallParser.feed({ output });
         } else {
           onChunk({ chunk: output });
         }
+      },
+    });
+    const streamer = new TextStreamer(tokenizer, {
+      skip_prompt: true,
+      skip_special_tokens: true,
+      callback_function: (output: string) => {
+        onRawChunk({ chunk: output });
+        reasoningStream.feed({ output });
       },
     });
 
@@ -160,6 +248,7 @@ const standardGenerationStrategy: GenerationStrategy = {
       observationSink,
     });
 
+    reasoningStream.flush();
     if (toolCallParser) {
       toolCallParser.flush();
       const parsedToolCalls = toolCallParser.drainToolCalls();
