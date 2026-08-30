@@ -1,0 +1,1 @@
+export const opfsEncryption__return_to_plain_before_authority_switch = (): string => 'Introduce la frase de contraseña para autenticar la operación interrumpida. Naidan finalizará el estado de transición protegido y después reconstruirá y verificará el almacenamiento sin cifrar antes de eliminar el cifrado.';

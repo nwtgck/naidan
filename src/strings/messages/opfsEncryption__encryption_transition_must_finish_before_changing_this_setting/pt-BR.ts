@@ -1,0 +1,1 @@
+export const opfsEncryption__encryption_transition_must_finish_before_changing_this_setting = (): string => 'Uma transição de criptografia precisa terminar antes que esta configuração possa ser alterada.';

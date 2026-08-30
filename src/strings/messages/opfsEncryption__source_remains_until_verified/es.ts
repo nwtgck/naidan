@@ -1,0 +1,1 @@
+export const opfsEncryption__source_remains_until_verified = (): string => 'El origen original seguirá disponible hasta que el nuevo almacenamiento se haya verificado por completo. Una operación interrumpida se reanuda en el siguiente inicio.';

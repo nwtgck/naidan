@@ -1,0 +1,1 @@
+export const OpfsEncryptionSettingsPanel__encrypted_source_remains_authoritative = (): string => 'El origen HizoFS cifrado seguirá siendo la fuente de referencia hasta que se verifique el descifrado y se cambie el almacenamiento de referencia.';

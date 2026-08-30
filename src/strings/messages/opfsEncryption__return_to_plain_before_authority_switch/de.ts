@@ -1,0 +1,1 @@
+export const opfsEncryption__return_to_plain_before_authority_switch = (): string => 'Geben Sie die Passphrase ein, um den unterbrochenen Vorgang zu authentifizieren. Naidan schließt den geschützten Übergangszustand ab und erstellt und überprüft anschließend den unverschlüsselten Speicher neu, bevor die Verschlüsselung entfernt wird.';

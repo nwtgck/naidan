@@ -1,0 +1,1 @@
+export const OpfsEncryptionSettingsPanel__plain_target_conflict_explanation = (): string => 'Naidan hat vorhandene unverschlüsselte Einträge an der Stelle gefunden, an die entschlüsselte Daten geschrieben würden. Sie wurden beibehalten und die Entschlüsselung wurde nicht gestartet.';

@@ -1,0 +1,1 @@
+export const opfsEncryption__return_to_plain_after_authority_switch = (): string => 'O armazenamento criptografado já é o armazenamento de referência. Digite a frase secreta para reconstruir e verificar o armazenamento em texto simples antes de remover a criptografia.';

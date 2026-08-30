@@ -1,0 +1,1 @@
+export const opfsEncryption__return_to_plain_after_authority_switch = (): string => 'Der verschlüsselte Speicher ist bereits maßgeblich. Geben Sie die Passphrase ein, um den unverschlüsselten Speicher neu zu erstellen und zu überprüfen, bevor die Verschlüsselung entfernt wird.';

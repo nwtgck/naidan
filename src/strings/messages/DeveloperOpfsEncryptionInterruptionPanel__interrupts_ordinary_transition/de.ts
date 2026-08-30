@@ -1,0 +1,1 @@
+export const DeveloperOpfsEncryptionInterruptionPanel__interrupts_ordinary_transition = (): string => 'Unterbricht den normalen Speicherübergang an einem ausgewählten Umschaltpunkt des maßgeblichen Speichers und lädt anschließend über den normalen Wiederherstellungspfad neu.';

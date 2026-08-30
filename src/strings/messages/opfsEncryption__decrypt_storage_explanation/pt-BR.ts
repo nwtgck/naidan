@@ -1,0 +1,1 @@
+export const opfsEncryption__decrypt_storage_explanation = (): string => 'O Naidan criará e verificará o layout OPFS legado completo em texto simples antes de remover o armazenamento criptografado. Todas as funções do app ficarão bloqueadas até a conclusão.';

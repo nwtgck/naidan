@@ -1,0 +1,1 @@
+export const opfsEncryption__enter_passphrase_for_opfs_storage = (): string => 'Introduce la frase de contraseña de este almacenamiento OPFS. Los chats y la interfaz principal solo se cargan tras una autenticación correcta.';

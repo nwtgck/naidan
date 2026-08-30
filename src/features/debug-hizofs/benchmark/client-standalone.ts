@@ -1,4 +1,3 @@
-import * as Comlink from 'comlink';
 import { createStandaloneWorker } from 'virtual:file-protocol-standalone/worker/hizofs-benchmark';
 import { createHizoFSBenchmarkWorkerClientBoundary } from '@/features/debug-hizofs/benchmark/worker-client';
 import type { HizoFSBenchmarkWorkerClient, IHizoFSBenchmarkWorker } from '@/features/debug-hizofs/benchmark/worker-client';
@@ -7,6 +6,7 @@ import {
   disposeStandaloneWorkerSession,
   STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
 } from '@/features/file-protocol-standalone/worker/standalone-worker-session';
+import { workerProxy, type WorkerRemote } from '@/utils/worker-transport';
 
 export async function createHizoFSBenchmarkWorkerClient(): Promise<HizoFSBenchmarkWorkerClient> {
   const session = await createStandaloneWorkerSession<IHizoFSBenchmarkWorker>({
@@ -35,15 +35,15 @@ export async function createHizoFSBenchmarkWorkerClient(): Promise<HizoFSBenchma
 }
 
 function createBenchmarkClient({ remote, release, terminate }: {
-  remote: Comlink.Remote<IHizoFSBenchmarkWorker>;
+  remote: WorkerRemote<IHizoFSBenchmarkWorker>;
   release: () => Promise<void>;
   terminate: () => void;
 }): HizoFSBenchmarkWorkerClient {
   return createHizoFSBenchmarkWorkerClientBoundary({
     release,
-    remote: remote as unknown as IHizoFSBenchmarkWorker,
+    remote,
     terminateWorker: terminate,
-    wrapProgressCallback: ({ callback }) => Comlink.proxy(callback),
+    wrapProgressCallback: ({ callback }) => workerProxy({ value: callback }),
   });
 }
 

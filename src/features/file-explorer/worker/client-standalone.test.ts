@@ -70,7 +70,7 @@ describe('standalone File Explorer Worker client lifecycle', () => {
     } as unknown as Comlink.Remote<IFileExplorerWorker>;
     createStandaloneWorkerMock.mockResolvedValue(worker);
     createStorageDirectoryRemoteMock.mockReturnValue(storageDirectoryRemote);
-    vi.mocked(Comlink.wrap).mockReturnValue(remote);
+    vi.mocked(wrapWorkerRemote).mockReturnValue(remote);
     const handle = { createWorkerMountGrant: vi.fn() } as never;
 
     const client = await createFileExplorerWorkerClient({
@@ -84,10 +84,12 @@ describe('standalone File Explorer Worker client lifecycle', () => {
 
     expect(remote.prepareSession).toHaveBeenCalledWith(
       {
-        root: {
-          kind: 'storage-directory',
-          rootName: 'HizoFS root',
-          readOnly: true,
+        request: {
+          root: {
+            kind: 'storage-directory',
+            rootName: 'HizoFS root',
+            readOnly: true,
+          },
         },
       },
       undefined,

@@ -152,7 +152,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       await runtime.remote.init(
         workerCapability({
           value: initRequest,
-          capability: 'file-system-handle-clone',
+          capability: 'file-system-handle-and-storage-directory-worker-mount-grant-clone',
         }),
         naidanSysfsRemoteReader
           ? workerProxy({ value: naidanSysfsRemoteReader })

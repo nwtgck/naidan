@@ -1,0 +1,1 @@
+export const opfsEncryption__encryption_control_state_cannot_be_read_safely = (): string => 'O estado de controle da criptografia não pode ser lido com segurança. Faça backup do OPFS bruto antes de tentar a recuperação.';

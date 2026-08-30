@@ -1,0 +1,1 @@
+export const OpfsEncryptionSettingsPanel__plain_target_conflict_explanation = (): string => 'O Naidan encontrou entradas em texto simples onde os dados descriptografados seriam gravados. Elas foram preservadas e a descriptografia não foi iniciada.';

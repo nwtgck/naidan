@@ -38,7 +38,10 @@ export async function createWeshWorkerInitRequest({
   case 'direct':
     return weshWorkerInitRequestSchema.parse({
       rootHandle,
-      mounts: mapWeshMountsToWorkerMounts({ mounts }),
+      mounts: await mapWeshMountsToWorkerMounts({
+        mounts,
+        storageDirectoryExecution: 'worker_local',
+      }),
       user,
       initialEnv,
       initialCwd,
@@ -47,7 +50,11 @@ export async function createWeshWorkerInitRequest({
     const opfsRoot = await navigator.storage.getDirectory();
     return weshWorkerInitRequestSchema.parse({
       rootHandle: await mapWeshRootHandleToOpfsReference({ rootHandle, opfsRoot }),
-      mounts: await mapWeshMountsToOpfsWorkerMounts({ mounts, opfsRoot }),
+      mounts: await mapWeshMountsToOpfsWorkerMounts({
+        mounts,
+        opfsRoot,
+        storageDirectoryExecution: 'worker_local',
+      }),
       user,
       initialEnv,
       initialCwd,

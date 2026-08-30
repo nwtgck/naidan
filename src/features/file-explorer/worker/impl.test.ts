@@ -52,10 +52,12 @@ describe('file-explorer.worker.impl', () => {
     }
 
     const { sessionId } = await worker.prepareSession({
-      root: {
-        kind: 'storage-directory',
-        rootName: 'HizoFS root',
-        readOnly: false,
+      request: {
+        root: {
+          kind: 'storage-directory',
+          rootName: 'HizoFS root',
+          readOnly: false,
+        },
       },
     }, undefined, storageDirectoryRemote);
 

@@ -1,0 +1,1 @@
+export const opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery = (): string => 'Änderungen an rohen OPFS-Daten während eines unterbrochenen Vorgangs können die Wiederherstellung unmöglich machen. Sichern Sie sie vor destruktiven Änderungen.';

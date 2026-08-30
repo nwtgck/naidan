@@ -1,0 +1,1 @@
+export const DeveloperOpfsEncryptionInterruptionPanel__transition_in_progress = (): string => 'Ein OPFS-Verschlüsselungsübergang läuft bereits. Laden Sie neu, um die normale Wiederherstellung fortzusetzen.';

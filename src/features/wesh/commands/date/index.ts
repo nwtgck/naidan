@@ -669,17 +669,18 @@ function parseEpochDateOperand({ value }: { value: string }): DateInstant | unde
 
 function parseDateOperand({ value }: { value: string }): DateInstant | undefined {
   if (containsNonAsciiDateWhitespace({ value })) return undefined;
-  if (value.startsWith('@')) {
-    return parseEpochDateOperand({ value: value.slice(1) });
+  const normalizedValue = value.trim();
+  if (normalizedValue.startsWith('@')) {
+    return parseEpochDateOperand({ value: normalizedValue.slice(1) });
   }
-  const date = new Date(value);
+  const date = new Date(normalizedValue);
   if (Number.isNaN(date.getTime())) return undefined;
 
   // JavaScript Date accepts common ISO/RFC3339-shaped timestamps with more than
   // three fractional digits but stores only milliseconds. Preserve the source
   // fraction when it belongs to the terminal seconds field so `%N` and ns output
   // do not silently discard precision from an otherwise accepted date operand.
-  const fractionalSecondMatch = /(?:T|[ \t])\d{2}:\d{2}:\d{2}\.(\d+)(?=(?:[zZ]|[+-]\d{2}:?\d{2}|[ \t]+(?:UTC|GMT))?[ \t]*$)/u.exec(value);
+  const fractionalSecondMatch = /(?:T|[ \t])\d{2}:\d{2}:\d{2}\.(\d+)(?=(?:[zZ]|[+-]\d{2}:?\d{2}|[ \t]+(?:UTC|GMT))?[ \t]*$)/u.exec(normalizedValue);
   const nanosecondsWithinSecond = fractionalSecondMatch === null
     ? date.getUTCMilliseconds() * 1_000_000
     : Number.parseInt(fractionalSecondMatch[1]!.slice(0, 9).padEnd(9, '0'), 10);

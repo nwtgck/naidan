@@ -42,6 +42,17 @@ interface BrandedCapabilityApi {
   run(request: WorkerCapability<{ handle: FileSystemDirectoryHandle; label: string }, 'file-system-handle-clone'>): Promise<void>;
 }
 wrapWorkerRemote<BrandedCapabilityApi>(endpoint);
+interface StorageDirectoryGrantCapabilityApi {
+  run(request: WorkerCapability<{
+    handle: FileSystemDirectoryHandle;
+    workerGrant: { implementation: string; opaquePayload: unknown };
+  }, 'file-system-handle-and-storage-directory-worker-mount-grant-clone'>): Promise<void>;
+}
+wrapWorkerRemote<StorageDirectoryGrantCapabilityApi>(endpoint);
+interface UnknownCapabilityApi {
+  run(request: WorkerCapability<{ payload: unknown }, 'unreviewed-clone'>): Promise<void>;
+}
+wrapWorkerRemote<UnknownCapabilityApi>(endpoint);
 interface UnsafeBrandedCapabilityApi {
   run(request: WorkerCapability<{ handle: FileSystemDirectoryHandle; callback: () => void }, 'file-system-handle-clone'>): Promise<void>;
 }

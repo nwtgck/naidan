@@ -1,0 +1,1 @@
+export const DeveloperOpfsEncryptionInterruptionPanel__ordinary_transition_warning = (): string => 'A transição normal do armazenamento será interrompida no limite selecionado e preparará o provedor atual para o recarregamento.';

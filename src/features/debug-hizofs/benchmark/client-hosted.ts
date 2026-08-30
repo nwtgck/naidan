@@ -1,31 +1,33 @@
-import * as Comlink from 'comlink';
 import { HIZOFS_BENCHMARK_WORKER_NAME } from '@/constants';
 import { createHizoFSBenchmarkWorkerClientBoundary } from '@/features/debug-hizofs/benchmark/worker-client';
 import type { HizoFSBenchmarkWorkerClient, IHizoFSBenchmarkWorker } from '@/features/debug-hizofs/benchmark/worker-client';
+import { releaseWorkerRemote, workerProxy, wrapWorkerRemote, type WorkerRemote } from '@/utils/worker-transport';
 
 export async function createHizoFSBenchmarkWorkerClient(): Promise<HizoFSBenchmarkWorkerClient> {
   const worker = new Worker(new URL('./worker-entry.ts', import.meta.url), {
     type: 'module',
     name: HIZOFS_BENCHMARK_WORKER_NAME,
   });
-  const remote = Comlink.wrap<IHizoFSBenchmarkWorker>(worker);
+  const remote = wrapWorkerRemote<IHizoFSBenchmarkWorker>({ endpoint: worker });
   return createBenchmarkClient({
     remote,
-    release: async () => await remote[Comlink.releaseProxy](),
+    release: async () => {
+      await releaseWorkerRemote({ remote });
+    },
     terminate: () => worker.terminate(),
   });
 }
 
 function createBenchmarkClient({ remote, release, terminate }: {
-  remote: Comlink.Remote<IHizoFSBenchmarkWorker>;
+  remote: WorkerRemote<IHizoFSBenchmarkWorker>;
   release: () => Promise<void>;
   terminate: () => void;
 }): HizoFSBenchmarkWorkerClient {
   return createHizoFSBenchmarkWorkerClientBoundary({
     release,
-    remote: remote as unknown as IHizoFSBenchmarkWorker,
+    remote,
     terminateWorker: terminate,
-    wrapProgressCallback: ({ callback }) => Comlink.proxy(callback),
+    wrapProgressCallback: ({ callback }) => workerProxy({ value: callback }),
   });
 }
 

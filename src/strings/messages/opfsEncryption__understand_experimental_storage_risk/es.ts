@@ -1,0 +1,1 @@
+export const opfsEncryption__understand_experimental_storage_risk = (): string => 'Entiendo que este es un formato de almacenamiento experimental y que perder la frase de contraseña hace que los datos sean ilegibles.';

@@ -1,0 +1,1 @@
+export const opfsEncryption__build_and_verify_separate_encrypted_store = (): string => 'O Naidan criará e verificará um armazenamento criptografado separado antes de remover a origem em texto simples.';

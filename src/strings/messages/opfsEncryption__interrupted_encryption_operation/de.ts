@@ -1,0 +1,1 @@
+export const opfsEncryption__interrupted_encryption_operation = (): string => 'Ein vorheriger Verschlüsselungs-, Entschlüsselungs- oder Neuverschlüsselungsvorgang wurde unterbrochen. Entsperren Sie den Speicher, um ihn zu überprüfen und abzuschließen, bevor Sie Naidan verwenden.';

@@ -1,0 +1,1 @@
+export const opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading = (): string => 'O armazenamento foi desbloqueado, mas o Naidan não conseguiu concluir o carregamento. Esta tela permanece em vez de expor um app parcialmente inicializado.';

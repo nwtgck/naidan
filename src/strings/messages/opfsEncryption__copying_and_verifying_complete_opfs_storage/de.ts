@@ -1,0 +1,1 @@
+export const opfsEncryption__copying_and_verifying_complete_opfs_storage = (): string => 'Naidan kopiert und überprüft den vollständigen OPFS-Speicher. Alle App-Funktionen sind vorübergehend in jedem geöffneten Tab gesperrt.';

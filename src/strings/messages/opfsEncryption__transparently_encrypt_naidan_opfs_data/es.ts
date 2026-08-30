@@ -1,0 +1,1 @@
+export const opfsEncryption__transparently_encrypt_naidan_opfs_data = (): string => 'Cifra de forma transparente los chats, adjuntos, carpetas copiadas, almacenamiento de Wesh y archivos OPFS temporales de Naidan. Las carpetas enlazadas del host quedan fuera de este cifrado.';

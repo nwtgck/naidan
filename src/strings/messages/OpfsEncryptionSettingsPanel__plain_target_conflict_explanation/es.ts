@@ -1,0 +1,1 @@
+export const OpfsEncryptionSettingsPanel__plain_target_conflict_explanation = (): string => 'Naidan encontró entradas de texto sin cifrar donde se escribirían los datos descifrados. Se conservaron y el descifrado no se inició.';

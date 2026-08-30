@@ -307,7 +307,7 @@ describe('wesh zip and unzip', () => {
   });
 
   it('stores the source file modification time in archive metadata', async () => {
-    const mtime = Date.UTC(2024, 0, 2, 3, 4, 5);
+    const mtime = new Date(2024, 0, 2, 3, 4, 5).getTime();
     await writeFile({ path: 'file.txt', data: 'payload\n', mtime });
 
     const zipped = await execute({

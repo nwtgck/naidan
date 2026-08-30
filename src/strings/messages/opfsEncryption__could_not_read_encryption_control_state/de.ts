@@ -1,0 +1,1 @@
+export const opfsEncryption__could_not_read_encryption_control_state = (): string => 'Naidan konnte den Verschlüsselungssteuerungsstatus nicht sicher lesen. Der Explorer für rohes OPFS bleibt für Sicherung und Prüfung verfügbar.';

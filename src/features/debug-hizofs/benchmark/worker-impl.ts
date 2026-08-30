@@ -9,6 +9,7 @@ import {
 } from '@/features/debug-hizofs/benchmark/types';
 import type { IHizoFSBenchmarkWorker } from '@/features/debug-hizofs/benchmark/worker-client';
 import type { HizoFSBenchmarkRuntimePort } from '@/features/debug-hizofs/benchmark/runtime-port';
+import type { WorkerServerApi } from '@/utils/worker-transport';
 
 /**
  * Owns cancellation for benchmark operations without retaining an Inspector,
@@ -20,7 +21,7 @@ import type { HizoFSBenchmarkRuntimePort } from '@/features/debug-hizofs/benchma
  */
 export function createHizoFSBenchmarkWorker({ runtimePort }: {
   readonly runtimePort: HizoFSBenchmarkRuntimePort;
-}): IHizoFSBenchmarkWorker {
+}): WorkerServerApi<IHizoFSBenchmarkWorker> {
   let operationGeneration = 0;
 
   function beginOperation(): { readonly generation: number } {

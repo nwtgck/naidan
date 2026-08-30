@@ -1,0 +1,1 @@
+export const opfsEncryption__understand_experimental_storage_risk = (): string => 'Ich verstehe, dass dies ein experimentelles Speicherformat ist und dass die Daten ohne die Passphrase nicht lesbar sind.';

@@ -1,0 +1,1 @@
+export const opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading = (): string => 'Der Speicher wurde entsperrt, aber Naidan konnte das Laden nicht abschließen. Dieser Bildschirm bleibt sichtbar, statt eine nur teilweise initialisierte App freizugeben.';

@@ -125,7 +125,7 @@ export async function createFileExplorerWorkerClient({
       const prepareResponse = await remote.prepareSession(
         workerCapability({
           value: { request: { root: requestRoot } },
-          capability: 'file-system-handle-clone',
+          capability: 'file-system-handle-and-storage-directory-worker-mount-grant-clone',
         }),
         naidanSysfsRemoteReader
           ? workerProxy({ value: naidanSysfsRemoteReader })

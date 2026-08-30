@@ -1,0 +1,1 @@
+export const DeveloperOpfsEncryptionInterruptionPanel__ordinary_transition_warning = (): string => 'Der normale Speicherübergang wird an der ausgewählten Grenze angehalten und der aktuelle Provider für das Neuladen abgeschlossen.';

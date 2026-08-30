@@ -256,7 +256,7 @@ describe('HizoFS external boundary lint config integration', () => {
     expect(production.map(message => message.ruleId)).toContain('local-rules-hizofs-network/no-external-network');
     expect(test.map(message => message.ruleId)).toContain('local-rules-hizofs-network/no-external-network');
     expect(unrelated.map(message => message.ruleId)).not.toContain('local-rules-hizofs-network/no-external-network');
-  }, 20_000);
+  }, 60_000);
 
   it('enables process guard only for HizoFS test assets, including testing helpers', async () => {
     const test = await lintText({

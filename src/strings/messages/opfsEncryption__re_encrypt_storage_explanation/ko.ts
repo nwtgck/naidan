@@ -1,0 +1,1 @@
+export const opfsEncryption__re_encrypt_storage_explanation = (): string => 'Naidan은 새 루트 키로 새 암호화 저장소를 만들고 모든 객체와 파일을 검증합니다. 여기에 입력한 현재 암호 문구만 유지되며 재암호화 후 다른 모든 키 슬롯은 제거됩니다. 현재 저장 공간의 약 두 배가 일시적으로 필요할 수 있습니다.';

@@ -156,7 +156,7 @@ export interface IWeshWorker {
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   init(
-    request: WorkerCapability<WeshWorkerInitRequest, 'file-system-handle-clone'>,
+    request: WorkerCapability<WeshWorkerInitRequest, 'file-system-handle-and-storage-directory-worker-mount-grant-clone'>,
     naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
     storageDirectoryRemote?: WorkerProxy<WeshStorageDirectoryRemote>,
   ): Promise<void>,
@@ -251,9 +251,11 @@ export async function mapWeshMountsToWorkerMounts({ mounts, storageDirectoryExec
 export async function mapWeshMountsToOpfsWorkerMounts({
   mounts,
   opfsRoot,
+  storageDirectoryExecution,
 }: {
   mounts: WeshMount[],
   opfsRoot: FileSystemDirectoryHandle,
+  storageDirectoryExecution: WeshStorageDirectoryExecution,
 }): Promise<WeshWorkerMount[]> {
   const result: WeshWorkerMount[] = [];
   for (const mount of mounts) {
@@ -269,6 +271,17 @@ export async function mapWeshMountsToOpfsWorkerMounts({
         readOnly: mount.readOnly,
       });
       break;
+    case 'storage_directory': {
+      const [workerMount] = await mapWeshMountsToWorkerMounts({
+        mounts: [mount],
+        storageDirectoryExecution,
+      });
+      if (workerMount === undefined) {
+        throw new Error('Storage directory mount conversion produced no Worker mount');
+      }
+      result.push(workerMount);
+      break;
+    }
     case 'naidan_sysfs':
       result.push({
         type: 'naidan_sysfs',

@@ -149,7 +149,11 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
   analysis.remaining -= 1;
   if (depth <= 0) return { path, reason: "analysis-depth-exceeded" };
   if (type.flags & ts.TypeFlags.Any) return { path, reason: "any" };
-  if (type.flags & ts.TypeFlags.Unknown) return { path, reason: "unknown" };
+  if (type.flags & ts.TypeFlags.Unknown) {
+    return capabilityScope.has("file-system-handle-and-storage-directory-worker-mount-grant-clone")
+      ? undefined
+      : { path, reason: "unknown" };
+  }
   if (type.flags & ts.TypeFlags.TypeParameter) return { path, reason: `type-parameter-unreviewed:${getTypeName(type, checker)}` };
   if (type.flags & ts.TypeFlags.Never) return undefined;
   if (type.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike | ts.TypeFlags.BigIntLike | ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void)) return undefined;
@@ -185,7 +189,8 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
   const capabilityMarker = getCapabilityMarker(type, checker);
   if (capabilityMarker !== undefined) {
     if (!allowCapability) return { path, reason: "capability-marker-must-be-top-level" };
-    if (capabilityMarker !== "file-system-handle-clone") {
+    if (capabilityMarker !== "file-system-handle-clone"
+      && capabilityMarker !== "file-system-handle-and-storage-directory-worker-mount-grant-clone") {
       return { path, reason: `unknown-capability:${capabilityMarker}` };
     }
     if (type.isIntersection()) {
@@ -230,6 +235,7 @@ function firstViolation({ type, checker, path, depth = 24, seen = new Set(), ana
   }
   if (name === "FileSystemDirectoryHandle" || name === "FileSystemFileHandle" || name === "FileSystemHandle") {
     return capabilityScope.has("file-system-handle-clone")
+      || capabilityScope.has("file-system-handle-and-storage-directory-worker-mount-grant-clone")
       ? undefined
       : { path, reason: `capability-sensitive:${name}` };
   }

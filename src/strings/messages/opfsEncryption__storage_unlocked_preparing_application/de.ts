@@ -1,0 +1,1 @@
+export const opfsEncryption__storage_unlocked_preparing_application = (): string => 'Der Speicher ist entsperrt. Naidan bereitet Ihre Seitenleiste und den aktuellen Chat vor, bevor die App angezeigt wird.';

@@ -1,0 +1,1 @@
+export const opfsEncryption__storage_unlocked_preparing_application = (): string => 'O armazenamento está desbloqueado. O Naidan está preparando a barra lateral e o chat atual antes de mostrar o app.';

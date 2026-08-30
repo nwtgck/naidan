@@ -1,0 +1,1 @@
+export const opfsEncryption__interrupted_encryption_operation = (): string => 'Se interrumpió una operación anterior de cifrado, descifrado o recifrado. Desbloquea el almacenamiento para verificarla y finalizarla antes de usar Naidan.';

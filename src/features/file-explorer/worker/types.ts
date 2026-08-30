@@ -406,7 +406,7 @@ export interface IFileExplorerWorker {
   prepareSession(
     options: WorkerCapability<
       { request: FileExplorerPrepareSessionRequest },
-      'file-system-handle-clone'
+      'file-system-handle-and-storage-directory-worker-mount-grant-clone'
     >,
     naidanSysfsRemoteReader?: WorkerProxy<NaidanSysfsRemoteReader>,
     storageDirectoryRemote?: WorkerProxy<WeshStorageDirectoryRemote>,

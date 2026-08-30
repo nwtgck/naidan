@@ -1,0 +1,1 @@
+export const opfsEncryption__return_to_plain_after_authority_switch = (): string => 'El almacenamiento cifrado ya es el almacenamiento de referencia. Introduce la frase de contraseña para reconstruir y verificar el almacenamiento sin cifrar antes de eliminar el cifrado.';

@@ -1,0 +1,1 @@
+export const opfsEncryption__encryption_control_state_cannot_be_read_safely = (): string => 'Der Verschlüsselungssteuerungsstatus kann nicht sicher gelesen werden. Sichern Sie das rohe OPFS, bevor Sie eine Wiederherstellung versuchen.';

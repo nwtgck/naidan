@@ -1628,6 +1628,100 @@ import { weshTerminal__session } from '@/strings/messages/weshTerminal__session/
 import { weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue } from '@/strings/messages/weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue/zh-Hans';
 import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__wesh_terminal/zh-Hans';
 
+import { OpfsEncryptionSettingsPanel__additional_conflicting_entries } from '@/strings/messages/OpfsEncryptionSettingsPanel__additional_conflicting_entries/zh-Hans';
+import { OpfsEncryptionSettingsPanel__conflict_changed } from '@/strings/messages/OpfsEncryptionSettingsPanel__conflict_changed/zh-Hans';
+import { OpfsEncryptionSettingsPanel__delete_conflicting_data_and_retry } from '@/strings/messages/OpfsEncryptionSettingsPanel__delete_conflicting_data_and_retry/zh-Hans';
+import { OpfsEncryptionSettingsPanel__encrypted_source_remains_authoritative } from '@/strings/messages/OpfsEncryptionSettingsPanel__encrypted_source_remains_authoritative/zh-Hans';
+import { OpfsEncryptionSettingsPanel__plain_target_conflict } from '@/strings/messages/OpfsEncryptionSettingsPanel__plain_target_conflict/zh-Hans';
+import { OpfsEncryptionSettingsPanel__plain_target_conflict_explanation } from '@/strings/messages/OpfsEncryptionSettingsPanel__plain_target_conflict_explanation/zh-Hans';
+import { OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning } from '@/strings/messages/OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning/zh-Hans';
+import { opfsEncryption__build_and_verify_separate_encrypted_store } from '@/strings/messages/opfsEncryption__build_and_verify_separate_encrypted_store/zh-Hans';
+import { opfsEncryption__cancel } from '@/strings/messages/opfsEncryption__cancel/zh-Hans';
+import { opfsEncryption__change_opfs_passphrase } from '@/strings/messages/opfsEncryption__change_opfs_passphrase/zh-Hans';
+import { opfsEncryption__change_passphrase } from '@/strings/messages/opfsEncryption__change_passphrase/zh-Hans';
+import { opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery } from '@/strings/messages/opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery/zh-Hans';
+import { opfsEncryption__confirm_new_passphrase } from '@/strings/messages/opfsEncryption__confirm_new_passphrase/zh-Hans';
+import { opfsEncryption__confirm_passphrase } from '@/strings/messages/opfsEncryption__confirm_passphrase/zh-Hans';
+import { opfsEncryption__copied } from '@/strings/messages/opfsEncryption__copied/zh-Hans';
+import { opfsEncryption__copy } from '@/strings/messages/opfsEncryption__copy/zh-Hans';
+import { opfsEncryption__copy_source } from '@/strings/messages/opfsEncryption__copy_source/zh-Hans';
+import { opfsEncryption__copying_and_verifying_complete_opfs_storage } from '@/strings/messages/opfsEncryption__copying_and_verifying_complete_opfs_storage/zh-Hans';
+import { opfsEncryption__could_not_read_encryption_control_state } from '@/strings/messages/opfsEncryption__could_not_read_encryption_control_state/zh-Hans';
+import { opfsEncryption__decrypt_storage } from '@/strings/messages/opfsEncryption__decrypt_storage/zh-Hans';
+import { opfsEncryption__decrypt_storage_explanation } from '@/strings/messages/opfsEncryption__decrypt_storage_explanation/zh-Hans';
+import { opfsEncryption__enable_opfs_encryption } from '@/strings/messages/opfsEncryption__enable_opfs_encryption/zh-Hans';
+import { opfsEncryption__encrypt_storage } from '@/strings/messages/opfsEncryption__encrypt_storage/zh-Hans';
+import { opfsEncryption__encrypted_storage_needs_recovery } from '@/strings/messages/opfsEncryption__encrypted_storage_needs_recovery/zh-Hans';
+import { opfsEncryption__encryption_control_state_cannot_be_read_safely } from '@/strings/messages/opfsEncryption__encryption_control_state_cannot_be_read_safely/zh-Hans';
+import { opfsEncryption__encryption_enabled } from '@/strings/messages/opfsEncryption__encryption_enabled/zh-Hans';
+import { opfsEncryption__encryption_state_is_unreadable } from '@/strings/messages/opfsEncryption__encryption_state_is_unreadable/zh-Hans';
+import { opfsEncryption__encryption_transition_must_finish_before_changing_this_setting } from '@/strings/messages/opfsEncryption__encryption_transition_must_finish_before_changing_this_setting/zh-Hans';
+import { opfsEncryption__enter_passphrase_for_opfs_storage } from '@/strings/messages/opfsEncryption__enter_passphrase_for_opfs_storage/zh-Hans';
+import { opfsEncryption__experimental } from '@/strings/messages/opfsEncryption__experimental/zh-Hans';
+import { opfsEncryption__experimental_format_may_change_incompatibly } from '@/strings/messages/opfsEncryption__experimental_format_may_change_incompatibly/zh-Hans';
+import { opfsEncryption__hide_passphrase } from '@/strings/messages/opfsEncryption__hide_passphrase/zh-Hans';
+import { opfsEncryption__interrupted_encryption_operation } from '@/strings/messages/opfsEncryption__interrupted_encryption_operation/zh-Hans';
+import { opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase } from '@/strings/messages/opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase/zh-Hans';
+import { opfsEncryption__loading_recovery_source } from '@/strings/messages/opfsEncryption__loading_recovery_source/zh-Hans';
+import { opfsEncryption__new_passphrase } from '@/strings/messages/opfsEncryption__new_passphrase/zh-Hans';
+import { opfsEncryption__only_passphrase_keyslot_is_replaced } from '@/strings/messages/opfsEncryption__only_passphrase_keyslot_is_replaced/zh-Hans';
+import { opfsEncryption__open_raw_opfs_explorer } from '@/strings/messages/opfsEncryption__open_raw_opfs_explorer/zh-Hans';
+import { opfsEncryption__opfs_encryption } from '@/strings/messages/opfsEncryption__opfs_encryption/zh-Hans';
+import { opfsEncryption__passphrase } from '@/strings/messages/opfsEncryption__passphrase/zh-Hans';
+import { opfsEncryption__passphrases_cannot_contain_line_breaks } from '@/strings/messages/opfsEncryption__passphrases_cannot_contain_line_breaks/zh-Hans';
+import { opfsEncryption__passphrases_do_not_match } from '@/strings/messages/opfsEncryption__passphrases_do_not_match/zh-Hans';
+import { opfsEncryption__naidan_could_not_finish_loading } from '@/strings/messages/opfsEncryption__naidan_could_not_finish_loading/zh-Hans';
+import { opfsEncryption__preparing_naidan } from '@/strings/messages/opfsEncryption__preparing_naidan/zh-Hans';
+import { opfsEncryption__raw_opfs_access_does_not_decrypt } from '@/strings/messages/opfsEncryption__raw_opfs_access_does_not_decrypt/zh-Hans';
+import { opfsEncryption__re_encrypt } from '@/strings/messages/opfsEncryption__re_encrypt/zh-Hans';
+import { opfsEncryption__re_encrypt_opfs_storage } from '@/strings/messages/opfsEncryption__re_encrypt_opfs_storage/zh-Hans';
+import { opfsEncryption__re_encrypt_storage } from '@/strings/messages/opfsEncryption__re_encrypt_storage/zh-Hans';
+import { opfsEncryption__re_encrypt_storage_explanation } from '@/strings/messages/opfsEncryption__re_encrypt_storage_explanation/zh-Hans';
+import { opfsEncryption__recovery_source } from '@/strings/messages/opfsEncryption__recovery_source/zh-Hans';
+import { opfsEncryption__resolve_interrupted_opfs_decryption } from '@/strings/messages/opfsEncryption__resolve_interrupted_opfs_decryption/zh-Hans';
+import { opfsEncryption__resolve_interrupted_opfs_encryption } from '@/strings/messages/opfsEncryption__resolve_interrupted_opfs_encryption/zh-Hans';
+import { opfsEncryption__resolve_interrupted_opfs_reencryption } from '@/strings/messages/opfsEncryption__resolve_interrupted_opfs_reencryption/zh-Hans';
+import { opfsEncryption__retry_after_recovery } from '@/strings/messages/opfsEncryption__retry_after_recovery/zh-Hans';
+import { opfsEncryption__save_file } from '@/strings/messages/opfsEncryption__save_file/zh-Hans';
+import { opfsEncryption__save_source } from '@/strings/messages/opfsEncryption__save_source/zh-Hans';
+import { opfsEncryption__select_opfs_as_active_storage_to_enable_encryption } from '@/strings/messages/opfsEncryption__select_opfs_as_active_storage_to_enable_encryption/zh-Hans';
+import { opfsEncryption__show_passphrase } from '@/strings/messages/opfsEncryption__show_passphrase/zh-Hans';
+import { opfsEncryption__source_remains_until_verified } from '@/strings/messages/opfsEncryption__source_remains_until_verified/zh-Hans';
+import { opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading } from '@/strings/messages/opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading/zh-Hans';
+import { opfsEncryption__storage_unlocked_preparing_application } from '@/strings/messages/opfsEncryption__storage_unlocked_preparing_application/zh-Hans';
+import { opfsEncryption__transparently_encrypt_naidan_opfs_data } from '@/strings/messages/opfsEncryption__transparently_encrypt_naidan_opfs_data/zh-Hans';
+import { opfsEncryption__turn_off_opfs_encryption } from '@/strings/messages/opfsEncryption__turn_off_opfs_encryption/zh-Hans';
+import { opfsEncryption__understand_experimental_storage_risk } from '@/strings/messages/opfsEncryption__understand_experimental_storage_risk/zh-Hans';
+import { opfsEncryption__unlock_and_resolve } from '@/strings/messages/opfsEncryption__unlock_and_resolve/zh-Hans';
+import { opfsEncryption__unlock_encrypted_storage } from '@/strings/messages/opfsEncryption__unlock_encrypted_storage/zh-Hans';
+import { opfsEncryption__unlock_storage } from '@/strings/messages/opfsEncryption__unlock_storage/zh-Hans';
+import { opfsEncryption__unlocked } from '@/strings/messages/opfsEncryption__unlocked/zh-Hans';
+import { opfsEncryption__updating_encrypted_storage } from '@/strings/messages/opfsEncryption__updating_encrypted_storage/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__after_authority_switch } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__after_authority_switch/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__before_authority_switch } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__before_authority_switch/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__confirm_passphrase } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__confirm_passphrase/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__interrupt_and_reload } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__interrupt_and_reload/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__interrupt_opfs_transition } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__interrupt_opfs_transition/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__interruption_boundary } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__interruption_boundary/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__interrupts_ordinary_transition } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__interrupts_ordinary_transition/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__operation } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__operation/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__opfs_only } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__opfs_only/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__opfs_transition_interruption } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__opfs_transition_interruption/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__ordinary_transition_warning } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__ordinary_transition_warning/zh-Hans';
+import { DeveloperOpfsEncryptionInterruptionPanel__transition_in_progress } from '@/strings/messages/DeveloperOpfsEncryptionInterruptionPanel__transition_in_progress/zh-Hans';
+import { opfsEncryption__progress_bytes } from '@/strings/messages/opfsEncryption__progress_bytes/zh-Hans';
+import { opfsEncryption__progress_cleaning_source } from '@/strings/messages/opfsEncryption__progress_cleaning_source/zh-Hans';
+import { opfsEncryption__progress_copying } from '@/strings/messages/opfsEncryption__progress_copying/zh-Hans';
+import { opfsEncryption__progress_entries } from '@/strings/messages/opfsEncryption__progress_entries/zh-Hans';
+import { opfsEncryption__progress_finalizing } from '@/strings/messages/opfsEncryption__progress_finalizing/zh-Hans';
+import { opfsEncryption__progress_preparing } from '@/strings/messages/opfsEncryption__progress_preparing/zh-Hans';
+import { opfsEncryption__progress_switching_authority } from '@/strings/messages/opfsEncryption__progress_switching_authority/zh-Hans';
+import { opfsEncryption__progress_verifying } from '@/strings/messages/opfsEncryption__progress_verifying/zh-Hans';
+import { opfsEncryption__return_to_plain_after_authority_switch } from '@/strings/messages/opfsEncryption__return_to_plain_after_authority_switch/zh-Hans';
+import { opfsEncryption__return_to_plain_before_authority_switch } from '@/strings/messages/opfsEncryption__return_to_plain_before_authority_switch/zh-Hans';
+import { opfsEncryption__stop_encryption_and_return_to_plain } from '@/strings/messages/opfsEncryption__stop_encryption_and_return_to_plain/zh-Hans';
+import { opfsEncryption__returning_to_plain_storage } from '@/strings/messages/opfsEncryption__returning_to_plain_storage/zh-Hans';
+
 import type { Strings } from './en';
 
 export const catalog = {
@@ -3258,4 +3352,97 @@ export const catalog = {
   weshTerminal__session,
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
+  OpfsEncryptionSettingsPanel__additional_conflicting_entries,
+  OpfsEncryptionSettingsPanel__conflict_changed,
+  OpfsEncryptionSettingsPanel__delete_conflicting_data_and_retry,
+  OpfsEncryptionSettingsPanel__encrypted_source_remains_authoritative,
+  OpfsEncryptionSettingsPanel__plain_target_conflict,
+  OpfsEncryptionSettingsPanel__plain_target_conflict_explanation,
+  OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning,
+  opfsEncryption__build_and_verify_separate_encrypted_store,
+  opfsEncryption__cancel,
+  opfsEncryption__change_opfs_passphrase,
+  opfsEncryption__change_passphrase,
+  opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery,
+  opfsEncryption__confirm_new_passphrase,
+  opfsEncryption__confirm_passphrase,
+  opfsEncryption__copied,
+  opfsEncryption__copy,
+  opfsEncryption__copy_source,
+  opfsEncryption__copying_and_verifying_complete_opfs_storage,
+  opfsEncryption__could_not_read_encryption_control_state,
+  opfsEncryption__decrypt_storage,
+  opfsEncryption__decrypt_storage_explanation,
+  opfsEncryption__enable_opfs_encryption,
+  opfsEncryption__encrypt_storage,
+  opfsEncryption__encrypted_storage_needs_recovery,
+  opfsEncryption__encryption_control_state_cannot_be_read_safely,
+  opfsEncryption__encryption_enabled,
+  opfsEncryption__encryption_state_is_unreadable,
+  opfsEncryption__encryption_transition_must_finish_before_changing_this_setting,
+  opfsEncryption__enter_passphrase_for_opfs_storage,
+  opfsEncryption__experimental,
+  opfsEncryption__experimental_format_may_change_incompatibly,
+  opfsEncryption__hide_passphrase,
+  opfsEncryption__interrupted_encryption_operation,
+  opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase,
+  opfsEncryption__loading_recovery_source,
+  opfsEncryption__new_passphrase,
+  opfsEncryption__only_passphrase_keyslot_is_replaced,
+  opfsEncryption__open_raw_opfs_explorer,
+  opfsEncryption__opfs_encryption,
+  opfsEncryption__passphrase,
+  opfsEncryption__passphrases_cannot_contain_line_breaks,
+  opfsEncryption__passphrases_do_not_match,
+  opfsEncryption__naidan_could_not_finish_loading,
+  opfsEncryption__preparing_naidan,
+  opfsEncryption__raw_opfs_access_does_not_decrypt,
+  opfsEncryption__re_encrypt,
+  opfsEncryption__re_encrypt_opfs_storage,
+  opfsEncryption__re_encrypt_storage,
+  opfsEncryption__re_encrypt_storage_explanation,
+  opfsEncryption__recovery_source,
+  opfsEncryption__resolve_interrupted_opfs_decryption,
+  opfsEncryption__resolve_interrupted_opfs_encryption,
+  opfsEncryption__resolve_interrupted_opfs_reencryption,
+  opfsEncryption__retry_after_recovery,
+  opfsEncryption__save_file,
+  opfsEncryption__save_source,
+  opfsEncryption__select_opfs_as_active_storage_to_enable_encryption,
+  opfsEncryption__show_passphrase,
+  opfsEncryption__source_remains_until_verified,
+  opfsEncryption__storage_unlocked_but_naidan_could_not_finish_loading,
+  opfsEncryption__storage_unlocked_preparing_application,
+  opfsEncryption__transparently_encrypt_naidan_opfs_data,
+  opfsEncryption__turn_off_opfs_encryption,
+  opfsEncryption__understand_experimental_storage_risk,
+  opfsEncryption__unlock_and_resolve,
+  opfsEncryption__unlock_encrypted_storage,
+  opfsEncryption__unlock_storage,
+  opfsEncryption__unlocked,
+  opfsEncryption__updating_encrypted_storage,
+  DeveloperOpfsEncryptionInterruptionPanel__after_authority_switch,
+  DeveloperOpfsEncryptionInterruptionPanel__before_authority_switch,
+  DeveloperOpfsEncryptionInterruptionPanel__confirm_passphrase,
+  DeveloperOpfsEncryptionInterruptionPanel__interrupt_and_reload,
+  DeveloperOpfsEncryptionInterruptionPanel__interrupt_opfs_transition,
+  DeveloperOpfsEncryptionInterruptionPanel__interruption_boundary,
+  DeveloperOpfsEncryptionInterruptionPanel__interrupts_ordinary_transition,
+  DeveloperOpfsEncryptionInterruptionPanel__operation,
+  DeveloperOpfsEncryptionInterruptionPanel__opfs_only,
+  DeveloperOpfsEncryptionInterruptionPanel__opfs_transition_interruption,
+  DeveloperOpfsEncryptionInterruptionPanel__ordinary_transition_warning,
+  DeveloperOpfsEncryptionInterruptionPanel__transition_in_progress,
+  opfsEncryption__progress_bytes,
+  opfsEncryption__progress_cleaning_source,
+  opfsEncryption__progress_copying,
+  opfsEncryption__progress_entries,
+  opfsEncryption__progress_finalizing,
+  opfsEncryption__progress_preparing,
+  opfsEncryption__progress_switching_authority,
+  opfsEncryption__progress_verifying,
+  opfsEncryption__return_to_plain_after_authority_switch,
+  opfsEncryption__return_to_plain_before_authority_switch,
+  opfsEncryption__stop_encryption_and_return_to_plain,
+  opfsEncryption__returning_to_plain_storage,
 } satisfies Strings;

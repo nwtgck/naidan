@@ -68,7 +68,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   createStandaloneWorkerMock.mockReset();
-  vi.mocked(Comlink.wrap).mockReset();
+  vi.mocked(wrapWorkerRemote).mockReset();
 });
 
 describe('standalone Wesh Worker client lifecycle', () => {
@@ -152,7 +152,7 @@ describe('standalone Wesh Worker client lifecycle', () => {
       dispose: () => new Promise(() => undefined),
     });
     createStandaloneWorkerMock.mockResolvedValue(worker);
-    vi.mocked(Comlink.wrap).mockReturnValue(remote);
+    vi.mocked(wrapWorkerRemote).mockReturnValue(remote);
 
     const client = await createClient();
     const disposal = client.dispose();

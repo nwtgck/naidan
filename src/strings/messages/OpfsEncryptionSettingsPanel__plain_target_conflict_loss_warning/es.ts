@@ -1,0 +1,1 @@
+export const OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning = (): string => 'Eliminar estas entradas puede destruir de forma permanente datos que solo existen en el OPFS sin procesar. Esta acción no se puede deshacer.';

@@ -1,0 +1,1 @@
+export const opfsEncryption__build_and_verify_separate_encrypted_store = (): string => 'Naidan erstellt und überprüft einen separaten verschlüsselten Speicher, bevor die unverschlüsselte Quelle entfernt wird.';

@@ -1,0 +1,1 @@
+export const opfsEncryption__experimental_format_may_change_incompatibly = (): string => 'Dieses Format ist experimentell und kann sich inkompatibel ändern. Bewahren Sie unabhängige Sicherungen wichtiger Daten auf.';

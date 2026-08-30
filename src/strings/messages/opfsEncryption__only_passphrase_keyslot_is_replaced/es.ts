@@ -1,0 +1,1 @@
+export const opfsEncryption__only_passphrase_keyslot_is_replaced = (): string => 'Solo se sustituye la ranura de clave de la frase de contraseña. Los chats y archivos cifrados no se vuelven a escribir.';

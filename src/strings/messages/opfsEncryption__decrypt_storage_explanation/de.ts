@@ -1,0 +1,1 @@
+export const opfsEncryption__decrypt_storage_explanation = (): string => 'Naidan erstellt und überprüft das vollständige bisherige unverschlüsselte OPFS-Layout, bevor der verschlüsselte Speicher entfernt wird. Alle App-Funktionen bleiben bis zum Abschluss gesperrt.';

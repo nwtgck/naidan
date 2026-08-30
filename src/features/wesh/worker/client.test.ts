@@ -163,6 +163,16 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const opfsRoot = new MockFileSystemDirectoryHandle({ name: '' });
     const terminalRoot = await opfsRoot.getDirectoryHandle('terminal', { create: true });
     const globalRoot = await terminalRoot.getDirectoryHandle('global', { create: true });
+    const projectRoot = await terminalRoot.getDirectoryHandle('project', { create: true });
+    const workerGrant = {
+      type: 'storage_directory_worker_mount_grant' as const,
+      version: 1 as const,
+      implementation: 'hizofs' as const,
+      grantId: 'fallback-grant',
+      accessMode: 'read_write' as const,
+      opaquePayload: { cloneable: true },
+    };
+    const createWorkerMountGrant = vi.fn().mockResolvedValue(workerGrant);
     vi.stubGlobal('navigator', {
       storage: {
         getDirectory: vi.fn().mockResolvedValue(opfsRoot),
@@ -172,7 +182,19 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client');
     const client = await createFileProtocolCompatibleWeshWorkerClient({
       rootHandle: globalRoot as unknown as FileSystemDirectoryHandle,
-      mounts: [],
+      mounts: [{
+        type: 'directory',
+        path: '/project',
+        handle: projectRoot as unknown as FileSystemDirectoryHandle,
+        readOnly: true,
+      }, {
+        type: 'storage_directory',
+        path: '/encrypted',
+        handle: {
+          createWorkerMountGrant,
+        } as unknown as import('@/00-storage/service/storage-file-system/types').StorageDirectoryHandle,
+        readOnly: false,
+      }],
       user: 'user',
       initialEnv: {},
       initialCwd: undefined,
@@ -185,11 +207,27 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
         kind: 'opfs-directory',
         pathSegments: ['terminal', 'global'],
       },
-      mounts: [],
+      mounts: [{
+        type: 'directory',
+        path: '/project',
+        handle: {
+          kind: 'opfs-directory',
+          pathSegments: ['terminal', 'project'],
+        },
+        readOnly: true,
+      }, {
+        type: 'storage_directory',
+        path: '/encrypted',
+        workerGrant,
+        readOnly: false,
+      }],
       user: 'user',
       initialEnv: {},
       initialCwd: undefined,
     }, undefined, undefined);
+    expect(createWorkerMountGrant).toHaveBeenCalledTimes(2);
+    expect(createWorkerMountGrant).toHaveBeenNthCalledWith(1, { accessMode: 'read_write' });
+    expect(createWorkerMountGrant).toHaveBeenNthCalledWith(2, { accessMode: 'read_write' });
 
     await client.dispose();
     expect(secondRelease).toHaveBeenCalledOnce();

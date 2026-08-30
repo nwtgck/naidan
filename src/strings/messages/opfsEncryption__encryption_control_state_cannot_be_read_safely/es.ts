@@ -1,0 +1,1 @@
+export const opfsEncryption__encryption_control_state_cannot_be_read_safely = (): string => 'El estado de control del cifrado no se puede leer de forma segura. Haz una copia del OPFS sin procesar antes de intentar la recuperación.';

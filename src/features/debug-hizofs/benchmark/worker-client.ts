@@ -8,6 +8,9 @@ import type {
   HizoFSBenchmarkProgress,
   HizoFSBenchmarkReport,
 } from "@/features/debug-hizofs/benchmark/types";
+import type { WorkerProxy, WorkerRemote } from '@/utils/worker-transport';
+
+type HizoFSBenchmarkProgressCallback = ({ progress }: { progress: HizoFSBenchmarkProgress }) => void;
 
 export interface IHizoFSBenchmarkWorker {
   cancelCurrentOperation(): Promise<void>;
@@ -17,7 +20,7 @@ export interface IHizoFSBenchmarkWorker {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks cannot be nested in the request object.
   runBenchmark(
     configuration: HizoFSBenchmarkConfiguration,
-    onProgress: ({ progress }: { progress: HizoFSBenchmarkProgress }) => void,
+    onProgress: WorkerProxy<HizoFSBenchmarkProgressCallback>,
   ): Promise<HizoFSBenchmarkReport>;
 }
 
@@ -33,8 +36,6 @@ export interface HizoFSBenchmarkWorkerClient {
 }
 
 
-type HizoFSBenchmarkProgressCallback = Parameters<IHizoFSBenchmarkWorker["runBenchmark"]>[1];
-
 export function createHizoFSBenchmarkWorkerClientBoundary({
   release,
   remote,
@@ -42,9 +43,9 @@ export function createHizoFSBenchmarkWorkerClientBoundary({
   wrapProgressCallback,
 }: {
   release: () => Promise<void>;
-  remote: IHizoFSBenchmarkWorker;
+  remote: WorkerRemote<IHizoFSBenchmarkWorker>;
   terminateWorker: () => void;
-  wrapProgressCallback: ({ callback }: { callback: HizoFSBenchmarkProgressCallback }) => HizoFSBenchmarkProgressCallback;
+  wrapProgressCallback: ({ callback }: { callback: HizoFSBenchmarkProgressCallback }) => WorkerProxy<HizoFSBenchmarkProgressCallback>;
 }): HizoFSBenchmarkWorkerClient {
   let terminated = false;
   let resolveTermination!: () => void;

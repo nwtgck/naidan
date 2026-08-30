@@ -1,0 +1,1 @@
+export const OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning = (): string => 'Das Löschen dieser Einträge kann Daten dauerhaft zerstören, die nur im rohen OPFS vorhanden sind. Dies kann nicht rückgängig gemacht werden.';

@@ -1,0 +1,1 @@
+export const DeveloperOpfsEncryptionInterruptionPanel__transition_in_progress = (): string => 'Uma transição de criptografia do OPFS já está em andamento. Recarregue para continuar a recuperação normal.';

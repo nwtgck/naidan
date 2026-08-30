@@ -305,7 +305,7 @@ async function runWeshCommandProbeWithRemote({ wesh }: {
         initialEnv: {},
         initialCwd: '/',
       },
-      capability: 'file-system-handle-clone',
+      capability: 'file-system-handle-and-storage-directory-worker-mount-grant-clone',
     }));
     const started = await wesh.startExecution(
       { script: 'ls -1 /' },

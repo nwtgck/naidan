@@ -1,0 +1,1 @@
+export const OpfsEncryptionSettingsPanel__plain_target_conflict_loss_warning = (): string => 'Excluir essas entradas pode destruir permanentemente dados que existem apenas no OPFS bruto. Isso não pode ser desfeito.';

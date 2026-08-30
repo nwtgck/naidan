@@ -1,0 +1,1 @@
+export const opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery = (): string => 'Alterar dados brutos do OPFS enquanto a operação interrompida está ativa pode impedir a recuperação. Faça backup antes de alterações destrutivas.';

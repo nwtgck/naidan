@@ -1,0 +1,1 @@
+export const OpfsEncryptionSettingsPanel__encrypted_source_remains_authoritative = (): string => 'Die verschlüsselte HizoFS-Quelle bleibt maßgeblich, bis die Entschlüsselung verifiziert ist und der maßgebliche Speicher gewechselt wird.';

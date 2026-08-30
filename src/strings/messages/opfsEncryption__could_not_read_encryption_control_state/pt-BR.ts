@@ -1,0 +1,1 @@
+export const opfsEncryption__could_not_read_encryption_control_state = (): string => 'O Naidan não conseguiu ler com segurança o estado de controle da criptografia. O explorador do OPFS bruto continua disponível para backup e inspeção.';

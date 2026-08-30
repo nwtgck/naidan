@@ -1,0 +1,1 @@
+export const DeveloperOpfsEncryptionInterruptionPanel__interrupts_ordinary_transition = (): string => 'Interrumpe la transición normal del almacenamiento en un punto seleccionado de cambio del almacenamiento de referencia y recarga mediante la ruta de recuperación normal.';

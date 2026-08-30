@@ -226,6 +226,7 @@ describe('StorageTab.vue Tests', () => {
         props: { isOpen: true },
         global: globalMocks,
       });
+      await vi.dynamicImportSettled();
       await wait();
 
       // Trigger hasChanges by changing URL to enable Save

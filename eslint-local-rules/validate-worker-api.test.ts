@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
-import * as tsParser from '@typescript-eslint/parser';
+import tsParser from '@typescript-eslint/parser';
 import vueParser from 'vue-eslint-parser';
 import { describe, expect, it } from 'vitest';
 import { rule } from './validate-worker-api.js';
@@ -23,6 +23,7 @@ function createEslint({ genericBridgeFileSuffixes = [], analysisBudget }: {
       languageOptions: {
         parser: tsParser,
         parserOptions: {
+          extraFileExtensions: ['.vue'],
           project: fixtureProject,
           tsconfigRootDir: projectRoot,
         },
@@ -73,11 +74,12 @@ describe('validate-worker-api rule', () => {
     ]);
     const messages = result.messages.map(message => message.message);
 
-    expect(messages).toHaveLength(18);
+    expect(messages).toHaveLength(19);
     expect(messages.some(message => message.includes('payload[string]') && message.endsWith('unknown.'))).toBe(true);
     expect(messages.some(message => message.includes('callback') && message.includes('function-must-be-proxied'))).toBe(true);
     expect(messages.some(message => message.includes('handle') && message.includes('capability-sensitive'))).toBe(true);
     expect(messages.some(message => message.includes('capability-marker-must-be-top-level'))).toBe(true);
+    expect(messages.some(message => message.includes('unknown-capability:unreviewed-clone'))).toBe(true);
     expect(messages.some(message => message.includes('proxy-must-be-top-level'))).toBe(true);
     expect(messages.some(message => message.includes('external-unreviewed'))).toBe(true);
     expect(messages.some(message => message.includes('transfer-required:MessagePort'))).toBe(true);

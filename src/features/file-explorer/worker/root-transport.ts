@@ -1,5 +1,12 @@
-import type { FileExplorerRootDescriptor } from './types';
+import type {
+  FileExplorerRootDescriptor,
+  FileExplorerWorkerRootDescriptor,
+} from './types';
 import { createOpfsDirectoryHandleLocator } from '@/utils/file-system-handle-transport';
+import {
+  mapWeshMountsToWorkerMounts,
+  type WeshWorkerMount,
+} from '@/features/wesh/worker/types';
 
 export function hasFileExplorerFileSystemHandles({
   root,
@@ -8,21 +15,12 @@ export function hasFileExplorerFileSystemHandles({
 }): boolean {
   switch (root.kind) {
   case 'opfs-root':
+  case 'storage-directory':
     return false;
-  case 'native-directory': {
-    switch (root.handle.kind) {
-    case 'directory':
-      return true;
-    case 'opfs-directory':
-      return false;
-    default: {
-      const _ex: never = root.handle;
-      throw new Error(`Unhandled directory handle reference: ${String(_ex)}`);
-    }
-    }
-  }
+  case 'native-directory':
+    return true;
   case 'wesh-mounts':
-    return root.mounts.some(mount => mount.type === 'directory' && mount.handle.kind === 'directory');
+    return root.mounts.some(mount => mount.type === 'directory');
   default: {
     const _ex: never = root;
     throw new Error(`Unhandled File Explorer root kind: ${String(_ex)}`);
@@ -34,35 +32,39 @@ export async function mapFileExplorerRootToOpfsLocators({
   root,
 }: {
   root: FileExplorerRootDescriptor,
-}): Promise<FileExplorerRootDescriptor> {
-  const opfsRoot = await navigator.storage.getDirectory();
+}): Promise<FileExplorerWorkerRootDescriptor> {
   switch (root.kind) {
-  case 'opfs-root':
-    return root;
+  case 'opfs-root': {
+    const { kind, rootName, ...unhandledRoot } = root;
+    unhandledRoot satisfies Record<PropertyKey, never>;
+    return { kind, rootName };
+  }
   case 'native-directory': {
     const { kind, rootName, handle, readOnly, ...unhandledRoot } = root;
     unhandledRoot satisfies Record<PropertyKey, never>;
-    switch (handle.kind) {
-    case 'opfs-directory':
-      return root;
-    case 'directory':
-      return {
-        kind,
-        rootName,
-        handle: await createOpfsDirectoryHandleLocator({ opfsRoot, handle }),
-        readOnly,
-      };
-    default: {
-      const _ex: never = handle;
-      throw new Error(`Unhandled directory handle reference: ${String(_ex)}`);
-    }
-    }
+    const opfsRoot = await navigator.storage.getDirectory();
+    return {
+      kind,
+      rootName,
+      handle: await createOpfsDirectoryHandleLocator({ opfsRoot, handle }),
+      readOnly,
+    };
+  }
+  case 'storage-directory': {
+    const { kind, rootName, handle: _handle, readOnly, ...unhandledRoot } = root;
+    unhandledRoot satisfies Record<PropertyKey, never>;
+    return { kind, rootName, readOnly };
   }
   case 'wesh-mounts': {
     const { kind, rootName, mounts, ...unhandledRoot } = root;
     unhandledRoot satisfies Record<PropertyKey, never>;
-    const mappedMounts: typeof mounts = [];
-    for (const mount of mounts) {
+    const workerMounts = await mapWeshMountsToWorkerMounts({
+      mounts,
+      storageDirectoryExecution: 'ui_remote',
+    });
+    const opfsRoot = await navigator.storage.getDirectory();
+    const mappedMounts: WeshWorkerMount[] = [];
+    for (const mount of workerMounts) {
       switch (mount.type) {
       case 'directory': {
         const { type, path, handle, readOnly, ...unhandledMount } = mount;
@@ -87,6 +89,7 @@ export async function mapFileExplorerRootToOpfsLocators({
         });
         break;
       }
+      case 'storage_directory':
       case 'naidan_sysfs':
         mappedMounts.push(mount);
         break;

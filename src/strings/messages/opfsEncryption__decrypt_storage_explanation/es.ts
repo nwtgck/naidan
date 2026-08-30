@@ -1,0 +1,1 @@
+export const opfsEncryption__decrypt_storage_explanation = (): string => 'Naidan creará y verificará el diseño OPFS heredado completo sin cifrar antes de eliminar el almacenamiento cifrado. Todas las funciones de la aplicación estarán bloqueadas hasta que termine.';

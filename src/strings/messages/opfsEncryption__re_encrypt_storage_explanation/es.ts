@@ -1,0 +1,1 @@
+export const opfsEncryption__re_encrypt_storage_explanation = (): string => 'Naidan creará un nuevo almacenamiento cifrado con una nueva clave raíz y verificará cada objeto y archivo. Solo se conservará la frase de contraseña actual introducida aquí; las demás ranuras de clave se eliminarán tras el recifrado. Puede requerir temporalmente cerca del doble del espacio actual.';

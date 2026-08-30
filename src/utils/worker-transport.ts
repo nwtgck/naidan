@@ -9,7 +9,9 @@ export interface WorkerTransferMarked {
 }
 export type WorkerTransfer<T extends object> = T & WorkerTransferMarked;
 
-export type WorkerCloneCapability = 'file-system-handle-clone';
+export type WorkerCloneCapability =
+  | 'file-system-handle-clone'
+  | 'file-system-handle-and-storage-directory-worker-mount-grant-clone';
 
 declare const workerCapabilityMarker: unique symbol;
 export interface WorkerCapabilityMarked<Capability extends WorkerCloneCapability> {

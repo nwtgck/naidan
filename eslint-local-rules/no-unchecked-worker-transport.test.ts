@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
-import * as tsParser from '@typescript-eslint/parser';
+import tsParser from '@typescript-eslint/parser';
 import vueParser from 'vue-eslint-parser';
 import { describe, expect, it } from 'vitest';
 import { rule } from './no-unchecked-worker-transport.js';
@@ -22,6 +22,7 @@ function createEslint(options: {
       languageOptions: {
         parser: tsParser,
         parserOptions: {
+          extraFileExtensions: ['.vue'],
           project: path.join(fixtureRoot, 'tsconfig.json'),
           tsconfigRootDir: projectRoot,
         },

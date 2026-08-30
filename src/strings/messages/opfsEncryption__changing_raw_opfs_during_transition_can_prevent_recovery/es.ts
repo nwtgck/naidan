@@ -1,0 +1,1 @@
+export const opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery = (): string => 'Cambiar los datos de OPFS sin procesar mientras la operación interrumpida está activa puede impedir la recuperación. Haz una copia antes de realizar cambios destructivos.';
