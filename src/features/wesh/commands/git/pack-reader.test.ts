@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import {
   MockFileSystemDirectoryHandle,
@@ -120,6 +121,10 @@ d89455c revision-7
 line 0735 revision 7 changed payload xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 `);
 }
+
+beforeAll(async () => {
+  await gitCommandDefinition.load();
+});
 
 describe('wesh git packed object reading', () => {
   it('reads commits, trees, and OFS_DELTA blobs from a fixed packed repository fixture', async () => {

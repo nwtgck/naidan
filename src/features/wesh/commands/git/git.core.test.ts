@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
@@ -9,6 +10,10 @@ import {
 import { objectIdFor } from './objects';
 
 const textEncoder = new TextEncoder();
+
+beforeAll(async () => {
+  await gitCommandDefinition.load();
+});
 
 describe('wesh git core lifecycle', () => {
   let wesh: Wesh;

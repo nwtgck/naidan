@@ -1,10 +1,15 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import { createTestReadHandleFromText, createTestWriteCaptureHandle } from '@/features/wesh/utils/test-stream';
 import { serializeIndexFile } from './index-file';
 import { sha1Bytes } from './sha1';
+
+beforeAll(async () => {
+  await gitCommandDefinition.load();
+});
 
 describe('wesh git ls-files', () => {
   let wesh: Wesh;

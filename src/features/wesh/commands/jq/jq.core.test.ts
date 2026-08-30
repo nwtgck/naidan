@@ -1,11 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { jqCommandDefinition } from '@/features/wesh/commands/jq/definition';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+
+beforeAll(async () => {
+  await jqCommandDefinition.load();
+});
 
 describe('wesh jq core', () => {
   let wesh: Wesh;

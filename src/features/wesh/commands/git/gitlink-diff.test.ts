@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { Wesh } from "@/features/wesh/index";
+import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import {
   MockFileSystemDirectoryHandle,
@@ -64,6 +65,10 @@ async function createFixtureWesh({ stagedSecond = false }: { stagedSecond?: bool
   await wesh.init();
   return wesh;
 }
+
+beforeAll(async () => {
+  await gitCommandDefinition.load();
+});
 
 describe("wesh git gitlink diff", () => {
   it("diffs gitlinks without requiring the referenced submodule commits in the superproject object database", async () => {

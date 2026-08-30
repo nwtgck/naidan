@@ -270,6 +270,18 @@ If a command intentionally supports only a subset of a real utility:
 
 Tests are first-class deliverables.
 
+### Lazy Command Loading in Tests
+
+When command implementation loading is not the behavior under test, preload that command locally in the relevant test file before semantic tests run. Prefer a file-local `beforeAll` that awaits the command definition's `load()` method.
+
+```typescript
+beforeAll(async () => {
+  await gitCommandDefinition.load();
+});
+```
+
+Do not use a global preload setup: lazy-loading tests must be able to exercise the unloaded state. Do not increase semantic-test timeouts solely to absorb a cold command import; keep command-loading correctness in dedicated lazy-loading tests and command behavior in command-local semantic tests.
+
 Every implemented feature must have at least one realistic command-level test.
 
 Prefer:

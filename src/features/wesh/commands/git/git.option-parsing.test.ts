@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
 import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
@@ -7,7 +8,11 @@ import {
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
 
-describe('wesh git supported short option spellings', { timeout: 15_000 }, () => {
+beforeAll(async () => {
+  await gitCommandDefinition.load();
+});
+
+describe('wesh git supported short option spellings', () => {
   let wesh: Wesh;
 
   beforeEach(async () => {
