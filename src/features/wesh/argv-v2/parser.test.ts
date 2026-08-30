@@ -1048,6 +1048,41 @@ describe('catalog standard argv parser', () => {
       tokenOffset: 1,
     });
 
+    // Bash reports an unknown non-BMP short option as the complete Unicode code point,
+    // rather than exposing either UTF-16 surrogate code unit in its diagnostic.
+    expect(analyzeArgvShortForm({ token: '-😀e', bodyOffset: 1, prefix: '-', catalog })).toEqual({
+      kind: 'unknown',
+      option: '-😀',
+      tokenOffset: 1,
+    });
+    expect(analyzeArgvShortForm({ token: '+𝒜e', bodyOffset: 1, prefix: '+', catalog })).toEqual({
+      kind: 'unknown',
+      option: '+𝒜',
+      tokenOffset: 1,
+    });
+
+    const standardCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+      nonExecutableLongOptions: [],
+      definitions: [{
+        semantic: { kind: 'effects', effects: [{ key: 'e', value: true }] },
+        forms: [{ kind: 'short', name: 'e', value: { kind: 'none' } }],
+      }],
+    });
+    expect(parseStandardArgv({ args: ['-😀'], catalog: standardCatalog, policy }).diagnostics).toEqual([{
+      kind: 'unknown_short_option',
+      argvIndex: 0,
+      tokenOffset: 1,
+      option: '-😀',
+      message: "invalid option -- '😀'",
+    }]);
+    expect(parseStandardArgv({ args: ['-e😀'], catalog: standardCatalog, policy }).diagnostics).toEqual([{
+      kind: 'unknown_short_option',
+      argvIndex: 0,
+      tokenOffset: 2,
+      option: '-😀',
+      message: "invalid option -- '😀'",
+    }]);
+
     const bashArgs = ['-OO', 'extglob', 'nullglob'] as const;
     const claimedFollowingValues: string[] = [];
     let followingArgvIndex = 1;

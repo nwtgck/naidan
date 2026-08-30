@@ -66,6 +66,20 @@ export type CatalogArgvLongFormAnalysis<TSemantic> =
       readonly value: CatalogArgvLongValueClaim,
     };
 
+function readUnknownShortOptionName({
+  token,
+  bodyOffset,
+}: {
+  token: string,
+  bodyOffset: number,
+}): string {
+  const codePoint = token.codePointAt(bodyOffset);
+  if (codePoint === undefined) {
+    throw new Error(`Invalid argv short-form analysis offset for ${JSON.stringify(token)}`);
+  }
+  return String.fromCodePoint(codePoint);
+}
+
 // Token-local partial-use primitive for command-owned argv state machines. Real examples include
 // Bash `-OO extglob nullglob` (caller-owned following-value cursor) and xxd `-autoskip`
 // (caller may intentionally stop after resolving `-a`). Call sites remain mechanically grep-able.
@@ -121,7 +135,11 @@ export function analyzeArgvShortFormWithData<TSemantic>({
     }
   })();
   if (flat === undefined) {
-    return { kind: 'unknown', option: `${prefix}${name}`, tokenOffset: bodyOffset };
+    // Catalog short spellings are one UTF-16 code unit, so keep the hot matched path
+    // unchanged. Real Bash treats an unknown non-BMP short option as one Unicode code
+    // point, though, so only the cold unknown path reconstructs the complete character.
+    const unknownName = readUnknownShortOptionName({ token, bodyOffset });
+    return { kind: 'unknown', option: `${prefix}${unknownName}`, tokenOffset: bodyOffset };
   }
 
   const optionStart = bodyOffset;
