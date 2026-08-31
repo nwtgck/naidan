@@ -5,6 +5,7 @@ import { compile as compileTemplate, parse as parseTemplate } from '@vue/compile
 import type { CompilerError } from '@vue/compiler-core';
 import { parse as parseSfc, type SFCBlock, type SFCDescriptor } from '@vue/compiler-sfc';
 
+import { profileBuildSync } from '../build-profile.js';
 import {
   collectTwCandidateOccurrencesFromTemplateAst,
   createTwClassNodeTransform,
@@ -311,8 +312,11 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, c
 }): SourceModuleAnalysis {
   const absoluteProjectRoot = path.resolve(projectRoot);
   const absoluteSourceRoot = path.resolve(sourceRoot);
-  const files = walkFiles({ directory: absoluteSourceRoot })
-    .filter((file) => isStaticTailwindSourceFile({ filename: file, sourceRoot: absoluteSourceRoot }));
+  const files = profileBuildSync({
+    name: 'tailwind.source.walk-files',
+    run: () => walkFiles({ directory: absoluteSourceRoot })
+      .filter((file) => isStaticTailwindSourceFile({ filename: file, sourceRoot: absoluteSourceRoot })),
+  });
   const baseCandidateGroups: SourceCandidateGroupBase[] = [];
   const presentFiles = new Set(files);
   for (const cachedFile of cache.keys()) {
@@ -321,7 +325,11 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, c
   for (const file of files) {
     let source: string;
     try {
-      source = fs.readFileSync(file, 'utf8');
+      source = profileBuildSync({
+        name: 'tailwind.source.read-file',
+        sample: { items: 1 },
+        run: () => fs.readFileSync(file, 'utf8'),
+      });
     } catch (error) {
       if (isErrnoException(error) && error.code === 'ENOENT') {
         cache.delete(file);
@@ -334,7 +342,11 @@ export function analyzeSourceModules({ projectRoot, sourceRoot, ownershipMode, c
       baseCandidateGroups.push(...cloneCandidateGroups({ groups: cached.groups }));
       continue;
     }
-    const groups = collectCandidateGroups({ source, filename: file });
+    const groups = profileBuildSync({
+      name: 'tailwind.source.collect-candidate-groups',
+      sample: { inputChars: source.length, items: 1 },
+      run: () => collectCandidateGroups({ source, filename: file }),
+    });
     cache.set(file, { source, groups: cloneCandidateGroups({ groups }) });
     baseCandidateGroups.push(...groups);
   }

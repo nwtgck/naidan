@@ -123,8 +123,94 @@ jobs:
           mkdir -p src/assets
           echo '[{"name": "dummy-package-for-tests", "version": "0.0.0", "license": "DUMMY-LICENSE", "licenseText": "This is a placeholder for CI tests."}]' > src/assets/licenses.json
 
-      - name: Run build
-        run: npm run build
+      - name: Run profiled build
+        shell: bash
+        env:
+          NAIDAN_BUILD_PROFILE_DIR: ${{ runner.temp }}/naidan-build-profile/plugin-phases
+        run: |
+          set -euo pipefail
+          PROFILE_ROOT="$RUNNER_TEMP/naidan-build-profile"
+          mkdir -p \
+            "$PROFILE_ROOT/plugin-phases" \
+            "$PROFILE_ROOT/vue-tsc-cpu" \
+            "$PROFILE_ROOT/standalone-cpu" \
+            "$PROFILE_ROOT/hosted-cpu"
+
+          {
+            echo "git_sha=$(git rev-parse HEAD)"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            echo "runner_os=${RUNNER_OS:-}"
+            echo "runner_arch=${RUNNER_ARCH:-}"
+            echo "github_run_id=${GITHUB_RUN_ID:-}"
+            echo "github_run_attempt=${GITHUB_RUN_ATTEMPT:-}"
+            echo
+            uname -a
+            echo
+            lscpu || true
+            echo
+            free -b || true
+          } > "$PROFILE_ROOT/environment.txt"
+
+          : > "$PROFILE_ROOT/top-level-phases.tsv"
+          printf 'phase\twall_ms\texit_status\n' >> "$PROFILE_ROOT/top-level-phases.tsv"
+
+          run_profiled() {
+            local label="$1"
+            shift
+            local started_ns ended_ns status
+            started_ns=$(date +%s%N)
+            set +e
+            { /usr/bin/time -v -o "$PROFILE_ROOT/${label}-time.txt" "$@"; } \
+              2>&1 | tee "$PROFILE_ROOT/${label}.log"
+            status=${PIPESTATUS[0]}
+            set -e
+            ended_ns=$(date +%s%N)
+            printf '%s\t%s\t%s\n' \
+              "$label" "$(((ended_ns - started_ns) / 1000000))" "$status" \
+              >> "$PROFILE_ROOT/top-level-phases.tsv"
+            return "$status"
+          }
+
+          # This is the same build order as `vue-tsc -b && npm run build:all`,
+          # but split only so each top-level phase gets an independent CPU/RSS profile.
+          run_profiled vue-tsc \
+            node --cpu-prof --cpu-prof-dir="$PROFILE_ROOT/vue-tsc-cpu" \
+            ./node_modules/vue-tsc/bin/vue-tsc.js -b
+
+          run_profiled standalone \
+            node --cpu-prof --cpu-prof-dir="$PROFILE_ROOT/standalone-cpu" \
+            ./node_modules/vite/bin/vite.js build --mode standalone --logLevel warn
+
+          run_profiled hosted \
+            node --cpu-prof --cpu-prof-dir="$PROFILE_ROOT/hosted-cpu" \
+            ./node_modules/vite/bin/vite.js build --mode hosted --logLevel warn
+
+      - name: Summarize build profile
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          PROFILE_ROOT="$RUNNER_TEMP/naidan-build-profile"
+          mkdir -p "$PROFILE_ROOT"
+          for phase in vue-tsc standalone hosted; do
+            node scripts/summarize-cpu-profile.mjs \
+              "$PROFILE_ROOT/${phase}-cpu" \
+              "$PROFILE_ROOT/${phase}-cpu-summary.json" \
+              "$PROFILE_ROOT/${phase}-cpu-summary.txt" || true
+          done
+          if [ -d dist ]; then
+            find dist -type f -printf '%s\t%p\n' | sort -nr > "$PROFILE_ROOT/artifact-sizes.tsv"
+            du -sb dist > "$PROFILE_ROOT/dist-total-bytes.txt" || true
+          fi
+          node scripts/summarize-build-profile.mjs "$PROFILE_ROOT" || true
+
+      - name: Upload temporary build profile
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: temporary-naidan-build-profile
+          path: ${{ runner.temp }}/naidan-build-profile/
+          if-no-files-found: warn
 
       - name: Set up Go
         uses: actions/setup-go@v6

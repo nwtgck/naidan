@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { DevEnvironment, Plugin, ResolvedConfig } from 'vite';
+import { profileBuildAsync, profileBuildSync } from '../build-profile.js';
 import {
   collectTwCandidateOccurrencesFromVueSource,
   transformTwCallsInModule,
@@ -559,28 +560,46 @@ export function createTwClassVitePlugin({
   }
 
   async function refreshPlan(): Promise<RefreshResult> {
-    const nextAnalysis = analyzeSourceModules({
-      projectRoot: absoluteProjectRoot,
-      sourceRoot: absoluteSourceRoot,
-      ownershipMode: splitCss ? 'source-module' : 'single-css',
-      cache: sourceAnalysisCache,
+    const nextAnalysis = profileBuildSync({
+      name: 'tailwind.refresh.analyze-source-modules',
+      run: () => analyzeSourceModules({
+        projectRoot: absoluteProjectRoot,
+        sourceRoot: absoluteSourceRoot,
+        ownershipMode: splitCss ? 'source-module' : 'single-css',
+        cache: sourceAnalysisCache,
+      }),
     });
-    const nextPlan = await createCssOwnershipPlan({
-      projectRoot: absoluteProjectRoot,
-      cssEntryPath: absoluteTailwindCssPath,
-      expectedTailwindVersion,
-      analysis: nextAnalysis,
-      outputMode,
-      maxSplitCssGroups,
+    const nextPlan = await profileBuildAsync({
+      name: 'tailwind.refresh.create-css-ownership-plan',
+      sample: { items: nextAnalysis.candidateOwners.size },
+      run: () => createCssOwnershipPlan({
+        projectRoot: absoluteProjectRoot,
+        cssEntryPath: absoluteTailwindCssPath,
+        expectedTailwindVersion,
+        analysis: nextAnalysis,
+        outputMode,
+        maxSplitCssGroups,
+      }),
     });
-    const state = buildVirtualState({ nextAnalysis, nextPlan });
-    const nextInputSourceByFile = new Map(
-      [...sourceAnalysisCache].map(([filename, { source }]) => [filename, source]),
-    );
-    for (const filename of nextPlan.stylesheetDependencies) {
-      if (!isLocalStylesheetPath({ filename })) continue;
-      nextInputSourceByFile.set(filename, fs.readFileSync(filename, 'utf8'));
-    }
+    const state = profileBuildSync({
+      name: 'tailwind.refresh.build-virtual-state',
+      sample: { items: nextPlan.cssGroups.size },
+      run: () => buildVirtualState({ nextAnalysis, nextPlan }),
+    });
+    const nextInputSourceByFile = profileBuildSync({
+      name: 'tailwind.refresh.snapshot-input-sources',
+      sample: { items: sourceAnalysisCache.size + nextPlan.stylesheetDependencies.length },
+      run: () => {
+        const nextSources = new Map(
+          [...sourceAnalysisCache].map(([filename, { source }]) => [filename, source]),
+        );
+        for (const filename of nextPlan.stylesheetDependencies) {
+          if (!isLocalStylesheetPath({ filename })) continue;
+          nextSources.set(filename, fs.readFileSync(filename, 'utf8'));
+        }
+        return nextSources;
+      },
+    });
     const previousActiveModuleSourceByResolvedId = moduleSourceByResolvedId;
     analysis = nextAnalysis;
     plan = nextPlan;
@@ -664,11 +683,19 @@ export function createTwClassVitePlugin({
   }
 
   function writeDebugOutput(): void {
-    if (absoluteDebugOutputDirectory === undefined || analysis === undefined || plan === undefined) return;
-    fs.mkdirSync(absoluteDebugOutputDirectory, { recursive: true });
-    fs.writeFileSync(path.join(absoluteDebugOutputDirectory, 'source-analysis.json'), `${JSON.stringify(serializeSourceAnalysis({ analysis }), null, 2)}\n`);
-    fs.writeFileSync(path.join(absoluteDebugOutputDirectory, 'ownership-plan.json'), `${JSON.stringify(serializeCssOwnershipPlan({ plan }), null, 2)}\n`);
-    writeCssOwnershipDebugFiles({ directory: path.join(absoluteDebugOutputDirectory, 'css-groups'), plan });
+    const activeAnalysis = analysis;
+    const activePlan = plan;
+    if (absoluteDebugOutputDirectory === undefined || activeAnalysis === undefined || activePlan === undefined) return;
+    profileBuildSync({
+      name: 'tailwind.write-debug-output',
+      sample: { items: activePlan.cssGroups.size },
+      run: () => {
+        fs.mkdirSync(absoluteDebugOutputDirectory, { recursive: true });
+        fs.writeFileSync(path.join(absoluteDebugOutputDirectory, 'source-analysis.json'), `${JSON.stringify(serializeSourceAnalysis({ analysis: activeAnalysis }), null, 2)}\n`);
+        fs.writeFileSync(path.join(absoluteDebugOutputDirectory, 'ownership-plan.json'), `${JSON.stringify(serializeCssOwnershipPlan({ plan: activePlan }), null, 2)}\n`);
+        writeCssOwnershipDebugFiles({ directory: path.join(absoluteDebugOutputDirectory, 'css-groups'), plan: activePlan });
+      },
+    });
   }
 
   const plugin: TwClassVitePlugin = {

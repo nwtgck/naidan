@@ -9,6 +9,7 @@ import {
 } from '@vue/compiler-sfc';
 import * as ts from 'typescript';
 
+import { profileBuildSync } from '../build-profile.js';
 import { stripModuleQuery } from './module-id';
 
 const supportedBindings = new Set(['lazyStrings', 'ensureStrings']);
@@ -290,14 +291,30 @@ function analyzeScript({ lang, moduleId, sourceCode }: {
   moduleId: string;
   sourceCode: string;
 }): ScriptAnalysis {
-  const sourceFile = parseTypeScript({
-    moduleId,
-    scriptKind: scriptKindForModule({ lang, moduleId }),
-    sourceCode,
+  const sourceFile = profileBuildSync({
+    name: 'boundary.analyze.parse-typescript',
+    sample: { inputChars: sourceCode.length, items: 1 },
+    run: () => parseTypeScript({
+      moduleId,
+      scriptKind: scriptKindForModule({ lang, moduleId }),
+      sourceCode,
+    }),
   });
-  validateNoDirectLocaleImports({ moduleId, sourceFile });
-  const checker = createTypeChecker({ moduleId, sourceCode, sourceFile });
-  const importedSymbols = importedBoundaryStringSymbols({ checker, sourceFile });
+  profileBuildSync({
+    name: 'boundary.analyze.validate-direct-imports',
+    sample: { items: 1 },
+    run: () => validateNoDirectLocaleImports({ moduleId, sourceFile }),
+  });
+  const checker = profileBuildSync({
+    name: 'boundary.analyze.create-type-checker',
+    sample: { inputChars: sourceCode.length, items: 1 },
+    run: () => createTypeChecker({ moduleId, sourceCode, sourceFile }),
+  });
+  const importedSymbols = profileBuildSync({
+    name: 'boundary.analyze.resolve-imported-symbols',
+    sample: { items: 1 },
+    run: () => importedBoundaryStringSymbols({ checker, sourceFile }),
+  });
   const importedBindingNames = new Set(importedSymbols.values());
   const keys = new Set<string>();
 
@@ -320,7 +337,11 @@ function analyzeScript({ lang, moduleId, sourceCode }: {
     }
     ts.forEachChild(node, visit);
   }
-  visit(sourceFile);
+  profileBuildSync({
+    name: 'boundary.analyze.walk-symbol-references',
+    sample: { items: 1 },
+    run: () => visit(sourceFile),
+  });
 
   return {
     importedBindingNames,
@@ -364,10 +385,14 @@ function collectGeneratedTemplateKeys({ allowedBindingNames, moduleId, sourceCod
   moduleId: string;
   sourceCode: string;
 }): ReadonlySet<string> {
-  const sourceFile = parseTypeScript({
-    moduleId,
-    scriptKind: ts.ScriptKind.TS,
-    sourceCode,
+  const sourceFile = profileBuildSync({
+    name: 'boundary.vue.parse-generated-template',
+    sample: { inputChars: sourceCode.length, items: 1 },
+    run: () => parseTypeScript({
+      moduleId,
+      scriptKind: ts.ScriptKind.TS,
+      sourceCode,
+    }),
   });
   const keys = new Set<string>();
 
@@ -396,7 +421,11 @@ function collectGeneratedTemplateKeys({ allowedBindingNames, moduleId, sourceCod
     }
     ts.forEachChild(node, visit);
   }
-  visit(sourceFile);
+  profileBuildSync({
+    name: 'boundary.vue.walk-generated-template',
+    sample: { items: 1 },
+    run: () => visit(sourceFile),
+  });
   return keys;
 }
 
@@ -417,15 +446,23 @@ function compileVueTemplate({ descriptor, moduleId }: {
   const id = crypto.createHash('sha256').update(moduleId).digest('hex').slice(0, 8);
   const bindings = descriptor.script === null && descriptor.scriptSetup === null
     ? undefined
-    : compileScript(descriptor, { id }).bindings;
-  const result = compileTemplate({
-    compilerOptions: {
-      bindingMetadata: bindings,
-      expressionPlugins: ['typescript'],
-    },
-    filename: moduleId,
-    id,
-    source: template.content,
+    : profileBuildSync({
+      name: 'boundary.vue.compile-script-bindings',
+      sample: { items: 1 },
+      run: () => compileScript(descriptor, { id }).bindings,
+    });
+  const result = profileBuildSync({
+    name: 'boundary.vue.compile-template',
+    sample: { inputChars: template.content.length, items: 1 },
+    run: () => compileTemplate({
+      compilerOptions: {
+        bindingMetadata: bindings,
+        expressionPlugins: ['typescript'],
+      },
+      filename: moduleId,
+      id,
+      source: template.content,
+    }),
   });
   if (result.errors.length > 0) {
     throw new Error(
@@ -441,7 +478,11 @@ function analyzeVueSfc({ moduleId, sourceCode }: {
   moduleId: string;
   sourceCode: string;
 }): BoundaryStringSourceAnalysis {
-  const parsed = parseSfc(sourceCode, { filename: moduleId });
+  const parsed = profileBuildSync({
+    name: 'boundary.vue.parse-sfc',
+    sample: { inputChars: sourceCode.length, items: 1 },
+    run: () => parseSfc(sourceCode, { filename: moduleId }),
+  });
   if (parsed.errors.length > 0) {
     throw new Error(
       `[naidan-boundary-strings] Failed to parse ${moduleId}:\n${parsed.errors.map((error) => {

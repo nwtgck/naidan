@@ -31,6 +31,12 @@ import { UI_LOCALES } from './src/01-models/ui-locale';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
+import {
+  configureBuildProfile,
+  createBuildProfileReporterPlugin,
+  profileBuildAsync,
+  profilePluginOptions,
+} from './build/build-profile';
 
 function setCrossOriginResourcePolicy({ res }: {
   res: import('node:http').ServerResponse,
@@ -199,7 +205,10 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
           const gzip = createGzip({ level: 9 });
 
           try {
-            await promisify(pipeline)(source, gzip, destination);
+            await profileBuildAsync({
+              name: 'hosted.wasm-gzip.pipeline',
+              run: () => promisify(pipeline)(source, gzip, destination),
+            });
             // Verify source exists before unlink (sanity check)
             if (fs.existsSync(fullPath)) {
               await fs.promises.unlink(fullPath);
@@ -220,6 +229,7 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
+  configureBuildProfile({ mode });
   const isStandalone = mode === 'standalone';
   const isHosted = mode === 'hosted';
   const tailwindDebugOutputDirectory = isStandalone || isHosted
@@ -300,6 +310,7 @@ export default defineConfig(({ mode }) => {
       ],
     },
     plugins: [
+      ...profilePluginOptions([
       createInitialThemeHtmlPlugin(),
       createBoundaryStringsPlugin(),
       VueRouter({
@@ -432,7 +443,9 @@ export default defineConfig(({ mode }) => {
           maximumFileSizeToCacheInBytes: 100 * 1024 * 1024,
         },
       }),
-    ].filter((p): p is import('vite').PluginOption => !!p),
+      ].filter((p): p is import('vite').PluginOption => !!p)),
+      createBuildProfileReporterPlugin(),
+    ],
     build: {
       outDir,
       emptyOutDir: true,

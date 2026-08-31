@@ -2,6 +2,7 @@ import { transformAsync } from '@babel/core';
 import { Buffer } from 'node:buffer';
 import type { OutputAsset, OutputChunk } from 'rolldown';
 import type { Plugin } from 'vite';
+import { profileBuildAsync, profileBuildSync } from '../../build-profile.js';
 import type { ChunkDiagnostic, StandaloneBuildDiagnostics } from './diagnostics.js';
 import { rewriteStandaloneHtml } from './html-rewrite.js';
 import {
@@ -27,18 +28,22 @@ async function transformOutputChunkToSystemJsInPlace({
     moduleIds: Object.keys(output.modules),
     beforeBytes: Buffer.byteLength(output.code),
   };
-  const transformed = await transformAsync(output.code, {
-    filename: output.fileName,
-    babelrc: false,
-    configFile: false,
-    ast: false,
-    code: true,
-    compact: true,
-    minified: true,
-    comments: false,
-    sourceType: 'module',
-    sourceMaps: false,
-    plugins: [babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin],
+  const transformed = await profileBuildAsync({
+    name: 'standalone.systemjs.babel-transform',
+    sample: { inputChars: output.code.length, items: 1 },
+    run: () => transformAsync(output.code, {
+      filename: output.fileName,
+      babelrc: false,
+      configFile: false,
+      ast: false,
+      code: true,
+      compact: true,
+      minified: true,
+      comments: false,
+      sourceType: 'module',
+      sourceMaps: false,
+      plugins: [babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin],
+    }),
   });
   if (!transformed?.code) throw new Error(`No SystemJS transform output for ${output.fileName}`);
   if (!transformed.code.includes('System.register(')) {
@@ -122,16 +127,20 @@ export function createSystemJsOutputPlugin({
           throw new Error(`Naidan standalone output requires exactly one HTML entry; found ${htmlOutputs.length}`);
         }
         for (const output of htmlOutputs) {
-          rewriteStandaloneHtml({
-            output,
-            outputByFileName,
-            chunkByFileName,
-            systemRuntimeFileName,
-            systemJsFileScriptLoaderPatchFileName,
-            systemJsRetryHookFileName,
-            startupSlowNoticeDelayMs,
-            effectFreeEmptyCssFileNames,
-            diagnostics,
+          profileBuildSync({
+            name: 'standalone.systemjs.rewrite-html',
+            sample: { inputChars: typeof output.source === 'string' ? output.source.length : 0, items: 1 },
+            run: () => rewriteStandaloneHtml({
+              output,
+              outputByFileName,
+              chunkByFileName,
+              systemRuntimeFileName,
+              systemJsFileScriptLoaderPatchFileName,
+              systemJsRetryHookFileName,
+              startupSlowNoticeDelayMs,
+              effectFreeEmptyCssFileNames,
+              diagnostics,
+            }),
           });
         }
 
