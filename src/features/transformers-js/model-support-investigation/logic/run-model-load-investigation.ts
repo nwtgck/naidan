@@ -10,6 +10,8 @@ import type {
 import { selectGenerationAutoClass } from "@/features/transformers-js/model-support-investigation/logic/select-generation-auto-class";
 import { CandidateAttemptTimeoutError } from "@/features/transformers-js/model-support-investigation/logic/candidate-attempt-timeout";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
+import { investigationModelLoadRevision } from "@/features/transformers-js/model-support-investigation/logic/investigation-model-load-revision";
+import { isModelSupportInvestigationUserInterruptedError } from "@/features/transformers-js/model-support-investigation/logic/investigation-interruption";
 
 function updateLoadingStep({ run, status, detail }: {
   run: ModelSupportInvestigationRun,
@@ -46,6 +48,7 @@ function unexpectedAttempt({
   candidate,
   autoClass,
   repositoryRevision,
+  loaderRevisionOption,
   error,
   checkpoint,
   now,
@@ -54,6 +57,7 @@ function unexpectedAttempt({
   candidate: ModelSupportInvestigationCandidateFilePlan,
   autoClass: ModelSupportInvestigationGenerationAutoClassName,
   repositoryRevision: string,
+  loaderRevisionOption: string | null,
   error: unknown,
   checkpoint: ModelSupportInvestigationLoadAttemptCheckpoint | undefined,
   now: () => string,
@@ -83,8 +87,11 @@ function unexpectedAttempt({
     dtype: candidate.dtype,
     autoClass: checkpoint?.autoClass ?? autoClass,
     resolvedRevision: repositoryRevision,
+    loaderRevisionOption: checkpoint?.loaderRevisionOption ?? loaderRevisionOption,
     startedAt,
     completedAt: now(),
+    modelLoadDurationMs: checkpoint?.modelLoadDurationMs,
+    modelLoadProgress: checkpoint?.modelLoadProgress,
     status: "failed",
     failureStage,
     events,
@@ -196,10 +203,12 @@ export async function runModelLoadInvestigation({
         },
       });
     } catch (error) {
+      if (isModelSupportInvestigationUserInterruptedError({ error })) throw error;
       attempt = unexpectedAttempt({
         candidate,
         autoClass,
         repositoryRevision: repository.resolvedRevision,
+        loaderRevisionOption: investigationModelLoadRevision({ requestedRevision: repository.requestedRevision }) ?? null,
         error,
         checkpoint: latestAttemptCheckpoint,
         now,

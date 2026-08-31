@@ -1,9 +1,14 @@
 import JSZip from "jszip";
 import type {
   ModelSupportInvestigationLoadAttemptError,
+  ModelSupportInvestigationProgressObservation,
   ModelSupportInvestigationRecovery,
   ModelSupportInvestigationRun,
 } from "@/features/transformers-js/model-support-investigation/types";
+import type {
+  TransformersJsProductionInvestigationObservation,
+  TransformersJsProductionInvestigationPartialObservation,
+} from "@/features/transformers-js/types";
 import {
   evaluateEvidenceReadiness,
   renderEvidenceReadinessMarkdown,
@@ -27,7 +32,10 @@ function safeFilePart({ value }: { value: string }): string {
   return sanitized || "model";
 }
 
-function productionObservation({ run }: { run: ModelSupportInvestigationRun }) {
+function productionObservation({ run }: { run: ModelSupportInvestigationRun }):
+  | TransformersJsProductionInvestigationObservation
+  | TransformersJsProductionInvestigationPartialObservation
+  | undefined {
   return run.productionLane.observation ?? run.productionLane.partialObservation;
 }
 
@@ -334,6 +342,53 @@ export async function createPartialModelSupportEvidence({ run, recovery }: {
     }
     }
   })();
+  const formatLoadTelemetry = ({
+    candidate,
+    durationMs,
+    progress,
+  }: {
+    candidate: string,
+    durationMs: number | undefined,
+    progress: ModelSupportInvestigationProgressObservation | undefined,
+  }): string => {
+    const duration = durationMs === undefined ? "duration=unavailable" : `duration=${Math.round(durationMs)}ms`;
+    const callbackCounts = progress === undefined
+      ? "progress=unavailable"
+      : `raw-events=${progress.eventCount}, published-samples=${progress.publishedSampleCount}`;
+    const cacheCounts = progress?.cacheMatchRequestCount === undefined
+      ? "opfs=unavailable"
+      : `opfs-matches=${progress.cacheMatchRequestCount}, hits=${progress.cacheHitCount ?? 0}, misses=${progress.cacheMissCount ?? 0}, alias-hits=${progress.cacheAliasHitCount ?? 0}, matched-bytes=${progress.cacheMatchedBytes ?? 0}, remote-fetch-attempts=${progress.remoteFetchAttemptCount ?? 0}`;
+    return `${candidate} (${duration}; ${callbackCounts}; ${cacheCounts})`;
+  };
+  const modelLoadTelemetrySemantics = "Transformers.js download/progress callbacks measure Response body reads and do not prove network transfer; transport source is established by OPFS match and blocked remote-fetch observations.";
+  const referenceLoadTelemetry = run.loadAttempts.length === 0
+    ? "not-recorded"
+    : run.loadAttempts.map(attempt => formatLoadTelemetry({
+      candidate: attempt.candidateId,
+      durationMs: attempt.modelLoadDurationMs,
+      progress: attempt.modelLoadProgress,
+    })).join("; ");
+  const productionLoadTelemetry = (() => {
+    const observation = productionObservation({ run });
+    const attempts = observation?.loadAttempts ?? [];
+    const completed = attempts.map(attempt => formatLoadTelemetry({
+      candidate: `${attempt.candidate.device}-${attempt.candidate.dtype}`,
+      durationMs: attempt.modelLoadDurationMs,
+      progress: attempt.modelLoadProgress,
+    }));
+    const activeAttempt = run.productionLane.partialObservation?.activeLoadAttempt;
+    const active = activeAttempt === undefined
+      ? []
+      : [`${formatLoadTelemetry({
+        candidate: `${activeAttempt.candidate.device}-${activeAttempt.candidate.dtype}`,
+        durationMs: activeAttempt.modelLoadDurationMs,
+        progress: activeAttempt.modelLoadProgress,
+      })} [running]`];
+    const telemetry = [...completed, ...active];
+    return telemetry.length === 0 ? "not-recorded" : telemetry.join("; ");
+  })();
+  const productionRuntimeLoadDurationMs = productionObservation({ run })?.runtimeLoadDurationMs;
+  const productionRuntimePreparationDurationMs = productionObservation({ run })?.runtimePreparationDurationMs;
   const summary = `\
 # Model Support Investigation Evidence
 
@@ -345,6 +400,14 @@ export async function createPartialModelSupportEvidence({ run, recovery }: {
 - Completed: ${run.completedAt}
 - Evidence readiness: ${readiness.overall}
 - Recovery status: ${recovery?.status ?? "not-recorded"}
+- Recovery journal: ${recovery === undefined
+    ? "not-recorded"
+    : `retained ${recovery.events.length} of ${recovery.totalEventCount} events; ${recovery.droppedEventCount} dropped by bounded telemetry policy`}
+- Reference model-load telemetry: ${referenceLoadTelemetry}
+- Model-load telemetry semantics: ${modelLoadTelemetrySemantics}
+- Production model-load telemetry: ${productionLoadTelemetry}
+- Production runtime-load total: ${productionRuntimeLoadDurationMs === undefined ? "not-recorded" : `${Math.round(productionRuntimeLoadDurationMs)}ms`}
+- Production tokenizer/processor preparation: ${productionRuntimePreparationDurationMs === undefined ? "not-recorded" : `${Math.round(productionRuntimePreparationDurationMs)}ms`}
 
 This is a partial evidence package. ${loadingSummary} ${productionSummary} Repository or cache artifacts are included only when their steps completed.
 `;
@@ -480,6 +543,13 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
       );
       if ((observation.loadAttempts?.length ?? 0) > 0) {
         zip.file("production-lane/load-attempts.json", `${JSON.stringify(observation.loadAttempts, undefined, 2)}\n`);
+      }
+      const activeLoadAttempt = run.productionLane.partialObservation?.activeLoadAttempt;
+      if (activeLoadAttempt !== undefined) {
+        zip.file(
+          "production-lane/active-load-attempt.json",
+          `${JSON.stringify(activeLoadAttempt, undefined, 2)}\n`,
+        );
       }
       if (observation.firstTurn !== undefined) {
         zip.file("production-lane/first-turn.json", `${JSON.stringify(observation.firstTurn, undefined, 2)}\n`);

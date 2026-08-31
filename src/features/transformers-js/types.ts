@@ -14,6 +14,43 @@ export interface ProgressInfo {
   file?: string,
 }
 
+export interface TransformersJsModelLoadProgressObservation {
+  kind: 'model-load',
+  artifactSource: 'downloaded-model-cache',
+  /** The source label is a load-policy assertion; cache counters below are the direct runtime observations. */
+  artifactSourceBasis?: 'load-policy',
+  candidateId: string,
+  /** Raw Transformers.js progress status; `download` does not by itself mean network transfer. */
+  sourceStatus: string,
+  /** `loaded`/`total` measure response-body reads. Transport source is established by cache/fetch observations below. */
+  progressByteSemantics?: 'response-body-read-not-network-proof',
+  currentFile: string | undefined,
+  fileLoaded: number | undefined,
+  fileTotal: number | undefined,
+  fileProgress: number | undefined,
+  aggregateLoaded: number | undefined,
+  aggregateTotal: number | undefined,
+  aggregateProgress: number | undefined,
+  eventCount: number,
+  progressEventCount: number,
+  progressTotalEventCount: number,
+  forwardProgressCount: number,
+  repeatedWithoutForwardProgressCount: number,
+  publishedSampleCount: number,
+  /** Actual custom-cache match calls observed while this candidate model was loading. */
+  cacheMatchRequestCount?: number,
+  cacheHitCount?: number,
+  cacheMissCount?: number,
+  cacheAliasHitCount?: number,
+  /** Sum of full sizes of OPFS files that matched. This is not the number of bytes actually consumed before abort. */
+  cacheMatchedBytes?: number,
+  /** Cache-miss fetches attempted by Transformers.js. Investigation load paths fail these closed. */
+  remoteFetchAttemptCount?: number,
+  firstActivityAt: string,
+  lastActivityAt: string,
+  lastForwardProgressAt: string | undefined,
+}
+
 export interface ModelLoadResult {
   device: string,
 }
@@ -106,6 +143,30 @@ export interface TransformersJsPrefetchResult {
 }
 
 export type TransformersJsProgressCallback = ({ info }: { info: ProgressInfo }) => void;
+
+export type TransformersJsProductionInvestigationStageStatus =
+  | 'model-support-production-model-load'
+  | 'model-support-production-runtime-preparation'
+  | 'model-support-production-first-turn'
+  | 'model-support-production-continuity'
+  | 'model-support-production-tool-result-continuation'
+  | 'model-support-production-reasoning-differential'
+  | 'model-support-production-multimodal'
+  | 'model-support-production-complete';
+
+export type TransformersJsProductionInvestigationProgressEvent =
+  | {
+      kind: 'stage',
+      status: TransformersJsProductionInvestigationStageStatus,
+    }
+  | {
+      kind: 'model-load',
+      progress: TransformersJsModelLoadProgressObservation,
+    };
+
+export type TransformersJsProductionInvestigationProgressCallback = ({ event }: {
+  event: TransformersJsProductionInvestigationProgressEvent,
+}) => void;
 export type TransformersJsChunkCallback = ({ chunk }: { chunk: string }) => void;
 export type TransformersJsToolCallsCallback = ({ toolCalls }: { toolCalls: ToolCall[] }) => void;
 
@@ -154,13 +215,26 @@ export type TransformersJsProductionInvestigationCandidateLoadError = Transforme
 export interface TransformersJsProductionInvestigationCandidateLoadAttempt {
   candidate: TransformersJsProductionInvestigationCandidate,
   status: 'passed' | 'failed',
+  /** Wall-clock time spent in the model from_pretrained/load operation for this candidate. */
+  modelLoadDurationMs?: number,
+  /** Final bounded summary of raw Transformers.js model-load progress callbacks. */
+  modelLoadProgress?: TransformersJsModelLoadProgressObservation,
   error: TransformersJsProductionInvestigationCandidateLoadError | undefined,
+}
+
+export interface TransformersJsProductionInvestigationActiveCandidateLoadAttempt {
+  candidate: TransformersJsProductionInvestigationCandidate,
+  status: 'running',
+  /** Elapsed wall-clock time at the latest bounded Production load checkpoint. */
+  modelLoadDurationMs?: number,
+  /** Latest bounded summary of raw Transformers.js model-load progress callbacks. */
+  modelLoadProgress?: TransformersJsModelLoadProgressObservation,
 }
 
 export interface TransformersJsProductionInvestigationScenario {
   modelId: string,
   resolvedRevision: string,
-  cacheRevisionAliases: TransformersJsCacheRevisionAlias[],
+  loadRevision: string | undefined,
   candidates: [TransformersJsProductionInvestigationCandidate, ...TransformersJsProductionInvestigationCandidate[]],
   messages: ChatMessage[],
   followUpMessage: ChatMessage,
@@ -380,8 +454,14 @@ export type TransformersJsProductionInvestigationMultimodalObservation =
 export interface TransformersJsProductionInvestigationPartialObservation {
   modelId: string,
   resolvedRevision: string,
+  loaderRevisionOption?: string | null,
+  /** Wall-clock time for Production model candidate load plus tokenizer/processor preparation. */
+  runtimeLoadDurationMs?: number,
+  /** Wall-clock time spent preparing the Production tokenizer/processor after the model candidate loaded. */
+  runtimePreparationDurationMs?: number,
   candidate: TransformersJsProductionInvestigationCandidate | undefined,
   loadAttempts?: TransformersJsProductionInvestigationCandidateLoadAttempt[],
+  activeLoadAttempt?: TransformersJsProductionInvestigationActiveCandidateLoadAttempt,
   route: {
     autoClass: TransformersJsProductionInvestigationAutoClass,
     processor: TransformersJsProductionInvestigationProcessor,
@@ -399,6 +479,11 @@ export interface TransformersJsProductionInvestigationPartialObservation {
 export interface TransformersJsProductionInvestigationObservation {
   modelId: string,
   resolvedRevision: string,
+  loaderRevisionOption?: string | null,
+  /** Wall-clock time for Production model candidate load plus tokenizer/processor preparation. */
+  runtimeLoadDurationMs?: number,
+  /** Wall-clock time spent preparing the Production tokenizer/processor after the model candidate loaded. */
+  runtimePreparationDurationMs?: number,
   candidate: TransformersJsProductionInvestigationCandidate,
   loadAttempts?: TransformersJsProductionInvestigationCandidateLoadAttempt[],
   route: {
@@ -422,8 +507,15 @@ export interface ITransformersJsWorker {
   downloadModel(modelId: string, progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<void>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   prefetchUrls(urls: string[], progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<TransformersJsPrefetchResult>,
+  /**
+   * Loads a model that has already been fully downloaded.
+   *
+   * IMPORTANT: This operation MUST NOT start, resume, repair, or otherwise
+   * perform any model download. Missing or incomplete artifacts MUST fail the
+   * load instead of falling back to a remote fetch.
+   */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  loadModel(modelId: string, progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<ModelLoadResult>,
+  loadDownloadedModel(modelId: string, progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<ModelLoadResult>,
   unloadModel(): Promise<void>,
   interrupt(): Promise<void>,
   resetCache(): Promise<void>,
@@ -440,7 +532,7 @@ export interface ITransformersJsWorker {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runModelSupportInvestigationScenario(
     scenario: TransformersJsProductionInvestigationScenario,
-    progressCallback: WorkerProxy<TransformersJsProgressCallback>,
+    progressCallback: WorkerProxy<TransformersJsProductionInvestigationProgressCallback>,
     observationCheckpointCallback: WorkerProxy<({ observation }: { observation: TransformersJsProductionInvestigationPartialObservation }) => void>,
   ): Promise<TransformersJsProductionInvestigationObservation>,
 }
@@ -454,7 +546,11 @@ export interface TransformersJsWorkerClient {
     urls: string[],
     progressCallback: TransformersJsProgressCallback,
   }): Promise<TransformersJsPrefetchResult>,
-  loadModel({ modelId, progressCallback }: {
+  /**
+   * Loads a model that has already been fully downloaded. This MUST NOT start,
+   * resume, repair, or otherwise perform any model download.
+   */
+  loadDownloadedModel({ modelId, progressCallback }: {
     modelId: string,
     progressCallback: TransformersJsProgressCallback,
   }): Promise<ModelLoadResult>,

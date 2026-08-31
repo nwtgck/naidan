@@ -46,7 +46,7 @@ export class TransformersJsProvider implements LmProvider {
       }
 
       console.log(`[TransformersJsProvider] Auto-loading model: ${model}`);
-      await transformersJsService.loadModel({ modelId: model });
+      await transformersJsService.loadDownloadedModel({ modelId: model });
     }
 
     const workerTools: WorkerToolDefinition[] | undefined = tools && tools.length > 0

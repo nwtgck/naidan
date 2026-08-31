@@ -689,7 +689,12 @@ export const transformersJsService = {
     notifyModelListChange();
   },
 
-  async loadModel({ modelId }: { modelId: string }) {
+  /**
+   * Loads an already-downloaded model. This MUST NOT start, resume, repair, or
+   * otherwise perform any model download; downloading is an explicit separate
+   * operation handled by downloadModel().
+   */
+  async loadDownloadedModel({ modelId }: { modelId: string }) {
     if (activeModelId === modelId && loadingStatus === 'ready') return;
 
     switch (loadingStatus) {
@@ -754,38 +759,25 @@ export const transformersJsService = {
         }
       };
 
-      // 3. Pre-download using scanner/prefetcher to avoid OOM in transformers.js
-      // Only do this when the model is not already fully cached. For complete cached
-      // models, scanning/prefetching provides no benefit and only delays loadModel().
+      // Loading and downloading are deliberately separate operations.
+      // loadDownloadedModel() MUST NOT start, resume, repair, or otherwise
+      // perform a model download when local artifacts are missing/incomplete.
+      // The worker enforces this again at the Transformers.js/cache boundary.
       debugLog({
         event: 'load start',
         details: { modelId, isLoadingFromCache },
       });
-      if (!isLoadingFromCache) {
-        const preDownloadResult = await preDownloadModel({ modelId, remote, progress_callback });
-        if (preDownloadResult.error !== undefined || preDownloadResult.prefetchResult?.complete === false) {
-          console.warn('[transformersJsService] Pre-download was incomplete; continuing with the authoritative model load.', preDownloadResult);
-        }
-      } else {
-        debugLog({
-          event: 'preDownload skipped',
-          details: {
-            modelId,
-            reason: 'model already fully cached',
-          },
-        });
-      }
       debugLog({
-        event: 'worker loadModel start',
+        event: 'worker loadDownloadedModel start',
         details: {
           modelId,
           elapsedMs: Math.round(performance.now() - loadStartedAt),
         },
       });
 
-      const result = await remote.loadModel({ modelId, progressCallback: progress_callback });
+      const result = await remote.loadDownloadedModel({ modelId, progressCallback: progress_callback });
       debugLog({
-        event: 'worker loadModel complete',
+        event: 'worker loadDownloadedModel complete',
         details: {
           modelId,
           elapsedMs: Math.round(performance.now() - loadStartedAt),

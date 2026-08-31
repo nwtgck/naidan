@@ -8,6 +8,7 @@ import {
   DownloadIcon,
   Loader2Icon,
   SearchCheckIcon,
+  SquareIcon,
   XIcon,
 } from "lucide-vue-next";
 import { ensureStrings, lazyStrings } from "@/strings";
@@ -22,9 +23,10 @@ import type {
   ModelSupportInvestigationStepId,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { createModelSupportInvestigationWorkerClient } from "@/features/transformers-js/model-support-investigation/worker/client-hosted";
-import { createPartialModelSupportEvidence } from "@/features/transformers-js/model-support-investigation/logic/create-partial-evidence";
+import { createModelSupportInvestigationEvidenceWorkerClient } from "@/features/transformers-js/model-support-investigation/evidence-worker/client-hosted";
 import { evaluateEvidenceReadiness } from "@/features/transformers-js/model-support-investigation/logic/evaluate-evidence-readiness";
 import { assessSupportBoundaries } from "@/features/transformers-js/model-support-investigation/logic/assess-support-boundaries";
+import type { TransformersJsProductionInvestigationActiveCandidateLoadAttempt } from "@/features/transformers-js/types";
 
 const props = defineProps<{
   modelId: string,
@@ -38,6 +40,7 @@ const modalContent = ref<HTMLElement | undefined>(undefined);
 const run = shallowRef<ModelSupportInvestigationRun | undefined>(undefined);
 const recovery = ref<ModelSupportInvestigationRecovery | undefined>(undefined);
 const running = ref(true);
+const stopping = ref(false);
 const evidenceExporting = ref(false);
 const currentOperation = ref<string | undefined>(undefined);
 const latestProgress = ref<ModelSupportInvestigationProgressObservation | undefined>(undefined);
@@ -46,6 +49,14 @@ let progressClock: ReturnType<typeof setInterval> | undefined;
 const displayedCurrentOperation = computed(() => (
   currentOperation.value ?? lazyStrings.ModelSupportInvestigationModal__checking_same_origin_runtime_assets()
 ));
+
+function formatModelLoadCacheDiagnostic({ progress }: {
+  progress: ModelSupportInvestigationProgressObservation,
+}): string | undefined {
+  if (progress.cacheMatchRequestCount === undefined && progress.remoteFetchAttemptCount === undefined) return undefined;
+  return `cache=${progress.cacheHitCount ?? 0} hit/${progress.cacheMissCount ?? 0} miss/${progress.cacheAliasHitCount ?? 0} alias · opfs-matched-bytes=${progress.cacheMatchedBytes ?? 0} · remote-fetch-attempts=${progress.remoteFetchAttemptCount ?? 0}`;
+}
+
 const displayedProgressDiagnostic = computed(() => {
   const progress = latestProgress.value;
   if (progress === undefined) return undefined;
@@ -59,7 +70,8 @@ const displayedProgressDiagnostic = computed(() => {
   const file = progress.currentFile === undefined
     ? "unknown"
     : `${progress.currentFile} ${progress.fileLoaded ?? "?"}/${progress.fileTotal ?? "?"}${progress.fileProgress === undefined ? "" : ` (${progress.fileProgress.toFixed(1)}%)`}`;
-  return `candidate=${progress.candidateId} · file=${file} · aggregate=${aggregate} · events=${progress.eventCount} (progress_total=${progress.progressTotalEventCount}, progress=${progress.progressEventCount}) · forward=${progress.forwardProgressCount} · repeated-no-forward=${progress.repeatedWithoutForwardProgressCount} · last-activity=${activitySeconds}s · last-forward=${forwardSeconds}`;
+  const cacheDiagnostic = formatModelLoadCacheDiagnostic({ progress });
+  return `candidate=${progress.candidateId} · source-policy=${progress.artifactSource} · transformers-status=${progress.sourceStatus} · response-read=${aggregate} · file=${file} · events=${progress.eventCount} (progress_total=${progress.progressTotalEventCount}, progress=${progress.progressEventCount}, published=${progress.publishedSampleCount})${cacheDiagnostic === undefined ? "" : ` · ${cacheDiagnostic}`} · forward=${progress.forwardProgressCount} · repeated-no-forward=${progress.repeatedWithoutForwardProgressCount} · last-activity=${activitySeconds}s · last-forward=${forwardSeconds}`;
 });
 const repositorySummary = computed(() => {
   const repository = run.value?.repository;
@@ -258,13 +270,30 @@ const productionLaneRouteSummary = computed(() => {
     modelType: route.modelType,
   });
 });
+function formatActiveProductionLoadAttempt({
+  attempt,
+}: {
+  attempt: TransformersJsProductionInvestigationActiveCandidateLoadAttempt,
+}): string {
+  const progress = attempt.modelLoadProgress;
+  const progressSummary = progress === undefined
+    ? ""
+    : ` (raw-events=${progress.eventCount}, published-samples=${progress.publishedSampleCount}${formatModelLoadCacheDiagnostic({ progress }) === undefined ? "" : `, ${formatModelLoadCacheDiagnostic({ progress })}`})`;
+  return `${attempt.candidate.device}/${attempt.candidate.dtype}: running${progressSummary}`;
+}
+
 const productionLoadAttemptsSummary = computed(() => {
-  const observation = run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation;
+  const productionLane = run.value?.productionLane;
+  const observation = productionLane?.observation ?? productionLane?.partialObservation;
   const attempts = observation?.loadAttempts ?? [];
-  if (attempts.length === 0) return undefined;
-  return attempts
-    .map(attempt => `${attempt.candidate.device}/${attempt.candidate.dtype}: ${attempt.status}${attempt.error === undefined ? '' : ` (${attempt.error.name}: ${attempt.error.message})`}`)
-    .join(' → ');
+  const activeAttempt = productionLane?.partialObservation?.activeLoadAttempt;
+  const summaries = [
+    ...attempts.map(attempt => `${attempt.candidate.device}/${attempt.candidate.dtype}: ${attempt.status}${attempt.error === undefined ? '' : ` (${attempt.error.name}: ${attempt.error.message})`}`),
+    ...(activeAttempt === undefined
+      ? []
+      : [formatActiveProductionLoadAttempt({ attempt: activeAttempt })]),
+  ];
+  return summaries.length === 0 ? undefined : summaries.join(' → ');
 });
 const productionLaneComparisonSummary = computed(() => {
   const currentRun = run.value;
@@ -691,6 +720,16 @@ async function disposeClient(): Promise<void> {
   await client.dispose();
 }
 
+async function stopInvestigation(): Promise<void> {
+  if (!running.value || stopping.value) return;
+  stopping.value = true;
+  try {
+    await client.interrupt();
+  } finally {
+    stopping.value = false;
+  }
+}
+
 async function startInvestigation(): Promise<void> {
   try {
     const completedRun = await client.runPartialInvestigation({
@@ -791,10 +830,17 @@ async function downloadPartialEvidence(): Promise<void> {
       status: "passed",
       detail: passedDetail,
     });
-    const { blob, fileName } = await createPartialModelSupportEvidence({
-      run: exportedRun,
-      recovery: recoverySnapshot,
-    });
+    const evidenceClient = createModelSupportInvestigationEvidenceWorkerClient();
+    const { blob, fileName } = await (async () => {
+      try {
+        return await evidenceClient.createPartialEvidence({
+          run: exportedRun,
+          recovery: recoverySnapshot,
+        });
+      } finally {
+        await evidenceClient.dispose();
+      }
+    })();
     updateEvidenceExportPresentation({ status: "passed", detail: passedDetail });
     const url = URL.createObjectURL(blob);
     try {
@@ -1093,6 +1139,18 @@ defineExpose({
       </div>
 
       <footer tw-class="px-6 py-4 bg-gray-50 dark:bg-gray-800/70 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3">
+        <button
+          v-if="running"
+          type="button"
+          :disabled="stopping"
+          tw-class="px-4 py-2.5 rounded-xl border border-red-200 dark:border-red-800 text-xs font-bold text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+          data-testid="model-support-investigation-stop"
+          @click="stopInvestigation"
+        >
+          <Loader2Icon v-if="stopping" tw-class="w-4 h-4 animate-spin" />
+          <SquareIcon v-else tw-class="w-4 h-4" />
+          {{ lazyStrings.ModelSupportInvestigationModal__stop_investigation() }}
+        </button>
         <button
           type="button"
           :disabled="run === undefined || evidenceExporting"

@@ -9,9 +9,10 @@ import type {
   ModelSupportInvestigationStep,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { compareInvestigationLanes } from "@/features/transformers-js/model-support-investigation/logic/compare-investigation-lanes";
+import { investigationModelLoadRevision } from "@/features/transformers-js/model-support-investigation/logic/investigation-model-load-revision";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from "@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image";
-import { createCacheRevisionAliases } from "@/features/transformers-js/model-support-investigation/logic/create-cache-revision-aliases";
+import { isModelSupportInvestigationUserInterruptedError } from "@/features/transformers-js/model-support-investigation/logic/investigation-interruption";
 
 function updateLaneStep({ run, status, detail }: {
   run: ModelSupportInvestigationRun,
@@ -147,10 +148,7 @@ export async function runProductionLaneComparison({
       scenario: {
         modelId: repository.normalizedModelId,
         resolvedRevision: repository.resolvedRevision,
-        cacheRevisionAliases: createCacheRevisionAliases({
-          repository,
-          provenance: updatedRun.cache?.provenance,
-        }),
+        loadRevision: investigationModelLoadRevision({ requestedRevision: repository.requestedRevision }),
         candidates: [...productionCandidates],
         messages: (templateCase?.messages ?? [{ role: "user" as const, content: "Template probe user message." }]).map(message => ({
           role: message.role,
@@ -214,6 +212,7 @@ export async function runProductionLaneComparison({
         ? "Production Lane evidence collected; Reference comparison unavailable"
         : "Reference and Production Lane evidence collected";
   } catch (error) {
+    if (isModelSupportInvestigationUserInterruptedError({ error })) throw error;
     const serialized = serializeInvestigationError({ error });
     updatedRun.productionLane = {
       status: "failed",

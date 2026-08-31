@@ -1161,6 +1161,7 @@ import { ModelSupportInvestigationModal__repository } from '@/strings/messages/M
 import { ModelSupportInvestigationModal__repository_information } from '@/strings/messages/ModelSupportInvestigationModal__repository_information/zh-Hans';
 import { ModelSupportInvestigationModal__repository_summary } from '@/strings/messages/ModelSupportInvestigationModal__repository_summary/zh-Hans';
 import { ModelSupportInvestigationModal__running } from '@/strings/messages/ModelSupportInvestigationModal__running/zh-Hans';
+import { ModelSupportInvestigationModal__stop_investigation } from '@/strings/messages/ModelSupportInvestigationModal__stop_investigation/zh-Hans';
 import { ModelSupportInvestigationModal__runtime_assets } from '@/strings/messages/ModelSupportInvestigationModal__runtime_assets/zh-Hans';
 import { ModelSupportInvestigationModal__runtime_control_webgpu } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control_webgpu/zh-Hans';
 import { ModelSupportInvestigationModal__runtime_no_output } from '@/strings/messages/ModelSupportInvestigationModal__runtime_no_output/zh-Hans';
@@ -2793,6 +2794,7 @@ export const catalog = {
   ModelSupportInvestigationModal__repository_information,
   ModelSupportInvestigationModal__repository_summary,
   ModelSupportInvestigationModal__running,
+  ModelSupportInvestigationModal__stop_investigation,
   ModelSupportInvestigationModal__runtime_assets,
   ModelSupportInvestigationModal__runtime_control_webgpu,
   ModelSupportInvestigationModal__runtime_no_output,

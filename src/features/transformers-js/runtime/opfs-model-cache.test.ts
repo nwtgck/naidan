@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createOpfsModelCache, TEST_ONLY } from './opfs-model-cache';
+import { writeToOpfs } from '@/features/transformers-js/utils';
 
 vi.mock('@/features/transformers-js/utils', () => ({
   urlToPath: vi.fn(({ url }: { url: string }) => {
@@ -166,6 +167,159 @@ describe('createOpfsModelCache production compatibility', () => {
       urlString: `https://huggingface.co/org/repo/resolve/${resolvedRevision}/config.json`,
       revisionAliases: aliases,
     })).toBeUndefined();
+  });
+
+  it('reports one sanitized match observation for exact hits, alias hits, and misses', async () => {
+    const resolvedRevision = 'd'.repeat(40);
+    vi.stubGlobal('navigator', {
+      storage: { getDirectory: vi.fn().mockResolvedValue(opfsRoot({
+        resolvedRevision,
+        exactBytes: 'exact',
+        mainBytes: 'main',
+      })) },
+    });
+    const observations: Array<{ requestedPath: string, result: string, bytes: number | undefined }> = [];
+    const cache = createOpfsModelCache({
+      revisionAliases: [{
+        modelId: 'org/repo',
+        resolvedRevision: 'e'.repeat(40),
+        sourceRevision: 'main',
+        repositoryPaths: ['onnx/model_q4.onnx'],
+      }],
+      onMatchObservation: ({ observation }) => observations.push(observation),
+    });
+
+    await cache.match(`https://huggingface.co/org/repo/resolve/${resolvedRevision}/onnx/model_q4.onnx?token=secret#fragment`);
+    await cache.match(`https://huggingface.co/org/repo/resolve/${'e'.repeat(40)}/onnx/model_q4.onnx`);
+    await cache.match('https://huggingface.co/org/repo/resolve/main/missing.onnx?token=secret');
+
+    expect(observations).toEqual([
+      {
+        requestedPath: `huggingface.co/org/repo/resolve/${resolvedRevision}/onnx/model_q4.onnx`,
+        result: 'hit',
+        bytes: 5,
+      },
+      {
+        requestedPath: `huggingface.co/org/repo/resolve/${'e'.repeat(40)}/onnx/model_q4.onnx`,
+        result: 'alias-hit',
+        bytes: 4,
+      },
+      {
+        requestedPath: 'huggingface.co/org/repo/resolve/main/missing.onnx',
+        result: 'miss',
+        bytes: undefined,
+      },
+    ]);
+  });
+
+  it('does not repair or delete an incomplete zero-byte artifact in read-only mode', async () => {
+    const onnxDirectory = directoryHandle({
+      files: {
+        'model_q4.onnx': fileHandle({ bytes: '' }),
+        '.model_q4.onnx.complete': fileHandle({ bytes: 'marker' }),
+      },
+    });
+    const root = directoryHandle({ directories: {
+      models: directoryHandle({ directories: {
+        'huggingface.co': directoryHandle({ directories: {
+          org: directoryHandle({ directories: {
+            repo: directoryHandle({ directories: {
+              resolve: directoryHandle({ directories: {
+                main: directoryHandle({ directories: { onnx: onnxDirectory } }),
+              } }),
+            } }),
+          } }),
+        } }),
+      } }),
+    } });
+    vi.stubGlobal('navigator', {
+      storage: { getDirectory: vi.fn().mockResolvedValue(root) },
+    });
+
+    const cache = createOpfsModelCache({ mutationPolicy: 'read-only' });
+    await expect(cache.match('https://huggingface.co/org/repo/resolve/main/onnx/model_q4.onnx'))
+      .resolves
+      .toBeUndefined();
+    expect(onnxDirectory.removeEntry).not.toHaveBeenCalled();
+  });
+
+  it('leaves an incomplete GPT-OSS split artifact untouched and reports a cache miss in read-only mode', async () => {
+    const onnxDirectory = directoryHandle({
+      files: {
+        // Mirrors the split-file shape observed during GPT-OSS investigation;
+        // the test uses tiny bytes because completion-marker semantics are size-independent.
+        'model_q4f16.onnx_data_4': fileHandle({ bytes: 'partial' }),
+      },
+    });
+    const root = directoryHandle({ directories: {
+      models: directoryHandle({ directories: {
+        'huggingface.co': directoryHandle({ directories: {
+          openai: directoryHandle({ directories: {
+            'gpt-oss-20b': directoryHandle({ directories: {
+              resolve: directoryHandle({ directories: {
+                main: directoryHandle({ directories: { onnx: onnxDirectory } }),
+              } }),
+            } }),
+          } }),
+        } }),
+      } }),
+    } });
+    vi.stubGlobal('navigator', {
+      storage: { getDirectory: vi.fn().mockResolvedValue(root) },
+    });
+
+    const cache = createOpfsModelCache({ mutationPolicy: 'read-only' });
+    await expect(cache.match(
+      'https://huggingface.co/openai/gpt-oss-20b/resolve/main/onnx/model_q4f16.onnx_data_4',
+    )).resolves.toBeUndefined();
+    expect(onnxDirectory.removeEntry).not.toHaveBeenCalled();
+  });
+
+  it('writes model responses in explicit read-write mode', async () => {
+    const cache = createOpfsModelCache({ mutationPolicy: 'read-write' });
+    const response = new Response('model bytes', {
+      status: 200,
+      headers: { 'Content-Type': 'application/octet-stream' },
+    });
+
+    await cache.put('https://huggingface.co/org/repo/resolve/main/onnx/model_q4.onnx', response);
+
+    expect(writeToOpfs).toHaveBeenCalledWith({
+      path: 'models/huggingface.co/org/repo/resolve/main/onnx/model_q4.onnx',
+      response,
+    });
+  });
+
+  it('propagates OPFS write failures in explicit read-write mode', async () => {
+    vi.mocked(writeToOpfs).mockRejectedValueOnce(new Error('QuotaExceededError'));
+    const cache = createOpfsModelCache({ mutationPolicy: 'read-write' });
+
+    await expect(cache.put(
+      'https://huggingface.co/org/repo/resolve/main/onnx/model_q4.onnx',
+      new Response('model bytes', { status: 200 }),
+    )).rejects.toThrow('QuotaExceededError');
+  });
+
+  it('rejects HTML responses before writing in explicit read-write mode', async () => {
+    const cache = createOpfsModelCache({ mutationPolicy: 'read-write' });
+
+    await expect(cache.put(
+      'https://huggingface.co/org/repo/resolve/main/onnx/model_q4.onnx',
+      new Response('<html>not a model</html>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' },
+      }),
+    )).rejects.toThrow('Detected HTML response');
+    expect(writeToOpfs).not.toHaveBeenCalled();
+  });
+
+  it('rejects writes in read-only mode instead of silently caching a remote response', async () => {
+    const cache = createOpfsModelCache({ mutationPolicy: 'read-only' });
+
+    await expect(cache.put(
+      'https://huggingface.co/org/repo/resolve/main/onnx/model_q4.onnx',
+      new Response('remote bytes'),
+    )).rejects.toThrow('Read-only OPFS model cache MUST NOT be written during model loading');
   });
 
 });

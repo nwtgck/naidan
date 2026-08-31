@@ -18,9 +18,11 @@ import type {
   ITransformersJsWorker,
   WorkerToolDefinition,
   TransformersJsProductionInvestigationAutoClass,
+  TransformersJsProductionInvestigationActiveCandidateLoadAttempt,
   TransformersJsProductionInvestigationCandidate,
   TransformersJsProductionInvestigationCandidateLoadAttempt,
   TransformersJsProductionInvestigationCandidateLoadError,
+  TransformersJsModelLoadProgressObservation,
   TransformersJsProductionInvestigationDevice,
   TransformersJsProductionInvestigationError,
   TransformersJsOpaqueStructureSummary,
@@ -31,6 +33,7 @@ import type {
   TransformersJsProductionInvestigationReasoningObservation,
   TransformersJsProductionInvestigationReasoningEffortObservation,
   TransformersJsProductionInvestigationStrategy,
+  TransformersJsProductionInvestigationStageStatus,
   TransformersJsProductionInvestigationTurnObservation,
   TransformersJsProgressCallback,
   TransformersJsPrefetchFailureStage,
@@ -98,10 +101,16 @@ const { runtimeFetch } = configureHostedTransformersRuntime({
 const interceptedFetch = createHostedTransformersModelFetch({ runtimeFetch });
 self.fetch = interceptedFetch;
 env.fetch = interceptedFetch;
+const downloadedModelCacheOnlyFetch: typeof fetch = async input => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  throw new Error(
+    `loadDownloadedModel() MUST NOT fetch model artifacts; the required file is not in the downloaded-model cache: ${url}`,
+  );
+};
 
 // Configure environment
 env.allowLocalModels = true;
-env.allowRemoteModels = true;
+env.allowRemoteModels = false;
 env.useBrowserCache = false;
 // Reduce log verbosity for performance
 env.backends.onnx.logLevel = 'error';
@@ -226,11 +235,13 @@ async function getCompletedOpfsByteLength({ path }: { path: string }): Promise<n
   return undefined;
 }
 
-const opfsCache = createOpfsModelCache();
+const downloadedModelCache = createOpfsModelCache({ mutationPolicy: 'read-only' });
+const downloadModelCache = createOpfsModelCache({ mutationPolicy: 'read-write' });
 
-// Enable custom cache
+// Keep the worker's default model cache read-only. Explicit download operations
+// temporarily opt into the write-capable cache; loading/generation never do.
 env.useCustomCache = true;
-env.customCache = opfsCache;
+env.customCache = downloadedModelCache;
 env.fetch = interceptedFetch;
 
 
@@ -250,7 +261,7 @@ const generationRuntimeState: WorkerGenerationRuntimeState = {
 };
 const stoppingCriteria = new InterruptableStoppingCriteria();
 
-async function withModelAccessMode<T>({
+async function withDownloadModelAccessMode<T>({
   isLocal,
   run,
 }: {
@@ -258,11 +269,55 @@ async function withModelAccessMode<T>({
   run: () => Promise<T>,
 }): Promise<T> {
   const previousAllowLocalModels = env.allowLocalModels;
+  const previousAllowRemoteModels = env.allowRemoteModels;
+  const previousCustomCache = env.customCache;
   env.allowLocalModels = isLocal;
+  env.allowRemoteModels = !isLocal;
+  env.customCache = downloadModelCache;
   try {
     return await run();
   } finally {
     env.allowLocalModels = previousAllowLocalModels;
+    env.allowRemoteModels = previousAllowRemoteModels;
+    env.customCache = previousCustomCache;
+  }
+}
+
+/**
+ * Runs the memory/session loading phase for a model that is already downloaded.
+ *
+ * IMPORTANT: This phase MUST NOT start, resume, repair, or otherwise perform
+ * any model download. Missing or incomplete local artifacts MUST fail the load
+ * instead of falling back to a remote fetch, and loading MUST NOT mutate the
+ * shared OPFS model cache. Model downloading is a separate explicit operation.
+ */
+async function withDownloadedModelAccessMode<T>({
+  run,
+  modelCache = downloadedModelCache,
+  cacheOnlyFetch = downloadedModelCacheOnlyFetch,
+}: {
+  run: () => Promise<T>,
+  modelCache?: ReturnType<typeof createOpfsModelCache>,
+  cacheOnlyFetch?: typeof fetch,
+}): Promise<T> {
+  const previousAllowLocalModels = env.allowLocalModels;
+  const previousAllowRemoteModels = env.allowRemoteModels;
+  const previousCustomCache = env.customCache;
+  const previousFetch = env.fetch;
+  // Transformers.js 4.2 rejects local_files_only=true before consulting its
+  // custom cache when allowLocalModels=false. Keep local lookup enabled so
+  // downloaded OPFS entries can be read, then block every cache-miss fetch.
+  env.allowLocalModels = true;
+  env.allowRemoteModels = false;
+  env.customCache = modelCache;
+  env.fetch = cacheOnlyFetch;
+  try {
+    return await run();
+  } finally {
+    env.allowLocalModels = previousAllowLocalModels;
+    env.allowRemoteModels = previousAllowRemoteModels;
+    env.customCache = previousCustomCache;
+    env.fetch = previousFetch;
   }
 }
 
@@ -311,6 +366,7 @@ type ProductionLoadRoute = {
   processor: TransformersJsProductionInvestigationProcessor,
   candidate: ProductionLoadCandidate,
   loadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[],
+  runtimePreparationDurationMs: number,
 };
 
 function normalizeProductionModelId({ modelId }: { modelId: string }): string {
@@ -327,16 +383,14 @@ function selectProductionAutoClass({ modelId }: {
     : 'AutoModelForCausalLM';
 }
 
-async function loadProductionModelCandidate({
+async function loadDownloadedProductionModelCandidate({
   cleanModelId,
-  isLocal,
   autoClass,
   candidate,
   revision,
   progressCallback,
 }: {
   cleanModelId: string,
-  isLocal: boolean,
   autoClass: TransformersJsProductionInvestigationAutoClass,
   candidate: ProductionLoadCandidate,
   revision: string | undefined,
@@ -346,7 +400,7 @@ async function loadProductionModelCandidate({
     dtype: candidate.dtype,
     device: candidate.device,
     progress_callback: progressCallback,
-    local_files_only: isLocal,
+    local_files_only: true,
     ...(revision === undefined ? {} : { revision }),
   };
   switch (autoClass) {
@@ -361,21 +415,19 @@ async function loadProductionModelCandidate({
   }
 }
 
-async function loadProductionTokenizerOrProcessor({
+async function loadDownloadedProductionTokenizerOrProcessor({
   cleanModelId,
-  isLocal,
   revision,
   progressCallback,
 }: {
   cleanModelId: string,
-  isLocal: boolean,
   revision: string | undefined,
   progressCallback: TransformersProgressCallback,
 }): Promise<TransformersJsProductionInvestigationProcessor> {
   if (model === null) throw new Error('Production model is not loaded');
   const sharedOptions = {
     progress_callback: progressCallback,
-    local_files_only: isLocal,
+    local_files_only: true,
     ...(revision === undefined ? {} : { revision }),
   };
   if (isGemma4Model({
@@ -405,29 +457,40 @@ async function loadProductionRuntime({
   revision,
   candidates,
   progressCallback,
+  runtimePreparationProgressCallback = progressCallback,
   serializeError,
+  modelCache = downloadedModelCache,
+  cacheOnlyFetch = downloadedModelCacheOnlyFetch,
+  onCandidateStart = () => undefined,
   onCandidateAttempt = () => undefined,
 }: {
   modelId: string,
   revision: string | undefined,
   candidates: ProductionLoadCandidate[],
   progressCallback: TransformersJsProgressCallback,
+  runtimePreparationProgressCallback?: TransformersJsProgressCallback,
   serializeError: ({ error }: { error: unknown }) => TransformersJsProductionInvestigationCandidateLoadError,
-  onCandidateAttempt?: ({ attempt }: { attempt: TransformersJsProductionInvestigationCandidateLoadAttempt }) => void,
+  modelCache?: ReturnType<typeof createOpfsModelCache>,
+  cacheOnlyFetch?: typeof fetch,
+  onCandidateStart?: ({ candidate }: { candidate: ProductionLoadCandidate }) => void,
+  onCandidateAttempt?: ({ attempt }: {
+    attempt: TransformersJsProductionInvestigationCandidateLoadAttempt,
+  }) => TransformersJsProductionInvestigationCandidateLoadAttempt | void,
 }): Promise<ProductionLoadRoute> {
   const cleanModelId = normalizeProductionModelId({ modelId });
-  const isLocal = cleanModelId.startsWith('user/');
   const autoClass = selectProductionAutoClass({ modelId: cleanModelId });
   assertGemma4RuntimeSupport({ modelId: cleanModelId });
   const rawProgressCallback: TransformersProgressCallback = info => progressCallback({ info });
 
-  return await withModelAccessMode({
-    isLocal,
+  return await withDownloadedModelAccessMode({
+    modelCache,
+    cacheOnlyFetch,
     run: async () => {
       let selectedCandidate: ProductionLoadCandidate | undefined;
       let lastError: unknown;
       const loadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[] = [];
       for (const candidate of candidates) {
+        onCandidateStart({ candidate });
         const startedAt = performance.now();
         debugLog({
           event: 'worker tryLoad start',
@@ -440,22 +503,24 @@ async function loadProductionRuntime({
           },
         });
         try {
-          model = await loadProductionModelCandidate({
+          model = await loadDownloadedProductionModelCandidate({
             cleanModelId,
-            isLocal,
             autoClass,
             candidate,
             revision,
             progressCallback: rawProgressCallback,
           });
+          const modelLoadDurationMs = Math.max(0, performance.now() - startedAt);
           selectedCandidate = candidate;
-          const attempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
+          const rawAttempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
             candidate,
             status: 'passed',
+            modelLoadDurationMs,
+            modelLoadProgress: undefined,
             error: undefined,
           };
+          const attempt = onCandidateAttempt({ attempt: rawAttempt }) ?? rawAttempt;
           loadAttempts.push(attempt);
-          onCandidateAttempt({ attempt });
           debugLog({
             event: 'worker tryLoad success',
             details: {
@@ -464,19 +529,22 @@ async function loadProductionRuntime({
               autoClass,
               device: candidate.device,
               dtype: candidate.dtype,
-              elapsedMs: Math.round(performance.now() - startedAt),
+              elapsedMs: Math.round(modelLoadDurationMs),
             },
           });
           break;
         } catch (error) {
           lastError = typeof error === 'number' ? new Error(`Numeric error ${error}`) : error;
-          const attempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
+          const modelLoadDurationMs = Math.max(0, performance.now() - startedAt);
+          const rawAttempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
             candidate,
             status: 'failed',
+            modelLoadDurationMs,
+            modelLoadProgress: undefined,
             error: serializeError({ error: lastError }),
           };
+          const attempt = onCandidateAttempt({ attempt: rawAttempt }) ?? rawAttempt;
           loadAttempts.push(attempt);
-          onCandidateAttempt({ attempt });
           debugLog({
             event: 'worker tryLoad failure',
             details: {
@@ -485,7 +553,7 @@ async function loadProductionRuntime({
               autoClass,
               device: candidate.device,
               dtype: candidate.dtype,
-              elapsedMs: Math.round(performance.now() - startedAt),
+              elapsedMs: Math.round(modelLoadDurationMs),
               error: lastError instanceof Error ? lastError.message : String(lastError),
             },
           });
@@ -496,12 +564,13 @@ async function loadProductionRuntime({
         throw lastError instanceof Error ? lastError : new Error('No production load candidate succeeded');
       }
 
-      const processor = await loadProductionTokenizerOrProcessor({
+      const runtimePreparationStartedAt = performance.now();
+      const processor = await loadDownloadedProductionTokenizerOrProcessor({
         cleanModelId,
-        isLocal,
         revision,
-        progressCallback: rawProgressCallback,
+        progressCallback: info => runtimePreparationProgressCallback({ info }),
       });
+      const runtimePreparationDurationMs = Math.max(0, performance.now() - runtimePreparationStartedAt);
 
       return {
         cleanModelId,
@@ -509,6 +578,7 @@ async function loadProductionRuntime({
         processor,
         candidate: selectedCandidate,
         loadAttempts,
+        runtimePreparationDurationMs,
       };
     },
   });
@@ -748,7 +818,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
 
     const isLocal = cleanModelId.startsWith('user/');
 
-    await withModelAccessMode({
+    await withDownloadModelAccessMode({
       isLocal,
       run: async () => {
         // Downloading should only warm the cache. Session creation during download
@@ -911,24 +981,28 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
     };
   },
 
+  /**
+   * Loads an already-downloaded model into memory/runtime sessions.
+   *
+   * IMPORTANT: This operation MUST NOT start, resume, repair, or otherwise
+   * perform any model download. Missing/incomplete artifacts must fail here.
+   */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  async loadModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<ModelLoadResult> {
-    console.log('[transformersJsWorker] Starting loadModel:', modelId);
+  async loadDownloadedModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<ModelLoadResult> {
+    console.log('[transformersJsWorker] Starting loadDownloadedModel:', modelId);
 
     await this.unloadModel();
     activeModelId = modelId;
     generationRuntimeState.activeModelId = modelId;
 
     const cleanModelId = normalizeProductionModelId({ modelId });
-    const isLocal = cleanModelId.startsWith('user/');
     const autoClass = selectProductionAutoClass({ modelId: cleanModelId });
     let loadedDevice: TransformersJsProductionInvestigationDevice = 'wasm';
 
     try {
       assertGemma4RuntimeSupport({ modelId: cleanModelId });
 
-      await withModelAccessMode({
-        isLocal,
+      await withDownloadedModelAccessMode({
         run: async () => {
           const tryLoad = async ({ candidate }: { candidate: ProductionLoadCandidate }): Promise<PreTrainedModel> => {
             const startedAt = performance.now();
@@ -941,9 +1015,8 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
               },
             });
             try {
-              const loadedModel = await loadProductionModelCandidate({
+              const loadedModel = await loadDownloadedProductionModelCandidate({
                 cleanModelId,
-                isLocal,
                 autoClass,
                 candidate,
                 revision: undefined,
@@ -989,9 +1062,8 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
           }
           console.log('[transformersJsWorker] Model loaded successfully.');
 
-          await loadProductionTokenizerOrProcessor({
+          await loadDownloadedProductionTokenizerOrProcessor({
             cleanModelId,
-            isLocal,
             revision: undefined,
             progressCallback,
           });
@@ -1011,7 +1083,10 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback must be a top-level remote argument to remain transferable.
   async runModelSupportInvestigationScenario(scenario, progressCallback, observationCheckpointCallback): Promise<TransformersJsProductionInvestigationObservation> {
     await this.unloadModel();
-    env.customCache = createOpfsModelCache({ revisionAliases: scenario.cacheRevisionAliases });
+    // Investigation must not change Production cache identity or mutate shared
+    // model storage. Model loads are cache-only; missing artifacts fail instead
+    // of starting/resuming a download.
+    env.customCache = createOpfsModelCache({ mutationPolicy: 'read-only' });
     activeModelId = scenario.modelId;
     generationRuntimeState.activeModelId = scenario.modelId;
 
@@ -1021,22 +1096,38 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         continuityClassification,
         tokenComparison,
         toolProtocolFixture,
+        modelLoadProgress,
       } = await promiseAllKeyed({
         errorSerialization: import('@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error'),
         continuityClassification: import('@/features/transformers-js/model-support-investigation/logic/classify-continuity-prefix'),
         tokenComparison: import('@/features/transformers-js/model-support-investigation/logic/compare-token-sequences'),
         toolProtocolFixture: import('@/features/transformers-js/model-support-investigation/logic/tool-protocol-fixture'),
+        modelLoadProgress: import('@/features/transformers-js/model-support-investigation/logic/model-load-progress'),
       });
       const { serializeInvestigationError } = errorSerialization;
       const { classifyContinuityPrefix } = continuityClassification;
       const { compareTokenSequences } = tokenComparison;
       const { createModelSupportToolResultContinuationMessages, MODEL_SUPPORT_TOOL_DEFINITIONS } = toolProtocolFixture;
-      progressCallback({ info: { status: 'model-support-production-model-load' } });
+      const { createModelLoadProgressTracker } = modelLoadProgress;
+      const reportStage = ({ status }: { status: TransformersJsProductionInvestigationStageStatus }): void => {
+        progressCallback({ event: { kind: 'stage', status } });
+      };
+      let activeLoadCandidate = scenario.candidates[0];
+      let activeLoadStartedAtMs: number | undefined;
+      let latestLoadProgress: TransformersJsModelLoadProgressObservation | undefined;
+      let loadProgressTracker = createModelLoadProgressTracker({
+        candidateId: `production-${activeLoadCandidate.device}-${activeLoadCandidate.dtype}`,
+      });
+      reportStage({ status: 'model-support-production-model-load' });
       const partialObservation: TransformersJsProductionInvestigationPartialObservation = {
         modelId: scenario.modelId,
         resolvedRevision: scenario.resolvedRevision,
+        loaderRevisionOption: scenario.loadRevision ?? null,
+        runtimeLoadDurationMs: undefined,
+        runtimePreparationDurationMs: undefined,
         candidate: undefined,
         loadAttempts: [],
+        activeLoadAttempt: undefined,
         route: undefined,
         isEncoderDecoder: undefined,
         firstTurn: undefined,
@@ -1048,31 +1139,118 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       const publishObservationCheckpoint = (): void => {
         observationCheckpointCallback({ observation: structuredClone(partialObservation) });
       };
-      publishObservationCheckpoint();
-      const route = await loadProductionRuntime({
-        modelId: scenario.modelId,
-        revision: scenario.resolvedRevision,
-        candidates: scenario.candidates,
-        progressCallback,
-        serializeError: ({ error }) => serializeInvestigationError({ error }),
-        onCandidateAttempt: ({ attempt }) => {
-          const loadAttempts = partialObservation.loadAttempts ?? [];
-          loadAttempts.push(structuredClone(attempt));
-          partialObservation.loadAttempts = loadAttempts;
-          switch (attempt.status) {
-          case 'passed':
-            partialObservation.candidate = structuredClone(attempt.candidate);
-            break;
-          case 'failed':
-            break;
-          default: {
-            const _exhaustive: never = attempt.status;
-            throw new Error(`Unhandled Production load attempt status: ${_exhaustive}`);
-          }
-          }
+      const updateActiveLoadAttempt = ({
+        progress,
+      }: {
+        progress: TransformersJsModelLoadProgressObservation | undefined,
+      }): void => {
+        if (activeLoadStartedAtMs === undefined) return;
+        const activeLoadAttempt: TransformersJsProductionInvestigationActiveCandidateLoadAttempt = {
+          candidate: structuredClone(activeLoadCandidate),
+          status: 'running',
+          modelLoadDurationMs: Math.max(0, performance.now() - activeLoadStartedAtMs),
+          modelLoadProgress: progress === undefined ? undefined : structuredClone(progress),
+        };
+        partialObservation.activeLoadAttempt = activeLoadAttempt;
+      };
+      const reportLoadProgress: TransformersJsProgressCallback = ({ info }) => {
+        const progress = loadProgressTracker.observe({
+          info,
+          at: new Date().toISOString(),
+          nowMs: performance.now(),
+        });
+        if (progress !== undefined) {
+          latestLoadProgress = structuredClone(progress);
+          updateActiveLoadAttempt({ progress });
+          progressCallback({ event: { kind: 'model-load', progress } });
           publishObservationCheckpoint();
+        }
+      };
+      const flushLoadProgress = (): void => {
+        const progress = loadProgressTracker.flush();
+        if (progress !== undefined) {
+          latestLoadProgress = structuredClone(progress);
+          updateActiveLoadAttempt({ progress });
+          progressCallback({ event: { kind: 'model-load', progress } });
+          publishObservationCheckpoint();
+        }
+      };
+      publishObservationCheckpoint();
+      const observedModelCache = createOpfsModelCache({
+        mutationPolicy: 'read-only',
+        onMatchObservation: ({ observation }) => {
+          if (activeLoadStartedAtMs === undefined) return;
+          loadProgressTracker.observeCacheMatch({ observation, at: new Date().toISOString() });
         },
       });
+      const observedCacheOnlyFetch: typeof fetch = async input => {
+        if (activeLoadStartedAtMs !== undefined) {
+          loadProgressTracker.observeRemoteFetchAttempt({ at: new Date().toISOString() });
+        }
+        return await downloadedModelCacheOnlyFetch(input);
+      };
+      const runtimeLoadStartedAtMs = performance.now();
+      let runtimePreparationStartedAtMs: number | undefined;
+      let route: Awaited<ReturnType<typeof loadProductionRuntime>>;
+      try {
+        route = await loadProductionRuntime({
+          modelId: scenario.modelId,
+          revision: scenario.loadRevision,
+          candidates: scenario.candidates,
+          progressCallback: reportLoadProgress,
+          runtimePreparationProgressCallback: () => undefined,
+          serializeError: ({ error }) => serializeInvestigationError({ error }),
+          modelCache: observedModelCache,
+          cacheOnlyFetch: observedCacheOnlyFetch,
+          onCandidateStart: ({ candidate }) => {
+            activeLoadCandidate = candidate;
+            activeLoadStartedAtMs = performance.now();
+            latestLoadProgress = undefined;
+            loadProgressTracker = createModelLoadProgressTracker({
+              candidateId: `production-${activeLoadCandidate.device}-${activeLoadCandidate.dtype}`,
+            });
+            updateActiveLoadAttempt({ progress: undefined });
+            publishObservationCheckpoint();
+          },
+          onCandidateAttempt: ({ attempt }) => {
+            flushLoadProgress();
+            const enrichedAttempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
+              ...attempt,
+              modelLoadProgress: latestLoadProgress === undefined ? undefined : structuredClone(latestLoadProgress),
+            };
+            const loadAttempts = partialObservation.loadAttempts ?? [];
+            loadAttempts.push(structuredClone(enrichedAttempt));
+            partialObservation.loadAttempts = loadAttempts;
+            partialObservation.activeLoadAttempt = undefined;
+            activeLoadStartedAtMs = undefined;
+            switch (enrichedAttempt.status) {
+            case 'passed':
+              partialObservation.candidate = structuredClone(enrichedAttempt.candidate);
+              runtimePreparationStartedAtMs = performance.now();
+              reportStage({ status: 'model-support-production-runtime-preparation' });
+              break;
+            case 'failed':
+              break;
+            default: {
+              const _exhaustive: never = enrichedAttempt.status;
+              throw new Error(`Unhandled Production load attempt status: ${_exhaustive}`);
+            }
+            }
+            publishObservationCheckpoint();
+            return enrichedAttempt;
+          },
+        });
+      } finally {
+        const completedAtMs = performance.now();
+        partialObservation.runtimeLoadDurationMs = Math.max(0, completedAtMs - runtimeLoadStartedAtMs);
+        if (runtimePreparationStartedAtMs !== undefined) {
+          partialObservation.runtimePreparationDurationMs = Math.max(0, completedAtMs - runtimePreparationStartedAtMs);
+        }
+        publishObservationCheckpoint();
+      }
+      flushLoadProgress();
+      partialObservation.runtimePreparationDurationMs = route.runtimePreparationDurationMs;
+      publishObservationCheckpoint();
       const loadedModel = model;
       const loadedTokenizer = tokenizer;
       if (loadedModel === null || loadedTokenizer === null) {
@@ -1095,7 +1273,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       };
       partialObservation.isEncoderDecoder = isEncoderDecoder;
       publishObservationCheckpoint();
-      progressCallback({ info: { status: 'model-support-production-first-turn' } });
+      reportStage({ status: 'model-support-production-first-turn' });
       const firstTurn: TransformersJsProductionInvestigationObservation['firstTurn'] = await (async () => {
         resetGenerationContinuationState();
         try {
@@ -1121,7 +1299,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       publishObservationCheckpoint();
 
       const continuity: TransformersJsProductionInvestigationObservation['continuity'] = await (async () => {
-        progressCallback({ info: { status: 'model-support-production-continuity' } });
+        reportStage({ status: 'model-support-production-continuity' });
         switch (firstTurn.status) {
         case 'failed':
           return {
@@ -1226,7 +1404,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
             reason: 'Reference parser-to-template tool-result continuation evidence was unavailable',
           };
         }
-        progressCallback({ info: { status: 'model-support-production-tool-result-continuation' } });
+        reportStage({ status: 'model-support-production-tool-result-continuation' });
         resetGenerationContinuationState();
         const messages = createModelSupportToolResultContinuationMessages({
           toolCall: continuationScenario.toolCall,
@@ -1297,7 +1475,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       partialObservation.toolResultContinuation = toolResultContinuation;
       publishObservationCheckpoint();
 
-      progressCallback({ info: { status: 'model-support-production-reasoning-differential' } });
+      reportStage({ status: 'model-support-production-reasoning-differential' });
       const reasoning: TransformersJsProductionInvestigationObservation['reasoning'] = await (async () => {
         switch (strategy.kind) {
         case 'standard':
@@ -1456,7 +1634,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       partialObservation.reasoning = reasoning;
       publishObservationCheckpoint();
 
-      progressCallback({ info: { status: 'model-support-production-multimodal' } });
+      reportStage({ status: 'model-support-production-multimodal' });
       const multimodal: TransformersJsProductionInvestigationObservation['multimodal'] = await (async () => {
         switch (strategy.kind) {
         case 'gemma4': {
@@ -1524,10 +1702,13 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       partialObservation.multimodal = multimodal;
       publishObservationCheckpoint();
 
-      progressCallback({ info: { status: 'model-support-production-complete' } });
+      reportStage({ status: 'model-support-production-complete' });
       return {
         modelId: scenario.modelId,
         resolvedRevision: scenario.resolvedRevision,
+        loaderRevisionOption: scenario.loadRevision ?? null,
+        runtimeLoadDurationMs: partialObservation.runtimeLoadDurationMs,
+        runtimePreparationDurationMs: route.runtimePreparationDurationMs,
         candidate: route.candidate,
         loadAttempts: route.loadAttempts,
         route: {
@@ -1544,7 +1725,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         multimodal,
       };
     } finally {
-      env.customCache = opfsCache;
+      env.customCache = downloadedModelCache;
       await this.unloadModel();
     }
   },

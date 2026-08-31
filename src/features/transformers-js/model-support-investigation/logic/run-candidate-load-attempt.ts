@@ -10,12 +10,14 @@ import type {
   ModelSupportInvestigationLoadedModelObservation,
   ModelSupportInvestigationNaturalGenerationObservation,
   ModelSupportInvestigationModelDeclarations,
+  ModelSupportInvestigationProgressObservation,
   ModelSupportInvestigationRepository,
   ModelSupportInvestigationTemplateBehavior,
   ModelSupportInvestigationTextInputStrategy,
   ModelSupportInvestigationToolProtocolProbe,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
+import { investigationModelLoadRevision } from "@/features/transformers-js/model-support-investigation/logic/investigation-model-load-revision";
 import { planToolProtocolProbe } from "@/features/transformers-js/model-support-investigation/logic/plan-tool-protocol-probe";
 import { MODEL_SUPPORT_INVESTIGATION_REFERENCE_PLAIN_TEXT } from "@/features/transformers-js/model-support-investigation/fixtures/reference-plain-text";
 
@@ -62,7 +64,7 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   templateBehavior,
   candidate,
   autoClass,
-  loadModel,
+  loadDownloadedModel,
   observeLoadedModel,
   buildInput,
   generateMinimumToken,
@@ -73,6 +75,7 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   onAttemptEvent,
   onAttemptUpdate = () => undefined,
   now,
+  monotonicNowMs = () => performance.now(),
   createAttemptId,
 }: {
   repository: ModelSupportInvestigationRepository,
@@ -80,7 +83,13 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   templateBehavior: ModelSupportInvestigationTemplateBehavior | undefined,
   candidate: ModelSupportInvestigationCandidateFilePlan,
   autoClass: ModelSupportInvestigationGenerationAutoClassName | undefined,
-  loadModel: () => Promise<TModel>,
+  /**
+   * Loads only from already-downloaded artifacts. This callback MUST NOT start,
+   * resume, repair, or otherwise perform a model download.
+   */
+  loadDownloadedModel: ({ onProgressObservation }: {
+    onProgressObservation: ({ progress }: { progress: ModelSupportInvestigationProgressObservation }) => void,
+  }) => Promise<TModel>,
   observeLoadedModel: ({ model }: { model: TModel }) => ModelSupportInvestigationLoadedModelObservation,
   buildInput: ({ inputIds, strategy }: {
     inputIds: number[],
@@ -110,6 +119,7 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   onAttemptEvent: ({ event }: { event: ModelSupportInvestigationLoadAttemptEvent }) => void,
   onAttemptUpdate?: ({ attempt }: { attempt: ModelSupportInvestigationLoadAttemptCheckpoint }) => void,
   now: () => string,
+  monotonicNowMs?: () => number,
   createAttemptId: () => string,
 }): Promise<ModelSupportInvestigationLoadAttempt> {
   const startedAt = now();
@@ -132,7 +142,10 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
     dtype: candidate.dtype,
     autoClass,
     resolvedRevision: repository.resolvedRevision,
+    loaderRevisionOption: investigationModelLoadRevision({ requestedRevision: repository.requestedRevision }) ?? null,
     startedAt,
+    modelLoadDurationMs: undefined,
+    modelLoadProgress: undefined,
   };
 
   emit({ stage: "worker-start", status: "passed" });
@@ -215,6 +228,8 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   let result: { generatedTokenIds: number[], generatedText: string, modelType: string | undefined } | undefined;
   let naturalGeneration: ModelSupportInvestigationNaturalGenerationObservation | undefined;
   let toolProtocolProbe: ModelSupportInvestigationToolProtocolProbe | undefined;
+  let modelLoadDurationMs: number | undefined;
+  let modelLoadProgress: ModelSupportInvestigationProgressObservation | undefined;
   let failureStage: ModelSupportInvestigationLoadAttemptStage | undefined;
   let failure: ModelSupportInvestigationLoadAttempt["error"];
   let activeInputStrategy: ModelSupportInvestigationTextInputStrategy | undefined;
@@ -224,6 +239,8 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   const publishAttemptCheckpoint = (): void => {
     const checkpoint: ModelSupportInvestigationLoadAttemptCheckpoint = {
       ...base,
+      modelLoadDurationMs,
+      modelLoadProgress: modelLoadProgress === undefined ? undefined : structuredClone(modelLoadProgress),
       checkpointedAt: now(),
       status: "running",
       currentStage: activeStage,
@@ -252,7 +269,17 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   };
   try {
     emit({ stage: "model-load", status: "running" });
-    model = await loadModel();
+    const modelLoadStartedAtMs = monotonicNowMs();
+    try {
+      model = await loadDownloadedModel({
+        onProgressObservation: ({ progress }) => {
+          modelLoadProgress = structuredClone(progress);
+          publishAttemptCheckpoint();
+        },
+      });
+    } finally {
+      modelLoadDurationMs = Math.max(0, monotonicNowMs() - modelLoadStartedAtMs);
+    }
     loadedModel = observeLoadedModel({ model });
     emit({ stage: "model-load", status: "passed" });
     publishAttemptCheckpoint();
@@ -550,6 +577,8 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
 
   return {
     ...base,
+    modelLoadDurationMs,
+    modelLoadProgress,
     completedAt: now(),
     status: failure === undefined ? "passed" : "failed",
     failureStage,

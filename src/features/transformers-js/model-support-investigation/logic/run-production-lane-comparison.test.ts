@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { runProductionLaneComparison } from "@/features/transformers-js/model-support-investigation/logic/run-production-lane-comparison";
+import { ModelSupportInvestigationUserInterruptedError } from "@/features/transformers-js/model-support-investigation/logic/investigation-interruption";
 import type { ModelSupportInvestigationRun } from "@/features/transformers-js/model-support-investigation/types";
 import type { TransformersJsProductionInvestigationObservation } from "@/features/transformers-js/types";
 
@@ -13,7 +14,7 @@ const baseRun = {
     { id: "runtime-assets", status: "passed", detail: "runtime passed" },
     { id: "lane-comparison", status: "not-run", detail: undefined },
   ],
-  repository: { normalizedModelId: "org/model", resolvedRevision: "a".repeat(40) },
+  repository: { normalizedModelId: "org/model", requestedRevision: "main", resolvedRevision: "a".repeat(40) },
   templateBehavior: {
     cases: [{
       caseId: "user-generation",
@@ -37,6 +38,7 @@ const baseRun = {
 const productionObservation: TransformersJsProductionInvestigationObservation = {
   modelId: "org/model",
   resolvedRevision: "a".repeat(40),
+  loaderRevisionOption: null,
   candidate: { device: "webgpu", dtype: "q4" },
   route: {
     autoClass: "AutoModelForCausalLM",
@@ -77,6 +79,20 @@ const productionObservation: TransformersJsProductionInvestigationObservation = 
 };
 
 describe("runProductionLaneComparison", () => {
+  it("propagates an explicit user interruption without rewriting it as a Production failure", async () => {
+    const run = structuredClone(baseRun);
+
+    await expect(runProductionLaneComparison({
+      run,
+      runProductionScenario: vi.fn(async () => {
+        throw new ModelSupportInvestigationUserInterruptedError();
+      }),
+      onEvent: vi.fn(),
+      onRunUpdate: vi.fn(),
+      now: () => "after",
+    })).rejects.toMatchObject({ name: "ModelSupportInvestigationUserInterruptedError" });
+  });
+
   it("still probes Production when Runtime Integrity Preflight failed", async () => {
     const run = structuredClone(baseRun);
     run.steps = run.steps.map(step => (
@@ -191,8 +207,11 @@ describe("runProductionLaneComparison", () => {
       now: () => "after",
     });
     expect(result.productionLane.status).toBe("passed");
+    expect(result.productionLane.observation?.loaderRevisionOption).toBeNull();
     expect(runProductionScenario).toHaveBeenCalledWith({
       scenario: expect.objectContaining({
+        resolvedRevision: "a".repeat(40),
+        loadRevision: undefined,
         toolResultContinuation: undefined,
         multimodalFixture: expect.objectContaining({
           fixtureId: "single-transparent-pixel-png-v1",

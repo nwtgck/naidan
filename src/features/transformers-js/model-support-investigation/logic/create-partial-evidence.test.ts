@@ -336,6 +336,7 @@ describe("createPartialModelSupportEvidence", () => {
         dtype: "q4",
         autoClass: "AutoModelForCausalLM",
         resolvedRevision: "a".repeat(40),
+        loaderRevisionOption: null,
         startedAt: "2026-08-06T00:00:10.000Z",
         completedAt: "2026-08-06T00:00:20.000Z",
         status: "failed",
@@ -425,6 +426,10 @@ describe("createPartialModelSupportEvidence", () => {
     }));
     expect(await archive.file("events.jsonl")!.async("text")).toContain('"attemptId":"attempt/1"');
     const attempt = JSON.parse(await archive.file("load-attempts/attempt-1.json")!.async("text"));
+    expect(attempt).toMatchObject({
+      resolvedRevision: "a".repeat(40),
+      loaderRevisionOption: null,
+    });
     expect(attempt.postAttemptCache).toEqual(expect.objectContaining({
       status: "observed",
       inventory: expect.objectContaining({ fileCount: 1, completionMarkerCount: 1 }),
@@ -646,6 +651,7 @@ describe("createPartialModelSupportEvidence", () => {
         observation: {
           modelId: "org/model",
           resolvedRevision: "a".repeat(40),
+          loaderRevisionOption: null,
           candidate: { device: "webgpu", dtype: "q4" },
           loadAttempts: [
             { candidate: { device: "webgpu", dtype: "q4f16" }, status: "failed", error: { name: "Error", message: "q4f16 load failed", stack: "stack-q4f16" } },
@@ -822,6 +828,10 @@ describe("createPartialModelSupportEvidence", () => {
     const archive = await JSZip.loadAsync(await blob.arrayBuffer());
 
     expect(archive.file("production-lane/observation.json")).not.toBeNull();
+    expect(JSON.parse(await archive.file("production-lane/observation.json")!.async("text"))).toMatchObject({
+      resolvedRevision: "a".repeat(40),
+      loaderRevisionOption: null,
+    });
     expect(archive.file("production-lane/load-attempts.json")).not.toBeNull();
     expect(JSON.parse(await archive.file("production-lane/load-attempts.json")!.async("text"))).toEqual([
       { candidate: { device: "webgpu", dtype: "q4f16" }, status: "failed", error: { name: "Error", message: "q4f16 load failed", stack: "stack-q4f16" } },
@@ -931,6 +941,98 @@ describe("createPartialModelSupportEvidence", () => {
     expect(checkpointErrors.productionLaneError).toEqual(expect.objectContaining({
       name: "ProductionLaneTimeoutError",
       message: "Production Lane timed out during reasoning probe",
+    }));
+
+    const interruptedLoadRun = structuredClone(base);
+    interruptedLoadRun.productionLane = {
+      status: "running",
+      observation: undefined,
+      partialObservation: {
+        modelId: "org/model",
+        resolvedRevision: "a".repeat(40),
+        loaderRevisionOption: null,
+        runtimeLoadDurationMs: undefined,
+        candidate: undefined,
+        loadAttempts: [{
+          candidate: { device: "webgpu", dtype: "q4f16" },
+          status: "failed",
+          modelLoadDurationMs: 1_200,
+          error: { name: "Error", message: "q4f16 load failed", stack: "stack-q4f16" },
+        }],
+        activeLoadAttempt: {
+          candidate: { device: "webgpu", dtype: "q4" },
+          status: "running",
+          modelLoadDurationMs: 6_000,
+          modelLoadProgress: {
+            kind: "model-load",
+            artifactSource: "downloaded-model-cache",
+            candidateId: "production-webgpu-q4",
+            sourceStatus: "progress",
+            currentFile: "onnx/model_q4.onnx_data",
+            fileLoaded: 64 * 1024 * 1024,
+            fileTotal: 256 * 1024 * 1024,
+            fileProgress: 25,
+            aggregateLoaded: 64 * 1024 * 1024,
+            aggregateTotal: 256 * 1024 * 1024,
+            aggregateProgress: 25,
+            eventCount: 100_000,
+            progressEventCount: 100_000,
+            progressTotalEventCount: 100_000,
+            forwardProgressCount: 100_000,
+            repeatedWithoutForwardProgressCount: 0,
+            publishedSampleCount: 2,
+            cacheMatchRequestCount: 12,
+            cacheHitCount: 12,
+            cacheMissCount: 0,
+            cacheAliasHitCount: 0,
+            cacheMatchedBytes: 1_582_178_925,
+            remoteFetchAttemptCount: 0,
+            firstActivityAt: "2026-08-06T00:00:02.000Z",
+            lastActivityAt: "2026-08-06T00:00:08.000Z",
+            lastForwardProgressAt: "2026-08-06T00:00:08.000Z",
+          },
+        },
+        route: undefined,
+        isEncoderDecoder: undefined,
+        firstTurn: undefined,
+        continuity: undefined,
+        toolResultContinuation: undefined,
+        reasoning: undefined,
+        multimodal: undefined,
+      },
+      error: undefined,
+    };
+    interruptedLoadRun.laneComparison = undefined;
+    interruptedLoadRun.status = "failed";
+    const { blob: interruptedLoadBlob } = await createPartialModelSupportEvidence({
+      run: interruptedLoadRun,
+      recovery: undefined,
+    });
+    const interruptedLoadArchive = await JSZip.loadAsync(await interruptedLoadBlob.arrayBuffer());
+    expect(interruptedLoadArchive.file("production-lane/active-load-attempt.json")).not.toBeNull();
+    expect(JSON.parse(await interruptedLoadArchive.file("production-lane/active-load-attempt.json")!.async("text"))).toMatchObject({
+      candidate: { device: "webgpu", dtype: "q4" },
+      status: "running",
+      modelLoadDurationMs: 6_000,
+      modelLoadProgress: { eventCount: 100_000, publishedSampleCount: 2 },
+    });
+    expect(await interruptedLoadArchive.file("SUMMARY.md")!.async("text")).toContain(
+      "webgpu-q4 (duration=6000ms; raw-events=100000, published-samples=2; opfs-matches=12, hits=12, misses=0, alias-hits=0, matched-bytes=1582178925, remote-fetch-attempts=0) [running]",
+    );
+    expect(await interruptedLoadArchive.file("SUMMARY.md")!.async("text")).toContain(
+      "Transformers.js download/progress callbacks measure Response body reads and do not prove network transfer",
+    );
+    const interruptedLoadReadiness = JSON.parse(await interruptedLoadArchive.file("readiness.json")!.async("text"));
+    expect(interruptedLoadReadiness.domains).toContainEqual(expect.objectContaining({
+      domainId: "production-routing",
+      status: "partial",
+      questions: [expect.objectContaining({
+        evidencePaths: expect.arrayContaining([
+          "production-lane/partial-observation.json",
+          "production-lane/load-attempts.json",
+          "production-lane/active-load-attempt.json",
+        ]),
+      })],
     }));
 
     const failedFirstTurnObservation = base.productionLane.observation;
@@ -1091,6 +1193,8 @@ SyntaxError: Unexpected token '<'
       status: "interrupted" as const,
       checkpointSequence: 2,
       checkpointedAt: "2026-08-07T00:00:02.000Z",
+      totalEventCount: 7,
+      droppedEventCount: 6,
       lastEvent: {
         sequence: 1,
         at: "2026-08-07T00:00:01.000Z",
@@ -1128,6 +1232,7 @@ SyntaxError: Unexpected token '<'
     expect(events).toContain('"eventKind":"investigation-event"');
     expect(events).toContain('"detail":"Importing runtime"');
     expect(summary).toContain("Recovery status: interrupted");
+    expect(summary).toContain("Recovery journal: retained 1 of 7 events; 6 dropped by bounded telemetry policy");
   });
 
 

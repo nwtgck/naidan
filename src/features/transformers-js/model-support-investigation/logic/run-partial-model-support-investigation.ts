@@ -249,7 +249,7 @@ export async function runPartialModelSupportInvestigation({
     emit({
       stepId: 'template-behavior',
       status: 'running',
-      detail: 'Loading the tokenizer from the resolved commit and rendering deterministic template cases',
+      detail: 'Loading the tokenizer through the normal Chat revision while preserving the resolved commit as evidence',
     });
     try {
       run.templateBehavior = await inspectTemplateBehavior({ repository: run.repository });

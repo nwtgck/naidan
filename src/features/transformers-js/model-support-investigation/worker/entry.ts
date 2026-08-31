@@ -40,6 +40,7 @@ import {
 import { evaluateCandidateRequiredFileCoverage } from "@/features/transformers-js/model-support-investigation/logic/evaluate-candidate-required-file-coverage";
 import { inspectModelDeclarations } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-declarations";
 import { inspectTemplateBehavior } from "@/features/transformers-js/model-support-investigation/logic/inspect-template-behavior";
+import { investigationModelLoadRevision } from "@/features/transformers-js/model-support-investigation/logic/investigation-model-load-revision";
 import { inspectModelFilePlan } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-file-plan";
 import { inspectChatPersistenceRoundTrip } from "@/features/transformers-js/model-support-investigation/logic/inspect-chat-persistence-roundtrip";
 import { inspectRuntimeEnvironment } from "@/features/transformers-js/model-support-investigation/logic/inspect-runtime-environment";
@@ -75,19 +76,25 @@ const { assets, runtimeFetch } = configureHostedTransformersRuntime({
   createDecompressionStream: () => new DecompressionStream("gzip"),
 });
 const modelFetch = createHostedTransformersModelFetch({ runtimeFetch });
+const downloadedModelCacheOnlyFetch: typeof fetch = async input => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  throw new Error(
+    `Model Support Investigation MUST NOT fetch model artifacts while loading; required downloaded file is missing: ${url}`,
+  );
+};
 self.fetch = modelFetch;
-env.fetch = modelFetch;
-// Investigation is launched only for downloaded Hugging Face models. Match the
-// production remote-model load mode: check the shared OPFS custom cache first,
-// then allow Transformers.js to fall back to Hugging Face when a load discovers
-// a missing artifact. Do not probe env.localModelPath (/models/ in browsers),
-// because that is not part of the production path for remote models and Vite's
-// SPA fallback can otherwise be misread as tokenizer/config JSON.
-env.allowLocalModels = false;
-env.allowRemoteModels = true;
+env.fetch = downloadedModelCacheOnlyFetch;
+// Investigation loads must match Production's downloaded-model contract. The
+// shared OPFS cache is readable but MUST NOT be mutated, and Transformers.js
+// MUST NOT start/resume/repair a model download when an artifact is missing.
+// Transformers.js 4.2 requires local lookup to remain enabled when
+// local_files_only=true, even when the custom OPFS cache contains the file.
+// Repository/provenance HTTP inspection remains separate and uses runtimeFetch.
+env.allowLocalModels = true;
+env.allowRemoteModels = false;
 env.useBrowserCache = false;
 env.useCustomCache = true;
-env.customCache = createOpfsModelCache();
+env.customCache = createOpfsModelCache({ mutationPolicy: 'read-only' });
 
 type CandidateModel =
   | Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>
@@ -230,7 +237,7 @@ function disposeCandidateTextInput({ input }: { input: CandidateTextInput }): vo
   }
 }
 
-async function loadCandidateModel({
+async function loadDownloadedCandidateModel({
   autoClass,
   modelId,
   revision,
@@ -241,18 +248,19 @@ async function loadCandidateModel({
 }: {
   autoClass: ModelSupportInvestigationGenerationAutoClassName,
   modelId: string,
-  revision: string,
+  revision: string | undefined,
   config: PretrainedConfig,
   device: "webgpu" | "wasm",
   dtype: "q4f16" | "q4",
   onProgress: TransformersProgressCallback,
 }): Promise<CandidateModel> {
   const options = {
-    revision,
+    ...(revision === undefined ? {} : { revision }),
     config,
     device,
     dtype,
     progress_callback: onProgress,
+    local_files_only: true,
   };
   switch (autoClass) {
   case "AutoModelForCausalLM":
@@ -485,7 +493,10 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         repository,
         loadTokenizer: async ({ modelId: tokenizerModelId, revision }) => AutoTokenizer.from_pretrained(
           tokenizerModelId,
-          { revision },
+          {
+            ...(revision === undefined ? {} : { revision }),
+            local_files_only: true,
+          },
         ),
       }),
       inspectModelFilePlan: async ({ repository, declarations, cache }) => {
@@ -507,15 +518,26 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
     return toPlanningWorkerRun({ run });
   },
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level remote arguments to remain transferable.
-  async runCandidateAttempt(repository, declarations, templateBehavior, cacheRevisionAliases, candidate, onEvent, onAttemptEvent, onAttemptCheckpoint) {
-    env.customCache = createOpfsModelCache({ revisionAliases: cacheRevisionAliases });
+  async runCandidateAttempt(repository, declarations, templateBehavior, candidate, onEvent, onAttemptEvent, onAttemptCheckpoint) {
+    // Keep the measured load path identical to normal Chat. Repository SHA
+    // resolution is Evidence/provenance metadata, not a second cache namespace.
+    const modelLoadProgress = createModelLoadProgressTracker({ candidateId: candidate.candidateId });
+    let modelLoadActive = false;
+    env.customCache = createOpfsModelCache({
+      mutationPolicy: 'read-only',
+      onMatchObservation: ({ observation }) => {
+        if (!modelLoadActive) return;
+        modelLoadProgress.observeCacheMatch({ observation, at: new Date().toISOString() });
+      },
+    });
+    const loadRevision = investigationModelLoadRevision({ requestedRevision: repository.requestedRevision });
     const config = new PretrainedConfig(declarations.config);
     const autoClass = selectGenerationAutoClass({ repository, declarations });
-    const modelLoadProgress = createModelLoadProgressTracker({ candidateId: candidate.candidateId });
     let candidateTokenizer: PreTrainedTokenizer | undefined;
     const loadCandidateTokenizer = async (): Promise<PreTrainedTokenizer> => {
       candidateTokenizer ??= await AutoTokenizer.from_pretrained(repository.normalizedModelId, {
-        revision: repository.resolvedRevision,
+        ...(loadRevision === undefined ? {} : { revision: loadRevision }),
+        local_files_only: true,
       });
       return candidateTokenizer;
     };
@@ -525,34 +547,53 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
       templateBehavior,
       candidate,
       autoClass,
-      loadModel: () => {
+      loadDownloadedModel: async ({ onProgressObservation }) => {
         if (autoClass === undefined) {
           throw new Error("No public generative Auto class is available");
         }
-        return loadCandidateModel({
-          autoClass,
-          modelId: repository.normalizedModelId,
-          revision: repository.resolvedRevision,
-          config,
-          device: candidate.device,
-          dtype: candidate.dtype,
-          onProgress: info => {
-            const progress = modelLoadProgress.observe({
-              info,
-              at: new Date().toISOString(),
-              nowMs: performance.now(),
-            });
-            if (progress === undefined) return;
-            onEvent({
-              event: {
-                stepId: "loading-investigation",
-                status: "running",
-                detail: `${candidate.candidateId}: model-load`,
-                progress,
-              },
-            });
-          },
-        });
+        const publishProgress = ({ progress }: {
+          progress: NonNullable<ReturnType<typeof modelLoadProgress.flush>>,
+        }): void => {
+          onProgressObservation({ progress });
+          onEvent({
+            event: {
+              stepId: "loading-investigation",
+              status: "running",
+              detail: `${candidate.candidateId}: model-load`,
+              progress,
+            },
+          });
+        };
+        const previousFetch = env.fetch;
+        modelLoadActive = true;
+        env.fetch = async input => {
+          modelLoadProgress.observeRemoteFetchAttempt({ at: new Date().toISOString() });
+          return await downloadedModelCacheOnlyFetch(input);
+        };
+        try {
+          return await loadDownloadedCandidateModel({
+            autoClass,
+            modelId: repository.normalizedModelId,
+            revision: loadRevision,
+            config,
+            device: candidate.device,
+            dtype: candidate.dtype,
+            onProgress: info => {
+              const progress = modelLoadProgress.observe({
+                info,
+                at: new Date().toISOString(),
+                nowMs: performance.now(),
+              });
+              if (progress === undefined) return;
+              publishProgress({ progress });
+            },
+          });
+        } finally {
+          modelLoadActive = false;
+          env.fetch = previousFetch;
+          const finalLoadProgress = modelLoadProgress.flush();
+          if (finalLoadProgress !== undefined) publishProgress({ progress: finalLoadProgress });
+        }
       },
       observeLoadedModel: ({ model }) => {
         const observation = observeCandidateModel({ model });
