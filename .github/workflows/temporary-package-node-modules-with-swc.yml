@@ -1,0 +1,97 @@
+name: Temporary - Package node_modules with SWC
+
+on:
+  push:
+
+jobs:
+  package_node_modules:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Add SWC to package metadata
+        run: npm install --save-dev --save-exact --package-lock-only @swc/core@1.16.1
+
+      - name: Create node_modules from package-lock.json
+        run: npm ci
+
+      - name: Verify SWC native binding and SystemJS transform
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const swc = require('@swc/core');
+
+          const packageJson = JSON.parse(
+            fs.readFileSync('node_modules/@swc/core/package.json', 'utf8'),
+          );
+          if (packageJson.version !== '1.16.1') {
+            throw new Error(`Unexpected @swc/core version: ${packageJson.version}`);
+          }
+
+          const { code } = swc.transformSync('export const value = 1;', {
+            swcrc: false,
+            configFile: false,
+            sourceMaps: false,
+            isModule: true,
+            jsc: {
+              parser: { syntax: 'ecmascript' },
+              target: 'esnext',
+            },
+            module: { type: 'systemjs' },
+          });
+
+          if (!code.includes('System.register(')) {
+            throw new Error('SWC did not emit System.register output');
+          }
+          NODE
+
+      - name: Package node_modules and build metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$(uname -s)" = "Linux"
+          test "$(uname -m)" = "x86_64"
+
+          ARTIFACT_DIR="$RUNNER_TEMP/node-modules-linux-x64"
+          mkdir -p "$ARTIFACT_DIR/_build-meta"
+
+          cp package.json package-lock.json "$ARTIFACT_DIR/_build-meta/"
+
+          command -v zstd >/dev/null
+
+          tar \
+            --exclude='node_modules/onnxruntime*/bin' \
+            --exclude='node_modules/onnxruntime*/bin/**' \
+            -cf - \
+            node_modules \
+            | zstd -T0 -10 -o "$ARTIFACT_DIR/node_modules.tar.zst"
+
+          if zstd -dc "$ARTIFACT_DIR/node_modules.tar.zst" \
+            | tar -tf - \
+            | grep -Eq '^node_modules/onnxruntime[^/]*/bin(/|$)'; then
+            echo 'error: onnxruntime bin content was included in node_modules.tar.zst' >&2
+            exit 1
+          fi
+
+          test -f "$ARTIFACT_DIR/node_modules.tar.zst"
+          test -f "$ARTIFACT_DIR/_build-meta/package.json"
+          test -f "$ARTIFACT_DIR/_build-meta/package-lock.json"
+
+      - name: Upload node_modules archive
+        uses: actions/upload-artifact@v7
+        with:
+          # GitHub downloads this artifact as:
+          # node-modules-linux-x64-without-onnxruntime-bin.tar.zst.zip
+          name: node-modules-linux-x64-without-onnxruntime-bin.tar.zst
+          path: ${{ runner.temp }}/node-modules-linux-x64/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
