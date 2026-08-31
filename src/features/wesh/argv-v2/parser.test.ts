@@ -1048,8 +1048,8 @@ describe('catalog standard argv parser', () => {
       tokenOffset: 1,
     });
 
-    // Bash reports an unknown non-BMP short option as the complete Unicode code point,
-    // rather than exposing either UTF-16 surrogate code unit in its diagnostic.
+    // Keep string-based argv diagnostics structurally valid for unknown non-BMP options
+    // instead of exposing either UTF-16 surrogate code unit on its own.
     expect(analyzeArgvShortForm({ token: '-😀e', bodyOffset: 1, prefix: '-', catalog })).toEqual({
       kind: 'unknown',
       option: '-😀',

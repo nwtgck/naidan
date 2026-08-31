@@ -136,8 +136,8 @@ export function analyzeArgvShortFormWithData<TSemantic>({
   })();
   if (flat === undefined) {
     // Catalog short spellings are one UTF-16 code unit, so keep the hot matched path
-    // unchanged. Real Bash treats an unknown non-BMP short option as one Unicode code
-    // point, though, so only the cold unknown path reconstructs the complete character.
+    // unchanged. Unknown argv tokens are JavaScript strings, so only the cold miss path
+    // reconstructs a complete code point instead of exposing a lone surrogate.
     const unknownName = readUnknownShortOptionName({ token, bodyOffset });
     return { kind: 'unknown', option: `${prefix}${unknownName}`, tokenOffset: bodyOffset };
   }

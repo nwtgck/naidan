@@ -45,6 +45,72 @@ describe('parseBashArgv', () => {
     });
   });
 
+  it('accepts -o and +o names for execution state already supported by Wesh', () => {
+    expect(parseBashArgv({
+      args: [
+        '+e', '-o', 'errexit',
+        '+u', '-o', 'nounset',
+        '+n', '-o', 'noexec',
+        '-c', 'true',
+      ],
+    })).toMatchObject({
+      kind: 'run',
+      executionOptions: {
+        errexit: true,
+        nounset: true,
+      },
+      mode: 'parse-only',
+    });
+
+    expect(parseBashArgv({
+      args: [
+        '-e', '+o', 'errexit',
+        '-u', '+o', 'nounset',
+        '-n', '+o', 'noexec',
+        '-c', 'true',
+      ],
+    })).toMatchObject({
+      kind: 'run',
+      executionOptions: {
+        errexit: false,
+        nounset: false,
+      },
+      mode: 'execute',
+    });
+  });
+
+  it('accepts Bash nolog as the documented ignored shell option', () => {
+    expect(parseBashArgv({
+      args: ['-o', 'nolog', '-c', 'true'],
+    })).toMatchObject({
+      kind: 'run',
+      executionOptions: {
+        errexit: false,
+        nounset: false,
+        pipefail: false,
+      },
+      mode: 'execute',
+    });
+
+    expect(parseBashArgv({
+      args: ['+o', 'nolog', '-c', 'true'],
+    })).toMatchObject({
+      kind: 'run',
+      executionOptions: {
+        errexit: false,
+        nounset: false,
+        pipefail: false,
+      },
+      mode: 'execute',
+    });
+
+    expect(parseBashArgv({ args: ['-oZ', 'nolog', '-c', 'true'] })).toEqual({
+      kind: 'error',
+      message: 'bash: -Z: invalid option\n',
+      exitCode: 2,
+    });
+  });
+
   it('parses the common bundled -euo pipefail invocation form', () => {
     expect(parseBashArgv({
       args: ['-euo', 'pipefail', '-c', 'printf ok', 'zero', 'one'],
@@ -100,6 +166,31 @@ describe('parseBashArgv', () => {
       source: { kind: 'command-string', script: 'true' },
       executionOptions: { errexit: true },
     });
+  });
+
+  it('keeps -c phase separate from following-value claims in the same cluster', () => {
+    for (const args of [
+      ['-cO', 'extglob', 'true', 'zero'],
+      ['-Oc', 'extglob', 'true', 'zero'],
+    ] as const) {
+      expect(parseBashArgv({ args })).toMatchObject({
+        kind: 'run',
+        source: { kind: 'command-string', script: 'true' },
+        argv0: 'zero',
+        shellOptionOverrides: [{ name: 'extglob', enabled: true }],
+      });
+    }
+    for (const args of [
+      ['-co', 'pipefail', 'true', 'zero'],
+      ['-oc', 'pipefail', 'true', 'zero'],
+    ] as const) {
+      expect(parseBashArgv({ args })).toMatchObject({
+        kind: 'run',
+        source: { kind: 'command-string', script: 'true' },
+        argv0: 'zero',
+        executionOptions: { pipefail: true },
+      });
+    }
   });
 
   it('accepts + short-option clusters for supported shell options', () => {
@@ -254,6 +345,57 @@ describe('parseBashArgv', () => {
     });
   });
 
+  it('matches Bash cluster-time validation order for -o without changing -O deferral', () => {
+    expect(parseBashArgv({ args: ['-oZ', 'errexit', '-c', 'true'] })).toEqual({
+      kind: 'error',
+      message: 'bash: -Z: invalid option\n',
+      exitCode: 1,
+    });
+    expect(parseBashArgv({ args: ['-oZ', 'definitely_unknown', '-c', 'true'] })).toEqual({
+      kind: 'error',
+      message: 'bash: line 0: bash: definitely_unknown: invalid option name\n',
+      exitCode: 2,
+    });
+    expect(parseBashArgv({ args: ['-e', '+oZ', 'errexit', '-c', 'true'] })).toEqual({
+      kind: 'error',
+      message: 'bash: +Z: invalid option\n',
+      exitCode: 2,
+    });
+    expect(parseBashArgv({ args: ['-OZ', 'definitely_unknown', '-c', 'true'] })).toEqual({
+      kind: 'error',
+      message: 'bash: -Z: invalid option\n',
+      exitCode: 2,
+    });
+    expect(parseBashArgv({ args: ['-Oo', 'definitely_unknown', 'extglob', '-c', 'true'] })).toEqual({
+      kind: 'error',
+      message: 'bash: line 0: bash: extglob: invalid option name\n',
+      exitCode: 2,
+    });
+  });
+
+  it('claims successive following values for repeated -O and +O forms', () => {
+    expect(parseBashArgv({
+      args: ['-OO', 'extglob', 'nullglob', '-c', 'true'],
+    })).toMatchObject({
+      kind: 'run',
+      source: { kind: 'command-string', script: 'true' },
+      shellOptionOverrides: [
+        { name: 'extglob', enabled: true },
+        { name: 'nullglob', enabled: true },
+      ],
+    });
+    expect(parseBashArgv({
+      args: ['+OO', 'extglob', 'nullglob', '-c', 'true'],
+    })).toMatchObject({
+      kind: 'run',
+      source: { kind: 'command-string', script: 'true' },
+      shellOptionOverrides: [
+        { name: 'extglob', enabled: false },
+        { name: 'nullglob', enabled: false },
+      ],
+    });
+  });
+
   it('matches Bash diagnostics for invalid -o and +o option names', () => {
     for (const option of ['-o', '+o'] as const) {
       expect(parseBashArgv({ args: [option, 'definitely_unknown', '-c', 'true'] })).toEqual({
@@ -309,12 +451,34 @@ describe('parseBashArgv', () => {
     });
   });
 
-  it('accepts Bash startup-suppression options already supported by Wesh', () => {
+  it('accepts non-interactive GNU long options that are semantic no-ops in Wesh', () => {
     expect(parseBashArgv({
-      args: ['--noprofile', '--norc', '-c', 'true'],
+      args: ['--noprofile', '--norc', '--noediting', '-c', 'true'],
     })).toMatchObject({
       kind: 'run',
       source: { kind: 'command-string', script: 'true' },
+    });
+  });
+
+  it('accepts Bash single-dash spellings for supported initial long options', () => {
+    expect(parseBashArgv({
+      args: ['-noprofile', '-norc', '-noediting', '-c', 'true'],
+    })).toMatchObject({
+      kind: 'run',
+      source: { kind: 'command-string', script: 'true' },
+      mode: 'execute',
+    });
+    expect(parseBashArgv({ args: ['-help'] })).toEqual({ kind: 'help' });
+    expect(parseBashArgv({
+      args: ['-rcfile', '/definitely/missing', '-init-file', '/also/missing', '-c', 'true'],
+    })).toMatchObject({
+      kind: 'run',
+      source: { kind: 'command-string', script: 'true' },
+    });
+    expect(parseBashArgv({ args: ['-rcfile'] })).toEqual({
+      kind: 'error',
+      message: 'bash: rcfile: option requires an argument\n',
+      exitCode: 2,
     });
   });
 
@@ -348,7 +512,7 @@ describe('parseBashArgv', () => {
   });
 
   it('recognizes GNU long options only before short-option parsing starts', () => {
-    expect(parseBashArgv({ args: ['--norc', '--help'] })).toEqual({ kind: 'help' });
+    expect(parseBashArgv({ args: ['--norc', '--noediting', '--help'] })).toEqual({ kind: 'help' });
     expect(parseBashArgv({ args: ['-u', '--norc', '-c', 'true'] })).toEqual({
       kind: 'error',
       message: 'bash: --: invalid option\n',
@@ -357,6 +521,57 @@ describe('parseBashArgv', () => {
     expect(parseBashArgv({ args: ['-e', '--norc', '-c', 'true'] })).toEqual({
       kind: 'error',
       message: 'bash: --: invalid option\n',
+      exitCode: 1,
+    });
+  });
+
+  it('accepts non-interactive Bash startup-file long options while consuming exactly one operand', () => {
+    expect(parseBashArgv({ args: ['--rcfile', '/definitely/missing', '-c', 'true'] })).toMatchObject({
+      kind: 'run',
+      source: { kind: 'command-string', script: 'true' },
+    });
+    expect(parseBashArgv({ args: ['--init-file', '-e', '-c', 'true'] })).toMatchObject({
+      kind: 'run',
+      source: { kind: 'command-string', script: 'true' },
+      executionOptions: { errexit: false },
+    });
+    expect(parseBashArgv({ args: ['--rcfile'] })).toEqual({
+      kind: 'error',
+      message: 'bash: rcfile: option requires an argument\n',
+      exitCode: 2,
+    });
+    expect(parseBashArgv({ args: ['--init-file'] })).toEqual({
+      kind: 'error',
+      message: 'bash: init-file: option requires an argument\n',
+      exitCode: 2,
+    });
+    expect(parseBashArgv({ args: ['--rcfile=/tmp/ignored', '-c', 'true'] })).toEqual({
+      kind: 'error',
+      message: 'bash: --rcfile=/tmp/ignored: invalid option\n',
+      exitCode: 2,
+    });
+    expect(parseBashArgv({ args: ['--rcfile', '--help', '-c', 'true'] })).toMatchObject({
+      kind: 'run',
+      source: { kind: 'command-string', script: 'true' },
+    });
+    expect(parseBashArgv({ args: ['-e', '--rcfile', 'ignored', '-c', 'true'] })).toEqual({
+      kind: 'error',
+      message: 'bash: --: invalid option\n',
+      exitCode: 1,
+    });
+  });
+
+  it('preserves complete Unicode code points in invalid short-option diagnostics', () => {
+    // Wesh argv is string-based; exact GNU Bash raw-byte stderr for non-ASCII options
+    // belongs to the invocation byte boundary rather than this command-local parser.
+    expect(parseBashArgv({ args: ['-😀'] })).toEqual({
+      kind: 'error',
+      message: 'bash: -😀: invalid option\n',
+      exitCode: 2,
+    });
+    expect(parseBashArgv({ args: ['-e😀'] })).toEqual({
+      kind: 'error',
+      message: 'bash: -😀: invalid option\n',
       exitCode: 1,
     });
   });
@@ -380,6 +595,16 @@ describe('parseBashArgv', () => {
     expect(parseBashArgv({ args: ['+eZ'] })).toEqual({
       kind: 'error',
       message: 'bash: +Z: invalid option\n',
+      exitCode: 2,
+    });
+    expect(parseBashArgv({ args: ['-o', 'errexit', '-Z'] })).toEqual({
+      kind: 'error',
+      message: 'bash: -Z: invalid option\n',
+      exitCode: 1,
+    });
+    expect(parseBashArgv({ args: ['-e', '+o', 'errexit', '-Z'] })).toEqual({
+      kind: 'error',
+      message: 'bash: -Z: invalid option\n',
       exitCode: 2,
     });
   });

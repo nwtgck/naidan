@@ -199,26 +199,202 @@ function isPathTypeMismatchError({ error }: { error: unknown }): boolean {
     || /(?:not a directory|not a file|not an entry of requested type)/iu.test(error.message);
 }
 
+function isPermissionDeniedError({ error }: { error: unknown }): boolean {
+  if (error instanceof DOMException) {
+    return error.name === 'NotAllowedError' || error.name === 'SecurityError';
+  }
+  return error instanceof Error
+    && /(?:permission denied|access denied|not allowed)/iu.test(error.message);
+}
+
+type OpenBashScriptResult =
+  | {
+      readonly kind: 'opened',
+      readonly handle: WeshFileHandle,
+      readonly resolvedPath: string,
+      readonly diagnosticPath: string,
+    }
+  | {
+      readonly kind: 'error',
+      readonly error: unknown,
+      readonly resolvedPath: string,
+      readonly diagnosticPath: string,
+    };
+
+function bashPathSearchDiagnosticPath({ pathEntry, scriptPath }: {
+  pathEntry: string,
+  scriptPath: string,
+}): string {
+  if (pathEntry.length === 0) {
+    return scriptPath;
+  }
+  return pathEntry.endsWith('/')
+    ? `${pathEntry}${scriptPath}`
+    : `${pathEntry}/${scriptPath}`;
+}
+
+function shouldSkipBashPathSearchCandidate({ error }: { error: unknown }): boolean {
+  return isNotFoundError({ error })
+    || isPathTypeMismatchError({ error })
+    || isTooManySymlinksError({ error })
+    || isPermissionDeniedError({ error });
+}
+
+async function openBashScript({ context, scriptPath }: {
+  context: WeshCommandContext,
+  scriptPath: string,
+}): Promise<OpenBashScriptResult> {
+  const flags = {
+    access: 'read' as const,
+    creation: 'never' as const,
+    truncate: 'preserve' as const,
+    append: 'preserve' as const,
+  };
+  const directPath = resolvePath({ cwd: context.cwd, path: scriptPath });
+  let directError: unknown;
+  try {
+    return {
+      kind: 'opened',
+      handle: await context.files.open({ path: directPath, flags }),
+      resolvedPath: directPath,
+      diagnosticPath: scriptPath,
+    };
+  } catch (error: unknown) {
+    directError = error;
+  }
+
+  if (scriptPath.includes('/') || !isNotFoundError({ error: directError })) {
+    return {
+      kind: 'error',
+      error: directError,
+      resolvedPath: directPath,
+      diagnosticPath: scriptPath,
+    };
+  }
+
+  const pathValue = context.env.get('PATH');
+  if (pathValue === undefined) {
+    return {
+      kind: 'error',
+      error: directError,
+      resolvedPath: directPath,
+      diagnosticPath: scriptPath,
+    };
+  }
+
+  for (const pathEntry of pathValue.split(':')) {
+    const directory = resolvePath({
+      cwd: context.cwd,
+      path: pathEntry.length === 0 ? '.' : pathEntry,
+    });
+    const candidatePath = directory === '/'
+      ? `/${scriptPath}`
+      : `${directory}/${scriptPath}`;
+    if (candidatePath === directPath) {
+      continue;
+    }
+    const diagnosticPath = bashPathSearchDiagnosticPath({ pathEntry, scriptPath });
+
+    try {
+      return {
+        kind: 'opened',
+        handle: await context.files.open({ path: candidatePath, flags }),
+        resolvedPath: candidatePath,
+        diagnosticPath,
+      };
+    } catch (error: unknown) {
+      if (shouldSkipBashPathSearchCandidate({ error })) {
+        continue;
+      }
+      return {
+        kind: 'error',
+        error,
+        resolvedPath: candidatePath,
+        diagnosticPath,
+      };
+    }
+  }
+
+  return {
+    kind: 'error',
+    error: directError,
+    resolvedPath: directPath,
+    diagnosticPath: scriptPath,
+  };
+}
+
+
+// GNU Bash collapses script-path resolution/open failures to status 1 when
+// invocation-time errexit is enabled. Its binary-script preflight is distinct
+// and deliberately keeps status 126, so only path-failure branches use this.
+function bashScriptPathFailureExitCode({ errexit, defaultExitCode }: {
+  errexit: boolean,
+  defaultExitCode: 126 | 127,
+}): 1 | 126 | 127 {
+  return errexit ? 1 : defaultExitCode;
+}
+
+async function reportScriptReadError({
+  context,
+  scriptPath,
+  stat,
+  error,
+  errexit,
+}: {
+  context: WeshCommandContext,
+  scriptPath: string,
+  stat: WeshStat,
+  error: unknown,
+  errexit: boolean,
+}): Promise<WeshCommandResult | undefined> {
+  const message = error instanceof Error ? error.message : String(error);
+  switch (stat.type) {
+  case 'chardev':
+    await context.text().error({
+      text: `${scriptPath}: error reading input file: ${message}\n`,
+    });
+    return { exitCode: 2 };
+  case 'file':
+  case 'symlink':
+    await context.text().error({ text: `${scriptPath}: ${scriptPath}: ${message}\n` });
+    return {
+      exitCode: bashScriptPathFailureExitCode({
+        errexit,
+        defaultExitCode: 126,
+      }),
+    };
+  case 'fifo':
+  case 'directory':
+    return undefined;
+  default: {
+    const _ex: never = stat.type;
+    throw new Error(`Unhandled Wesh file type: ${_ex}`);
+  }
+  }
+}
+
 async function reportScriptPathError({
   context,
   scriptPath,
   resolvedPath,
   error,
+  errexit,
 }: {
   context: WeshCommandContext,
   scriptPath: string,
   resolvedPath: string,
   error: unknown,
+  errexit: boolean,
 }): Promise<WeshCommandResult | undefined> {
   if (isNotFoundError({ error })) {
     await context.text().error({ text: `bash: ${scriptPath}: No such file or directory\n` });
-    return { exitCode: 127 };
+    return { exitCode: bashScriptPathFailureExitCode({ errexit, defaultExitCode: 127 }) };
   }
   if (isTooManySymlinksError({ error })) {
     await context.text().error({
       text: `bash: ${scriptPath}: Too many levels of symbolic links\n`,
     });
-    return { exitCode: 126 };
+    return { exitCode: bashScriptPathFailureExitCode({ errexit, defaultExitCode: 126 }) };
   }
   if (!isPathTypeMismatchError({ error })) {
     return undefined;
@@ -228,7 +404,7 @@ async function reportScriptPathError({
     const stat = await context.files.stat({ path: resolvedPath });
     if (isDirectoryStat({ stat })) {
       await context.text().error({ text: `${scriptPath}: ${scriptPath}: Is a directory\n` });
-      return { exitCode: 126 };
+      return { exitCode: bashScriptPathFailureExitCode({ errexit, defaultExitCode: 126 }) };
     }
   } catch {
     // If stat cannot resolve the normalized path either, the type mismatch came
@@ -236,7 +412,41 @@ async function reportScriptPathError({
   }
 
   await context.text().error({ text: `bash: ${scriptPath}: Not a directory\n` });
-  return { exitCode: 126 };
+  return { exitCode: bashScriptPathFailureExitCode({ errexit, defaultExitCode: 126 }) };
+}
+
+async function reportScriptOpenError({
+  context,
+  scriptPath,
+  resolvedPath,
+  error,
+  errexit,
+}: {
+  context: WeshCommandContext,
+  scriptPath: string,
+  resolvedPath: string,
+  error: unknown,
+  errexit: boolean,
+}): Promise<WeshCommandResult> {
+  const pathError = await reportScriptPathError({
+    context,
+    scriptPath,
+    resolvedPath,
+    error,
+    errexit,
+  });
+  if (pathError !== undefined) {
+    return pathError;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  await context.text().error({ text: `bash: ${scriptPath}: ${message}\n` });
+  return {
+    exitCode: bashScriptPathFailureExitCode({
+      errexit,
+      defaultExitCode: 126,
+    }),
+  };
 }
 
 export type ExecuteBashShellInvocation = ({ context, invocation }: {
@@ -310,7 +520,12 @@ usage: bash [-c command] [file [argument...]]
         const scriptPath = parsed.source.path;
         if (scriptPath.length === 0) {
           await context.text().error({ text: 'bash: : No such file or directory\n' });
-          return { exitCode: 127 };
+          return {
+            exitCode: bashScriptPathFailureExitCode({
+              errexit: parsed.executionOptions.errexit,
+              defaultExitCode: 127,
+            }),
+          };
         }
         try {
           const path = resolvePath({ cwd: context.cwd, path: scriptPath });
@@ -324,36 +539,75 @@ usage: bash [-c command] [file [argument...]]
               } else {
                 await context.text().error({ text: `bash: ${scriptPath}: Not a directory\n` });
               }
-              return { exitCode: 126 };
+              return {
+                exitCode: bashScriptPathFailureExitCode({
+                  errexit: parsed.executionOptions.errexit,
+                  defaultExitCode: 126,
+                }),
+              };
             } catch (error: unknown) {
               const pathError = await reportScriptPathError({
                 context,
                 scriptPath,
                 resolvedPath: path,
                 error,
+                errexit: parsed.executionOptions.errexit,
               });
               if (pathError !== undefined) return pathError;
               throw error;
             }
           }
-          const handle = await context.files.open({
-            path,
-            flags: {
-              access: 'read',
-              creation: 'never',
-              truncate: 'preserve',
-              append: 'preserve',
-            },
-          });
-          try {
-            const preparedSource = await prepareBashScriptSource({
-              handle,
-              stat: await handle.stat(),
+          const opened = await openBashScript({ context, scriptPath });
+          switch (opened.kind) {
+          case 'error':
+            return reportScriptOpenError({
+              context,
+              scriptPath: opened.diagnosticPath,
+              resolvedPath: opened.resolvedPath,
+              error: opened.error,
+              errexit: parsed.executionOptions.errexit,
             });
+          case 'opened':
+            break;
+          default: {
+            const _ex: never = opened;
+            throw new Error(`Unhandled Bash script open result: ${JSON.stringify(_ex)}`);
+          }
+          }
+
+          const { handle } = opened;
+          const diagnosticPath = opened.diagnosticPath;
+          try {
+            let stat: WeshStat;
+            try {
+              stat = await handle.stat();
+            } catch (error: unknown) {
+              return await reportScriptOpenError({
+                context,
+                scriptPath: diagnosticPath,
+                resolvedPath: opened.resolvedPath,
+                error,
+                errexit: parsed.executionOptions.errexit,
+              });
+            }
+            let preparedSource: PreparedBashScriptSource;
+            try {
+              preparedSource = await prepareBashScriptSource({ handle, stat });
+            } catch (error: unknown) {
+              const readError = await reportScriptReadError({
+                context,
+                scriptPath: diagnosticPath,
+                stat,
+                error,
+                errexit: parsed.executionOptions.errexit,
+              });
+              if (readError !== undefined) return readError;
+              throw error;
+            }
             switch (preparedSource.kind) {
             case 'binary':
               await context.text().error({
-                text: `${scriptPath}: ${scriptPath}: cannot execute binary file\n`,
+                text: `${diagnosticPath}: ${diagnosticPath}: cannot execute binary file\n`,
               });
               return { exitCode: 126 };
             case 'source':
@@ -378,11 +632,17 @@ usage: bash [-c command] [file [argument...]]
             scriptPath,
             resolvedPath: resolvePath({ cwd: context.cwd, path: scriptPath }),
             error,
+            errexit: parsed.executionOptions.errexit,
           });
           if (pathError !== undefined) return pathError;
           const message = error instanceof Error ? error.message : String(error);
           await context.text().error({ text: `bash: ${scriptPath}: ${message}\n` });
-          return { exitCode: 126 };
+          return {
+            exitCode: bashScriptPathFailureExitCode({
+              errexit: parsed.executionOptions.errexit,
+              defaultExitCode: 126,
+            }),
+          };
         }
       }
       default: {
