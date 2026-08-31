@@ -1,9 +1,7 @@
-import type { ProgressInfo } from "@/features/transformers-js/types";
-import type { ModelSupportInvestigationProgressObservation } from "@/features/transformers-js/model-support-investigation/types";
+import type { ProgressInfo, TransformersJsModelLoadProgressObservation } from "@/features/transformers-js/types";
+import type { OpfsModelCacheMatchObservation } from "@/features/transformers-js/runtime/opfs-model-cache";
 
 const MINIMUM_PUBLISH_INTERVAL_MS = 1000;
-const MINIMUM_PUBLISH_BYTE_DELTA = 1024 * 1024;
-const MINIMUM_PUBLISH_PERCENTAGE_DELTA = 1;
 
 export function createModelLoadProgressTracker({ candidateId }: {
   candidateId: string,
@@ -14,6 +12,14 @@ export function createModelLoadProgressTracker({ candidateId }: {
   let progressTotalEventCount = 0;
   let forwardProgressCount = 0;
   let repeatedWithoutForwardProgressCount = 0;
+  let publishedSampleCount = 0;
+  let lastPublishedActivityCount = 0;
+  let cacheMatchRequestCount = 0;
+  let cacheHitCount = 0;
+  let cacheMissCount = 0;
+  let cacheAliasHitCount = 0;
+  let cacheMatchedBytes = 0;
+  let remoteFetchAttemptCount = 0;
   let currentFile: string | undefined;
   let fileLoaded: number | undefined;
   let fileTotal: number | undefined;
@@ -21,19 +27,95 @@ export function createModelLoadProgressTracker({ candidateId }: {
   let aggregateLoaded: number | undefined;
   let aggregateTotal: number | undefined;
   let aggregateProgress: number | undefined;
+  let firstActivityAt: string | undefined;
+  let lastActivityAt: string | undefined;
   let lastForwardProgressAt: string | undefined;
+  let lastSourceStatus: string | undefined;
   let lastPublishedAtMs = Number.NEGATIVE_INFINITY;
-  let lastPublishedAggregateLoaded = 0;
-  let lastPublishedAggregateProgress = 0;
-  let lastPublishedFile: string | undefined;
+
+  const activityCount = (): number => eventCount + cacheMatchRequestCount + remoteFetchAttemptCount;
+  const publishCurrent = (): TransformersJsModelLoadProgressObservation | undefined => {
+    if (activityCount() === 0 || firstActivityAt === undefined || lastActivityAt === undefined || lastSourceStatus === undefined) {
+      return undefined;
+    }
+    publishedSampleCount += 1;
+    lastPublishedActivityCount = activityCount();
+    return {
+      kind: "model-load",
+      artifactSource: "downloaded-model-cache",
+      artifactSourceBasis: "load-policy",
+      candidateId,
+      sourceStatus: lastSourceStatus,
+      progressByteSemantics: 'response-body-read-not-network-proof',
+      currentFile,
+      fileLoaded,
+      fileTotal,
+      fileProgress,
+      aggregateLoaded,
+      aggregateTotal,
+      aggregateProgress,
+      eventCount,
+      progressEventCount,
+      progressTotalEventCount,
+      forwardProgressCount,
+      repeatedWithoutForwardProgressCount,
+      publishedSampleCount,
+      cacheMatchRequestCount,
+      cacheHitCount,
+      cacheMissCount,
+      cacheAliasHitCount,
+      cacheMatchedBytes,
+      remoteFetchAttemptCount,
+      firstActivityAt,
+      lastActivityAt,
+      lastForwardProgressAt,
+    };
+  };
 
   return {
+    observeCacheMatch({ observation, at }: {
+      observation: OpfsModelCacheMatchObservation,
+      at: string,
+    }): void {
+      cacheMatchRequestCount += 1;
+      switch (observation.result) {
+      case "hit":
+        cacheHitCount += 1;
+        break;
+      case "alias-hit":
+        cacheHitCount += 1;
+        cacheAliasHitCount += 1;
+        break;
+      case "miss":
+        cacheMissCount += 1;
+        break;
+      default: {
+        const _ex: never = observation.result;
+        throw new Error(`Unhandled OPFS cache match result: ${_ex}`);
+      }
+      }
+      cacheMatchedBytes += observation.bytes ?? 0;
+      firstActivityAt ??= at;
+      lastActivityAt = at;
+      lastSourceStatus = `cache-${observation.result}`;
+    },
+
+    observeRemoteFetchAttempt({ at }: { at: string }): void {
+      remoteFetchAttemptCount += 1;
+      firstActivityAt ??= at;
+      lastActivityAt = at;
+      lastSourceStatus = "remote-fetch-attempt";
+    },
+
     observe({ info, at, nowMs }: {
       info: ProgressInfo,
       at: string,
       nowMs: number,
-    }): ModelSupportInvestigationProgressObservation | undefined {
+    }): TransformersJsModelLoadProgressObservation | undefined {
       eventCount += 1;
+      firstActivityAt ??= at;
+      lastActivityAt = at;
+      lastSourceStatus = info.status;
       let forwarded = false;
 
       switch (info.status) {
@@ -79,43 +161,26 @@ export function createModelLoadProgressTracker({ candidateId }: {
         repeatedWithoutForwardProgressCount += 1;
       }
 
-      const aggregateByteDelta = (aggregateLoaded ?? 0) - lastPublishedAggregateLoaded;
-      const aggregatePercentageDelta = (aggregateProgress ?? 0) - lastPublishedAggregateProgress;
-      const fileChanged = currentFile !== undefined && currentFile !== lastPublishedFile;
       const lifecycleEvent = info.status !== "progress" && info.status !== "progress_total";
       const intervalElapsed = nowMs - lastPublishedAtMs >= MINIMUM_PUBLISH_INTERVAL_MS;
-      const significantForwardProgress = forwarded && (
-        aggregateByteDelta >= MINIMUM_PUBLISH_BYTE_DELTA
-        || aggregatePercentageDelta >= MINIMUM_PUBLISH_PERCENTAGE_DELTA
-      );
-      if (eventCount !== 1 && !fileChanged && !lifecycleEvent && !intervalElapsed && !significantForwardProgress) {
-        return undefined;
-      }
+      // Progress callbacks can alternate rapidly across split ONNX files. Never let
+      // file changes, byte deltas, or percentage deltas bypass this time bound:
+      // otherwise instrumentation can enqueue tens of thousands of Worker→main
+      // callbacks and materially change the load being measured. Lifecycle events
+      // remain immediate so stage transitions are never hidden.
+      if (eventCount !== 1 && !lifecycleEvent && !intervalElapsed) return undefined;
 
       lastPublishedAtMs = nowMs;
-      lastPublishedAggregateLoaded = aggregateLoaded ?? lastPublishedAggregateLoaded;
-      lastPublishedAggregateProgress = aggregateProgress ?? lastPublishedAggregateProgress;
-      lastPublishedFile = currentFile;
+      return publishCurrent();
+    },
 
-      return {
-        kind: "model-load",
-        candidateId,
-        sourceStatus: info.status,
-        currentFile,
-        fileLoaded,
-        fileTotal,
-        fileProgress,
-        aggregateLoaded,
-        aggregateTotal,
-        aggregateProgress,
-        eventCount,
-        progressEventCount,
-        progressTotalEventCount,
-        forwardProgressCount,
-        repeatedWithoutForwardProgressCount,
-        lastActivityAt: at,
-        lastForwardProgressAt,
-      };
+    // A failed/aborted loader is not guaranteed to emit a final `done`/`ready`
+    // callback. Flush the latest counters at an actual candidate boundary so the
+    // bounded telemetry still records how much raw activity occurred without
+    // publishing every raw callback.
+    flush(): TransformersJsModelLoadProgressObservation | undefined {
+      if (activityCount() === lastPublishedActivityCount) return undefined;
+      return publishCurrent();
     },
   };
 }

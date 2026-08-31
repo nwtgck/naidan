@@ -6,6 +6,7 @@ import type {
   ModelSupportInvestigationTemplateMessage,
   ModelSupportInvestigationToolTemplateProvenance,
 } from '@/features/transformers-js/model-support-investigation/types';
+import { investigationModelLoadRevision } from '@/features/transformers-js/model-support-investigation/logic/investigation-model-load-revision';
 import { parseInvestigationJson } from '@/features/transformers-js/model-support-investigation/logic/json-value-schema';
 import { serializeInvestigationError } from '@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error';
 
@@ -302,17 +303,21 @@ export async function inspectTemplateBehavior({
   repository: ModelSupportInvestigationRepository,
   loadTokenizer: ({ modelId, revision }: {
     modelId: string,
-    revision: string,
+    revision: string | undefined,
   }) => Promise<ModelSupportInvestigationTemplateTokenizer>,
 }): Promise<ModelSupportInvestigationTemplateBehavior> {
+  const loaderRevision = investigationModelLoadRevision({ requestedRevision: repository.requestedRevision });
   const tokenizer = await loadTokenizer({
     modelId: repository.normalizedModelId,
-    revision: repository.resolvedRevision,
+    // Match normal Chat and reuse its resolve/main OPFS entries. The frozen SHA
+    // remains on the returned evidence and is used by repository/provenance checks.
+    revision: loaderRevision,
   });
   const cases = FIXTURES.map(fixture => inspectCase({ tokenizer, fixture }));
   return {
     normalizedModelId: repository.normalizedModelId,
     resolvedRevision: repository.resolvedRevision,
+    loaderRevisionOption: loaderRevision ?? null,
     tokenizerClass: tokenizer.constructor.name,
     declaredChatTemplate: tokenizer.chat_template === undefined
       ? undefined

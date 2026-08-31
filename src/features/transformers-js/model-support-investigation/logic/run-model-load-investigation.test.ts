@@ -7,6 +7,7 @@ import type {
 } from "@/features/transformers-js/model-support-investigation/types";
 import { runModelLoadInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-model-load-investigation";
 import { CandidateAttemptTimeoutError } from "@/features/transformers-js/model-support-investigation/logic/candidate-attempt-timeout";
+import { ModelSupportInvestigationUserInterruptedError } from "@/features/transformers-js/model-support-investigation/logic/investigation-interruption";
 
 function candidate(candidateId: "webgpu-q4f16" | "webgpu-q4" | "wasm-q4"): ModelSupportInvestigationCandidateFilePlan {
   const [device, dtype] = candidateId === "webgpu-q4f16"
@@ -279,6 +280,22 @@ describe("runModelLoadInvestigation", () => {
       error: { message: "Worker import failed" },
     });
     expect(result.loadAttempts[1]?.status).toBe("passed");
+  });
+
+  it("propagates an explicit user interruption instead of converting it into a candidate failure", async () => {
+    const runAttempt = vi.fn(async () => {
+      throw new ModelSupportInvestigationUserInterruptedError();
+    });
+
+    await expect(runModelLoadInvestigation({
+      partialRun: run(),
+      runAttempt,
+      onEvent: vi.fn(),
+      now: () => "after",
+      createAttemptId: () => "unexpected",
+    })).rejects.toMatchObject({ name: "ModelSupportInvestigationUserInterruptedError" });
+
+    expect(runAttempt).toHaveBeenCalledTimes(1);
   });
 
   it("still investigates model loading when template evidence is unavailable", async () => {

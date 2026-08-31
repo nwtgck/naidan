@@ -172,11 +172,11 @@ onUnmounted(() => {
   if (unsubscribeList) unsubscribeList();
 });
 
-const loadModel = async ({ modelId }: { modelId: string }) => {
+const loadDownloadedModel = async ({ modelId }: { modelId: string }) => {
   if (!modelId || isStandalone) return;
   lastDownloadError.value = null; // Clear previous download error when starting a fresh load
   try {
-    await transformersJsService.loadModel({ modelId });
+    await transformersJsService.loadDownloadedModel({ modelId });
     emit('modelLoaded', modelId);
   } catch (e) {
     // Error is handled via subscription
@@ -210,28 +210,42 @@ const handleRestart = async () => {
   }
 };
 
-const downloadModel = async () => {
-  const modelId = searchQuery.value.trim();
-  if (!modelId || isStandalone) return;
+const downloadModelById = async ({ modelId }: { modelId: string }) => {
+  const normalizedModelId = modelId.trim();
+  if (!normalizedModelId || isStandalone) return;
 
   lastDownloadError.value = null;
-  // Checking if it is already cached
-  const isAlreadyCached = cachedModels.value.some(m => m.id === modelId || m.id === `hf.co/${modelId}`);
-  if (isAlreadyCached) {
+  // A complete model needs no download. Incomplete models are intentionally
+  // allowed through so this explicit download operation can resume/repair them.
+  const isAlreadyComplete = cachedModels.value.some(m => (
+    (m.id === normalizedModelId || m.id === `hf.co/${normalizedModelId}`)
+    && m.isComplete
+  ));
+  if (isAlreadyComplete) {
     addToast({ message: await ensureStrings.TransformersJsManager__model_is_already_downloaded() });
     return;
   }
 
   try {
-    await transformersJsService.downloadModel({ modelId });
+    await transformersJsService.downloadModel({ modelId: normalizedModelId });
     await refreshLocalModels();
-    addToast({ message: await ensureStrings.TransformersJsManager__successfully_downloaded_model({ modelId }) });
+    addToast({ message: await ensureStrings.TransformersJsManager__successfully_downloaded_model({ modelId: normalizedModelId }) });
 
-    // Auto-load after download
-    await loadModel({ modelId });
+    // Loading remains a separate cache-only operation after explicit download.
+    await loadDownloadedModel({ modelId: normalizedModelId });
   } catch (e) {
     lastDownloadError.value = e instanceof Error ? e.message : String(e);
   }
+};
+
+const downloadModel = async () => downloadModelById({ modelId: searchQuery.value });
+
+const loadOrResumeModel = async ({ modelId, isComplete }: { modelId: string, isComplete: boolean }) => {
+  if (isComplete) {
+    await loadDownloadedModel({ modelId });
+    return;
+  }
+  await downloadModelById({ modelId });
 };
 
 const deleteModel = async ({ modelId }: { modelId: string }) => {
@@ -672,7 +686,7 @@ defineExpose({
                     {{ lazyStrings.TransformersJsManager__investigate() }}
                   </button>
                   <button
-                    @click="loadModel({ modelId: model.id })"
+                    @click="loadOrResumeModel({ modelId: model.id, isComplete: model.isComplete })"
                     :disabled="status === 'loading' || activeModelId === model.id"
                     tw-class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg text-[10px] font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-all disabled:opacity-50"
                   >

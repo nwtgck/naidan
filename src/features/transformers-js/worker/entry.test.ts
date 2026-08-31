@@ -215,67 +215,18 @@ describe('transformers-js.worker', () => {
     expect(response.headers.get('X-Cache-Hit')).toBe('OPFS');
   });
 
-  it('opfsCache.put should save file to OPFS and create marker', async () => {
+  it('keeps the worker default model cache read-only outside explicit download operations', async () => {
     await import('./entry');
     const { env } = await import('@huggingface/transformers');
-    const cache = (env as any).customCache;
+    const cache = env.customCache as { put: (request: string | Request, response: Response) => Promise<void> };
 
-    const response = new Response('model data', {
-      status: 200,
-      headers: { 'Content-Type': 'application/octet-stream' },
-    });
-
-    await cache.put('https://huggingface.co/org/repo/model.onnx', response);
-    expect(mockRoot.getDirectoryHandle).toHaveBeenCalledWith('models', { create: true });
+    await expect(cache.put(
+      'https://huggingface.co/org/repo/resolve/main/model.onnx',
+      new Response('model data'),
+    )).rejects.toThrow('Read-only OPFS model cache MUST NOT be written during model loading');
   });
 
-  it('opfsCache.put should throw error when storage write fails', async () => {
-    await import('./entry');
-    const { env } = await import('@huggingface/transformers');
-    const cache = (env as any).customCache;
-
-    // Force failure in createWritable deep inside the hierarchy
-    const failingFile = {
-      createWritable: vi.fn().mockRejectedValue(new Error('QuotaExceededError')),
-    };
-
-    const failingDir = createMockDir({
-      'model.onnx': failingFile,
-    });
-
-    mockRoot.getDirectoryHandle.mockResolvedValue(failingDir);
-
-    const response = new Response('model data', { status: 200 });
-
-    // The URL 'https://huggingface.co/org/repo/model.onnx' maps to
-    // models/huggingface.co/org/repo/model.onnx
-    // So it will call getDirectoryHandle('models'), then 'huggingface.co', etc.
-    // Our mock above handles the first 'models' call, but we need it to handle the others or be recursive.
-    // Let's make it simpler: just mock getDirectoryHandle to always return a dir that has what's needed.
-    const deepDir = createMockDir();
-    deepDir.getFileHandle = vi.fn().mockResolvedValue(failingFile);
-    deepDir.getDirectoryHandle.mockResolvedValue(deepDir);
-    mockRoot.getDirectoryHandle.mockResolvedValue(deepDir);
-
-    await expect(cache.put('https://huggingface.co/org/repo/model.onnx', response))
-      .rejects.toThrow('QuotaExceededError');
-  });
-
-  it('opfsCache.put should throw error when HTML response is received', async () => {
-    await import('./entry');
-    const { env } = await import('@huggingface/transformers');
-    const cache = (env as any).customCache;
-
-    const response = new Response('<html>Error</html>', {
-      status: 200,
-      headers: { 'Content-Type': 'text/html' },
-    });
-
-    await expect(cache.put('https://huggingface.co/org/repo/model.onnx', response))
-      .rejects.toThrow('Detected HTML response');
-  });
-
-  it('loadModel should try tiered fallback from WebGPU to WASM', async () => {
+  it('loadDownloadedModel should try tiered fallback from WebGPU to WASM', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
     await import('./entry');
@@ -293,7 +244,7 @@ describe('transformers-js.worker', () => {
 
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
-    const result = await workerObj.loadModel('org/repo', () => { });
+    const result = await workerObj.loadDownloadedModel('org/repo', () => { });
 
     expect(result.device).toBe('wasm');
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(3);
@@ -314,28 +265,154 @@ describe('transformers-js.worker', () => {
       .mockResolvedValueOnce({ dispose: vi.fn(), config: { model_type: 'example' } });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
-    await workerObj.loadModel('org/repo', vi.fn());
+    await workerObj.loadDownloadedModel('org/repo', vi.fn());
 
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenNthCalledWith(1, 'org/repo', expect.objectContaining({
       device: 'webgpu',
       dtype: 'q4f16',
-      local_files_only: false,
+      local_files_only: true,
     }));
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenNthCalledWith(2, 'org/repo', expect.objectContaining({
       device: 'webgpu',
       dtype: 'q4',
-      local_files_only: false,
+      local_files_only: true,
     }));
     const firstOptions = (AutoModelForCausalLM.from_pretrained as any).mock.calls[0][1];
     const secondOptions = (AutoModelForCausalLM.from_pretrained as any).mock.calls[1][1];
     expect(firstOptions).not.toHaveProperty('revision');
     expect(secondOptions).not.toHaveProperty('revision');
     const tokenizerOptions = (AutoTokenizer.from_pretrained as any).mock.calls[0][1];
-    expect(tokenizerOptions).toMatchObject({ local_files_only: false });
+    expect(tokenizerOptions).toMatchObject({ local_files_only: true });
     expect(tokenizerOptions).not.toHaveProperty('revision');
   });
 
-  it('runs a fixed-revision Production Lane scenario with an explicit candidate list', async () => {
+  it('keeps downloaded-model loading remote-disabled and OPFS read-only', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    let allowLocalModelsDuringLoad: boolean | undefined;
+    let allowRemoteModelsDuringLoad: boolean | undefined;
+    let cacheDuringLoad: { put: (request: string | Request, response: Response) => Promise<void> } | undefined;
+    let fetchDuringLoad: typeof env.fetch | undefined;
+
+    (AutoModelForCausalLM.from_pretrained as any).mockImplementationOnce(async () => {
+      allowLocalModelsDuringLoad = env.allowLocalModels;
+      allowRemoteModelsDuringLoad = env.allowRemoteModels;
+      cacheDuringLoad = env.customCache as typeof cacheDuringLoad;
+      fetchDuringLoad = env.fetch;
+      return { dispose: vi.fn(), config: { model_type: 'example' } };
+    });
+    (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
+
+    await workerObj.loadDownloadedModel('org/repo', vi.fn());
+
+    expect(allowLocalModelsDuringLoad).toBe(true);
+    expect(allowRemoteModelsDuringLoad).toBe(false);
+    expect(env.allowRemoteModels).toBe(false);
+    expect(cacheDuringLoad).toBeDefined();
+    expect(fetchDuringLoad).toBeDefined();
+    await expect(fetchDuringLoad!(
+      'https://huggingface.co/org/repo/resolve/main/model.onnx',
+    )).rejects.toThrow('loadDownloadedModel() MUST NOT fetch model artifacts');
+    await expect(cacheDuringLoad!.put(
+      'https://huggingface.co/org/repo/resolve/main/model.onnx',
+      new Response('remote bytes'),
+    )).rejects.toThrow('Read-only OPFS model cache MUST NOT be written during model loading');
+  });
+
+  it('restores the default read-only environment after downloaded-model loading fails', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, env } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const defaultFetch = env.fetch;
+    const defaultCache = env.customCache;
+
+    (AutoModelForCausalLM.from_pretrained as any).mockRejectedValue(new Error('missing downloaded artifact'));
+
+    await expect(workerObj.loadDownloadedModel('org/repo', vi.fn()))
+      .rejects.toThrow('missing downloaded artifact');
+
+    expect(env.allowLocalModels).toBe(true);
+    expect(env.allowRemoteModels).toBe(false);
+    expect(env.fetch).toBe(defaultFetch);
+    expect(env.customCache).toBe(defaultCache);
+    await expect((env.customCache as { put: (request: string | Request, response: Response) => Promise<void> }).put(
+      'https://huggingface.co/org/repo/resolve/main/model.onnx',
+      new Response('bytes'),
+    )).rejects.toThrow('Read-only OPFS model cache MUST NOT be written during model loading');
+  });
+
+  it('bounds GPT-OSS split-file load progress before it crosses the Production Worker boundary', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const progressCallback = vi.fn();
+    const observationCheckpointCallback = vi.fn();
+    const performanceNow = vi.spyOn(performance, 'now').mockReturnValue(0);
+
+    try {
+      (AutoModelForCausalLM.from_pretrained as any).mockImplementationOnce(async (_modelId: string, options: { progress_callback: (info: unknown) => void }) => {
+        for (let index = 0; index < 100_000; index += 1) {
+          options.progress_callback({
+            status: 'progress',
+            file: `onnx/model_q4f16.onnx_data_${index % 6}`,
+            loaded: index + 1,
+            total: 100_000,
+            progress: ((index + 1) / 100_000) * 100,
+          });
+        }
+        throw new Error('synthetic load failure');
+      });
+
+      await expect(workerObj.runModelSupportInvestigationScenario(
+        {
+          modelId: 'org/model',
+          resolvedRevision: 'a'.repeat(40),
+          loadRevision: undefined,
+          candidates: [{ device: 'webgpu', dtype: 'q4' }],
+          messages: [{ role: 'user', content: 'hello' }],
+          followUpMessage: { role: 'user', content: 'Continue.' },
+          toolResultContinuation: undefined,
+          maxNewTokens: 16,
+        },
+        progressCallback,
+        observationCheckpointCallback,
+      )).rejects.toThrow('synthetic load failure');
+
+      const modelLoadEvents = progressCallback.mock.calls
+        .map(([value]) => value?.event)
+        .filter(event => event?.kind === 'model-load');
+      expect(modelLoadEvents).toHaveLength(2);
+      expect(modelLoadEvents.at(-1)?.progress).toMatchObject({
+        candidateId: 'production-webgpu-q4',
+        artifactSource: 'downloaded-model-cache',
+        eventCount: 100_000,
+        progressEventCount: 100_000,
+        publishedSampleCount: 2,
+      });
+      const checkpointWithAttempt = observationCheckpointCallback.mock.calls
+        .map(([value]) => value?.observation)
+        .find(observation => observation?.loadAttempts?.length === 1);
+      expect(checkpointWithAttempt?.loadAttempts?.[0]).toMatchObject({
+        candidate: { device: 'webgpu', dtype: 'q4' },
+        status: 'failed',
+        modelLoadDurationMs: 0,
+        modelLoadProgress: {
+          eventCount: 100_000,
+          progressEventCount: 100_000,
+          publishedSampleCount: 2,
+        },
+      });
+      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
+    } finally {
+      performanceNow.mockRestore();
+    }
+  });
+
+  it('runs a normal-Chat-revision Production Lane scenario with an explicit candidate list', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
     await import('./entry');
@@ -393,7 +470,7 @@ describe('transformers-js.worker', () => {
       {
         modelId: 'org/model',
         resolvedRevision: 'a'.repeat(40),
-        cacheRevisionAliases: [],
+        loadRevision: undefined,
         candidates: [{ device: 'webgpu', dtype: 'q4' }],
         messages: [{ role: 'user', content: 'hello' }],
         followUpMessage: { role: 'user', content: 'Continue with one short sentence.' },
@@ -411,13 +488,12 @@ describe('transformers-js.worker', () => {
 
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledWith('org/model', expect.objectContaining({
-      revision: 'a'.repeat(40),
       device: 'webgpu',
       dtype: 'q4',
     }));
-    expect(AutoTokenizer.from_pretrained).toHaveBeenCalledWith('org/model', expect.objectContaining({
-      revision: 'a'.repeat(40),
-    }));
+    expect((AutoModelForCausalLM.from_pretrained as any).mock.calls[0]?.[1]).not.toHaveProperty('revision');
+    expect(AutoTokenizer.from_pretrained).toHaveBeenCalledWith('org/model', expect.any(Object));
+    expect((AutoTokenizer.from_pretrained as any).mock.calls[0]?.[1]).not.toHaveProperty('revision');
     expect(generate).toHaveBeenCalledTimes(3);
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({
       max_new_tokens: 16,
@@ -426,6 +502,8 @@ describe('transformers-js.worker', () => {
       do_sample: false,
     }));
     expect(observation).toMatchObject({
+      loaderRevisionOption: null,
+      runtimePreparationDurationMs: expect.any(Number),
       candidate: { device: 'webgpu', dtype: 'q4' },
       route: {
         autoClass: 'AutoModelForCausalLM',
@@ -569,7 +647,7 @@ describe('transformers-js.worker', () => {
       {
         modelId: 'org/model',
         resolvedRevision: 'a'.repeat(40),
-        cacheRevisionAliases: [],
+        loadRevision: undefined,
         candidates: [{ device: 'webgpu', dtype: 'q4' }],
         messages: [{ role: 'user', content: 'hello' }],
         followUpMessage: { role: 'user', content: 'Continue.' },
@@ -624,7 +702,7 @@ describe('transformers-js.worker', () => {
       {
         modelId: 'org/model',
         resolvedRevision: 'a'.repeat(40),
-        cacheRevisionAliases: [],
+        loadRevision: undefined,
         candidates: [
           { device: 'webgpu', dtype: 'q4f16' },
           { device: 'webgpu', dtype: 'q4' },
@@ -640,15 +718,17 @@ describe('transformers-js.worker', () => {
     );
 
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenNthCalledWith(1, 'org/model', expect.objectContaining({
-      revision: 'a'.repeat(40),
       device: 'webgpu',
       dtype: 'q4f16',
+      local_files_only: true,
     }));
+    expect((AutoModelForCausalLM.from_pretrained as any).mock.calls[0]?.[1]).not.toHaveProperty('revision');
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenNthCalledWith(2, 'org/model', expect.objectContaining({
-      revision: 'a'.repeat(40),
       device: 'webgpu',
       dtype: 'q4',
+      local_files_only: true,
     }));
+    expect((AutoModelForCausalLM.from_pretrained as any).mock.calls[1]?.[1]).not.toHaveProperty('revision');
     expect(observation).toMatchObject({
       candidate: { device: 'webgpu', dtype: 'q4' },
       loadAttempts: [
@@ -673,6 +753,144 @@ describe('transformers-js.worker', () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
+  it('checkpoints bounded telemetry for an active Production model load before the candidate settles', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const checkpoint = vi.fn();
+    let rejectLoad: ((error: Error) => void) | undefined;
+
+    (AutoModelForCausalLM.from_pretrained as any).mockImplementation((_modelId: string, options: { progress_callback?: (info: unknown) => void }) => {
+      options.progress_callback?.({
+        status: 'progress',
+        file: 'onnx/model_q4f16.onnx_data',
+        loaded: 64 * 1024 * 1024,
+        total: 256 * 1024 * 1024,
+        progress: 25,
+      });
+      return new Promise((_resolve, reject) => {
+        rejectLoad = reject;
+      });
+    });
+
+    const operation = workerObj.runModelSupportInvestigationScenario(
+      {
+        modelId: 'org/model',
+        resolvedRevision: 'a'.repeat(40),
+        loadRevision: undefined,
+        candidates: [{ device: 'webgpu', dtype: 'q4f16' }],
+        messages: [{ role: 'user', content: 'hello' }],
+        followUpMessage: { role: 'user', content: 'Continue.' },
+        toolResultContinuation: undefined,
+        multimodalFixture: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE,
+        maxNewTokens: 16,
+      },
+      vi.fn(),
+      checkpoint,
+    );
+
+    await vi.waitFor(() => {
+      expect(checkpoint.mock.calls.some(([value]) => (
+        value.observation.activeLoadAttempt?.candidate.dtype === 'q4f16'
+        && value.observation.activeLoadAttempt?.status === 'running'
+        && value.observation.activeLoadAttempt?.modelLoadProgress?.eventCount === 1
+        && value.observation.activeLoadAttempt?.modelLoadProgress?.publishedSampleCount === 1
+      ))).toBe(true);
+    });
+
+    rejectLoad?.(new Error('synthetic interrupted load'));
+    await expect(operation).rejects.toThrow('synthetic interrupted load');
+    const finalCheckpoint = checkpoint.mock.calls.at(-1)?.[0]?.observation;
+    expect(finalCheckpoint?.activeLoadAttempt).toBeUndefined();
+    expect(finalCheckpoint?.loadAttempts).toEqual([expect.objectContaining({
+      candidate: { device: 'webgpu', dtype: 'q4f16' },
+      status: 'failed',
+      modelLoadProgress: expect.objectContaining({
+        eventCount: 1,
+        publishedSampleCount: 1,
+      }),
+    })]);
+  });
+
+  it('separates completed model loading from tokenizer runtime preparation in Production checkpoints', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const progressCallback = vi.fn();
+    const checkpoint = vi.fn();
+    let rejectTokenizer: ((error: Error) => void) | undefined;
+
+    (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async (_modelId: string, options: { progress_callback: (info: unknown) => void }) => {
+      options.progress_callback({ status: 'progress', file: 'onnx/model_q4.onnx', loaded: 1, total: 1, progress: 100 });
+      return {
+        dispose: vi.fn(),
+        config: { model_type: 'example', is_encoder_decoder: false },
+      };
+    });
+    (AutoTokenizer.from_pretrained as any).mockImplementation((_modelId: string, options: { progress_callback: (info: unknown) => void }) => {
+      for (let index = 0; index < 100; index += 1) {
+        options.progress_callback({ status: 'progress', file: 'tokenizer.json', loaded: index + 1, total: 100, progress: index + 1 });
+      }
+      return new Promise((_resolve, reject) => {
+        rejectTokenizer = reject;
+      });
+    });
+
+    const operation = workerObj.runModelSupportInvestigationScenario(
+      {
+        modelId: 'org/model',
+        resolvedRevision: 'a'.repeat(40),
+        loadRevision: undefined,
+        candidates: [{ device: 'webgpu', dtype: 'q4' }],
+        messages: [{ role: 'user', content: 'hello' }],
+        followUpMessage: { role: 'user', content: 'Continue.' },
+        toolResultContinuation: undefined,
+        multimodalFixture: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE,
+        maxNewTokens: 16,
+      },
+      progressCallback,
+      checkpoint,
+    );
+
+    await vi.waitFor(() => {
+      expect(progressCallback.mock.calls.some(([value]) => (
+        value.event?.kind === 'stage'
+        && value.event.status === 'model-support-production-runtime-preparation'
+      ))).toBe(true);
+    });
+    const modelLoadEvents = progressCallback.mock.calls
+      .map(([value]) => value.event)
+      .filter(event => event?.kind === 'model-load');
+    expect(modelLoadEvents).toHaveLength(1);
+    expect(modelLoadEvents[0]?.progress).toMatchObject({
+      currentFile: 'onnx/model_q4.onnx',
+      eventCount: 1,
+    });
+
+    const runtimePreparationCheckpoint = checkpoint.mock.calls
+      .map(([value]) => value.observation)
+      .find(observation => (
+        observation.loadAttempts?.[0]?.status === 'passed'
+        && observation.activeLoadAttempt === undefined
+      ));
+    expect(runtimePreparationCheckpoint).toMatchObject({
+      candidate: { device: 'webgpu', dtype: 'q4' },
+      loadAttempts: [{ candidate: { device: 'webgpu', dtype: 'q4' }, status: 'passed' }],
+      activeLoadAttempt: undefined,
+      route: undefined,
+    });
+
+    rejectTokenizer?.(new Error('synthetic tokenizer preparation failure'));
+    await expect(operation).rejects.toThrow('synthetic tokenizer preparation failure');
+    expect(checkpoint.mock.calls.at(-1)?.[0]?.observation).toMatchObject({
+      runtimePreparationDurationMs: expect.any(Number),
+      candidate: { device: 'webgpu', dtype: 'q4' },
+      activeLoadAttempt: undefined,
+    });
+  });
+
   it('checkpoints every failed Production load candidate before rejecting the scenario', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM } = await import('@huggingface/transformers');
@@ -689,7 +907,7 @@ describe('transformers-js.worker', () => {
       {
         modelId: 'org/model',
         resolvedRevision: 'a'.repeat(40),
-        cacheRevisionAliases: [],
+        loadRevision: undefined,
         candidates: [
           { device: 'webgpu', dtype: 'q4f16' },
           { device: 'webgpu', dtype: 'q4' },
@@ -763,7 +981,7 @@ describe('transformers-js.worker', () => {
       {
         modelId: 'org/model',
         resolvedRevision: 'a'.repeat(40),
-        cacheRevisionAliases: [],
+        loadRevision: undefined,
         candidates: [{ device: 'webgpu', dtype: 'q4' }],
         messages: [{ role: 'user', content: 'hello' }],
         followUpMessage: { role: 'user', content: 'Continue with one short sentence.' },
@@ -804,7 +1022,7 @@ describe('transformers-js.worker', () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
-  it('loadModel should load the Gemma 4 processor and use its tokenizer', async () => {
+  it('loadDownloadedModel should load the Gemma 4 processor and use its tokenizer', async () => {
     const comlink = await import('comlink');
     const { AutoModelForImageTextToText, AutoProcessor, AutoTokenizer } = await import('@huggingface/transformers');
     await import('./entry');
@@ -823,14 +1041,14 @@ describe('transformers-js.worker', () => {
       },
     });
 
-    await workerObj.loadModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn());
+    await workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn());
 
     expect(AutoModelForImageTextToText.from_pretrained).toHaveBeenCalledWith('onnx-community/gemma-4-E2B-it-ONNX', expect.anything());
     expect(AutoProcessor.from_pretrained).toHaveBeenCalledWith('onnx-community/gemma-4-E2B-it-ONNX', expect.anything());
     expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
   });
 
-  it('loadModel should fail early when the active runtime does not support gemma4', async () => {
+  it('loadDownloadedModel should fail early when the active runtime does not support gemma4', async () => {
     const comlink = await import('comlink');
     const { AutoModelForImageTextToText, AutoModelForCausalLM } = await import('@huggingface/transformers');
     await import('./entry');
@@ -838,7 +1056,7 @@ describe('transformers-js.worker', () => {
 
     (AutoModelForImageTextToText.supports as any).mockReturnValueOnce(false);
 
-    await expect(workerObj.loadModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn()))
+    await expect(workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn()))
       .rejects
       .toThrow('does not support gemma4');
 
@@ -868,20 +1086,53 @@ describe('transformers-js.worker', () => {
     expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
   });
 
-  it('downloadModel should disable local model lookup for remote models', async () => {
+  it('downloadModel should temporarily allow remote access only for the explicit download operation', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
     await import('./entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const defaultCache = env.customCache;
 
-    (AutoTokenizer.from_pretrained as any).mockImplementation(async () => {
+    (AutoTokenizer.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
       expect(env.allowLocalModels).toBe(false);
+      expect(env.allowRemoteModels).toBe(true);
+      expect(env.customCache).not.toBe(defaultCache);
+      expect(options.local_files_only).toBe(false);
+      await (env.customCache as { put: (request: string | Request, response: Response) => Promise<void> }).put(
+        'https://huggingface.co/mlx-community/Qwen3.5-2B-4bit/resolve/main/tokenizer.json',
+        new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      );
       return {};
     });
 
     await workerObj.downloadModel('mlx-community/Qwen3.5-2B-4bit', () => { });
+
     expect(env.allowLocalModels).toBe(true);
+    expect(env.allowRemoteModels).toBe(false);
+    expect(env.customCache).toBe(defaultCache);
     expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+  });
+
+  it('restores the default read-only environment after explicit download fails', async () => {
+    const comlink = await import('comlink');
+    const { AutoTokenizer, env } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const defaultFetch = env.fetch;
+    const defaultCache = env.customCache;
+
+    (AutoTokenizer.from_pretrained as any).mockRejectedValueOnce(new Error('download failed'));
+
+    await expect(workerObj.downloadModel('org/repo', vi.fn())).rejects.toThrow('download failed');
+
+    expect(env.allowLocalModels).toBe(true);
+    expect(env.allowRemoteModels).toBe(false);
+    expect(env.fetch).toBe(defaultFetch);
+    expect(env.customCache).toBe(defaultCache);
+    await expect((env.customCache as { put: (request: string | Request, response: Response) => Promise<void> }).put(
+      'https://huggingface.co/org/repo/resolve/main/model.onnx',
+      new Response('bytes'),
+    )).rejects.toThrow('Read-only OPFS model cache MUST NOT be written during model loading');
   });
 
   it('downloadModel should keep local model lookup enabled for user models', async () => {
@@ -1130,7 +1381,7 @@ describe('transformers-js.worker', () => {
       await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadModel('standard-model', vi.fn());
+      await workerObj.loadDownloadedModel('standard-model', vi.fn());
     });
 
     it('uses the remaining declared model context instead of a fixed 1024-token fallback', async () => {
@@ -1505,7 +1756,7 @@ Use shell tools.<|im_end|>
       await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadModel('onnx-community/Qwen3.5-2B-ONNX', vi.fn());
+      await workerObj.loadDownloadedModel('onnx-community/Qwen3.5-2B-ONNX', vi.fn());
     });
 
     it('observes the existing Qwen3.5 reasoning effort prompt differential', async () => {
@@ -1542,7 +1793,7 @@ Use shell tools.<|im_end|>
         {
           modelId: 'onnx-community/Qwen3.5-2B-ONNX',
           resolvedRevision: 'a'.repeat(40),
-          cacheRevisionAliases: [],
+          loadRevision: undefined,
           candidates: [{ device: 'webgpu', dtype: 'q4' }],
           messages: [{ role: 'user', content: 'Answer briefly.' }],
           followUpMessage: { role: 'user', content: 'Continue.' },
@@ -1606,7 +1857,7 @@ Use shell tools.<|im_end|>
         {
           modelId: 'onnx-community/Qwen3.5-2B-ONNX',
           resolvedRevision: 'a'.repeat(40),
-          cacheRevisionAliases: [],
+          loadRevision: undefined,
           candidates: [{ device: 'webgpu', dtype: 'q4' }],
           messages: [{ role: 'user', content: 'hello' }],
           followUpMessage: { role: 'user', content: 'Continue.' },
@@ -1674,7 +1925,7 @@ Use shell tools.<|im_end|>
         {
           modelId: 'onnx-community/Qwen3.5-2B-ONNX',
           resolvedRevision: 'a'.repeat(40),
-          cacheRevisionAliases: [],
+          loadRevision: undefined,
           candidates: [{ device: 'webgpu', dtype: 'q4' }],
           messages: [{ role: 'user', content: 'Answer briefly.' }],
           followUpMessage: { role: 'user', content: 'Continue.' },
@@ -2032,7 +2283,7 @@ file-a
       await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn());
+      await workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn());
     });
 
     it('uses the processor chat template and forwards multimodal inputs to model.generate', async () => {
@@ -2107,7 +2358,7 @@ file-a
         {
           modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
           resolvedRevision: 'a'.repeat(40),
-          cacheRevisionAliases: [],
+          loadRevision: undefined,
           candidates: [{ device: 'webgpu', dtype: 'q4' }],
           messages: [{ role: 'user', content: 'Answer briefly.' }],
           followUpMessage: { role: 'user', content: 'Continue.' },
@@ -2211,7 +2462,7 @@ file-a
       await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadModel('my-gpt-oss-model', vi.fn());
+      await workerObj.loadDownloadedModel('my-gpt-oss-model', vi.fn());
     });
 
     const GPT_OSS_TOOL_CALL_TOKENS = [

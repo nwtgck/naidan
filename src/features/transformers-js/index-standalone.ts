@@ -69,7 +69,7 @@ export const transformersJsService = {
     throw unsupportedError();
   },
 
-  async loadModel({ modelId: _modelId }: { modelId: string }) {
+  async loadDownloadedModel({ modelId: _modelId }: { modelId: string }) {
     throw unsupportedError();
   },
 

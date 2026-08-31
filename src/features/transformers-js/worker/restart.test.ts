@@ -74,10 +74,10 @@ describe('transformersJsService worker restart', () => {
     expect(MockWorker.constructorCount).toBe(1);
   });
 
-  it('should recreate worker when loadModel fails with Aborted()', async () => {
+  it('should recreate worker when loadDownloadedModel fails with Aborted()', async () => {
     // 1. Setup mock remote BEFORE importing service
     const mockRemote = {
-      loadModel: vi.fn().mockRejectedValue(new Error('RuntimeError: Aborted(). Build with -sASSERTIONS for more info.')),
+      loadDownloadedModel: vi.fn().mockRejectedValue(new Error('RuntimeError: Aborted(). Build with -sASSERTIONS for more info.')),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
@@ -89,7 +89,7 @@ describe('transformersJsService worker restart', () => {
 
     // 3. Act
     try {
-      await transformersJsService.loadModel({ modelId: 'some-model' });
+      await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
     } catch (e) {
       // Expected error
     }
@@ -98,9 +98,9 @@ describe('transformersJsService worker restart', () => {
     expect(MockWorker.constructorCount).toBeGreaterThan(countAfterImport);
   });
 
-  it('should recreate worker when loadModel fails with WebGPU Kernel error', async () => {
+  it('should recreate worker when loadDownloadedModel fails with WebGPU Kernel error', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockRejectedValue(new Error('[WebGPU] Kernel "[Add] /model/layers.0/..." failed. Error: Can\'t perform binary op')),
+      loadDownloadedModel: vi.fn().mockRejectedValue(new Error('[WebGPU] Kernel "[Add] /model/layers.0/..." failed. Error: Can\'t perform binary op')),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
@@ -110,7 +110,7 @@ describe('transformersJsService worker restart', () => {
     const countBefore = MockWorker.constructorCount;
 
     try {
-      await transformersJsService.loadModel({ modelId: 'some-model' });
+      await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
     } catch (e) { /* Expected */ }
 
     expect(MockWorker.constructorCount).toBeGreaterThan(countBefore);
@@ -119,7 +119,7 @@ describe('transformersJsService worker restart', () => {
   it('should recreate worker when generateText fails with Aborted()', async () => {
     // 1. Setup mock remote
     const mockRemote = {
-      loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
+      loadDownloadedModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
       generateText: vi.fn().mockRejectedValue(new Error('RuntimeError: Aborted()')),
     };
     (Comlink.wrap as any).mockImplementation(() => {
@@ -130,7 +130,7 @@ describe('transformersJsService worker restart', () => {
     const { transformersJsService } = await import('@/features/transformers-js/index');
 
     // 3. Initial load success
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
     const countAfterLoad = MockWorker.constructorCount;
 
     // 4. Act
@@ -151,7 +151,7 @@ describe('transformersJsService worker restart', () => {
 
   it('should recreate worker when generateText fails with WebGPU Kernel error', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
+      loadDownloadedModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
       generateText: vi.fn().mockRejectedValue(new Error('[WebGPU] Kernel failure during inference')),
     };
     (Comlink.wrap as any).mockImplementation(() => {
@@ -159,7 +159,7 @@ describe('transformersJsService worker restart', () => {
     });
 
     const { transformersJsService } = await import('@/features/transformers-js/index');
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
     const countAfterLoad = MockWorker.constructorCount;
 
     try {

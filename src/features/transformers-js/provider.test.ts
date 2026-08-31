@@ -6,7 +6,7 @@ import { toToolCallId } from '@/01-models/ids';
 // Mock the service
 const mockService = {
   getState: vi.fn(),
-  loadModel: vi.fn(),
+  loadDownloadedModel: vi.fn(),
   generateText: vi.fn(),
   listCachedModels: vi.fn(),
 };
@@ -43,7 +43,7 @@ describe('TransformersJsProvider', () => {
 
   it('should auto-load model if not already ready', async () => {
     mockService.getState.mockReturnValue({ status: 'idle', activeModelId: null });
-    mockService.loadModel.mockResolvedValue(undefined);
+    mockService.loadDownloadedModel.mockResolvedValue(undefined);
     setupGenerateTextMock();
 
     const { TransformersJsProvider } = await import('./provider');
@@ -55,7 +55,7 @@ describe('TransformersJsProvider', () => {
       onChunk: vi.fn(),
     });
 
-    expect(mockService.loadModel).toHaveBeenCalledWith({ modelId: 'some-model' });
+    expect(mockService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'some-model' });
     expect(mockService.generateText).toHaveBeenCalledOnce();
     expect(mockService.generateText.mock.calls[0]![0].messages).toEqual([{ role: 'user', content: 'hello' }]);
   });
@@ -73,7 +73,7 @@ describe('TransformersJsProvider', () => {
       onChunk: () => {},
     });
 
-    expect(mockService.loadModel).not.toHaveBeenCalled();
+    expect(mockService.loadDownloadedModel).not.toHaveBeenCalled();
     expect(mockService.generateText).toHaveBeenCalledOnce();
   });
 

@@ -6,9 +6,18 @@ import type {
   ModelSupportInvestigationToolResultTemplateRoundTrip,
 } from "@/features/transformers-js/model-support-investigation/types";
 import type {
+  TransformersJsProductionInvestigationActiveCandidateLoadAttempt,
   TransformersJsProductionInvestigationReasoningEffortObservation,
   TransformersJsProductionInvestigationToolResultContinuationObservation,
 } from "@/features/transformers-js/types";
+
+function activeProductionLoadAttemptSummary({
+  attempt,
+}: {
+  attempt: TransformersJsProductionInvestigationActiveCandidateLoadAttempt,
+}): string {
+  return `${attempt.candidate.device}/${attempt.candidate.dtype}=running`;
+}
 
 function questionStatus({
   status,
@@ -199,7 +208,8 @@ function productionToolResultContinuationAnswer({ observation }: {
 export function evaluateEvidenceReadiness({ run }: {
   run: ModelSupportInvestigationRun,
 }): ModelSupportInvestigationEvidenceReadinessReport {
-  const productionObservation = run.productionLane.observation ?? run.productionLane.partialObservation;
+  const productionPartialObservation = run.productionLane.partialObservation;
+  const productionObservation = run.productionLane.observation ?? productionPartialObservation;
   const productionObservationPath = run.productionLane.observation !== undefined
     ? "production-lane/observation.json"
     : run.productionLane.partialObservation !== undefined
@@ -358,9 +368,10 @@ export function evaluateEvidenceReadiness({ run }: {
     }
   })();
   const productionPlainTextReady = productionPlainTextTokenCount > 0;
-  const productionLoadAttemptsEvidencePaths = (productionObservation?.loadAttempts?.length ?? 0) > 0
-    ? ["production-lane/load-attempts.json"]
-    : [];
+  const productionLoadAttemptsEvidencePaths = [
+    ...((productionObservation?.loadAttempts?.length ?? 0) > 0 ? ["production-lane/load-attempts.json"] : []),
+    ...(productionPartialObservation?.activeLoadAttempt === undefined ? [] : ["production-lane/active-load-attempt.json"]),
+  ];
   const productionReadiness = (() => {
     switch (run.productionLane.status) {
     case "passed": {
@@ -419,12 +430,19 @@ export function evaluateEvidenceReadiness({ run }: {
       const route = productionObservation.route;
       if (route === undefined) {
         const attempts = productionObservation.loadAttempts ?? [];
-        const attemptSummary = attempts.length === 0
+        const activeAttempt = productionPartialObservation?.activeLoadAttempt;
+        const attemptSummaryParts = [
+          ...attempts.map(attempt => `${attempt.candidate.device}/${attempt.candidate.dtype}=${attempt.status}`),
+          ...(activeAttempt === undefined
+            ? []
+            : [activeProductionLoadAttemptSummary({ attempt: activeAttempt })]),
+        ];
+        const attemptSummary = attemptSummaryParts.length === 0
           ? "candidate load route pending"
-          : attempts.map(attempt => `${attempt.candidate.device}/${attempt.candidate.dtype}=${attempt.status}`).join("; " );
+          : attemptSummaryParts.join("; ");
         return {
           status: "partial" as const,
-          summary: "The Naidan Production Lane is still loading a model; completed candidate load attempts from the latest structured checkpoint were preserved.",
+          summary: "The Naidan Production Lane is still loading a model; completed attempts and any active candidate telemetry from the latest structured checkpoint were preserved.",
           answer: attemptSummary,
           evidencePaths: ["production-lane/partial-observation.json", ...productionLoadAttemptsEvidencePaths],
         };

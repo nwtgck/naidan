@@ -7,6 +7,7 @@ import type {
 } from "@/features/transformers-js/model-support-investigation/types";
 import type {
   ITransformersJsWorker,
+  TransformersJsModelLoadProgressObservation,
   TransformersJsProductionInvestigationCandidate,
   TransformersJsProductionInvestigationPartialObservation,
 } from "@/features/transformers-js/types";
@@ -186,6 +187,39 @@ function attemptCheckpoint({ candidateId }: {
 }
 
 
+function productionLoadProgress({
+  candidateId = "production-webgpu-q4f16",
+  eventCount = 100_000,
+  publishedSampleCount = 2,
+}: {
+  candidateId?: string,
+  eventCount?: number,
+  publishedSampleCount?: number,
+} = {}): TransformersJsModelLoadProgressObservation {
+  return {
+    kind: "model-load",
+    artifactSource: "downloaded-model-cache",
+    candidateId,
+    sourceStatus: "progress",
+    currentFile: "onnx/model_q4f16.onnx_data",
+    fileLoaded: 64 * 1024 * 1024,
+    fileTotal: 256 * 1024 * 1024,
+    fileProgress: 25,
+    aggregateLoaded: 64 * 1024 * 1024,
+    aggregateTotal: 256 * 1024 * 1024,
+    aggregateProgress: 25,
+    eventCount,
+    progressEventCount: eventCount,
+    progressTotalEventCount: eventCount,
+    forwardProgressCount: eventCount,
+    repeatedWithoutForwardProgressCount: 0,
+    publishedSampleCount,
+    firstActivityAt: "2026-08-06T00:00:02.000Z",
+    lastActivityAt: "2026-08-06T00:00:08.000Z",
+    lastForwardProgressAt: "2026-08-06T00:00:08.000Z",
+  };
+}
+
 function productionRemote() {
   return {
     runModelSupportInvestigationScenario: mocks.runProductionScenario,
@@ -296,6 +330,58 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     }
   });
 
+  it("interrupts a hung planning Worker immediately and freezes an interrupted checkpoint", async () => {
+    type PlanningArgs = Parameters<IModelSupportInvestigationWorker["runPartialInvestigation"]>;
+    let lateEvent: PlanningArgs[1] | undefined;
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn((_modelId, onEvent) => {
+        lateEvent = onEvent;
+        return new Promise<Awaited<ReturnType<IModelSupportInvestigationWorker["runPartialInvestigation"]>>>(() => undefined);
+      }),
+    });
+    mocks.wrap.mockReturnValueOnce(planningRemote);
+    const onEvent = vi.fn();
+    const onCheckpoint = vi.fn();
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent, onCheckpoint });
+    await vi.waitFor(() => {
+      expect(planningRemote.runPartialInvestigation).toHaveBeenCalledTimes(1);
+    });
+
+    await client.interrupt();
+    await expect(operation).rejects.toMatchObject({
+      name: "ModelSupportInvestigationUserInterruptedError",
+      message: "Model Support Investigation was stopped by the user",
+    });
+    expect(mocks.workerInstances[0]?.terminate).toHaveBeenCalledTimes(1);
+    expect(planningRemote[mocks.releaseProxy]).not.toHaveBeenCalled();
+    expect(onCheckpoint).toHaveBeenLastCalledWith({
+      checkpoint: expect.objectContaining({
+        recovery: expect.objectContaining({
+          status: "interrupted",
+          interruption: expect.objectContaining({
+            error: expect.objectContaining({
+              name: "ModelSupportInvestigationUserInterruptedError",
+            }),
+          }),
+        }),
+      }),
+    });
+
+    const checkpointCountAfterStop = onCheckpoint.mock.calls.length;
+    lateEvent?.({
+      event: {
+        stepId: "repository-information",
+        status: "running",
+        detail: "late callback after stop",
+      },
+    });
+    expect(onEvent).not.toHaveBeenCalled();
+    expect(onCheckpoint).toHaveBeenCalledTimes(checkpointCountAfterStop);
+  });
+
   it("uses a fresh Worker for planning and every attempted candidate", async () => {
     const planningRemote = remote({
       runPartialInvestigation: vi.fn(async () => partialRun()),
@@ -328,7 +414,6 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       expect.any(Object),
       expect.any(Object),
       expect.any(Object),
-      expect.any(Array),
       expect.objectContaining({ candidateId: "webgpu-q4f16" }),
       expect.any(Function),
       expect.any(Function),
@@ -338,7 +423,6 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       expect.any(Object),
       expect.any(Object),
       expect.any(Object),
-      expect.any(Array),
       expect.objectContaining({ candidateId: "webgpu-q4" }),
       expect.any(Function),
       expect.any(Function),
@@ -351,6 +435,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     expect(mocks.runProductionScenario).toHaveBeenCalledWith(
       expect.objectContaining({
         resolvedRevision: "a".repeat(40),
+        loadRevision: undefined,
         candidates: [
           { device: "webgpu", dtype: "q4" },
         ],
@@ -534,7 +619,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     let latePlanningEvent: PlanningArgs[1] | undefined;
     let latePlanningCheckpoint: PlanningArgs[2] | undefined;
     let lateCandidateEvent: CandidateArgs[5] | undefined;
-    let lateCandidateCheckpoint: CandidateArgs[7] | undefined;
+    let lateCandidateCheckpoint: CandidateArgs[6] | undefined;
     let lateProductionProgress: ProductionArgs[1] | undefined;
     let lateProductionCheckpoint: ProductionArgs[2] | undefined;
 
@@ -546,7 +631,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       }),
     });
     const successfulAttemptRemote = remote({
-      runCandidateAttempt: vi.fn(async (_repository, _declarations, _templateBehavior, _cacheRevisionAliases, _candidate, onEvent, _onAttemptEvent, onAttemptCheckpoint) => {
+      runCandidateAttempt: vi.fn(async (_repository, _declarations, _templateBehavior, _candidate, onEvent, _onAttemptEvent, onAttemptCheckpoint) => {
         lateCandidateEvent = onEvent;
         lateCandidateCheckpoint = onAttemptCheckpoint;
         return attempt({ candidateId: "webgpu-q4f16", status: "passed" });
@@ -581,10 +666,15 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       run: { ...partialRun(), currentOperation: "stale planning checkpoint" },
     });
     lateCandidateEvent?.({
-      event: { stepId: "loading-investigation", status: "running", detail: "stale candidate event" },
+      event: {
+        stage: "model-load",
+        status: "running",
+        detail: "stale candidate event",
+        at: "2026-08-31T00:00:00.000Z",
+      },
     });
     lateCandidateCheckpoint?.({ attempt: attemptCheckpoint({ candidateId: "webgpu-q4f16" }) });
-    lateProductionProgress?.({ info: { status: "model-support-production-first-turn" } });
+    lateProductionProgress?.({ event: { kind: "stage", status: "model-support-production-first-turn" } });
     lateProductionCheckpoint?.({
       observation: productionObservation as TransformersJsProductionInvestigationPartialObservation,
     });
@@ -650,7 +740,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
         .mockReturnValueOnce(successfulAttemptRemote)
         .mockReturnValueOnce(production);
       mocks.runProductionScenario.mockImplementation((_scenario, progressCallback) => {
-        progressCallback({ info: { status: "model-support-production-tool-result-continuation" } });
+        progressCallback({ event: { kind: "stage", status: "model-support-production-tool-result-continuation" } });
         return new Promise(() => undefined);
       });
       const onEvent = vi.fn();
@@ -713,6 +803,217 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     expect(production[mocks.releaseProxy]).not.toHaveBeenCalled();
   });
 
+  it("interrupts a hung Production Worker without waiting for its remote Promise", async () => {
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => partialRun()),
+    });
+    const successfulAttemptRemote = remote({
+      runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "passed" })),
+    });
+    const production = productionRemote();
+    mocks.wrap
+      .mockReturnValueOnce(planningRemote)
+      .mockReturnValueOnce(successfulAttemptRemote)
+      .mockReturnValueOnce(production);
+    mocks.runProductionScenario.mockImplementation(() => new Promise(() => undefined));
+    const onCheckpoint = vi.fn();
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint });
+    await vi.waitFor(() => {
+      expect(mocks.runProductionScenario).toHaveBeenCalledTimes(1);
+    });
+
+    await client.interrupt();
+    await expect(operation).rejects.toMatchObject({ name: "ModelSupportInvestigationUserInterruptedError" });
+    expect(mocks.workerInstances[2]?.terminate).toHaveBeenCalledTimes(1);
+    expect(production[mocks.releaseProxy]).not.toHaveBeenCalled();
+    expect(onCheckpoint).toHaveBeenLastCalledWith({
+      checkpoint: expect.objectContaining({
+        recovery: expect.objectContaining({ status: "interrupted" }),
+      }),
+    });
+  });
+
+  it("preserves active Production load telemetry when interrupted and ignores late callbacks", async () => {
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => partialRun()),
+    });
+    const successfulAttemptRemote = remote({
+      runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "passed" })),
+    });
+    const production = productionRemote();
+    mocks.wrap
+      .mockReturnValueOnce(planningRemote)
+      .mockReturnValueOnce(successfulAttemptRemote)
+      .mockReturnValueOnce(production);
+
+    type ProductionArgs = Parameters<ITransformersJsWorker["runModelSupportInvestigationScenario"]>;
+    let lateProgress: ProductionArgs[1] | undefined;
+    let lateCheckpoint: ProductionArgs[2] | undefined;
+    const boundedProgress = productionLoadProgress();
+    mocks.runProductionScenario.mockImplementation((_scenario, progressCallback, observationCheckpointCallback) => {
+      lateProgress = progressCallback;
+      lateCheckpoint = observationCheckpointCallback;
+      progressCallback({ event: { kind: "model-load", progress: boundedProgress } });
+      observationCheckpointCallback({
+        observation: {
+          modelId: "org/model",
+          resolvedRevision: "a".repeat(40),
+          loaderRevisionOption: null,
+          runtimeLoadDurationMs: undefined,
+          candidate: undefined,
+          loadAttempts: [],
+          activeLoadAttempt: {
+            candidate: { device: "webgpu", dtype: "q4f16" },
+            status: "running",
+            modelLoadDurationMs: 6_000,
+            modelLoadProgress: boundedProgress,
+          },
+          route: undefined,
+          isEncoderDecoder: undefined,
+          firstTurn: undefined,
+          continuity: undefined,
+          toolResultContinuation: undefined,
+          reasoning: undefined,
+          multimodal: undefined,
+        },
+      });
+      return new Promise(() => undefined);
+    });
+    const onCheckpoint = vi.fn();
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint });
+    await vi.waitFor(() => {
+      expect(mocks.runProductionScenario).toHaveBeenCalledTimes(1);
+      expect(onCheckpoint.mock.calls.some(([value]) => (
+        value.checkpoint.run.productionLane.partialObservation?.activeLoadAttempt?.modelLoadProgress?.eventCount === 100_000
+      ))).toBe(true);
+    });
+
+    await client.interrupt();
+    await expect(operation).rejects.toMatchObject({ name: "ModelSupportInvestigationUserInterruptedError" });
+    expect(mocks.workerInstances[2]?.terminate).toHaveBeenCalledTimes(1);
+    const interruptedCheckpoint = onCheckpoint.mock.calls.at(-1)?.[0]?.checkpoint;
+    expect(interruptedCheckpoint).toMatchObject({
+      recovery: { status: "interrupted" },
+      run: {
+        productionLane: {
+          status: "running",
+          partialObservation: {
+            activeLoadAttempt: {
+              candidate: { device: "webgpu", dtype: "q4f16" },
+              status: "running",
+              modelLoadDurationMs: 6_000,
+              modelLoadProgress: { eventCount: 100_000, publishedSampleCount: 2 },
+            },
+          },
+        },
+      },
+    });
+
+    const checkpointCountAfterInterrupt = onCheckpoint.mock.calls.length;
+    lateProgress?.({
+      event: {
+        kind: "model-load",
+        progress: productionLoadProgress({ eventCount: 999_999, publishedSampleCount: 999 }),
+      },
+    });
+    lateCheckpoint?.({
+      observation: {
+        ...(interruptedCheckpoint?.run.productionLane.partialObservation ?? {}),
+        activeLoadAttempt: {
+          candidate: { device: "webgpu", dtype: "q4f16" },
+          status: "running",
+          modelLoadProgress: productionLoadProgress({ eventCount: 999_999, publishedSampleCount: 999 }),
+        },
+      } as TransformersJsProductionInvestigationPartialObservation,
+    });
+    expect(onCheckpoint).toHaveBeenCalledTimes(checkpointCountAfterInterrupt);
+    expect(onCheckpoint.mock.calls.at(-1)?.[0]?.checkpoint.run.productionLane.partialObservation?.activeLoadAttempt?.modelLoadProgress).toMatchObject({
+      eventCount: 100_000,
+      publishedSampleCount: 2,
+    });
+  });
+
+  it("does not misclassify tokenizer runtime preparation as an active Production model load when interrupted", async () => {
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => partialRun()),
+    });
+    const successfulAttemptRemote = remote({
+      runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "passed" })),
+    });
+    const production = productionRemote();
+    mocks.wrap
+      .mockReturnValueOnce(planningRemote)
+      .mockReturnValueOnce(successfulAttemptRemote)
+      .mockReturnValueOnce(production);
+
+    const candidateProgress = productionLoadProgress();
+    const tokenizerProgress = productionLoadProgress({ eventCount: 3, publishedSampleCount: 1 });
+    mocks.runProductionScenario.mockImplementation((_scenario, progressCallback, observationCheckpointCallback) => {
+      progressCallback({ event: { kind: "stage", status: "model-support-production-model-load" } });
+      progressCallback({ event: { kind: "model-load", progress: candidateProgress } });
+      observationCheckpointCallback({
+        observation: {
+          modelId: "org/model",
+          resolvedRevision: "a".repeat(40),
+          loaderRevisionOption: null,
+          runtimeLoadDurationMs: undefined,
+          candidate: { device: "webgpu", dtype: "q4f16" },
+          loadAttempts: [{
+            candidate: { device: "webgpu", dtype: "q4f16" },
+            status: "passed",
+            modelLoadDurationMs: 6_000,
+            modelLoadProgress: candidateProgress,
+            error: undefined,
+          }],
+          activeLoadAttempt: undefined,
+          route: undefined,
+          isEncoderDecoder: undefined,
+          firstTurn: undefined,
+          continuity: undefined,
+          toolResultContinuation: undefined,
+          reasoning: undefined,
+          multimodal: undefined,
+        },
+      });
+      progressCallback({ event: { kind: "stage", status: "model-support-production-runtime-preparation" } });
+      progressCallback({ event: { kind: "model-load", progress: tokenizerProgress } });
+      return new Promise(() => undefined);
+    });
+    const onCheckpoint = vi.fn();
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint });
+    await vi.waitFor(() => {
+      expect(mocks.runProductionScenario).toHaveBeenCalledTimes(1);
+    });
+
+    await client.interrupt();
+    await expect(operation).rejects.toMatchObject({ name: "ModelSupportInvestigationUserInterruptedError" });
+    const interruptedCheckpoint = onCheckpoint.mock.calls.at(-1)?.[0]?.checkpoint;
+    expect(interruptedCheckpoint).toMatchObject({
+      recovery: { status: "interrupted" },
+      run: {
+        productionLane: {
+          partialObservation: {
+            loadAttempts: [{
+              candidate: { device: "webgpu", dtype: "q4f16" },
+              status: "passed",
+              modelLoadProgress: { eventCount: 100_000, publishedSampleCount: 2 },
+            }],
+          },
+        },
+      },
+    });
+    expect(interruptedCheckpoint?.run.productionLane.partialObservation?.activeLoadAttempt).toBeUndefined();
+  });
+
   it("terminates a timed-out candidate Worker and continues with the next eligible candidate", async () => {
     vi.useFakeTimers();
     try {
@@ -720,7 +1021,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
         runPartialInvestigation: vi.fn(async () => partialRun()),
       });
       const timedOutAttemptRemote = remote({
-        runCandidateAttempt: vi.fn((_repository, _declarations, _templateBehavior, _cacheRevisionAliases, _candidate, _onEvent, onAttemptEvent) => {
+        runCandidateAttempt: vi.fn((_repository, _declarations, _templateBehavior, _candidate, _onEvent, onAttemptEvent) => {
           onAttemptEvent({
             event: {
               stage: "model-load",

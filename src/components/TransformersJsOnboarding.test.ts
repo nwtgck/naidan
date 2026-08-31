@@ -42,7 +42,7 @@ vi.mock('../features/transformers-js', () => ({
     subscribe: vi.fn(),
     subscribeModelList: vi.fn().mockReturnValue(() => {}),
     listCachedModels: vi.fn(),
-    loadModel: vi.fn(),
+    loadDownloadedModel: vi.fn(),
     unloadModel: vi.fn(),
     restart: vi.fn(),
     downloadModel: vi.fn(),
@@ -248,7 +248,7 @@ describe('Transformers.js Onboarding Integration', () => {
     await flushPromises();
     await nextTick();
 
-    expect(transformersJsService.loadModel).toHaveBeenCalledWith({ modelId: 'new-model' });
+    expect(transformersJsService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'new-model' });
   });
 
   it('updates selectedModel when TransformersJsManager emits model-loaded', async () => {
@@ -325,7 +325,7 @@ describe('Transformers.js Onboarding Integration', () => {
     // Wait for download to finish
     await flushPromises();
 
-    // Should have automatically called loadModel (logic is inside TransformersJsManager)
-    expect(transformersJsService.loadModel).toHaveBeenCalledWith({ modelId: 'new-download-model' });
+    // Should have automatically called loadDownloadedModel (logic is inside TransformersJsManager)
+    expect(transformersJsService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'new-download-model' });
   });
 });

@@ -35,7 +35,7 @@ vi.mock('..', () => ({
     subscribe: vi.fn(),
     subscribeModelList: vi.fn().mockReturnValue(() => {}),
     listCachedModels: vi.fn(),
-    loadModel: vi.fn(),
+    loadDownloadedModel: vi.fn(),
     unloadModel: vi.fn(),
     restart: vi.fn(),
     downloadModel: vi.fn(),
@@ -174,7 +174,26 @@ describe('TransformersJsManager.vue', () => {
     expect(wrapper.text()).toContain('Resume');
   });
 
-  it('calls loadModel when Load button is clicked', async () => {
+  it('resumes an incomplete model through explicit download before loading it', async () => {
+    (transformersJsService.listCachedModels as any).mockResolvedValue([
+      { id: 'hf.co/org/incomplete', size: 500, fileCount: 2, lastModified: Date.now(), isComplete: false },
+    ]);
+
+    const wrapper = mount(TransformersJsManager);
+    await flushPromises();
+
+    const resumeButton = wrapper.findAll('button').find(button => button.text() === 'Resume');
+    expect(resumeButton).toBeDefined();
+    await resumeButton!.trigger('click');
+    await flushPromises();
+
+    expect(transformersJsService.downloadModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/incomplete' });
+    expect(transformersJsService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/incomplete' });
+    expect(vi.mocked(transformersJsService.downloadModel).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(transformersJsService.loadDownloadedModel).mock.invocationCallOrder[0]!);
+  });
+
+  it('calls loadDownloadedModel when Load button is clicked', async () => {
     (transformersJsService.listCachedModels as any).mockResolvedValue([
       { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
@@ -185,7 +204,7 @@ describe('TransformersJsManager.vue', () => {
     const loadBtn = wrapper.find('button.bg-purple-50');
     await loadBtn.trigger('click');
 
-    expect(transformersJsService.loadModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/model1' });
+    expect(transformersJsService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/model1' });
   });
 
   it('calls unloadModel when PowerOff button is clicked', async () => {

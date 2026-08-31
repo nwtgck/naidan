@@ -51,7 +51,7 @@ describe('transformersJsService progress logic', () => {
 
   it('should cap metadata progress at 5%', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
         // Send multiple small metadata files
         cb({ status: 'initiate', name: 'config.json' });
         cb({ status: 'progress', name: 'config.json', loaded: 1000, total: 1000 });
@@ -75,7 +75,7 @@ describe('transformersJsService progress logic', () => {
       lastProgress = progress;
     } });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     // Even though both files are 100% done, overall progress should be capped because no "heavy" file was seen
     expect(lastProgress).toBeLessThanOrEqual(5);
@@ -85,7 +85,7 @@ describe('transformersJsService progress logic', () => {
     vi.useFakeTimers();
 
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
         // Metadata
         cb({ status: 'done', name: 'config.json', loaded: 1000, total: 1000 });
 
@@ -107,7 +107,7 @@ describe('transformersJsService progress logic', () => {
       lastProgress = progress;
     } });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     // model.onnx is 50% done (50MB), but total recognized is < 100MB and time is < 3s
     // So discovery phase cap (15%) applies.
@@ -122,7 +122,7 @@ describe('transformersJsService progress logic', () => {
     vi.setSystemTime(now);
 
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
         const floor = 200 * 1024 * 1024;
         const half = 100 * 1024 * 1024;
 
@@ -150,7 +150,7 @@ describe('transformersJsService progress logic', () => {
       lastProgress = progress;
     } });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     // Now Phase 3 applies. totalSize is 100MiB, but effectiveTotalSize has 200MiB floor.
     // (100MiB + 1) / 200MiB = ~50%
@@ -162,7 +162,7 @@ describe('transformersJsService progress logic', () => {
 
   it('should ensure monotonicity (progress never goes backwards)', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
         // High progress with small denominator
         cb({ status: 'initiate', name: 'file1.bin' });
         cb({ status: 'progress', name: 'file1.bin', loaded: 80, total: 100 }); // 80%? No, capped/floored.
@@ -194,7 +194,7 @@ describe('transformersJsService progress logic', () => {
       progressHistory.push(progress);
     } });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     // Check that history never decreases
     for (let i = 1; i < progressHistory.length; i++) {
@@ -206,7 +206,7 @@ describe('transformersJsService progress logic', () => {
 
   it('should never reach 100% progress until model is ready', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
         const startTime = Date.now();
         vi.stubGlobal('Date', { now: () => startTime + 5000 }); // Force Phase 3
 
@@ -228,7 +228,7 @@ describe('transformersJsService progress logic', () => {
       }
     } });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     expect(lastProgress).toBe(99);
     expect(transformersJsService.getState().status).toBe('ready');
@@ -236,7 +236,7 @@ describe('transformersJsService progress logic', () => {
 
   it('should throttle Transformers.js progress_total/progress pairs as one high-frequency stream', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
         for (let index = 1; index <= 100; index += 1) {
           cb({ status: 'progress_total', loaded: index, total: 100, progress: index });
           cb({ status: 'progress', file: 'model.onnx', loaded: index, total: 100, progress: index });
@@ -252,7 +252,7 @@ describe('transformersJsService progress logic', () => {
     const listener = vi.fn();
     transformersJsService.subscribe({ listener });
 
-    await transformersJsService.loadModel({ modelId: 'some-model' });
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
     // 200 raw progress callbacks must not become 200 reactive notifications.
     // The raw events are still consumed by updateProgress before notification

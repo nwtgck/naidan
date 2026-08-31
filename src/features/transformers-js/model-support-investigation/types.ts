@@ -2,6 +2,7 @@ import type {
   TransformersJsProductionInvestigationError,
   TransformersJsProductionInvestigationObservation,
   TransformersJsProductionInvestigationPartialObservation,
+  TransformersJsModelLoadProgressObservation,
 } from '@/features/transformers-js/types';
 import type { WorkerProxy } from '@/utils/worker-transport';
 
@@ -322,6 +323,7 @@ export type ModelSupportInvestigationToolTemplateProvenance =
 export interface ModelSupportInvestigationTemplateBehavior {
   normalizedModelId: string,
   resolvedRevision: string,
+  loaderRevisionOption?: string | null,
   tokenizerClass: string,
   declaredChatTemplate: ModelSupportInvestigationJsonValue | undefined,
   cases: ModelSupportInvestigationTemplateCase[],
@@ -631,8 +633,13 @@ export interface ModelSupportInvestigationLoadAttempt {
   dtype: ModelSupportInvestigationCandidateDtype,
   autoClass: ModelSupportInvestigationGenerationAutoClassName | undefined,
   resolvedRevision: string,
+  loaderRevisionOption?: string | null,
   startedAt: string,
   completedAt: string,
+  /** Wall-clock time spent in the model from_pretrained/load operation for this candidate. */
+  modelLoadDurationMs?: number,
+  /** Final bounded summary of raw Transformers.js model-load progress callbacks. */
+  modelLoadProgress?: ModelSupportInvestigationProgressObservation,
   status: "passed" | "failed" | "blocked",
   failureStage: ModelSupportInvestigationLoadAttemptStage | undefined,
   events: ModelSupportInvestigationLoadAttemptEvent[],
@@ -659,8 +666,11 @@ export interface ModelSupportInvestigationLoadAttemptCheckpoint {
   dtype: ModelSupportInvestigationCandidateDtype,
   autoClass: ModelSupportInvestigationGenerationAutoClassName | undefined,
   resolvedRevision: string,
+  loaderRevisionOption?: string | null,
   startedAt: string,
   checkpointedAt: string,
+  modelLoadDurationMs?: number,
+  modelLoadProgress?: ModelSupportInvestigationProgressObservation,
   status: "running",
   currentStage: ModelSupportInvestigationLoadAttemptStage,
   events: ModelSupportInvestigationLoadAttemptEvent[],
@@ -924,25 +934,7 @@ export interface ModelSupportInvestigationEvidencePackageAssessment {
   limitations: string[],
 }
 
-export interface ModelSupportInvestigationProgressObservation {
-  kind: "model-load",
-  candidateId: string,
-  sourceStatus: string,
-  currentFile: string | undefined,
-  fileLoaded: number | undefined,
-  fileTotal: number | undefined,
-  fileProgress: number | undefined,
-  aggregateLoaded: number | undefined,
-  aggregateTotal: number | undefined,
-  aggregateProgress: number | undefined,
-  eventCount: number,
-  progressEventCount: number,
-  progressTotalEventCount: number,
-  forwardProgressCount: number,
-  repeatedWithoutForwardProgressCount: number,
-  lastActivityAt: string,
-  lastForwardProgressAt: string | undefined,
-}
+export type ModelSupportInvestigationProgressObservation = TransformersJsModelLoadProgressObservation;
 
 export interface ModelSupportInvestigationEvent {
   stepId: ModelSupportInvestigationStepId,
@@ -961,6 +953,8 @@ export interface ModelSupportInvestigationRecovery {
   status: "running" | "completed" | "interrupted",
   checkpointSequence: number,
   checkpointedAt: string,
+  totalEventCount: number,
+  droppedEventCount: number,
   lastEvent: ModelSupportInvestigationRecordedEvent | undefined,
   events: ModelSupportInvestigationRecordedEvent[],
   interruption: {
@@ -987,7 +981,6 @@ export interface IModelSupportInvestigationWorker {
     repository: ModelSupportInvestigationRepository,
     declarations: ModelSupportInvestigationModelDeclarations,
     templateBehavior: ModelSupportInvestigationTemplateBehavior | undefined,
-    cacheRevisionAliases: import('@/features/transformers-js/types').TransformersJsCacheRevisionAlias[],
     candidate: ModelSupportInvestigationCandidateFilePlan,
     onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
     onAttemptEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationLoadAttemptEvent }) => void>,
@@ -1001,6 +994,7 @@ export interface ModelSupportInvestigationWorkerClient {
     onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
     onCheckpoint: ({ checkpoint }: { checkpoint: ModelSupportInvestigationCheckpoint }) => void,
   }): Promise<ModelSupportInvestigationRun>,
+  interrupt(): Promise<void>,
   dispose(): Promise<void>,
 }
 

@@ -1,11 +1,14 @@
 import type {
   ModelSupportInvestigationCheckpoint,
   ModelSupportInvestigationEvent,
+  ModelSupportInvestigationRecordedEvent,
   ModelSupportInvestigationRecovery,
   ModelSupportInvestigationRun,
   ModelSupportInvestigationStep,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
+
+const MAXIMUM_RETAINED_EVENTS = 512;
 
 const LATER_STEPS: ModelSupportInvestigationStep[] = [
   { id: "repository-information", status: "not-run", detail: undefined },
@@ -36,6 +39,37 @@ function nextRecovery({
     status,
     checkpointSequence: recovery.checkpointSequence + 1,
     checkpointedAt,
+  };
+}
+
+function retainRecordedEvent({
+  events,
+  event,
+}: {
+  events: ModelSupportInvestigationRecordedEvent[],
+  event: ModelSupportInvestigationRecordedEvent,
+}): {
+  events: ModelSupportInvestigationRecordedEvent[],
+  dropped: boolean,
+} {
+  if (events.length < MAXIMUM_RETAINED_EVENTS) {
+    return { events: [...events, event], dropped: false };
+  }
+
+  // Preserve semantic stage boundaries preferentially. Progress samples are
+  // diagnostic telemetry and may be discarded once the bounded recovery
+  // journal is full; their cumulative counters remain in the retained latest
+  // sample. If semantic events themselves exceed the hard bound, drop the
+  // oldest event rather than allowing recovery checkpoints to grow forever.
+  const oldestProgressIndex = events.findIndex(item => item.progress !== undefined);
+  const dropIndex = oldestProgressIndex >= 0 ? oldestProgressIndex : 0;
+  return {
+    events: [
+      ...events.slice(0, dropIndex),
+      ...events.slice(dropIndex + 1),
+      event,
+    ],
+    dropped: true,
   };
 }
 
@@ -79,6 +113,8 @@ export function createInitialInvestigationCheckpoint({
       status: "running",
       checkpointSequence: 0,
       checkpointedAt: at,
+      totalEventCount: 0,
+      droppedEventCount: 0,
       lastEvent: undefined,
       events: [],
       interruption: undefined,
@@ -96,22 +132,30 @@ export function recordInvestigationEvent({
   now: () => string,
 }): ModelSupportInvestigationCheckpoint {
   const at = now();
-  const sequence = checkpoint.recovery.events.length + 1;
+  const sequence = checkpoint.recovery.totalEventCount + 1;
   const recordedEvent = { ...event, sequence, at };
-  const run = cloneRun({ run: checkpoint.run });
-  run.completedAt = at;
-  run.currentOperation = event.detail;
-  run.steps = run.steps.map(step => (
-    step.id === event.stepId
-      ? { ...step, status: event.status, detail: event.detail }
-      : step
-  ));
+  const retained = retainRecordedEvent({ events: checkpoint.recovery.events, event: recordedEvent });
+  // This is a hot path during model load. Do not deep-clone the entire run for
+  // telemetry: only the top-level fields and changed step need a new object.
+  // Full run cloning remains at actual Worker checkpoint boundaries.
+  const run: ModelSupportInvestigationRun = {
+    ...checkpoint.run,
+    completedAt: at,
+    currentOperation: event.detail,
+    steps: checkpoint.run.steps.map(step => (
+      step.id === event.stepId
+        ? { ...step, status: event.status, detail: event.detail }
+        : step
+    )),
+  };
   return {
     run,
     recovery: {
       ...nextRecovery({ recovery: checkpoint.recovery, status: "running", checkpointedAt: at }),
+      totalEventCount: sequence,
+      droppedEventCount: checkpoint.recovery.droppedEventCount + (retained.dropped ? 1 : 0),
       lastEvent: recordedEvent,
-      events: [...checkpoint.recovery.events, recordedEvent],
+      events: retained.events,
       interruption: undefined,
     },
   };
@@ -201,4 +245,5 @@ export function interruptInvestigationCheckpoint({
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  MAXIMUM_RETAINED_EVENTS,
 };

@@ -25,7 +25,7 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
       async prefetchUrls({ urls: _urls, progressCallback: _progressCallback }) {
         throw createUnavailableEnvironmentError();
       },
-      async loadModel({ modelId: _modelId, progressCallback: _progressCallback }) {
+      async loadDownloadedModel({ modelId: _modelId, progressCallback: _progressCallback }) {
         throw createUnavailableEnvironmentError();
       },
       async unloadModel() {
@@ -66,12 +66,12 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
       return remote.prefetchUrls(urls, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
     },
-    async loadModel({ modelId, progressCallback }: {
+    async loadDownloadedModel({ modelId, progressCallback }: {
       modelId: string,
       progressCallback: TransformersJsProgressCallback,
     }): Promise<ModelLoadResult> {
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-      return remote.loadModel(modelId, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
+      return remote.loadDownloadedModel(modelId, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
     },
     async unloadModel(): Promise<void> {
       return remote.unloadModel();

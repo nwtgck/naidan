@@ -9,7 +9,7 @@ import type {
 } from "@/features/transformers-js/model-support-investigation/types";
 import type {
   ITransformersJsWorker,
-  TransformersJsProgressCallback,
+  TransformersJsProductionInvestigationProgressCallback,
 } from "@/features/transformers-js/types";
 
 async function releaseRemote({ remote, ports }: {
@@ -76,7 +76,6 @@ describe("Transformers.js Comlink transport contracts", () => {
         _repository,
         _declarations,
         _templateBehavior,
-        _cacheRevisionAliases,
         _candidate,
         onEvent,
         onAttemptEvent,
@@ -105,7 +104,6 @@ describe("Transformers.js Comlink transport contracts", () => {
         {} as never,
         {} as never,
         {} as never,
-        [] as never,
         {} as never,
         Comlink.proxy(onEvent),
         Comlink.proxy(onAttemptEvent),
@@ -133,13 +131,13 @@ describe("Transformers.js Comlink transport contracts", () => {
     type ProductionRemote = Pick<ITransformersJsWorker, "runModelSupportInvestigationScenario">;
     const exposedWorker: ProductionRemote = {
       async runModelSupportInvestigationScenario(scenario, progressCallback) {
-        progressCallback({ info: { status: "model-support-production-model-load" } });
+        progressCallback({ event: { kind: "stage", status: "model-support-production-model-load" } });
         return { modelId: scenario.modelId } as never;
       },
     };
     Comlink.expose(exposedWorker, ports.port1 as unknown as Comlink.Endpoint);
     const remote = Comlink.wrap<ProductionRemote>(ports.port2 as unknown as Comlink.Endpoint);
-    const progressCallback = vi.fn<TransformersJsProgressCallback>();
+    const progressCallback = vi.fn<TransformersJsProductionInvestigationProgressCallback>();
 
     try {
       const result = await remote.runModelSupportInvestigationScenario(
@@ -153,7 +151,7 @@ describe("Transformers.js Comlink transport contracts", () => {
         expect(progressCallback).toHaveBeenCalledTimes(1);
       });
       expect(progressCallback).toHaveBeenCalledWith({
-        info: { status: "model-support-production-model-load" },
+        event: { kind: "stage", status: "model-support-production-model-load" },
       });
     } finally {
       await releaseRemote({ remote, ports });
