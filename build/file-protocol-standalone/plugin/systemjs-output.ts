@@ -5,6 +5,7 @@ import type { Plugin } from 'vite';
 import { profileBuildAsync, profileBuildSync } from '../../build-profile.js';
 import type { ChunkDiagnostic, StandaloneBuildDiagnostics } from './diagnostics.js';
 import { rewriteStandaloneHtml } from './html-rewrite.js';
+import { createSystemJsProfileCorpus, type SystemJsProfileCorpus } from './systemjs-profile-corpus.js';
 import {
   createSystemJsFileScriptLoaderPatchSource,
   createSystemJsPhysicalLoadRecoverySource,
@@ -14,9 +15,11 @@ import { babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin 
 async function transformOutputChunkToSystemJsInPlace({
   output,
   diagnostics,
+  profileCorpus,
 }: Readonly<{
   output: OutputChunk;
   diagnostics: StandaloneBuildDiagnostics;
+  profileCorpus: SystemJsProfileCorpus | undefined;
 }>): Promise<void> {
   const chunkRecord: ChunkDiagnostic = {
     fileName: output.fileName,
@@ -28,6 +31,8 @@ async function transformOutputChunkToSystemJsInPlace({
     moduleIds: Object.keys(output.modules),
     beforeBytes: Buffer.byteLength(output.code),
   };
+  const corpusInput = profileCorpus?.captureInput({ output });
+  const babelStartedAt = corpusInput === undefined ? undefined : process.hrtime.bigint();
   const transformed = await profileBuildAsync({
     name: 'standalone.systemjs.babel-transform',
     sample: { inputChars: output.code.length, items: 1 },
@@ -46,6 +51,13 @@ async function transformOutputChunkToSystemJsInPlace({
     }),
   });
   if (!transformed?.code) throw new Error(`No SystemJS transform output for ${output.fileName}`);
+  if (corpusInput !== undefined && babelStartedAt !== undefined) {
+    profileCorpus?.recordResult({
+      input: corpusInput,
+      babelWallMs: Number(process.hrtime.bigint() - babelStartedAt) / 1_000_000,
+      outputCode: transformed.code,
+    });
+  }
   if (!transformed.code.includes('System.register(')) {
     throw new Error(`SystemJS transform did not emit System.register for ${output.fileName}`);
   }
@@ -115,9 +127,14 @@ export function createSystemJsOutputPlugin({
           (output): output is OutputChunk => output.type === 'chunk',
         );
         const outputByFileName = new Map(outputs.map(output => [output.fileName, output]));
+        const profileCorpus = createSystemJsProfileCorpus();
         const chunkByFileName = new Map(chunkOutputs.map(output => [output.fileName, output]));
-        for (const output of chunkOutputs) {
-          await transformOutputChunkToSystemJsInPlace({ output, diagnostics });
+        try {
+          for (const output of chunkOutputs) {
+            await transformOutputChunkToSystemJsInPlace({ output, diagnostics, profileCorpus });
+          }
+        } finally {
+          profileCorpus?.write();
         }
 
         const htmlOutputs = Object.values(bundle).filter(

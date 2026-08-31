@@ -23,12 +23,14 @@ const pluginReports = ['standalone', 'hosted']
 const cpuReports = ['vue-tsc', 'standalone', 'hosted']
   .map(mode => ({ mode, report: readJson({ filePath: path.join(profileRoot, `${mode}-cpu-summary.json`) }) }))
   .filter(({ report }) => report !== undefined);
+const systemJsCorpus = readJson({ filePath: path.join(profileRoot, 'systemjs-corpus', 'manifest.json') });
 
 const overview = {
   format: 'naidan-temporary-build-profile-overview-v1',
   phases,
   pluginReports,
   cpuReports,
+  systemJsCorpus,
 };
 fs.writeFileSync(path.join(profileRoot, 'overview.json'), `${JSON.stringify(overview, null, 2)}\n`);
 
@@ -51,6 +53,31 @@ for (const report of pluginReports) {
   }
   lines.push('');
 }
+
+if (systemJsCorpus?.summary) {
+  const summary = systemJsCorpus.summary;
+  lines.push(
+    '## SystemJS pre-transform corpus',
+    '',
+    '| metric | value |',
+    '|---|---:|',
+    `| chunks | ${summary.chunks} |`,
+    `| total input bytes | ${summary.totalInputBytes} |`,
+    `| total output bytes | ${summary.totalOutputBytes} |`,
+    `| Babel wall ms | ${summary.totalBabelWallMs.toFixed(3)} |`,
+    `| Babel avg ms/chunk | ${summary.averageBabelWallMs.toFixed(3)} |`,
+    `| Babel p50 ms/chunk | ${summary.p50BabelWallMs.toFixed(3)} |`,
+    `| Babel p90 ms/chunk | ${summary.p90BabelWallMs.toFixed(3)} |`,
+    `| Babel p95 ms/chunk | ${summary.p95BabelWallMs.toFixed(3)} |`,
+    `| Babel p99 ms/chunk | ${summary.p99BabelWallMs.toFixed(3)} |`,
+    `| Babel max ms/chunk | ${summary.maxBabelWallMs.toFixed(3)} |`,
+    `| corpus SHA-256 | ${summary.corpusSha256} |`,
+    '',
+    'The input files under `systemjs-corpus/input/` are the exact ESM chunks presented to Babel before SystemJS lowering.',
+    '',
+  );
+}
+
 for (const { mode, report } of cpuReports) {
   const profile = report.profiles?.[0];
   if (!profile) continue;

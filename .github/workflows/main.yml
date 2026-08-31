@@ -125,16 +125,12 @@ jobs:
 
       - name: Run profiled build
         shell: bash
-        env:
-          NAIDAN_BUILD_PROFILE_DIR: ${{ runner.temp }}/naidan-build-profile/plugin-phases
         run: |
           set -euo pipefail
           PROFILE_ROOT="$RUNNER_TEMP/naidan-build-profile"
           mkdir -p \
             "$PROFILE_ROOT/plugin-phases" \
-            "$PROFILE_ROOT/vue-tsc-cpu" \
-            "$PROFILE_ROOT/standalone-cpu" \
-            "$PROFILE_ROOT/hosted-cpu"
+            "$PROFILE_ROOT/systemjs-corpus"
 
           {
             echo "git_sha=$(git rev-parse HEAD)"
@@ -150,6 +146,12 @@ jobs:
             lscpu || true
             echo
             free -b || true
+            echo
+            npm ls --depth=0 \
+              @babel/core \
+              @babel/plugin-transform-dynamic-import \
+              @babel/plugin-transform-modules-systemjs \
+              vite rolldown || true
           } > "$PROFILE_ROOT/environment.txt"
 
           : > "$PROFILE_ROOT/top-level-phases.tsv"
@@ -172,19 +174,23 @@ jobs:
             return "$status"
           }
 
-          # This is the same build order as `vue-tsc -b && npm run build:all`,
-          # but split only so each top-level phase gets an independent CPU/RSS profile.
+          # Keep the production build order, but do not enable V8 CPU profiling in this
+          # pass. The previous profiling run already captured hotspot attribution; this pass
+          # is the canonical wall/RSS timing used to estimate real SWC savings without
+          # profiler overhead. Standalone also exports the exact pre-SystemJS ESM corpus.
           run_profiled vue-tsc \
-            node --cpu-prof --cpu-prof-dir="$PROFILE_ROOT/vue-tsc-cpu" \
             ./node_modules/vue-tsc/bin/vue-tsc.js -b
 
           run_profiled standalone \
-            node --cpu-prof --cpu-prof-dir="$PROFILE_ROOT/standalone-cpu" \
-            ./node_modules/vite/bin/vite.js build --mode standalone --logLevel warn
+            env \
+              NAIDAN_BUILD_PROFILE_DIR="$PROFILE_ROOT/plugin-phases" \
+              NAIDAN_SYSTEMJS_PROFILE_CORPUS_DIR="$PROFILE_ROOT/systemjs-corpus" \
+            node ./node_modules/vite/bin/vite.js build --mode standalone --logLevel warn
 
           run_profiled hosted \
-            node --cpu-prof --cpu-prof-dir="$PROFILE_ROOT/hosted-cpu" \
-            ./node_modules/vite/bin/vite.js build --mode hosted --logLevel warn
+            env \
+              NAIDAN_BUILD_PROFILE_DIR="$PROFILE_ROOT/plugin-phases" \
+            node ./node_modules/vite/bin/vite.js build --mode hosted --logLevel warn
 
       - name: Summarize build profile
         if: ${{ always() }}
@@ -192,15 +198,12 @@ jobs:
         run: |
           PROFILE_ROOT="$RUNNER_TEMP/naidan-build-profile"
           mkdir -p "$PROFILE_ROOT"
-          for phase in vue-tsc standalone hosted; do
-            node scripts/summarize-cpu-profile.mjs \
-              "$PROFILE_ROOT/${phase}-cpu" \
-              "$PROFILE_ROOT/${phase}-cpu-summary.json" \
-              "$PROFILE_ROOT/${phase}-cpu-summary.txt" || true
-          done
           if [ -d dist ]; then
             find dist -type f -printf '%s\t%p\n' | sort -nr > "$PROFILE_ROOT/artifact-sizes.tsv"
             du -sb dist > "$PROFILE_ROOT/dist-total-bytes.txt" || true
+          fi
+          if [ -f "$PROFILE_ROOT/environment.txt" ] && [ -d "$PROFILE_ROOT/systemjs-corpus" ]; then
+            cp "$PROFILE_ROOT/environment.txt" "$PROFILE_ROOT/systemjs-corpus/environment.txt"
           fi
           node scripts/summarize-build-profile.mjs "$PROFILE_ROOT" || true
 
@@ -210,6 +213,14 @@ jobs:
         with:
           name: temporary-naidan-build-profile
           path: ${{ runner.temp }}/naidan-build-profile/
+          if-no-files-found: warn
+
+      - name: Upload temporary SystemJS input corpus
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: temporary-naidan-systemjs-corpus
+          path: ${{ runner.temp }}/naidan-build-profile/systemjs-corpus/
           if-no-files-found: warn
 
       - name: Set up Go
