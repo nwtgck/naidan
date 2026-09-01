@@ -101,16 +101,30 @@ describe("wesh sed", () => {
     const consumedHelp = await execute({
       script: "sed -e --help",
     });
+    const abbreviatedHelp = await execute({
+      script: "sed --hel --definitely-invalid-option",
+    });
+    const consumedAbbreviatedHelp = await execute({
+      script: "sed -e --hel",
+    });
 
     expect(helpFirst.stdout.text).toContain("Stream editor for filtering and transforming text");
     expect(helpFirst.stderr.text).toBe("");
     expect(helpFirst.result.exitCode).toBe(0);
     expect(invalidFirst.stdout.text).toBe("");
     expect(invalidFirst.stderr.text).toContain("sed: unrecognized option '--definitely-invalid-option'");
+    expect(invalidFirst.stderr.text).toContain("--follow-symlinks");
+    expect(invalidFirst.stderr.text).toContain("--help");
     expect(invalidFirst.result.exitCode).toBe(1);
     expect(consumedHelp.stdout.text).toBe("");
     expect(consumedHelp.stderr.text).not.toBe("");
     expect(consumedHelp.result.exitCode).toBe(1);
+    expect(abbreviatedHelp.stdout.text).toContain("Stream editor for filtering and transforming text");
+    expect(abbreviatedHelp.stderr.text).toBe("");
+    expect(abbreviatedHelp.result.exitCode).toBe(0);
+    expect(consumedAbbreviatedHelp.stdout.text).toBe("");
+    expect(consumedAbbreviatedHelp.stderr.text).not.toBe("");
+    expect(consumedAbbreviatedHelp.result.exitCode).toBe(1);
   });
 
   it("applies substitution scripts from the command line", async () => {
@@ -1015,6 +1029,28 @@ beta
 AlphA
 betA
 `);
+  });
+
+  it("keeps explicit empty and help-looking in-place suffixes in argv semantics", async () => {
+    await writeFile({ path: "inline-empty.txt", data: "alpha\n" });
+    await writeFile({ path: "attached-help.txt", data: "alpha\n" });
+
+    const inlineEmpty = await execute({
+      script: "sed --in-place= 's/alpha/ALPHA/' inline-empty.txt",
+    });
+    const attachedHelp = await execute({
+      script: "sed -i--help 's/alpha/ALPHA/' attached-help.txt",
+    });
+
+    expect(inlineEmpty.stdout.text).toBe("");
+    expect(inlineEmpty.stderr.text).toBe("");
+    expect(inlineEmpty.result.exitCode).toBe(0);
+    expect(await readFile({ path: "inline-empty.txt" })).toBe("ALPHA\n");
+    expect(attachedHelp.stdout.text).toBe("");
+    expect(attachedHelp.stderr.text).toBe("");
+    expect(attachedHelp.result.exitCode).toBe(0);
+    expect(await readFile({ path: "attached-help.txt" })).toBe("ALPHA\n");
+    expect(await readFile({ path: "attached-help.txt--help" })).toBe("alpha\n");
   });
 
   it("supports suffix-less in-place editing at the end of short option bundles", async () => {
@@ -2535,14 +2571,79 @@ A
     }
   });
 
+  it("executes GNU e commands and routes in-place shell output to the edited file", async () => {
+    const explicit = await execute({
+      script: String.raw`sed -n 'e printf X'`,
+      stdinText: "alpha\n",
+    });
+    const bare = await execute({
+      script: "sed -n -e e -e p",
+      stdinText: "printf X\n",
+    });
+    await writeFile({ path: "input.txt", data: "alpha\n" });
+    const inPlace = await execute({
+      script: String.raw`sed -i -n -e 'e printf X' -e p input.txt`,
+    });
+
+    expect(explicit.stdout.text).toBe("X");
+    expect(explicit.stderr.text).toBe("");
+    expect(explicit.result.exitCode).toBe(0);
+    expect(bare.stdout.text).toBe("X\n");
+    expect(bare.stderr.text).toBe("");
+    expect(bare.result.exitCode).toBe(0);
+    expect(inPlace.stdout.text).toBe("");
+    expect(inPlace.stderr.text).toBe("");
+    expect(inPlace.result.exitCode).toBe(0);
+    expect(await readFile({ path: "input.txt" })).toBe("Xalpha\n");
+  });
+
+  it("supports GNU substitution e flags with p-order and record termination", async () => {
+    const printBeforeExecution = await execute({
+      script: String.raw`sed -n 's/x/printf Y/pe'`,
+      stdinText: "x\n",
+    });
+    const printAfterExecution = await execute({
+      script: String.raw`sed -n 's/x/printf Y/ep'`,
+      stdinText: "x\n",
+    });
+    const terminated = await execute({
+      script: String.raw`sed 's/x/printf Y/e'`,
+      stdinText: "x\n",
+    });
+    const unterminated = await execute({
+      script: String.raw`sed 's/x/printf Y/e'`,
+      stdinText: "x",
+    });
+    const repeatedExecuteFlag = await execute({
+      script: String.raw`sed -n 's/x/printf Y/eep'`,
+      stdinText: "x\n",
+    });
+
+    expect(printBeforeExecution.stdout.text).toBe("printf Y\n");
+    expect(printAfterExecution.stdout.text).toBe("Y\n");
+    expect(terminated.stdout.text).toBe("Y\n");
+    expect(unterminated.stdout.text).toBe("Y");
+    expect(repeatedExecuteFlag.stdout.text).toBe("Y\n");
+    for (const outcome of [
+      printBeforeExecution,
+      printAfterExecution,
+      terminated,
+      unterminated,
+      repeatedExecuteFlag,
+    ]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+  });
+
   it("reports unsupported commands with usage", async () => {
     await writeFile({ path: "input.txt", data: "alpha\n" });
     const { result, stdout, stderr } = await execute({
-      script: "sed 'e echo hi' input.txt",
+      script: "sed 'j' input.txt",
     });
 
     expect(stdout.text).toBe("");
-    expect(stderr.text).toContain("sed: unsupported sed command 'e'");
+    expect(stderr.text).toContain("sed: unsupported sed command 'j'");
     expect(stderr.text).toContain("usage: sed");
     expect(result.exitCode).toBe(1);
   });
@@ -4526,6 +4627,65 @@ bbb:aaa
       expect(outcome.stderr.text).toBe("");
       expect(outcome.result.exitCode).toBe(0);
     }
+  });
+
+  it("accepts GNU long-option prefixes and the hidden binary no-op", async () => {
+    const quietPrefix = await execute({
+      script: String.raw`sed --qui -e 'p'`,
+      stdinText: `\
+a
+`,
+    });
+    const regexpPrefix = await execute({
+      script: String.raw`sed --reg -n -e 's/(a)/X/p'`,
+      stdinText: `\
+a
+`,
+    });
+    const binaryPrefix = await execute({
+      script: String.raw`sed --bi -n -e 'p'`,
+      stdinText: `a\r\n`,
+    });
+    const ambiguous = await execute({
+      script: String.raw`sed --s -n -e 'p'`,
+      stdinText: `\
+a
+`,
+    });
+
+    expect(quietPrefix.stdout.text).toBe(`\
+a
+`);
+    expect(regexpPrefix.stdout.text).toBe(`\
+X
+`);
+    expect(binaryPrefix.stdout.text).toBe(`a\r\n`);
+    for (const outcome of [quietPrefix, regexpPrefix, binaryPrefix]) {
+      expect(outcome.stderr.text).toBe("");
+      expect(outcome.result.exitCode).toBe(0);
+    }
+    expect(ambiguous.stdout.text).toBe("");
+    expect(ambiguous.stderr.text).not.toBe("");
+    expect(ambiguous.result.exitCode).toBe(1);
+  });
+
+  it("leaves unread stdin bytes for following commands in unbuffered mode", async () => {
+    const result = await execute({
+      script: String.raw`sed -u -n '1p;q'; cat`,
+      stdinText: `\
+one
+two
+three
+`,
+    });
+
+    expect(result.stdout.text).toBe(`\
+one
+two
+three
+`);
+    expect(result.stderr.text).toBe("");
+    expect(result.result.exitCode).toBe(0);
   });
 
   it("flushes unbuffered output before n waits for more input", async () => {
