@@ -14,7 +14,7 @@ import type {
   StandaloneBuildDiagnostics,
   ViteWorkerQueryRecord,
 } from '../diagnostics.js';
-import { babelTraverse } from '../../babel-runtime.js';
+import { babelTraverse } from '../../babel-traverse-runtime.js';
 import { isBabelNodeType } from './babel-node.js';
 
 function viteWorkerQueryFlags(specifier: string): string[] {

@@ -37,15 +37,12 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.7",
     "@babel/parser": "^7.29.7",
-    "@babel/plugin-transform-dynamic-import": "^7.29.7",
-    "@babel/plugin-transform-modules-systemjs": "^7.29.7",
     "@babel/traverse": "^7.29.7",
     "@eslint/js": "^10.0.1",
+    "@swc/core": "1.16.1",
     "@tailwindcss/postcss": "4.3.2",
     "@tailwindcss/typography": "0.5.20",
-    "@types/babel__core": "^7.20.5",
     "@types/he": "^1.2.3",
     "@types/jsdom": "^28.0.3",
     "@types/katex": "^0.16.8",

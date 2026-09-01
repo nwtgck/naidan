@@ -76,7 +76,7 @@ async function createSystemJsOutputHarness(): Promise<Readonly<{
   };
 }
 
-describe('file protocol standalone Vite config Babel interop', () => {
+describe('file protocol standalone Vite config build-runtime interop', () => {
   it('runs the Raw Worker AST policy through Vite config loading', async () => {
     const plugin = requirePlugin(
       await loadStandalonePlugins(),
@@ -88,7 +88,7 @@ describe('file protocol standalone Vite config Babel interop', () => {
     expect(plugin.transform.call(
       {} as never,
       'const worker = new Worker("worker.js");',
-      '/tmp/standalone-worker-babel-interop.ts',
+      '/tmp/standalone-worker-interop.ts',
     )).toBeNull();
 
     await plugin.generateBundle.call(
@@ -112,7 +112,7 @@ describe('file protocol standalone Vite config Babel interop', () => {
     );
   });
 
-  it('runs the SystemJS Babel transforms through Vite config loading', async () => {
+  it('runs the SystemJS transform through Vite config loading', async () => {
     const { generateBundle } = await createSystemJsOutputHarness();
     const bundle = {
       'assets/probe.js': {

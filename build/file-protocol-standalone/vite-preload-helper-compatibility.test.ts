@@ -2,12 +2,11 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import { transformAsync } from '@babel/core';
 import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import { resolveConfig, type Plugin } from 'vite';
 
-import { babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin } from './babel-runtime.js';
+import { transformToSystemJs } from './plugin/systemjs-transform.js';
 import { createNaidanStandalonePlugin } from './plugin.js';
 
 const require = createRequire(import.meta.url);
@@ -149,20 +148,11 @@ async function transformSystemJsFixture(): Promise<string> {
       : undefined;
   if (compatibilityCode === undefined) throw new Error('Expected compatibility transform output');
 
-  const transformed = await transformAsync(compatibilityCode, {
-    filename: 'vite-preload-helper.js',
-    babelrc: false,
-    configFile: false,
-    ast: false,
-    code: true,
-    compact: true,
-    minified: true,
-    comments: false,
-    sourceType: 'module',
-    sourceMaps: false,
-    plugins: [babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin],
+  const transformed = transformToSystemJs({
+    code: compatibilityCode,
+    fileName: 'vite-preload-helper.js',
   });
-  if (typeof transformed?.code !== 'string' || !transformed.code.includes('System.register(')) {
+  if (!transformed.code.includes('System.register(')) {
     throw new Error('Expected System.register preload helper output');
   }
   return transformed.code;

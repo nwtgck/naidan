@@ -1,4 +1,3 @@
-import { transformAsync } from '@babel/core';
 import { Buffer } from 'node:buffer';
 import type { OutputAsset, OutputChunk } from 'rolldown';
 import type { Plugin } from 'vite';
@@ -8,15 +7,15 @@ import {
   createSystemJsFileScriptLoaderPatchSource,
   createSystemJsPhysicalLoadRecoverySource,
 } from '../file-protocol-startup-support.js';
-import { babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin } from '../babel-runtime.js';
+import { transformToSystemJs } from './systemjs-transform.js';
 
-async function transformOutputChunkToSystemJsInPlace({
+function transformOutputChunkToSystemJsInPlace({
   output,
   diagnostics,
 }: Readonly<{
   output: OutputChunk;
   diagnostics: StandaloneBuildDiagnostics;
-}>): Promise<void> {
+}>): void {
   const chunkRecord: ChunkDiagnostic = {
     fileName: output.fileName,
     name: output.name,
@@ -27,23 +26,10 @@ async function transformOutputChunkToSystemJsInPlace({
     moduleIds: Object.keys(output.modules),
     beforeBytes: Buffer.byteLength(output.code),
   };
-  const transformed = await transformAsync(output.code, {
-    filename: output.fileName,
-    babelrc: false,
-    configFile: false,
-    ast: false,
-    code: true,
-    compact: true,
-    minified: true,
-    comments: false,
-    sourceType: 'module',
-    sourceMaps: false,
-    plugins: [babelTransformDynamicImportPlugin, babelTransformModulesSystemjsPlugin],
+  const transformed = transformToSystemJs({
+    code: output.code,
+    fileName: output.fileName,
   });
-  if (!transformed?.code) throw new Error(`No SystemJS transform output for ${output.fileName}`);
-  if (!transformed.code.includes('System.register(')) {
-    throw new Error(`SystemJS transform did not emit System.register for ${output.fileName}`);
-  }
   output.code = `${transformed.code}\n`;
   output.map = null;
   chunkRecord.afterBytes = Buffer.byteLength(output.code);
@@ -92,7 +78,7 @@ export function createSystemJsOutputPlugin({
     },
     generateBundle: {
       order: 'post',
-      async handler(_options, bundle) {
+      handler(_options, bundle) {
         if (systemJsFileScriptLoaderPatchReferenceId === undefined || systemJsRetryHookReferenceId === undefined) {
           throw new Error('SystemJS support assets were not emitted before generateBundle');
         }
@@ -112,7 +98,7 @@ export function createSystemJsOutputPlugin({
         const outputByFileName = new Map(outputs.map(output => [output.fileName, output]));
         const chunkByFileName = new Map(chunkOutputs.map(output => [output.fileName, output]));
         for (const output of chunkOutputs) {
-          await transformOutputChunkToSystemJsInPlace({ output, diagnostics });
+          transformOutputChunkToSystemJsInPlace({ output, diagnostics });
         }
 
         const htmlOutputs = Object.values(bundle).filter(

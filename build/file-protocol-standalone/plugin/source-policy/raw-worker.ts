@@ -10,7 +10,7 @@ import type {
 } from '../diagnostics.js';
 import { isOutputChunk } from '../output-graph.js';
 import { isBabelNode, isBabelNodeType, staticMemberPropertyName } from './babel-node.js';
-import { babelTraverse } from '../../babel-runtime.js';
+import { babelTraverse } from '../../babel-traverse-runtime.js';
 
 type WorkerResolution = Readonly<{kind: WorkerConstructorKind; calleeForm: string}>;
 type BabelNodePath = NodePath<unknown>;
