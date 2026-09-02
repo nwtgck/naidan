@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import type { OutputAsset, OutputChunk } from 'rolldown';
 import type { Plugin } from 'vite';
+import { profileBuildSync } from '../../build-profile.js';
 import type { ChunkDiagnostic, StandaloneBuildDiagnostics } from './diagnostics.js';
 import { rewriteStandaloneHtml } from './html-rewrite.js';
 import {
@@ -26,9 +27,17 @@ function transformOutputChunkToSystemJsInPlace({
     moduleIds: Object.keys(output.modules),
     beforeBytes: Buffer.byteLength(output.code),
   };
-  const transformed = transformToSystemJs({
-    code: output.code,
-    fileName: output.fileName,
+  const transformed = profileBuildSync({
+    name: 'standalone.systemjs.swc-transform',
+    sample: {
+      detail: output.fileName,
+      inputChars: output.code.length,
+      items: 1,
+    },
+    run: () => transformToSystemJs({
+      code: output.code,
+      fileName: output.fileName,
+    }),
   });
   output.code = `${transformed.code}\n`;
   output.map = null;
@@ -108,16 +117,24 @@ export function createSystemJsOutputPlugin({
           throw new Error(`Naidan standalone output requires exactly one HTML entry; found ${htmlOutputs.length}`);
         }
         for (const output of htmlOutputs) {
-          rewriteStandaloneHtml({
-            output,
-            outputByFileName,
-            chunkByFileName,
-            systemRuntimeFileName,
-            systemJsFileScriptLoaderPatchFileName,
-            systemJsRetryHookFileName,
-            startupSlowNoticeDelayMs,
-            effectFreeEmptyCssFileNames,
-            diagnostics,
+          profileBuildSync({
+            name: 'standalone.systemjs.rewrite-html',
+            sample: {
+              detail: output.fileName,
+              inputChars: typeof output.source === 'string' ? output.source.length : output.source.byteLength,
+              items: 1,
+            },
+            run: () => rewriteStandaloneHtml({
+              output,
+              outputByFileName,
+              chunkByFileName,
+              systemRuntimeFileName,
+              systemJsFileScriptLoaderPatchFileName,
+              systemJsRetryHookFileName,
+              startupSlowNoticeDelayMs,
+              effectFreeEmptyCssFileNames,
+              diagnostics,
+            }),
           });
         }
 

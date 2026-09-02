@@ -8,6 +8,7 @@ import { __unstable__loadDesignSystem, compile } from 'tailwindcss';
 import { postprocessStaticTailwindCss } from './css-postprocessor';
 import { isTailwindMarkerCandidate } from './marker-candidates';
 import type { TailwindCandidateOccurrence } from './tw-class-core';
+import { profileBuildAsync, profileBuildSync } from '../build-profile.js';
 
 const require = createRequire(import.meta.url);
 
@@ -54,7 +55,11 @@ async function loadModule({ id, base }: {
 }): Promise<LoadedModule> {
   const resolvedPath = resolveDependency({ id, base, stylesheet: false });
   const modifiedAt = fs.statSync(resolvedPath).mtimeMs;
-  const namespace: Record<string, unknown> = await import(`${pathToFileURL(resolvedPath).href}?mtime=${modifiedAt}`);
+  const namespace: Record<string, unknown> = await profileBuildAsync({
+    name: 'tailwind.dependency.load-module',
+    sample: { detail: resolvedPath, items: 1 },
+    run: () => import(`${pathToFileURL(resolvedPath).href}?mtime=${modifiedAt}`),
+  });
   return {
     path: resolvedPath,
     base: path.dirname(resolvedPath),
@@ -72,7 +77,11 @@ function loadStylesheet({ id, base, stylesheetDependencies }: {
   return {
     path: resolvedPath,
     base: path.dirname(resolvedPath),
-    content: fs.readFileSync(resolvedPath, 'utf8'),
+    content: profileBuildSync({
+      name: 'tailwind.dependency.load-stylesheet',
+      sample: { detail: resolvedPath, items: 1 },
+      run: () => fs.readFileSync(resolvedPath, 'utf8'),
+    }),
   };
 }
 
@@ -129,10 +138,21 @@ export async function compileTailwindCss({
   const absoluteCssEntryPath = path.resolve(cssEntryPath);
   const stylesheetDependencies = new Set([absoluteCssEntryPath]);
   const css = fs.readFileSync(absoluteCssEntryPath, 'utf8');
-  const compiler = await compile(css, compileOptions({ absoluteCssEntryPath, stylesheetDependencies }));
+  const compiler = await profileBuildAsync({
+    name: 'tailwind.compile.create-compiler',
+    sample: { detail: absoluteCssEntryPath, inputChars: css.length, items: 1 },
+    run: () => compile(css, compileOptions({ absoluteCssEntryPath, stylesheetDependencies })),
+  });
+  const builtCss = profileBuildSync({
+    name: 'tailwind.compile.compiler-build',
+    sample: { detail: absoluteCssEntryPath, items: candidates.length },
+    run: () => compiler.build([...new Set(candidates)].sort()),
+  });
   return {
-    css: postprocessStaticTailwindCss({
-      css: compiler.build([...new Set(candidates)].sort()),
+    css: profileBuildSync({
+      name: 'tailwind.compile.postprocess-css',
+      sample: { detail: absoluteCssEntryPath, inputChars: builtCss.length, items: 1 },
+      run: () => postprocessStaticTailwindCss({ css: builtCss }),
     }),
     tailwindVersion: installedTailwindVersion,
     stylesheetDependencies: [...stylesheetDependencies].sort(),
@@ -159,21 +179,29 @@ export async function createTailwindCandidateValidator({
   }
   const absoluteCssEntryPath = path.resolve(cssEntryPath);
   const css = fs.readFileSync(absoluteCssEntryPath, 'utf8');
-  const designSystem = await __unstable__loadDesignSystem(
-    css,
-    compileOptions({
-      absoluteCssEntryPath,
-      stylesheetDependencies: new Set([absoluteCssEntryPath]),
-    }),
-  );
+  const designSystem = await profileBuildAsync({
+    name: 'tailwind.validator.load-design-system',
+    sample: { detail: absoluteCssEntryPath, inputChars: css.length, items: 1 },
+    run: () => __unstable__loadDesignSystem(
+      css,
+      compileOptions({
+        absoluteCssEntryPath,
+        stylesheetDependencies: new Set([absoluteCssEntryPath]),
+      }),
+    ),
+  });
 
   function classify({ candidates }: {
     candidates: string[];
   }): TailwindCandidateClassification {
     const uniqueCandidates = [...new Set(candidates)].sort();
-    const generatedCss = designSystem.candidatesToCss(uniqueCandidates).map((candidateCss) => (
-      candidateCss === null ? null : postprocessStaticTailwindCss({ css: candidateCss })
-    ));
+    const generatedCss = profileBuildSync({
+      name: 'tailwind.validator.classify-candidates',
+      sample: { detail: absoluteCssEntryPath, items: uniqueCandidates.length },
+      run: () => designSystem.candidatesToCss(uniqueCandidates).map((candidateCss) => (
+        candidateCss === null ? null : postprocessStaticTailwindCss({ css: candidateCss })
+      )),
+    });
     const generatedCandidates = uniqueCandidates.filter((_candidate, index) => generatedCss[index] !== null);
     const markerCandidates = uniqueCandidates.filter((candidate, index) => (
       generatedCss[index] === null && isTailwindMarkerCandidate({ candidate })

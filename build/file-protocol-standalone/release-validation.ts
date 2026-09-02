@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import type { Plugin } from 'vite';
+import { profileBuildAsync, profileBuildSync } from '../build-profile.js';
 
 import {
   collectStandaloneWorkerBudgetFailures,
@@ -204,38 +205,76 @@ export function createFileProtocolStandaloneReleaseValidationPlugin({
         await fs.rm(outputPath, { force: true });
       }
 
-      const files = await walkFiles(resolvedOutput);
-      const indexHtml = await fs.readFile(path.join(resolvedOutput, 'index.html'), 'utf8');
-      const initialStyleFileNames = assertFileProtocolStandaloneHtmlAfterRewrite({
-        html: indexHtml,
-        htmlFileName: 'index.html',
+      const files = await profileBuildAsync({
+        name: 'standalone.release-validation.walk-output-files',
+        sample: { detail: resolvedOutput },
+        run: () => walkFiles(resolvedOutput),
       });
-      const debugReport = await createStandaloneWorkerDebugBuildReport({
-        outputDirectory: resolvedOutput,
-        files,
-        chunks,
-        uiEntryFileName: uiEntries[0].fileName,
-        workers: workerEntries,
-        runtimeFileNames,
-        initialStyleFileNames,
-        bootstrapSourceBytes,
-        sanitizeModuleId,
+      const indexHtml = await profileBuildAsync({
+        name: 'standalone.release-validation.read-index-html',
+        sample: { detail: 'index.html', items: 1 },
+        run: () => fs.readFile(path.join(resolvedOutput, 'index.html'), 'utf8'),
       });
-      const plan = createStandaloneWorkerMetricsPlan({
-        files,
-        chunks,
-        uiEntryFileName: uiEntries[0].fileName,
-        workers: workerEntries,
-        runtimeFileNames,
-        initialStyleFileNames,
-        bootstrapSourceBytes,
-        sanitizeModuleId,
+      const initialStyleFileNames = profileBuildSync({
+        name: 'standalone.release-validation.validate-index-html',
+        sample: { detail: 'index.html', inputChars: indexHtml.length, items: 1 },
+        run: () => assertFileProtocolStandaloneHtmlAfterRewrite({
+          html: indexHtml,
+          htmlFileName: 'index.html',
+        }),
       });
-      const metrics = await measureStandaloneWorkerMetricsFromDisk({ plan, outputDirectory: resolvedOutput });
-      const budgetFailures = collectStandaloneWorkerBudgetFailures({ metrics, budgets });
-      const bundledPackages = await collectBundledPackageInstances({ chunks });
-      const collectedDependencies = await getCollectedLicenseDependencies();
-      const licenseAudit = auditLicenseCoverage({ bundledPackages, collectedDependencies, manualDependencies: manualLicenseDependencies });
+      const debugReport = await profileBuildAsync({
+        name: 'standalone.release-validation.create-debug-report',
+        sample: { items: chunks.length },
+        run: () => createStandaloneWorkerDebugBuildReport({
+          outputDirectory: resolvedOutput,
+          files,
+          chunks,
+          uiEntryFileName: uiEntries[0].fileName,
+          workers: workerEntries,
+          runtimeFileNames,
+          initialStyleFileNames,
+          bootstrapSourceBytes,
+          sanitizeModuleId,
+        }),
+      });
+      const plan = profileBuildSync({
+        name: 'standalone.release-validation.create-metrics-plan',
+        sample: { items: chunks.length },
+        run: () => createStandaloneWorkerMetricsPlan({
+          files,
+          chunks,
+          uiEntryFileName: uiEntries[0].fileName,
+          workers: workerEntries,
+          runtimeFileNames,
+          initialStyleFileNames,
+          bootstrapSourceBytes,
+          sanitizeModuleId,
+        }),
+      });
+      const metrics = await profileBuildAsync({
+        name: 'standalone.release-validation.measure-metrics-from-disk',
+        sample: { items: files.length },
+        run: () => measureStandaloneWorkerMetricsFromDisk({ plan, outputDirectory: resolvedOutput }),
+      });
+      const budgetFailures = profileBuildSync({
+        name: 'standalone.release-validation.collect-budget-failures',
+        run: () => collectStandaloneWorkerBudgetFailures({ metrics, budgets }),
+      });
+      const bundledPackages = await profileBuildAsync({
+        name: 'standalone.release-validation.collect-bundled-packages',
+        sample: { items: chunks.length },
+        run: () => collectBundledPackageInstances({ chunks }),
+      });
+      const collectedDependencies = await profileBuildAsync({
+        name: 'standalone.release-validation.collect-license-dependencies',
+        run: async () => getCollectedLicenseDependencies(),
+      });
+      const licenseAudit = profileBuildSync({
+        name: 'standalone.release-validation.audit-license-coverage',
+        sample: { items: bundledPackages.length + collectedDependencies.length },
+        run: () => auditLicenseCoverage({ bundledPackages, collectedDependencies, manualDependencies: manualLicenseDependencies }),
+      });
       const mergedLicenseIdentities = new Set(licenseAudit.merged.map(record => `${record.name}@${record.version}`));
       const missingExternalLicenseIdentities = requiredExternalLicenseIdentities.filter(identity => !mergedLicenseIdentities.has(identity));
       const failures = [
@@ -263,8 +302,14 @@ export function createFileProtocolStandaloneReleaseValidationPlugin({
           dependencies: licenseAudit.merged.map(sanitizeLicenseRecord),
         },
       } satisfies FileProtocolStandaloneReleaseReport;
-      await writeJsonAtomically(debugReportFile, debugReport);
-      await writeJsonAtomically(releaseReportFile, releaseReport);
+      await profileBuildAsync({
+        name: 'standalone.release-validation.write-reports',
+        sample: { items: 2 },
+        run: async () => {
+          await writeJsonAtomically(debugReportFile, debugReport);
+          await writeJsonAtomically(releaseReportFile, releaseReport);
+        },
+      });
       if (failures.length > 0) {
         throw new Error(`Standalone Worker release validation failed:\n${failures.map(failure => `- ${failure}`).join('\n')}`);
       }

@@ -191,6 +191,243 @@ jobs:
           name: naidan-server-binary
           path: naidan-server/naidan-server
 
+  build_profile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        uses: ./.github/actions/retry-npm-ci
+
+      - name: Ensure licenses.json exists
+        run: |
+          mkdir -p src/assets
+          echo '[{"name": "dummy-package-for-tests", "version": "0.0.0", "license": "DUMMY-LICENSE", "licenseText": "This is a placeholder for CI tests."}]' > src/assets/licenses.json
+
+      - name: Prepare exhaustive build profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE_ROOT="$RUNNER_TEMP/naidan-build-profile"
+          mkdir -p "$PROFILE_ROOT/plugin-phases" "$PROFILE_ROOT/cpu/vue-tsc" "$PROFILE_ROOT/cpu/standalone" "$PROFILE_ROOT/cpu/hosted"
+          : > "$PROFILE_ROOT/top-level-phases.tsv"
+          printf 'phase\twall_ms\texit_status\n' >> "$PROFILE_ROOT/top-level-phases.tsv"
+          {
+            echo "git_sha=$(git rev-parse HEAD)"
+            echo "date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "runner_os=${RUNNER_OS:-}"
+            echo "runner_arch=${RUNNER_ARCH:-}"
+            echo "runner_name=${RUNNER_NAME:-}"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            echo "nproc=$(nproc)"
+            echo
+            uname -a || true
+            echo
+            lscpu || true
+            echo
+            free -b || true
+            echo
+            df -h . || true
+            echo
+            ulimit -a || true
+            echo
+            npm ls --depth=0 @swc/core @babel/parser @babel/traverse typescript vue-tsc vite rolldown tailwindcss jszip || true
+          } > "$PROFILE_ROOT/environment.txt" 2>&1
+
+      - name: Run instrumentation-disabled control A
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE_ROOT="$RUNNER_TEMP/naidan-build-profile"
+
+          run_timed() {
+            local label="$1"
+            shift
+            local started ended wall_ms status
+            started=$(date +%s%N)
+            set +e
+            /usr/bin/time -v -o "$PROFILE_ROOT/${label}-time.txt" "$@" > "$PROFILE_ROOT/${label}.log" 2>&1
+            status=$?
+            set -e
+            ended=$(date +%s%N)
+            wall_ms=$(( (ended - started) / 1000000 ))
+            printf '%s\t%s\t%s\n' "$label" "$wall_ms" "$status" >> "$PROFILE_ROOT/top-level-phases.tsv"
+            return "$status"
+          }
+
+          rm -rf dist
+          rm -f node_modules/.tmp/tsconfig.app.tsbuildinfo node_modules/.tmp/tsconfig.node.tsbuildinfo
+
+          run_timed control-a-vue-tsc \
+            node ./node_modules/vue-tsc/bin/vue-tsc.js -b
+
+          run_timed control-a-standalone \
+            node ./node_modules/vite/bin/vite.js build --mode standalone --logLevel warn
+
+          run_timed control-a-hosted \
+            node ./node_modules/vite/bin/vite.js build --mode hosted --logLevel warn
+
+      - name: Run timing-only production-order profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE_ROOT="$RUNNER_TEMP/naidan-build-profile"
+
+          run_timed() {
+            local label="$1"
+            shift
+            local started ended wall_ms status
+            started=$(date +%s%N)
+            set +e
+            /usr/bin/time -v -o "$PROFILE_ROOT/${label}-time.txt" "$@" > "$PROFILE_ROOT/${label}.log" 2>&1
+            status=$?
+            set -e
+            ended=$(date +%s%N)
+            wall_ms=$(( (ended - started) / 1000000 ))
+            printf '%s\t%s\t%s\n' "$label" "$wall_ms" "$status" >> "$PROFILE_ROOT/top-level-phases.tsv"
+            return "$status"
+          }
+
+          rm -rf dist
+          rm -f node_modules/.tmp/tsconfig.app.tsbuildinfo node_modules/.tmp/tsconfig.node.tsbuildinfo
+
+          run_timed timing-vue-tsc \
+            node ./node_modules/vue-tsc/bin/vue-tsc.js -b --extendedDiagnostics
+
+          run_timed timing-standalone \
+            env \
+              NAIDAN_BUILD_PROFILE_DIR="$PROFILE_ROOT/plugin-phases" \
+              NAIDAN_BUILD_PROFILE_MODE=timing-standalone \
+            node ./node_modules/vite/bin/vite.js build --mode standalone --logLevel warn
+
+          run_timed timing-hosted \
+            env \
+              NAIDAN_BUILD_PROFILE_DIR="$PROFILE_ROOT/plugin-phases" \
+              NAIDAN_BUILD_PROFILE_MODE=timing-hosted \
+            node ./node_modules/vite/bin/vite.js build --mode hosted --logLevel warn
+
+          if [ -d dist ]; then
+            { printf 'bytes\tpath\n'; find dist -type f -printf '%s\t%p\n' | sort -nr; } > "$PROFILE_ROOT/artifact-sizes.tsv"
+            du -sb dist > "$PROFILE_ROOT/dist-total-bytes.txt" || true
+            mkdir -p "$PROFILE_ROOT/timing-dist-debug"
+            cp -f dist/debug-file-protocol-standalone-build-report.json "$PROFILE_ROOT/timing-dist-debug/" 2>/dev/null || true
+            cp -f dist/debug-file-protocol-standalone-release-validation.json "$PROFILE_ROOT/timing-dist-debug/" 2>/dev/null || true
+            for directory in dist/debug-tailwind-standalone dist/debug-tailwind-hosted; do
+              if [ -d "$directory" ]; then
+                destination="$PROFILE_ROOT/timing-dist-debug/$(basename "$directory")"
+                mkdir -p "$destination"
+                find "$directory" -maxdepth 1 -type f -name '*.json' -exec cp -f {} "$destination/" \;
+              fi
+            done
+          fi
+
+      - name: Run instrumentation-disabled control B
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE_ROOT="$RUNNER_TEMP/naidan-build-profile"
+
+          run_timed() {
+            local label="$1"
+            shift
+            local started ended wall_ms status
+            started=$(date +%s%N)
+            set +e
+            /usr/bin/time -v -o "$PROFILE_ROOT/${label}-time.txt" "$@" > "$PROFILE_ROOT/${label}.log" 2>&1
+            status=$?
+            set -e
+            ended=$(date +%s%N)
+            wall_ms=$(( (ended - started) / 1000000 ))
+            printf '%s\t%s\t%s\n' "$label" "$wall_ms" "$status" >> "$PROFILE_ROOT/top-level-phases.tsv"
+            return "$status"
+          }
+
+          rm -rf dist
+          rm -f node_modules/.tmp/tsconfig.app.tsbuildinfo node_modules/.tmp/tsconfig.node.tsbuildinfo
+
+          run_timed control-b-vue-tsc \
+            node ./node_modules/vue-tsc/bin/vue-tsc.js -b
+
+          run_timed control-b-standalone \
+            node ./node_modules/vite/bin/vite.js build --mode standalone --logLevel warn
+
+          run_timed control-b-hosted \
+            node ./node_modules/vite/bin/vite.js build --mode hosted --logLevel warn
+
+      - name: Run separate CPU-profile production-order pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE_ROOT="$RUNNER_TEMP/naidan-build-profile"
+
+          run_timed() {
+            local label="$1"
+            shift
+            local started ended wall_ms status
+            started=$(date +%s%N)
+            set +e
+            /usr/bin/time -v -o "$PROFILE_ROOT/${label}-time.txt" "$@" > "$PROFILE_ROOT/${label}.log" 2>&1
+            status=$?
+            set -e
+            ended=$(date +%s%N)
+            wall_ms=$(( (ended - started) / 1000000 ))
+            printf '%s\t%s\t%s\n' "$label" "$wall_ms" "$status" >> "$PROFILE_ROOT/top-level-phases.tsv"
+            return "$status"
+          }
+
+          rm -rf dist
+          rm -f node_modules/.tmp/tsconfig.app.tsbuildinfo node_modules/.tmp/tsconfig.node.tsbuildinfo
+
+          run_timed cpu-vue-tsc \
+            node --cpu-prof --cpu-prof-interval=1000 --cpu-prof-dir="$PROFILE_ROOT/cpu/vue-tsc" \
+            ./node_modules/vue-tsc/bin/vue-tsc.js -b
+
+          run_timed cpu-standalone \
+            node --cpu-prof --cpu-prof-interval=1000 --cpu-prof-dir="$PROFILE_ROOT/cpu/standalone" \
+            ./node_modules/vite/bin/vite.js build --mode standalone --logLevel warn
+
+          run_timed cpu-hosted \
+            node --cpu-prof --cpu-prof-interval=1000 --cpu-prof-dir="$PROFILE_ROOT/cpu/hosted" \
+            ./node_modules/vite/bin/vite.js build --mode hosted --logLevel warn
+
+      - name: Summarize exhaustive build profile
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -u
+          PROFILE_ROOT="$RUNNER_TEMP/naidan-build-profile"
+          mkdir -p "$PROFILE_ROOT"
+          node scripts/summarize-cpu-profile.mjs \
+            "$PROFILE_ROOT/cpu/vue-tsc" \
+            "$PROFILE_ROOT/vue-tsc-cpu-summary.json" \
+            "$PROFILE_ROOT/vue-tsc-cpu-summary.txt" || true
+          node scripts/summarize-cpu-profile.mjs \
+            "$PROFILE_ROOT/cpu/standalone" \
+            "$PROFILE_ROOT/standalone-cpu-summary.json" \
+            "$PROFILE_ROOT/standalone-cpu-summary.txt" || true
+          node scripts/summarize-cpu-profile.mjs \
+            "$PROFILE_ROOT/cpu/hosted" \
+            "$PROFILE_ROOT/hosted-cpu-summary.json" \
+            "$PROFILE_ROOT/hosted-cpu-summary.txt" || true
+          node scripts/summarize-build-profile.mjs "$PROFILE_ROOT" || true
+
+      - name: Upload exhaustive temporary build profile
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: temporary-naidan-build-profile-swc-exhaustive
+          path: ${{ runner.temp }}/naidan-build-profile/
+          if-no-files-found: error
+          retention-days: 14
+
   publish_to_cloudflare:
     needs: build
     if: ${{ !cancelled() }}

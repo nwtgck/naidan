@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import JSZip from 'jszip';
+import { profileBuildAsync, profileBuildSync } from './build-profile.js';
 
 export type ZipPackageDefinition = Readonly<{
   zipFileName: string;
@@ -84,18 +85,28 @@ async function stageZipPackage({
   const zip = new JSZip();
   const folder = zip.folder(definition.folderName);
   if (folder === null) throw new Error(`Could not create ZIP folder: ${definition.folderName}`);
-  addDirectoryToZip(folder, sourceDirectory, '', {
-    excludedFileNames: definition.excludedFileNames,
-    fileOverrides: definition.fileOverrides,
+  profileBuildSync({
+    name: 'zip.stage.read-and-register-files',
+    sample: { detail: definition.zipFileName, items: 1 },
+    run: () => {
+      addDirectoryToZip(folder, sourceDirectory, '', {
+        excludedFileNames: definition.excludedFileNames,
+        fileOverrides: definition.fileOverrides,
+      });
+      folder.file('VERSION.txt', version);
+    },
   });
-  folder.file('VERSION.txt', version);
 
   // Standalone bundling is already memory-heavy. Compress package variants one
   // at a time so adding locales does not multiply live DEFLATE buffers.
-  const content = await zip.generateAsync({
-    type: 'nodebuffer',
-    compression: 'DEFLATE',
-    compressionOptions: { level: 9 },
+  const content = await profileBuildAsync({
+    name: 'zip.stage.deflate-level-9',
+    sample: { detail: definition.zipFileName, items: 1 },
+    run: () => zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 9 },
+    }),
   });
 
   if (!fs.existsSync(archiveDirectory)) fs.mkdirSync(archiveDirectory, { recursive: true });
@@ -171,7 +182,11 @@ export async function createZipPackages({
     for (const item of staged) fs.rmSync(item.temporaryPath, { force: true });
     throw error;
   }
-  promoteStagedZipPackages({ staged });
+  profileBuildSync({
+    name: 'zip.promote-staged-packages',
+    sample: { items: staged.length },
+    run: () => promoteStagedZipPackages({ staged }),
+  });
 }
 
 export const TEST_ONLY = {

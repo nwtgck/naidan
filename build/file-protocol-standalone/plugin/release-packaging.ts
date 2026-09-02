@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Plugin } from 'vite';
+import { profileBuildAsync, profileBuildSync } from '../../build-profile.js';
 
 import {
   BOUNDARY_STRING_LOCALES,
@@ -58,37 +59,67 @@ export function createFileProtocolStandaloneReleasePackagingPlugin({
     writeBundle: {
       sequential: true,
       async handler(_outputOptions, bundle) {
-        const chunks = toPackageChunks(bundle);
-        const moduleGraph = collectPackageModuleGraph({
-          chunks,
-          getModuleIds: () => this.getModuleIds(),
-          getModuleInfo: moduleId => this.getModuleInfo(moduleId),
+        const chunks = profileBuildSync({
+          name: 'standalone.release-packaging.to-package-chunks',
+          sample: { items: Object.keys(bundle).length },
+          run: () => toPackageChunks(bundle),
         });
-        assertLocalePackageWorkerEntryProvenance({
-          moduleGraph,
-          workerEntryModuleIds,
+        const moduleGraph = profileBuildSync({
+          name: 'standalone.release-packaging.collect-module-graph',
+          sample: { items: chunks.length },
+          run: () => collectPackageModuleGraph({
+            chunks,
+            getModuleIds: () => this.getModuleIds(),
+            getModuleInfo: moduleId => this.getModuleInfo(moduleId),
+          }),
+        });
+        profileBuildSync({
+          name: 'standalone.release-packaging.worker-entry-provenance',
+          sample: { items: workerEntryModuleIds.length },
+          run: () => assertLocalePackageWorkerEntryProvenance({
+            moduleGraph,
+            workerEntryModuleIds,
+          }),
         });
         const plans = new Map(BOUNDARY_STRING_LOCALES.map((locale) => {
-          const plan = createLocalePackagePlan({
-            chunks,
-            moduleGraph,
-            targetLocale: locale,
-            supportedLocales: BOUNDARY_STRING_LOCALES,
+          const plan = profileBuildSync({
+            name: 'standalone.release-packaging.create-locale-plan',
+            sample: { detail: locale, items: chunks.length },
+            run: () => createLocalePackagePlan({
+              chunks,
+              moduleGraph,
+              targetLocale: locale,
+              supportedLocales: BOUNDARY_STRING_LOCALES,
+            }),
           });
-          assertLocalePackageModuleEdgeSafety({
-            chunks,
-            plan,
-            moduleGraph,
-            supportedLocales: BOUNDARY_STRING_LOCALES,
+          profileBuildSync({
+            name: 'standalone.release-packaging.assert-module-edge-safety',
+            sample: { detail: locale, items: chunks.length },
+            run: () => assertLocalePackageModuleEdgeSafety({
+              chunks,
+              plan,
+              moduleGraph,
+              supportedLocales: BOUNDARY_STRING_LOCALES,
+            }),
           });
           return [locale, plan] as const;
         }));
 
-        const canonicalIndexHtml = await fs.readFile(path.join(resolvedOutput, 'index.html'), 'utf8');
-        assertPackageLocaleMetadata({ html: canonicalIndexHtml, expectedLocale: undefined });
-        assertFileProtocolStandaloneHtmlAfterRewrite({
-          html: canonicalIndexHtml,
-          htmlFileName: 'index.html',
+        const canonicalIndexHtml = await profileBuildAsync({
+          name: 'standalone.release-packaging.read-index-html',
+          sample: { detail: 'index.html', items: 1 },
+          run: () => fs.readFile(path.join(resolvedOutput, 'index.html'), 'utf8'),
+        });
+        profileBuildSync({
+          name: 'standalone.release-packaging.validate-index-html',
+          sample: { detail: 'index.html', inputChars: canonicalIndexHtml.length, items: 1 },
+          run: () => {
+            assertPackageLocaleMetadata({ html: canonicalIndexHtml, expectedLocale: undefined });
+            assertFileProtocolStandaloneHtmlAfterRewrite({
+              html: canonicalIndexHtml,
+              htmlFileName: 'index.html',
+            });
+          },
         });
 
         const variants: FileProtocolStandalonePackageVariant[] = [{
@@ -113,9 +144,13 @@ export function createFileProtocolStandaloneReleasePackagingPlugin({
           });
         }
 
-        await packageRelease({
-          outputDirectory: resolvedOutput,
-          variants,
+        await profileBuildAsync({
+          name: 'standalone.release-packaging.package-release',
+          sample: { items: variants.length },
+          run: async () => packageRelease({
+            outputDirectory: resolvedOutput,
+            variants,
+          }),
         });
       },
     },

@@ -25,6 +25,7 @@ import {
   type CssOwnershipPlan,
   type CssRuntimeFragment,
 } from './css-ownership-planner';
+import { profileBuildAsync, profileBuildSync } from '../build-profile.js';
 import { createRefreshCoordinator } from './refresh-coordinator';
 import {
   createTailwindCssRegistrationModuleSource,
@@ -559,28 +560,47 @@ export function createTwClassVitePlugin({
   }
 
   async function refreshPlan(): Promise<RefreshResult> {
-    const nextAnalysis = analyzeSourceModules({
-      projectRoot: absoluteProjectRoot,
-      sourceRoot: absoluteSourceRoot,
-      ownershipMode: splitCss ? 'source-module' : 'single-css',
-      cache: sourceAnalysisCache,
+    const nextAnalysis = profileBuildSync({
+      name: 'tailwind.refresh.analyze-source-modules',
+      sample: { detail: absoluteSourceRoot },
+      run: () => analyzeSourceModules({
+        projectRoot: absoluteProjectRoot,
+        sourceRoot: absoluteSourceRoot,
+        ownershipMode: splitCss ? 'source-module' : 'single-css',
+        cache: sourceAnalysisCache,
+      }),
     });
-    const nextPlan = await createCssOwnershipPlan({
-      projectRoot: absoluteProjectRoot,
-      cssEntryPath: absoluteTailwindCssPath,
-      expectedTailwindVersion,
-      analysis: nextAnalysis,
-      outputMode,
-      maxSplitCssGroups,
+    const nextPlan = await profileBuildAsync({
+      name: 'tailwind.refresh.create-css-ownership-plan',
+      sample: { items: nextAnalysis.candidateGroups.length },
+      run: () => createCssOwnershipPlan({
+        projectRoot: absoluteProjectRoot,
+        cssEntryPath: absoluteTailwindCssPath,
+        expectedTailwindVersion,
+        analysis: nextAnalysis,
+        outputMode,
+        maxSplitCssGroups,
+      }),
     });
-    const state = buildVirtualState({ nextAnalysis, nextPlan });
-    const nextInputSourceByFile = new Map(
-      [...sourceAnalysisCache].map(([filename, { source }]) => [filename, source]),
-    );
-    for (const filename of nextPlan.stylesheetDependencies) {
-      if (!isLocalStylesheetPath({ filename })) continue;
-      nextInputSourceByFile.set(filename, fs.readFileSync(filename, 'utf8'));
-    }
+    const state = profileBuildSync({
+      name: 'tailwind.refresh.build-virtual-state',
+      sample: { items: nextPlan.cssGroups.size },
+      run: () => buildVirtualState({ nextAnalysis, nextPlan }),
+    });
+    const nextInputSourceByFile = profileBuildSync({
+      name: 'tailwind.refresh.snapshot-input-sources',
+      sample: { items: sourceAnalysisCache.size + nextPlan.stylesheetDependencies.length },
+      run: () => {
+        const snapshot = new Map(
+          [...sourceAnalysisCache].map(([filename, { source }]) => [filename, source]),
+        );
+        for (const filename of nextPlan.stylesheetDependencies) {
+          if (!isLocalStylesheetPath({ filename })) continue;
+          snapshot.set(filename, fs.readFileSync(filename, 'utf8'));
+        }
+        return snapshot;
+      },
+    });
     const previousActiveModuleSourceByResolvedId = moduleSourceByResolvedId;
     analysis = nextAnalysis;
     plan = nextPlan;
@@ -742,7 +762,13 @@ export function createTwClassVitePlugin({
       },
     },
     writeBundle() {
-      if (cssPlanning === 'enabled' && command === 'build') writeDebugOutput();
+      if (cssPlanning === 'enabled' && command === 'build') {
+        profileBuildSync({
+          name: 'tailwind.write-debug-output',
+          sample: { items: plan?.cssGroups.size ?? 0 },
+          run: writeDebugOutput,
+        });
+      }
     },
     resolveId(id) {
       if (id === virtualMacroModuleId) return resolvedVirtualMacroModuleId;

@@ -27,6 +27,7 @@ import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
 import { createZipPackages } from './build/zip-packages';
 import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
 import { createHostedTransformersRuntimeAssetsPlugin } from './build/transformers-runtime-assets';
+import { profileBuildAsync, profileVitePluginOptions } from './build/build-profile';
 import { UI_LOCALES } from './src/01-models/ui-locale';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
@@ -199,7 +200,11 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
           const gzip = createGzip({ level: 9 });
 
           try {
-            await promisify(pipeline)(source, gzip, destination);
+            await profileBuildAsync({
+              name: 'hosted.wasm-gzip.pipeline',
+              sample: { detail: fullPath, items: 1 },
+              run: () => promisify(pipeline)(source, gzip, destination),
+            });
             // Verify source exists before unlink (sanity check)
             if (fs.existsSync(fullPath)) {
               await fs.promises.unlink(fullPath);
@@ -299,7 +304,7 @@ export default defineConfig(({ mode }) => {
         },
       ],
     },
-    plugins: [
+    plugins: profileVitePluginOptions([
       createInitialThemeHtmlPlugin(),
       createBoundaryStringsPlugin(),
       VueRouter({
@@ -432,7 +437,7 @@ export default defineConfig(({ mode }) => {
           maximumFileSizeToCacheInBytes: 100 * 1024 * 1024,
         },
       }),
-    ].filter((p): p is import('vite').PluginOption => !!p),
+    ].filter((p): p is import('vite').PluginOption => !!p)),
     build: {
       outDir,
       emptyOutDir: true,

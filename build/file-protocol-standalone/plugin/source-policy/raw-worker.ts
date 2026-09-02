@@ -11,6 +11,7 @@ import type {
 import { isOutputChunk } from '../output-graph.js';
 import { isBabelNode, isBabelNodeType, staticMemberPropertyName } from './babel-node.js';
 import { babelTraverse } from '../../babel-traverse-runtime.js';
+import { profileBuildSync } from '../../../build-profile.js';
 
 type WorkerResolution = Readonly<{kind: WorkerConstructorKind; calleeForm: string}>;
 type BabelNodePath = NodePath<unknown>;
@@ -72,16 +73,20 @@ function classifyRawWorkerArgument(argument: Node | null | undefined): string {
 }
 
 function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerConstructorRecord[] {
-  const ast = parse(code, {
-    sourceType: 'unambiguous',
-    sourceFilename: id,
-    allowAwaitOutsideFunction: true,
-    // Rolldown can expose intermediate entry-export shapes to generateBundle.
-    // This analysis only needs constructor expressions, so unresolved exports must
-    // not turn a compatibility policy into a parser failure. Final output shape
-    // validation remains strict elsewhere.
-    allowUndeclaredExports: true,
-    plugins: ['dynamicImport', 'importMeta', 'topLevelAwait', 'typescript', 'jsx'],
+  const ast = profileBuildSync({
+    name: 'standalone.raw-worker.parse',
+    sample: { detail: id, inputChars: code.length, items: 1 },
+    run: () => parse(code, {
+      sourceType: 'unambiguous',
+      sourceFilename: id,
+      allowAwaitOutsideFunction: true,
+      // Rolldown can expose intermediate entry-export shapes to generateBundle.
+      // This analysis only needs constructor expressions, so unresolved exports must
+      // not turn a compatibility policy into a parser failure. Final output shape
+      // validation remains strict elsewhere.
+      allowUndeclaredExports: true,
+      plugins: ['dynamicImport', 'importMeta', 'topLevelAwait', 'typescript', 'jsx'],
+    }),
   });
   const constructors: RawWorkerConstructorRecord[] = [];
   const recorded = new Set<string>();
@@ -405,33 +410,38 @@ function findRawWorkerConstructors(code: string, id = '<unknown>'): RawWorkerCon
     });
   }
 
-  babelTraverse(ast, {
-    NewExpression(newPath) {
-      const callee = newPath.get('callee');
-      if (Array.isArray(callee)) return;
-      const resolutions = resolveWorkerValue(callee);
-      for (const resolution of resolutions) {
-        record(newPath.node, resolution, newPath.get('arguments')[0]);
-      }
-    },
-    CallExpression(callPath: NodePath<CallExpression>) {
-      const callee = callPath.get('callee');
-      if (!callee.isMemberExpression?.() && !callee.isOptionalMemberExpression?.()) return;
-      if (staticMemberPropertyName(callee.node) !== 'construct') return;
-      const reflectObject = callee.get('object');
-      if (Array.isArray(reflectObject) || !unboundGlobalIdentifier(reflectObject, ['Reflect'])) return;
-      const args = callPath.get('arguments');
-      const resolutions = resolveWorkerValue(args[0]);
-      const constructorArgs = args[1];
-      let workerUrlArgument = null;
-      if (constructorArgs?.isArrayExpression?.()) workerUrlArgument = constructorArgs.get('elements')[0];
-      for (const resolution of resolutions) {
-        record(callPath.node, { ...resolution, calleeForm: `Reflect.construct:${resolution.calleeForm}` }, workerUrlArgument, {
-          invocationKind: 'Reflect.construct',
-        });
-      }
-    },
+  profileBuildSync({
+    name: 'standalone.raw-worker.traverse',
+    sample: { detail: id, inputChars: code.length, items: 1 },
+    run: () => babelTraverse(ast, {
+      NewExpression(newPath) {
+        const callee = newPath.get('callee');
+        if (Array.isArray(callee)) return;
+        const resolutions = resolveWorkerValue(callee);
+        for (const resolution of resolutions) {
+          record(newPath.node, resolution, newPath.get('arguments')[0]);
+        }
+      },
+      CallExpression(callPath: NodePath<CallExpression>) {
+        const callee = callPath.get('callee');
+        if (!callee.isMemberExpression?.() && !callee.isOptionalMemberExpression?.()) return;
+        if (staticMemberPropertyName(callee.node) !== 'construct') return;
+        const reflectObject = callee.get('object');
+        if (Array.isArray(reflectObject) || !unboundGlobalIdentifier(reflectObject, ['Reflect'])) return;
+        const args = callPath.get('arguments');
+        const resolutions = resolveWorkerValue(args[0]);
+        const constructorArgs = args[1];
+        let workerUrlArgument = null;
+        if (constructorArgs?.isArrayExpression?.()) workerUrlArgument = constructorArgs.get('elements')[0];
+        for (const resolution of resolutions) {
+          record(callPath.node, { ...resolution, calleeForm: `Reflect.construct:${resolution.calleeForm}` }, workerUrlArgument, {
+            invocationKind: 'Reflect.construct',
+          });
+        }
+      },
+    }),
   });
+
   return constructors.sort((left, right) => left.start - right.start || left.kind.localeCompare(right.kind));
 }
 
