@@ -1,4 +1,5 @@
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 
 import type { RestoreRequest } from "@/features/wesh/commands/git/restore-operation";
@@ -6,7 +7,14 @@ import type { RestoreRequest } from "@/features/wesh/commands/git/restore-operat
 type RestoreDeferredSemantic = 'source';
 
 const RESTORE_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<RestoreDeferredSemantic>>({
-  nonExecutableLongOptions: [],
+  nonExecutableLongOptions: [
+    'no-source', 'no-staged', 'no-worktree', 'ignore-unmerged', 'no-ignore-unmerged',
+    'overlay', 'no-overlay', 'quiet', 'no-quiet', 'recurse-submodules', 'no-recurse-submodules',
+    'progress', 'no-progress', 'merge', 'no-merge', 'conflict', 'no-conflict',
+    'ours', 'theirs', 'patch', 'no-patch', 'ignore-skip-worktree-bits',
+    'no-ignore-skip-worktree-bits', 'pathspec-from-file', 'no-pathspec-from-file',
+    'pathspec-file-nul', 'no-pathspec-file-nul',
+  ],
   definitions: [
     {
       semantic: { kind: 'effects', effects: [{ key: 'staged', value: true }] },
@@ -33,7 +41,7 @@ const RESTORE_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<RestoreDeferre
 });
 
 const RESTORE_ARGV_POLICY: StandardArgvPolicy = {
-  longNameMatch: 'exact',
+  longNameMatch: 'unique-prefix',
   optionBoundary: 'continue',
   occurrenceRetention: 'none',
 };
@@ -47,9 +55,15 @@ export function parseRestoreArguments({ args }: {
     switch (diagnostic.kind) {
     case 'missing_option_value':
       throw new GitUsageError({ message: `option '${diagnostic.option}' requires a value` });
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
     case 'unknown_short_option':
     case 'unknown_long_option':
-    case 'ambiguous_long_option':
     case 'unexpected_option_value':
     case 'invalid_option_value':
       throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });

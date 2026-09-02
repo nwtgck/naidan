@@ -1,36 +1,14 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { Wesh } from '@/features/wesh/index';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
-import { createTextShellSource } from '@/features/wesh/shell/source';
-import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
-import { createTestReadHandleFromText, createTestWriteCaptureHandle } from '@/features/wesh/utils/test-stream';
+import { createGitTestExecutor } from '@/features/wesh/commands/git/test-environment';
 
 beforeAll(async () => {
   await gitCommandDefinition.load();
 });
 
 describe('wesh git log', () => {
-  let wesh: Wesh;
-
-  beforeEach(async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
-    wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
-    await wesh.init();
-  });
-
-  async function execute({ script }: { script: string }) {
-    const stdout = createTestWriteCaptureHandle();
-    const stderr = createTestWriteCaptureHandle();
-    const result = await wesh.execute({
-      source: createTextShellSource({ text: script }),
-      stdin: createTestReadHandleFromText({ text: '' }),
-      stdout: stdout.handle,
-      stderr: stderr.handle,
-    });
-    return { result, stdout, stderr };
-  }
-
   it('walks all parents and applies two-dot reachability ranges', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -76,6 +54,7 @@ base
   });
 
   it('formats script-friendly commit metadata and filters messages with grep', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -120,6 +99,7 @@ git log --format='%s' --grep='^base$' --grep='^main'`,
   });
 
   it('matches --grep against individual commit message lines', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -137,6 +117,7 @@ git log --format='%s' --grep='^body-match$'`,
   });
 
   it('uses Git basic-regex semantics for --grep', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -188,6 +169,7 @@ POSIX_CLASS
   });
 
   it('uses GNU BRE repetition/bracket edges and C-locale byte matching for --grep', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -260,6 +242,7 @@ aa
   });
 
   it('treats negative max-count values as unlimited like Git', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -295,6 +278,7 @@ one
   });
 
   it('simplifies merge history for path-limited traversal', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -341,6 +325,7 @@ base
   });
 
   it('supports symmetric three-dot ranges and reuses revision diff views for stat and patch output', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -382,6 +367,7 @@ STAT
   });
 
   it('filters history by inclusive committer date boundaries', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -426,6 +412,7 @@ one
   });
 
   it('includes all refs and detached HEAD in --all history', async () => {
+    const execute = await createGitTestExecutor();
     const detached = await execute({
       script: `\
 git init -q repo
@@ -470,6 +457,7 @@ git log --all --oneline --decorate=short`,
   });
 
   it('filters commits by literal occurrence-count and changed-line regex pickaxe searches', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -506,6 +494,7 @@ change-case
   });
 
   it('keeps -S byte counting for binary files while -G skips binary diffs', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -534,6 +523,7 @@ REGEX
   });
 
   it('does not report an exact rename as a pickaxe content change', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -561,7 +551,192 @@ initial
 `);
   });
 
+  it('treats an unambiguous modified similarity rename as one file for unrestricted pickaxe search', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Test
+git config user.email test@example.invalid
+printf 'one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven\ntwelve\nthirteen\nfourteen\nfifteen\nsixteen\nseventeen\neighteen\nnineteen\nneedle\n' > old.txt
+git add old.txt
+git commit -m initial >/dev/null
+git mv old.txt new.txt
+sed -i 's/nineteen/changed/' new.txt
+git add -A
+git commit -m rename-modified >/dev/null
+printf '%s\n' STRING
+git log --format='%s' -Sneedle
+printf '%s\n' REGEX
+git log --format='%s' -G'^needle$'
+printf '%s\n' DISABLED
+git -c diff.renames=false log --format='%s' -Sneedle HEAD^..HEAD`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+STRING
+initial
+REGEX
+initial
+DISABLED
+rename-modified
+`);
+  });
+
+  it('detects modified similarity renames after selecting both pathspec sides for pickaxe search', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Test
+git config user.email test@example.invalid
+printf 'needle\nline02\nline03\nline04\nline05\nline06\nline07\nline08\nline09\nline10\n' > old.txt
+git add old.txt
+git commit -m initial >/dev/null
+git mv old.txt new.txt
+sed -i 's/line10/changed10/' new.txt
+git add -A
+git commit -m rename-modified >/dev/null
+printf '%s\n' STRING-BOTH
+git log --format='%s' -Sneedle -- old.txt new.txt
+printf '%s\n' STRING-OLD
+git log --format='%s' -Sneedle -- old.txt
+printf '%s\n' STRING-NEW
+git log --format='%s' -Sneedle -- new.txt
+printf '%s\n' REGEX-BOTH
+git log --format='%s' -G'^needle$' -- old.txt new.txt
+printf '%s\n' REGEX-OLD
+git log --format='%s' -G'^needle$' -- old.txt
+printf '%s\n' REGEX-NEW
+git log --format='%s' -G'^needle$' -- new.txt`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+STRING-BOTH
+initial
+STRING-OLD
+rename-modified
+initial
+STRING-NEW
+rename-modified
+REGEX-BOTH
+initial
+REGEX-OLD
+rename-modified
+initial
+REGEX-NEW
+rename-modified
+`);
+  });
+
+  it('pairs multiple modified renames before unrestricted pickaxe search', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Test
+git config user.email test@example.invalid
+printf 'alpha\nneedle\none\ntwo\nthree\nfour\nfive\n' > a.txt
+printf 'beta\nneedle\nsix\nseven\neight\nnine\nten\n' > b.txt
+git add a.txt b.txt
+git commit -m initial >/dev/null
+git mv a.txt x.txt
+git mv b.txt y.txt
+printf 'alpha\nneedle\none\ntwo\nthree\nfour\nchanged-a\n' > x.txt
+printf 'beta\nneedle\nsix\nseven\neight\nnine\nchanged-b\n' > y.txt
+git add -A
+git commit -m rename-two-modified >/dev/null
+printf '%s\n' STRING
+git log --format='%s' -Sneedle HEAD^..HEAD
+printf '%s\n' REGEX
+git log --format='%s' -G'^needle$' HEAD^..HEAD`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+STRING
+REGEX
+`);
+  });
+
+  it('honors diff.renames for exact-rename pickaxe matching', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Test
+git config user.email test@example.invalid
+printf 'needle\nother\n' > old.txt
+git add old.txt
+git commit -m initial >/dev/null
+git mv old.txt new.txt
+git commit -m rename >/dev/null
+printf '%s\n' DEFAULT
+git log --format='%s' -Sneedle HEAD^..HEAD
+printf '%s\n' DISABLED-STRING
+git -c diff.renames=false log --format='%s' -Sneedle HEAD^..HEAD
+printf '%s\n' DISABLED-REGEX
+git -c diff.renames=false log --format='%s' -Gneedle HEAD^..HEAD
+printf '%s\n' COPIES
+git -c diff.renames=copies log --format='%s' -Sneedle HEAD^..HEAD`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+DEFAULT
+DISABLED-STRING
+rename
+DISABLED-REGEX
+rename
+COPIES
+`);
+  });
+
+  it('honors copies mode when an added file exactly copies the pre-modification source', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Test
+git config user.email test@example.invalid
+printf 'alpha\nneedle\nomega\n' > a.txt
+git add a.txt
+git commit -m initial >/dev/null
+cp a.txt b.txt
+printf 'alpha\nneedle\nchanged\n' > a.txt
+git add -A
+git commit -m copy-modified >/dev/null
+printf '%s\n' DEFAULT
+git log --format='%s' -Sneedle HEAD^..HEAD
+printf '%s\n' COPIES-STRING
+git -c diff.renames=copies log --format='%s' -Sneedle HEAD^..HEAD
+printf '%s\n' COPIES-REGEX
+git -c diff.renames=copies log --format='%s' -G'^needle$' HEAD^..HEAD`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+DEFAULT
+copy-modified
+COPIES-STRING
+COPIES-REGEX
+`);
+  });
+
   it('cancels ambiguous exact-content renames only before unrestricted pickaxe search', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -582,7 +757,11 @@ git log --format='%s' -Gneedle
 printf '%s\n' PATH-STRING
 git log --format='%s' -Sneedle -- c
 printf '%s\n' PATH-REGEX
-git log --format='%s' -Gneedle -- c`,
+git log --format='%s' -Gneedle -- c
+printf '%s\n' ALL-PATH-STRING
+git log --format='%s' -Sneedle -- .
+printf '%s\n' ALL-PATH-REGEX
+git log --format='%s' -Gneedle -- .`,
     });
 
     expect(result.exitCode).toBe(0);
@@ -596,10 +775,15 @@ PATH-STRING
 rename-two
 PATH-REGEX
 rename-two
+ALL-PATH-STRING
+base
+ALL-PATH-REGEX
+base
 `);
   });
 
   it('rejects mixed -S/-G pickaxe modes and empty pickaxe values', async () => {
+    const execute = await createGitTestExecutor();
     const setup = `\
 git init -q repo
 cd repo
@@ -624,6 +808,7 @@ git commit -m base >/dev/null
   });
 
   it('uses Git ERE semantics for -G including POSIX classes and C-byte matching', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -676,6 +861,7 @@ utf8
   });
 
   it('applies pickaxe searches to root commits and path-limited history', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -710,6 +896,7 @@ b-change
 `);
   });
   it('decorates default and oneline log output without changing explicit formats', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q source
@@ -754,6 +941,7 @@ git log -1 --format='%h %s' --decorate`,
   });
 
   it('renders linear and simple two-parent merge graph lanes without approximation', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -794,6 +982,7 @@ git log --graph --format='%s'`,
   });
 
   it('uses graph transition rows as prefixes for multiline formats', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -820,6 +1009,7 @@ git log --graph -2 --format='X%nY'`,
   });
 
   it('safe-fails unsupported nested graph topology before writing approximate output', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -856,6 +1046,7 @@ git log --graph --format='%s'`,
 
 
   it('distinguishes --oneline from the oneline pretty format', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -881,6 +1072,7 @@ printf 'FORMAT='; git log -1 --format=oneline`,
   });
 
   it('renders exact rename metadata in revision stat and patch output', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo

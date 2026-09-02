@@ -1,38 +1,13 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { Wesh } from '@/features/wesh/index';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
-import { createTextShellSource } from '@/features/wesh/shell/source';
-import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
-import {
-  createTestReadHandleFromText,
-  createTestWriteCaptureHandle,
-} from '@/features/wesh/utils/test-stream';
+import { createGitTestExecutor } from '@/features/wesh/commands/git/test-environment';
 
 beforeAll(async () => {
   await gitCommandDefinition.load();
 });
 
+
 describe('wesh git stash', () => {
-  let wesh: Wesh;
-
-  beforeEach(async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
-    wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
-    await wesh.init();
-  });
-
-  async function execute({ script }: { script: string }) {
-    const stdout = createTestWriteCaptureHandle();
-    const stderr = createTestWriteCaptureHandle();
-    const result = await wesh.execute({
-      source: createTextShellSource({ text: script }),
-      stdin: createTestReadHandleFromText({ text: '' }),
-      stdout: stdout.handle,
-      stderr: stderr.handle,
-    });
-    return { result, stdout, stderr };
-  }
-
   const base = `\
 git init -q repo
 cd repo
@@ -46,6 +21,7 @@ export GIT_COMMITTER_DATE='981173106 +0000'
 git commit -m base >/dev/null`;
 
   it('stores index and tracked worktree state as commit parents while leaving untracked files', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -84,6 +60,7 @@ base-a
   });
 
   it('includes and removes untracked files with -u using a third parent', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -112,6 +89,7 @@ base-a
   });
 
   it('reports when there are no tracked changes to save', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -123,6 +101,7 @@ git stash push`,
   });
 
   it('shows the tracked stash delta through the shared revision diff primitive', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -146,6 +125,7 @@ git stash show --no-color`,
   });
 
   it('accepts repeated -p short flags as a Git short-option cluster', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -163,6 +143,7 @@ git stash show -pp --no-color`,
   });
 
   it('combines --stat with an explicitly requested patch like Git', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -177,6 +158,7 @@ git stash show --stat -p --no-color`,
   });
 
   it('shows stash diffstat through the shared diff stat primitive', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -195,6 +177,7 @@ git stash show --stat --no-color`,
   });
 
   it('drops an arbitrary stash entry and clears the remaining reflog and ref', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -221,6 +204,7 @@ test ! -e .git/logs/refs/stash`,
   });
 
   it('applies tracked worktree changes while keeping modified and deleted index entries unstaged by default', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -248,6 +232,7 @@ worktree-b
   });
 
   it('restores the saved index with stash apply --index', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -275,6 +260,7 @@ worktree-b
   });
 
   it('keeps a staged addition staged on default apply and a staged deletion unstaged', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -298,6 +284,7 @@ A  n
   });
 
   it('restores included untracked files without adding them to the index', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -318,6 +305,7 @@ untracked
   });
 
   it('applies a stash onto a branch that changed an unrelated path', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -341,6 +329,7 @@ branch-change
   });
 
   it('does not overwrite an existing path when restoring stashed untracked data', async () => {
+    const execute = await createGitTestExecutor();
     const setup = await execute({
       script: `\
 ${base}
@@ -366,6 +355,7 @@ git status --short`,
   });
 
   it('drops the stash only after a successful pop', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -382,6 +372,7 @@ git stash list`,
 
 
   it('honors -- as an option terminator across existing stash subcommands', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${base}
@@ -408,4 +399,129 @@ printf 'ok\n'`,
     expect(stdout.text).toBe('ok\n');
   });
 
+
+  it('accepts Git-style unique long prefixes for stash apply index selection', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${base}
+printf 'stashed-a\n' > a
+git stash push -m demo >/dev/null
+git stash apply --ind >/dev/null
+cat a`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('stashed-a\n');
+  });
+
+  it.each(['apply', 'pop'] as const)('matches Git ambiguity diagnostics for stash %s --n', async subcommand => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${base}
+git stash ${subcommand} --n`,
+    });
+
+    expect(result.exitCode).toBe(129);
+    expect(stdout.text).toBe(`usage: git stash ${subcommand} [--index] [-q | --quiet] [<stash>]\n\n    -q, --[no-]quiet      be quiet, only report errors\n    --[no-]index          attempt to recreate the index\n\n`);
+    expect(stderr.text).toBe('error: ambiguous option: n (could be --no-quiet or --no-index)\n');
+  });
+
+  it.each([
+    ['apply', '-q'],
+    ['apply', '--quiet'],
+    ['apply', '-qq'],
+    ['pop', '-q'],
+    ['pop', '--quiet'],
+  ] as const)('suppresses success output for stash %s %s', async (subcommand, option) => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${base}
+printf 'stashed-a\n' > a
+git stash push -m demo >/dev/null
+git stash ${subcommand} ${option}`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+  });
+
+  it('lets --no-quiet re-enable stash apply success output', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${base}
+printf 'stashed-a\n' > a
+git stash push -m demo >/dev/null
+git stash apply --quiet --no-quiet`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toContain('modified:   a');
+    expect(stderr.text).toBe('');
+  });
+
+  it.each([
+    ['--wat', "error: unknown option `wat'"],
+    ['-z', "error: unknown switch `z'"],
+  ] as const)('matches stash apply usage diagnostics for unknown option %s', async (option, errorLine) => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${base}
+git stash apply ${option}`,
+    });
+
+    expect(result.exitCode).toBe(129);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe(`${errorLine}\n${stashApplyUsageForTest('apply')}`);
+  });
+
+  it('matches stash apply no-value diagnostics without printing usage', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${base}
+git stash apply --index=x`,
+    });
+
+    expect(result.exitCode).toBe(129);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe("error: option `index' takes no value\n");
+  });
+
+  it.each(['apply', 'pop', 'drop'] as const)('matches Git exit status for too many stash %s revisions', async subcommand => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${base}
+git stash ${subcommand} 'stash@{0}' 'stash@{0}'`,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe("Too many revisions specified: 'stash@{0}' 'stash@{0}'\n");
+  });
+
+  it('matches Git stash clear argument diagnostics', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${base}
+git stash clear bogus`,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('error: git stash clear with arguments is unimplemented\n');
+  });
+
 });
+
+function stashApplyUsageForTest(subcommand: 'apply' | 'pop'): string {
+  return `usage: git stash ${subcommand} [--index] [-q | --quiet] [<stash>]\n\n    -q, --[no-]quiet      be quiet, only report errors\n    --[no-]index          attempt to recreate the index\n\n`;
+}

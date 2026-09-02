@@ -249,6 +249,34 @@ git status --short`,
   });
 
 
+  it('accepts a Linux-compatible unique long prefix for an implemented reset mode', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+git reset --har HEAD~1 >/dev/null
+cat hello.txt`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('hello\n');
+  });
+
+  it('keeps exact-only patch out of the reset prefix resolver namespace', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+git reset --pa HEAD`,
+    });
+
+    expect(result.exitCode).toBe(129);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('ambiguous option: pa');
+    expect(stderr.text).toContain('--pathspec-from-file');
+    expect(stderr.text).toContain('--pathspec-file-nul');
+    expect(stderr.text).not.toContain('--patch');
+  });
+
   it('treats a trailing -- without paths as an option terminator for whole-tree resets', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

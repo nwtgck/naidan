@@ -9,10 +9,19 @@ type RevisionSuffix =
   | { type: 'parent' | 'first-parent-ancestor', count: number }
   | { type: 'peel', expected: 'any' | 'commit' };
 
-function ambiguousRevisionError({ expression }: { expression: string }): Error {
-  return new Error(`ambiguous argument '${expression}': unknown revision or path not in the working tree.`);
+export class GitUnknownRevisionError extends Error {
+  readonly expression: string;
+
+  constructor({ expression }: { expression: string }) {
+    super(`ambiguous argument '${expression}': unknown revision or path not in the working tree.`);
+    this.name = 'GitUnknownRevisionError';
+    this.expression = expression;
+  }
 }
 
+function ambiguousRevisionError({ expression }: { expression: string }): GitUnknownRevisionError {
+  return new GitUnknownRevisionError({ expression });
+}
 
 export async function peelTagObjectId({ files, repository, objectId, depth = 0 }: {
   files: GitFiles,

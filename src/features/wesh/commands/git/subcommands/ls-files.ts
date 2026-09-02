@@ -1,3 +1,4 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
 import { readEffectiveConfig } from '@/features/wesh/commands/git/config';
@@ -9,7 +10,16 @@ import { writeHandleBytes } from '@/features/wesh/commands/git/files';
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 
 const LS_FILES_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
-  nonExecutableLongOptions: [],
+  nonExecutableLongOptions: [
+    'no-cached', 'deleted', 'no-deleted', 'modified', 'no-modified', 'others', 'no-others',
+    'ignored', 'no-ignored', 'no-stage', 'killed', 'no-killed', 'directory', 'no-directory',
+    'eol', 'no-eol', 'empty-directory', 'no-empty-directory', 'unmerged', 'no-unmerged',
+    'resolve-undo', 'no-resolve-undo', 'exclude', 'exclude-from',
+    'exclude-per-directory', 'no-exclude-per-directory', 'exclude-standard',
+    'recurse-submodules', 'no-recurse-submodules', 'error-unmatch', 'no-error-unmatch',
+    'with-tree', 'no-with-tree', 'abbrev', 'no-abbrev', 'debug', 'no-debug',
+    'deduplicate', 'no-deduplicate', 'sparse', 'no-sparse', 'format',
+  ],
   definitions: [
     {
       semantic: { kind: 'effects', effects: [{ key: 'stage', value: true }] },
@@ -37,7 +47,7 @@ const LS_FILES_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
 });
 
 const LS_FILES_ARGV_POLICY: StandardArgvPolicy = {
-  longNameMatch: 'exact',
+  longNameMatch: 'unique-prefix',
   optionBoundary: 'continue',
   occurrenceRetention: 'none',
 };
@@ -59,7 +69,25 @@ export async function runLsFiles({ context, args }: {
   const parsed = parseStandardArgv({ args, catalog: LS_FILES_ARGV_CATALOG, policy: LS_FILES_ARGV_POLICY });
   const diagnostic = parsed.diagnostics[0];
   if (diagnostic !== undefined) {
-    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    switch (diagnostic.kind) {
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'missing_option_value':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled argv diagnostic: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
   const stage = parsed.optionValues.stage === true;
   const nul = parsed.optionValues.nul === true;

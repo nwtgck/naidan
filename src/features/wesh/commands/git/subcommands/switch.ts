@@ -1,3 +1,4 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import type { CheckoutLikeArguments } from "@/features/wesh/commands/git/checkout-like";
@@ -6,7 +7,14 @@ import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 
 const SWITCH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
-  nonExecutableLongOptions: [],
+  nonExecutableLongOptions: [
+    'create', 'no-create', 'force-create', 'no-force-create', 'guess', 'no-guess',
+    'discard-changes', 'no-discard-changes', 'quiet', 'no-quiet',
+    'recurse-submodules', 'no-recurse-submodules', 'progress', 'no-progress',
+    'merge', 'no-merge', 'conflict', 'no-conflict', 'no-detach', 'track', 'no-track',
+    'force', 'no-force', 'orphan', 'no-orphan', 'overwrite-ignore', 'no-overwrite-ignore',
+    'ignore-other-worktrees', 'no-ignore-other-worktrees',
+  ],
   definitions: [
     {
       semantic: { kind: 'required-value', key: 'createBranchName', parse: undefined },
@@ -20,7 +28,7 @@ const SWITCH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
 });
 
 const SWITCH_ARGV_POLICY: StandardArgvPolicy = {
-  longNameMatch: 'exact',
+  longNameMatch: 'unique-prefix',
   optionBoundary: 'continue',
   occurrenceRetention: 'none',
 };
@@ -32,9 +40,15 @@ function parseSwitchArguments({ args }: { args: readonly string[] }): CheckoutLi
     switch (diagnostic.kind) {
     case 'missing_option_value':
       throw new GitUsageError({ message: `option '${diagnostic.option}' requires a value` });
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
     case 'unknown_short_option':
     case 'unknown_long_option':
-    case 'ambiguous_long_option':
     case 'unexpected_option_value':
     case 'invalid_option_value':
       throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });

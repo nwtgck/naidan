@@ -120,7 +120,7 @@ export async function continueRebase({ context }: {
   const repository = await discoverRepositoryFromContext({ context });
   const state = await readRebaseState({ files: context.files, repository });
   if (state === undefined || state.stoppedObjectId === undefined || state.message === undefined) {
-    await context.text().error({ text: 'fatal: No rebase in progress?\n' });
+    await context.text().error({ text: 'fatal: no rebase in progress\n' });
     return { exitCode: 128 };
   }
   const entries = await readIndex({ files: context.files, repository });
@@ -150,7 +150,7 @@ export async function skipRebase({ context }: {
   const repository = await discoverRepositoryFromContext({ context });
   const state = await readRebaseState({ files: context.files, repository });
   if (state === undefined || state.stoppedObjectId === undefined) {
-    await context.text().error({ text: 'fatal: No rebase in progress?\n' });
+    await context.text().error({ text: 'fatal: no rebase in progress\n' });
     return { exitCode: 128 };
   }
   const head = await readHead({ files: context.files, repository });
@@ -174,7 +174,7 @@ export async function abortRebase({ context }: {
   const repository = await discoverRepositoryFromContext({ context });
   const state = await readRebaseState({ files: context.files, repository });
   if (state === undefined) {
-    await context.text().error({ text: 'fatal: No rebase in progress?\n' });
+    await context.text().error({ text: 'fatal: no rebase in progress\n' });
     return { exitCode: 128 };
   }
   const origCommit = await readCommit({ files: context.files, repository, objectId: state.origHeadObjectId });

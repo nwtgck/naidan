@@ -1,6 +1,6 @@
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readCommit } from "@/features/wesh/commands/git/commits";
-import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
+import { getDiffRenamesConfigMode, readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { writeRevisionPatch, writeRevisionStat } from "@/features/wesh/commands/git/diff/revision";
 import { writeHandleBytes } from "@/features/wesh/commands/git/files";
 import { quoteNonAsciiFromConfig } from "@/features/wesh/commands/git/path-output";
@@ -23,6 +23,7 @@ export async function runShow({ context, args }: {
   const repository = await discoverRepositoryFromContext({ context });
   const showConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const showQuoteNonAscii = quoteNonAsciiFromConfig({ config: showConfig });
+  const detectRenames = getDiffRenamesConfigMode({ config: showConfig }) !== 'disabled';
   let diffMode: 'patch' | 'no-patch' | 'stat' = 'patch';
   let optionTerminated = false;
   const operands: string[] = [];
@@ -134,6 +135,7 @@ export async function runShow({ context, args }: {
       rightRevision: objectId,
       pathOperands: [],
       quoteNonAscii: showQuoteNonAscii,
+      detectRenames,
     });
     break;
   case 'patch':
@@ -144,6 +146,7 @@ export async function runShow({ context, args }: {
       rightRevision: objectId,
       pathOperands: [],
       quoteNonAscii: showQuoteNonAscii,
+      detectRenames,
     });
     break;
   default: {

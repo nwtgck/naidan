@@ -1,3 +1,4 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { getConfigValue, readEffectiveConfig, setLocalConfigValue } from "@/features/wesh/commands/git/config";
@@ -7,7 +8,17 @@ import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repo
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 
 const PUSH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
-  nonExecutableLongOptions: [],
+  nonExecutableLongOptions: [
+    'verbose', 'no-verbose', 'no-quiet', 'repo', 'no-repo', 'all', 'no-all',
+    'branches', 'no-branches', 'mirror', 'no-mirror', 'no-delete', 'tags', 'no-tags',
+    'dry-run', 'no-dry-run', 'porcelain', 'no-porcelain', 'force', 'no-force',
+    'no-force-with-lease', 'force-if-includes', 'no-force-if-includes',
+    'recurse-submodules', 'no-recurse-submodules', 'thin', 'no-thin',
+    'receive-pack', 'no-receive-pack', 'exec', 'no-exec', 'no-set-upstream',
+    'progress', 'no-progress', 'prune', 'no-prune', 'no-verify', 'verify',
+    'follow-tags', 'no-follow-tags', 'signed', 'no-signed', 'atomic', 'no-atomic',
+    'push-option', 'no-push-option', 'ipv4', 'ipv6',
+  ],
   definitions: [
     {
       semantic: { kind: 'effects', effects: [{ key: 'setUpstream', value: true }] },
@@ -35,7 +46,7 @@ const PUSH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
 });
 
 const PUSH_ARGV_POLICY: StandardArgvPolicy = {
-  longNameMatch: 'exact',
+  longNameMatch: 'unique-prefix',
   optionBoundary: 'continue',
   occurrenceRetention: 'none',
 };
@@ -47,7 +58,25 @@ export async function runPush({ context, args }: {
   const parsed = parseStandardArgv({ args, catalog: PUSH_ARGV_CATALOG, policy: PUSH_ARGV_POLICY });
   const diagnostic = parsed.diagnostics[0];
   if (diagnostic !== undefined) {
-    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    switch (diagnostic.kind) {
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'missing_option_value':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled argv diagnostic: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
   const setUpstream = parsed.optionValues.setUpstream === true;
   const forceWithLease = parsed.optionValues.forceWithLease === true;

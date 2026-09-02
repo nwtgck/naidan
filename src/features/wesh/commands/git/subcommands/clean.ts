@@ -1,6 +1,8 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
+import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
-import { matchRepositoryPaths, selectedDirectoryPathForPathspec } from "@/features/wesh/commands/git/pathspec";
+import { matchRepositoryPaths } from "@/features/wesh/commands/git/pathspec";
 import { sortGitPaths } from "@/features/wesh/commands/git/path-order";
 import { readIndex } from "@/features/wesh/commands/git/index-file";
 import { joinPath, relativeToWorktree, repositoryCwdIsInsideWorktree, discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
@@ -10,6 +12,73 @@ import { getBooleanConfigValue, readEffectiveConfig } from "@/features/wesh/comm
 import { loadIgnoreMatcher } from "@/features/wesh/commands/git/ignore";
 import { pathExists, readFileText } from "@/features/wesh/commands/git/files";
 import { normalizePath } from "@/features/wesh/path";
+
+
+type CleanLongOptionSemantic = 'dry-run' | 'force';
+
+const CLEAN_LONG_ARGV_CATALOG = defineArgvCatalog<CleanLongOptionSemantic>({
+  nonExecutableLongOptions: [
+    'quiet',
+    'interactive',
+    'exclude',
+    'no-quiet',
+    'no-dry-run',
+    'no-force',
+    'no-interactive',
+  ],
+  definitions: [
+    { semantic: 'dry-run', forms: [{ kind: 'long', name: 'dry-run', value: { kind: 'none' } }] },
+    { semantic: 'force', forms: [{ kind: 'long', name: 'force', value: { kind: 'none' } }] },
+  ],
+});
+
+function resolveCleanLongOption({ arg }: { arg: string }): CleanLongOptionSemantic | undefined {
+  if (!arg.startsWith('--')) return undefined;
+  if (!arg.includes('=')) {
+    const optionName = arg.slice(2);
+    if (optionName === 'n' || optionName === 'no') {
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: arg,
+          candidateOptions: ['--no-force', '--no-interactive'],
+        }),
+      });
+    }
+  }
+  const analysis = analyzeArgvLongForm({
+    token: arg,
+    catalog: CLEAN_LONG_ARGV_CATALOG,
+    longNameMatch: 'unique-prefix',
+  });
+  switch (analysis.kind) {
+  case 'matched':
+    switch (analysis.value.kind) {
+    case 'none':
+      return analysis.semantic;
+    case 'unexpected-inline':
+    case 'inline':
+    case 'following-required':
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
+    default: {
+      const _ex: never = analysis.value;
+      throw new Error(`Unhandled clean argv-v2 value analysis: ${JSON.stringify(_ex)}`);
+    }
+    }
+  case 'ambiguous':
+    throw new GitUsageError({
+      message: formatGitAmbiguousLongOption({
+        option: analysis.option,
+        candidateOptions: analysis.candidateOptions,
+      }),
+    });
+  case 'unknown':
+    return undefined;
+  default: {
+    const _ex: never = analysis;
+    throw new Error(`Unhandled clean argv-v2 analysis: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
 
 async function isNestedGitWorktree({ context, absolutePath }: {
   context: WeshCommandContext;
@@ -161,21 +230,25 @@ function selectExplicitCleanPaths({ repository, cwd, operands, inventory }: {
   operands: readonly string[];
   inventory: CleanInventory;
 }): { directories: string[], leaves: string[] } {
+  const removableDirectoryAliases = [...inventory.fullyRemovableDirectoryPaths].map(path => `${path}/`);
   const matches = matchRepositoryPaths({
     repository,
     cwd,
     operands,
-    availablePaths: inventory.leafPaths,
+    availablePaths: [...inventory.leafPaths, ...removableDirectoryAliases],
   });
   const selected = new Set([...matches.values()].flat());
-  const exactDirectories = new Set<string>();
-  for (const [operand, operandMatches] of matches) {
-    const directory = selectedDirectoryPathForPathspec({ repository, cwd, operand, matchedPaths: operandMatches });
-    if (directory === undefined || !inventory.fullyRemovableDirectoryPaths.has(directory)) continue;
-    const descendantLeaves = inventory.leafPaths.filter(path => isDescendantOf({ path, directory }));
-    if (descendantLeaves.length > 0 && descendantLeaves.every(path => selected.has(path))) exactDirectories.add(directory);
+  const selectedDirectories = new Set<string>();
+  for (const operandMatches of matches.values()) {
+    for (const matchedPath of operandMatches) {
+      if (!matchedPath.endsWith('/')) continue;
+      const directory = matchedPath.slice(0, -1);
+      if (!inventory.fullyRemovableDirectoryPaths.has(directory)) continue;
+      const descendantLeaves = inventory.leafPaths.filter(path => isDescendantOf({ path, directory }));
+      if (descendantLeaves.every(path => selected.has(path))) selectedDirectories.add(directory);
+    }
   }
-  const directories = chooseTopmostDirectories({ directories: exactDirectories });
+  const directories = chooseTopmostDirectories({ directories: selectedDirectories });
   return {
     directories,
     leaves: inventory.leafPaths.filter(path =>
@@ -207,11 +280,21 @@ export async function runClean({ context, args }: {
       parsingOptions = false;
       continue;
     }
-    if (parsingOptions && arg === '--dry-run')
-      dryRun = true;
-    else if (parsingOptions && arg === '--force')
-      forceCount += 1;
-    else if (parsingOptions && /^-[nfd]+$/u.test(arg)) {
+    const longOption = parsingOptions ? resolveCleanLongOption({ arg }) : undefined;
+    if (parsingOptions && longOption !== undefined) {
+      switch (longOption) {
+      case 'dry-run':
+        dryRun = true;
+        break;
+      case 'force':
+        forceCount += 1;
+        break;
+      default: {
+        const _ex: never = longOption;
+        throw new Error(`Unhandled clean long option semantic: ${_ex}`);
+      }
+      }
+    } else if (parsingOptions && /^-[nfd]+$/u.test(arg)) {
       for (const option of arg.slice(1)) {
         if (option === 'n')
           dryRun = true;

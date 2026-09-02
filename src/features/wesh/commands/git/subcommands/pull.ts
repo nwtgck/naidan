@@ -1,3 +1,4 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { getConfigValue, readEffectiveConfig } from "@/features/wesh/commands/git/config";
@@ -15,7 +16,23 @@ import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 
 const PULL_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
-  nonExecutableLongOptions: [],
+  nonExecutableLongOptions: [
+    'verbose', 'no-verbose', 'no-quiet', 'progress', 'no-progress',
+    'recurse-submodules', 'no-recurse-submodules', 'stat', 'no-stat', 'log', 'no-log',
+    'signoff', 'no-signoff', 'squash', 'no-squash', 'commit', 'no-commit', 'edit', 'no-edit',
+    'cleanup', 'no-cleanup', 'ff', 'no-ff', 'verify', 'no-verify',
+    'verify-signatures', 'no-verify-signatures', 'autostash', 'no-autostash',
+    'strategy', 'no-strategy', 'strategy-option', 'no-strategy-option',
+    'gpg-sign', 'no-gpg-sign', 'allow-unrelated-histories', 'no-allow-unrelated-histories',
+    'all', 'no-all', 'append', 'no-append', 'upload-pack', 'no-upload-pack',
+    'force', 'no-force', 'tags', 'no-tags', 'prune', 'no-prune', 'jobs', 'no-jobs',
+    'dry-run', 'no-dry-run', 'keep', 'no-keep', 'depth', 'no-depth',
+    'shallow-since', 'no-shallow-since', 'shallow-exclude', 'no-shallow-exclude',
+    'deepen', 'no-deepen', 'unshallow', 'update-shallow', 'no-update-shallow', 'refmap',
+    'server-option', 'no-server-option', 'ipv4', 'no-ipv4', 'ipv6', 'no-ipv6',
+    'negotiation-tip', 'no-negotiation-tip', 'show-forced-updates', 'no-show-forced-updates',
+    'set-upstream', 'no-set-upstream',
+  ],
   definitions: [
     {
       semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
@@ -40,7 +57,7 @@ const PULL_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
 });
 
 const PULL_ARGV_POLICY: StandardArgvPolicy = {
-  longNameMatch: 'exact',
+  longNameMatch: 'unique-prefix',
   optionBoundary: 'continue',
   occurrenceRetention: 'none',
 };
@@ -53,7 +70,25 @@ export async function runPull({ context, args }: {
   const parsed = parseStandardArgv({ args, catalog: PULL_ARGV_CATALOG, policy: PULL_ARGV_POLICY });
   const diagnostic = parsed.diagnostics[0];
   if (diagnostic !== undefined) {
-    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    switch (diagnostic.kind) {
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'missing_option_value':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled argv diagnostic: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
   const ffOnly = parsed.optionValues.ffOnly === true;
   const rebase = parsed.optionValues.rebase === true;

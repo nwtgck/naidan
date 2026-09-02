@@ -2,7 +2,7 @@ import { createDiffOperations } from "@/features/wesh/commands/git/diff/algorith
 import { createDiffInput, createLineComparator, getLineBytes } from "@/features/wesh/commands/git/diff/input";
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { cleanWorktreeBytes, loadWorktreeAttributes } from "@/features/wesh/commands/git/attributes";
-import { readEffectiveConfig, readWorktreeContentConfig } from "@/features/wesh/commands/git/config";
+import { getDiffRenamesConfigMode, readEffectiveConfig, readWorktreeContentConfig } from "@/features/wesh/commands/git/config";
 import type { GitIndexEntry } from "@/features/wesh/commands/git/index-file";
 import { readIndex } from "@/features/wesh/commands/git/index-file";
 import { objectIdFor, readObject } from "@/features/wesh/commands/git/objects";
@@ -242,6 +242,7 @@ export async function runDiff({ context, args }: {
   }
   const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const quoteNonAscii = quoteNonAsciiFromConfig({ config });
+  const detectRenames = getDiffRenamesConfigMode({ config }) !== 'disabled';
   const indexEntries = await readIndex({ files: context.files, repository });
   const stageZeroEntries = indexEntries.filter(entry => entry.stage === 0);
   const unmergedIndexPaths = sortGitPaths({ paths: new Set(indexEntries.filter(entry => entry.stage !== 0).map(entry => entry.path)) });
@@ -294,7 +295,7 @@ export async function runDiff({ context, args }: {
     paths = paths.filter(path => selected.has(path));
     unmergedPaths = unmergedPaths.filter(path => selected.has(path));
   }
-  const exactRenames = exactRenamesForPaths({ paths, left, right });
+  const exactRenames = detectRenames ? exactRenamesForPaths({ paths, left, right }) : [];
   const exactRenameSources = new Set(exactRenames.map(rename => rename.sourcePath));
   const exactRenameDestinations = new Set(exactRenames.map(rename => rename.destinationPath));
   const hasDifferences = paths.length > 0 || unmergedPaths.length > 0;
@@ -305,7 +306,7 @@ export async function runDiff({ context, args }: {
     return { exitCode: (hasErrors ? 2 : 0) | differenceExitCode };
   }
   if (stat && !nameOnly && !nameStatus) {
-    await writeDiffStat({ context, paths, left, right, quoteNonAscii, unmergedPaths });
+    await writeDiffStat({ context, paths, left, right, quoteNonAscii, detectRenames, unmergedPaths });
     return { exitCode: differenceExitCode };
   }
   if (nameOnly) {

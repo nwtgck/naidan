@@ -1,3 +1,4 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { isExclusionPathspec, matchRepositoryPaths, pathspecSelectsDirectory, selectRepositoryPaths } from "@/features/wesh/commands/git/pathspec";
@@ -10,7 +11,11 @@ import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 
 const RM_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
-  nonExecutableLongOptions: [],
+  nonExecutableLongOptions: [
+    'dry-run', 'no-dry-run', 'quiet', 'no-quiet', 'no-cached', 'no-force',
+    'ignore-unmatch', 'no-ignore-unmatch', 'sparse', 'no-sparse',
+    'pathspec-from-file', 'no-pathspec-from-file', 'pathspec-file-nul', 'no-pathspec-file-nul',
+  ],
   definitions: [
     {
       semantic: { kind: 'effects', effects: [{ key: 'force', value: true }] },
@@ -31,7 +36,7 @@ const RM_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
 });
 
 const RM_ARGV_POLICY: StandardArgvPolicy = {
-  longNameMatch: 'exact',
+  longNameMatch: 'unique-prefix',
   optionBoundary: 'continue',
   occurrenceRetention: 'none',
 };
@@ -44,7 +49,25 @@ export async function runRm({ context, args }: {
   const parsed = parseStandardArgv({ args, catalog: RM_ARGV_CATALOG, policy: RM_ARGV_POLICY });
   const diagnostic = parsed.diagnostics[0];
   if (diagnostic !== undefined) {
-    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    switch (diagnostic.kind) {
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'missing_option_value':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled argv diagnostic: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
   const force = parsed.optionValues.force === true;
   const cached = parsed.optionValues.cached === true;

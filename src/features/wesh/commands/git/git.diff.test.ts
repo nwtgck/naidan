@@ -1,38 +1,12 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { Wesh } from '@/features/wesh/index';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
-import { createTextShellSource } from '@/features/wesh/shell/source';
-import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
-import {
-  createTestReadHandleFromText,
-  createTestWriteCaptureHandle,
-} from '@/features/wesh/utils/test-stream';
+import { createGitTestExecutor } from '@/features/wesh/commands/git/test-environment';
 
 beforeAll(async () => {
   await gitCommandDefinition.load();
 });
 
 describe('wesh git diff', () => {
-  let wesh: Wesh;
-
-  beforeEach(async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
-    wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
-    await wesh.init();
-  });
-
-  async function execute({ script }: { script: string }) {
-    const stdout = createTestWriteCaptureHandle();
-    const stderr = createTestWriteCaptureHandle();
-    const result = await wesh.execute({
-      source: createTextShellSource({ text: script }),
-      stdin: createTestReadHandleFromText({ text: '' }),
-      stdout: stdout.handle,
-      stderr: stderr.handle,
-    });
-    return { result, stdout, stderr };
-  }
-
   const setup = `\
 git init -q repo
 cd repo
@@ -44,6 +18,7 @@ git add .
 GIT_AUTHOR_DATE='981173106 +0000' GIT_COMMITTER_DATE='981173106 +0000' git commit -m initial >/dev/null`;
 
   it('shows unstaged changes between the index and worktree', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -76,6 +51,7 @@ index 2d030d7..0000000
   });
 
   it('preserves --exit-code across supported summary output modes', async () => {
+    const execute = await createGitTestExecutor();
     for (const mode of ['--stat', '--name-only', '--name-status']) {
       const { result, stdout, stderr } = await execute({
         script: `\
@@ -91,6 +67,7 @@ git diff ${mode} --exit-code`,
   });
 
   it('combines --check and --exit-code exit bits like Git', async () => {
+    const execute = await createGitTestExecutor();
     const cleanDifference = await execute({
       script: `\
 ${setup}
@@ -113,6 +90,7 @@ git diff --check --exit-code`,
   });
 
   it('uses the preceding non-indented line as the partial hunk heading', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -146,6 +124,7 @@ index b317fe5..0bde290 100644
   });
 
   it('shows staged changes with --cached without unstaged deletion', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -179,6 +158,7 @@ index 0000000..3e75765
   });
 
   it('combines staged and unstaged tracked changes when diffing against HEAD', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -199,6 +179,7 @@ A\tnew.txt
   });
 
   it('supports name-only output for automation', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -216,6 +197,7 @@ del.txt
   });
 
   it('compares two committed revisions without consulting the worktree', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -231,6 +213,7 @@ git diff HEAD~1 HEAD --name-status`,
     expect(stdout.text).toBe('M\ta.txt\n');
   });
   it('filters changes by pathspec after -- and treats a missing path as no match', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -246,6 +229,7 @@ git diff --name-only -- missing.txt`,
   });
 
   it('shows canonical diffstat output from the shared diff snapshot', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -264,6 +248,7 @@ git diff --stat --no-color`,
   });
 
   it('uses diff exit status without changing the selected comparison', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -285,6 +270,7 @@ git diff --exit-code --no-color`,
   });
 
   it('lets --quiet suppress --check diagnostics and use diff exit status', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -298,6 +284,7 @@ git diff --quiet --check`,
   });
 
   it('reports newly introduced trailing whitespace with --check', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -314,6 +301,7 @@ a.txt:3: trailing whitespace.
   });
 
   it('renders a canonical combined diff for a two-parent text conflict', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -369,6 +357,7 @@ index 9822c25,d36781a..0000000
   });
 
   it('renders combined diff when parent and result files have no final newline', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -407,6 +396,7 @@ index 88d050b,9292e48..0000000
   });
 
   it('aligns distinct multi-line parent deletions in a combined diff', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -450,6 +440,7 @@ index a937183,d20ebd4..0000000
   });
 
   it('renders combined diff for an add/add conflict without a stage-1 entry', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -499,6 +490,7 @@ index ba2906d,2299c37..0000000
   });
 
   it('prints the canonical unmerged summary for a modify/delete conflict', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -526,6 +518,7 @@ git diff --no-color`,
   });
 
   it('reports a canonical binary combined diff without attempting a text patch', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -558,6 +551,7 @@ Binary files differ
   });
 
   it('quotes combined conflict paths using core.quotePath semantics', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -603,6 +597,7 @@ index 9822c25,d36781a..0000000
   });
 
   it('renders a canonical partial combined conflict hunk', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -648,6 +643,7 @@ index bf6b438,0fd15de..0000000
   });
 
   it('splits distant combined conflicts into canonical hunks', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -705,6 +701,7 @@ index e2f6ddc,b1f4848..0000000
   });
 
   it('reports unmerged index entries from --cached without requiring a combined diff renderer', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -759,6 +756,7 @@ a.txt:1: trailing whitespace.
   });
 
   it('applies include and exclude pathspec magic to diff selection', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -774,6 +772,7 @@ git diff --name-only -- '*.txt' ':(exclude)del.txt'`,
 
 
   it('orders diff path output by UTF-8 bytes', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -798,6 +797,7 @@ git diff --name-only`,
   });
 
   it('quotes patch headers and stat paths using core.quotePath semantics', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -854,6 +854,7 @@ index 5626abf..f719efd 100644
   });
 
   it('quotes name output and supports raw NUL-delimited pathnames', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -888,6 +889,7 @@ space name.txt\0日本語.txt\0M\0space name.txt\0M\0日本語.txt\0space name.t
 
 
   it('renders exact staged renames consistently across diff name and patch output', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -926,8 +928,83 @@ R100\ta\tb
 `);
   });
 
+  it('pairs multiple identical staged renames using Git basename preference', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+mkdir old
+printf 'same\n' > old/a.txt
+cp old/a.txt old/b.txt
+git add .
+git commit -m initial >/dev/null
+mkdir new
+git mv old/a.txt new/a.txt
+git mv old/b.txt new/b.txt
+rmdir old
+printf '%s\n' NAME
+git diff --cached --name-status
+printf '%s\n' PATCH
+git diff --cached --no-color`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+NAME
+R100\told/a.txt\tnew/a.txt
+R100\told/b.txt\tnew/b.txt
+PATCH
+diff --git a/old/a.txt b/new/a.txt
+similarity index 100%
+rename from old/a.txt
+rename to new/a.txt
+diff --git a/old/b.txt b/new/b.txt
+similarity index 100%
+rename from old/b.txt
+rename to new/b.txt
+`);
+  });
+
+  it('honors diff.renames when deciding whether to collapse exact renames', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+git config user.name Tester
+git config user.email tester@example.com
+printf 'same\n' > a
+git add a
+git commit -m initial >/dev/null
+git mv a b
+printf '%s\n' DEFAULT
+git diff --cached --name-status
+printf '%s\n' DISABLED
+git -c diff.renames=false diff --cached --name-status
+printf '%s\n' COPIES
+git -c diff.renames=copies diff --cached --name-status`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+DEFAULT
+R100\ta\tb
+DISABLED
+D\ta
+A\tb
+COPIES
+R100\ta\tb
+`);
+  });
+
 
   it('rejects incompatible diff name output modes instead of silently choosing one', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -941,6 +1018,7 @@ git diff --name-only --name-status`,
   });
 
   it('lets name output modes take precedence over --stat like Git', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}

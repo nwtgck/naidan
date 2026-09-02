@@ -16,8 +16,8 @@ import { readTreeRecursively } from "@/features/wesh/commands/git/tree";
 import { matchRepositoryPaths } from "@/features/wesh/commands/git/pathspec";
 import { formatGitPatchPath, quoteGitPath } from "@/features/wesh/commands/git/path-output";
 import { compareGitPaths, sortGitPaths } from "@/features/wesh/commands/git/path-order";
-import { exactRenameContentIdentity, findExactRenames } from "@/features/wesh/commands/git/renames";
-import type { GitExactRenameMatch } from "@/features/wesh/commands/git/renames";
+import { exactRenameContentIdentity, findExactRenames, findGitRenameMatches } from "@/features/wesh/commands/git/renames";
+import type { GitExactRenameMatch, GitSimilarityRenameMatch } from "@/features/wesh/commands/git/renames";
 
 const gitlinkEncoder = new TextEncoder();
 
@@ -318,16 +318,17 @@ function renameStatPath({ sourcePath, destinationPath }: { sourcePath: string, d
   return [...prefix, `{${sourceMiddle} => ${destinationMiddle}}`, ...suffix].join('/');
 }
 
-export async function writeDiffStat({ context, paths, left, right, quoteNonAscii, unmergedPaths = [] }: {
+export async function writeDiffStat({ context, paths, left, right, quoteNonAscii, detectRenames, unmergedPaths = [] }: {
   context: WeshCommandContext,
   paths: readonly string[],
   left: GitDiffSnapshot,
   right: GitDiffSnapshot,
   quoteNonAscii: boolean,
+  detectRenames: boolean,
   unmergedPaths?: readonly string[],
 }): Promise<void> {
   if (paths.length === 0 && unmergedPaths.length === 0) return;
-  const exactRenames = exactRenamesForPaths({ paths, left, right });
+  const exactRenames = detectRenames ? exactRenamesForPaths({ paths, left, right }) : [];
   const renamePaths = new Set(exactRenames.flatMap(rename => [rename.sourcePath, rename.destinationPath]));
   const entries = [
     ...createDiffStatEntries({ paths: paths.filter(path => !renamePaths.has(path)), left, right }),
@@ -461,57 +462,80 @@ function changedLinesMatch({ leftBytes, rightBytes, pattern }: {
   return false;
 }
 
-function excludeExactContentMovesForPickaxe({ paths, left, right }: {
+function diffSearchMatchesBytes({ leftBytes, rightBytes, search }: {
+  leftBytes: Uint8Array,
+  rightBytes: Uint8Array,
+  search: GitDiffSearch,
+}): boolean {
+  switch (search.type) {
+  case 'string':
+    return countByteSequence({ bytes: leftBytes, needle: search.bytes }) !== countByteSequence({ bytes: rightBytes, needle: search.bytes });
+  case 'regex':
+    return changedLinesMatch({ leftBytes, rightBytes, pattern: search.pattern });
+  default: {
+    const _ex: never = search;
+    throw new Error(`Unhandled diff search type: ${((_ex satisfies never) as { readonly type: string }).type}`);
+  }
+  }
+}
+
+function renameMatchesForPickaxe({ paths, left, right, renameLimit }: {
   paths: readonly string[],
   left: GitDiffSnapshot,
   right: GitDiffSnapshot,
-}): string[] {
-  const groups = new Map<string, { deleted: string[], added: string[] }>();
-  for (const path of paths) {
-    const leftEntry = left.get(path);
-    const rightEntry = right.get(path);
-    const entry = leftEntry ?? rightEntry;
-    if (entry === undefined || (leftEntry !== undefined && rightEntry !== undefined)) continue;
-    const key = exactRenameContentIdentity({ objectId: entry.objectId, mode: entry.mode });
-    const group = groups.get(key) ?? { deleted: [], added: [] };
-    if (leftEntry !== undefined) group.deleted.push(path);
-    else group.added.push(path);
-    groups.set(key, group);
-  }
-
-  const excluded = new Set<string>();
-  for (const group of groups.values()) {
-    const pairCount = Math.min(group.deleted.length, group.added.length);
-    for (let index = 0; index < pairCount; index += 1) {
-      excluded.add(group.deleted[index]!);
-      excluded.add(group.added[index]!);
-    }
-  }
-  return paths.filter(path => !excluded.has(path));
+  renameLimit: number,
+}): GitSimilarityRenameMatch[] {
+  const deleted = paths.flatMap(path => {
+    const entry = left.get(path);
+    return entry !== undefined && !right.has(path)
+      ? [{ path, objectId: entry.objectId, mode: entry.mode, bytes: entry.bytes }]
+      : [];
+  });
+  const added = paths.flatMap(path => {
+    const entry = right.get(path);
+    return entry !== undefined && !left.has(path)
+      ? [{ path, objectId: entry.objectId, mode: entry.mode, bytes: entry.bytes }]
+      : [];
+  });
+  return findGitRenameMatches({ deleted, added, renameLimit });
 }
 
-export async function revisionDiffMatchesSearch({ context, repository, leftRevision, rightRevision, pathOperands, search }: {
+function excludeExactCopyDestinationsForPickaxe({ paths, sourcePaths, left, right }: {
+  paths: readonly string[],
+  sourcePaths: readonly string[],
+  left: GitDiffSnapshot,
+  right: GitDiffSnapshot,
+}): string[] {
+  const sourceIdentities = new Set(sourcePaths.flatMap(path => {
+    const entry = left.get(path);
+    return entry === undefined
+      ? []
+      : [exactRenameContentIdentity({ objectId: entry.objectId, mode: entry.mode })];
+  }));
+  return paths.filter(path => {
+    if (left.has(path)) return true;
+    const entry = right.get(path);
+    return entry === undefined
+      || !sourceIdentities.has(exactRenameContentIdentity({ objectId: entry.objectId, mode: entry.mode }));
+  });
+}
+
+export async function revisionDiffMatchesSearch({ context, repository, leftRevision, rightRevision, pathOperands, search, detectRenames, detectCopies, renameLimit }: {
   context: WeshCommandContext,
   repository: GitRepository,
   leftRevision: string | undefined,
   rightRevision: string,
   pathOperands: readonly string[],
   search: GitDiffSearch,
+  detectRenames: boolean,
+  detectCopies: boolean,
+  renameLimit: number,
 }): Promise<boolean> {
   const left = leftRevision === undefined
     ? new Map<string, GitDiffSnapshotEntry>()
     : await snapshotFromTree({ context, repository, revision: leftRevision });
   const right = await snapshotFromTree({ context, repository, revision: rightRevision });
   let paths = changedPaths({ left, right });
-  if (pathOperands.length === 0) {
-    paths = excludeExactContentMovesForPickaxe({ paths, left, right });
-  } else {
-    const exactRenames = exactRenamesForPaths({ paths, left, right });
-    if (exactRenames.length > 0) {
-      const exactRenamePaths = new Set(exactRenames.flatMap(rename => [rename.sourcePath, rename.destinationPath]));
-      paths = paths.filter(path => !exactRenamePaths.has(path));
-    }
-  }
   if (pathOperands.length > 0) {
     const matches = matchRepositoryPaths({
       repository,
@@ -521,33 +545,47 @@ export async function revisionDiffMatchesSearch({ context, repository, leftRevis
     });
     const selected = new Set([...matches.values()].flat());
     paths = paths.filter(path => selected.has(path));
+  }
+  const copySourcePaths = paths;
+  let similarityRenames: GitSimilarityRenameMatch[] = [];
+  if (detectRenames) {
+    similarityRenames = renameMatchesForPickaxe({ paths, left, right, renameLimit });
+    if (similarityRenames.length > 0) {
+      const renamePaths = new Set(similarityRenames.flatMap(rename => [rename.sourcePath, rename.destinationPath]));
+      paths = paths.filter(path => !renamePaths.has(path));
+    }
+    if (detectCopies && pathOperands.length === 0) {
+      paths = excludeExactCopyDestinationsForPickaxe({
+        paths,
+        sourcePaths: copySourcePaths,
+        left,
+        right,
+      });
+    }
+  }
+  for (const similarityRename of similarityRenames) {
+    if (diffSearchMatchesBytes({
+      leftBytes: left.get(similarityRename.sourcePath)!.bytes,
+      rightBytes: right.get(similarityRename.destinationPath)!.bytes,
+      search,
+    })) return true;
   }
   for (const path of paths) {
     const leftBytes = left.get(path)?.bytes ?? new Uint8Array();
     const rightBytes = right.get(path)?.bytes ?? new Uint8Array();
-    switch (search.type) {
-    case 'string':
-      if (countByteSequence({ bytes: leftBytes, needle: search.bytes }) !== countByteSequence({ bytes: rightBytes, needle: search.bytes })) return true;
-      break;
-    case 'regex':
-      if (changedLinesMatch({ leftBytes, rightBytes, pattern: search.pattern })) return true;
-      break;
-    default: {
-      const _ex: never = search;
-      throw new Error(`Unhandled diff search type: ${((_ex satisfies never) as { readonly type: string }).type}`);
-    }
-    }
+    if (diffSearchMatchesBytes({ leftBytes, rightBytes, search })) return true;
   }
   return false;
 }
 
-export async function writeRevisionStat({ context, repository, leftRevision, rightRevision, pathOperands, quoteNonAscii }: {
+export async function writeRevisionStat({ context, repository, leftRevision, rightRevision, pathOperands, quoteNonAscii, detectRenames }: {
   context: WeshCommandContext,
   repository: GitRepository,
   leftRevision: string | undefined,
   rightRevision: string,
   pathOperands: readonly string[],
   quoteNonAscii: boolean,
+  detectRenames: boolean,
 }): Promise<void> {
   const left = leftRevision === undefined
     ? new Map<string, GitDiffSnapshotEntry>()
@@ -564,16 +602,17 @@ export async function writeRevisionStat({ context, repository, leftRevision, rig
     const selected = new Set([...matches.values()].flat());
     paths = paths.filter(path => selected.has(path));
   }
-  await writeDiffStat({ context, paths, left, right, quoteNonAscii });
+  await writeDiffStat({ context, paths, left, right, quoteNonAscii, detectRenames });
 }
 
-export async function writeRevisionPatch({ context, repository, leftRevision, rightRevision, pathOperands, quoteNonAscii }: {
+export async function writeRevisionPatch({ context, repository, leftRevision, rightRevision, pathOperands, quoteNonAscii, detectRenames }: {
   context: WeshCommandContext,
   repository: GitRepository,
   leftRevision: string | undefined,
   rightRevision: string,
   pathOperands: readonly string[],
   quoteNonAscii: boolean,
+  detectRenames: boolean,
 }): Promise<void> {
   const left = leftRevision === undefined
     ? new Map<string, GitDiffSnapshotEntry>()
@@ -590,7 +629,7 @@ export async function writeRevisionPatch({ context, repository, leftRevision, ri
     const selected = new Set([...matches.values()].flat());
     paths = paths.filter(path => selected.has(path));
   }
-  const exactRenames = exactRenamesForPaths({ paths, left, right });
+  const exactRenames = detectRenames ? exactRenamesForPaths({ paths, left, right }) : [];
   const renamePaths = new Set(exactRenames.flatMap(rename => [rename.sourcePath, rename.destinationPath]));
   const rows = [
     ...paths.filter(path => !renamePaths.has(path)).map(path => ({ kind: 'path' as const, sortPath: path, path })),

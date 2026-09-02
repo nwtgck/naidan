@@ -1,3 +1,4 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
@@ -7,7 +8,22 @@ import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repo
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 
 const FETCH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
-  nonExecutableLongOptions: [],
+  nonExecutableLongOptions: [
+    'verbose', 'no-verbose', 'no-quiet', 'no-all', 'set-upstream', 'no-set-upstream',
+    'append', 'no-append', 'atomic', 'no-atomic', 'upload-pack', 'no-upload-pack',
+    'force', 'no-force', 'multiple', 'no-multiple', 'tags', 'no-tags', 'jobs', 'no-jobs',
+    'prefetch', 'no-prefetch', 'no-prune', 'prune-tags', 'no-prune-tags',
+    'recurse-submodules', 'no-recurse-submodules', 'dry-run', 'no-dry-run',
+    'porcelain', 'no-porcelain', 'write-fetch-head', 'no-write-fetch-head', 'keep', 'no-keep',
+    'update-head-ok', 'no-update-head-ok', 'progress', 'no-progress', 'depth', 'no-depth',
+    'shallow-since', 'no-shallow-since', 'shallow-exclude', 'no-shallow-exclude',
+    'deepen', 'no-deepen', 'unshallow', 'refetch', 'update-shallow', 'no-update-shallow',
+    'refmap', 'server-option', 'no-server-option', 'ipv4', 'ipv6',
+    'negotiation-tip', 'no-negotiation-tip', 'negotiate-only', 'no-negotiate-only',
+    'filter', 'no-filter', 'auto-maintenance', 'no-auto-maintenance', 'auto-gc', 'no-auto-gc',
+    'show-forced-updates', 'no-show-forced-updates', 'write-commit-graph', 'no-write-commit-graph',
+    'stdin', 'no-stdin',
+  ],
   definitions: [
     {
       semantic: { kind: 'effects', effects: [{ key: 'prune', value: true }] },
@@ -31,7 +47,7 @@ const FETCH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
 });
 
 const FETCH_ARGV_POLICY: StandardArgvPolicy = {
-  longNameMatch: 'exact',
+  longNameMatch: 'unique-prefix',
   optionBoundary: 'continue',
   occurrenceRetention: 'none',
 };
@@ -43,7 +59,25 @@ export async function runFetch({ context, args }: {
   const parsed = parseStandardArgv({ args, catalog: FETCH_ARGV_CATALOG, policy: FETCH_ARGV_POLICY });
   const diagnostic = parsed.diagnostics[0];
   if (diagnostic !== undefined) {
-    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    switch (diagnostic.kind) {
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'missing_option_value':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled argv diagnostic: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
   const quiet = parsed.optionValues.quiet === true;
   const all = parsed.optionValues.all === true;

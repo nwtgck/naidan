@@ -1,4 +1,5 @@
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
+import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
 import { getConfigValue, readEffectiveConfig } from '@/features/wesh/commands/git/config';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readCommit } from "@/features/wesh/commands/git/commits";
@@ -13,12 +14,31 @@ import { abortRebase, checkoutRebaseTargetBranch, continueRebase, skipRebase, st
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
 
 
+type RebaseControlAction = 'continue' | 'abort' | 'skip';
+
 type RebaseStartArguments = {
   upstreamExpression: string | undefined;
   ontoExpression: string | undefined;
   branchExpression: string | undefined;
   explicitOnto: boolean;
 };
+
+const REBASE_START_ARGV_CATALOG = defineArgvCatalog<'onto'>({
+  nonExecutableLongOptions: [],
+  definitions: [{
+    semantic: 'onto',
+    forms: [{ kind: 'long', name: 'onto', value: { kind: 'required', missingValueName: 'newbase' } }],
+  }],
+});
+
+function resolveRebaseControlAction({ token }: { token: string }): RebaseControlAction | undefined {
+  if (!token.startsWith('--') || token.includes('=')) return undefined;
+  const name = token.slice(2);
+  if (name.length >= 3 && 'continue'.startsWith(name)) return 'continue';
+  if (name.length >= 2 && 'abort'.startsWith(name)) return 'abort';
+  if (name.length >= 2 && 'skip'.startsWith(name)) return 'skip';
+  return undefined;
+}
 
 function parseRebaseStartArguments({ args }: { args: readonly string[] }): RebaseStartArguments {
   let parsingOptions = true;
@@ -30,17 +50,51 @@ function parseRebaseStartArguments({ args }: { args: readonly string[] }): Rebas
       parsingOptions = false;
       continue;
     }
-    if (parsingOptions && arg === '--onto') {
-      const value = args[index + 1];
-      if (value === undefined)
-        throw new GitUsageError({ message: 'usage: git rebase --onto <newbase> <upstream> [<branch>]', prefix: 'none' });
-      ontoExpression = value;
-      index += 1;
-      continue;
-    }
-    if (parsingOptions && arg.startsWith('--onto=')) {
-      ontoExpression = arg.slice('--onto='.length);
-      continue;
+    if (parsingOptions && arg.startsWith('--')) {
+      const analysis = analyzeArgvLongForm({
+        token: arg,
+        catalog: REBASE_START_ARGV_CATALOG,
+        longNameMatch: 'unique-prefix',
+      });
+      switch (analysis.kind) {
+      case 'matched':
+        switch (analysis.semantic) {
+        case 'onto':
+          switch (analysis.value.kind) {
+          case 'inline':
+            ontoExpression = analysis.value.rawValue;
+            break;
+          case 'following-required': {
+            const value = args[index + 1];
+            if (value === undefined)
+              throw new GitUsageError({ message: "option `onto' requires a value" });
+            ontoExpression = value;
+            index += 1;
+            break;
+          }
+          case 'none':
+          case 'unexpected-inline':
+            throw new Error(`Unexpected rebase --onto argv-v2 value analysis: ${JSON.stringify(analysis.value)}`);
+          default: {
+            const _ex: never = analysis.value;
+            throw new Error(`Unhandled rebase --onto argv-v2 value analysis: ${JSON.stringify(_ex)}`);
+          }
+          }
+          continue;
+        default: {
+          const _ex: never = analysis.semantic;
+          throw new Error(`Unhandled rebase argv-v2 semantic: ${_ex}`);
+        }
+        }
+      case 'unknown':
+        throw new GitUsageError({ message: `unknown option: ${arg}` });
+      case 'ambiguous':
+        throw new GitUsageError({ message: `ambiguous option: ${arg}` });
+      default: {
+        const _ex: never = analysis;
+        throw new Error(`Unhandled rebase argv-v2 analysis: ${JSON.stringify(_ex)}`);
+      }
+      }
     }
     if (parsingOptions && arg.startsWith('-'))
       throw new GitUsageError({ message: `unknown option: ${arg}` });
@@ -63,12 +117,21 @@ export async function runRebase({ context, args }: {
     args: readonly string[];
 }): Promise<WeshCommandResult> {
   await assertSupportedRepositoryContentPolicy({ context });
-  if (args.length === 1 && args[0] === '--continue')
+  const controlAction = args.length === 1 ? resolveRebaseControlAction({ token: args[0]! }) : undefined;
+  switch (controlAction) {
+  case 'continue':
     return continueRebase({ context });
-  if (args.length === 1 && args[0] === '--abort')
+  case 'abort':
     return abortRebase({ context });
-  if (args.length === 1 && args[0] === '--skip')
+  case 'skip':
     return skipRebase({ context });
+  case undefined:
+    break;
+  default: {
+    const _ex: never = controlAction;
+    throw new Error(`Unhandled rebase control action: ${_ex}`);
+  }
+  }
   const parsed = parseRebaseStartArguments({ args });
   let upstreamExpression = parsed.upstreamExpression;
   let ontoExpression = parsed.ontoExpression;

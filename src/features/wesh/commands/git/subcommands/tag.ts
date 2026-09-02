@@ -1,3 +1,4 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
 import { getBooleanConfigValue, readEffectiveConfig } from '@/features/wesh/commands/git/config';
@@ -15,7 +16,14 @@ import { appendMessageParagraph, cleanupMessage } from '@/features/wesh/commands
 type TagDeferredSemantic = 'message';
 
 const TAG_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<TagDeferredSemantic>>({
-  nonExecutableLongOptions: [],
+  nonExecutableLongOptions: [
+    'list', 'verify', 'no-annotate', 'file', 'no-file', 'trailer', 'edit', 'no-edit',
+    'sign', 'no-sign', 'cleanup', 'no-cleanup', 'local-user', 'no-local-user',
+    'force', 'no-force', 'create-reflog', 'no-create-reflog', 'column', 'no-column',
+    'contains', 'no-contains', 'merged', 'no-merged', 'omit-empty', 'no-omit-empty',
+    'sort', 'no-sort', 'points-at', 'no-points-at', 'format', 'no-format',
+    'color', 'no-color', 'ignore-case', 'no-ignore-case',
+  ],
   definitions: [
     {
       semantic: { kind: 'effects', effects: [{ key: 'annotated', value: true }] },
@@ -42,7 +50,7 @@ const TAG_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<TagDeferredSemanti
 });
 
 const TAG_ARGV_POLICY: StandardArgvPolicy = {
-  longNameMatch: 'exact',
+  longNameMatch: 'unique-prefix',
   optionBoundary: 'continue',
   occurrenceRetention: 'none',
 };
@@ -105,9 +113,15 @@ export async function runTag({ context, args }: {
     switch (diagnostic.kind) {
     case 'missing_option_value':
       throw new GitUsageError({ message: `option '${diagnostic.option}' requires a value` });
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
     case 'unknown_short_option':
     case 'unknown_long_option':
-    case 'ambiguous_long_option':
     case 'unexpected_option_value':
     case 'invalid_option_value':
       throw new GitUsageError({ message: `unsupported tag argument: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });

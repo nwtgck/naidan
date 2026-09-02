@@ -1,39 +1,14 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { Wesh } from '@/features/wesh/index';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
-import { createTextShellSource } from '@/features/wesh/shell/source';
-import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
-import {
-  createTestReadHandleFromText,
-  createTestWriteCaptureHandle,
-} from '@/features/wesh/utils/test-stream';
+import { createGitTestExecutor } from '@/features/wesh/commands/git/test-environment';
 
 beforeAll(async () => {
   await gitCommandDefinition.load();
 });
 
 describe('wesh git clean', () => {
-  let wesh: Wesh;
-
-  beforeEach(async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
-    wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
-    await wesh.init();
-  });
-
-  async function execute({ script }: { script: string }) {
-    const stdout = createTestWriteCaptureHandle();
-    const stderr = createTestWriteCaptureHandle();
-    const result = await wesh.execute({
-      source: createTextShellSource({ text: script }),
-      stdin: createTestReadHandleFromText({ text: '' }),
-      stdout: stdout.handle,
-      stderr: stderr.handle,
-    });
-    return { result, stdout, stderr };
-  }
-
   it('requires an explicit safety flag before removing files', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -47,6 +22,7 @@ git clean`,
   });
 
   it('honors clean.requireForce=false without requiring -f', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -62,6 +38,7 @@ git status --porcelain=v1`,
   });
 
   it('discovers the repository before applying the clean force guard', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({ script: 'git clean' });
     expect(result.exitCode).toBe(128);
     expect(stdout.text).toBe('');
@@ -70,6 +47,7 @@ git status --porcelain=v1`,
   });
 
   it('dry-runs and removes only eligible untracked paths while respecting ignored files and -d', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -109,6 +87,7 @@ Removing fresh/
   });
 
   it('limits cleaning to explicit pathspec matches without requiring -d', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -138,6 +117,7 @@ STATUS
   });
 
   it('limits implicit clean scope to the current -C subdirectory', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -166,7 +146,34 @@ STATUS
 `);
   });
 
+  it('promotes fully removable wildcard pathspec matches to directory units', async () => {
+    const execute = await createGitTestExecutor();
+    const { result, stdout, stderr } = await execute({
+      script: `\
+git init -q repo
+cd repo
+mkdir -p dir/deep other/deep
+printf a > dir/a
+printf b > dir/deep/b
+printf c > other/deep/c
+git clean -n -- 'dir/*'
+git clean -n -- 'd*'
+git clean -n -- '*/deep/*'
+git clean -n -- ':(glob)d*'`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+Would remove dir/
+Would remove dir/
+Would remove dir/deep/
+Would remove other/deep/
+`);
+  });
+
   it('applies include and exclude pathspec magic before cleaning', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -196,6 +203,7 @@ STATUS
 
 
   it('removes empty untracked directories with -d', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -214,6 +222,7 @@ Removing empty/
   });
 
   it('does not mistake an arbitrary .git file for a nested repository', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -230,6 +239,7 @@ git clean -fd`,
   });
 
   it('requires double force before removing an untracked nested Git repository', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -247,6 +257,7 @@ git clean -ffd`,
   });
 
   it('reports and removes wholly untracked directories as directory units with -d', async () => {
+    const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
       script: `\
 git init -q repo
@@ -280,6 +291,7 @@ STATUS
 
 
   it('preflights repository config even for dry-run and before option errors', async () => {
+    const execute = await createGitTestExecutor();
     const setup = await execute({
       script: `\
 git init -q /clean-malformed

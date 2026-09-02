@@ -25,35 +25,42 @@ export async function runRevParse({ context, args }: {
     env: context.env,
   });
   let shortLength: number | undefined;
-  let verify = false;
-  let printedSpecial = false;
-  const expressions: string[] = [];
-  let pathArguments: readonly string[] | undefined;
+  let singleRevisionMode = false;
+  const singleRevisionExpressions: string[] = [];
+  const printRevision = async ({ expression, outputLength }: {
+    expression: string,
+    outputLength: number | undefined,
+  }): Promise<void> => {
+    const objectId = expression.includes(':')
+      ? (await resolveRevisionPath({ files: context.files, repository, expression })).objectId
+      : await resolveRevision({ files: context.files, repository, expression });
+    await context.text().print({ text: `${outputLength === undefined ? objectId : objectId.slice(0, outputLength)}\n` });
+  };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
     if (arg === '--') {
-      if (!verify && shortLength === undefined)
-        pathArguments = args.slice(index + 1);
+      if (!singleRevisionMode) {
+        await context.text().print({ text: '--\n' });
+        for (const pathArgument of args.slice(index + 1))
+          await context.text().print({ text: `${pathArgument}\n` });
+      }
       break;
     }
     if (arg === '--is-inside-work-tree') {
       await context.text().print({ text: repositoryCwdIsInsideWorktree({ context, repository }) ? 'true\n' : 'false\n' });
-      printedSpecial = true;
       continue;
     }
     if (arg === '--is-bare-repository') {
       await context.text().print({ text: repositoryHasWorktree({ repository }) ? 'false\n' : 'true\n' });
-      printedSpecial = true;
       continue;
     }
     if (arg === '--verify') {
-      verify = true;
+      singleRevisionMode = true;
       continue;
     }
     if (arg === '--show-toplevel') {
       assertRepositoryHasUsableWorktree({ context, repository });
       await context.text().print({ text: `${repository.worktreePath}\n` });
-      printedSpecial = true;
       continue;
     }
     if (arg === '--git-dir') {
@@ -66,7 +73,6 @@ export async function runRevParse({ context, args }: {
             ? '.git'
             : repository.gitDirPath;
       await context.text().print({ text: `${relative}\n` });
-      printedSpecial = true;
       continue;
     }
     if (arg === '--git-common-dir') {
@@ -80,10 +86,10 @@ export async function runRevParse({ context, args }: {
             ? relativePath({ from: context.cwd, to: repository.commonDirPath })
             : repository.commonDirPath;
       await context.text().print({ text: `${relative}\n` });
-      printedSpecial = true;
       continue;
     }
     if (arg === '--short') {
+      singleRevisionMode = true;
       shortLength = 7;
       continue;
     }
@@ -92,32 +98,24 @@ export async function runRevParse({ context, args }: {
       const match = /^[\t\n\v\f\r ]*([+-]?[0-9]+)/u.exec(rawLength);
       const parsed = match === null ? 0n : BigInt(match[1]!);
       const requestedLength = parsed < -2147483648n || parsed > 2147483647n ? 0 : Number(parsed);
+      singleRevisionMode = true;
       shortLength = Math.min(40, Math.max(4, requestedLength));
       continue;
     }
     if (arg.startsWith('-')) {
-      if (!verify && shortLength === undefined) {
+      if (!singleRevisionMode)
         await context.text().print({ text: `${arg}\n` });
-        printedSpecial = true;
-      }
       continue;
     }
-    expressions.push(arg);
+    if (singleRevisionMode)
+      singleRevisionExpressions.push(arg);
+    else
+      await printRevision({ expression: arg, outputLength: undefined });
   }
-  if ((verify || shortLength !== undefined) && expressions.length !== 1)
-    throw new Error('Needed a single revision');
-  if (!printedSpecial && expressions.length === 0 && pathArguments === undefined)
-    return { exitCode: 0 };
-  for (const expression of expressions) {
-    const objectId = expression.includes(':')
-      ? (await resolveRevisionPath({ files: context.files, repository, expression })).objectId
-      : await resolveRevision({ files: context.files, repository, expression });
-    await context.text().print({ text: `${shortLength === undefined ? objectId : objectId.slice(0, shortLength)}\n` });
-  }
-  if (pathArguments !== undefined) {
-    await context.text().print({ text: '--\n' });
-    for (const pathArgument of pathArguments)
-      await context.text().print({ text: `${pathArgument}\n` });
+  if (singleRevisionMode) {
+    if (singleRevisionExpressions.length !== 1)
+      throw new Error('Needed a single revision');
+    await printRevision({ expression: singleRevisionExpressions[0]!, outputLength: shortLength });
   }
   return { exitCode: 0 };
 }

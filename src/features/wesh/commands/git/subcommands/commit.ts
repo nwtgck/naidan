@@ -1,3 +1,4 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { normalizePath } from "@/features/wesh/path";
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
@@ -19,7 +20,20 @@ import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type Sta
 type CommitDeferredSemantic = 'message' | 'file';
 
 const COMMIT_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<CommitDeferredSemantic>>({
-  nonExecutableLongOptions: [],
+  nonExecutableLongOptions: [
+    'quiet', 'no-quiet', 'verbose', 'no-verbose',
+    'no-file', 'author', 'no-author', 'date', 'no-date', 'no-message',
+    'reedit-message', 'no-reedit-message', 'reuse-message', 'no-reuse-message',
+    'fixup', 'no-fixup', 'squash', 'no-squash', 'reset-author', 'no-reset-author',
+    'trailer', 'signoff', 'no-signoff', 'template', 'no-template', 'edit',
+    'cleanup', 'no-cleanup', 'status', 'no-status', 'gpg-sign', 'no-gpg-sign',
+    'no-all', 'include', 'no-include', 'interactive', 'no-interactive', 'patch', 'no-patch',
+    'only', 'no-only', 'no-verify', 'verify', 'dry-run', 'no-dry-run', 'short', 'no-short',
+    'branch', 'no-branch', 'ahead-behind', 'no-ahead-behind', 'porcelain', 'no-porcelain',
+    'long', 'no-long', 'null', 'no-null', 'no-amend', 'no-post-rewrite', 'post-rewrite',
+    'untracked-files', 'no-untracked-files', 'pathspec-from-file', 'no-pathspec-from-file',
+    'pathspec-file-nul', 'no-pathspec-file-nul', 'allow-empty-message',
+  ],
   definitions: [
     {
       semantic: { kind: 'effects', effects: [{ key: 'all', value: true }] },
@@ -58,7 +72,7 @@ const COMMIT_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<CommitDeferredS
 });
 
 const COMMIT_ARGV_POLICY: StandardArgvPolicy = {
-  longNameMatch: 'exact',
+  longNameMatch: 'unique-prefix',
   optionBoundary: 'first-positional',
   occurrenceRetention: 'none',
 };
@@ -78,9 +92,15 @@ export async function runCommit({ context, args }: {
     switch (diagnostic.kind) {
     case 'missing_option_value':
       throw new GitUsageError({ message: `option '${diagnostic.option}' requires a value` });
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
     case 'unknown_short_option':
     case 'unknown_long_option':
-    case 'ambiguous_long_option':
     case 'unexpected_option_value':
     case 'invalid_option_value':
       throw new GitUsageError({ message: `unknown option: ${parsedArgs[diagnostic.argvIndex] ?? diagnostic.option}` });

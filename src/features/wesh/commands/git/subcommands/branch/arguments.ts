@@ -1,10 +1,36 @@
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 
 type BranchDeferredSemantic = 'delete-safe' | 'delete-force';
 
 const BRANCH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<BranchDeferredSemantic>>({
-  nonExecutableLongOptions: [],
+  nonExecutableLongOptions: [
+    'verbose', 'no-verbose',
+    'quiet', 'no-quiet',
+    'track', 'no-track',
+    'set-upstream-to', 'no-set-upstream-to',
+    'unset-upstream', 'no-unset-upstream',
+    'color',
+    'contains', 'no-contains',
+    'abbrev', 'no-abbrev',
+    'no-delete',
+    'no-move',
+    'omit-empty', 'no-omit-empty',
+    'copy', 'no-copy',
+    'no-list',
+    'no-show-current',
+    'create-reflog', 'no-create-reflog',
+    'edit-description', 'no-edit-description',
+    'force', 'no-force',
+    'merged', 'no-merged',
+    'column', 'no-column',
+    'sort', 'no-sort',
+    'points-at', 'no-points-at',
+    'ignore-case', 'no-ignore-case',
+    'recurse-submodules', 'no-recurse-submodules',
+    'format', 'no-format',
+  ],
   definitions: [
     {
       semantic: { kind: 'effects', effects: [{ key: 'move', value: true }] },
@@ -54,7 +80,7 @@ const BRANCH_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<BranchDeferredS
 });
 
 const BRANCH_ARGV_POLICY: StandardArgvPolicy = {
-  longNameMatch: 'exact',
+  longNameMatch: 'unique-prefix',
   optionBoundary: 'continue',
   occurrenceRetention: 'none',
 };
@@ -75,7 +101,25 @@ export function parseBranchArguments({ args }: { args: readonly string[] }): Bra
   const parsed = parseStandardArgv({ args, catalog: BRANCH_ARGV_CATALOG, policy: BRANCH_ARGV_POLICY });
   const diagnostic = parsed.diagnostics[0];
   if (diagnostic !== undefined) {
-    throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    switch (diagnostic.kind) {
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'missing_option_value':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled branch argv diagnostic: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
 
   let deleteMode: BranchDeleteMode = 'none';

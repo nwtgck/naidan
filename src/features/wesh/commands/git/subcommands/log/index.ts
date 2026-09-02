@@ -3,8 +3,9 @@ import { parseLogArguments } from './arguments';
 import type { GitLogDecorationMode } from './arguments';
 import { commitSubject } from "@/features/wesh/commands/git/commits";
 import { testAnyGitBasicRegex } from '@/features/wesh/commands/git/basic-regex';
-import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
+import { getDiffRenameLimitConfigValue, getDiffRenamesConfigMode, readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { revisionDiffMatchesSearch, writeRevisionPatch, writeRevisionStat } from "@/features/wesh/commands/git/diff/revision";
+import { GIT_DEFAULT_RENAME_LIMIT } from "@/features/wesh/commands/git/renames";
 import { quoteNonAsciiFromConfig } from "@/features/wesh/commands/git/path-output";
 import { findMergeBases } from "@/features/wesh/commands/git/graph";
 import { collectCommitHistory, collectGraphCommitHistory, collectPathLimitedHistory, formatCommitTemplate } from "@/features/wesh/commands/git/history";
@@ -121,6 +122,10 @@ export async function runLog({ context, args }: {
   const repository = await discoverRepositoryFromContext({ context });
   const logConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const logQuoteNonAscii = quoteNonAsciiFromConfig({ config: logConfig });
+  const diffRenamesMode = getDiffRenamesConfigMode({ config: logConfig });
+  const detectRenames = diffRenamesMode !== 'disabled';
+  const detectCopies = diffRenamesMode === 'copies';
+  const renameLimit = getDiffRenameLimitConfigValue({ config: logConfig }) ?? GIT_DEFAULT_RENAME_LIMIT;
   const includeExpressions: string[] = [];
   const excludeExpressions: string[] = [];
   const symmetricRanges: Array<{
@@ -282,6 +287,9 @@ export async function runLog({ context, args }: {
         rightRevision: entry.objectId,
         pathOperands,
         search,
+        detectRenames,
+        detectCopies,
+        renameLimit,
       }))
         continue;
     }
@@ -311,6 +319,7 @@ export async function runLog({ context, args }: {
           rightRevision: entry.objectId,
           pathOperands,
           quoteNonAscii: logQuoteNonAscii,
+          detectRenames,
         });
       }
       if (showPatch) {
@@ -321,6 +330,7 @@ export async function runLog({ context, args }: {
           rightRevision: entry.objectId,
           pathOperands,
           quoteNonAscii: logQuoteNonAscii,
+          detectRenames,
         });
       }
     }

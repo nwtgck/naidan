@@ -1,4 +1,6 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
+import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import {
   addGlobalConfigValue,
@@ -22,6 +24,124 @@ import {
   unsetLocalConfigValue,
 } from '@/features/wesh/commands/git/config';
 import { discoverRepositoryFromContext, discoverRepositoryFromContextIfPresent } from "@/features/wesh/commands/git/repository";
+
+
+type ConfigLongOptionSemantic =
+  | 'scope-global'
+  | 'scope-local'
+  | 'action-list'
+  | 'action-get'
+  | 'action-get-all'
+  | 'action-unset'
+  | 'action-unset-all'
+  | 'action-add';
+
+const CONFIG_LONG_ARGV_CATALOG = defineArgvCatalog<ConfigLongOptionSemantic>({
+  nonExecutableLongOptions: [
+    'system',
+    'worktree',
+    'file',
+    'blob',
+    'get-regexp',
+    'get-urlmatch',
+    'replace-all',
+    'rename-section',
+    'remove-section',
+    'edit',
+    'get-color',
+    'get-colorbool',
+    'null',
+    'name-only',
+    'show-origin',
+    'show-scope',
+    'show-names',
+    'type',
+    'bool',
+    'int',
+    'bool-or-int',
+    'bool-or-str',
+    'path',
+    'expiry-date',
+    'default',
+    'comment',
+    'fixed-value',
+    'includes',
+    'no-global',
+    'no-system',
+    'no-local',
+    'no-worktree',
+    'no-file',
+    'no-blob',
+    'no-null',
+    'no-name-only',
+    'no-show-origin',
+    'no-show-scope',
+    'no-show-names',
+    'no-type',
+    'no-default',
+    'no-comment',
+    'no-fixed-value',
+    'no-includes',
+  ],
+  definitions: [
+    { semantic: 'scope-global', forms: [{ kind: 'long', name: 'global', value: { kind: 'none' } }] },
+    { semantic: 'scope-local', forms: [{ kind: 'long', name: 'local', value: { kind: 'none' } }] },
+    { semantic: 'action-list', forms: [{ kind: 'long', name: 'list', value: { kind: 'none' } }] },
+    { semantic: 'action-get', forms: [{ kind: 'long', name: 'get', value: { kind: 'none' } }] },
+    { semantic: 'action-get-all', forms: [{ kind: 'long', name: 'get-all', value: { kind: 'none' } }] },
+    { semantic: 'action-unset', forms: [{ kind: 'long', name: 'unset', value: { kind: 'none' } }] },
+    { semantic: 'action-unset-all', forms: [{ kind: 'long', name: 'unset-all', value: { kind: 'none' } }] },
+    { semantic: 'action-add', forms: [{ kind: 'long', name: 'add', value: { kind: 'none' } }] },
+  ],
+});
+
+function resolveConfigLongOption({ arg }: { arg: string }): ConfigLongOptionSemantic | undefined {
+  if (!arg.startsWith('--')) return undefined;
+  if (!arg.includes('=')) {
+    const optionName = arg.slice(2);
+    if (optionName === 'g' || optionName === 'ge' || optionName === 'get-') {
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: arg,
+          candidateOptions: ['--get-color', '--get-colorbool'],
+        }),
+      });
+    }
+  }
+  const analysis = analyzeArgvLongForm({
+    token: arg,
+    catalog: CONFIG_LONG_ARGV_CATALOG,
+    longNameMatch: 'unique-prefix',
+  });
+  switch (analysis.kind) {
+  case 'matched':
+    switch (analysis.value.kind) {
+    case 'none':
+      return analysis.semantic;
+    case 'unexpected-inline':
+    case 'inline':
+    case 'following-required':
+      throw new GitUsageError({ message: `unknown option: ${arg}` });
+    default: {
+      const _ex: never = analysis.value;
+      throw new Error(`Unhandled config argv-v2 value analysis: ${JSON.stringify(_ex)}`);
+    }
+    }
+  case 'ambiguous':
+    throw new GitUsageError({
+      message: formatGitAmbiguousLongOption({
+        option: analysis.option,
+        candidateOptions: analysis.candidateOptions,
+      }),
+    });
+  case 'unknown':
+    return undefined;
+  default: {
+    const _ex: never = analysis;
+    throw new Error(`Unhandled config argv-v2 analysis: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
 
 
 async function compileValuePatternOrReport({ context, pattern }: {
@@ -59,24 +179,51 @@ export async function runConfig({ context, args }: {
       parsingOptions = false;
       continue;
     }
-    if (parsingOptions && (arg === '--global' || arg === '--local')) {
-      let nextScope: 'global' | 'local';
-      switch (arg) {
-      case '--global':
-        nextScope = 'global';
-        break;
-      case '--local':
-        nextScope = 'local';
-        break;
-      default: {
-        const _ex: never = arg;
-        throw new Error(`Unhandled config scope option: ${_ex}`);
-      }
-      }
+    const longOption = parsingOptions ? resolveConfigLongOption({ arg }) : undefined;
+    switch (longOption) {
+    case 'scope-global':
+    case 'scope-local': {
+      const nextScope = (() => {
+        switch (longOption) {
+        case 'scope-global':
+          return 'global' as const;
+        case 'scope-local':
+          return 'local' as const;
+        default: {
+          const _ex: never = longOption;
+          throw new Error(`Unhandled config scope semantic: ${_ex}`);
+        }
+        }
+      })();
       if (scope !== 'effective' && scope !== nextScope)
         throw new Error('only one config file at a time');
       scope = nextScope;
       continue;
+    }
+    case 'action-list':
+      commandArgs.push('--list');
+      continue;
+    case 'action-get':
+      commandArgs.push('--get');
+      continue;
+    case 'action-get-all':
+      commandArgs.push('--get-all');
+      continue;
+    case 'action-unset':
+      commandArgs.push('--unset');
+      continue;
+    case 'action-unset-all':
+      commandArgs.push('--unset-all');
+      continue;
+    case 'action-add':
+      commandArgs.push('--add');
+      continue;
+    case undefined:
+      break;
+    default: {
+      const _ex: never = longOption;
+      throw new Error(`Unhandled config long option semantic: ${_ex}`);
+    }
     }
     commandArgs.push(arg);
     if (!arg.startsWith('-'))

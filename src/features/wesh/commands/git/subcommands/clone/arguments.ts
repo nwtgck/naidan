@@ -1,4 +1,5 @@
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 
 export interface CloneArguments {
@@ -9,7 +10,22 @@ export interface CloneArguments {
 }
 
 const CLONE_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
-  nonExecutableLongOptions: [],
+  nonExecutableLongOptions: [
+    'verbose', 'no-verbose', 'no-quiet',
+    'progress', 'no-progress', 'reject-shallow', 'no-reject-shallow',
+    'no-checkout', 'checkout', 'bare', 'no-bare', 'mirror', 'no-mirror',
+    'local', 'no-local', 'no-hardlinks', 'hardlinks', 'shared', 'no-shared',
+    'recurse-submodules', 'no-recurse-submodules', 'recursive', 'no-recursive',
+    'jobs', 'no-jobs', 'template', 'no-template', 'reference', 'no-reference',
+    'reference-if-able', 'no-reference-if-able', 'dissociate', 'no-dissociate',
+    'origin', 'no-origin', 'no-branch', 'upload-pack', 'no-upload-pack', 'no-depth',
+    'shallow-since', 'no-shallow-since', 'shallow-exclude', 'no-shallow-exclude',
+    'single-branch', 'no-single-branch', 'no-tags', 'tags',
+    'shallow-submodules', 'no-shallow-submodules', 'separate-git-dir', 'no-separate-git-dir',
+    'ref-format', 'no-ref-format', 'config', 'no-config', 'server-option', 'no-server-option',
+    'ipv4', 'ipv6', 'filter', 'no-filter', 'also-filter-submodules', 'no-also-filter-submodules',
+    'remote-submodules', 'no-remote-submodules', 'sparse', 'no-sparse', 'bundle-uri', 'no-bundle-uri',
+  ],
   definitions: [
     {
       semantic: { kind: 'effects', effects: [{ key: 'quiet', value: true }] },
@@ -42,7 +58,7 @@ const CLONE_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
 });
 
 const CLONE_ARGV_POLICY: StandardArgvPolicy = {
-  longNameMatch: 'exact',
+  longNameMatch: 'unique-prefix',
   optionBoundary: 'continue',
   occurrenceRetention: 'none',
 };
@@ -56,9 +72,15 @@ export function parseCloneArguments({ args }: { args: readonly string[] }): Clon
       throw new GitUsageError({ message: `option '${diagnostic.option}' requires a value` });
     case 'invalid_option_value':
       throw new Error(diagnostic.message);
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
     case 'unknown_short_option':
     case 'unknown_long_option':
-    case 'ambiguous_long_option':
     case 'unexpected_option_value':
       throw new GitUsageError({ message: `unknown option: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
     default: {

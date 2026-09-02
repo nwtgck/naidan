@@ -941,6 +941,54 @@ export function getBooleanConfigValue({ config, key }: {
   }
 }
 
+function parseGitConfigInt({ key, value }: { key: string, value: string | undefined }): number {
+  const text = value ?? '';
+  const match = /^[\t\n\v\f\r ]*([+-]?)(?:(0[xX][0-9a-fA-F]+)|(0[0-7]*)|([1-9][0-9]*))([kKmMgG]?)$/u.exec(text);
+  if (match === null) throw new Error(`bad numeric config value '${text}' for '${key}': invalid unit`);
+  const sign = match[1] === '-' ? -1n : 1n;
+  let magnitude: bigint;
+  if (match[2] !== undefined) magnitude = BigInt(match[2]);
+  else if (match[3] !== undefined) magnitude = BigInt(`0o${match[3].slice(1) || '0'}`);
+  else magnitude = BigInt(match[4]!);
+  const unit = match[5]!.toLowerCase();
+  const factor = unit === 'k' ? 1024n : unit === 'm' ? 1024n * 1024n : unit === 'g' ? 1024n * 1024n * 1024n : 1n;
+  const parsed = sign * magnitude * factor;
+  const gitIntMaximum = 2_147_483_647n;
+  if (parsed < -gitIntMaximum || parsed > gitIntMaximum) {
+    throw new Error(`bad numeric config value '${text}' for '${key}': out of range`);
+  }
+  return Number(parsed);
+}
+
+export function getDiffRenameLimitConfigValue({ config }: { config: GitConfig }): number | undefined {
+  const key = 'diff.renamelimit';
+  const value = config.get(key);
+  if (value === undefined) return undefined;
+  switch (value.kind) {
+  case 'implicit-boolean':
+    return parseGitConfigInt({ key, value: undefined });
+  case 'explicit':
+    return parseGitConfigInt({ key, value: value.value });
+  default: {
+    const _ex: never = value;
+    throw new Error(`Unhandled config value: ${String(_ex)}`);
+  }
+  }
+}
+
+export type GitDiffRenamesConfigMode = 'disabled' | 'renames' | 'copies';
+
+export function getDiffRenamesConfigMode({ config }: {
+  config: GitConfig,
+}): GitDiffRenamesConfigMode {
+  const key = 'diff.renames';
+  const value = config.get(key);
+  if (value === undefined || value.kind === 'implicit-boolean') return 'renames';
+  const normalized = value.value.trim().toLowerCase();
+  if (normalized === 'copy' || normalized === 'copies') return 'copies';
+  return parseBooleanConfig({ key, value: value.value }) ? 'renames' : 'disabled';
+}
+
 export const TEST_ONLY = {
   formatConfigValueForWrite,
 };

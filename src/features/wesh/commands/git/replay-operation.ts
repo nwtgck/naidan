@@ -13,7 +13,7 @@ import { readIndex, writeIndex } from "./index-file";
 import { forceReplaceIndexAndWorktree } from "./index-worktree";
 import { branchNameFromHead, readHead, updateHead } from "./refs";
 import { discoverRepository, discoverRepositoryFromContext } from "./repository";
-import { resolveCommitRevision } from "./revision";
+import { GitUnknownRevisionError, resolveCommitRevision } from "./revision";
 import { prepareCommitReplay } from "./replay";
 import type { GitPreparedReplay } from "./replay";
 import type { GitReplayKind } from "./replay-state";
@@ -488,7 +488,14 @@ export async function executeReplay({ context, request, kind }: {
   }
   const todo = [];
   for (const operand of request.operands) {
-    const objectId = await resolveCommitRevision({ files: context.files, repository, expression: operand });
+    let objectId: string;
+    try {
+      objectId = await resolveCommitRevision({ files: context.files, repository, expression: operand });
+    } catch (error) {
+      if (!(error instanceof GitUnknownRevisionError)) throw error;
+      await context.text().error({ text: `fatal: bad revision '${error.expression}'\n` });
+      return { exitCode: 128 };
+    }
     const commit = await readCommit({ files: context.files, repository, objectId });
     todo.push({ kind, objectId, subject: commitSubject({ commit }) });
   }

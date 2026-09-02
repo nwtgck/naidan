@@ -232,6 +232,38 @@ R  a -> b
   });
 
 
+  it('supports verbose short and unique-prefix long options through argv-v2', async () => {
+    const short = await execute({
+      script: `\
+${setup}
+git mv -v a b`,
+    });
+    expect(short.result.exitCode).toBe(0);
+    expect(short.stderr.text).toBe('');
+    expect(short.stdout.text).toBe('Renaming a to b\n');
+
+    const prefix = await execute({
+      script: `\
+${setup}
+git mv --ver a b`,
+    });
+    expect(prefix.result.exitCode).toBe(0);
+    expect(prefix.stderr.text).toBe('');
+    expect(prefix.stdout.text).toBe('Renaming a to b\n');
+  });
+
+  it('supports the unique-prefix no-verbose form without verbose output', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+${setup}
+git mv --no-ver a b
+cat b`,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe('one\n');
+  });
+
   it('preflights repository config before move validation and mutation', async () => {
     const setupResult = await execute({
       script: `\
