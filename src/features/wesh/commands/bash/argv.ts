@@ -38,6 +38,84 @@ export type BashArgvResult =
   | { kind: 'help' }
   | { kind: 'error', message: string, exitCode: 1 | 2 };
 
+interface BashStartupEnvironmentResult {
+  readonly plan: BashInvocationPlan,
+  readonly warnings: readonly string[],
+}
+
+const BASH_VALID_SHELLOPT_NAMES = [
+  'allexport',
+  'braceexpand',
+  'emacs',
+  'errexit',
+  'errtrace',
+  'functrace',
+  'hashall',
+  'histexpand',
+  'history',
+  'ignoreeof',
+  'interactive-comments',
+  'keyword',
+  'monitor',
+  'noclobber',
+  'noexec',
+  'noglob',
+  'nolog',
+  'notify',
+  'nounset',
+  'onecmd',
+  'physical',
+  'pipefail',
+  'posix',
+  'privileged',
+  'verbose',
+  'vi',
+  'xtrace',
+] as const;
+
+type BashValidShellOptionName = typeof BASH_VALID_SHELLOPT_NAMES[number];
+
+const BASH_VALID_SHELLOPT_NAME_SET: ReadonlySet<string> = new Set(BASH_VALID_SHELLOPT_NAMES);
+
+function isBashValidShellOptionName(optionName: string): optionName is BashValidShellOptionName {
+  return BASH_VALID_SHELLOPT_NAME_SET.has(optionName);
+}
+
+function extractBashColonUnits({ value }: {
+  value: string,
+}): string[] {
+  const units: string[] = [];
+  let index = 0;
+
+  while (index < value.length) {
+    let unitStart = index;
+    if (index > 0 && value[index] === ':') {
+      unitStart += 1;
+    }
+
+    let unitEnd = unitStart;
+    while (unitEnd < value.length && value[unitEnd] !== ':') {
+      unitEnd += 1;
+    }
+
+    if (unitEnd === unitStart) {
+      if (unitEnd < value.length) {
+        index = unitEnd + 1;
+      } else {
+        index = unitEnd;
+      }
+      units.push('');
+      continue;
+    }
+
+    index = unitEnd;
+    units.push(value.slice(unitStart, unitEnd));
+  }
+
+  return units;
+}
+
+
 // Bash owns invocation phase and argv-cursor semantics; argv-v2 owns only the
 // frozen token spelling/value-claim mechanics. In particular, this must remain
 // a direct token-local analyzer consumer rather than a parseStandardArgv wrapper.
@@ -50,6 +128,7 @@ type BashArgvOptionSemantic =
   | 'shopt'
   | 'shell-option'
   | 'help'
+  | 'debug-noop'
   | 'no-profile'
   | 'no-rc'
   | 'no-editing'
@@ -112,6 +191,12 @@ const BASH_ARGV_OPTION_DEFINITIONS = [
   {
     semantic: 'help',
     forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+  },
+  {
+    semantic: 'debug-noop',
+    // GNU Bash 5.2's --debug sets an otherwise unused internal flag. This is
+    // distinct from --debugger, which has real debugger/startup semantics.
+    forms: [{ kind: 'long', name: 'debug', value: { kind: 'none' } }],
   },
   {
     semantic: 'no-profile',
@@ -196,11 +281,13 @@ export function parseBashArgv({ args }: {
   let mode: ShellInvocationMode = 'execute';
   let sourceMode: 'automatic' | 'stdin' = 'automatic';
   let commandStringMode = false;
+  let helpRequested = false;
   let shortOptionParsingStarted = false;
   let errexit = false;
   let nounset = false;
   let pipefail = false;
   const shellOptionOverrides = new Map<ShellOptionOverride['name'], boolean>();
+  const pendingShoptValueOptions: Array<{ enabled: boolean, optionName: string }> = [];
   const currentShellOptionOverrides = (): ShellOptionOverride[] => [...shellOptionOverrides]
     .map(([name, enabled]) => ({ name, enabled }));
   const currentExecutionOptions = (): ShellExecutionOptions => ({
@@ -273,7 +360,9 @@ export function parseBashArgv({ args }: {
         case 'help':
           switch (analysis.value.kind) {
           case 'none':
-            return { kind: 'help' };
+            helpRequested = true;
+            argumentIndex += 1;
+            continue;
           case 'inline':
           case 'following-required':
           case 'unexpected-inline':
@@ -283,6 +372,7 @@ export function parseBashArgv({ args }: {
             throw new Error(`Unhandled Bash help value claim: ${JSON.stringify(_ex)}`);
           }
           }
+        case 'debug-noop':
         case 'no-profile':
         case 'no-rc':
         case 'no-editing':
@@ -318,6 +408,9 @@ export function parseBashArgv({ args }: {
       }
       }
     }
+    if (helpRequested) {
+      return { kind: 'help' };
+    }
     if (argument.startsWith('--')) {
       return invalidOption({ argument: '--' });
     }
@@ -337,10 +430,7 @@ export function parseBashArgv({ args }: {
     shortOptionParsingStarted = true;
     const prefix: '-' | '+' = argument[0] === '-' ? '-' : '+';
     const enabled = prefix === '-';
-    const pendingValueOptions: Array<
-      | { option: 'O', enabled: boolean, optionName: string | undefined }
-      | { option: 'o', optionName: undefined }
-    > = [];
+    const pendingMissingValueOptions: Array<{ option: 'O' | 'o' }> = [];
     let followingValueOffset = 1;
     let bodyOffset = 1;
     while (bodyOffset < argument.length) {
@@ -379,9 +469,13 @@ export function parseBashArgv({ args }: {
           assertFollowingBashShortValue({ value: analysis.value, option: analysis.option });
           const optionName = args[argumentIndex + followingValueOffset];
           followingValueOffset += 1;
-          // Bash assigns following argv slots to -O/+O in cluster order, but
-          // validates shopt names only after the short cluster itself is valid.
-          pendingValueOptions.push({ option: 'O', enabled, optionName });
+          // Bash claims following argv slots for -O/+O immediately, but defers
+          // shopt-name validation until the invocation option scan has finished.
+          if (optionName === undefined) {
+            pendingMissingValueOptions.push({ option: 'O' });
+          } else {
+            pendingShoptValueOptions.push({ enabled, optionName });
+          }
           break;
         }
         case 'shell-option': {
@@ -391,7 +485,7 @@ export function parseBashArgv({ args }: {
           if (optionName === undefined) {
             // Preserve the existing incomplete bare -o/+o behavior for now, but
             // let a later invalid short option win just as Bash does.
-            pendingValueOptions.push({ option: 'o', optionName });
+            pendingMissingValueOptions.push({ option: 'o' });
             break;
           }
           switch (optionName) {
@@ -420,6 +514,7 @@ export function parseBashArgv({ args }: {
           break;
         }
         case 'help':
+        case 'debug-noop':
         case 'no-profile':
         case 'no-rc':
         case 'no-editing':
@@ -440,35 +535,27 @@ export function parseBashArgv({ args }: {
       }
     }
 
-    for (const pending of pendingValueOptions) {
-      const { optionName } = pending;
-      if (optionName === undefined) {
-        return {
-          kind: 'error',
-          message: `bash: option requires an argument -- '${pending.option}'\n`,
-          exitCode: 2,
-        };
-      }
-      // Defined -o/+o operands are consumed while the short cluster is
-      // scanned, so any defined deferred operand is necessarily -O/+O.
-      switch (optionName) {
-      case 'dotglob':
-      case 'extglob':
-      case 'failglob':
-      case 'globstar':
-      case 'nullglob':
-        shellOptionOverrides.set(optionName, pending.enabled);
-        break;
-      default:
-        return {
-          kind: 'error',
-          message: `bash: line 0: ${optionName}: invalid shell option name\n`,
-          exitCode: 2,
-        };
-      }
+    const nextArgumentIndex = argumentIndex + followingValueOffset;
+    // Bash may print a bare -o/-O option listing while scanning, but if -c has
+    // no command string its missing-command diagnostic wins over deferred -O
+    // validation and over the otherwise-blocked bare listing behavior.
+    if (commandStringMode && args[nextArgumentIndex] === undefined) {
+      return {
+        kind: 'error',
+        message: 'bash: -c: option requires an argument\n',
+        exitCode: basicOptionErrorExitCode(),
+      };
     }
 
-    argumentIndex += followingValueOffset;
+    for (const pending of pendingMissingValueOptions) {
+      return {
+        kind: 'error',
+        message: `bash: option requires an argument -- '${pending.option}'\n`,
+        exitCode: 2,
+      };
+    }
+
+    argumentIndex = nextArgumentIndex;
     switch (sourceMode) {
     case 'stdin':
     case 'automatic':
@@ -480,6 +567,31 @@ export function parseBashArgv({ args }: {
     }
   }
 
+  if (helpRequested) {
+    return { kind: 'help' };
+  }
+
+  const applyPendingShoptValueOptions = (): BashArgvResult | undefined => {
+    for (const { enabled, optionName } of pendingShoptValueOptions) {
+      switch (optionName) {
+      case 'dotglob':
+      case 'extglob':
+      case 'failglob':
+      case 'globstar':
+      case 'nullglob':
+        shellOptionOverrides.set(optionName, enabled);
+        break;
+      default:
+        return {
+          kind: 'error',
+          message: `bash: line 0: ${optionName}: invalid shell option name\n`,
+          exitCode: 2,
+        };
+      }
+    }
+    return undefined;
+  };
+
   if (commandStringMode) {
     const script = args[argumentIndex];
     if (script === undefined) {
@@ -489,6 +601,8 @@ export function parseBashArgv({ args }: {
         exitCode: basicOptionErrorExitCode(),
       };
     }
+    const pendingShoptError = applyPendingShoptValueOptions();
+    if (pendingShoptError !== undefined) return pendingShoptError;
     return {
       kind: 'run',
       source: {
@@ -502,6 +616,9 @@ export function parseBashArgv({ args }: {
       mode,
     };
   }
+
+  const pendingShoptError = applyPendingShoptValueOptions();
+  if (pendingShoptError !== undefined) return pendingShoptError;
 
   switch (sourceMode) {
   case 'stdin':
@@ -546,6 +663,116 @@ export function parseBashArgv({ args }: {
     executionOptions: currentExecutionOptions(),
     shellOptionOverrides: currentShellOptionOverrides(),
     mode,
+  };
+}
+
+/**
+ * Apply the startup option state Bash imports from SHELLOPTS/BASHOPTS after
+ * successful argv parsing. GNU Bash applies these environment values after
+ * command-line option processing, so an imported enabled option wins over a
+ * preceding +e/+u/+n/+o/+O disable. Unsupported-but-valid options stay
+ * command/core compatibility gaps rather than being misreported as invalid.
+ */
+export function applyBashStartupEnvironmentOptions({ plan, shellopts, bashopts }: {
+  plan: BashInvocationPlan,
+  shellopts: string | undefined,
+  bashopts: string | undefined,
+}): BashStartupEnvironmentResult {
+  let mode = plan.mode;
+  let errexit = plan.executionOptions.errexit;
+  let nounset = plan.executionOptions.nounset;
+  let pipefail = plan.executionOptions.pipefail;
+  const shellOptionOverrides = new Map<ShellOptionOverride['name'], boolean>(
+    plan.shellOptionOverrides.map(({ name, enabled }) => [name, enabled]),
+  );
+  const warnings: string[] = [];
+
+  if (shellopts !== undefined && shellopts.length > 0) {
+    for (const optionName of extractBashColonUnits({ value: shellopts })) {
+      if (!isBashValidShellOptionName(optionName)) {
+        warnings.push(`bash: line 0: ${optionName}: invalid option name\n`);
+        continue;
+      }
+      switch (optionName) {
+      case 'errexit':
+        errexit = true;
+        break;
+      case 'nounset':
+        nounset = true;
+        break;
+      case 'noexec':
+        mode = 'parse-only';
+        break;
+      case 'pipefail':
+        pipefail = true;
+        break;
+      case 'nolog':
+        // GNU Bash accepts nolog but currently gives it no execution effect.
+        break;
+      case 'allexport':
+      case 'braceexpand':
+      case 'emacs':
+      case 'errtrace':
+      case 'functrace':
+      case 'hashall':
+      case 'histexpand':
+      case 'history':
+      case 'ignoreeof':
+      case 'interactive-comments':
+      case 'keyword':
+      case 'monitor':
+      case 'noclobber':
+      case 'noglob':
+      case 'notify':
+      case 'onecmd':
+      case 'physical':
+      case 'posix':
+      case 'privileged':
+      case 'verbose':
+      case 'vi':
+      case 'xtrace':
+        // Valid Bash options whose runtime semantics are not represented by the
+        // current Wesh shell invocation state. Ignore rather than falsely warn.
+        break;
+      default: {
+        const _ex: never = optionName;
+        throw new Error(`Unhandled Bash SHELLOPTS option: ${_ex}`);
+      }
+      }
+    }
+  }
+
+  if (bashopts !== undefined && bashopts.length > 0) {
+    for (const optionName of extractBashColonUnits({ value: bashopts })) {
+      switch (optionName) {
+      case 'dotglob':
+      case 'extglob':
+      case 'failglob':
+      case 'globstar':
+      case 'nullglob':
+        shellOptionOverrides.set(optionName, true);
+        break;
+      default:
+        // GNU Bash silently ignores unknown BASHOPTS names. Valid but currently
+        // unsupported shopt names likewise remain outside this invocation model.
+        break;
+      }
+    }
+  }
+
+  return {
+    plan: {
+      ...plan,
+      executionOptions: {
+        errexit,
+        nounset,
+        pipefail,
+      },
+      shellOptionOverrides: [...shellOptionOverrides]
+        .map(([name, enabled]) => ({ name, enabled })),
+      mode,
+    },
+    warnings,
   };
 }
 

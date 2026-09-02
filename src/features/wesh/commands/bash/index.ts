@@ -1,4 +1,4 @@
-import { resolvePath } from '@/features/wesh/path';
+import { canonicalizeExistingPath, resolvePath } from '@/features/wesh/path';
 import {
   createHandleShellSource,
   createTextShellSource,
@@ -12,7 +12,11 @@ import type {
   WeshFileHandle,
   WeshStat,
 } from '@/features/wesh/types';
-import { parseBashArgv, type BashInvocationPlan } from './argv';
+import {
+  applyBashStartupEnvironmentOptions,
+  parseBashArgv,
+  type BashInvocationPlan,
+} from './argv';
 
 
 
@@ -219,6 +223,7 @@ type OpenBashScriptResult =
       readonly error: unknown,
       readonly resolvedPath: string,
       readonly diagnosticPath: string,
+      readonly intermediateNotDirectory: boolean,
     };
 
 function bashPathSearchDiagnosticPath({ pathEntry, scriptPath }: {
@@ -240,6 +245,30 @@ function shouldSkipBashPathSearchCandidate({ error }: { error: unknown }): boole
     || isPermissionDeniedError({ error });
 }
 
+function requiresBashPathTraversalPreflight({ path }: { path: string }): boolean {
+  const isRelativePath = !path.startsWith('/');
+  let hasConcretePrefix = false;
+  for (const component of path.split('/')) {
+    if (component.length === 0) {
+      continue;
+    }
+    if (component === '..') {
+      if (hasConcretePrefix || isRelativePath) {
+        return true;
+      }
+      continue;
+    }
+    if (component === '.') {
+      if (hasConcretePrefix) {
+        return true;
+      }
+      continue;
+    }
+    hasConcretePrefix = true;
+  }
+  return false;
+}
+
 async function openBashScript({ context, scriptPath }: {
   context: WeshCommandContext,
   scriptPath: string,
@@ -250,9 +279,24 @@ async function openBashScript({ context, scriptPath }: {
     truncate: 'preserve' as const,
     append: 'preserve' as const,
   };
-  const directPath = resolvePath({ cwd: context.cwd, path: scriptPath });
+  const normalizedDirectPath = resolvePath({ cwd: context.cwd, path: scriptPath });
+  const directNeedsTraversalPreflight = requiresBashPathTraversalPreflight({ path: scriptPath });
+  let directPath = normalizedDirectPath;
   let directError: unknown;
+  let directErrorIsIntermediateNotDirectory = false;
   try {
+    if (directNeedsTraversalPreflight) {
+      try {
+        directPath = await canonicalizeExistingPath({
+          context,
+          path: scriptPath,
+          symlinkPolicy: 'limit_40',
+        });
+      } catch (error: unknown) {
+        directErrorIsIntermediateNotDirectory = isPathTypeMismatchError({ error });
+        throw error;
+      }
+    }
     return {
       kind: 'opened',
       handle: await context.files.open({ path: directPath, flags }),
@@ -269,6 +313,7 @@ async function openBashScript({ context, scriptPath }: {
       error: directError,
       resolvedPath: directPath,
       diagnosticPath: scriptPath,
+      intermediateNotDirectory: directErrorIsIntermediateNotDirectory,
     };
   }
 
@@ -279,23 +324,26 @@ async function openBashScript({ context, scriptPath }: {
       error: directError,
       resolvedPath: directPath,
       diagnosticPath: scriptPath,
+      intermediateNotDirectory: directErrorIsIntermediateNotDirectory,
     };
   }
 
   for (const pathEntry of pathValue.split(':')) {
-    const directory = resolvePath({
-      cwd: context.cwd,
-      path: pathEntry.length === 0 ? '.' : pathEntry,
-    });
-    const candidatePath = directory === '/'
-      ? `/${scriptPath}`
-      : `${directory}/${scriptPath}`;
-    if (candidatePath === directPath) {
-      continue;
-    }
     const diagnosticPath = bashPathSearchDiagnosticPath({ pathEntry, scriptPath });
+    const candidateInputPath = diagnosticPath;
+    let candidatePath = resolvePath({ cwd: context.cwd, path: candidateInputPath });
 
     try {
+      if (requiresBashPathTraversalPreflight({ path: candidateInputPath })) {
+        candidatePath = await canonicalizeExistingPath({
+          context,
+          path: candidateInputPath,
+          symlinkPolicy: 'limit_40',
+        });
+      }
+      if (candidatePath === directPath) {
+        continue;
+      }
       return {
         kind: 'opened',
         handle: await context.files.open({ path: candidatePath, flags }),
@@ -311,6 +359,7 @@ async function openBashScript({ context, scriptPath }: {
         error,
         resolvedPath: candidatePath,
         diagnosticPath,
+        intermediateNotDirectory: false,
       };
     }
   }
@@ -320,6 +369,7 @@ async function openBashScript({ context, scriptPath }: {
     error: directError,
     resolvedPath: directPath,
     diagnosticPath: scriptPath,
+    intermediateNotDirectory: directErrorIsIntermediateNotDirectory,
   };
 }
 
@@ -421,13 +471,24 @@ async function reportScriptOpenError({
   resolvedPath,
   error,
   errexit,
+  intermediateNotDirectory,
 }: {
   context: WeshCommandContext,
   scriptPath: string,
   resolvedPath: string,
   error: unknown,
   errexit: boolean,
+  intermediateNotDirectory: boolean,
 }): Promise<WeshCommandResult> {
+  if (intermediateNotDirectory) {
+    await context.text().error({ text: `bash: ${scriptPath}: Not a directory\n` });
+    return {
+      exitCode: bashScriptPathFailureExitCode({
+        errexit,
+        defaultExitCode: 126,
+      }),
+    };
+  }
   const pathError = await reportScriptPathError({
     context,
     scriptPath,
@@ -499,38 +560,56 @@ usage: bash [-c command] [file [argument...]]
       }
       }
 
-      switch (parsed.source.kind) {
+      const startupEnvironment = applyBashStartupEnvironmentOptions({
+        plan: parsed,
+        shellopts: context.env.get('SHELLOPTS'),
+        bashopts: context.env.get('BASHOPTS'),
+      });
+      for (const warning of startupEnvironment.warnings) {
+        await context.text().error({ text: warning });
+      }
+      const plan = startupEnvironment.plan;
+
+      switch (plan.source.kind) {
       case 'command-string':
         return executeShellInvocation({
           context,
           invocation: createShellInvocation({
-            plan: parsed,
-            source: createTextShellSource({ text: parsed.source.script }),
+            plan,
+            source: createTextShellSource({ text: plan.source.script }),
           }),
         });
       case 'stdin':
         return executeShellInvocation({
           context,
           invocation: createShellInvocation({
-            plan: parsed,
+            plan,
             source: createHandleShellSource({ handle: context.stdin }),
           }),
         });
       case 'file': {
-        const scriptPath = parsed.source.path;
+        const scriptPath = plan.source.path;
         if (scriptPath.length === 0) {
           await context.text().error({ text: 'bash: : No such file or directory\n' });
           return {
             exitCode: bashScriptPathFailureExitCode({
-              errexit: parsed.executionOptions.errexit,
+              errexit: plan.executionOptions.errexit,
               defaultExitCode: 127,
             }),
           };
         }
         try {
-          const path = resolvePath({ cwd: context.cwd, path: scriptPath });
+          let path = resolvePath({ cwd: context.cwd, path: scriptPath });
           if (scriptPath.endsWith('/')) {
+            const needsTraversalPreflight = requiresBashPathTraversalPreflight({ path: scriptPath });
             try {
+              if (needsTraversalPreflight) {
+                path = await canonicalizeExistingPath({
+                  context,
+                  path: scriptPath,
+                  symlinkPolicy: 'limit_40',
+                });
+              }
               const stat = await context.files.stat({ path });
               if (isDirectoryStat({ stat })) {
                 await context.text().error({
@@ -541,17 +620,26 @@ usage: bash [-c command] [file [argument...]]
               }
               return {
                 exitCode: bashScriptPathFailureExitCode({
-                  errexit: parsed.executionOptions.errexit,
+                  errexit: plan.executionOptions.errexit,
                   defaultExitCode: 126,
                 }),
               };
             } catch (error: unknown) {
+              if (needsTraversalPreflight && isPathTypeMismatchError({ error })) {
+                await context.text().error({ text: `bash: ${scriptPath}: Not a directory\n` });
+                return {
+                  exitCode: bashScriptPathFailureExitCode({
+                    errexit: plan.executionOptions.errexit,
+                    defaultExitCode: 126,
+                  }),
+                };
+              }
               const pathError = await reportScriptPathError({
                 context,
                 scriptPath,
                 resolvedPath: path,
                 error,
-                errexit: parsed.executionOptions.errexit,
+                errexit: plan.executionOptions.errexit,
               });
               if (pathError !== undefined) return pathError;
               throw error;
@@ -565,7 +653,8 @@ usage: bash [-c command] [file [argument...]]
               scriptPath: opened.diagnosticPath,
               resolvedPath: opened.resolvedPath,
               error: opened.error,
-              errexit: parsed.executionOptions.errexit,
+              errexit: plan.executionOptions.errexit,
+              intermediateNotDirectory: opened.intermediateNotDirectory,
             });
           case 'opened':
             break;
@@ -587,7 +676,8 @@ usage: bash [-c command] [file [argument...]]
                 scriptPath: diagnosticPath,
                 resolvedPath: opened.resolvedPath,
                 error,
-                errexit: parsed.executionOptions.errexit,
+                errexit: plan.executionOptions.errexit,
+                intermediateNotDirectory: false,
               });
             }
             let preparedSource: PreparedBashScriptSource;
@@ -599,7 +689,7 @@ usage: bash [-c command] [file [argument...]]
                 scriptPath: diagnosticPath,
                 stat,
                 error,
-                errexit: parsed.executionOptions.errexit,
+                errexit: plan.executionOptions.errexit,
               });
               if (readError !== undefined) return readError;
               throw error;
@@ -614,7 +704,7 @@ usage: bash [-c command] [file [argument...]]
               return await executeShellInvocation({
                 context,
                 invocation: createShellInvocation({
-                  plan: parsed,
+                  plan,
                   source: preparedSource.source,
                 }),
               });
@@ -632,21 +722,21 @@ usage: bash [-c command] [file [argument...]]
             scriptPath,
             resolvedPath: resolvePath({ cwd: context.cwd, path: scriptPath }),
             error,
-            errexit: parsed.executionOptions.errexit,
+            errexit: plan.executionOptions.errexit,
           });
           if (pathError !== undefined) return pathError;
           const message = error instanceof Error ? error.message : String(error);
           await context.text().error({ text: `bash: ${scriptPath}: ${message}\n` });
           return {
             exitCode: bashScriptPathFailureExitCode({
-              errexit: parsed.executionOptions.errexit,
+              errexit: plan.executionOptions.errexit,
               defaultExitCode: 126,
             }),
           };
         }
       }
       default: {
-        const _ex: never = parsed.source;
+        const _ex: never = plan.source;
         throw new Error(`Unhandled Bash invocation source: ${JSON.stringify(_ex)}`);
       }
       }

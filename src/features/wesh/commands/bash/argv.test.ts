@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseBashArgv } from './argv';
+import { applyBashStartupEnvironmentOptions, parseBashArgv } from './argv';
 
 describe('parseBashArgv', () => {
   it('parses -c with argv0 and positional parameters', () => {
@@ -373,6 +373,68 @@ describe('parseBashArgv', () => {
     });
   });
 
+  it('lets a missing -c command outrank deferred -O validation and bare listing gaps', () => {
+    for (const args of [
+      ['-co'],
+      ['-oc'],
+      ['-cO'],
+      ['-Oc'],
+      ['-cO', 'definitely_unknown'],
+      ['-Oc', 'definitely_unknown'],
+      ['-OOc', 'definitely_unknown', 'nullglob'],
+    ] as const) {
+      expect(parseBashArgv({ args })).toEqual({
+        kind: 'error',
+        message: 'bash: -c: option requires an argument\n',
+        exitCode: 2,
+      });
+    }
+
+    expect(parseBashArgv({ args: ['-ecO'] })).toEqual({
+      kind: 'error',
+      message: 'bash: -c: option requires an argument\n',
+      exitCode: 1,
+    });
+    expect(parseBashArgv({ args: ['-eOc', 'definitely_unknown'] })).toEqual({
+      kind: 'error',
+      message: 'bash: -c: option requires an argument\n',
+      exitCode: 1,
+    });
+
+    expect(parseBashArgv({ args: ['-cO', 'definitely_unknown', 'true'] })).toEqual({
+      kind: 'error',
+      message: 'bash: line 0: definitely_unknown: invalid shell option name\n',
+      exitCode: 2,
+    });
+  });
+
+  it('lets a later missing -c command outrank earlier deferred -O validation', () => {
+    for (const args of [
+      ['-O', 'definitely_unknown', '-c'],
+      ['-O', '-c', '-c'],
+      ['-O', '-O', '-c'],
+      ['-O', '-s', '-c'],
+      ['-O', '--', '-c'],
+    ] as const) {
+      expect(parseBashArgv({ args })).toEqual({
+        kind: 'error',
+        message: 'bash: -c: option requires an argument\n',
+        exitCode: 2,
+      });
+    }
+
+    expect(parseBashArgv({ args: ['-O', 'definitely_unknown', '-c', '-e'] })).toEqual({
+      kind: 'error',
+      message: 'bash: -c: option requires an argument\n',
+      exitCode: 1,
+    });
+    expect(parseBashArgv({ args: ['-O', 'definitely_unknown', '-c', 'true'] })).toEqual({
+      kind: 'error',
+      message: 'bash: line 0: definitely_unknown: invalid shell option name\n',
+      exitCode: 2,
+    });
+  });
+
   it('claims successive following values for repeated -O and +O forms', () => {
     expect(parseBashArgv({
       args: ['-OO', 'extglob', 'nullglob', '-c', 'true'],
@@ -453,7 +515,7 @@ describe('parseBashArgv', () => {
 
   it('accepts non-interactive GNU long options that are semantic no-ops in Wesh', () => {
     expect(parseBashArgv({
-      args: ['--noprofile', '--norc', '--noediting', '-c', 'true'],
+      args: ['--debug', '--noprofile', '--norc', '--noediting', '-c', 'true'],
     })).toMatchObject({
       kind: 'run',
       source: { kind: 'command-string', script: 'true' },
@@ -462,7 +524,7 @@ describe('parseBashArgv', () => {
 
   it('accepts Bash single-dash spellings for supported initial long options', () => {
     expect(parseBashArgv({
-      args: ['-noprofile', '-norc', '-noediting', '-c', 'true'],
+      args: ['-debug', '-noprofile', '-norc', '-noediting', '-c', 'true'],
     })).toMatchObject({
       kind: 'run',
       source: { kind: 'command-string', script: 'true' },
@@ -478,6 +540,11 @@ describe('parseBashArgv', () => {
     expect(parseBashArgv({ args: ['-rcfile'] })).toEqual({
       kind: 'error',
       message: 'bash: rcfile: option requires an argument\n',
+      exitCode: 2,
+    });
+    expect(parseBashArgv({ args: ['--debug=value', '-c', 'true'] })).toEqual({
+      kind: 'error',
+      message: 'bash: --debug=value: invalid option\n',
       exitCode: 2,
     });
   });
@@ -509,6 +576,26 @@ describe('parseBashArgv', () => {
       message: 'bash: --definitely-unknown: invalid option\n',
       exitCode: 2,
     });
+  });
+
+  it('keeps meaningful unsupported GNU long options rejected instead of treating them as no-ops', () => {
+    for (const option of [
+      '--debugger',
+      '--dump-po-strings',
+      '--dump-strings',
+      '--login',
+      '--posix',
+      '--pretty-print',
+      '--restricted',
+      '--verbose',
+      '--version',
+    ] as const) {
+      expect(parseBashArgv({ args: [option, '-c', 'true'] }), option).toEqual({
+        kind: 'error',
+        message: `bash: ${option}: invalid option\n`,
+        exitCode: 2,
+      });
+    }
   });
 
   it('recognizes GNU long options only before short-option parsing starts', () => {
@@ -613,6 +700,37 @@ describe('parseBashArgv', () => {
     expect(parseBashArgv({ args: ['--help'] })).toEqual({ kind: 'help' });
   });
 
+  it('defers --help until the initial GNU long-option phase finishes', () => {
+    for (const args of [
+      ['--help', '--norc'],
+      ['--help', '--init-file', '/ignored'],
+      ['--help', '-Z'],
+      ['--help', '-c'],
+      ['--help', '-O', 'definitely_unknown'],
+      ['--help', '-o', 'definitely_unknown'],
+      ['--help', '--'],
+      ['--help', 'script'],
+    ] as const) {
+      expect(parseBashArgv({ args })).toEqual({ kind: 'help' });
+    }
+
+    expect(parseBashArgv({ args: ['--help', '--unknown'] })).toEqual({
+      kind: 'error',
+      message: 'bash: --unknown: invalid option\n',
+      exitCode: 2,
+    });
+    expect(parseBashArgv({ args: ['--help', '--init-file'] })).toEqual({
+      kind: 'error',
+      message: 'bash: init-file: option requires an argument\n',
+      exitCode: 2,
+    });
+    expect(parseBashArgv({ args: ['--help', '--rcfile=/ignored'] })).toEqual({
+      kind: 'error',
+      message: 'bash: --rcfile=/ignored: invalid option\n',
+      exitCode: 2,
+    });
+  });
+
   it('reports a missing -c argument without shell execution', () => {
     expect(parseBashArgv({ args: ['-c'] })).toEqual({
       kind: 'error',
@@ -620,4 +738,78 @@ describe('parseBashArgv', () => {
       exitCode: 2,
     });
   });
+  it('overlays supported SHELLOPTS and BASHOPTS after argv option state', () => {
+    const parsed = parseBashArgv({
+      args: ['+e', '+u', '+n', '+o', 'pipefail', '+O', 'extglob', '-c', 'true'],
+    });
+    expect(parsed.kind).toBe('run');
+    if (parsed.kind !== 'run') throw new Error(`Unexpected parse result: ${JSON.stringify(parsed)}`);
+
+    expect(applyBashStartupEnvironmentOptions({
+      plan: parsed,
+      shellopts: 'errexit:nounset:noexec:pipefail:nolog',
+      bashopts: 'extglob:nullglob:definitely_unknown',
+    })).toEqual({
+      plan: {
+        ...parsed,
+        executionOptions: {
+          errexit: true,
+          nounset: true,
+          pipefail: true,
+        },
+        shellOptionOverrides: [
+          { name: 'extglob', enabled: true },
+          { name: 'nullglob', enabled: true },
+        ],
+        mode: 'parse-only',
+      },
+      warnings: [],
+    });
+  });
+
+  it('warns for invalid SHELLOPTS names without misreporting valid unsupported options', () => {
+    const parsed = parseBashArgv({ args: ['-c', 'true'] });
+    expect(parsed.kind).toBe('run');
+    if (parsed.kind !== 'run') throw new Error(`Unexpected parse result: ${JSON.stringify(parsed)}`);
+
+    const applied = applyBashStartupEnvironmentOptions({
+      plan: parsed,
+      shellopts: 'nounset::definitely_unknown:braceexpand',
+      bashopts: undefined,
+    });
+    expect(applied.plan.executionOptions.nounset).toBe(true);
+    expect(applied.warnings).toEqual([
+      'bash: line 0: : invalid option name\n',
+      'bash: line 0: definitely_unknown: invalid option name\n',
+    ]);
+  });
+
+  it('matches Bash colon-unit extraction for adjacent SHELLOPTS separators', () => {
+    const parsed = parseBashArgv({ args: ['-c', 'true'] });
+    expect(parsed.kind).toBe('run');
+    if (parsed.kind !== 'run') throw new Error(`Unexpected parse result: ${JSON.stringify(parsed)}`);
+
+    const cases = [
+      { shellopts: ':', warningCount: 1 },
+      { shellopts: '::', warningCount: 2 },
+      { shellopts: ':::', warningCount: 2 },
+      { shellopts: 'errexit:', warningCount: 1 },
+      { shellopts: 'errexit::', warningCount: 1 },
+      { shellopts: 'errexit:::', warningCount: 2 },
+      { shellopts: 'errexit:::nounset', warningCount: 1 },
+      { shellopts: 'errexit::::nounset', warningCount: 2 },
+    ] as const;
+
+    for (const { shellopts, warningCount } of cases) {
+      const applied = applyBashStartupEnvironmentOptions({
+        plan: parsed,
+        shellopts,
+        bashopts: undefined,
+      });
+      expect(applied.warnings, shellopts).toHaveLength(warningCount);
+      expect(applied.plan.executionOptions.errexit, shellopts).toBe(shellopts.includes('errexit'));
+      expect(applied.plan.executionOptions.nounset, shellopts).toBe(shellopts.includes('nounset'));
+    }
+  });
+
 });
