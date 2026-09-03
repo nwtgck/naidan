@@ -54,6 +54,9 @@ describe('usePrint composable', () => {
     expect(activePrintMode.value).toBe('chat');
     expect(document.title).toBe(testTitle);
 
+    // Printing must not begin before the print subtree reports readiness.
+    expect(window.print).not.toHaveBeenCalled();
+
     // Simulate component being ready
     markPrintReady();
 
@@ -63,6 +66,39 @@ describe('usePrint composable', () => {
     expect(window.print).toHaveBeenCalled();
     expect(activePrintMode.value).toBeUndefined();
     expect(document.title).toBe('Original Title');
+  });
+
+  it('should restore state when window.print itself throws', async () => {
+    const { activePrintMode, print, markPrintReady } = usePrint();
+    vi.mocked(window.print).mockImplementationOnce(() => {
+      throw new Error('Native print failed');
+    });
+
+    const printPromise = print({ title: 'Throwing Print', mode: 'chat' });
+    expect(activePrintMode.value).toBe('chat');
+    markPrintReady();
+
+    await expect(printPromise).rejects.toThrow('Native print failed');
+    expect(activePrintMode.value).toBeUndefined();
+    expect(document.title).toBe('Original Title');
+  });
+
+  it('should support repeated print cycles without stale state', async () => {
+    const { activePrintMode, print, markPrintReady } = usePrint();
+
+    for (let index = 0; index < 2; index += 1) {
+      const printPromise = print({ title: `Print ${index}`, mode: 'chat' });
+      expect(activePrintMode.value).toBe('chat');
+      expect(window.print).toHaveBeenCalledTimes(index);
+
+      markPrintReady();
+      await printPromise;
+
+      expect(activePrintMode.value).toBeUndefined();
+      expect(document.title).toBe('Original Title');
+    }
+
+    expect(window.print).toHaveBeenCalledTimes(2);
   });
 
   it('should restore state even if an error occurs during printing', async () => {
