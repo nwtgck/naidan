@@ -43,6 +43,14 @@ interface BashStartupEnvironmentResult {
   readonly warnings: readonly string[],
 }
 
+interface MutableBashInvocationState {
+  mode: ShellInvocationMode,
+  errexit: boolean,
+  nounset: boolean,
+  pipefail: boolean,
+  readonly shellOptionOverrides: Map<ShellOptionOverride['name'], boolean>,
+}
+
 const BASH_VALID_SHELLOPT_NAMES = [
   'allexport',
   'braceexpand',
@@ -113,6 +121,99 @@ function extractBashColonUnits({ value }: {
   }
 
   return units;
+}
+
+function applyValidBashShellOption({ state, optionName, enabled }: {
+  state: MutableBashInvocationState,
+  optionName: BashValidShellOptionName,
+  enabled: boolean,
+}): boolean {
+  switch (optionName) {
+  case 'errexit':
+    state.errexit = enabled;
+    return true;
+  case 'nounset':
+    state.nounset = enabled;
+    return true;
+  case 'noexec':
+    state.mode = enabled ? 'parse-only' : 'execute';
+    return true;
+  case 'pipefail':
+    state.pipefail = enabled;
+    return true;
+  case 'nolog':
+    // GNU Bash documents nolog as accepted but currently ignored.
+    return true;
+  case 'allexport':
+  case 'braceexpand':
+  case 'emacs':
+  case 'errtrace':
+  case 'functrace':
+  case 'hashall':
+  case 'histexpand':
+  case 'history':
+  case 'ignoreeof':
+  case 'interactive-comments':
+  case 'keyword':
+  case 'monitor':
+  case 'noclobber':
+  case 'noglob':
+  case 'notify':
+  case 'onecmd':
+  case 'physical':
+  case 'posix':
+  case 'privileged':
+  case 'verbose':
+  case 'vi':
+  case 'xtrace':
+    return false;
+  default: {
+    const _ex: never = optionName;
+    throw new Error(`Unhandled Bash shell option: ${_ex}`);
+  }
+  }
+}
+
+function applyRepresentableBashShoptOption({ state, optionName, enabled }: {
+  state: MutableBashInvocationState,
+  optionName: string,
+  enabled: boolean,
+}): boolean {
+  switch (optionName) {
+  case 'dotglob':
+  case 'extglob':
+  case 'failglob':
+  case 'globstar':
+  case 'nullglob':
+    state.shellOptionOverrides.set(optionName, enabled);
+    return true;
+  default:
+    return false;
+  }
+}
+
+function createBashInvocationPlan({ state, source, argv0, positionalArgs }: {
+  state: MutableBashInvocationState,
+  source: BashInvocationSource,
+  argv0: string,
+  positionalArgs: readonly string[],
+}): BashInvocationPlan {
+  return {
+    kind: 'run',
+    source,
+    argv0,
+    positionalArgs,
+    executionOptions: {
+      errexit: state.errexit,
+      nounset: state.nounset,
+      pipefail: state.pipefail,
+    },
+    shellOptionOverrides: Array.from(
+      state.shellOptionOverrides,
+      ([name, enabled]) => ({ name, enabled }),
+    ),
+    mode: state.mode,
+  };
 }
 
 
@@ -278,25 +379,20 @@ export function parseBashArgv({ args }: {
   args: readonly string[],
 }): BashArgvResult {
   let argumentIndex = 0;
-  let mode: ShellInvocationMode = 'execute';
   let sourceMode: 'automatic' | 'stdin' = 'automatic';
   let commandStringMode = false;
   let helpRequested = false;
   let shortOptionParsingStarted = false;
-  let errexit = false;
-  let nounset = false;
-  let pipefail = false;
-  const shellOptionOverrides = new Map<ShellOptionOverride['name'], boolean>();
+  const state: MutableBashInvocationState = {
+    mode: 'execute',
+    errexit: false,
+    nounset: false,
+    pipefail: false,
+    shellOptionOverrides: new Map(),
+  };
   const pendingShoptValueOptions: Array<{ enabled: boolean, optionName: string }> = [];
-  const currentShellOptionOverrides = (): ShellOptionOverride[] => [...shellOptionOverrides]
-    .map(([name, enabled]) => ({ name, enabled }));
-  const currentExecutionOptions = (): ShellExecutionOptions => ({
-    errexit,
-    nounset,
-    pipefail,
-  });
 
-  const basicOptionErrorExitCode = (): 1 | 2 => errexit ? 1 : 2;
+  const basicOptionErrorExitCode = (): 1 | 2 => state.errexit ? 1 : 2;
   const invalidOption = ({ argument }: { argument: string }): BashArgvResult => ({
     kind: 'error',
     message: `bash: ${argument}: invalid option\n`,
@@ -447,15 +543,15 @@ export function parseBashArgv({ args }: {
         switch (analysis.semantic) {
         case 'errexit':
           assertNoBashShortValue({ value: analysis.value, option: analysis.option });
-          errexit = enabled;
+          state.errexit = enabled;
           break;
         case 'nounset':
           assertNoBashShortValue({ value: analysis.value, option: analysis.option });
-          nounset = enabled;
+          state.nounset = enabled;
           break;
         case 'parse-only':
           assertNoBashShortValue({ value: analysis.value, option: analysis.option });
-          mode = enabled ? 'parse-only' : 'execute';
+          state.mode = enabled ? 'parse-only' : 'execute';
           break;
         case 'command-string':
           assertNoBashShortValue({ value: analysis.value, option: analysis.option });
@@ -488,23 +584,10 @@ export function parseBashArgv({ args }: {
             pendingMissingValueOptions.push({ option: 'o' });
             break;
           }
-          switch (optionName) {
-          case 'errexit':
-            errexit = enabled;
-            break;
-          case 'nounset':
-            nounset = enabled;
-            break;
-          case 'noexec':
-            mode = enabled ? 'parse-only' : 'execute';
-            break;
-          case 'pipefail':
-            pipefail = enabled;
-            break;
-          case 'nolog':
-            // GNU Bash documents nolog as accepted but currently ignored.
-            break;
-          default:
+          if (
+            !isBashValidShellOptionName(optionName)
+            || !applyValidBashShellOption({ state, optionName, enabled })
+          ) {
             return {
               kind: 'error',
               message: `bash: line 0: bash: ${optionName}: invalid option name\n`,
@@ -573,15 +656,7 @@ export function parseBashArgv({ args }: {
 
   const applyPendingShoptValueOptions = (): BashArgvResult | undefined => {
     for (const { enabled, optionName } of pendingShoptValueOptions) {
-      switch (optionName) {
-      case 'dotglob':
-      case 'extglob':
-      case 'failglob':
-      case 'globstar':
-      case 'nullglob':
-        shellOptionOverrides.set(optionName, enabled);
-        break;
-      default:
+      if (!applyRepresentableBashShoptOption({ state, optionName, enabled })) {
         return {
           kind: 'error',
           message: `bash: line 0: ${optionName}: invalid shell option name\n`,
@@ -603,18 +678,15 @@ export function parseBashArgv({ args }: {
     }
     const pendingShoptError = applyPendingShoptValueOptions();
     if (pendingShoptError !== undefined) return pendingShoptError;
-    return {
-      kind: 'run',
+    return createBashInvocationPlan({
+      state,
       source: {
         kind: 'command-string',
         script,
       },
       argv0: args[argumentIndex + 1] ?? 'bash',
       positionalArgs: args.slice(argumentIndex + 2),
-      executionOptions: currentExecutionOptions(),
-      shellOptionOverrides: currentShellOptionOverrides(),
-      mode,
-    };
+    });
   }
 
   const pendingShoptError = applyPendingShoptValueOptions();
@@ -622,15 +694,12 @@ export function parseBashArgv({ args }: {
 
   switch (sourceMode) {
   case 'stdin':
-    return {
-      kind: 'run',
+    return createBashInvocationPlan({
+      state,
       source: { kind: 'stdin' },
       argv0: 'bash',
       positionalArgs: args.slice(argumentIndex),
-      executionOptions: currentExecutionOptions(),
-      shellOptionOverrides: currentShellOptionOverrides(),
-      mode,
-    };
+    });
   case 'automatic':
     break;
   default: {
@@ -641,29 +710,23 @@ export function parseBashArgv({ args }: {
 
   const scriptPath = args[argumentIndex];
   if (scriptPath === undefined) {
-    return {
-      kind: 'run',
+    return createBashInvocationPlan({
+      state,
       source: { kind: 'stdin' },
       argv0: 'bash',
       positionalArgs: [],
-      executionOptions: currentExecutionOptions(),
-      shellOptionOverrides: currentShellOptionOverrides(),
-      mode,
-    };
+    });
   }
 
-  return {
-    kind: 'run',
+  return createBashInvocationPlan({
+    state,
     source: {
       kind: 'file',
       path: scriptPath,
     },
     argv0: scriptPath,
     positionalArgs: args.slice(argumentIndex + 1),
-    executionOptions: currentExecutionOptions(),
-    shellOptionOverrides: currentShellOptionOverrides(),
-    mode,
-  };
+  });
 }
 
 /**
@@ -678,13 +741,15 @@ export function applyBashStartupEnvironmentOptions({ plan, shellopts, bashopts }
   shellopts: string | undefined,
   bashopts: string | undefined,
 }): BashStartupEnvironmentResult {
-  let mode = plan.mode;
-  let errexit = plan.executionOptions.errexit;
-  let nounset = plan.executionOptions.nounset;
-  let pipefail = plan.executionOptions.pipefail;
-  const shellOptionOverrides = new Map<ShellOptionOverride['name'], boolean>(
-    plan.shellOptionOverrides.map(({ name, enabled }) => [name, enabled]),
-  );
+  const state: MutableBashInvocationState = {
+    mode: plan.mode,
+    errexit: plan.executionOptions.errexit,
+    nounset: plan.executionOptions.nounset,
+    pipefail: plan.executionOptions.pipefail,
+    shellOptionOverrides: new Map(
+      plan.shellOptionOverrides.map(({ name, enabled }) => [name, enabled]),
+    ),
+  };
   const warnings: string[] = [];
 
   if (shellopts !== undefined && shellopts.length > 0) {
@@ -693,85 +758,27 @@ export function applyBashStartupEnvironmentOptions({ plan, shellopts, bashopts }
         warnings.push(`bash: line 0: ${optionName}: invalid option name\n`);
         continue;
       }
-      switch (optionName) {
-      case 'errexit':
-        errexit = true;
-        break;
-      case 'nounset':
-        nounset = true;
-        break;
-      case 'noexec':
-        mode = 'parse-only';
-        break;
-      case 'pipefail':
-        pipefail = true;
-        break;
-      case 'nolog':
-        // GNU Bash accepts nolog but currently gives it no execution effect.
-        break;
-      case 'allexport':
-      case 'braceexpand':
-      case 'emacs':
-      case 'errtrace':
-      case 'functrace':
-      case 'hashall':
-      case 'histexpand':
-      case 'history':
-      case 'ignoreeof':
-      case 'interactive-comments':
-      case 'keyword':
-      case 'monitor':
-      case 'noclobber':
-      case 'noglob':
-      case 'notify':
-      case 'onecmd':
-      case 'physical':
-      case 'posix':
-      case 'privileged':
-      case 'verbose':
-      case 'vi':
-      case 'xtrace':
-        // Valid Bash options whose runtime semantics are not represented by the
-        // current Wesh shell invocation state. Ignore rather than falsely warn.
-        break;
-      default: {
-        const _ex: never = optionName;
-        throw new Error(`Unhandled Bash SHELLOPTS option: ${_ex}`);
-      }
-      }
+      // Valid Bash options whose runtime semantics are not represented by the
+      // current Wesh shell invocation state remain ignored rather than warned.
+      applyValidBashShellOption({ state, optionName, enabled: true });
     }
   }
 
   if (bashopts !== undefined && bashopts.length > 0) {
     for (const optionName of extractBashColonUnits({ value: bashopts })) {
-      switch (optionName) {
-      case 'dotglob':
-      case 'extglob':
-      case 'failglob':
-      case 'globstar':
-      case 'nullglob':
-        shellOptionOverrides.set(optionName, true);
-        break;
-      default:
-        // GNU Bash silently ignores unknown BASHOPTS names. Valid but currently
-        // unsupported shopt names likewise remain outside this invocation model.
-        break;
-      }
+      // GNU Bash silently ignores unknown BASHOPTS names. Valid but currently
+      // unsupported shopt names likewise remain outside this invocation model.
+      applyRepresentableBashShoptOption({ state, optionName, enabled: true });
     }
   }
 
   return {
-    plan: {
-      ...plan,
-      executionOptions: {
-        errexit,
-        nounset,
-        pipefail,
-      },
-      shellOptionOverrides: [...shellOptionOverrides]
-        .map(([name, enabled]) => ({ name, enabled })),
-      mode,
-    },
+    plan: createBashInvocationPlan({
+      state,
+      source: plan.source,
+      argv0: plan.argv0,
+      positionalArgs: plan.positionalArgs,
+    }),
     warnings,
   };
 }

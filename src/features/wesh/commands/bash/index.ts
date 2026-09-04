@@ -22,6 +22,19 @@ import {
 
 const BASH_BINARY_PROBE_BYTES = 80;
 
+type BashScriptPrefixChunkInspection = 'binary' | 'line-end' | 'continue';
+
+function inspectBashScriptPrefixChunk({ chunk }: {
+  chunk: Uint8Array,
+}): BashScriptPrefixChunkInspection {
+  const newlineIndex = chunk.indexOf(0x0a);
+  const nulIndex = chunk.indexOf(0x00);
+  if (nulIndex >= 0 && (newlineIndex < 0 || nulIndex < newlineIndex)) {
+    return 'binary';
+  }
+  return newlineIndex >= 0 ? 'line-end' : 'continue';
+}
+
 async function hasBashBinaryScriptPrefix({ handle }: {
   handle: WeshFileHandle,
 }): Promise<boolean> {
@@ -44,16 +57,22 @@ async function hasBashBinaryScriptPrefix({ handle }: {
     }
 
     const chunkEnd = totalRead + bytesRead;
-    const chunk = buffer.subarray(totalRead, chunkEnd);
-    const newlineIndex = chunk.indexOf(0x0a);
-    const inspectedLength = newlineIndex >= 0 ? newlineIndex : chunk.length;
-    if (chunk.subarray(0, inspectedLength).includes(0x00)) {
+    const inspection = inspectBashScriptPrefixChunk({
+      chunk: buffer.subarray(totalRead, chunkEnd),
+    });
+    switch (inspection) {
+    case 'binary':
       return true;
-    }
-    if (newlineIndex >= 0) {
+    case 'line-end':
       return false;
+    case 'continue':
+      totalRead = chunkEnd;
+      break;
+    default: {
+      const _ex: never = inspection;
+      throw new Error(`Unhandled Bash script prefix inspection: ${_ex}`);
     }
-    totalRead = chunkEnd;
+    }
   }
 
   return false;
@@ -117,14 +136,24 @@ async function prepareSequentialBashScriptSource({ handle }: {
     if (bytesRead === 0) break;
 
     const chunkEnd = totalRead + bytesRead;
-    const chunk = prefix.subarray(totalRead, chunkEnd);
-    const newlineIndex = chunk.indexOf(0x0a);
-    const inspectedLength = newlineIndex >= 0 ? newlineIndex : chunk.length;
-    if (chunk.subarray(0, inspectedLength).includes(0x00)) {
+    const inspection = inspectBashScriptPrefixChunk({
+      chunk: prefix.subarray(totalRead, chunkEnd),
+    });
+    switch (inspection) {
+    case 'binary':
       return { kind: 'binary' };
+    case 'line-end':
+      totalRead = chunkEnd;
+      break;
+    case 'continue':
+      totalRead = chunkEnd;
+      continue;
+    default: {
+      const _ex: never = inspection;
+      throw new Error(`Unhandled Bash sequential script prefix inspection: ${_ex}`);
     }
-    totalRead = chunkEnd;
-    if (newlineIndex >= 0) break;
+    }
+    break;
   }
 
   return {

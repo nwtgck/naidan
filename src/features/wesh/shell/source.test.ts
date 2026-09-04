@@ -251,6 +251,47 @@ cat
     expect([...retained]).toEqual([0x00]);
   });
 
+  it('keeps retained projection stable across many consumed source segments', async () => {
+    const firstBatchSize = 96;
+    const secondBatchSize = 64;
+    let emittedBytes = 0;
+    const reader = createShellSourceReader({
+      source: {
+        kind: 'bytes',
+        async read(): Promise<Uint8Array | undefined> {
+          if (emittedBytes >= firstBatchSize + secondBatchSize) {
+            return undefined;
+          }
+          emittedBytes += 1;
+          return Uint8Array.of(0x78);
+        },
+      },
+    });
+
+    for (let index = 0; index < firstBatchSize; index += 1) {
+      await expect(reader.read()).resolves.toEqual({
+        text: 'x',
+        completion: 'may-continue',
+      });
+    }
+    expect(reader.getRetainedText()).toBe('x'.repeat(firstBatchSize));
+
+    reader.consumeText({ characters: 64 });
+    expect(reader.getRetainedText()).toBe('x'.repeat(32));
+
+    for (let index = 0; index < secondBatchSize; index += 1) {
+      await reader.read();
+    }
+    expect(reader.getRetainedText()).toBe('x'.repeat(32 + secondBatchSize));
+
+    reader.consumeText({ characters: 32 + secondBatchSize });
+    expect(reader.getRetainedText()).toBe('');
+    await expect(reader.read()).resolves.toEqual({
+      text: '',
+      completion: 'complete',
+    });
+  });
+
   it('rebuilds parser text after fd-side consumption splits a UTF-8 sequence', async () => {
     const command = new TextEncoder().encode(`\
 cat
@@ -295,6 +336,28 @@ printf 'ok\\n'
     });
 
     await expect(readShellSourceToText({ source })).resolves.toBe("printf 'ok\\n'\n");
+  });
+
+  it('keeps handle-backed shebang passthrough chunks independent across reads', async () => {
+    const source = createShebangStrippedShellSource({
+      source: createHandleShellSource({
+        handle: createTestReadHandleFromText({
+          text: 'abcdef',
+        }),
+      }),
+    });
+    if (source.kind !== 'bytes') {
+      throw new Error('Expected a byte-backed stripped source');
+    }
+
+    const first = await source.read({ maximumBytes: 2 });
+    const second = await source.read({ maximumBytes: 2 });
+    const third = await source.read({ maximumBytes: 2 });
+    expect(first === undefined ? undefined : new TextDecoder().decode(first)).toBe('ab');
+    expect(second === undefined ? undefined : new TextDecoder().decode(second)).toBe('cd');
+    expect(third === undefined ? undefined : new TextDecoder().decode(third)).toBe('ef');
+    expect(first?.buffer).not.toBe(second?.buffer);
+    expect(second?.buffer).not.toBe(third?.buffer);
   });
 
   it('strips a shebang split across byte-source chunks without exceeding requested reads', async () => {

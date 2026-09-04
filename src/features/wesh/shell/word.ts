@@ -1,5 +1,9 @@
 import { decodeShellAnsiCQuote } from './ansi-c-quote';
-import { findBackquoteSubstitution, findBalancedArithmeticExpression, findBalancedParenthesizedExpression, findBracedParameterEnd } from './scan';
+import {
+  findShellAnsiCQuotedEnd,
+  findShellWordConstructEnd,
+  isShellDoubleQuotedBackslashEscapeTarget,
+} from './scan';
 
 type ShellWordQuoteMode = 'unquoted' | 'single' | 'double';
 
@@ -57,6 +61,12 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
   const parts: ParsedShellWordPart[] = [];
   let mode: ShellWordQuoteMode = 'unquoted';
   let current = '';
+  let literalStart = 0;
+
+  const appendLiteralRun = ({ endIndex }: { endIndex: number }): void => {
+    if (endIndex <= literalStart) return;
+    current += raw.slice(literalStart, endIndex);
+  };
 
   const flushCurrent = (): void => {
     appendWordPart({ parts, text: current, mode });
@@ -68,73 +78,54 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
     if (character === undefined) continue;
 
     const currentMode: ShellWordQuoteMode = mode;
-    if (currentMode !== 'single' && character === '`') {
-      const substitution = findBackquoteSubstitution({
-        text: raw,
-        startIndex: index,
-      });
-      if (substitution !== undefined) {
-        current += raw.slice(index, substitution.endIndex + 1);
-        index = substitution.endIndex;
-        continue;
+    const constructEnd = (() => {
+      switch (currentMode) {
+      case 'single':
+        return undefined;
+      case 'double':
+      case 'unquoted':
+        return findShellWordConstructEnd({ text: raw, startIndex: index });
+      default: {
+        const _ex: never = currentMode;
+        throw new Error(`Unhandled shell word quote mode: ${_ex}`);
       }
-    }
-    if (currentMode !== 'single' && character === '$') {
-      if (raw[index + 1] === '{') {
-        const endIndex = findBracedParameterEnd({
-          text: raw,
-          startIndex: index,
-        });
-        if (endIndex >= 0) {
-          current += raw.slice(index, endIndex + 1);
-          index = endIndex;
-          continue;
-        }
       }
-      if (raw[index + 1] === '(') {
-        const arithmetic = raw[index + 2] === '('
-          ? findBalancedArithmeticExpression({
-            text: raw,
-            startIndex: index,
-          })
-          : undefined;
-        const substitution = arithmetic === undefined
-          ? findBalancedParenthesizedExpression({
-            text: raw,
-            startIndex: index + 1,
-          })
-          : undefined;
-        const endIndex = arithmetic?.endIndex ?? substitution?.endIndex;
-        if (endIndex !== undefined) {
-          current += raw.slice(index, endIndex + 1);
-          index = endIndex;
-          continue;
-        }
-      }
+    })();
+    if (constructEnd !== undefined) {
+      appendLiteralRun({ endIndex: index });
+      current += raw.slice(index, constructEnd + 1);
+      index = constructEnd;
+      literalStart = constructEnd + 1;
+      continue;
     }
 
     switch (currentMode) {
     case 'single':
       if (character === "'") {
+        appendLiteralRun({ endIndex: index });
         flushCurrent();
         mode = 'unquoted';
-      } else {
-        current += character;
+        literalStart = index + 1;
       }
       continue;
     case 'double':
       if (character === '"') {
+        appendLiteralRun({ endIndex: index });
         flushCurrent();
         mode = 'unquoted';
+        literalStart = index + 1;
         continue;
       }
       if (character === '\\') {
         const nextCharacter = raw[index + 1];
         if (nextCharacter === '\n') {
+          appendLiteralRun({ endIndex: index });
           index += 1;
+          literalStart = index + 1;
           continue;
         }
-        if (nextCharacter !== undefined && ['\\', '"', '$', '`'].includes(nextCharacter)) {
+        if (isShellDoubleQuotedBackslashEscapeTarget(nextCharacter)) {
+          appendLiteralRun({ endIndex: index });
           flushCurrent();
           appendWordPart({
             parts,
@@ -142,10 +133,10 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
             mode: 'double',
           });
           index += 1;
+          literalStart = index + 1;
           continue;
         }
       }
-      current += character;
       continue;
     case 'unquoted':
       break;
@@ -156,53 +147,52 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
     }
 
     if (character === '$' && raw[index + 1] === '"') {
+      appendLiteralRun({ endIndex: index });
       if (current.length > 0) flushCurrent();
       mode = 'double';
       index += 1;
+      literalStart = index + 1;
       continue;
     }
 
     if (character === '$' && raw[index + 1] === "'") {
+      appendLiteralRun({ endIndex: index });
       if (current.length > 0) flushCurrent();
-      let cursor = index + 2;
-      let content = '';
-      while (cursor < raw.length) {
-        const ansiCharacter = raw[cursor];
-        if (ansiCharacter === "'") break;
-        if (ansiCharacter === '\\' && raw[cursor + 1] !== undefined) {
-          content += ansiCharacter + raw[cursor + 1];
-          cursor += 2;
-          continue;
-        }
-        content += ansiCharacter ?? '';
-        cursor += 1;
-      }
+      const endIndex = findShellAnsiCQuotedEnd({ text: raw, startIndex: index }) ?? raw.length;
       parts.push({
-        text: decodeShellAnsiCQuote({ text: content }),
+        text: decodeShellAnsiCQuote({ text: raw.slice(index + 2, endIndex) }),
         quoted: true,
         expandVariables: false,
       });
-      index = cursor;
+      index = endIndex;
+      literalStart = endIndex + 1;
       continue;
     }
 
     if (character === "'") {
+      appendLiteralRun({ endIndex: index });
       if (current.length > 0) flushCurrent();
       mode = 'single';
+      literalStart = index + 1;
       continue;
     }
     if (character === '"') {
+      appendLiteralRun({ endIndex: index });
       if (current.length > 0) flushCurrent();
       mode = 'double';
+      literalStart = index + 1;
       continue;
     }
     if (character === '\\') {
       const nextCharacter = raw[index + 1];
       if (nextCharacter === '\n') {
+        appendLiteralRun({ endIndex: index });
         index += 1;
+        literalStart = index + 1;
         continue;
       }
       if (nextCharacter !== undefined) {
+        appendLiteralRun({ endIndex: index });
         if (current.length > 0) flushCurrent();
         parts.push({
           text: nextCharacter,
@@ -210,13 +200,13 @@ export function parseShellWordParts({ raw }: { raw: string }): ParsedShellWordPa
           expandVariables: false,
         });
         index += 1;
+        literalStart = index + 1;
         continue;
       }
     }
-
-    current += character;
   }
 
+  appendLiteralRun({ endIndex: raw.length });
   appendWordPart({ parts, text: current, mode });
   return parts;
 }
@@ -230,6 +220,7 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
   let mode: OperandQuoteMode = 'outer-double';
   let current = '';
   let currentExpandVariables = true;
+  let literalStart = 0;
 
   const flushCurrent = (): void => {
     if (current.length === 0) return;
@@ -245,11 +236,20 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
     text: string,
     expandVariables: boolean,
   }): void => {
+    if (text.length === 0) return;
     if (current.length > 0 && currentExpandVariables !== expandVariables) {
       flushCurrent();
     }
     currentExpandVariables = expandVariables;
     current += text;
+  };
+
+  const appendPendingLiteralRun = ({ endIndex }: { endIndex: number }): void => {
+    if (endIndex <= literalStart) return;
+    appendText({
+      text: raw.slice(literalStart, endIndex),
+      expandVariables: true,
+    });
   };
 
   const appendLiteral = ({ text }: { text: string }): void => {
@@ -270,91 +270,36 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
     }
     }
 
-    if (character === '`') {
-      const substitution = findBackquoteSubstitution({
-        text: raw,
-        startIndex: index,
-      });
-      if (substitution !== undefined) {
-        appendText({
-          text: raw.slice(index, substitution.endIndex + 1),
-          expandVariables: true,
-        });
-        index = substitution.endIndex;
-        continue;
-      }
-    }
-
     if (character === '$') {
       if (raw[index + 1] === '"') {
+        appendPendingLiteralRun({ endIndex: index });
+        literalStart = index + 1;
         continue;
       }
 
       if (mode === 'outer-double' && raw[index + 1] === "'") {
+        appendPendingLiteralRun({ endIndex: index });
         flushCurrent();
-        let cursor = index + 2;
-        let content = '';
-        while (cursor < raw.length) {
-          const ansiCharacter = raw[cursor];
-          if (ansiCharacter === "'") break;
-          if (ansiCharacter === '\\' && raw[cursor + 1] !== undefined) {
-            content += ansiCharacter + raw[cursor + 1];
-            cursor += 2;
-            continue;
-          }
-          content += ansiCharacter ?? '';
-          cursor += 1;
-        }
+        const endIndex = findShellAnsiCQuotedEnd({ text: raw, startIndex: index }) ?? raw.length;
         parts.push({
-          text: decodeShellAnsiCQuote({ text: content }),
+          text: decodeShellAnsiCQuote({ text: raw.slice(index + 2, endIndex) }),
           quoted: true,
           expandVariables: false,
         });
-        index = cursor;
+        index = endIndex;
+        literalStart = endIndex + 1;
         continue;
-      }
-
-      if (raw[index + 1] === '{') {
-        const endIndex = findBracedParameterEnd({
-          text: raw,
-          startIndex: index,
-        });
-        if (endIndex >= 0) {
-          appendText({
-            text: raw.slice(index, endIndex + 1),
-            expandVariables: true,
-          });
-          index = endIndex;
-          continue;
-        }
-      }
-
-      if (raw[index + 1] === '(') {
-        const arithmetic = raw[index + 2] === '('
-          ? findBalancedArithmeticExpression({
-            text: raw,
-            startIndex: index,
-          })
-          : undefined;
-        const substitution = arithmetic === undefined
-          ? findBalancedParenthesizedExpression({
-            text: raw,
-            startIndex: index + 1,
-          })
-          : undefined;
-        const endIndex = arithmetic?.endIndex ?? substitution?.endIndex;
-        if (endIndex !== undefined) {
-          appendText({
-            text: raw.slice(index, endIndex + 1),
-            expandVariables: true,
-          });
-          index = endIndex;
-          continue;
-        }
       }
     }
 
+    const constructEnd = findShellWordConstructEnd({ text: raw, startIndex: index });
+    if (constructEnd !== undefined) {
+      index = constructEnd;
+      continue;
+    }
+
     if (character === '"') {
+      appendPendingLiteralRun({ endIndex: index });
       flushCurrent();
       switch (mode) {
       case 'outer-double':
@@ -368,21 +313,26 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
         throw new Error(`Unhandled parameter operand quote mode: ${_ex}`);
       }
       }
+      literalStart = index + 1;
       continue;
     }
 
     if (character === '\\') {
       const nextCharacter = raw[index + 1];
       if (nextCharacter === '\n') {
+        appendPendingLiteralRun({ endIndex: index });
         flushCurrent();
         index += 1;
+        literalStart = index + 1;
         continue;
       }
       switch (mode) {
       case 'inner-double':
         if (nextCharacter !== undefined) {
+          appendPendingLiteralRun({ endIndex: index });
           appendLiteral({ text: nextCharacter });
           index += 1;
+          literalStart = index + 1;
           continue;
         }
         break;
@@ -394,18 +344,19 @@ export function parseDoubleQuotedParameterOperandParts({ raw }: {
       }
       }
       if (
-        nextCharacter !== undefined &&
-        ['\\', '"', '$', '`', '}'].includes(nextCharacter)
+        isShellDoubleQuotedBackslashEscapeTarget(nextCharacter) ||
+        nextCharacter === '}'
       ) {
+        appendPendingLiteralRun({ endIndex: index });
         appendLiteral({ text: nextCharacter });
         index += 1;
+        literalStart = index + 1;
         continue;
       }
     }
-
-    appendText({ text: character, expandVariables: true });
   }
 
+  appendPendingLiteralRun({ endIndex: raw.length });
   flushCurrent();
   if (parts.length === 0) {
     parts.push({

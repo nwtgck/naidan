@@ -117,14 +117,28 @@ export function splitEnvShebangArguments({ optionalArgument }: { optionalArgumen
   }
 
   const args: string[] = [];
-  let current = '';
+  const currentParts: string[] = [];
   let hasCurrent = false;
+  let literalStart = splitStringStart;
   let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
+
+  const appendLiteral = ({ endIndex }: { endIndex: number }): void => {
+    if (endIndex > literalStart) {
+      currentParts.push(optionalArgument.slice(literalStart, endIndex));
+      hasCurrent = true;
+    }
+    literalStart = endIndex;
+  };
+
+  const appendValue = ({ value }: { value: string }): void => {
+    currentParts.push(value);
+    hasCurrent = true;
+  };
 
   const flush = (): void => {
     if (!hasCurrent) return;
-    args.push(current);
-    current = '';
+    args.push(currentParts.length === 1 ? currentParts[0] ?? '' : currentParts.join(''));
+    currentParts.length = 0;
     hasCurrent = false;
   };
 
@@ -137,35 +151,39 @@ export function splitEnvShebangArguments({ optionalArgument }: { optionalArgumen
       if (character === '\\') {
         const escaped = optionalArgument[index + 1];
         if (escaped === "'" || escaped === '\\') {
-          current += escaped;
-          hasCurrent = true;
+          appendLiteral({ endIndex: index });
+          appendValue({ value: escaped });
           index += 1;
+          literalStart = index + 1;
           continue;
         }
       }
       if (character === "'") {
+        appendLiteral({ endIndex: index });
         mode = 'unquoted';
-      } else {
-        current += character;
+        hasCurrent = true;
+        literalStart = index + 1;
       }
-      hasCurrent = true;
       continue;
     case 'double':
       if (character === '"') {
+        appendLiteral({ endIndex: index });
         mode = 'unquoted';
         hasCurrent = true;
+        literalStart = index + 1;
         continue;
       }
       if (character === '\\') {
+        appendLiteral({ endIndex: index });
         const escape = decodeEnvSplitEscape({
           escaped: optionalArgument[index + 1],
           mode: 'double',
         });
         switch (escape.kind) {
         case 'literal':
-          current += escape.value;
-          hasCurrent = true;
+          appendValue({ value: escape.value });
           index += 1;
+          literalStart = index + 1;
           continue;
         case 'invalid':
         case 'separator':
@@ -177,8 +195,6 @@ export function splitEnvShebangArguments({ optionalArgument }: { optionalArgumen
         }
         }
       }
-      current += character;
-      hasCurrent = true;
       continue;
     case 'unquoted':
       break;
@@ -189,29 +205,34 @@ export function splitEnvShebangArguments({ optionalArgument }: { optionalArgumen
     }
 
     if (isShebangSeparator({ value: character })) {
+      appendLiteral({ endIndex: index });
       flush();
+      literalStart = index + 1;
       continue;
     }
     if (character === '#') {
-      if (!hasCurrent) break;
-      current += character;
-      hasCurrent = true;
+      if (!hasCurrent && currentParts.length === 0 && index === literalStart) {
+        literalStart = optionalArgument.length;
+        break;
+      }
       continue;
     }
     if (character === '\\') {
+      appendLiteral({ endIndex: index });
       const escape = decodeEnvSplitEscape({
         escaped: optionalArgument[index + 1],
         mode: 'unquoted',
       });
       switch (escape.kind) {
       case 'literal':
-        current += escape.value;
-        hasCurrent = true;
+        appendValue({ value: escape.value });
         index += 1;
+        literalStart = index + 1;
         continue;
       case 'separator':
         flush();
         index += 1;
+        literalStart = index + 1;
         continue;
       case 'terminate':
         flush();
@@ -225,18 +246,18 @@ export function splitEnvShebangArguments({ optionalArgument }: { optionalArgumen
       }
     }
     if (character === "'") {
+      appendLiteral({ endIndex: index });
       mode = 'single';
       hasCurrent = true;
+      literalStart = index + 1;
       continue;
     }
     if (character === '"') {
+      appendLiteral({ endIndex: index });
       mode = 'double';
       hasCurrent = true;
-      continue;
+      literalStart = index + 1;
     }
-
-    current += character;
-    hasCurrent = true;
   }
 
   switch (mode) {
@@ -251,6 +272,7 @@ export function splitEnvShebangArguments({ optionalArgument }: { optionalArgumen
   }
   }
 
+  appendLiteral({ endIndex: optionalArgument.length });
   flush();
   return args;
 }

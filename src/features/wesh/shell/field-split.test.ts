@@ -38,6 +38,33 @@ describe('splitExpandedFields', () => {
     }).map((field) => field.text)).toEqual(['', '', '']);
   });
 
+  it('splits non-BMP IFS delimiters without rebuilding non-delimiter text', () => {
+    const fields = splitExpandedFields({
+      parts: [
+        unquotedExpansionPart({ text: 'alpha💥beta' }),
+        {
+          text: '💥',
+          quoted: true,
+          fieldSplitEligible: false,
+        },
+        unquotedExpansionPart({ text: 'gamma💥delta' }),
+      ],
+      context: 'argv',
+      ifs: '💥',
+    });
+
+    expect(fields.map((field) => field.text)).toEqual([
+      'alpha',
+      'beta💥gamma',
+      'delta',
+    ]);
+    expect(fields.map((field) => field.parts.map((part) => part.text))).toEqual([
+      ['alpha'],
+      ['beta', '💥', 'gamma'],
+      ['delta'],
+    ]);
+  });
+
   it('coalesces IFS whitespace adjacent to a non-whitespace delimiter like Bash', () => {
     expect(splitExpandedFields({
       parts: [unquotedExpansionPart({ text: ' : ' })],

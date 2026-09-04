@@ -171,6 +171,49 @@ function visitShellUtf8Text({ bytes, completion, visit }: {
   return index;
 }
 
+class ShellUtf8TextRunBuilder {
+  readonly #bytes: Uint8Array;
+  readonly #parts: string[] = [];
+  #validRunStart = 0;
+
+  constructor({ bytes }: { bytes: Uint8Array }) {
+    this.#bytes = bytes;
+  }
+
+  visit({ codePoint, byteOffset }: {
+    codePoint: number,
+    byteOffset: number,
+  }): void {
+    if (
+      codePoint < RAW_BYTE_SURROGATE_BASE + RAW_BYTE_MINIMUM
+      || codePoint > RAW_BYTE_SURROGATE_BASE + RAW_BYTE_MAXIMUM
+    ) {
+      return;
+    }
+
+    const rawByteOffset = byteOffset - 1;
+    if (this.#validRunStart < rawByteOffset) {
+      this.#parts.push(STRICT_UTF8_DECODER.decode(
+        this.#bytes.subarray(this.#validRunStart, rawByteOffset),
+      ));
+    }
+    this.#parts.push(String.fromCodePoint(codePoint));
+    this.#validRunStart = byteOffset;
+  }
+
+  finish({ consumedBytes }: { consumedBytes: number }): string {
+    if (this.#parts.length === 0) {
+      return STRICT_UTF8_DECODER.decode(this.#bytes.subarray(0, consumedBytes));
+    }
+    if (this.#validRunStart < consumedBytes) {
+      this.#parts.push(STRICT_UTF8_DECODER.decode(
+        this.#bytes.subarray(this.#validRunStart, consumedBytes),
+      ));
+    }
+    return this.#parts.join('');
+  }
+}
+
 export function decodeShellUtf8Text({ bytes, completion }: {
   bytes: Uint8Array,
   completion: 'complete' | 'may-continue',
@@ -184,17 +227,17 @@ export function decodeShellUtf8Text({ bytes, completion }: {
     // Invalid or incomplete UTF-8 needs the byte-preserving projection below.
   }
 
-  let text = '';
+  const textBuilder = new ShellUtf8TextRunBuilder({ bytes });
   const consumedBytes = visitShellUtf8Text({
     bytes,
     completion,
-    visit: ({ codePoint }) => {
-      text += String.fromCodePoint(codePoint);
+    visit: ({ codePoint, byteOffset }) => {
+      textBuilder.visit({ codePoint, byteOffset });
       return false;
     },
   });
   return {
-    text,
+    text: textBuilder.finish({ consumedBytes }),
     consumedBytes,
   };
 }
@@ -203,13 +246,36 @@ export function decodeShellUtf8Projection({ bytes, completion }: {
   bytes: Uint8Array,
   completion: 'complete' | 'may-continue',
 }): ShellByteTextProjection {
-  const textParts: string[] = [];
+  let allAscii = true;
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte = bytes[index];
+    if (byte === undefined) {
+      throw new Error(`Missing shell source byte at offset ${index}`);
+    }
+    if (byte > 0x7f) {
+      allAscii = false;
+      break;
+    }
+  }
+  if (allAscii) {
+    const textBoundaryByteOffsets = new Array<number | undefined>(bytes.length + 1);
+    for (let index = 0; index <= bytes.length; index += 1) {
+      textBoundaryByteOffsets[index] = index;
+    }
+    return {
+      text: STRICT_UTF8_DECODER.decode(bytes),
+      textBoundaryByteOffsets,
+      consumedBytes: bytes.length,
+    };
+  }
+
+  const textBuilder = new ShellUtf8TextRunBuilder({ bytes });
   const textBoundaryByteOffsets: Array<number | undefined> = [0];
   const consumedBytes = visitShellUtf8Text({
     bytes,
     completion,
     visit: ({ codePoint, byteOffset }) => {
-      textParts.push(String.fromCodePoint(codePoint));
+      textBuilder.visit({ codePoint, byteOffset });
       if (codePoint <= 0xffff) {
         textBoundaryByteOffsets.push(byteOffset);
       } else {
@@ -219,7 +285,7 @@ export function decodeShellUtf8Projection({ bytes, completion }: {
     },
   });
   return {
-    text: textParts.join(''),
+    text: textBuilder.finish({ consumedBytes }),
     textBoundaryByteOffsets,
     consumedBytes,
   };
@@ -235,6 +301,20 @@ export function findShellUtf8ByteOffsetForTextBoundary({ bytes, completion, char
   }
   if (characters === 0) {
     return 0;
+  }
+
+  if (characters <= bytes.length) {
+    let asciiPrefix = true;
+    for (let index = 0; index < characters; index += 1) {
+      const byte = bytes[index];
+      if (byte === undefined || byte > 0x7f) {
+        asciiPrefix = false;
+        break;
+      }
+    }
+    if (asciiPrefix) {
+      return characters;
+    }
   }
 
   let visitedCharacters = 0;
@@ -293,8 +373,25 @@ export function encodeShellTextToBytes({ text }: { text: string }): Uint8Array {
     }
 
     pushChunk({ chunk: UTF8_ENCODER.encode(text.slice(segmentStart, index)) });
-    pushChunk({ chunk: Uint8Array.of(codeUnit - RAW_BYTE_SURROGATE_BASE) });
-    segmentStart = index + 1;
+
+    let rawRunEnd = index + 1;
+    while (rawRunEnd < text.length) {
+      const rawCodeUnit = text.charCodeAt(rawRunEnd);
+      if (
+        rawCodeUnit < RAW_BYTE_SURROGATE_BASE + RAW_BYTE_MINIMUM
+        || rawCodeUnit > RAW_BYTE_SURROGATE_BASE + RAW_BYTE_MAXIMUM
+      ) {
+        break;
+      }
+      rawRunEnd += 1;
+    }
+    const rawBytes = new Uint8Array(rawRunEnd - index);
+    for (let rawIndex = index; rawIndex < rawRunEnd; rawIndex += 1) {
+      rawBytes[rawIndex - index] = text.charCodeAt(rawIndex) - RAW_BYTE_SURROGATE_BASE;
+    }
+    pushChunk({ chunk: rawBytes });
+    index = rawRunEnd - 1;
+    segmentStart = rawRunEnd;
   }
   pushChunk({ chunk: UTF8_ENCODER.encode(text.slice(segmentStart)) });
 

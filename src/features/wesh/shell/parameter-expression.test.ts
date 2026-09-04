@@ -51,6 +51,17 @@ describe('parseParameterExpression', () => {
     });
   });
 
+  it('preserves long literal runs around escaped replacement slashes', () => {
+    const prefix = 'left'.repeat(256);
+    const suffix = 'right'.repeat(256);
+    expect(parseParameterExpression({
+      expression: `v/a/${prefix}\\/${suffix}`,
+    })).toMatchObject({
+      kind: 'substitution',
+      replacement: `${prefix}/${suffix}`,
+    });
+  });
+
   it('preserves replacement backslashes that do not escape the slash delimiter', () => {
     expect(parseParameterExpression({ expression: String.raw`v/a/\&` })).toMatchObject({
       kind: 'substitution',
