@@ -2,7 +2,7 @@ import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
-import { matchRepositoryPaths } from "@/features/wesh/commands/git/pathspec";
+import { matchRepositoryPathSelection } from "@/features/wesh/commands/git/pathspec";
 import { sortGitPaths } from "@/features/wesh/commands/git/path-order";
 import { readIndex } from "@/features/wesh/commands/git/index-file";
 import { joinPath, relativeToWorktree, repositoryCwdIsInsideWorktree, discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
@@ -128,9 +128,10 @@ function hasAncestorInSet({ path, directories }: {
   path: string;
   directories: ReadonlySet<string>;
 }): boolean {
-  const segments = path.split('/');
-  for (let count = 1; count < segments.length; count += 1) {
-    if (directories.has(segments.slice(0, count).join('/'))) return true;
+  let slashIndex = path.indexOf('/');
+  while (slashIndex >= 0) {
+    if (directories.has(path.slice(0, slashIndex))) return true;
+    slashIndex = path.indexOf('/', slashIndex + 1);
   }
   return false;
 }
@@ -213,13 +214,10 @@ async function collectCleanInventory({ context, repository, trackedPaths, nested
 }
 
 function chooseTopmostDirectories({ directories }: { directories: Iterable<string> }): string[] {
-  const sorted = [...directories].sort((left, right) => {
-    const depthDifference = left.split('/').length - right.split('/').length;
-    return depthDifference !== 0 ? depthDifference : left.localeCompare(right);
-  });
+  const directorySet = new Set(directories);
   const selected: string[] = [];
-  for (const path of sorted) {
-    if (!selected.some(directory => isDescendantOf({ path, directory }))) selected.push(path);
+  for (const path of directorySet) {
+    if (!hasAncestorInSet({ path, directories: directorySet })) selected.push(path);
   }
   return sortGitPaths({ paths: selected });
 }
@@ -231,28 +229,27 @@ function selectExplicitCleanPaths({ repository, cwd, operands, inventory }: {
   inventory: CleanInventory;
 }): { directories: string[], leaves: string[] } {
   const removableDirectoryAliases = [...inventory.fullyRemovableDirectoryPaths].map(path => `${path}/`);
-  const matches = matchRepositoryPaths({
+  const selection = matchRepositoryPathSelection({
     repository,
     cwd,
     operands,
     availablePaths: [...inventory.leafPaths, ...removableDirectoryAliases],
   });
-  const selected = new Set([...matches.values()].flat());
   const selectedDirectories = new Set<string>();
-  for (const operandMatches of matches.values()) {
+  for (const operandMatches of selection.byOperand.values()) {
     for (const matchedPath of operandMatches) {
       if (!matchedPath.endsWith('/')) continue;
       const directory = matchedPath.slice(0, -1);
       if (!inventory.fullyRemovableDirectoryPaths.has(directory)) continue;
       const descendantLeaves = inventory.leafPaths.filter(path => isDescendantOf({ path, directory }));
-      if (descendantLeaves.every(path => selected.has(path))) selectedDirectories.add(directory);
+      if (descendantLeaves.every(path => selection.selected.has(path))) selectedDirectories.add(directory);
     }
   }
   const directories = chooseTopmostDirectories({ directories: selectedDirectories });
   return {
     directories,
     leaves: inventory.leafPaths.filter(path =>
-      selected.has(path)
+      selection.selected.has(path)
       && !directories.some(directory => isDescendantOf({ path, directory })),
     ),
   };

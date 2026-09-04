@@ -28,6 +28,9 @@ export interface GitLogArguments {
   allRefs: boolean,
   showStat: boolean,
   showPatch: boolean,
+  nameOnly: boolean,
+  nameStatus: boolean,
+  follow: boolean,
   sinceTimestamp: number | undefined,
   untilTimestamp: number | undefined,
   grepPatterns: readonly GitBasicRegex[],
@@ -59,6 +62,9 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
   let allRefs = false;
   let showStat = false;
   let showPatch = false;
+  let nameOnly = false;
+  let nameStatus = false;
+  let follow = false;
   let sinceTimestamp: number | undefined;
   let untilTimestamp: number | undefined;
   const grepPatterns: GitBasicRegex[] = [];
@@ -211,6 +217,12 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
       showStat = true;
     } else if (parsingOptions && arg === '--patch') {
       showPatch = true;
+    } else if (parsingOptions && arg === '--name-only') {
+      nameOnly = true;
+    } else if (parsingOptions && arg === '--name-status') {
+      nameStatus = true;
+    } else if (parsingOptions && arg === '--follow') {
+      follow = true;
     } else if (parsingOptions && arg === '--no-color') {
       // Output is uncolored by Wesh Git.
     } else if (parsingOptions && arg === '--max-count') {
@@ -263,6 +275,10 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
   }
   if (pickaxeString !== undefined && pickaxeRegex !== undefined)
     throw new Error("options '-G' and '-S' cannot be used together");
+  if (nameOnly && nameStatus)
+    throw new Error("options '--name-only' and '--name-status' cannot be used together");
+  if (follow && pathOperands.length !== 1)
+    throw new Error('--follow requires exactly one path');
   if (graph && (showStat || showPatch || pathOperands.length > 0 || sinceTimestamp !== undefined
         || untilTimestamp !== undefined || grepPatterns.length > 0 || pickaxeString !== undefined
         || pickaxeRegex !== undefined)) {
@@ -277,6 +293,9 @@ export function parseLogArguments({ args }: { args: readonly string[] }): GitLog
     allRefs,
     showStat,
     showPatch,
+    nameOnly,
+    nameStatus,
+    follow,
     sinceTimestamp,
     untilTimestamp,
     grepPatterns,

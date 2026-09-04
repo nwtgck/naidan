@@ -5,7 +5,7 @@ import { getConfigValue, readEffectiveConfig, shouldCreateBranchReflog, removeLo
 import { pathExists } from "@/features/wesh/commands/git/files";
 import { compileGitWildmatch } from "@/features/wesh/commands/git/wildmatch";
 import type { GitWildmatchMatcher } from "@/features/wesh/commands/git/wildmatch";
-import { isAncestor } from "@/features/wesh/commands/git/graph";
+import { createGitCommitGraphCache, isAncestor } from "@/features/wesh/commands/git/graph";
 import { resolveGitReflogIdentity, resolveGitTimestamp } from "@/features/wesh/commands/git/identity";
 import { branchNameFromHead, createRef, deleteRef, listRefs, readHead, readRef, renameRef, setHeadSymbolic } from "@/features/wesh/commands/git/refs";
 import { discoverRepository, joinPath, discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
@@ -170,6 +170,9 @@ export async function runBranch({ context, args }: {
     if (operands.length === 0)
       throw new Error('branch name required');
     const deleteConfig = deletingRemoteTrackingBranches ? undefined : config;
+    const graphCache = !deletingRemoteTrackingBranches && requiresMergedBranch({ mode: deleteMode })
+      ? createGitCommitGraphCache()
+      : undefined;
     let exitCode = 0;
     for (const name of operands) {
       if (!deletingRemoteTrackingBranches && name === currentBranch) {
@@ -191,6 +194,7 @@ export async function runBranch({ context, args }: {
         const headMerged = head.objectId !== undefined && await isAncestor({
           files: context.files,
           repository,
+          cache: graphCache,
           ancestorObjectId: objectId,
           descendantObjectId: head.objectId,
         });
@@ -213,6 +217,7 @@ export async function runBranch({ context, args }: {
           : await isAncestor({
             files: context.files,
             repository,
+            cache: graphCache,
             ancestorObjectId: objectId,
             descendantObjectId: upstreamObjectId,
           });

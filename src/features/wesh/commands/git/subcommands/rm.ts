@@ -3,7 +3,7 @@ import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { isExclusionPathspec, matchRepositoryPaths, pathspecSelectsDirectory, selectRepositoryPaths } from "@/features/wesh/commands/git/pathspec";
 import { sortGitPaths } from "@/features/wesh/commands/git/path-order";
-import { readIndex, writeIndex } from "@/features/wesh/commands/git/index-file";
+import { collectUnmergedPaths, readIndex, writeIndex } from "@/features/wesh/commands/git/index-file";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { removeWorktreePaths } from "@/features/wesh/commands/git/worktree";
 import { collectStatus } from "@/features/wesh/commands/git/status";
@@ -94,7 +94,7 @@ export async function runRm({ context, args }: {
       throw new Error(`not removing '${operand}' recursively without -r`);
     }
   }
-  const unmergedPaths = new Set(currentEntries.filter(entry => entry.stage !== 0).map(entry => entry.path));
+  const unmergedPaths = collectUnmergedPaths({ entries: currentEntries });
   if (!force) {
     const status = await collectStatus({ context });
     const statusByPath = new Map(status.entries.map(entry => [entry.path, entry]));

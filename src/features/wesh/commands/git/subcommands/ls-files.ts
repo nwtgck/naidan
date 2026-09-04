@@ -3,7 +3,7 @@ import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
 import { readEffectiveConfig } from '@/features/wesh/commands/git/config';
 import { readIndex, readIndexRaw } from '@/features/wesh/commands/git/index-file';
-import { matchRepositoryPaths } from '@/features/wesh/commands/git/pathspec';
+import { matchRepositoryPathSelection } from '@/features/wesh/commands/git/pathspec';
 import { quoteGitPath, quoteNonAsciiFromConfig } from '@/features/wesh/commands/git/path-output';
 import { relativeToWorktree, discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
 import { writeHandleBytes } from '@/features/wesh/commands/git/files';
@@ -123,13 +123,12 @@ export async function runLsFiles({ context, args }: {
   const quoteNonAscii = quoteNonAsciiFromConfig({ config });
   let entries = await readIndex({ files: context.files, repository });
   if (operands.length > 0) {
-    const matches = matchRepositoryPaths({
+    const selected = matchRepositoryPathSelection({
       repository,
       cwd: context.cwd,
       operands,
       availablePaths: entries.map(entry => entry.path),
-    });
-    const selected = new Set([...matches.values()].flat());
+    }).selected;
     entries = entries.filter(entry => selected.has(entry.path));
   } else if (cwdRelative.length > 0) {
     entries = entries.filter(entry => entry.path.startsWith(`${cwdRelative}/`));

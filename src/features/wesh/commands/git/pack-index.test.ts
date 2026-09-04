@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parsePackIndex } from './pack-index';
+import { findPackIndexEntry, findPackIndexObjectIdsByPrefix, parsePackIndex } from './pack-index';
 
 const fixturePath = join(
   process.cwd(),
@@ -48,6 +48,18 @@ describe('wesh git pack index parser', () => {
       offset: 4711,
     });
     expect(index.packChecksum).toBe('84deeadcdec240a56f8bbd6c1b636a78cb4467af');
+  });
+
+  it('binary-searches exact and abbreviated object ids in sorted indexes', async () => {
+    const index = parsePackIndex({ bytes: await readFile(fixturePath) });
+    const first = index.entries[0]!;
+
+    expect(findPackIndexEntry({ packIndex: index, objectId: first.objectId })).toBe(first);
+    expect(findPackIndexEntry({ packIndex: index, objectId: '0000000000000000000000000000000000000000' })).toBeUndefined();
+    expect(findPackIndexObjectIdsByPrefix({ packIndex: index, prefix: first.objectId.slice(0, 6), limit: 2 })).toEqual([first.objectId]);
+    expect(findPackIndexObjectIdsByPrefix({ packIndex: index, prefix: '', limit: 2 })).toEqual(
+      index.entries.slice(0, 2).map(entry => entry.objectId),
+    );
   });
 
   it('rejects a pack index whose checksum no longer matches its contents', async () => {

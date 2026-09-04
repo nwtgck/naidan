@@ -1,8 +1,8 @@
 import type { WeshCommandContext } from "@/features/wesh/types";
 import { readMergeState } from "./merge-state";
 import { quoteGitPath } from "./path-output";
-import { sortGitPaths } from "./path-order";
-import { discoverRepositoryFromContext, relativeToWorktree, repositoryCwdIsInsideWorktree } from "./repository";
+import { sortByGitUtf8StringKey } from "./utf8-order";
+import { relativeToWorktree, repositoryCwdIsInsideWorktree } from "./repository";
 import type { GitRepository } from "./repository";
 import type { GitStatus, GitStatusEntry } from "./status";
 
@@ -29,30 +29,36 @@ function visibleStatusEntries({ entries }: {
   const sortPath = ({ entry }: {
         entry: GitStatusEntry;
     }): string => entry.renameSourcePath ?? entry.path;
-  const pathOrder = new Map(sortGitPaths({ paths: new Set(visible.map(entry => sortPath({ entry }))) })
-    .map((path, index) => [path, index]));
-  return visible.map((entry, index) => ({ entry, index }))
-    .sort((left, right) => (pathOrder.get(sortPath({ entry: left.entry }))! - pathOrder.get(sortPath({ entry: right.entry }))!)
-        || (left.entry.renameSourcePath === undefined ? 1 : 0) - (right.entry.renameSourcePath === undefined ? 1 : 0)
-        || left.index - right.index)
-    .map(({ entry }) => entry);
+  return sortByGitUtf8StringKey({
+    values: visible.map((entry, index) => ({ entry, index })),
+    key: ({ value }) => sortPath({ entry: value.entry }),
+    compareEqualKeys: ({ left, right }) => (left.entry.renameSourcePath === undefined ? 1 : 0)
+      - (right.entry.renameSourcePath === undefined ? 1 : 0)
+      || left.index - right.index,
+  }).map(({ entry }) => entry);
 }
-export function statusPathFromCwd({ context, repository, path }: {
-    context: WeshCommandContext;
-    repository: GitRepository;
-    path: string;
-}): string {
-  if (!repositoryCwdIsInsideWorktree({ context, repository }))
-    return path;
+function createStatusPathProjection({ context, repository }: {
+  context: WeshCommandContext,
+  repository: GitRepository,
+}): ({ path }: { path: string }) => string {
+  if (!repositoryCwdIsInsideWorktree({ context, repository })) return ({ path }) => path;
   const cwdRelative = relativeToWorktree({ repository, absolutePath: context.cwd });
-  if (cwdRelative.length === 0)
-    return path;
+  if (cwdRelative.length === 0) return ({ path }) => path;
   const from = cwdRelative.split('/');
-  const to = path.split('/');
-  let common = 0;
-  while (common < from.length && common < to.length && from[common] === to[common])
-    common += 1;
-  return [...from.slice(common).map(() => '..'), ...to.slice(common)].join('/');
+  return ({ path }) => {
+    const to = path.split('/');
+    let common = 0;
+    while (common < from.length && common < to.length && from[common] === to[common]) common += 1;
+    return [...from.slice(common).map(() => '..'), ...to.slice(common)].join('/');
+  };
+}
+
+export function statusPathFromCwd({ context, repository, path }: {
+  context: WeshCommandContext,
+  repository: GitRepository,
+  path: string,
+}): string {
+  return createStatusPathProjection({ context, repository })({ path });
 }
 export function renderShortStatus({ context, repository, entries, quoteNonAscii }: {
     context: WeshCommandContext;
@@ -60,12 +66,13 @@ export function renderShortStatus({ context, repository, entries, quoteNonAscii 
     entries: readonly GitStatusEntry[];
     quoteNonAscii: boolean;
 }): string {
+  const projectPath = createStatusPathProjection({ context, repository });
   return visibleStatusEntries({ entries }).map(entry => {
-    const path = quoteGitPath({ path: statusPathFromCwd({ context, repository, path: entry.path }), quoteNonAscii, quoteSpaces: true });
+    const path = quoteGitPath({ path: projectPath({ path: entry.path }), quoteNonAscii, quoteSpaces: true });
     if (entry.worktreeStatus === '?' && entry.indexStatus === ' ')
       return `?? ${path}\n`;
     if (entry.renameSourcePath !== undefined) {
-      const source = quoteGitPath({ path: statusPathFromCwd({ context, repository, path: entry.renameSourcePath }), quoteNonAscii, quoteSpaces: true });
+      const source = quoteGitPath({ path: projectPath({ path: entry.renameSourcePath }), quoteNonAscii, quoteSpaces: true });
       return `R${entry.worktreeStatus} ${source} -> ${path}\n`;
     }
     return `${entry.indexStatus}${entry.worktreeStatus} ${path}\n`;
@@ -145,8 +152,9 @@ export function renderPorcelainV2({ context, repository, entries, nul, quoteNonA
     quoteNonAscii: boolean;
 }): string {
   const separator = nul ? '\0' : '\n';
+  const projectPath = nul ? ({ path }: { path: string }) => path : createStatusPathProjection({ context, repository });
   return visibleStatusEntries({ entries }).map(entry => {
-    const displayPath = nul ? entry.path : statusPathFromCwd({ context, repository, path: entry.path });
+    const displayPath = projectPath({ path: entry.path });
     const path = nul ? displayPath : quoteGitPath({ path: displayPath, quoteNonAscii, quoteSpaces: false });
     if (entry.worktreeStatus === '?' && entry.indexStatus === ' ')
       return `? ${path}${separator}`;
@@ -158,7 +166,7 @@ export function renderPorcelainV2({ context, repository, entries, nul, quoteNonA
       return `u UU N... ${porcelainMode({ mode: base?.mode })} ${porcelainMode({ mode: ours?.mode })} ${porcelainMode({ mode: theirs?.mode })} ${porcelainMode({ mode: entry.worktreeMode })} ${porcelainObjectId({ objectId: base?.objectId })} ${porcelainObjectId({ objectId: ours?.objectId })} ${porcelainObjectId({ objectId: theirs?.objectId })} ${path}${separator}`;
     }
     if (entry.renameSourcePath !== undefined) {
-      const displaySource = nul ? entry.renameSourcePath : statusPathFromCwd({ context, repository, path: entry.renameSourcePath });
+      const displaySource = projectPath({ path: entry.renameSourcePath });
       const source = nul ? displaySource : quoteGitPath({ path: displaySource, quoteNonAscii, quoteSpaces: false });
       const pathSeparator = nul ? '\0' : '\t';
       return `2 R${porcelainWorktreeStatus({ status: entry.worktreeStatus })} N... ${porcelainMode({ mode: entry.headMode })} ${porcelainMode({ mode: entry.indexMode })} ${porcelainMode({ mode: entry.worktreeMode })} ${porcelainObjectId({ objectId: entry.headObjectId })} ${porcelainObjectId({ objectId: entry.indexObjectId })} R100 ${path}${pathSeparator}${source}${separator}`;
@@ -279,15 +287,13 @@ export async function printLongStatus({ context, status }: {
   const unstaged = visibleEntries.filter(entry => entry.worktreeStatus === 'M' || entry.worktreeStatus === 'D');
   const untracked = visibleEntries.filter(entry => entry.indexStatus === ' ' && entry.worktreeStatus === '?');
   const unmerged = visibleEntries.filter(entry => entry.indexStatus === 'U' || entry.worktreeStatus === 'U');
-  const renderPath = ({ path }: {
-        path: string;
-    }): string => longStatusPath({
-    path: statusPathFromCwd({ context, repository: status.repository, path }),
+  const projectPath = createStatusPathProjection({ context, repository: status.repository });
+  const renderPath = ({ path }: { path: string }): string => longStatusPath({
+    path: projectPath({ path }),
     quoteNonAscii: status.quoteNonAscii,
   });
   if (unmerged.length > 0) {
-    const repository = await discoverRepositoryFromContext({ context });
-    if (await readMergeState({ files: context.files, repository }) !== undefined) {
+    if (await readMergeState({ files: context.files, repository: status.repository }) !== undefined) {
       await text.print({
         text: 'You have unmerged paths.\n'
                     + '  (fix conflicts and run "git commit")\n'

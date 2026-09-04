@@ -93,7 +93,8 @@ export async function runAdd({ context, args }: {
   let selected: Set<string>;
   switch (mode) {
   case 'all':
-    selected = new Set([...await listWorktreeEntries({ files: context.files, repository }), ...trackedPaths]);
+    selected = new Set(await listWorktreeEntries({ files: context.files, repository }));
+    for (const path of trackedPaths) selected.add(path);
     break;
   case 'update':
     selected = new Set(trackedPaths);
@@ -200,8 +201,9 @@ export async function runAdd({ context, args }: {
       throw new Error(`Unhandled add mode: ${_ex}`);
     }
     }
-    selected = new Set([...selected].filter(path => trackedPaths.has(path)
-            || !ignoreMatcher.isIgnored({ path, isDirectory: false })));
+    for (const path of selected) {
+      if (!trackedPaths.has(path) && ignoreMatcher.isIgnored({ path, isDirectory: false })) selected.delete(path);
+    }
   }
   const stagedEntries = await stageWorktreePaths({
     files: context.files,

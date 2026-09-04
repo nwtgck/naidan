@@ -4,9 +4,10 @@ import { commitSubject, readCommit } from "./commits";
 import { readEffectiveConfig } from "./config";
 import { sortGitPaths } from "./path-order";
 import { collectRebaseCommits } from "./graph";
+import type { GitCommitGraphCache } from "./graph";
 import { formatPreparedMergeConflict } from "./merge-conflict";
 import { resolveGitReflogIdentity, resolveGitTimestamp } from "./identity";
-import { readIndex, writeIndex } from "./index-file";
+import { collectUnmergedPaths, readIndex, writeIndex } from "./index-file";
 import { forceReplaceIndexAndWorktree } from "./index-worktree";
 import { moveHeadReference, readHead, updateRef } from "./refs";
 import { discoverRepository, discoverRepositoryFromContext } from "./repository";
@@ -124,7 +125,7 @@ export async function continueRebase({ context }: {
     return { exitCode: 128 };
   }
   const entries = await readIndex({ files: context.files, repository });
-  const unmergedPaths = sortGitPaths({ paths: new Set(entries.filter(entry => entry.stage !== 0).map(entry => entry.path)) });
+  const unmergedPaths = sortGitPaths({ paths: collectUnmergedPaths({ entries }) });
   if (unmergedPaths.length > 0) {
     await context.text().error({ text: `\
 You must edit all merge conflicts and then
@@ -266,9 +267,10 @@ export async function checkoutRebaseTargetBranch({ context, repository, currentH
   });
   return undefined;
 }
-export async function startRebaseSequence({ context, repository, headRefName, origHeadObjectId, checkoutHeadObjectId, ontoObjectId, replayBaseObjectId, ontoDisplay, reflogAction }: {
+export async function startRebaseSequence({ context, repository, graphCache, headRefName, origHeadObjectId, checkoutHeadObjectId, ontoObjectId, replayBaseObjectId, ontoDisplay, reflogAction }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
+    graphCache: GitCommitGraphCache;
     headRefName: string;
     origHeadObjectId: string;
     checkoutHeadObjectId: string;
@@ -281,21 +283,43 @@ export async function startRebaseSequence({ context, repository, headRefName, or
   const replayObjectIds = await collectRebaseCommits({
     files: context.files,
     repository,
+    cache: graphCache,
     upstreamObjectId: replayBaseObjectId,
     descendantObjectId: origHeadObjectId,
   });
   const todo = [];
   for (const objectId of replayObjectIds) {
-    const commit = await readCommit({ files: context.files, repository, objectId });
+    const commit = await readCommit({
+      files: context.files,
+      repository,
+      objectId,
+      objectReadCache: graphCache.objectReadCache,
+    });
     todo.push({ objectId, subject: commitSubject({ commit }) });
   }
-  const ontoCommit = await readCommit({ files: context.files, repository, objectId: ontoObjectId });
-  const ontoEntries = await readTreeIntoIndex({ files: context.files, repository, treeObjectId: ontoCommit.treeObjectId });
-  const checkoutHeadCommit = await readCommit({ files: context.files, repository, objectId: checkoutHeadObjectId });
+  const ontoCommit = await readCommit({
+    files: context.files,
+    repository,
+    objectId: ontoObjectId,
+    objectReadCache: graphCache.objectReadCache,
+  });
+  const ontoEntries = await readTreeIntoIndex({
+    files: context.files,
+    repository,
+    treeObjectId: ontoCommit.treeObjectId,
+    objectReadCache: graphCache.objectReadCache,
+  });
+  const checkoutHeadCommit = await readCommit({
+    files: context.files,
+    repository,
+    objectId: checkoutHeadObjectId,
+    objectReadCache: graphCache.objectReadCache,
+  });
   const currentHeadEntries = await readTreeIntoIndex({
     files: context.files,
     repository,
     treeObjectId: checkoutHeadCommit.treeObjectId,
+    objectReadCache: graphCache.objectReadCache,
   });
   const plan = await planCheckoutTree({
     files: context.files,

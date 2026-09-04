@@ -1,4 +1,4 @@
-import { bytesToHex, compareBytes, concatBytes, hexToBytes } from './bytes';
+import { bytesToHex, compareBytes, concatBytes, writeHexBytes } from './bytes';
 import type { GitFiles } from './files';
 import { pathExists, readFileBytes, replaceFileViaLock } from './files';
 import { readOffsetVariableWidth, writeOffsetVariableWidth } from './offset-varint';
@@ -60,12 +60,6 @@ function writeUint16({ bytes, offset, value }: { bytes: Uint8Array, offset: numb
   bytes[offset + 1] = value;
 }
 
-function compareIndexPaths({ left, right }: { left: GitIndexEntry, right: GitIndexEntry }): number {
-  return compareBytes({
-    left: textEncoder.encode(left.path),
-    right: textEncoder.encode(right.path),
-  }) || left.stage - right.stage;
-}
 
 function findNul({ bytes, offset, limit, label }: {
   bytes: Uint8Array,
@@ -201,38 +195,69 @@ function commonPrefixLength({ left, right }: { left: Uint8Array, right: Uint8Arr
   return length;
 }
 
-function encodeIndexEntry({ entry, version, previousPathBytes }: {
+interface PreparedIndexEntry {
+  entry: GitIndexEntry,
+  pathBytes: Uint8Array,
+  byteLength: number,
+  prefixLength: number,
+  encodedRemoveCount: Uint8Array | undefined,
+}
+
+function prepareIndexEntry({ entry, version, previousPathBytes, pathBytes }: {
   entry: GitIndexEntry,
   version: GitIndexVersion,
   previousPathBytes: Uint8Array,
-}): { bytes: Uint8Array, pathBytes: Uint8Array } {
+  pathBytes: Uint8Array,
+}): PreparedIndexEntry {
   assertSafeGitRepositoryPath({ path: entry.path, source: 'index' });
-  const pathBytes = textEncoder.encode(entry.path);
   if (pathBytes.byteLength === 0 || pathBytes.includes(0)) throw new Error(`invalid index path: ${entry.path}`);
-  let bytes: Uint8Array;
   if (version === 4) {
     const prefixLength = commonPrefixLength({ left: previousPathBytes, right: pathBytes });
-    const removeCount = previousPathBytes.byteLength - prefixLength;
     const encodedRemoveCount = writeOffsetVariableWidth({
-      value: removeCount,
+      value: previousPathBytes.byteLength - prefixLength,
       label: 'index v4 pathname prefix length',
     });
-    const pathEncoding = concatBytes({
-      chunks: [encodedRemoveCount, pathBytes.subarray(prefixLength), Uint8Array.of(0)],
-    });
-    bytes = new Uint8Array(62 + pathEncoding.byteLength);
-    bytes.set(pathEncoding, 62);
-  } else {
-    const rawLength = 62 + pathBytes.byteLength + 1;
-    bytes = new Uint8Array(Math.ceil(rawLength / 8) * 8);
-    bytes.set(pathBytes, 62);
+    return {
+      entry,
+      pathBytes,
+      byteLength: 62 + encodedRemoveCount.byteLength + (pathBytes.byteLength - prefixLength) + 1,
+      prefixLength,
+      encodedRemoveCount,
+    };
   }
-  writeUint32({ bytes, offset: 24, value: entry.mode });
-  writeUint32({ bytes, offset: 36, value: entry.size >>> 0 });
-  bytes.set(hexToBytes({ hex: entry.objectId }), 40);
+
+  const rawLength = 62 + pathBytes.byteLength + 1;
+  return {
+    entry,
+    pathBytes,
+    byteLength: Math.ceil(rawLength / 8) * 8,
+    prefixLength: 0,
+    encodedRemoveCount: undefined,
+  };
+}
+
+function writePreparedIndexEntry({ bytes, offset, prepared, version }: {
+  bytes: Uint8Array,
+  offset: number,
+  prepared: PreparedIndexEntry,
+  version: GitIndexVersion,
+}): void {
+  const { entry, pathBytes, prefixLength, encodedRemoveCount } = prepared;
+  writeUint32({ bytes, offset: offset + 24, value: entry.mode });
+  writeUint32({ bytes, offset: offset + 36, value: entry.size >>> 0 });
+  writeHexBytes({ hex: entry.objectId, bytes, offset: offset + 40, byteLength: 20 });
   const nameLengthBits = Math.min(pathBytes.byteLength, 0x0fff);
-  writeUint16({ bytes, offset: 60, value: nameLengthBits | (entry.stage << 12) });
-  return { bytes, pathBytes };
+  writeUint16({ bytes, offset: offset + 60, value: nameLengthBits | (entry.stage << 12) });
+
+  if (version === 4) {
+    if (encodedRemoveCount === undefined) throw new Error('missing prepared index v4 pathname prefix length');
+    let pathOffset = offset + 62;
+    bytes.set(encodedRemoveCount, pathOffset);
+    pathOffset += encodedRemoveCount.byteLength;
+    bytes.set(pathBytes.subarray(prefixLength), pathOffset);
+    return;
+  }
+  bytes.set(pathBytes, offset + 62);
 }
 
 function decodeIndexEntry({ entry }: { entry: GitRawIndexEntry }): GitIndexEntry {
@@ -259,20 +284,30 @@ export function serializeIndexFile({ entries, version }: {
   entries: readonly GitIndexEntry[],
   version: GitIndexVersion,
 }): Uint8Array {
-  const sortedEntries = [...entries].sort((left, right) => compareIndexPaths({ left, right }));
-  const encodedEntries: Uint8Array[] = [];
+  const sortedEntries = [...entries]
+    .map(entry => ({ entry, pathBytes: textEncoder.encode(entry.path) }))
+    .sort((left, right) => compareBytes({ left: left.pathBytes, right: right.pathBytes }) || left.entry.stage - right.entry.stage);
+  const preparedEntries: PreparedIndexEntry[] = [];
+  let contentLength = 12;
   let previousPathBytes: Uint8Array = new Uint8Array();
-  for (const entry of sortedEntries) {
-    const encoded = encodeIndexEntry({ entry, version, previousPathBytes });
-    encodedEntries.push(encoded.bytes);
-    previousPathBytes = encoded.pathBytes;
+  for (const { entry, pathBytes } of sortedEntries) {
+    const prepared = prepareIndexEntry({ entry, version, previousPathBytes, pathBytes });
+    preparedEntries.push(prepared);
+    contentLength += prepared.byteLength;
+    previousPathBytes = pathBytes;
   }
-  const header = new Uint8Array(12);
-  header.set(textEncoder.encode('DIRC'), 0);
-  writeUint32({ bytes: header, offset: 4, value: version });
-  writeUint32({ bytes: header, offset: 8, value: sortedEntries.length });
-  const content = concatBytes({ chunks: [header, ...encodedEntries] });
-  return concatBytes({ chunks: [content, sha1Bytes({ bytes: content })] });
+
+  const result = new Uint8Array(contentLength + 20);
+  result.set(textEncoder.encode('DIRC'), 0);
+  writeUint32({ bytes: result, offset: 4, value: version });
+  writeUint32({ bytes: result, offset: 8, value: sortedEntries.length });
+  let offset = 12;
+  for (const prepared of preparedEntries) {
+    writePreparedIndexEntry({ bytes: result, offset, prepared, version });
+    offset += prepared.byteLength;
+  }
+  result.set(sha1Bytes({ bytes: result.subarray(0, contentLength) }), contentLength);
+  return result;
 }
 
 export async function readIndexRaw({ files, repository }: {
@@ -289,6 +324,16 @@ export async function readIndex({ files, repository }: {
   repository: GitRepository,
 }): Promise<GitIndexEntry[]> {
   return (await readIndexRaw({ files, repository })).map(entry => decodeIndexEntry({ entry }));
+}
+
+export function collectUnmergedPaths({ entries }: {
+  entries: readonly GitIndexEntry[],
+}): Set<string> {
+  const paths = new Set<string>();
+  for (const entry of entries) {
+    if (entry.stage !== 0) paths.add(entry.path);
+  }
+  return paths;
 }
 
 export async function writeIndex({ files, repository, entries }: {

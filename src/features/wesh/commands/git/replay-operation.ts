@@ -9,7 +9,7 @@ import { formatPreparedMergeConflict, prepareMergeConflicts } from "./merge-conf
 import type { GitPreparedMergeConflict } from "./merge-conflict";
 import { readMergeState } from "./merge-state";
 import { resolveGitReflogIdentity, resolveGitTimestamp } from "./identity";
-import { readIndex, writeIndex } from "./index-file";
+import { collectUnmergedPaths, readIndex, writeIndex } from "./index-file";
 import { forceReplaceIndexAndWorktree } from "./index-worktree";
 import { branchNameFromHead, readHead, updateHead } from "./refs";
 import { discoverRepository, discoverRepositoryFromContext } from "./repository";
@@ -309,7 +309,7 @@ async function continueReplay({ context, kind }: {
     }
   }
   const entries = await readIndex({ files: context.files, repository });
-  const unmergedPaths = sortGitPaths({ paths: new Set(entries.filter(entry => entry.stage !== 0).map(entry => entry.path)) });
+  const unmergedPaths = sortGitPaths({ paths: collectUnmergedPaths({ entries }) });
   if (unmergedPaths.length > 0) {
     for (const path of unmergedPaths)
       await context.text().print({ text: `U\t${path}\n` });

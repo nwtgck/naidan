@@ -5,6 +5,7 @@ import type { GitObject, GitObjectType } from './object-format';
 import { readOffsetVariableWidth } from './offset-varint';
 import { objectIdFor } from './object-format';
 import { readPackIndex } from './pack-index';
+import { findPackIndexEntry } from './pack-index';
 import type { GitPackIndex } from './pack-index';
 import type { GitRepository } from './repository';
 import { joinPath } from './repository';
@@ -15,11 +16,22 @@ interface PackContext {
   repository: GitRepository,
   packPath: string,
   packIndex: GitPackIndex,
-  byObjectId: Map<string, number>,
-  byOffset: Map<number, string>,
-  nextOffsetByOffset: Map<number, number>,
+  entriesByOffset: GitPackIndex['entries'],
   packDataEnd: number,
-  readExternalObject({ objectId }: { objectId: string }): Promise<GitObject>,
+}
+
+export interface GitPackReadCache {
+  repositoryCommonDirPath: string | undefined,
+  indexFileNames: Promise<readonly string[]> | undefined,
+  contextsByIndexFileName: Map<string, Promise<PackContext>>,
+}
+
+export function createGitPackReadCache(): GitPackReadCache {
+  return {
+    repositoryCommonDirPath: undefined,
+    indexFileNames: undefined,
+    contextsByIndexFileName: new Map(),
+  };
 }
 
 function readPackObjectHeader({ bytes }: { bytes: Uint8Array }): {
@@ -151,22 +163,35 @@ export function applyGitDelta({ base, delta }: {
   return output;
 }
 
-function nextObjectOffset({ context, objectOffset }: {
+function packObjectRange({ context, objectOffset }: {
   context: PackContext,
   objectOffset: number,
-}): number {
-  const nextOffset = context.nextOffsetByOffset.get(objectOffset);
-  if (nextOffset === undefined) throw new Error(`pack index does not contain object offset ${objectOffset}`);
-  return nextOffset;
+}): { objectId: string, endOffset: number } {
+  let low = 0;
+  let high = context.entriesByOffset.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    const offset = context.entriesByOffset[middle]!.offset;
+    if (offset < objectOffset) low = middle + 1;
+    else high = middle;
+  }
+  const entry = context.entriesByOffset[low];
+  if (entry?.offset !== objectOffset) throw new Error(`pack index does not contain object offset ${objectOffset}`);
+  return {
+    objectId: entry.objectId,
+    endOffset: context.entriesByOffset[low + 1]?.offset ?? context.packDataEnd,
+  };
 }
 
-async function readPackObjectAtOffset({ context, objectOffset, depth }: {
+async function readPackObjectAtOffset({ context, objectOffset, depth, readExternalObject }: {
   context: PackContext,
   objectOffset: number,
   depth: number,
+  readExternalObject({ objectId }: { objectId: string }): Promise<GitObject>,
 }): Promise<GitObject> {
   if (depth > 128) throw new Error('pack delta chain is too deep');
-  const endOffset = nextObjectOffset({ context, objectOffset });
+  const range = packObjectRange({ context, objectOffset });
+  const endOffset = range.endOffset;
   if (endOffset <= objectOffset) throw new Error('invalid pack object offsets');
   const raw = await readFileRange({
     files: context.files,
@@ -208,16 +233,26 @@ async function readPackObjectAtOffset({ context, objectOffset, depth }: {
     break;
   case 6: {
     if (baseByOffset === undefined) throw new Error('missing OFS_DELTA base offset');
-    const base = await readPackObjectAtOffset({ context, objectOffset: baseByOffset, depth: depth + 1 });
+    const base = await readPackObjectAtOffset({
+      context,
+      objectOffset: baseByOffset,
+      depth: depth + 1,
+      readExternalObject,
+    });
     object = { type: base.type, body: applyGitDelta({ base: base.body, delta: inflated }) };
     break;
   }
   case 7: {
     if (baseByObjectId === undefined) throw new Error('missing REF_DELTA base object id');
-    const localBaseOffset = context.byObjectId.get(baseByObjectId);
-    const base = localBaseOffset === undefined
-      ? await context.readExternalObject({ objectId: baseByObjectId })
-      : await readPackObjectAtOffset({ context, objectOffset: localBaseOffset, depth: depth + 1 });
+    const localBaseEntry = findPackIndexEntry({ packIndex: context.packIndex, objectId: baseByObjectId });
+    const base = localBaseEntry === undefined
+      ? await readExternalObject({ objectId: baseByObjectId })
+      : await readPackObjectAtOffset({
+        context,
+        objectOffset: localBaseEntry.offset,
+        depth: depth + 1,
+        readExternalObject,
+      });
     object = { type: base.type, body: applyGitDelta({ base: base.body, delta: inflated }) };
     break;
   }
@@ -225,18 +260,16 @@ async function readPackObjectAtOffset({ context, objectOffset, depth }: {
     throw new Error(`unsupported pack object type ${header.typeCode}`);
   }
 
-  const expectedObjectId = context.byOffset.get(objectOffset);
-  if (expectedObjectId !== undefined && objectIdFor(object) !== expectedObjectId) {
+  if (objectIdFor(object) !== range.objectId) {
     throw new Error(`packed object id mismatch at offset ${objectOffset}`);
   }
   return object;
 }
 
-async function createPackContext({ files, repository, indexFileName, readExternalObject }: {
+async function createPackContext({ files, repository, indexFileName }: {
   files: GitFiles,
   repository: GitRepository,
   indexFileName: string,
-  readExternalObject({ objectId }: { objectId: string }): Promise<GitObject>,
 }): Promise<PackContext> {
   const packIndex = await readPackIndex({ files, repository, indexFileName });
   const packFileName = `${indexFileName.slice(0, -4)}.pack`;
@@ -253,48 +286,96 @@ async function createPackContext({ files, repository, indexFileName, readExterna
   const trailer = await readFileRange({ files, path: packPath, position: packSize - 20, length: 20 });
   if (bytesToHex({ bytes: trailer }) !== packIndex.packChecksum) throw new Error('pack checksum does not match index');
   const packDataEnd = packSize - 20;
-  const byObjectId = new Map(packIndex.entries.map(entry => [entry.objectId, entry.offset]));
-  const byOffset = new Map<number, string>();
-  for (const entry of packIndex.entries) {
+  const entriesByOffset = [...packIndex.entries].sort((left, right) => left.offset - right.offset);
+  for (let index = 0; index < entriesByOffset.length; index += 1) {
+    const entry = entriesByOffset[index]!;
     if (entry.offset < 12 || entry.offset >= packDataEnd) {
       throw new Error(`pack object offset is outside object data: ${entry.offset}`);
     }
-    if (byOffset.has(entry.offset)) throw new Error(`duplicate pack object offset ${entry.offset}`);
-    byOffset.set(entry.offset, entry.objectId);
-  }
-  const sortedOffsets = [...byOffset.keys()].sort((left, right) => left - right);
-  const nextOffsetByOffset = new Map<number, number>();
-  for (let index = 0; index < sortedOffsets.length; index += 1) {
-    const objectOffset = sortedOffsets[index]!;
-    nextOffsetByOffset.set(objectOffset, sortedOffsets[index + 1] ?? packDataEnd);
+    if (index > 0 && entriesByOffset[index - 1]!.offset === entry.offset) {
+      throw new Error(`duplicate pack object offset ${entry.offset}`);
+    }
   }
   return {
     files,
     repository,
     packPath,
     packIndex,
-    byObjectId,
-    byOffset,
-    nextOffsetByOffset,
+    entriesByOffset,
     packDataEnd,
-    readExternalObject,
   };
 }
 
-export async function readPackedObject({ files, repository, objectId, readExternalObject }: {
+function assertPackReadCacheRepository({ cache, repository }: {
+  cache: GitPackReadCache,
+  repository: GitRepository,
+}): void {
+  if (cache.repositoryCommonDirPath === undefined) {
+    cache.repositoryCommonDirPath = repository.commonDirPath;
+    return;
+  }
+  if (cache.repositoryCommonDirPath !== repository.commonDirPath) {
+    throw new Error('pack read cache cannot be shared across repositories');
+  }
+}
+
+async function listPackIndexFileNames({ files, repository }: {
+  files: GitFiles,
+  repository: GitRepository,
+}): Promise<readonly string[]> {
+  const packDirectory = joinPath({ base: repository.commonDirPath, child: 'objects/pack' });
+  if (!await pathExists({ files, path: packDirectory })) return [];
+  const names: string[] = [];
+  for await (const directoryEntry of files.readDir({ path: packDirectory })) {
+    if (directoryEntry.type === 'file' && directoryEntry.name.endsWith('.idx')) names.push(directoryEntry.name);
+  }
+  return names;
+}
+
+async function cachedPackIndexFileNames({ files, repository, cache }: {
+  files: GitFiles,
+  repository: GitRepository,
+  cache: GitPackReadCache | undefined,
+}): Promise<readonly string[]> {
+  if (cache === undefined) return listPackIndexFileNames({ files, repository });
+  assertPackReadCacheRepository({ cache, repository });
+  cache.indexFileNames ??= listPackIndexFileNames({ files, repository });
+  return cache.indexFileNames;
+}
+
+async function cachedPackContext({ files, repository, indexFileName, cache }: {
+  files: GitFiles,
+  repository: GitRepository,
+  indexFileName: string,
+  cache: GitPackReadCache | undefined,
+}): Promise<PackContext> {
+  if (cache === undefined) return createPackContext({ files, repository, indexFileName });
+  assertPackReadCacheRepository({ cache, repository });
+  let pending = cache.contextsByIndexFileName.get(indexFileName);
+  if (pending === undefined) {
+    pending = createPackContext({ files, repository, indexFileName });
+    cache.contextsByIndexFileName.set(indexFileName, pending);
+  }
+  return pending;
+}
+
+export async function readPackedObject({ files, repository, objectId, readExternalObject, cache }: {
   files: GitFiles,
   repository: GitRepository,
   objectId: string,
   readExternalObject({ objectId }: { objectId: string }): Promise<GitObject>,
+  cache?: GitPackReadCache,
 }): Promise<GitObject | undefined> {
-  const packDirectory = joinPath({ base: repository.commonDirPath, child: 'objects/pack' });
-  if (!await pathExists({ files, path: packDirectory })) return undefined;
-  for await (const entry of files.readDir({ path: packDirectory })) {
-    if (entry.type !== 'file' || !entry.name.endsWith('.idx')) continue;
-    const context = await createPackContext({ files, repository, indexFileName: entry.name, readExternalObject });
-    const objectOffset = context.byObjectId.get(objectId);
-    if (objectOffset === undefined) continue;
-    return readPackObjectAtOffset({ context, objectOffset, depth: 0 });
+  for (const indexFileName of await cachedPackIndexFileNames({ files, repository, cache })) {
+    const context = await cachedPackContext({ files, repository, indexFileName, cache });
+    const packEntry = findPackIndexEntry({ packIndex: context.packIndex, objectId });
+    if (packEntry === undefined) continue;
+    return readPackObjectAtOffset({
+      context,
+      objectOffset: packEntry.offset,
+      depth: 0,
+      readExternalObject,
+    });
   }
   return undefined;
 }

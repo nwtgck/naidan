@@ -7,8 +7,21 @@ export function compareGitUtf8Strings({ left, right }: { left: string, right: st
 }
 
 export function sortGitUtf8Strings({ values }: { values: Iterable<string> }): string[] {
-  const keyed = [...values].map(value => ({ value, bytes: textEncoder.encode(value) }));
-  keyed.sort((left, right) => compareBytes({ left: left.bytes, right: right.bytes }));
+  return sortByGitUtf8StringKey({ values, key: ({ value }) => value });
+}
+
+export function sortByGitUtf8StringKey<T>({ values, key, compareEqualKeys }: {
+  values: Iterable<T>,
+  key: ({ value }: { value: T }) => string,
+  compareEqualKeys?: ({ left, right }: { left: T, right: T }) => number,
+}): T[] {
+  const keyed = [...values].map(value => ({
+    value,
+    bytes: textEncoder.encode(key({ value })),
+  }));
+  keyed.sort((left, right) => compareBytes({ left: left.bytes, right: right.bytes })
+    || compareEqualKeys?.({ left: left.value, right: right.value })
+    || 0);
   return keyed.map(entry => entry.value);
 }
 

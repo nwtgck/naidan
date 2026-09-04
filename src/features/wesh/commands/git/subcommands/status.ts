@@ -4,7 +4,7 @@ import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/type
 import { collectStatus, type GitStatus, type GitStatusEntry } from "@/features/wesh/commands/git/status";
 import { formatPorcelainV1Branch, printLongStatus, renderPorcelainV1, renderPorcelainV2, renderShortStatus } from "@/features/wesh/commands/git/status-output";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { matchRepositoryPaths } from "@/features/wesh/commands/git/pathspec";
+import { matchRepositoryPathSelection } from "@/features/wesh/commands/git/pathspec";
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 
 type StatusDeferredSemantic = 'short' | 'porcelain' | 'branch' | 'nul';
@@ -74,13 +74,12 @@ function statusWithPathspec({ context, status, operands }: {
   operands: readonly string[],
 }): GitStatus {
   if (operands.length === 0) return status;
-  const matches = matchRepositoryPaths({
+  const selected = matchRepositoryPathSelection({
     repository: status.repository,
     cwd: context.cwd,
     operands,
     availablePaths: status.entries.map(entry => entry.path),
-  });
-  const selected = new Set([...matches.values()].flat());
+  }).selected;
   const entries: GitStatusEntry[] = [];
   for (const entry of status.entries) {
     if (!selected.has(entry.path)) continue;

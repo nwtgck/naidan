@@ -30,9 +30,9 @@ function unsupportedTopology(): never {
 function planGraph({ entries }: { entries: readonly GitLogGraphEntry[] }): PlannedGraphEntry[] {
   let lanes: string[] = [];
   const planned: PlannedGraphEntry[] = [];
+  const remainingObjectIds = new Set(entries.map(entry => entry.objectId));
   for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
     const entry = entries[entryIndex]!;
-    const remainingObjectIds = new Set(entries.slice(entryIndex).map(candidate => candidate.objectId));
     let laneIndex = lanes.indexOf(entry.objectId);
     if (laneIndex < 0) {
       const hasVisiblePendingLane = lanes.some(objectId => remainingObjectIds.has(objectId));
@@ -40,6 +40,7 @@ function planGraph({ entries }: { entries: readonly GitLogGraphEntry[] }): Plann
       lanes = [entry.objectId];
       laneIndex = 0;
     }
+    remainingObjectIds.delete(entry.objectId);
     if (lanes.length < 1 || lanes.length > 2 || laneIndex > 1) unsupportedTopology();
 
     if (entry.parentObjectIds.length > 2) unsupportedTopology();

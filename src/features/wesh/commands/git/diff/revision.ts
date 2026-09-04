@@ -1,9 +1,10 @@
 import { testGitExtendedRegexBytes } from '@/features/wesh/commands/git/extended-regex';
 import type { GitExtendedRegex } from '@/features/wesh/commands/git/extended-regex';
 import { resolveCharacterLocaleMode } from "@/features/wesh/commands/_shared/locale";
-import { createDiffOperations } from "@/features/wesh/commands/git/diff/algorithm";
+import { createChangeGroups, createDiffOperations, createHunks } from "@/features/wesh/commands/git/diff/algorithm";
 import { compareDiffInputs } from "@/features/wesh/commands/git/diff/compare";
-import { createDiffInput, createLineComparator, getLineBytes } from "@/features/wesh/commands/git/diff/input";
+import { encodeGitBinaryLiteral } from "@/features/wesh/commands/git/diff/binary-patch";
+import { createDiffInput, createLineComparator, getLineBytes, isBinaryInput } from "@/features/wesh/commands/git/diff/input";
 import type { DiffCompareSettings } from "@/features/wesh/commands/git/diff/compare";
 import type { DiffComparisonOptions } from "@/features/wesh/commands/git/diff/model";
 import { createDiffByteWriter } from "@/features/wesh/commands/git/diff/output";
@@ -13,11 +14,12 @@ import type { GitRepository } from "@/features/wesh/commands/git/repository";
 import { resolveCommitRevision } from "@/features/wesh/commands/git/revision";
 import { readCommit } from "@/features/wesh/commands/git/commits";
 import { readTreeRecursively } from "@/features/wesh/commands/git/tree";
-import { matchRepositoryPaths } from "@/features/wesh/commands/git/pathspec";
+import { matchRepositoryPathSelection } from "@/features/wesh/commands/git/pathspec";
 import { formatGitPatchPath, quoteGitPath } from "@/features/wesh/commands/git/path-output";
-import { compareGitPaths, sortGitPaths } from "@/features/wesh/commands/git/path-order";
+import { sortGitPaths } from "@/features/wesh/commands/git/path-order";
+import { sortByGitUtf8StringKey } from "@/features/wesh/commands/git/utf8-order";
 import { exactRenameContentIdentity, findExactRenames, findGitRenameMatches } from "@/features/wesh/commands/git/renames";
-import type { GitExactRenameMatch, GitSimilarityRenameMatch } from "@/features/wesh/commands/git/renames";
+import type { GitExactRenameCandidate, GitExactRenameMatch, GitSimilarityRenameMatch } from "@/features/wesh/commands/git/renames";
 
 const gitlinkEncoder = new TextEncoder();
 
@@ -25,14 +27,67 @@ export function gitlinkDiffBytes({ objectId }: { objectId: string }): Uint8Array
   return gitlinkEncoder.encode(`Subproject commit ${objectId}\n`);
 }
 
-interface GitDiffSnapshotEntry {
+export type GitDiffSnapshotEntry = {
+  path: string,
+  mode: number,
+  objectId: string,
+  content:
+    | { kind: 'loaded', bytes: Uint8Array }
+    | { kind: 'object', source: 'tree' | 'index' },
+};
+
+export type GitDiffSnapshot = Map<string, GitDiffSnapshotEntry>;
+
+export function loadedDiffSnapshotEntry({ path, mode, objectId, bytes }: {
   path: string,
   mode: number,
   objectId: string,
   bytes: Uint8Array,
+}): GitDiffSnapshotEntry {
+  return { path, mode, objectId, content: { kind: 'loaded', bytes } };
 }
 
-export type GitDiffSnapshot = Map<string, GitDiffSnapshotEntry>;
+export function objectDiffSnapshotEntry({ path, mode, objectId, source }: {
+  path: string,
+  mode: number,
+  objectId: string,
+  source: 'tree' | 'index',
+}): GitDiffSnapshotEntry {
+  return { path, mode, objectId, content: { kind: 'object', source } };
+}
+
+export async function readDiffSnapshotEntryBytes({ context, repository, entry }: {
+  context: WeshCommandContext,
+  repository: GitRepository,
+  entry: GitDiffSnapshotEntry | undefined,
+}): Promise<Uint8Array> {
+  if (entry === undefined) return new Uint8Array();
+  switch (entry.content.kind) {
+  case 'loaded':
+    return entry.content.bytes;
+  case 'object': {
+    const source = entry.content.source;
+    const object = await readObject({ files: context.files, repository, objectId: entry.objectId });
+    switch (object.type) {
+    case 'blob':
+      entry.content = { kind: 'loaded', bytes: object.body };
+      return object.body;
+    case 'tree':
+    case 'commit':
+    case 'tag':
+      throw new Error(`${source} entry ${entry.path} does not reference a blob`);
+    default: {
+      const _ex: never = object.type;
+      throw new Error(`Unhandled ${source} object type: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+  default: {
+    const _ex: never = entry.content;
+    throw new Error(`Unhandled diff snapshot content: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
 
 export async function snapshotFromTree({ context, repository, revision }: {
   context: WeshCommandContext,
@@ -48,29 +103,19 @@ export async function snapshotFromTree({ context, repository, revision }: {
   });
   const result: GitDiffSnapshot = new Map();
   for (const entry of treeEntries) {
-    if (entry.mode === 0o160000) {
-      result.set(entry.path, {
+    result.set(entry.path, entry.mode === 0o160000
+      ? loadedDiffSnapshotEntry({
         path: entry.path,
         mode: entry.mode,
         objectId: entry.objectId,
         bytes: gitlinkDiffBytes({ objectId: entry.objectId }),
-      });
-      continue;
-    }
-    const object = await readObject({ files: context.files, repository, objectId: entry.objectId });
-    switch (object.type) {
-    case 'blob':
-      result.set(entry.path, { path: entry.path, mode: entry.mode, objectId: entry.objectId, bytes: object.body });
-      break;
-    case 'tree':
-    case 'commit':
-    case 'tag':
-      throw new Error(`tree entry ${entry.path} does not reference a blob`);
-    default: {
-      const _ex: never = object.type;
-      throw new Error(`Unhandled object type: ${_ex}`);
-    }
-    }
+      })
+      : objectDiffSnapshotEntry({
+        path: entry.path,
+        mode: entry.mode,
+        objectId: entry.objectId,
+        source: 'tree',
+      }));
   }
   return result;
 }
@@ -87,14 +132,15 @@ export function defaultComparisonOptions(): DiffComparisonOptions {
   };
 }
 
-function defaultCompareSettings({ labels, characterLocaleMode }: {
+function defaultCompareSettings({ labels, characterLocaleMode, contextLines = 3 }: {
   labels: readonly string[],
   characterLocaleMode: 'ascii' | 'unicode',
+  contextLines?: number,
 }): DiffCompareSettings {
   return {
     comparisonOptions: defaultComparisonOptions(),
     outputOptions: {
-      mode: { kind: 'unified', contextLines: 3 },
+      mode: { kind: 'unified', contextLines },
       characterLocaleMode,
       functionLinePattern: /^[^\s].*/u,
       expandTabs: false,
@@ -115,16 +161,186 @@ function formatMode({ mode }: { mode: number }): string {
   return mode.toString(8).padStart(6, '0');
 }
 
-function shortObjectId({ objectId }: { objectId: string }): string {
-  return objectId.slice(0, 7);
+const wordDiffDecoder = new TextDecoder();
+
+interface WordDiffToken {
+  readonly text: string,
+  readonly whitespace: boolean,
 }
 
-export async function writePatchEntry({ context, path, left, right, quoteNonAscii }: {
+function wordDiffTokens({ text }: { text: string }): WordDiffToken[] {
+  const parts = text.match(/\s+|[^\s]+/gu) ?? [];
+  return parts.map(part => ({ text: part, whitespace: /^\s+$/u.test(part) }));
+}
+
+function renderWordDiffLine({ leftText, rightText }: { leftText: string, rightText: string }): string {
+  const leftTokens = wordDiffTokens({ text: leftText });
+  const rightTokens = wordDiffTokens({ text: rightText });
+  const operations = createDiffOperations({
+    leftLength: leftTokens.length,
+    rightLength: rightTokens.length,
+    areEqual: ({ leftIndex, rightIndex }) => {
+      const leftToken = leftTokens[leftIndex]!;
+      const rightToken = rightTokens[rightIndex]!;
+      return leftToken.text === rightToken.text || (leftToken.whitespace && rightToken.whitespace);
+    },
+    preferSpeedOverCompatibility: false,
+  });
+  let output = '';
+  for (const operation of operations) {
+    switch (operation.kind) {
+    case 'equal':
+      for (let offset = 0; offset < operation.length; offset += 1)
+        output += rightTokens[operation.rightStart + offset]!.text;
+      break;
+    case 'delete': {
+      let deleted = '';
+      for (let offset = 0; offset < operation.length; offset += 1)
+        deleted += leftTokens[operation.leftStart + offset]!.text;
+      output += `[-${deleted}-]`;
+      break;
+    }
+    case 'insert': {
+      let inserted = '';
+      for (let offset = 0; offset < operation.length; offset += 1)
+        inserted += rightTokens[operation.rightStart + offset]!.text;
+      output += `{+${inserted}+}`;
+      break;
+    }
+    default: {
+      const _ex: never = operation;
+      throw new Error(`Unhandled word diff operation: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+  return output;
+}
+
+function formatUnifiedRange({ start, count }: { start: number, count: number }): string {
+  if (count === 0) return `${start},0`;
+  const first = start + 1;
+  return count === 1 ? `${first}` : `${first},${count}`;
+}
+
+function lineText({ input, lineIndex }: { input: ReturnType<typeof createDiffInput>, lineIndex: number }): string {
+  return wordDiffDecoder.decode(getLineBytes({ input, lineIndex, stripTrailingCarriageReturn: false }));
+}
+
+function lineInsideRange({ lineIndex, start, count }: { lineIndex: number, start: number, count: number }): boolean {
+  return lineIndex >= start && lineIndex < start + count;
+}
+
+async function writeWordDiff({ writer, leftInput, rightInput, contextLines }: {
+  writer: ReturnType<typeof createDiffByteWriter>,
+  leftInput: ReturnType<typeof createDiffInput>,
+  rightInput: ReturnType<typeof createDiffInput>,
+  contextLines: number,
+}): Promise<void> {
+  const comparisonOptions = defaultComparisonOptions();
+  const operations = createDiffOperations({
+    leftLength: leftInput.lines.starts.length,
+    rightLength: rightInput.lines.starts.length,
+    areEqual: createLineComparator({ left: leftInput, right: rightInput, options: comparisonOptions }),
+    preferSpeedOverCompatibility: false,
+  });
+  const changeGroups = createChangeGroups({ operations });
+  const hunks = createHunks({
+    operations,
+    changeGroups,
+    contextLines,
+    leftLength: leftInput.lines.starts.length,
+    rightLength: rightInput.lines.starts.length,
+  });
+  for (const hunk of hunks) {
+    await writer.writeText({ text: `@@ -${formatUnifiedRange({ start: hunk.leftStart, count: hunk.leftCount })} +${formatUnifiedRange({ start: hunk.rightStart, count: hunk.rightCount })} @@\n` });
+    let operationIndex = hunk.operationStart;
+    while (operationIndex < hunk.operationEnd) {
+      const operation = operations[operationIndex];
+      if (operation === undefined) break;
+      switch (operation.kind) {
+      case 'equal':
+        for (let offset = 0; offset < operation.length; offset += 1) {
+          const leftLine = operation.leftStart + offset;
+          const rightLine = operation.rightStart + offset;
+          if (!lineInsideRange({ lineIndex: leftLine, start: hunk.leftStart, count: hunk.leftCount })
+            || !lineInsideRange({ lineIndex: rightLine, start: hunk.rightStart, count: hunk.rightCount })) continue;
+          await writer.writeText({ text: lineText({ input: rightInput, lineIndex: rightLine }) });
+          if (rightInput.lines.hasLineFeed[rightLine] === 1) await writer.writeText({ text: '\n' });
+        }
+        operationIndex += 1;
+        continue;
+      case 'delete':
+      case 'insert':
+        break;
+      default: {
+        const _ex: never = operation;
+        throw new Error(`Unhandled word diff line operation: ${JSON.stringify(_ex)}`);
+      }
+      }
+      const deletedLines: number[] = [];
+      const insertedLines: number[] = [];
+      changeBlock: while (operationIndex < hunk.operationEnd) {
+        const current = operations[operationIndex];
+        if (current === undefined) break;
+        switch (current.kind) {
+        case 'equal':
+          break changeBlock;
+        case 'delete':
+          for (let offset = 0; offset < current.length; offset += 1) {
+            const lineIndex = current.leftStart + offset;
+            if (lineInsideRange({ lineIndex, start: hunk.leftStart, count: hunk.leftCount })) deletedLines.push(lineIndex);
+          }
+          break;
+        case 'insert':
+          for (let offset = 0; offset < current.length; offset += 1) {
+            const lineIndex = current.rightStart + offset;
+            if (lineInsideRange({ lineIndex, start: hunk.rightStart, count: hunk.rightCount })) insertedLines.push(lineIndex);
+          }
+          break;
+        default: {
+          const _ex: never = current;
+          throw new Error(`Unhandled word diff change operation: ${JSON.stringify(_ex)}`);
+        }
+        }
+        operationIndex += 1;
+      }
+      const lineCount = Math.max(deletedLines.length, insertedLines.length);
+      for (let pairIndex = 0; pairIndex < lineCount; pairIndex += 1) {
+        const leftLineIndex = deletedLines[pairIndex];
+        const rightLineIndex = insertedLines[pairIndex];
+        let text: string;
+        if (leftLineIndex !== undefined && rightLineIndex !== undefined) {
+          text = renderWordDiffLine({
+            leftText: lineText({ input: leftInput, lineIndex: leftLineIndex }),
+            rightText: lineText({ input: rightInput, lineIndex: rightLineIndex }),
+          });
+        } else if (leftLineIndex !== undefined) {
+          text = `[-${lineText({ input: leftInput, lineIndex: leftLineIndex })}-]`;
+        } else if (rightLineIndex !== undefined) {
+          text = `{+${lineText({ input: rightInput, lineIndex: rightLineIndex })}+}`;
+        } else {
+          continue;
+        }
+        await writer.writeText({ text });
+        const hasLineFeed = rightLineIndex !== undefined
+          ? rightInput.lines.hasLineFeed[rightLineIndex] === 1
+          : leftInput.lines.hasLineFeed[leftLineIndex!] === 1;
+        if (hasLineFeed) await writer.writeText({ text: '\n' });
+      }
+    }
+  }
+}
+
+export async function writePatchEntry({ context, repository, path, left, right, quoteNonAscii, contextLines = 3, wordDiff = false, binaryPatch = false }: {
   context: WeshCommandContext,
+  repository: GitRepository,
   path: string,
   left: GitDiffSnapshotEntry | undefined,
   right: GitDiffSnapshotEntry | undefined,
   quoteNonAscii: boolean,
+  contextLines?: number,
+  wordDiff?: boolean,
+  binaryPatch?: boolean,
 }): Promise<void> {
   if (left !== undefined && right !== undefined
     && left.objectId === right.objectId && left.mode === right.mode) return;
@@ -144,31 +360,49 @@ export async function writePatchEntry({ context, path, left, right, quoteNonAsci
   }
 
   if (left?.objectId !== right?.objectId) {
+    const leftBytes = await readDiffSnapshotEntryBytes({ context, repository, entry: left });
+    const rightBytes = await readDiffSnapshotEntryBytes({ context, repository, entry: right });
+    const leftInput = createDiffInput({ displayName: leftDiffPath, resolvedPath: undefined, mtime: undefined, bytes: leftBytes });
+    const rightInput = createDiffInput({ displayName: rightDiffPath, resolvedPath: undefined, mtime: undefined, bytes: rightBytes });
+    const binary = isBinaryInput({ input: leftInput }) || isBinaryInput({ input: rightInput });
+    const objectIdWidth = binary && binaryPatch ? 40 : 7;
+    const leftObjectId = left === undefined ? '0'.repeat(objectIdWidth) : left.objectId.slice(0, objectIdWidth);
+    const rightObjectId = right === undefined ? '0'.repeat(objectIdWidth) : right.objectId.slice(0, objectIdWidth);
     await writer.writeText({
-      text: `index ${left === undefined ? '0000000' : shortObjectId({ objectId: left.objectId })}..${right === undefined ? '0000000' : shortObjectId({ objectId: right.objectId })}${left !== undefined && right !== undefined && left.mode === right.mode ? ` ${formatMode({ mode: left.mode })}` : ''}\n`,
+      text: `index ${leftObjectId}..${rightObjectId}${left !== undefined && right !== undefined && left.mode === right.mode ? ` ${formatMode({ mode: left.mode })}` : ''}\n`,
     });
-    const leftBytes = left?.bytes ?? new Uint8Array();
-    const rightBytes = right?.bytes ?? new Uint8Array();
-    await compareDiffInputs({
-      writer,
-      left: createDiffInput({ displayName: leftDiffPath, resolvedPath: undefined, mtime: undefined, bytes: leftBytes }),
-      right: createDiffInput({ displayName: rightDiffPath, resolvedPath: undefined, mtime: undefined, bytes: rightBytes }),
-      settings: defaultCompareSettings({
-        labels: [left === undefined ? '/dev/null' : leftHeaderPath, right === undefined ? '/dev/null' : rightHeaderPath],
-        characterLocaleMode: resolveCharacterLocaleMode({ env: context.env }),
-      }),
-    });
+    if (binary && binaryPatch) {
+      await writer.writeText({ text: 'GIT binary patch\n' });
+      await writer.writeText({ text: `${await encodeGitBinaryLiteral({ bytes: rightBytes })}\n` });
+      await writer.writeText({ text: `${await encodeGitBinaryLiteral({ bytes: leftBytes })}\n` });
+    } else if (wordDiff && !binary) {
+      await writer.writeText({ text: `--- ${left === undefined ? '/dev/null' : leftHeaderPath}\n` });
+      await writer.writeText({ text: `+++ ${right === undefined ? '/dev/null' : rightHeaderPath}\n` });
+      await writeWordDiff({ writer, leftInput, rightInput, contextLines });
+    } else {
+      await compareDiffInputs({
+        writer,
+        left: leftInput,
+        right: rightInput,
+        settings: defaultCompareSettings({
+          labels: [left === undefined ? '/dev/null' : leftHeaderPath, right === undefined ? '/dev/null' : rightHeaderPath],
+          characterLocaleMode: resolveCharacterLocaleMode({ env: context.env }),
+          contextLines,
+        }),
+      });
+    }
   }
   await writer.flush();
 }
 
 export function changedPaths({ left, right }: { left: GitDiffSnapshot, right: GitDiffSnapshot }): string[] {
-  const paths = new Set([...left.keys(), ...right.keys()]);
-  return sortGitPaths({ paths: [...paths].filter(path => {
+  const changed: string[] = [];
+  for (const path of snapshotPathUnion({ left, right })) {
     const a = left.get(path);
     const b = right.get(path);
-    return a?.objectId !== b?.objectId || a?.mode !== b?.mode;
-  }) });
+    if (a?.objectId !== b?.objectId || a?.mode !== b?.mode) changed.push(path);
+  }
+  return sortGitPaths({ paths: changed });
 }
 
 export function exactRenamesForPaths({ paths, left, right }: {
@@ -176,20 +410,19 @@ export function exactRenamesForPaths({ paths, left, right }: {
   left: GitDiffSnapshot,
   right: GitDiffSnapshot,
 }): GitExactRenameMatch[] {
-  return findExactRenames({
-    deleted: paths.flatMap(path => {
-      const entry = left.get(path);
-      return entry !== undefined && !right.has(path)
-        ? [{ path, objectId: entry.objectId, mode: entry.mode }]
-        : [];
-    }),
-    added: paths.flatMap(path => {
-      const entry = right.get(path);
-      return entry !== undefined && !left.has(path)
-        ? [{ path, objectId: entry.objectId, mode: entry.mode }]
-        : [];
-    }),
-  });
+  const deleted: GitExactRenameCandidate[] = [];
+  const added: GitExactRenameCandidate[] = [];
+  for (const path of paths) {
+    const leftEntry = left.get(path);
+    if (leftEntry !== undefined && !right.has(path)) {
+      deleted.push({ path, objectId: leftEntry.objectId, mode: leftEntry.mode });
+    }
+    const rightEntry = right.get(path);
+    if (rightEntry !== undefined && !left.has(path)) {
+      added.push({ path, objectId: rightEntry.objectId, mode: rightEntry.mode });
+    }
+  }
+  return findExactRenames({ deleted, added });
 }
 
 export async function writeExactRenamePatch({ context, rename, quoteNonAscii }: {
@@ -271,30 +504,37 @@ function scaleStatGraph({ additions, deletions }: { additions: number, deletions
   return `${'+'.repeat(additionWidth)}${'-'.repeat(maximumWidth - additionWidth)}`;
 }
 
-function createDiffStatEntries({ paths, left, right }: {
+async function createDiffStatEntries({ context, repository, paths, left, right }: {
+  context: WeshCommandContext,
+  repository: GitRepository,
   paths: readonly string[],
   left: GitDiffSnapshot,
   right: GitDiffSnapshot,
-}): GitDiffStatEntry[] {
-  return paths.map(path => {
+}): Promise<GitDiffStatEntry[]> {
+  const result: GitDiffStatEntry[] = [];
+  for (const path of paths) {
     const leftEntry = left.get(path);
     const rightEntry = right.get(path);
-    const leftBytes = leftEntry?.bytes ?? new Uint8Array();
-    const rightBytes = rightEntry?.bytes ?? new Uint8Array();
-    if (leftEntry?.objectId !== rightEntry?.objectId && (isGitBinaryContent({ bytes: leftBytes }) || isGitBinaryContent({ bytes: rightBytes }))) {
-      return {
+    if (leftEntry?.objectId === rightEntry?.objectId) {
+      result.push({ path, sortPath: path, additions: 0, deletions: 0, binarySize: undefined });
+      continue;
+    }
+    const leftBytes = await readDiffSnapshotEntryBytes({ context, repository, entry: leftEntry });
+    const rightBytes = await readDiffSnapshotEntryBytes({ context, repository, entry: rightEntry });
+    if (isGitBinaryContent({ bytes: leftBytes }) || isGitBinaryContent({ bytes: rightBytes })) {
+      result.push({
         path,
         sortPath: path,
         additions: 0,
         deletions: 0,
         binarySize: { left: leftBytes.byteLength, right: rightBytes.byteLength },
-      };
+      });
+      continue;
     }
-    const counts = leftEntry?.objectId === rightEntry?.objectId
-      ? { additions: 0, deletions: 0 }
-      : diffLineCounts({ leftBytes, rightBytes });
-    return { path, sortPath: path, ...counts, binarySize: undefined };
-  });
+    const counts = diffLineCounts({ leftBytes, rightBytes });
+    result.push({ path, sortPath: path, ...counts, binarySize: undefined });
+  }
+  return result;
 }
 
 function renameStatPath({ sourcePath, destinationPath }: { sourcePath: string, destinationPath: string }): string {
@@ -318,8 +558,9 @@ function renameStatPath({ sourcePath, destinationPath }: { sourcePath: string, d
   return [...prefix, `{${sourceMiddle} => ${destinationMiddle}}`, ...suffix].join('/');
 }
 
-export async function writeDiffStat({ context, paths, left, right, quoteNonAscii, detectRenames, unmergedPaths = [] }: {
+export async function writeDiffStat({ context, repository, paths, left, right, quoteNonAscii, detectRenames, unmergedPaths = [] }: {
   context: WeshCommandContext,
+  repository: GitRepository,
   paths: readonly string[],
   left: GitDiffSnapshot,
   right: GitDiffSnapshot,
@@ -329,9 +570,13 @@ export async function writeDiffStat({ context, paths, left, right, quoteNonAscii
 }): Promise<void> {
   if (paths.length === 0 && unmergedPaths.length === 0) return;
   const exactRenames = detectRenames ? exactRenamesForPaths({ paths, left, right }) : [];
-  const renamePaths = new Set(exactRenames.flatMap(rename => [rename.sourcePath, rename.destinationPath]));
+  const renamePaths = new Set<string>();
+  for (const rename of exactRenames) {
+    renamePaths.add(rename.sourcePath);
+    renamePaths.add(rename.destinationPath);
+  }
   const entries = [
-    ...createDiffStatEntries({ paths: paths.filter(path => !renamePaths.has(path)), left, right }),
+    ...await createDiffStatEntries({ context, repository, paths: paths.filter(path => !renamePaths.has(path)), left, right }),
     ...exactRenames.map(rename => ({
       path: renameStatPath({ sourcePath: rename.sourcePath, destinationPath: rename.destinationPath }),
       sortPath: rename.sourcePath,
@@ -351,10 +596,13 @@ export async function writeDiffStat({ context, paths, left, right, quoteNonAscii
   const hasBinary = entries.some(entry => entry.binarySize !== undefined);
   const maximumCount = Math.max(0, ...entries.map(entry => entry.additions + entry.deletions));
   const countWidth = hasBinary ? Math.max(3, String(maximumCount).length) : String(maximumCount).length;
-  const rows = [
-    ...unmergedPaths.map(path => ({ kind: 'unmerged' as const, sortPath: path, path })),
-    ...entries.map(entry => ({ kind: 'entry' as const, sortPath: entry.sortPath, entry })),
-  ].sort((leftRow, rightRow) => compareGitPaths({ left: leftRow.sortPath, right: rightRow.sortPath }));
+  const rows = sortByGitUtf8StringKey({
+    values: [
+      ...unmergedPaths.map(path => ({ kind: 'unmerged' as const, sortPath: path, path })),
+      ...entries.map(entry => ({ kind: 'entry' as const, sortPath: entry.sortPath, entry })),
+    ],
+    key: ({ value }) => value.sortPath,
+  });
   for (const row of rows) {
     switch (row.kind) {
     case 'unmerged': {
@@ -479,25 +727,57 @@ function diffSearchMatchesBytes({ leftBytes, rightBytes, search }: {
   }
 }
 
-function renameMatchesForPickaxe({ paths, left, right, renameLimit }: {
+async function renameMatchesForPickaxe({ context, repository, paths, left, right, renameLimit }: {
+  context: WeshCommandContext,
+  repository: GitRepository,
   paths: readonly string[],
   left: GitDiffSnapshot,
   right: GitDiffSnapshot,
   renameLimit: number,
-}): GitSimilarityRenameMatch[] {
-  const deleted = paths.flatMap(path => {
-    const entry = left.get(path);
-    return entry !== undefined && !right.has(path)
-      ? [{ path, objectId: entry.objectId, mode: entry.mode, bytes: entry.bytes }]
-      : [];
-  });
-  const added = paths.flatMap(path => {
-    const entry = right.get(path);
-    return entry !== undefined && !left.has(path)
-      ? [{ path, objectId: entry.objectId, mode: entry.mode, bytes: entry.bytes }]
-      : [];
-  });
+}): Promise<GitSimilarityRenameMatch[]> {
+  const deleted = [];
+  const added = [];
+  for (const path of paths) {
+    const leftEntry = left.get(path);
+    if (leftEntry !== undefined && !right.has(path)) {
+      deleted.push({
+        path,
+        objectId: leftEntry.objectId,
+        mode: leftEntry.mode,
+        bytes: await readDiffSnapshotEntryBytes({ context, repository, entry: leftEntry }),
+      });
+    }
+    const rightEntry = right.get(path);
+    if (rightEntry !== undefined && !left.has(path)) {
+      added.push({
+        path,
+        objectId: rightEntry.objectId,
+        mode: rightEntry.mode,
+        bytes: await readDiffSnapshotEntryBytes({ context, repository, entry: rightEntry }),
+      });
+    }
+  }
   return findGitRenameMatches({ deleted, added, renameLimit });
+}
+
+function snapshotPathUnion({ left, right }: {
+  left: GitDiffSnapshot,
+  right: GitDiffSnapshot,
+}): Set<string> {
+  const paths = new Set(left.keys());
+  for (const path of right.keys()) paths.add(path);
+  return paths;
+}
+
+function renamePathSet({ renames }: {
+  renames: readonly GitSimilarityRenameMatch[],
+}): Set<string> {
+  const paths = new Set<string>();
+  for (const rename of renames) {
+    paths.add(rename.sourcePath);
+    paths.add(rename.destinationPath);
+  }
+  return paths;
 }
 
 function excludeExactCopyDestinationsForPickaxe({ paths, sourcePaths, left, right }: {
@@ -506,12 +786,11 @@ function excludeExactCopyDestinationsForPickaxe({ paths, sourcePaths, left, righ
   left: GitDiffSnapshot,
   right: GitDiffSnapshot,
 }): string[] {
-  const sourceIdentities = new Set(sourcePaths.flatMap(path => {
+  const sourceIdentities = new Set<string>();
+  for (const path of sourcePaths) {
     const entry = left.get(path);
-    return entry === undefined
-      ? []
-      : [exactRenameContentIdentity({ objectId: entry.objectId, mode: entry.mode })];
-  }));
+    if (entry !== undefined) sourceIdentities.add(exactRenameContentIdentity({ objectId: entry.objectId, mode: entry.mode }));
+  }
   return paths.filter(path => {
     if (left.has(path)) return true;
     const entry = right.get(path);
@@ -537,21 +816,20 @@ export async function revisionDiffMatchesSearch({ context, repository, leftRevis
   const right = await snapshotFromTree({ context, repository, revision: rightRevision });
   let paths = changedPaths({ left, right });
   if (pathOperands.length > 0) {
-    const matches = matchRepositoryPaths({
+    const selected = matchRepositoryPathSelection({
       repository,
       cwd: context.cwd,
       operands: pathOperands,
-      availablePaths: new Set([...left.keys(), ...right.keys()]),
-    });
-    const selected = new Set([...matches.values()].flat());
+      availablePaths: snapshotPathUnion({ left, right }),
+    }).selected;
     paths = paths.filter(path => selected.has(path));
   }
   const copySourcePaths = paths;
   let similarityRenames: GitSimilarityRenameMatch[] = [];
   if (detectRenames) {
-    similarityRenames = renameMatchesForPickaxe({ paths, left, right, renameLimit });
+    similarityRenames = await renameMatchesForPickaxe({ context, repository, paths, left, right, renameLimit });
     if (similarityRenames.length > 0) {
-      const renamePaths = new Set(similarityRenames.flatMap(rename => [rename.sourcePath, rename.destinationPath]));
+      const renamePaths = renamePathSet({ renames: similarityRenames });
       paths = paths.filter(path => !renamePaths.has(path));
     }
     if (detectCopies && pathOperands.length === 0) {
@@ -565,17 +843,139 @@ export async function revisionDiffMatchesSearch({ context, repository, leftRevis
   }
   for (const similarityRename of similarityRenames) {
     if (diffSearchMatchesBytes({
-      leftBytes: left.get(similarityRename.sourcePath)!.bytes,
-      rightBytes: right.get(similarityRename.destinationPath)!.bytes,
+      leftBytes: await readDiffSnapshotEntryBytes({ context, repository, entry: left.get(similarityRename.sourcePath) }),
+      rightBytes: await readDiffSnapshotEntryBytes({ context, repository, entry: right.get(similarityRename.destinationPath) }),
       search,
     })) return true;
   }
   for (const path of paths) {
-    const leftBytes = left.get(path)?.bytes ?? new Uint8Array();
-    const rightBytes = right.get(path)?.bytes ?? new Uint8Array();
+    const leftBytes = await readDiffSnapshotEntryBytes({ context, repository, entry: left.get(path) });
+    const rightBytes = await readDiffSnapshotEntryBytes({ context, repository, entry: right.get(path) });
     if (diffSearchMatchesBytes({ leftBytes, rightBytes, search })) return true;
   }
   return false;
+}
+
+async function revisionDiffNameSelection({ context, repository, leftRevision, rightRevision, pathOperands, detectRenames }: {
+  context: WeshCommandContext,
+  repository: GitRepository,
+  leftRevision: string | undefined,
+  rightRevision: string,
+  pathOperands: readonly string[],
+  detectRenames: boolean,
+}): Promise<{
+  left: GitDiffSnapshot,
+  right: GitDiffSnapshot,
+  paths: string[],
+  exactRenames: GitExactRenameMatch[],
+}> {
+  const left = leftRevision === undefined
+    ? new Map<string, GitDiffSnapshotEntry>()
+    : await snapshotFromTree({ context, repository, revision: leftRevision });
+  const right = await snapshotFromTree({ context, repository, revision: rightRevision });
+  let paths = changedPaths({ left, right });
+  if (pathOperands.length > 0) {
+    const selected = matchRepositoryPathSelection({
+      repository,
+      cwd: context.cwd,
+      operands: pathOperands,
+      availablePaths: snapshotPathUnion({ left, right }),
+    }).selected;
+    paths = paths.filter(path => selected.has(path));
+  }
+  return {
+    left,
+    right,
+    paths,
+    exactRenames: detectRenames ? exactRenamesForPaths({ paths, left, right }) : [],
+  };
+}
+
+export async function writeRevisionNameOnly({ context, repository, leftRevision, rightRevision, pathOperands, quoteNonAscii, detectRenames }: {
+  context: WeshCommandContext,
+  repository: GitRepository,
+  leftRevision: string | undefined,
+  rightRevision: string,
+  pathOperands: readonly string[],
+  quoteNonAscii: boolean,
+  detectRenames: boolean,
+}): Promise<void> {
+  const { paths, exactRenames } = await revisionDiffNameSelection({
+    context,
+    repository,
+    leftRevision,
+    rightRevision,
+    pathOperands,
+    detectRenames,
+  });
+  const renamePaths = new Set<string>();
+  for (const rename of exactRenames) {
+    renamePaths.add(rename.sourcePath);
+    renamePaths.add(rename.destinationPath);
+  }
+  const outputPaths = new Set(paths.filter(path => !renamePaths.has(path)));
+  for (const rename of exactRenames) outputPaths.add(rename.destinationPath);
+  const text = sortGitPaths({ paths: outputPaths })
+    .map(path => `${quoteGitPath({ path, quoteNonAscii, quoteSpaces: false })}\n`)
+    .join('');
+  if (text !== '') await context.text().print({ text });
+}
+
+export async function writeRevisionNameStatus({ context, repository, leftRevision, rightRevision, pathOperands, quoteNonAscii, detectRenames }: {
+  context: WeshCommandContext,
+  repository: GitRepository,
+  leftRevision: string | undefined,
+  rightRevision: string,
+  pathOperands: readonly string[],
+  quoteNonAscii: boolean,
+  detectRenames: boolean,
+}): Promise<void> {
+  const { left, right, paths, exactRenames } = await revisionDiffNameSelection({
+    context,
+    repository,
+    leftRevision,
+    rightRevision,
+    pathOperands,
+    detectRenames,
+  });
+  const renamePaths = new Set<string>();
+  for (const rename of exactRenames) {
+    renamePaths.add(rename.sourcePath);
+    renamePaths.add(rename.destinationPath);
+  }
+  const rows = sortByGitUtf8StringKey({
+    values: [
+      ...paths.filter(path => !renamePaths.has(path)).map(path => ({
+        kind: 'path' as const,
+        sortPath: path,
+        path,
+      })),
+      ...exactRenames.map(rename => ({
+        kind: 'rename' as const,
+        sortPath: rename.sourcePath,
+        rename,
+      })),
+    ],
+    key: ({ value }) => value.sortPath,
+  });
+  let text = '';
+  for (const row of rows) {
+    switch (row.kind) {
+    case 'path': {
+      const status = left.has(row.path) ? (right.has(row.path) ? 'M' : 'D') : 'A';
+      text += `${status}\t${quoteGitPath({ path: row.path, quoteNonAscii, quoteSpaces: false })}\n`;
+      break;
+    }
+    case 'rename':
+      text += `R100\t${quoteGitPath({ path: row.rename.sourcePath, quoteNonAscii, quoteSpaces: false })}\t${quoteGitPath({ path: row.rename.destinationPath, quoteNonAscii, quoteSpaces: false })}\n`;
+      break;
+    default: {
+      const _ex: never = row;
+      throw new Error(`Unhandled revision name-status row: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+  if (text !== '') await context.text().print({ text });
 }
 
 export async function writeRevisionStat({ context, repository, leftRevision, rightRevision, pathOperands, quoteNonAscii, detectRenames }: {
@@ -593,19 +993,18 @@ export async function writeRevisionStat({ context, repository, leftRevision, rig
   const right = await snapshotFromTree({ context, repository, revision: rightRevision });
   let paths = changedPaths({ left, right });
   if (pathOperands.length > 0) {
-    const matches = matchRepositoryPaths({
+    const selected = matchRepositoryPathSelection({
       repository,
       cwd: context.cwd,
       operands: pathOperands,
-      availablePaths: new Set([...left.keys(), ...right.keys()]),
-    });
-    const selected = new Set([...matches.values()].flat());
+      availablePaths: snapshotPathUnion({ left, right }),
+    }).selected;
     paths = paths.filter(path => selected.has(path));
   }
-  await writeDiffStat({ context, paths, left, right, quoteNonAscii, detectRenames });
+  await writeDiffStat({ context, repository, paths, left, right, quoteNonAscii, detectRenames });
 }
 
-export async function writeRevisionPatch({ context, repository, leftRevision, rightRevision, pathOperands, quoteNonAscii, detectRenames }: {
+export async function writeRevisionPatch({ context, repository, leftRevision, rightRevision, pathOperands, quoteNonAscii, detectRenames, contextLines = 3 }: {
   context: WeshCommandContext,
   repository: GitRepository,
   leftRevision: string | undefined,
@@ -613,6 +1012,7 @@ export async function writeRevisionPatch({ context, repository, leftRevision, ri
   pathOperands: readonly string[],
   quoteNonAscii: boolean,
   detectRenames: boolean,
+  contextLines?: number,
 }): Promise<void> {
   const left = leftRevision === undefined
     ? new Map<string, GitDiffSnapshotEntry>()
@@ -620,25 +1020,27 @@ export async function writeRevisionPatch({ context, repository, leftRevision, ri
   const right = await snapshotFromTree({ context, repository, revision: rightRevision });
   let paths = changedPaths({ left, right });
   if (pathOperands.length > 0) {
-    const matches = matchRepositoryPaths({
+    const selected = matchRepositoryPathSelection({
       repository,
       cwd: context.cwd,
       operands: pathOperands,
-      availablePaths: new Set([...left.keys(), ...right.keys()]),
-    });
-    const selected = new Set([...matches.values()].flat());
+      availablePaths: snapshotPathUnion({ left, right }),
+    }).selected;
     paths = paths.filter(path => selected.has(path));
   }
   const exactRenames = detectRenames ? exactRenamesForPaths({ paths, left, right }) : [];
   const renamePaths = new Set(exactRenames.flatMap(rename => [rename.sourcePath, rename.destinationPath]));
-  const rows = [
-    ...paths.filter(path => !renamePaths.has(path)).map(path => ({ kind: 'path' as const, sortPath: path, path })),
-    ...exactRenames.map(rename => ({ kind: 'rename' as const, sortPath: rename.sourcePath, rename })),
-  ].sort((leftRow, rightRow) => compareGitPaths({ left: leftRow.sortPath, right: rightRow.sortPath }));
+  const rows = sortByGitUtf8StringKey({
+    values: [
+      ...paths.filter(path => !renamePaths.has(path)).map(path => ({ kind: 'path' as const, sortPath: path, path })),
+      ...exactRenames.map(rename => ({ kind: 'rename' as const, sortPath: rename.sourcePath, rename })),
+    ],
+    key: ({ value }) => value.sortPath,
+  });
   for (const row of rows) {
     switch (row.kind) {
     case 'path':
-      await writePatchEntry({ context, path: row.path, left: left.get(row.path), right: right.get(row.path), quoteNonAscii });
+      await writePatchEntry({ context, repository, path: row.path, left: left.get(row.path), right: right.get(row.path), quoteNonAscii, contextLines });
       break;
     case 'rename':
       await writeExactRenamePatch({ context, rename: row.rename, quoteNonAscii });

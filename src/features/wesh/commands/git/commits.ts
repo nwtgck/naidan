@@ -2,7 +2,8 @@ import type { GitConfig } from './config';
 import type { GitFiles } from './files';
 import type { GitIdentity } from './identity';
 import { resolveGitIdentity, resolveGitTimestamp } from './identity';
-import { readObject, writeObject } from './objects';
+import { createGitObjectReadCache, readObject, writeObject } from './objects';
+import type { GitObjectReadCache } from './objects';
 import type { GitRepository } from './repository';
 
 const textEncoder = new TextEncoder();
@@ -14,6 +15,16 @@ export interface ParsedCommit {
   author: string,
   committer: string,
   message: string,
+}
+
+export type GitCommitCache = Map<string, ParsedCommit> & {
+  objectReadCache: GitObjectReadCache,
+};
+
+export function createGitCommitCache(): GitCommitCache {
+  const cache = new Map<string, ParsedCommit>() as GitCommitCache;
+  cache.objectReadCache = createGitObjectReadCache();
+  return cache;
 }
 
 export interface GitCommitAuthor {
@@ -73,12 +84,13 @@ export async function createCommit({ files, repository, config, env, treeObjectI
   };
 }
 
-export async function readCommit({ files, repository, objectId }: {
+export async function readCommit({ files, repository, objectId, objectReadCache }: {
   files: GitFiles,
   repository: GitRepository,
   objectId: string,
+  objectReadCache?: GitObjectReadCache,
 }): Promise<ParsedCommit> {
-  const object = await readObject({ files, repository, objectId });
+  const object = await readObject({ files, repository, objectId, cache: objectReadCache });
   switch (object.type) {
   case 'commit':
     break;
@@ -115,6 +127,20 @@ export async function readCommit({ files, repository, objectId }: {
     committer,
     message: text.slice(separatorIndex + 2),
   };
+}
+
+export async function readCachedCommit({ files, repository, objectId, cache }: {
+  files: GitFiles,
+  repository: GitRepository,
+  objectId: string,
+  cache: GitCommitCache | undefined,
+}): Promise<ParsedCommit> {
+  if (cache === undefined) return readCommit({ files, repository, objectId });
+  const cached = cache.get(objectId);
+  if (cached !== undefined) return cached;
+  const commit = await readCommit({ files, repository, objectId, objectReadCache: cache.objectReadCache });
+  cache.set(objectId, commit);
+  return commit;
 }
 
 export function commitSubject({ commit }: { commit: ParsedCommit }): string {

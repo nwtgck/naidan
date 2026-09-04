@@ -1,8 +1,9 @@
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readCommit } from "@/features/wesh/commands/git/commits";
 import { getDiffRenamesConfigMode, readEffectiveConfig } from "@/features/wesh/commands/git/config";
-import { writeRevisionPatch, writeRevisionStat } from "@/features/wesh/commands/git/diff/revision";
+import { writeRevisionNameOnly, writeRevisionNameStatus, writeRevisionPatch, writeRevisionStat } from "@/features/wesh/commands/git/diff/revision";
 import { writeHandleBytes } from "@/features/wesh/commands/git/files";
+import { formatCommitTemplate } from "@/features/wesh/commands/git/history";
 import { quoteNonAsciiFromConfig } from "@/features/wesh/commands/git/path-output";
 import { readObject } from "@/features/wesh/commands/git/objects";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
@@ -16,6 +17,15 @@ const SHOW_SHORT_ARGV_CATALOG = defineArgvCatalog<'no-patch'>({
   definitions: [{ semantic: 'no-patch', forms: [{ kind: 'short', name: 's', value: { kind: 'none' } }] }],
 });
 
+type ShowDiffMode = 'patch' | 'no-patch' | 'stat' | 'name-only' | 'name-status';
+
+function parseShowFormat({ arg }: { arg: string }): string {
+  const value = arg.slice(arg.indexOf('=') + 1);
+  return value === 'oneline'
+    ? '%H %s'
+    : value.startsWith('format:') ? value.slice('format:'.length) : value;
+}
+
 export async function runShow({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];
@@ -24,7 +34,8 @@ export async function runShow({ context, args }: {
   const showConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const showQuoteNonAscii = quoteNonAsciiFromConfig({ config: showConfig });
   const detectRenames = getDiffRenamesConfigMode({ config: showConfig }) !== 'disabled';
-  let diffMode: 'patch' | 'no-patch' | 'stat' = 'patch';
+  let diffMode: ShowDiffMode = 'patch';
+  let format: string | undefined;
   let optionTerminated = false;
   const operands: string[] = [];
   for (const arg of args) {
@@ -69,6 +80,12 @@ export async function runShow({ context, args }: {
       diffMode = 'no-patch';
     else if (arg === '--stat') {
       diffMode = 'stat';
+    } else if (arg === '--name-only') {
+      diffMode = 'name-only';
+    } else if (arg === '--name-status') {
+      diffMode = 'name-status';
+    } else if (arg.startsWith('--format=') || arg.startsWith('--pretty=')) {
+      format = parseShowFormat({ arg });
     } else if (arg === '--no-color') {
       // Output is uncolored by Wesh Git.
     } else if (arg.startsWith('-'))
@@ -119,11 +136,18 @@ export async function runShow({ context, args }: {
   }
   }
   const commit = await readCommit({ files: context.files, repository, objectId });
-  const author = parseAuthorForLog({ author: commit.author });
-  const message = commit.message.trimEnd().split('\n').map(line => `    ${line}\n`).join('');
-  await context.text().print({
-    text: `commit ${objectId}\nAuthor: ${author.identity}\nDate:   ${formatLogDate({ timestamp: author.timestamp, timezone: author.timezone })}\n\n${message}\n`,
-  });
+  if (format !== undefined) {
+    const formatted = formatCommitTemplate({ objectId, commit, format });
+    if (formatted !== '') await context.text().print({ text: `${formatted}\n` });
+  } else {
+    const author = parseAuthorForLog({ author: commit.author });
+    const message = commit.message.trimEnd().split('\n').map(line => `    ${line}\n`).join('');
+    await context.text().print({
+      text: `commit ${objectId}\nAuthor: ${author.identity}\nDate:   ${formatLogDate({ timestamp: author.timestamp, timezone: author.timezone })}\n\n${message}\n`,
+    });
+  }
+  if (format !== undefined && format !== '' && (diffMode === 'name-only' || diffMode === 'name-status'))
+    await context.text().print({ text: '\n' });
   switch (diffMode) {
   case 'no-patch':
     break;
@@ -140,6 +164,28 @@ export async function runShow({ context, args }: {
     break;
   case 'patch':
     await writeRevisionPatch({
+      context,
+      repository,
+      leftRevision: commit.parentObjectIds[0],
+      rightRevision: objectId,
+      pathOperands: [],
+      quoteNonAscii: showQuoteNonAscii,
+      detectRenames,
+    });
+    break;
+  case 'name-only':
+    await writeRevisionNameOnly({
+      context,
+      repository,
+      leftRevision: commit.parentObjectIds[0],
+      rightRevision: objectId,
+      pathOperands: [],
+      quoteNonAscii: showQuoteNonAscii,
+      detectRenames,
+    });
+    break;
+  case 'name-status':
+    await writeRevisionNameStatus({
       context,
       repository,
       leftRevision: commit.parentObjectIds[0],

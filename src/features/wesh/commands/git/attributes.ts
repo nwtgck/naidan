@@ -1,9 +1,9 @@
+import { compareBytes } from './bytes';
 import type { GitAutoCrlf, GitCoreEol, GitWorktreeContentConfig } from './config';
 import type { GitFiles } from './files';
 import { pathExists, readFileText } from './files';
 import type { GitIndexEntry } from './index-file';
 import { readObject } from './objects';
-import { compareGitPaths } from './path-order';
 import type { GitRepository } from './repository';
 import { joinPath, relativeToWorktree } from './repository';
 import { compileGitWildmatch } from './wildmatch';
@@ -24,6 +24,22 @@ interface GitAttributeRule {
     | { type: 'text', value: GitTextAttribute }
     | { type: 'eol', value: GitEolAttribute }
   >,
+}
+
+type GitAttributeSource = { basePath: string, text: string };
+
+const attributePathEncoder = new TextEncoder();
+
+function sortAttributeSources({ sources }: { sources: readonly GitAttributeSource[] }): GitAttributeSource[] {
+  return sources
+    .map(source => ({
+      source,
+      depth: source.basePath.split('/').length,
+      pathBytes: attributePathEncoder.encode(source.basePath),
+    }))
+    .sort((left, right) => left.depth - right.depth
+      || compareBytes({ left: left.pathBytes, right: right.pathBytes }))
+    .map(({ source }) => source);
 }
 
 export interface GitAttributesMatcher {
@@ -368,7 +384,7 @@ export async function loadWorktreeAttributes({ files, repository, contentConfig 
   repository: GitRepository,
   contentConfig: GitWorktreeContentConfig,
 }): Promise<GitAttributesMatcher> {
-  const sources: Array<{ basePath: string, text: string }> = [];
+  const sources: GitAttributeSource[] = [];
   const visit = async ({ directoryPath }: { directoryPath: string }): Promise<void> => {
     const attributePath = joinPath({ base: directoryPath, child: '.gitattributes' });
     if (await pathExists({ files, path: attributePath })) {
@@ -396,9 +412,7 @@ export async function loadWorktreeAttributes({ files, repository, contentConfig 
     }
   };
   await visit({ directoryPath: repository.worktreePath });
-  sources.sort((left, right) => left.basePath.split('/').length - right.basePath.split('/').length
-    || compareGitPaths({ left: left.basePath, right: right.basePath }));
-  const rules = sources.flatMap(source => parseAttributeRules(source));
+  const rules = sortAttributeSources({ sources }).flatMap(source => parseAttributeRules(source));
   const infoAttributesPath = joinPath({ base: repository.commonDirPath, child: 'info/attributes' });
   if (await pathExists({ files, path: infoAttributesPath })) {
     rules.push(...parseAttributeRules({ text: await readFileText({ files, path: infoAttributesPath }), basePath: '' }));
@@ -412,7 +426,7 @@ export async function loadIndexAttributes({ files, repository, entries, contentC
   entries: readonly GitIndexEntry[],
   contentConfig: GitWorktreeContentConfig,
 }): Promise<GitAttributesMatcher> {
-  const sources: Array<{ basePath: string, text: string }> = [];
+  const sources: GitAttributeSource[] = [];
   for (const entry of entries) {
     if (entry.stage !== 0 || !entry.path.endsWith('.gitattributes')) continue;
     const baseName = entry.path.slice(entry.path.lastIndexOf('/') + 1);
@@ -435,9 +449,7 @@ export async function loadIndexAttributes({ files, repository, entries, contentC
     }
     }
   }
-  sources.sort((left, right) => left.basePath.split('/').length - right.basePath.split('/').length
-    || compareGitPaths({ left: left.basePath, right: right.basePath }));
-  const rules = sources.flatMap(source => parseAttributeRules(source));
+  const rules = sortAttributeSources({ sources }).flatMap(source => parseAttributeRules(source));
   const infoAttributesPath = joinPath({ base: repository.commonDirPath, child: 'info/attributes' });
   if (await pathExists({ files, path: infoAttributesPath })) {
     rules.push(...parseAttributeRules({ text: await readFileText({ files, path: infoAttributesPath }), basePath: '' }));

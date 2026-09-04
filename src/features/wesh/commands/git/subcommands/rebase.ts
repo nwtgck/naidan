@@ -3,7 +3,7 @@ import { analyzeArgvLongForm, defineArgvCatalog } from '@/features/wesh/argv-v2'
 import { getConfigValue, readEffectiveConfig } from '@/features/wesh/commands/git/config';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readCommit } from "@/features/wesh/commands/git/commits";
-import { findMergeBases, isAncestor } from "@/features/wesh/commands/git/graph";
+import { createGitCommitGraphCache, findMergeBases, isAncestor } from "@/features/wesh/commands/git/graph";
 import { readMergeState } from "@/features/wesh/commands/git/merge-state";
 import { branchNameFromHead, readHead, readRef } from "@/features/wesh/commands/git/refs";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
@@ -205,9 +205,11 @@ export async function runRebase({ context, args }: {
   if (ontoExpression === undefined) throw new Error('rebase onto expression was not resolved');
   const ontoObjectId = await resolveCommitRevision({ files: context.files, repository, expression: ontoExpression });
   await readCommit({ files: context.files, repository, objectId: ontoObjectId });
+  const graphCache = createGitCommitGraphCache();
   if (!explicitOnto && await isAncestor({
     files: context.files,
     repository,
+    cache: graphCache,
     ancestorObjectId: upstreamObjectId,
     descendantObjectId: origHeadObjectId,
   })) {
@@ -233,6 +235,7 @@ export async function runRebase({ context, args }: {
     const bases = await findMergeBases({
       files: context.files,
       repository,
+      cache: graphCache,
       leftObjectId: origHeadObjectId,
       rightObjectId: upstreamObjectId,
     });
@@ -243,6 +246,7 @@ export async function runRebase({ context, args }: {
   return startRebaseSequence({
     context,
     repository,
+    graphCache,
     headRefName,
     origHeadObjectId,
     checkoutHeadObjectId: currentHead.objectId,

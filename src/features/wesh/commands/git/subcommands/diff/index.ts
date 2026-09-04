@@ -4,20 +4,21 @@ import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/type
 import { cleanWorktreeBytes, loadWorktreeAttributes } from "@/features/wesh/commands/git/attributes";
 import { getDiffRenamesConfigMode, readEffectiveConfig, readWorktreeContentConfig } from "@/features/wesh/commands/git/config";
 import type { GitIndexEntry } from "@/features/wesh/commands/git/index-file";
-import { readIndex } from "@/features/wesh/commands/git/index-file";
+import { collectUnmergedPaths, readIndex } from "@/features/wesh/commands/git/index-file";
 import { objectIdFor, readObject } from "@/features/wesh/commands/git/objects";
 import type { GitRepository } from "@/features/wesh/commands/git/repository";
 import { assertRepositoryHasUsableWorktree, repositoryHasWorktree, discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { pathExists } from "@/features/wesh/commands/git/files";
-import { matchRepositoryPaths } from "@/features/wesh/commands/git/pathspec";
+import { matchRepositoryPathSelection } from "@/features/wesh/commands/git/pathspec";
 import { quoteGitPath, quoteNonAsciiFromConfig } from "@/features/wesh/commands/git/path-output";
 import { compareGitPaths, sortGitPaths } from "@/features/wesh/commands/git/path-order";
+import { sortByGitUtf8StringKey } from "@/features/wesh/commands/git/utf8-order";
 import { readWorktreeContent, worktreeAbsolutePath } from "@/features/wesh/commands/git/worktree";
 import { writeTwoParentCombinedDiff } from "./combined";
 import { parseDiffArguments } from './arguments';
 import type { GitExactRenameMatch } from "@/features/wesh/commands/git/renames";
 import type { GitDiffSnapshot } from "@/features/wesh/commands/git/diff/revision";
-import { changedPaths, defaultComparisonOptions, exactRenamesForPaths, gitlinkDiffBytes, snapshotFromTree, writeDiffStat, writeExactRenamePatch, writePatchEntry } from "@/features/wesh/commands/git/diff/revision";
+import { changedPaths, defaultComparisonOptions, exactRenamesForPaths, gitlinkDiffBytes, loadedDiffSnapshotEntry, objectDiffSnapshotEntry, readDiffSnapshotEntryBytes, snapshotFromTree, writeDiffStat, writeExactRenamePatch, writePatchEntry } from "@/features/wesh/commands/git/diff/revision";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
 
 function indexRegularMode({ entry }: { entry: GitIndexEntry }): 0o100644 | 0o100755 | undefined {
@@ -32,42 +33,25 @@ function indexRegularMode({ entry }: { entry: GitIndexEntry }): 0o100644 | 0o100
     throw new Error(`unsupported index mode ${entry.mode.toString(8)}: ${entry.path}`);
   }
 }
-async function snapshotFromIndex({ context, repository, entries }: {
-  context: WeshCommandContext,
-  repository: GitRepository,
+function snapshotFromIndex({ entries }: {
   entries: readonly GitIndexEntry[],
-}): Promise<GitDiffSnapshot> {
+}): GitDiffSnapshot {
   const result: GitDiffSnapshot = new Map();
   for (const entry of entries) {
     if (entry.stage !== 0) throw new Error(`unmerged index entry is not supported yet: ${entry.path}`);
-    if (entry.mode === 0o160000) {
-      result.set(entry.path, {
+    result.set(entry.path, entry.mode === 0o160000
+      ? loadedDiffSnapshotEntry({
         path: entry.path,
         mode: entry.mode,
         objectId: entry.objectId,
         bytes: gitlinkDiffBytes({ objectId: entry.objectId }),
-      });
-      continue;
-    }
-    const object = await readObject({ files: context.files, repository, objectId: entry.objectId });
-    switch (object.type) {
-    case 'blob':
-      result.set(entry.path, {
+      })
+      : objectDiffSnapshotEntry({
         path: entry.path,
         mode: entry.mode,
         objectId: entry.objectId,
-        bytes: object.body,
-      });
-      break;
-    case 'tree':
-    case 'commit':
-    case 'tag':
-      throw new Error(`index entry ${entry.path} does not reference a blob`);
-    default: {
-      const _ex: never = object.type;
-      throw new Error(`Unhandled index object type: ${JSON.stringify(_ex)}`);
-    }
-    }
+        source: 'index',
+      }));
   }
   return result;
 }
@@ -126,7 +110,12 @@ async function snapshotWorktreeForIndex({ context, repository, entries }: {
   for (const entry of entries) {
     if (entry.stage !== 0) throw new Error(`unmerged index entry is not supported yet: ${entry.path}`);
     if (entry.mode === 0o160000) {
-      result.set(entry.path, { path: entry.path, mode: entry.mode, objectId: entry.objectId, bytes: new Uint8Array() });
+      result.set(entry.path, loadedDiffSnapshotEntry({
+        path: entry.path,
+        mode: entry.mode,
+        objectId: entry.objectId,
+        bytes: new Uint8Array(),
+      }));
       continue;
     }
     const absolutePath = worktreeAbsolutePath({ repository, path: entry.path });
@@ -142,7 +131,7 @@ async function snapshotWorktreeForIndex({ context, repository, entries }: {
       ? await cleanWorktreeBytes({ attributes, files: context.files, repository, path: entry.path, bytes: content.bytes, indexObjectId: entry.objectId })
       : content.bytes;
     const objectId = objectIdFor({ type: 'blob', body: bytes });
-    result.set(entry.path, { path: entry.path, mode: content.mode, objectId, bytes });
+    result.set(entry.path, loadedDiffSnapshotEntry({ path: entry.path, mode: content.mode, objectId, bytes }));
   }
   return result;
 }
@@ -157,8 +146,9 @@ function isConflictMarkerLine({ text }: { text: string }): boolean {
     || text === '======='
     || text === '>>>>>>>' || text.startsWith('>>>>>>> ');
 }
-async function checkWhitespaceErrors({ context, paths, left, right }: {
+async function checkWhitespaceErrors({ context, repository, paths, left, right }: {
   context: WeshCommandContext,
+  repository: GitRepository,
   paths: readonly string[],
   left: GitDiffSnapshot,
   right: GitDiffSnapshot,
@@ -171,13 +161,13 @@ async function checkWhitespaceErrors({ context, paths, left, right }: {
       displayName: `a/${path}`,
       resolvedPath: undefined,
       mtime: undefined,
-      bytes: left.get(path)?.bytes ?? new Uint8Array(),
+      bytes: await readDiffSnapshotEntryBytes({ context, repository, entry: left.get(path) }),
     });
     const rightInput = createDiffInput({
       displayName: `b/${path}`,
       resolvedPath: undefined,
       mtime: undefined,
-      bytes: right.get(path)?.bytes ?? new Uint8Array(),
+      bytes: await readDiffSnapshotEntryBytes({ context, repository, entry: right.get(path) }),
     });
     const operations = createDiffOperations({
       leftLength: leftInput.lines.starts.length,
@@ -230,6 +220,9 @@ export async function runDiff({ context, args }: {
     quiet,
     exitCode,
     nul,
+    unifiedContextLines,
+    wordDiff,
+    binaryPatch,
     revisions,
     pathOperands,
   } = parseDiffArguments({ args });
@@ -245,7 +238,7 @@ export async function runDiff({ context, args }: {
   const detectRenames = getDiffRenamesConfigMode({ config }) !== 'disabled';
   const indexEntries = await readIndex({ files: context.files, repository });
   const stageZeroEntries = indexEntries.filter(entry => entry.stage === 0);
-  const unmergedIndexPaths = sortGitPaths({ paths: new Set(indexEntries.filter(entry => entry.stage !== 0).map(entry => entry.path)) });
+  const unmergedIndexPaths = sortGitPaths({ paths: collectUnmergedPaths({ entries: indexEntries }) });
   const defaultUnmergedSummary = !cached && revisions.length === 0 && unmergedIndexPaths.length > 0
     && (nameOnly || nameStatus || quiet || stat || check);
   const combinedUnmergedPatch = !cached && revisions.length === 0 && unmergedIndexPaths.length > 0
@@ -258,7 +251,7 @@ export async function runDiff({ context, args }: {
   let right: GitDiffSnapshot;
   if (cached) {
     left = await snapshotFromTree({ context, repository, revision: revisions[0] ?? 'HEAD' });
-    right = await snapshotFromIndex({ context, repository, entries: stageZeroEntries });
+    right = snapshotFromIndex({ entries: stageZeroEntries });
   } else if (revisions.length === 0) {
     const worktreeComparisonEntries = defaultUnmergedSummary
       ? [
@@ -268,12 +261,12 @@ export async function runDiff({ context, args }: {
       : combinedUnmergedPatch
         ? stageZeroEntries
         : indexEntries;
-    left = await snapshotFromIndex({ context, repository, entries: worktreeComparisonEntries });
+    left = snapshotFromIndex({ entries: worktreeComparisonEntries });
     right = await snapshotWorktreeForIndex({ context, repository, entries: worktreeComparisonEntries });
   } else if (revisions.length === 1) {
     left = await snapshotFromTree({ context, repository, revision: revisions[0]! });
     right = await snapshotWorktreeForIndex({ context, repository, entries: indexEntries });
-    for (const [path, entry] of await snapshotFromIndex({ context, repository, entries: indexEntries })) {
+    for (const [path, entry] of snapshotFromIndex({ entries: indexEntries })) {
       if (!right.has(path) && !left.has(path)) right.set(path, entry);
     }
   } else {
@@ -285,13 +278,15 @@ export async function runDiff({ context, args }: {
   let paths = changedPaths({ left, right });
   if (cached) paths = paths.filter(path => !unmergedPaths.includes(path));
   if (pathOperands.length > 0) {
-    const matches = matchRepositoryPaths({
+    const availablePaths = new Set(left.keys());
+    for (const path of right.keys()) availablePaths.add(path);
+    for (const path of unmergedPaths) availablePaths.add(path);
+    const selected = matchRepositoryPathSelection({
       repository,
       cwd: context.cwd,
       operands: pathOperands,
-      availablePaths: new Set([...left.keys(), ...right.keys(), ...unmergedPaths]),
-    });
-    const selected = new Set([...matches.values()].flat());
+      availablePaths,
+    }).selected;
     paths = paths.filter(path => selected.has(path));
     unmergedPaths = unmergedPaths.filter(path => selected.has(path));
   }
@@ -302,11 +297,11 @@ export async function runDiff({ context, args }: {
   const differenceExitCode = exitCode && hasDifferences ? 1 : 0;
   if (quiet) return { exitCode: hasDifferences ? 1 : 0 };
   if (check) {
-    const hasErrors = await checkWhitespaceErrors({ context, paths, left, right });
+    const hasErrors = await checkWhitespaceErrors({ context, repository, paths, left, right });
     return { exitCode: (hasErrors ? 2 : 0) | differenceExitCode };
   }
   if (stat && !nameOnly && !nameStatus) {
-    await writeDiffStat({ context, paths, left, right, quoteNonAscii, detectRenames, unmergedPaths });
+    await writeDiffStat({ context, repository, paths, left, right, quoteNonAscii, detectRenames, unmergedPaths });
     return { exitCode: differenceExitCode };
   }
   if (nameOnly) {
@@ -357,13 +352,16 @@ export async function runDiff({ context, args }: {
       await context.text().print({ text: rows.map(row => renderRow({ status: row.status, path: row.path })).join('') });
     } else {
       const unmerged = new Set(unmergedPaths);
-      const rows = [
-        ...paths
-          .filter(path => !exactRenameSources.has(path) && !exactRenameDestinations.has(path))
-          .map(path => ({ kind: 'normal' as const, sortPath: path, path })),
-        ...unmergedPaths.map(path => ({ kind: 'normal' as const, sortPath: path, path })),
-        ...exactRenames.map(rename => ({ kind: 'rename' as const, sortPath: rename.sourcePath, rename })),
-      ].sort((leftRow, rightRow) => compareGitPaths({ left: leftRow.sortPath, right: rightRow.sortPath }));
+      const rows = sortByGitUtf8StringKey({
+        values: [
+          ...paths
+            .filter(path => !exactRenameSources.has(path) && !exactRenameDestinations.has(path))
+            .map(path => ({ kind: 'normal' as const, sortPath: path, path })),
+          ...unmergedPaths.map(path => ({ kind: 'normal' as const, sortPath: path, path })),
+          ...exactRenames.map(rename => ({ kind: 'rename' as const, sortPath: rename.sourcePath, rename })),
+        ],
+        key: ({ value }) => value.sortPath,
+      });
       await context.text().print({
         text: rows.map(row => {
           switch (row.kind) {
@@ -381,13 +379,16 @@ export async function runDiff({ context, args }: {
     }
     return { exitCode: differenceExitCode };
   }
-  const outputRows = [
-    ...paths
-      .filter(path => !exactRenameSources.has(path) && !exactRenameDestinations.has(path))
-      .map(path => ({ kind: 'path' as const, sortPath: path, path })),
-    ...unmergedPaths.map(path => ({ kind: 'path' as const, sortPath: path, path })),
-    ...exactRenames.map(rename => ({ kind: 'rename' as const, sortPath: rename.sourcePath, rename })),
-  ].sort((leftRow, rightRow) => compareGitPaths({ left: leftRow.sortPath, right: rightRow.sortPath }));
+  const outputRows = sortByGitUtf8StringKey({
+    values: [
+      ...paths
+        .filter(path => !exactRenameSources.has(path) && !exactRenameDestinations.has(path))
+        .map(path => ({ kind: 'path' as const, sortPath: path, path })),
+      ...unmergedPaths.map(path => ({ kind: 'path' as const, sortPath: path, path })),
+      ...exactRenames.map(rename => ({ kind: 'rename' as const, sortPath: rename.sourcePath, rename })),
+    ],
+    key: ({ value }) => value.sortPath,
+  });
   for (const row of outputRows) {
     switch (row.kind) {
     case 'path':
@@ -395,7 +396,7 @@ export async function runDiff({ context, args }: {
         if (combinedUnmergedPatch) await writeUnmergedCombinedDiff({ context, repository, path: row.path, entries: indexEntries, quoteNonAscii });
         else await context.text().print({ text: `* Unmerged path ${row.path}\n` });
       } else {
-        await writePatchEntry({ context, path: row.path, left: left.get(row.path), right: right.get(row.path), quoteNonAscii });
+        await writePatchEntry({ context, repository, path: row.path, left: left.get(row.path), right: right.get(row.path), quoteNonAscii, contextLines: unifiedContextLines, wordDiff, binaryPatch });
       }
       break;
     case 'rename':

@@ -3,7 +3,7 @@ import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { getConfigValue, readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { fastForwardHead } from "@/features/wesh/commands/git/fast-forward";
-import { findMergeBases, isAncestor } from "@/features/wesh/commands/git/graph";
+import { createGitCommitGraphCache, findMergeBases, isAncestor } from "@/features/wesh/commands/git/graph";
 import { fetchLocalRemote } from "@/features/wesh/commands/git/local-transport";
 import { resolveGitReflogIdentity, resolveGitTimestamp } from "@/features/wesh/commands/git/identity";
 import { branchNameFromHead, readHead, readRef } from "@/features/wesh/commands/git/refs";
@@ -121,7 +121,8 @@ export async function runPull({ context, args }: {
   });
   if (targetObjectId === undefined)
     throw new Error(`couldn't find remote ref ${remoteBranch}`);
-  if (await isAncestor({ files: context.files, repository, ancestorObjectId: targetObjectId, descendantObjectId: head.objectId })) {
+  const graphCache = createGitCommitGraphCache();
+  if (await isAncestor({ files: context.files, repository, cache: graphCache, ancestorObjectId: targetObjectId, descendantObjectId: head.objectId })) {
     if (!quiet)
       await context.text().print({ text: 'Already up to date.\n' });
     return { exitCode: 0 };
@@ -129,6 +130,7 @@ export async function runPull({ context, args }: {
   const canFastForward = await isAncestor({
     files: context.files,
     repository,
+    cache: graphCache,
     ancestorObjectId: head.objectId,
     descendantObjectId: targetObjectId,
   });
@@ -144,6 +146,7 @@ export async function runPull({ context, args }: {
       const bases = await findMergeBases({
         files: context.files,
         repository,
+        cache: graphCache,
         leftObjectId: head.objectId,
         rightObjectId: targetObjectId,
       });
@@ -154,6 +157,7 @@ export async function runPull({ context, args }: {
       return startRebaseSequence({
         context,
         repository,
+        graphCache,
         headRefName: `refs/heads/${currentBranch}`,
         origHeadObjectId: head.objectId,
         checkoutHeadObjectId: head.objectId,
@@ -166,6 +170,7 @@ export async function runPull({ context, args }: {
     return integrateDivergentMerge({
       context,
       repository,
+      graphCache,
       headObjectId: head.objectId,
       targetObjectId,
       targetLabel: remoteBranch,
@@ -183,6 +188,7 @@ export async function runPull({ context, args }: {
       message: `pull ${remoteName} ${remoteBranch}: Fast-forward`,
     },
     contentConfig: await resolveContentConfigForContext({ context, repository }),
+    objectReadCache: graphCache.objectReadCache,
   });
   switch (result.type) {
   case 'checkout-conflict':

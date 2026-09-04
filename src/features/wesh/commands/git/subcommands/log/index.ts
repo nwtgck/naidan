@@ -4,16 +4,75 @@ import type { GitLogDecorationMode } from './arguments';
 import { commitSubject } from "@/features/wesh/commands/git/commits";
 import { testAnyGitBasicRegex } from '@/features/wesh/commands/git/basic-regex';
 import { getDiffRenameLimitConfigValue, getDiffRenamesConfigMode, readEffectiveConfig } from "@/features/wesh/commands/git/config";
-import { revisionDiffMatchesSearch, writeRevisionPatch, writeRevisionStat } from "@/features/wesh/commands/git/diff/revision";
+import { revisionDiffMatchesSearch, writeRevisionNameOnly, writeRevisionNameStatus, writeRevisionPatch, writeRevisionStat } from "@/features/wesh/commands/git/diff/revision";
 import { GIT_DEFAULT_RENAME_LIMIT } from "@/features/wesh/commands/git/renames";
 import { quoteNonAsciiFromConfig } from "@/features/wesh/commands/git/path-output";
 import { findMergeBases } from "@/features/wesh/commands/git/graph";
-import { collectCommitHistory, collectGraphCommitHistory, collectPathLimitedHistory, formatCommitTemplate } from "@/features/wesh/commands/git/history";
+import { collectCommitHistory, collectFollowHistory, collectGraphCommitHistory, collectPathLimitedHistory, formatCommitTemplate } from "@/features/wesh/commands/git/history";
+import type { GitFollowHistoryCommit, GitHistoryCommit } from "@/features/wesh/commands/git/history";
 import { renderGitLogGraph } from "./graph";
 import { branchNameFromHead, listRefs, readHead } from "@/features/wesh/commands/git/refs";
+import type { GitHeadState, GitListedRef } from "@/features/wesh/commands/git/refs";
 import { discoverRepository, discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { peelToCommitObjectId, resolveCommitRevision } from "@/features/wesh/commands/git/revision";
 import { formatLogDate, parseAuthorForLog } from "@/features/wesh/commands/git/log-format";
+
+interface LogReferenceCache {
+  head: GitHeadState | undefined,
+  refs: GitListedRef[] | undefined,
+  peeledCommitObjectIds: Map<string, string | undefined>,
+}
+
+function createLogReferenceCache(): LogReferenceCache {
+  return {
+    head: undefined,
+    refs: undefined,
+    peeledCommitObjectIds: new Map<string, string | undefined>(),
+  };
+}
+
+function isFollowHistoryCommit(entry: GitHistoryCommit): entry is GitFollowHistoryCommit {
+  return 'followPath' in entry && 'parentFollowPath' in entry;
+}
+
+async function readCachedLogHead({ context, repository, cache }: {
+  context: WeshCommandContext,
+  repository: Awaited<ReturnType<typeof discoverRepository>>,
+  cache: LogReferenceCache,
+}): Promise<GitHeadState> {
+  if (cache.head !== undefined) return cache.head;
+  const head = await readHead({ files: context.files, repository });
+  cache.head = head;
+  return head;
+}
+
+async function readCachedLogRefs({ context, repository, cache }: {
+  context: WeshCommandContext,
+  repository: Awaited<ReturnType<typeof discoverRepository>>,
+  cache: LogReferenceCache,
+}): Promise<GitListedRef[]> {
+  if (cache.refs !== undefined) return cache.refs;
+  const refs = await listRefs({ files: context.files, repository, prefix: 'refs' });
+  cache.refs = refs;
+  return refs;
+}
+
+async function tryPeelCachedLogRef({ context, repository, cache, objectId }: {
+  context: WeshCommandContext,
+  repository: Awaited<ReturnType<typeof discoverRepository>>,
+  cache: LogReferenceCache,
+  objectId: string,
+}): Promise<string | undefined> {
+  if (cache.peeledCommitObjectIds.has(objectId)) return cache.peeledCommitObjectIds.get(objectId);
+  let peeled: string | undefined;
+  try {
+    peeled = await peelToCommitObjectId({ files: context.files, repository, objectId });
+  } catch {
+    peeled = undefined;
+  }
+  cache.peeledCommitObjectIds.set(objectId, peeled);
+  return peeled;
+}
 
 function logDecorationRefName({ refName, mode }: {
     refName: string;
@@ -35,10 +94,11 @@ function logDecorationRefName({ refName, mode }: {
   }
   return refName;
 }
-async function collectLogDecorations({ context, repository, mode }: {
+async function collectLogDecorations({ context, repository, mode, cache }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
     mode: Exclude<GitLogDecorationMode, 'none'>;
+    cache: LogReferenceCache;
 }): Promise<Map<string, string>> {
   const labelsByObjectId = new Map<string, string[]>();
   const add = ({ objectId, label }: {
@@ -49,7 +109,7 @@ async function collectLogDecorations({ context, repository, mode }: {
     labels.push(label);
     labelsByObjectId.set(objectId, labels);
   };
-  const head = await readHead({ files: context.files, repository });
+  const head = await readCachedLogHead({ context, repository, cache });
   if (head.objectId !== undefined) {
     add({
       objectId: head.objectId,
@@ -58,15 +118,11 @@ async function collectLogDecorations({ context, repository, mode }: {
         : `HEAD -> ${logDecorationRefName({ refName: head.symbolicRef, mode })}`,
     });
   }
-  const refs = await listRefs({ files: context.files, repository, prefix: 'refs' });
+  const refs = await readCachedLogRefs({ context, repository, cache });
   const tags = refs.filter(ref => ref.refName.startsWith('refs/tags/'));
   for (const ref of [...tags].reverse()) {
-    let objectId: string;
-    try {
-      objectId = await peelToCommitObjectId({ files: context.files, repository, objectId: ref.objectId });
-    } catch {
-      continue;
-    }
+    const objectId = await tryPeelCachedLogRef({ context, repository, cache, objectId: ref.objectId });
+    if (objectId === undefined) continue;
     add({
       objectId,
       label: `tag: ${logDecorationRefName({ refName: ref.refName, mode })}`,
@@ -88,12 +144,8 @@ async function collectLogDecorations({ context, repository, mode }: {
       && !ref.refName.startsWith('refs/tags/'),
   );
   for (const ref of [...miscellaneousRefs].reverse()) {
-    let objectId: string;
-    try {
-      objectId = await peelToCommitObjectId({ files: context.files, repository, objectId: ref.objectId });
-    } catch {
-      continue;
-    }
+    const objectId = await tryPeelCachedLogRef({ context, repository, cache, objectId: ref.objectId });
+    if (objectId === undefined) continue;
     add({ objectId, label: logDecorationRefName({ refName: ref.refName, mode }) });
   }
   return new Map([...labelsByObjectId].map(([objectId, labels]) => [objectId, ` (${labels.join(', ')})`]));
@@ -111,6 +163,9 @@ export async function runLog({ context, args }: {
     allRefs,
     showStat,
     showPatch,
+    nameOnly,
+    nameStatus,
+    follow,
     sinceTimestamp,
     untilTimestamp,
     grepPatterns,
@@ -120,6 +175,7 @@ export async function runLog({ context, args }: {
     pathOperands,
   } = parseLogArguments({ args });
   const repository = await discoverRepositoryFromContext({ context });
+  const referenceCache = createLogReferenceCache();
   const logConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   const logQuoteNonAscii = quoteNonAsciiFromConfig({ config: logConfig });
   const diffRenamesMode = getDiffRenamesConfigMode({ config: logConfig });
@@ -158,14 +214,11 @@ export async function runLog({ context, args }: {
   const includeObjectIds: string[] = [];
   const excludeObjectIds: string[] = [];
   if (allRefs) {
-    const head = await readHead({ files: context.files, repository });
+    const head = await readCachedLogHead({ context, repository, cache: referenceCache });
     if (head.objectId !== undefined) includeObjectIds.push(head.objectId);
-    for (const ref of await listRefs({ files: context.files, repository, prefix: 'refs' })) {
-      try {
-        includeObjectIds.push(await peelToCommitObjectId({ files: context.files, repository, objectId: ref.objectId }));
-      } catch {
-        continue;
-      }
+    for (const ref of await readCachedLogRefs({ context, repository, cache: referenceCache })) {
+      const objectId = await tryPeelCachedLogRef({ context, repository, cache: referenceCache, objectId: ref.objectId });
+      if (objectId !== undefined) includeObjectIds.push(objectId);
     }
   }
   for (const expression of includeExpressions) {
@@ -178,13 +231,14 @@ export async function runLog({ context, args }: {
     const bases = await findMergeBases({
       files: context.files,
       repository,
+      cache: undefined,
       leftObjectId,
       rightObjectId,
     });
     excludeObjectIds.push(...bases);
   }
   if (includeObjectIds.length === 0 && !allRefs) {
-    const head = await readHead({ files: context.files, repository });
+    const head = await readCachedLogHead({ context, repository, cache: referenceCache });
     if (head.objectId === undefined) {
       const branchName = branchNameFromHead({ head }) ?? 'HEAD';
       await context.text().error({ text: `fatal: your current branch '${branchName}' does not have any commits yet\n` });
@@ -197,21 +251,31 @@ export async function runLog({ context, args }: {
     repository,
     expression,
   }))));
-  const history = pathOperands.length === 0
-    ? await (graph ? collectGraphCommitHistory : collectCommitHistory)({
-      files: context.files,
-      repository,
-      includeObjectIds,
-      excludeObjectIds,
-    })
-    : await collectPathLimitedHistory({
+  const history = follow
+    ? await collectFollowHistory({
       files: context.files,
       repository,
       includeObjectIds,
       excludeObjectIds,
       cwd: context.cwd,
-      pathOperands,
-    });
+      pathOperand: pathOperands[0]!,
+      renameLimit,
+    })
+    : pathOperands.length === 0
+      ? await (graph ? collectGraphCommitHistory : collectCommitHistory)({
+        files: context.files,
+        repository,
+        includeObjectIds,
+        excludeObjectIds,
+      })
+      : await collectPathLimitedHistory({
+        files: context.files,
+        repository,
+        includeObjectIds,
+        excludeObjectIds,
+        cwd: context.cwd,
+        pathOperands,
+      });
   let decorations: Map<string, string>;
   switch (decorationMode) {
   case 'none':
@@ -219,7 +283,7 @@ export async function runLog({ context, args }: {
     break;
   case 'short':
   case 'full':
-    decorations = await collectLogDecorations({ context, repository, mode: decorationMode });
+    decorations = await collectLogDecorations({ context, repository, mode: decorationMode, cache: referenceCache });
     break;
   default: {
     const _ex: never = decorationMode;
@@ -274,6 +338,11 @@ export async function runLog({ context, args }: {
       line => testAnyGitBasicRegex({ regexes: grepPatterns, value: line }),
     ))
       continue;
+    const entryPathOperands = isFollowHistoryCommit(entry)
+      ? entry.parentFollowPath !== undefined && entry.parentFollowPath !== entry.followPath
+        ? [entry.followPath, entry.parentFollowPath]
+        : [entry.followPath]
+      : pathOperands;
     if (pickaxeString !== undefined || pickaxeRegex !== undefined) {
       if (entry.commit.parentObjectIds.length > 1)
         continue;
@@ -285,7 +354,7 @@ export async function runLog({ context, args }: {
         repository,
         leftRevision: entry.commit.parentObjectIds[0],
         rightRevision: entry.objectId,
-        pathOperands,
+        pathOperands: entryPathOperands,
         search,
         detectRenames,
         detectCopies,
@@ -309,6 +378,8 @@ export async function runLog({ context, args }: {
         text: `commit ${entry.objectId}${decoration}\nAuthor: ${author.identity}\nDate:   ${formatLogDate({ timestamp: author.timestamp, timezone: author.timezone })}\n\n${message}\n\n`,
       });
     }
+    if (format !== undefined && format !== '' && (nameOnly || nameStatus))
+      await context.text().print({ text: '\n' });
     if (entry.commit.parentObjectIds.length <= 1) {
       const leftRevision = entry.commit.parentObjectIds[0];
       if (showStat) {
@@ -317,7 +388,7 @@ export async function runLog({ context, args }: {
           repository,
           leftRevision,
           rightRevision: entry.objectId,
-          pathOperands,
+          pathOperands: entryPathOperands,
           quoteNonAscii: logQuoteNonAscii,
           detectRenames,
         });
@@ -328,7 +399,29 @@ export async function runLog({ context, args }: {
           repository,
           leftRevision,
           rightRevision: entry.objectId,
-          pathOperands,
+          pathOperands: entryPathOperands,
+          quoteNonAscii: logQuoteNonAscii,
+          detectRenames,
+        });
+      }
+      if (nameOnly) {
+        await writeRevisionNameOnly({
+          context,
+          repository,
+          leftRevision,
+          rightRevision: entry.objectId,
+          pathOperands: entryPathOperands,
+          quoteNonAscii: logQuoteNonAscii,
+          detectRenames,
+        });
+      }
+      if (nameStatus) {
+        await writeRevisionNameStatus({
+          context,
+          repository,
+          leftRevision,
+          rightRevision: entry.objectId,
+          pathOperands: entryPathOperands,
           quoteNonAscii: logQuoteNonAscii,
           detectRenames,
         });

@@ -9,7 +9,6 @@ import { createRef, deleteRef, listRefs, readRef } from '@/features/wesh/command
 import { discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
 import type { GitRepository } from '@/features/wesh/commands/git/repository';
 import { resolveRevision } from '@/features/wesh/commands/git/revision';
-import { compareGitUtf8Strings } from '@/features/wesh/commands/git/utf8-order';
 import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
 import { appendMessageParagraph, cleanupMessage } from '@/features/wesh/commands/git/commit-message';
 
@@ -187,7 +186,7 @@ export async function runTag({ context, args }: {
   if (operands.length === 0) {
     if (annotated || message !== undefined) throw new GitUsageError({ message: 'usage: git tag [-a] [-m <msg>] <tagname> [<object>]', prefix: 'none' });
     const refs = await listRefs({ files: context.files, repository, prefix: 'refs/tags' });
-    for (const ref of refs.sort((left, right) => compareGitUtf8Strings({ left: left.refName, right: right.refName }))) {
+    for (const ref of refs) {
       await context.text().print({ text: `${ref.refName.slice('refs/tags/'.length)}\n` });
     }
     return { exitCode: 0 };

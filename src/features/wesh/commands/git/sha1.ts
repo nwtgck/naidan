@@ -1,3 +1,5 @@
+import { bytesToHex } from './bytes';
+
 const SHA1_INITIAL_STATE = new Uint32Array([
   0x67452301,
   0xefcdab89,
@@ -86,7 +88,7 @@ class IncrementalSha1 implements Sha1Hasher {
   }
 
   digestHex(): string {
-    return Array.from(this.digestBytes(), byte => byte.toString(16).padStart(2, "0")).join("");
+    return bytesToHex({ bytes: this.digestBytes() });
   }
 
   private assertAccepting(): void {

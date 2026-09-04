@@ -6,10 +6,10 @@ import { readCommit } from "@/features/wesh/commands/git/commits";
 import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { fastForwardHead } from "@/features/wesh/commands/git/fast-forward";
 import { sortGitPaths } from "@/features/wesh/commands/git/path-order";
-import { isAncestor } from "@/features/wesh/commands/git/graph";
+import { createGitCommitGraphCache, isAncestor } from "@/features/wesh/commands/git/graph";
 import { readMergeState } from "@/features/wesh/commands/git/merge-state";
 import { resolveGitReflogIdentity, resolveGitTimestamp } from "@/features/wesh/commands/git/identity";
-import { readIndex } from "@/features/wesh/commands/git/index-file";
+import { collectUnmergedPaths, readIndex } from "@/features/wesh/commands/git/index-file";
 import { readHead } from "@/features/wesh/commands/git/refs";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
 import { resolveCommitRevision } from "@/features/wesh/commands/git/revision";
@@ -137,9 +137,9 @@ export async function runMerge({ context, args }: {
   const repository = await discoverRepositoryFromContext({ context });
   const existingMergeState = await readMergeState({ files: context.files, repository });
   if (existingMergeState !== undefined) {
-    const unmergedPaths = sortGitPaths({ paths: new Set((await readIndex({ files: context.files, repository }))
-      .filter(entry => entry.stage !== 0)
-      .map(entry => entry.path)) });
+    const unmergedPaths = sortGitPaths({
+      paths: collectUnmergedPaths({ entries: await readIndex({ files: context.files, repository }) }),
+    });
     if (unmergedPaths.length > 0) {
       await context.text().error({ text: 'error: Merging is not possible because you have unmerged files.\n' });
       await context.text().error({ text: 'fatal: Exiting because of an unresolved conflict.\n' });
@@ -155,13 +155,15 @@ export async function runMerge({ context, args }: {
   const targetExpression = operands[0]!;
   const targetObjectId = await resolveCommitRevision({ files: context.files, repository, expression: targetExpression });
   await readCommit({ files: context.files, repository, objectId: targetObjectId });
-  if (await isAncestor({ files: context.files, repository, ancestorObjectId: targetObjectId, descendantObjectId: head.objectId })) {
+  const graphCache = createGitCommitGraphCache();
+  if (await isAncestor({ files: context.files, repository, cache: graphCache, ancestorObjectId: targetObjectId, descendantObjectId: head.objectId })) {
     await context.text().print({ text: 'Already up to date.\n' });
     return { exitCode: 0 };
   }
   const fastForward = await isAncestor({
     files: context.files,
     repository,
+    cache: graphCache,
     ancestorObjectId: head.objectId,
     descendantObjectId: targetObjectId,
   });
@@ -175,6 +177,7 @@ export async function runMerge({ context, args }: {
       return integrateDivergentMerge({
         context,
         repository,
+        graphCache,
         headObjectId: head.objectId,
         targetObjectId,
         targetLabel: targetExpression,
@@ -192,6 +195,7 @@ export async function runMerge({ context, args }: {
     return integrateDivergentMerge({
       context,
       repository,
+      graphCache,
       headObjectId: head.objectId,
       targetObjectId,
       targetLabel: targetExpression,
@@ -217,6 +221,7 @@ export async function runMerge({ context, args }: {
       message: `merge ${targetExpression}: Fast-forward`,
     },
     contentConfig: await resolveContentConfigForContext({ context, repository }),
+    objectReadCache: graphCache.objectReadCache,
   });
   switch (result.type) {
   case 'checkout-conflict':
