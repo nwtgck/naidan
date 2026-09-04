@@ -10,6 +10,7 @@ import { echoCommandDefinition } from './echo/definition.ts';
 import { pwdCommandDefinition } from './pwd/definition.ts';
 import { whoamiCommandDefinition } from './whoami/definition.ts';
 import { grepCommandDefinition } from './grep/definition.ts';
+import { rgCommandDefinition } from './rg/definition.ts';
 import { findCommandDefinition } from './find/definition.ts';
 import { headCommandDefinition } from './head/definition.ts';
 import { tailCommandDefinition } from './tail/definition.ts';
@@ -99,6 +100,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   pwdCommandDefinition,
   whoamiCommandDefinition,
   grepCommandDefinition,
+  rgCommandDefinition,
   findCommandDefinition,
   headCommandDefinition,
   tailCommandDefinition,
