@@ -1178,6 +1178,59 @@ describe("createModelSupportInvestigationWorkerClient", () => {
   it("hands one runtime-complete exact revision and selected candidate through template, Reference, and Production lanes", async () => {
     const exactRevision = "b".repeat(40);
     const planning = partialRunWithProbeDownloadEvidence({ exactRevision });
+    planning.modelFilePlan = {
+      normalizedModelId: "org/model",
+      resolvedRevision: exactRevision,
+      modelType: "lfm2",
+      registrySource: "ModelRegistry.get_model_files",
+      cacheRevisionProvenance: "unknown",
+      cacheRevisionProvenanceReason: "fixture",
+      candidates: [{
+        candidateId: "webgpu-q4f16",
+        device: "webgpu",
+        dtype: "q4f16",
+        eligibility: "ineligible",
+        files: [{
+          path: "onnx/model_q4f16.onnx",
+          kind: "core-onnx",
+          requirement: "required",
+          repositorySize: undefined,
+          cacheMatches: [],
+        }],
+      }, {
+        candidateId: "webgpu-q4",
+        device: "webgpu",
+        dtype: "q4",
+        eligibility: "eligible",
+        files: [{
+          path: "onnx/model_q4.onnx",
+          kind: "core-onnx",
+          requirement: "required",
+          repositorySize: 10,
+          cacheMatches: [{
+            path: `resolve/${exactRevision}/onnx/model_q4.onnx`,
+            size: 10,
+            hasCompletionMarker: true,
+          }],
+        }],
+      }, {
+        candidateId: "wasm-q4",
+        device: "wasm",
+        dtype: "q4",
+        eligibility: "eligible",
+        files: [{
+          path: "onnx/model_q4.onnx",
+          kind: "core-onnx",
+          requirement: "required",
+          repositorySize: 10,
+          cacheMatches: [{
+            path: `resolve/${exactRevision}/onnx/model_q4.onnx`,
+            size: 10,
+            hasCompletionMarker: true,
+          }],
+        }],
+      }],
+    } as never;
     const completedEvidence = {
       ...planning.downloadEvidence,
       mode: "runtime-complete" as const,
@@ -1220,6 +1273,23 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const result = await client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
 
     expect(mocks.completeRuntimeEvidence).toHaveBeenCalledTimes(1);
+    expect(mocks.completeRuntimeEvidence).toHaveBeenCalledWith(expect.objectContaining({
+      candidateOrder: [
+        { device: "webgpu", dtype: "q4" },
+        { device: "wasm", dtype: "q4" },
+      ],
+      reusableCandidateOrderByRevision: {
+        [exactRevision]: [
+          { device: "webgpu", dtype: "q4" },
+          { device: "wasm", dtype: "q4" },
+        ],
+        main: [],
+      },
+      requiredModelPathsByCandidate: {
+        "webgpu/q4": ["onnx/model_q4.onnx"],
+        "wasm/q4": ["onnx/model_q4.onnx"],
+      },
+    }));
     expect(templateRemote.inspectDownloadedTemplateBehavior).toHaveBeenCalledWith({
       repository: expect.objectContaining({ resolvedRevision: exactRevision }),
       loaderRevisionOption: exactRevision,

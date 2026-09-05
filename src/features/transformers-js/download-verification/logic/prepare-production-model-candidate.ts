@@ -51,12 +51,30 @@ function failedPrefetchFiles({ files }: { files: TransformersJsPrefetchFileResul
   return files.filter((file): file is Extract<TransformersJsPrefetchFileResult, { status: 'failed' }> => file.status === 'failed');
 }
 
-export async function prepareProductionModelCandidate({ modelId, revision, candidate, progressCallback = () => undefined, signal }: {
+function exactRevisionModelArtifactUrl({ modelId, revision, path }: {
+  modelId: string;
+  revision: string;
+  path: string;
+}): string {
+  const encodedModelId = modelId.split('/').map(part => encodeURIComponent(part)).join('/');
+  const encodedPath = path.split('/').map(part => encodeURIComponent(part)).join('/');
+  return `https://huggingface.co/${encodedModelId}/resolve/${encodeURIComponent(revision)}/${encodedPath}`;
+}
+
+export async function prepareProductionModelCandidate({
+  modelId,
+  revision,
+  candidate,
+  progressCallback = () => undefined,
+  signal,
+  requiredModelPaths,
+}: {
   modelId: string;
   revision: string;
   candidate: TransformersJsProductionInvestigationCandidate;
   progressCallback?: TransformersJsProgressCallback;
   signal?: AbortSignal;
+  requiredModelPaths?: readonly string[];
 }): Promise<DownloadVerificationCandidatePreparationObservation> {
   signal?.throwIfAborted();
   const requestObservation = await observeProductionModelArtifactCandidateRequests({
@@ -113,8 +131,24 @@ export async function prepareProductionModelCandidate({ modelId, revision, candi
 
   const client = createTransformersJsWorkerClient();
   try {
+    // Held-fetch observation is primary evidence of what Transformers.js actually
+    // requests, but some composite loaders issue later model requests only after
+    // earlier requests resolve. Therefore that observation can be a staged prefix,
+    // not a complete download manifest. When MSI has a repository-confirmed
+    // ModelRegistry plan, explicitly download the union so a later cache-only load
+    // never has to discover a missing multi-GB artifact. This is download
+    // preparation only; model-load investigation remains strictly cache-only.
+    const observedPaths = new Set(requestObservation.requests.map(request => request.path));
+    const urls = [
+      ...requestObservation.requests.map(request => request.url),
+      ...(requiredModelPaths ?? []).filter(path => !observedPaths.has(path)).map(path => exactRevisionModelArtifactUrl({
+        modelId: normalizedModelId,
+        revision,
+        path,
+      })),
+    ];
     const operation = client.prefetchUrls({
-      urls: requestObservation.requests.map(request => request.url),
+      urls,
       progressCallback,
     });
     const prefetchResult = await awaitWithAbort({ operation, signal });
@@ -164,4 +198,5 @@ export async function prepareProductionModelCandidate({ modelId, revision, candi
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  exactRevisionModelArtifactUrl,
 };

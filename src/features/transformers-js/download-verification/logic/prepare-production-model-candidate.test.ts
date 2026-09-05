@@ -114,6 +114,43 @@ describe('prepareProductionModelCandidate', () => {
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 
+  it('adds repository-confirmed staged model files that held-fetch observation cannot reach yet', async () => {
+    const dispose = vi.fn(async () => {});
+    const prefetchUrls = vi.fn(async ({ urls }: { urls: string[] }) => result({
+      files: urls.map(url => successfulFile({ path: new URL(url).pathname.split(`/resolve/${REVISION}/`)[1]! })),
+    }));
+    vi.mocked(createTransformersJsWorkerClient).mockReturnValue({
+      prefetchUrls,
+      dispose,
+    } as unknown as ReturnType<typeof createTransformersJsWorkerClient>);
+
+    await expect(prepareProductionModelCandidate({
+      modelId: MODEL_ID,
+      revision: REVISION,
+      candidate: CANDIDATE,
+      requiredModelPaths: [
+        'onnx/model_q4f16.onnx',
+        'onnx/model_q4f16.onnx_data',
+        'onnx/vision_encoder_q4f16.onnx',
+        'onnx/vision_encoder_q4f16.onnx_data',
+      ],
+    })).resolves.toMatchObject({
+      status: 'ready',
+      prefetch: { requestedCount: 4, downloadedCount: 4, failedCount: 0, complete: true },
+    });
+
+    expect(prefetchUrls).toHaveBeenCalledWith({
+      urls: [
+        `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/model_q4f16.onnx`,
+        `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/model_q4f16.onnx_data`,
+        `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/vision_encoder_q4f16.onnx`,
+        `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/vision_encoder_q4f16.onnx_data`,
+      ],
+      progressCallback: expect.any(Function),
+    });
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
   it('classifies a missing required repository artifact as candidate unavailability', async () => {
     const dispose = vi.fn(async () => {});
     vi.mocked(createTransformersJsWorkerClient).mockReturnValue({

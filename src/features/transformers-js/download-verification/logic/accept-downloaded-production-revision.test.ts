@@ -55,6 +55,61 @@ describe('acceptDownloadedProductionRevision', () => {
     expect(worker.dispose).toHaveBeenCalledOnce();
   });
 
+  it('uses only constrained repository-eligible candidates and never invokes the full fallback sequence', async () => {
+    const worker = client({ verifyDownloadedModelRevision: vi.fn(async () => ({ device: 'webgpu' as const, dtype: 'q4f16' as const })) });
+    vi.mocked(worker.verifyDownloadedModelCandidate).mockResolvedValue({ device: 'webgpu', dtype: 'q4' });
+    vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
+
+    const result = await acceptDownloadedProductionRevision({
+      modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+      repositoryResolvedRevision: REVISION,
+      cacheRevision: REVISION,
+      loadRevision: REVISION,
+      candidates: [
+        { device: 'webgpu', dtype: 'q4' },
+        { device: 'wasm', dtype: 'q4' },
+      ],
+    });
+
+    expect(result).toMatchObject({ status: 'accepted', selectedDevice: 'webgpu', selectedDtype: 'q4' });
+    expect(worker.verifyDownloadedModelRevision).not.toHaveBeenCalled();
+    expect(worker.verifyDownloadedModelCandidate).toHaveBeenCalledTimes(1);
+    expect(worker.verifyDownloadedModelCandidate).toHaveBeenCalledWith(expect.objectContaining({
+      modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+      loadRevision: REVISION,
+      candidate: { device: 'webgpu', dtype: 'q4' },
+    }));
+    expect(worker.verifyDownloadedModelCandidate).not.toHaveBeenCalledWith(expect.objectContaining({
+      candidate: { device: 'webgpu', dtype: 'q4f16' },
+    }));
+  });
+
+  it('preserves constrained Production order when webgpu q4 rejects and wasm q4 succeeds', async () => {
+    const worker = client({ verifyDownloadedModelRevision: vi.fn() });
+    vi.mocked(worker.verifyDownloadedModelCandidate)
+      .mockRejectedValueOnce(new Error('WebGPU q4 runtime rejected'))
+      .mockResolvedValueOnce({ device: 'wasm', dtype: 'q4' });
+    vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
+
+    const result = await acceptDownloadedProductionRevision({
+      modelId: 'org/model',
+      repositoryResolvedRevision: REVISION,
+      cacheRevision: REVISION,
+      loadRevision: REVISION,
+      candidates: [
+        { device: 'webgpu', dtype: 'q4' },
+        { device: 'wasm', dtype: 'q4' },
+      ],
+    });
+
+    expect(result).toMatchObject({ status: 'accepted', selectedDevice: 'wasm', selectedDtype: 'q4' });
+    expect(vi.mocked(worker.verifyDownloadedModelCandidate).mock.calls.map(([input]) => input.candidate)).toEqual([
+      { device: 'webgpu', dtype: 'q4' },
+      { device: 'wasm', dtype: 'q4' },
+    ]);
+    expect(worker.verifyDownloadedModelRevision).not.toHaveBeenCalled();
+  });
+
   it('classifies a missing required cache artifact as failed, not runtime rejected', async () => {
     const worker = client({ verifyDownloadedModelRevision: vi.fn(async () => {
       throw new Error('loadDownloadedModel() MUST NOT fetch model artifacts; missing https://huggingface.co/org/model/resolve/main/onnx/model_q4.onnx?secret=1');

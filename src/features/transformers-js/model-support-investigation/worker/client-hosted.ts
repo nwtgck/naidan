@@ -18,6 +18,7 @@ import type {
 } from "@/features/transformers-js/types";
 import { runModelLoadInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-model-load-investigation";
 import { completeDownloadVerificationRuntimeEvidence } from "@/features/transformers-js/download-verification/logic/complete-download-verification-runtime-evidence";
+import { selectDownloadRuntimeCandidates } from "@/features/transformers-js/model-support-investigation/logic/select-download-runtime-candidates";
 import type { DownloadVerificationRuntimeCompletionEvidence } from "@/features/transformers-js/download-verification/evidence/types";
 import { runProductionLaneComparison } from "@/features/transformers-js/model-support-investigation/logic/run-production-lane-comparison";
 import { fromPlanningWorkerRun } from "@/features/transformers-js/model-support-investigation/logic/planning-worker-run";
@@ -432,6 +433,9 @@ export function createModelSupportInvestigationWorkerClient({
         publishCheckpoint();
 
         if (partialRun.downloadEvidence !== undefined) {
+          const runtimeCandidateSelection = partialRun.modelFilePlan === undefined
+            ? undefined
+            : selectDownloadRuntimeCandidates({ modelFilePlan: partialRun.modelFilePlan });
           const runtimeAbortController = new AbortController();
           activeRuntimeAbortController = runtimeAbortController;
           publishEvent({
@@ -447,6 +451,7 @@ export function createModelSupportInvestigationWorkerClient({
                 evidence: partialRun.downloadEvidence,
                 signal: runtimeAbortController.signal,
                 allowLegacyMainReuse: !legacyMainHasBoundedMismatch({ provenance: partialRun.cache?.provenance }),
+                ...(runtimeCandidateSelection === undefined ? {} : runtimeCandidateSelection),
               }),
             });
             partialRun = { ...partialRun, downloadEvidence: completedEvidence };

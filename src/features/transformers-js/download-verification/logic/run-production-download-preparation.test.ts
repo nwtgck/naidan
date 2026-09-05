@@ -163,4 +163,40 @@ describe('runProductionDownloadPreparation', () => {
     }));
   });
 
+  it('injects repository-confirmed staged model paths into candidate download preparation', async () => {
+    vi.mocked(acceptDownloadedProductionCandidate).mockImplementation(async ({ candidate }) => ({
+      modelId: MODEL_ID,
+      resolvedRevision: REVISION,
+      loaderRevisionOption: REVISION,
+      candidate,
+      status: 'accepted',
+      observationMethod: 'production-cache-only-runtime-preparation',
+      error: undefined,
+    }));
+
+    await runProductionDownloadPreparation({
+      modelId: MODEL_ID,
+      revision: REVISION,
+      candidateOrder: [{ device: 'webgpu', dtype: 'q4f16' }],
+      requiredModelPathsByCandidate: {
+        'webgpu/q4f16': [
+          'onnx/decoder_model_merged_q4f16.onnx',
+          'onnx/decoder_model_merged_q4f16.onnx_data',
+          'onnx/vision_encoder_q4f16.onnx',
+          'onnx/vision_encoder_q4f16.onnx_data',
+        ],
+      },
+    });
+
+    expect(prepareProductionModelCandidate).toHaveBeenCalledWith(expect.objectContaining({
+      candidate: { device: 'webgpu', dtype: 'q4f16' },
+      requiredModelPaths: [
+        'onnx/decoder_model_merged_q4f16.onnx',
+        'onnx/decoder_model_merged_q4f16.onnx_data',
+        'onnx/vision_encoder_q4f16.onnx',
+        'onnx/vision_encoder_q4f16.onnx_data',
+      ],
+    }));
+  });
+
 });

@@ -313,6 +313,65 @@ describe('runCachedRevisionAcceptanceOrchestration', () => {
     expect(result.attempts.map(attempt => attempt.candidate.revision)).toEqual([CURRENT, 'main']);
   });
 
+  it('skips a cached revision whose constrained candidate set is empty and forwards the next revision candidate set', async () => {
+    const cached = inventory([
+      revision({ revision: 'main', kind: 'legacy-main', lastModified: 10 }),
+      revision({ revision: CURRENT, kind: 'immutable-sha', lastModified: 20 }),
+    ]);
+    const q4 = [{ device: 'webgpu' as const, dtype: 'q4' as const }];
+    const acceptRevision = vi.fn(async ({ candidate }: { candidate: DownloadVerificationCachedRevisionLoadCandidate }) => (
+      observation({ candidate, repositoryResolvedRevision: CURRENT, status: 'accepted' })
+    ));
+
+    const result = await runCachedRevisionAcceptanceOrchestration({
+      inventory: cached,
+      resolvedRevision: CURRENT,
+      candidateOrderByRevision: {
+        [CURRENT]: [],
+        main: q4,
+      },
+      acceptRevision,
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(result.selectedRevision?.revision).toBe('main');
+    expect(acceptRevision).toHaveBeenCalledTimes(1);
+    expect(acceptRevision).toHaveBeenCalledWith({
+      candidate: { revision: 'main', loaderRevisionOption: undefined, source: 'legacy-main' },
+      candidateOrder: q4,
+    });
+  });
+
+  it('forwards per-revision constrained candidates into the actual revision acceptance primitive', async () => {
+    const cached = inventory([
+      revision({ revision: CURRENT, kind: 'immutable-sha', lastModified: 20 }),
+    ]);
+    const q4 = [{ device: 'webgpu' as const, dtype: 'q4' as const }];
+    vi.mocked(acceptDownloadedProductionRevision).mockResolvedValue({
+      modelId: 'org/model',
+      repositoryResolvedRevision: CURRENT,
+      cacheRevision: CURRENT,
+      loaderRevisionOption: CURRENT,
+      status: 'accepted',
+      selectedDevice: 'webgpu',
+      selectedDtype: 'q4',
+      observationMethod: 'production-cache-only-revision-runtime-preparation',
+      error: undefined,
+    });
+
+    await acceptReusableDownloadedProductionRevisionsForDownload({
+      inventory: cached,
+      resolvedRevision: CURRENT,
+      candidateOrderByRevision: { [CURRENT]: q4 },
+    });
+
+    expect(acceptDownloadedProductionRevision).toHaveBeenCalledWith(expect.objectContaining({
+      cacheRevision: CURRENT,
+      loadRevision: CURRENT,
+      candidates: q4,
+    }));
+  });
+
   it('wires planned cache identity into the actual revision acceptance primitive', async () => {
     const cached = inventory([
       revision({ revision: 'main', kind: 'legacy-main', lastModified: 10 }),

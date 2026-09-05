@@ -137,7 +137,11 @@ export async function inspectModelCache({
     })
     .sort((a, b) => a.localeCompare(b));
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-  const incompleteFileCount = files.filter(file => !file.hasCompletionMarker).length;
+  // Completion markers are the commit contract for cached Hub artifacts under
+  // resolve/<revision>/.... Preserve any root-level legacy metadata in raw
+  // inventory evidence, but do not misclassify it as an incomplete model file.
+  const completionTrackedFiles = files.filter(file => file.repositoryPath !== undefined);
+  const incompleteFileCount = completionTrackedFiles.filter(file => !file.hasCompletionMarker).length;
   const zeroByteFileCount = files.filter(file => file.size === 0).length;
   const weightFileCount = files.filter(file => file.isWeightFile).length;
   return {
@@ -154,7 +158,7 @@ export async function inspectModelCache({
     orphanCompletionMarkerPaths,
     zeroByteFileCount,
     weightFileCount,
-    allFilesHaveCompletionMarkers: files.length > 0 && incompleteFileCount === 0,
+    allFilesHaveCompletionMarkers: completionTrackedFiles.length > 0 && incompleteFileCount === 0,
     files,
   };
 }
