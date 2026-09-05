@@ -1,5 +1,26 @@
 // SHARED__ keys intentionally couple every call site to one product-wide copy decision.
 // Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
+import { DeveloperTab__inspect_transformers_js_downloads_without_downloading_full_model_files } from '@/strings/messages/DeveloperTab__inspect_transformers_js_downloads_without_downloading_full_model_files/pt-BR';
+import { DeveloperTab__open_download_verification } from '@/strings/messages/DeveloperTab__open_download_verification/pt-BR';
+import { DeveloperTab__transformers_js_download_verification } from '@/strings/messages/DeveloperTab__transformers_js_download_verification/pt-BR';
+import { DownloadVerificationModal__close } from '@/strings/messages/DownloadVerificationModal__close/pt-BR';
+import { DownloadVerificationModal__disabled } from '@/strings/messages/DownloadVerificationModal__disabled/pt-BR';
+import { DownloadVerificationModal__download_verification } from '@/strings/messages/DownloadVerificationModal__download_verification/pt-BR';
+import { DownloadVerificationModal__download_evidence } from '@/strings/messages/DownloadVerificationModal__download_evidence/pt-BR';
+import { DownloadVerificationModal__evidence } from '@/strings/messages/DownloadVerificationModal__evidence/pt-BR';
+import { DownloadVerificationModal__probe_only_evidence_description } from '@/strings/messages/DownloadVerificationModal__probe_only_evidence_description/pt-BR';
+import { DownloadVerificationModal__full_model_download } from '@/strings/messages/DownloadVerificationModal__full_model_download/pt-BR';
+import { DownloadVerificationModal__large_model_files_are_never_downloaded_in_full } from '@/strings/messages/DownloadVerificationModal__large_model_files_are_never_downloaded_in_full/pt-BR';
+import { DownloadVerificationModal__model_id_or_hugging_face_url } from '@/strings/messages/DownloadVerificationModal__model_id_or_hugging_face_url/pt-BR';
+import { DownloadVerificationModal__network_payload_consumed } from '@/strings/messages/DownloadVerificationModal__network_payload_consumed/pt-BR';
+import { DownloadVerificationModal__no_model_artifacts_were_probed } from '@/strings/messages/DownloadVerificationModal__no_model_artifacts_were_probed/pt-BR';
+import { DownloadVerificationModal__probe_byte_budget } from '@/strings/messages/DownloadVerificationModal__probe_byte_budget/pt-BR';
+import { DownloadVerificationModal__production_model_artifact_requests } from '@/strings/messages/DownloadVerificationModal__production_model_artifact_requests/pt-BR';
+import { DownloadVerificationModal__public_models_only_credentials_are_omitted_and_probe_data_is_not_saved_to_the_model_cache } from '@/strings/messages/DownloadVerificationModal__public_models_only_credentials_are_omitted_and_probe_data_is_not_saved_to_the_model_cache/pt-BR';
+import { DownloadVerificationModal__repository_files } from '@/strings/messages/DownloadVerificationModal__repository_files/pt-BR';
+import { DownloadVerificationModal__run_verification } from '@/strings/messages/DownloadVerificationModal__run_verification/pt-BR';
+import { DownloadVerificationModal__transport_probes } from '@/strings/messages/DownloadVerificationModal__transport_probes/pt-BR';
+import { DownloadVerificationModal__verification_failed } from '@/strings/messages/DownloadVerificationModal__verification_failed/pt-BR';
 import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/pt-BR';
 import { SHARED__assistant } from '@/strings/messages/SHARED__assistant/pt-BR';
 import { SHARED__browser_provided } from '@/strings/messages/SHARED__browser_provided/pt-BR';
@@ -1633,6 +1654,27 @@ import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__we
 import type { Strings } from './en';
 
 export const catalog = {
+  DeveloperTab__inspect_transformers_js_downloads_without_downloading_full_model_files,
+  DeveloperTab__open_download_verification,
+  DeveloperTab__transformers_js_download_verification,
+  DownloadVerificationModal__close,
+  DownloadVerificationModal__disabled,
+  DownloadVerificationModal__download_verification,
+  DownloadVerificationModal__download_evidence,
+  DownloadVerificationModal__evidence,
+  DownloadVerificationModal__probe_only_evidence_description,
+  DownloadVerificationModal__full_model_download,
+  DownloadVerificationModal__large_model_files_are_never_downloaded_in_full,
+  DownloadVerificationModal__model_id_or_hugging_face_url,
+  DownloadVerificationModal__network_payload_consumed,
+  DownloadVerificationModal__no_model_artifacts_were_probed,
+  DownloadVerificationModal__probe_byte_budget,
+  DownloadVerificationModal__production_model_artifact_requests,
+  DownloadVerificationModal__public_models_only_credentials_are_omitted_and_probe_data_is_not_saved_to_the_model_cache,
+  DownloadVerificationModal__repository_files,
+  DownloadVerificationModal__run_verification,
+  DownloadVerificationModal__transport_probes,
+  DownloadVerificationModal__verification_failed,
   SHARED__all_chats,
   SHARED__assistant,
   SHARED__browser_provided,

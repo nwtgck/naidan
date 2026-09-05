@@ -2,6 +2,10 @@ import type {
   ModelSupportInvestigationRecovery,
   ModelSupportInvestigationRun,
 } from "@/features/transformers-js/model-support-investigation/types";
+import type {
+  DownloadVerificationEvidenceArchive,
+  DownloadVerificationEvidenceInput,
+} from "@/features/transformers-js/download-verification/evidence/types";
 
 export interface ModelSupportInvestigationEvidenceArchive {
   blob: Blob,
@@ -12,6 +16,9 @@ export interface IModelSupportInvestigationEvidenceWorker {
   createPartialEvidence({ request }: {
     request: Blob,
   }): Promise<ModelSupportInvestigationEvidenceArchive>,
+  createDownloadVerificationEvidence({ request }: {
+    request: Blob,
+  }): Promise<DownloadVerificationEvidenceArchive>,
 }
 
 export interface ModelSupportInvestigationEvidenceWorkerClient {
@@ -19,6 +26,9 @@ export interface ModelSupportInvestigationEvidenceWorkerClient {
     run: ModelSupportInvestigationRun,
     recovery: ModelSupportInvestigationRecovery | undefined,
   }): Promise<ModelSupportInvestigationEvidenceArchive>,
+  createDownloadVerificationEvidence({ evidence }: {
+    evidence: DownloadVerificationEvidenceInput,
+  }): Promise<DownloadVerificationEvidenceArchive>,
   dispose(): Promise<void>,
 }
 

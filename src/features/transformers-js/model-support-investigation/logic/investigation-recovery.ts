@@ -12,6 +12,7 @@ const MAXIMUM_RETAINED_EVENTS = 512;
 
 const LATER_STEPS: ModelSupportInvestigationStep[] = [
   { id: "repository-information", status: "not-run", detail: undefined },
+  { id: "download-evidence", status: "not-run", detail: undefined },
   { id: "existing-model-data", status: "not-run", detail: undefined },
   { id: "model-declarations", status: "not-run", detail: undefined },
   { id: "template-behavior", status: "not-run", detail: undefined },
@@ -99,6 +100,7 @@ export function createInitialInvestigationCheckpoint({
       ],
       runtimeAssets: undefined,
       repository: undefined,
+      downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,
       templateBehavior: undefined,

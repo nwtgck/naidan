@@ -26,6 +26,7 @@ function updateLoadingStep({ run, status, detail }: {
       return step;
     case "runtime-assets":
     case "repository-information":
+    case "download-evidence":
     case "existing-model-data":
     case "model-declarations":
     case "template-behavior":
@@ -120,9 +121,10 @@ export async function runModelLoadInvestigation({
   createAttemptId,
 }: {
   partialRun: ModelSupportInvestigationRun,
-  runAttempt: ({ candidate, autoClass, onAttemptCheckpoint }: {
+  runAttempt: ({ candidate, autoClass, loaderRevisionOption, onAttemptCheckpoint }: {
     candidate: ModelSupportInvestigationCandidateFilePlan,
     autoClass: ModelSupportInvestigationGenerationAutoClassName,
+    loaderRevisionOption: string | null,
     onAttemptCheckpoint: ({ attempt }: { attempt: ModelSupportInvestigationLoadAttemptCheckpoint }) => void,
   }) => Promise<ModelSupportInvestigationLoadAttempt>,
   onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
@@ -173,7 +175,24 @@ export async function runModelLoadInvestigation({
     return run;
   }
 
-  const candidates = modelFilePlan.candidates.filter(candidate => candidate.eligibility === "eligible");
+  const runtimeCompletion = run.downloadEvidence?.runtimeCompletion;
+  if (runtimeCompletion !== undefined && runtimeCompletion.status !== 'accepted') {
+    const detail = `Blocked because runtime-complete download preparation ended with ${runtimeCompletion.status}`;
+    emit({ status: "blocked", detail });
+    run.status = "failed";
+    run.error = appendError({ existing: run.error, detail });
+    run.currentOperation = "Model loading investigation was blocked by incomplete Production cache preparation";
+    run.completedAt = now();
+    return run;
+  }
+
+  const eligibleCandidates = modelFilePlan.candidates.filter(candidate => candidate.eligibility === "eligible");
+  const selectedRuntimeCandidate = runtimeCompletion?.selectedCandidate;
+  const candidates = selectedRuntimeCandidate === undefined
+    ? eligibleCandidates
+    : eligibleCandidates.filter(candidate => (
+      candidate.device === selectedRuntimeCandidate.device && candidate.dtype === selectedRuntimeCandidate.dtype
+    ));
   if (candidates.length === 0) {
     const detail = "Blocked because no fixed q4f16 or q4 candidate has all required repository files";
     emit({ status: "blocked", detail });
@@ -184,8 +203,11 @@ export async function runModelLoadInvestigation({
     return run;
   }
 
+  const loaderRevisionOption = runtimeCompletion === undefined
+    ? investigationModelLoadRevision({ requestedRevision: repository.requestedRevision }) ?? null
+    : runtimeCompletion.loaderRevisionOption;
   let successfulAttempt: ModelSupportInvestigationLoadAttempt | undefined;
-  emit({ status: "running", detail: `Starting ${candidates[0]?.candidateId} in a fresh investigation Worker` });
+  emit({ status: "running", detail: `Starting ${candidates[0]?.candidateId} in a fresh investigation Worker using ${loaderRevisionOption ?? 'main'} cache revision` });
   for (const candidate of candidates) {
     let attempt: ModelSupportInvestigationLoadAttempt;
     let latestAttemptCheckpoint: ModelSupportInvestigationLoadAttemptCheckpoint | undefined;
@@ -194,6 +216,7 @@ export async function runModelLoadInvestigation({
       attempt = await runAttempt({
         candidate,
         autoClass,
+        loaderRevisionOption,
         onAttemptCheckpoint: ({ attempt: checkpoint }) => {
           latestAttemptCheckpoint = structuredClone(checkpoint);
           run.activeLoadAttempt = structuredClone(checkpoint);
@@ -208,7 +231,7 @@ export async function runModelLoadInvestigation({
         candidate,
         autoClass,
         repositoryRevision: repository.resolvedRevision,
-        loaderRevisionOption: investigationModelLoadRevision({ requestedRevision: repository.requestedRevision }) ?? null,
+        loaderRevisionOption,
         error,
         checkpoint: latestAttemptCheckpoint,
         now,

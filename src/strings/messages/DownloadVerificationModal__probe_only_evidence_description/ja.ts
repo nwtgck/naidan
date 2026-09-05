@@ -1,0 +1,1 @@
+export const DownloadVerificationModal__probe_only_evidence_description = (): string => 'Probe-only のリポジトリ、実 Transformers.js リクエスト、transport、candidate、cache inventory の一次事実を保存します。この単独probeではruntimeのmodel load・推論・generation成功は検証しません。runtime-complete EvidenceはModel Support Investigationで取得します。';

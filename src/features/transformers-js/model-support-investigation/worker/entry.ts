@@ -40,7 +40,6 @@ import {
 import { evaluateCandidateRequiredFileCoverage } from "@/features/transformers-js/model-support-investigation/logic/evaluate-candidate-required-file-coverage";
 import { inspectModelDeclarations } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-declarations";
 import { inspectTemplateBehavior } from "@/features/transformers-js/model-support-investigation/logic/inspect-template-behavior";
-import { investigationModelLoadRevision } from "@/features/transformers-js/model-support-investigation/logic/investigation-model-load-revision";
 import { inspectModelFilePlan } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-file-plan";
 import { inspectChatPersistenceRoundTrip } from "@/features/transformers-js/model-support-investigation/logic/inspect-chat-persistence-roundtrip";
 import { inspectRuntimeEnvironment } from "@/features/transformers-js/model-support-investigation/logic/inspect-runtime-environment";
@@ -58,6 +57,7 @@ import { selectGenerationStrategy } from "@/features/transformers-js/generation-
 import { configureHostedTransformersRuntime } from "@/features/transformers-js/runtime/configure-hosted-runtime";
 import { createHostedTransformersModelFetch } from "@/features/transformers-js/runtime/model-fetch";
 import { createOpfsModelCache } from "@/features/transformers-js/runtime/opfs-model-cache";
+import { collectDownloadVerificationEvidence } from '@/features/transformers-js/download-verification/logic/collect-download-verification-evidence';
 import {
   createRuntimeControlModelBytes,
   RUNTIME_CONTROL_FIXTURE_ID,
@@ -455,7 +455,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           };
         },
         onEvent,
-        onRunUpdate: ({ run }) => onRunCheckpoint({ run }),
+        onRunUpdate: ({ run }) => onRunCheckpoint({ run: toPlanningWorkerRun({ run }) }),
         createRunId: () => crypto.randomUUID(),
         now: () => new Date().toISOString(),
       }),
@@ -463,6 +463,26 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         modelId,
         requestedRevision: "main",
         repositoryFetch: runtimeFetch,
+      }),
+      collectDownloadEvidence: async ({ repository, runId }) => collectDownloadVerificationEvidence({
+        modelId: repository.normalizedModelId,
+        runId,
+        browserFetch: runtimeFetch,
+        storageRoot: await navigator.storage.getDirectory(),
+        resolvedRepository: {
+          modelId: repository.requestedModelId,
+          normalizedModelId: repository.normalizedModelId,
+          requestedRevision: repository.requestedRevision,
+          resolvedRevision: repository.resolvedRevision,
+          repositoryFiles: repository.files.map(file => ({
+            path: file.path,
+            size: file.size,
+            blobId: file.blobId,
+            lfsOid: file.lfsOid,
+            lfsSha256: undefined,
+            lfsSize: undefined,
+          })),
+        },
       }),
       inspectCache: async () => inspectModelCache({
         modelId,
@@ -499,6 +519,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           },
         ),
       }),
+      deferTemplateBehavior: true,
       inspectModelFilePlan: async ({ repository, declarations, cache }) => {
         const config = new PretrainedConfig(declarations.config);
         return inspectModelFilePlan({
@@ -517,8 +538,21 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
     });
     return toPlanningWorkerRun({ run });
   },
+  async inspectDownloadedTemplateBehavior({ repository, loaderRevisionOption }) {
+    return await inspectTemplateBehavior({
+      repository,
+      loaderRevisionOption,
+      loadTokenizer: async ({ modelId: tokenizerModelId, revision }) => AutoTokenizer.from_pretrained(
+        tokenizerModelId,
+        {
+          ...(revision === undefined ? {} : { revision }),
+          local_files_only: true,
+        },
+      ),
+    });
+  },
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level remote arguments to remain transferable.
-  async runCandidateAttempt(repository, declarations, templateBehavior, candidate, onEvent, onAttemptEvent, onAttemptCheckpoint) {
+  async runCandidateAttempt(repository, declarations, templateBehavior, loaderRevisionOption, candidate, onEvent, onAttemptEvent, onAttemptCheckpoint) {
     // Keep the measured load path identical to normal Chat. Repository SHA
     // resolution is Evidence/provenance metadata, not a second cache namespace.
     const modelLoadProgress = createModelLoadProgressTracker({ candidateId: candidate.candidateId });
@@ -530,7 +564,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         modelLoadProgress.observeCacheMatch({ observation, at: new Date().toISOString() });
       },
     });
-    const loadRevision = investigationModelLoadRevision({ requestedRevision: repository.requestedRevision });
+    const loadRevision = loaderRevisionOption ?? undefined;
     const config = new PretrainedConfig(declarations.config);
     const autoClass = selectGenerationAutoClass({ repository, declarations });
     let candidateTokenizer: PreTrainedTokenizer | undefined;
@@ -546,6 +580,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
       declarations,
       templateBehavior,
       candidate,
+      loaderRevisionOption,
       autoClass,
       loadDownloadedModel: async ({ onProgressObservation }) => {
         if (autoClass === undefined) {

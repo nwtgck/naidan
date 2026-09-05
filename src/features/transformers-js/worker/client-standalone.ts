@@ -27,8 +27,9 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
     }): Promise<TransformersJsPrefetchResult> {
       throw createUnsupportedError();
     },
-    async loadDownloadedModel({ modelId: _modelId, progressCallback: _progressCallback }: {
+    async loadDownloadedModel({ modelId: _modelId, revision: _revision, progressCallback: _progressCallback }: {
       modelId: string,
+      revision?: string,
       progressCallback: TransformersJsProgressCallback,
     }): Promise<ModelLoadResult> {
       throw createUnsupportedError();

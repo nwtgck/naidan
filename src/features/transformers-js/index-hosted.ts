@@ -1,17 +1,18 @@
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import { createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
-import { createTransformersJsScannerWorkerClient } from '@/features/transformers-js/scanner/worker/client';
-import { isGemma4Model } from '@/features/transformers-js/models/gemma4';
+import { inspectDownloadVerificationCachedRevisions, planDownloadVerificationCachedRevisionLoadCandidates } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
+import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
+import { resolvePublicHuggingFaceRevision } from '@/features/transformers-js/download-verification/logic/resolve-public-hugging-face-revision';
+import { runProductionDownloadPreparation } from '@/features/transformers-js/download-verification/logic/run-production-download-preparation';
+import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
 import type {
   ProgressInfo,
-  ScanTask,
   WorkerToolDefinition,
   WorkerToolJsonObject,
   TransformersJsWorkerClient,
   TransformersJsProgressCallback,
   TransformersJsChunkCallback,
   TransformersJsToolCallsCallback,
-  TransformersJsPrefetchResult,
 } from './types';
 
 /**
@@ -19,15 +20,6 @@ import type {
  */
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>,
-}
-
-interface TransformersJsPreDownloadResult {
-  discoveredFileCount: number,
-  prefetchResult: TransformersJsPrefetchResult | undefined,
-  error: {
-    name: string,
-    message: string,
-  } | undefined,
 }
 
 // Singleton state for UI
@@ -43,6 +35,7 @@ let loadingError: string | undefined = undefined;
 let isCached: boolean = false;
 let isLoadingFromCache: boolean = false;
 let currentDevice: string = 'wasm';
+const downloadedModelRevisionHints = new Map<string, string | undefined>();
 
 const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
@@ -311,91 +304,73 @@ function isFatalError({ msg }: { msg: string }): boolean {
          m.includes('out of memory');
 }
 
-/**
- * Common pre-download logic using the scanner and prefetcher.
- */
-async function preDownloadModel({ modelId, remote, progress_callback }: {
-  modelId: string,
-  remote: TransformersJsWorkerClient,
-  progress_callback: TransformersJsProgressCallback,
-}): Promise<TransformersJsPreDownloadResult> {
-  const startedAt = performance.now();
-  const scannerClient = createTransformersJsScannerWorkerClient();
 
+async function selectDownloadedModelLoadRevision({ modelId }: { modelId: string }): Promise<string | undefined> {
+  const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
+  if (normalizedModelId.startsWith('user/')) return undefined;
+
+  if (downloadedModelRevisionHints.has(normalizedModelId)) {
+    const hintedRevision = downloadedModelRevisionHints.get(normalizedModelId);
+    // The hint only bridges one accepted Download to the immediately following
+    // cache-only Load. Keeping it indefinitely would pin this session to an old
+    // immutable revision even after Hugging Face main advances.
+    downloadedModelRevisionHints.delete(normalizedModelId);
+    return hintedRevision;
+  }
+
+  let inventory: Awaited<ReturnType<typeof inspectDownloadVerificationCachedRevisions>>;
   try {
-    let cleanModelId = modelId;
-    if (cleanModelId.startsWith('hf.co/')) cleanModelId = cleanModelId.substring(6);
-    else if (cleanModelId.startsWith('https://huggingface.co/')) cleanModelId = cleanModelId.substring(23);
+    const storageRoot = await navigator.storage.getDirectory();
+    inventory = await inspectDownloadVerificationCachedRevisions({ modelId, storageRoot });
+  } catch (error) {
+    console.warn('[transformersJsService] Could not inspect cached revisions before loading downloaded artifacts; delegating cache resolution to the Production worker.', error);
+    return undefined;
+  }
 
-    const isLocal = cleanModelId.startsWith('user/');
-    if (isLocal) return { discoveredFileCount: 0, prefetchResult: undefined, error: undefined };
-
-    // 1. Scan for URLs
-    const tasks: ScanTask[] = [
-      { type: 'tokenizer', modelId: cleanModelId, options: {} },
-    ];
-    if (isGemma4Model({ modelType: undefined, activeModelId: cleanModelId })) {
-      tasks.push({ type: 'processor', modelId: cleanModelId, options: {} });
-      tasks.push({ type: 'image-text-to-text', modelId: cleanModelId, options: { dtype: 'q4f16', device: 'wasm' } });
-    } else {
-      tasks.push({ type: 'causal-lm', modelId: cleanModelId, options: { dtype: 'q4f16', device: 'wasm' } });
+  let resolvedRevision: string | undefined;
+  const hasImmutableRevision = inventory.revisions.some(revision => revision.kind === 'immutable-sha');
+  if (hasImmutableRevision) {
+    try {
+      resolvedRevision = (await resolvePublicHuggingFaceRevision({ modelId })).resolvedRevision;
+    } catch (error) {
+      console.warn('[transformersJsService] Could not resolve the current Hugging Face revision while loading downloaded artifacts; using cache inventory only.', error);
     }
-    debugLog({
-      event: 'preDownload scan start',
-      details: { modelId, elapsedMs: Math.round(performance.now() - startedAt) },
-    });
-    const { files } = await scannerClient.scanModel({ tasks });
-    debugLog({
-      event: 'preDownload scan complete',
-      details: {
-        modelId,
-        elapsedMs: Math.round(performance.now() - startedAt),
-        fileCount: files.length,
-      },
-    });
+  }
+  const candidates = planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision });
+  return candidates[0]?.loaderRevisionOption;
+}
 
-    // 2. Prefetch URLs via main worker (which has OPFS access and streaming)
-    let prefetchResult: TransformersJsPreDownloadResult['prefetchResult'];
-    if (files.length > 0) {
-      const urls = files.map(f => f.url);
-      debugLog({
-        event: 'preDownload prefetch start',
-        details: {
-          modelId,
-          elapsedMs: Math.round(performance.now() - startedAt),
-          fileCount: urls.length,
-        },
-      });
-      prefetchResult = await remote.prefetchUrls({ urls, progressCallback: progress_callback });
-      debugLog({
-        event: 'preDownload prefetch complete',
-        details: {
-          modelId,
-          elapsedMs: Math.round(performance.now() - startedAt),
-          fileCount: urls.length,
-          cachedCount: prefetchResult.cachedCount,
-          downloadedCount: prefetchResult.downloadedCount,
-          failedCount: prefetchResult.failedCount,
-          complete: prefetchResult.complete,
-        },
-      });
-    }
-    return {
-      discoveredFileCount: files.length,
-      prefetchResult,
-      error: undefined,
-    };
-  } catch (err) {
-    console.warn(`[transformersJsService] Pre-download scan/prefetch failed:`, err);
-    return {
-      discoveredFileCount: 0,
-      prefetchResult: undefined,
-      error: err instanceof Error
-        ? { name: err.name, message: err.message }
-        : { name: 'NonErrorThrownValue', message: typeof err === 'string' ? err : 'A non-Error value was thrown' },
-    };
-  } finally {
-    await scannerClient.dispose();
+function productionDownloadPreparationError({ run }: {
+  run: Awaited<ReturnType<typeof runProductionDownloadPreparation>>;
+}): Error {
+  switch (run.status) {
+  case 'failed': {
+    const failureStage = run.failureStage;
+    const detail = (() => {
+      switch (failureStage) {
+      case 'runtime-artifacts':
+        return run.runtimeArtifacts.error;
+      case 'candidate-orchestration':
+        return run.candidates.error;
+      case undefined:
+        return undefined;
+      default: {
+        const _ex: never = failureStage;
+        throw new Error(`Unhandled Production download failure stage: ${_ex}`);
+      }
+      }
+    })();
+    if (detail !== undefined) return new Error(`${detail.name}: ${detail.message}`);
+    return new Error(`Production download preparation failed at ${run.failureStage}`);
+  }
+  case 'exhausted':
+    return new Error('No Production model candidate could be downloaded and accepted from the local cache');
+  case 'accepted':
+    return new Error('Production download preparation unexpectedly requested an error for an accepted candidate');
+  default: {
+    const _ex: never = run;
+    throw new Error(`Unhandled Production download preparation status: ${String(_ex)}`);
+  }
   }
 }
 
@@ -523,6 +498,45 @@ export const transformersJsService = {
         };
       };
 
+      const getHuggingFaceRepoStats = async ({ repoDir }: { repoDir: FileSystemDirectoryHandle }): Promise<{ size: number, fileCount: number, lastModified: number, isComplete: boolean }> => {
+        const aggregate = await getDirStats({ dir: repoDir });
+        let resolveDir: FileSystemDirectoryHandle;
+        try {
+          resolveDir = await repoDir.getDirectoryHandle('resolve', { create: false });
+        } catch {
+          return aggregate;
+        }
+
+        let sawRevisionDirectory = false;
+        let hasCommittedRevision = false;
+        for await (const [_revision, handle] of resolveDir.entries()) {
+          switch (handle.kind) {
+          case 'directory': {
+            sawRevisionDirectory = true;
+            const revisionStats = await getDirStats({ dir: handle as FileSystemDirectoryHandle });
+            if (revisionStats.isComplete) hasCommittedRevision = true;
+            break;
+          }
+          case 'file':
+            break;
+          default: {
+            const _ex: never = handle;
+            throw new Error(`Unhandled FileSystemHandle: ${String(_ex)}`);
+          }
+          }
+        }
+
+        return {
+          ...aggregate,
+          // This remains a listing heuristic, not required-file authority. A
+          // partial immutable revision must not poison an otherwise committed
+          // legacy main (or another committed revision) and create a migration
+          // false-incomplete label. Explicit Download revalidates through the
+          // Production cache-only acceptance path before reporting success.
+          isComplete: sawRevisionDirectory ? hasCommittedRevision : aggregate.isComplete,
+        };
+      };
+
       // Try 'user' directory (new)
       try {
         const userDir = await modelsDir.getDirectoryHandle('user', { create: false });
@@ -577,7 +591,7 @@ export const transformersJsService = {
               const rh = repoHandle as FileSystemHandle;
               switch (rh.kind) {
               case 'directory': {
-                const stats = await getDirStats({ dir: rh as FileSystemDirectoryHandle });
+                const stats = await getHuggingFaceRepoStats({ repoDir: rh as FileSystemDirectoryHandle });
                 results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
                 break;
               }
@@ -686,6 +700,7 @@ export const transformersJsService = {
         await hfDir.removeEntry(modelId, { recursive: true });
       }
     }
+    downloadedModelRevisionHints.delete(normalizeTransformersJsProductionModelId({ modelId }));
     notifyModelListChange();
   },
 
@@ -713,6 +728,7 @@ export const transformersJsService = {
     try {
       const loadStartedAt = performance.now();
       const remote = await getClient();
+      const loadRevision = await selectDownloadedModelLoadRevision({ modelId });
       // 1. Check cache FIRST before changing status to avoid UI flicker
       const cached = await this.listCachedModels();
       const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
@@ -765,17 +781,18 @@ export const transformersJsService = {
       // The worker enforces this again at the Transformers.js/cache boundary.
       debugLog({
         event: 'load start',
-        details: { modelId, isLoadingFromCache },
+        details: { modelId, loadRevision, isLoadingFromCache },
       });
       debugLog({
         event: 'worker loadDownloadedModel start',
         details: {
           modelId,
+          loadRevision,
           elapsedMs: Math.round(performance.now() - loadStartedAt),
         },
       });
 
-      const result = await remote.loadDownloadedModel({ modelId, progressCallback: progress_callback });
+      const result = await remote.loadDownloadedModel({ modelId, revision: loadRevision, progressCallback: progress_callback });
       debugLog({
         event: 'worker loadDownloadedModel complete',
         details: {
@@ -825,9 +842,10 @@ export const transformersJsService = {
     }
 
     try {
-      const remote = await getClient();
-      // No longer deleting partial models to allow resume support.
-      // Transformers.js handles missing files gracefully.
+      const normalizedModelId = normalizeTransformersJsProductionModelId({ modelId });
+      if (normalizedModelId.startsWith('user/')) {
+        throw new Error('Downloading local user models is not supported');
+      }
 
       loadingModelId = modelId;
       loadingStatus = 'loading';
@@ -850,14 +868,29 @@ export const transformersJsService = {
         }
       };
 
-      // 1. Pre-download using scanner/prefetcher
-      const preDownloadResult = await preDownloadModel({ modelId, remote, progress_callback });
-      if (preDownloadResult.error !== undefined || preDownloadResult.prefetchResult?.complete === false) {
-        console.warn('[transformersJsService] Pre-download was incomplete; continuing with the authoritative downloadModel finalization.', preDownloadResult);
+      const { resolvedRevision } = await resolvePublicHuggingFaceRevision({ modelId });
+      const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision });
+      if (cachedReuse.reused) {
+        downloadedModelRevisionHints.set(normalizedModelId, cachedReuse.loadRevision);
+      } else {
+        const preparation = await runProductionDownloadPreparation({
+          modelId,
+          revision: resolvedRevision,
+          progressCallback: progress_callback,
+        });
+        switch (preparation.status) {
+        case 'accepted':
+          downloadedModelRevisionHints.set(normalizedModelId, resolvedRevision);
+          break;
+        case 'failed':
+        case 'exhausted':
+          throw productionDownloadPreparationError({ run: preparation });
+        default: {
+          const _ex: never = preparation;
+          throw new Error(`Unhandled Production download preparation result: ${String(_ex)}`);
+        }
+        }
       }
-
-      // 2. Finalize with standard downloadModel (to ensure tokenizer and any missed files are handled)
-      await remote.downloadModel({ modelId, progressCallback: progress_callback });
 
       loadingStatus = 'idle';
       loadingProgress = 0;
@@ -920,6 +953,7 @@ export const transformersJsService = {
     if (remote !== undefined) {
       await remote.resetCache();
     }
+    downloadedModelRevisionHints.clear();
   },
 
   /**

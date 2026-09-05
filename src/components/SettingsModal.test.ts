@@ -756,6 +756,20 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(connectionTab.props('availableModels')).toEqual(['model-1', 'model-2', 'model-10']);
   });
 
+  it('forwards the app-level download verification request from the developer tab', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    await wrapper.findAll('nav button').find(b => b.text().includes('Developer'))?.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    await wrapper.find('[data-testid="open-download-verification-button"]').trigger('click');
+
+    expect(wrapper.emitted('openDownloadVerification')).toHaveLength(1);
+  });
+
   it('triggers developer data deletion after confirmation', async () => {
     localStorage.setItem('naidan:settings-test', 'delete-me');
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });

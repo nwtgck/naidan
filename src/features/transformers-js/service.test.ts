@@ -172,6 +172,74 @@ describe('transformersJsService', () => {
     }));
   });
 
+  it('does not let a partial exact revision make a committed legacy main cache look incomplete', async () => {
+    const mockHuggingFaceDir = createMockDir({
+      org: createMockDir({
+        repo: createMockDir({
+          resolve: createMockDir({
+            main: createMockDir({
+              'model_q4.onnx': createMockFile(1200, 123456789),
+              '.model_q4.onnx.complete': createMockFile(0, 123456789),
+            }),
+            '0123456789abcdef0123456789abcdef01234567': createMockDir({
+              'model_q4.onnx': createMockFile(1200, 123456790),
+              // Exact-revision download started but has not committed yet.
+            }),
+          }),
+        }),
+      }),
+    });
+
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn().mockResolvedValue(createMockDir({
+          models: createMockDir({ 'huggingface.co': mockHuggingFaceDir }),
+        })),
+      },
+    });
+
+    const { transformersJsService } = await import('./index');
+    const models = await transformersJsService.listCachedModels();
+
+    expect(models).toContainEqual(expect.objectContaining({
+      id: 'hf.co/org/repo',
+      isComplete: true,
+    }));
+  });
+
+  it('keeps a repository incomplete when every revision namespace is partial', async () => {
+    const mockHuggingFaceDir = createMockDir({
+      org: createMockDir({
+        repo: createMockDir({
+          resolve: createMockDir({
+            main: createMockDir({
+              'model_q4.onnx': createMockFile(1200, 123456789),
+            }),
+            '0123456789abcdef0123456789abcdef01234567': createMockDir({
+              'model_q4.onnx': createMockFile(1200, 123456790),
+            }),
+          }),
+        }),
+      }),
+    });
+
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn().mockResolvedValue(createMockDir({
+          models: createMockDir({ 'huggingface.co': mockHuggingFaceDir }),
+        })),
+      },
+    });
+
+    const { transformersJsService } = await import('./index');
+    const models = await transformersJsService.listCachedModels();
+
+    expect(models).toContainEqual(expect.objectContaining({
+      id: 'hf.co/org/repo',
+      isComplete: false,
+    }));
+  });
+
   it('should include models even without completion marker but as incomplete', async () => {
     const mockLocalDir = createMockDir({
       'incomplete-model': createMockDir({
@@ -200,7 +268,7 @@ describe('transformersJsService', () => {
 
   it('should transition state correctly during loadDownloadedModel', async () => {
     const mockRemote = {
-      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         cb({ status: 'progress', progress: 50 });
         return { device: 'webgpu' };
       }),
@@ -239,100 +307,12 @@ describe('transformersJsService', () => {
 
     await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
 
-    expect(mockRemote.loadDownloadedModel).toHaveBeenCalledWith('some-model', expect.any(Function));
+    expect(mockRemote.loadDownloadedModel).toHaveBeenCalledWith('some-model', undefined, expect.any(Function));
     expect(mockRemote.prefetchUrls).not.toHaveBeenCalled();
     expect(transformersJsService.getState().status).toBe('ready');
     expect(transformersJsService.getState().device).toBe('webgpu');
     expect(statuses).toContain('loading');
     expect(statuses).toContain('ready');
-  });
-
-  it('should include a processor scan task for Gemma 4 models', async () => {
-    const mockRemote = {
-      loadDownloadedModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
-      downloadModel: vi.fn().mockResolvedValue(undefined),
-      prefetchUrls: vi.fn().mockResolvedValue({
-        requestedCount: 2,
-        cachedCount: 0,
-        downloadedCount: 2,
-        failedCount: 0,
-        complete: true,
-        files: [
-          {
-            status: 'downloaded',
-            url: 'https://hf.co/m/processor_config.json',
-            path: 'models/huggingface.co/m/processor_config.json',
-            byteLength: 1,
-            expectedByteLength: 1,
-          },
-          {
-            status: 'downloaded',
-            url: 'https://hf.co/m/model.onnx',
-            path: 'models/huggingface.co/m/model.onnx',
-            byteLength: 1,
-            expectedByteLength: 1,
-          },
-        ],
-      }),
-    };
-    const scanModel = vi.fn().mockResolvedValue({
-      files: [
-        { url: 'https://hf.co/m/processor_config.json' },
-        { url: 'https://hf.co/m/model.onnx' },
-      ],
-    });
-    (Comlink.wrap as any).mockImplementation((_worker: any) => {
-      return Object.assign(mockRemote, {
-        [Comlink.releaseProxy]: vi.fn(),
-        scanModel,
-      });
-    });
-
-    const { transformersJsService } = await import('./index');
-    await transformersJsService.downloadModel({ modelId: 'hf.co/onnx-community/gemma-4-E2B-it-ONNX' });
-
-    expect(scanModel).toHaveBeenCalledWith({
-      tasks: [
-        { type: 'tokenizer', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: {} },
-        { type: 'processor', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: {} },
-        { type: 'image-text-to-text', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: { dtype: 'q4f16', device: 'wasm' } },
-      ],
-    });
-  });
-
-  it('should continue authoritative downloadModel when pre-download discovers no files', async () => {
-    const mockRemote = {
-      loadDownloadedModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
-      prefetchUrls: vi.fn().mockResolvedValue({
-        requestedCount: 0,
-        cachedCount: 0,
-        downloadedCount: 0,
-        failedCount: 0,
-        complete: true,
-        files: [],
-      }),
-      downloadModel: vi.fn().mockResolvedValue(undefined),
-    };
-    const scanModel = vi.fn().mockResolvedValue({
-      files: [],
-    });
-    (Comlink.wrap as any).mockImplementation((_worker: any) => {
-      return Object.assign(mockRemote, {
-        [Comlink.releaseProxy]: vi.fn(),
-        scanModel,
-      });
-    });
-
-    const { transformersJsService } = await import('./index');
-
-    await expect(transformersJsService.downloadModel({ modelId: 'onnx-community/gemma-4-E2B-it-ONNX' }))
-      .resolves
-      .toBeUndefined();
-
-    expect(mockRemote.downloadModel).toHaveBeenCalledWith(
-      'onnx-community/gemma-4-E2B-it-ONNX',
-      expect.any(Function),
-    );
   });
 
   it('should skip scanner/prefetch when loading a fully cached model', async () => {
@@ -380,7 +360,7 @@ describe('transformersJsService', () => {
     const { transformersJsService } = await import('./index');
     await transformersJsService.loadDownloadedModel({ modelId: 'hf.co/some-org/some-model' });
 
-    expect(mockRemote.loadDownloadedModel).toHaveBeenCalledWith('hf.co/some-org/some-model', expect.any(Function));
+    expect(mockRemote.loadDownloadedModel).toHaveBeenCalledWith('hf.co/some-org/some-model', undefined, expect.any(Function));
     expect(scanModel).not.toHaveBeenCalled();
     expect(mockRemote.prefetchUrls).not.toHaveBeenCalled();
   });

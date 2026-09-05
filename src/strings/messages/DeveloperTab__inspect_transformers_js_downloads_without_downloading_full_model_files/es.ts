@@ -1,0 +1,1 @@
+export const DeveloperTab__inspect_transformers_js_downloads_without_downloading_full_model_files = (): string => 'Inspecciona el repositorio y el comportamiento de descarga del navegador sin descargar los archivos completos del modelo.';

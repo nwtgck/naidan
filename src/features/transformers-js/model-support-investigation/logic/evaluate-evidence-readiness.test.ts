@@ -181,6 +181,100 @@ describe("evaluateEvidenceReadiness", () => {
   });
 
 
+  it("ties Download Evidence readiness to the same frozen repository revision", () => {
+    const value = run();
+    value.downloadEvidence = {
+      schemaVersion: 1,
+      runId: "download-run",
+      mode: "probe-only",
+      run: {
+        modelId: "org/model",
+        normalizedModelId: "org/model",
+        requestedRevision: "main",
+        resolvedRevision: "a".repeat(40),
+        repositoryFileCount: 1,
+        repositoryFiles: [{ path: "onnx/model_q4.onnx", size: 100, blobId: undefined, lfsOid: undefined, lfsSha256: undefined, lfsSize: undefined }],
+        transportObservations: [{
+          path: "onnx/model_q4.onnx", method: "HEAD", status: 200, redirected: false,
+          finalUrl: "https://huggingface.co/org/model/resolve/revision/onnx/model_q4.onnx",
+          finalOrigin: "https://huggingface.co", contentLength: 100, contentRange: undefined,
+          acceptRanges: "bytes", contentType: "application/octet-stream", etag: undefined,
+          rangeHonored: undefined, bytesConsumed: 0, abortedByByteBudget: false, error: undefined,
+        }],
+        skippedModelArtifactCount: 0, bytesConsumed: 0, maximumBytes: 2 * 1024 * 1024,
+        startedAt: "2026-09-04T00:00:00.000Z", finishedAt: "2026-09-04T00:00:01.000Z",
+      },
+      modelArtifactObservations: [{
+        modelId: "org/model", revision: "a".repeat(40), autoClass: "AutoModelForCausalLM",
+        candidate: { device: "webgpu", dtype: "q4" }, status: "observed",
+        observationMethod: "held-model-artifact-fetch-quiescence", quiescenceMs: 100, timeoutMs: 1000,
+        paths: ["onnx/model_q4.onnx"],
+        requests: [{ path: "onnx/model_q4.onnx", url: "https://huggingface.co/org/model/resolve/revision/onnx/model_q4.onnx" }],
+        error: undefined,
+      }],
+      modelArtifactObservationError: undefined, cacheBefore: undefined, cacheInspectionError: undefined,
+    };
+
+    const ready = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(ready?.status).toBe("implementation-ready");
+    expect(ready?.questions[0]?.answer).toContain(`revision=${"a".repeat(40)}`);
+    expect(ready?.questions[0]?.evidencePaths).toContain("download-lane/test-readiness.json");
+
+    value.downloadEvidence.mode = "runtime-complete";
+    value.downloadEvidence.runtimeCompletion = {
+      schemaVersion: 1,
+      status: "accepted",
+      source: "production-download-preparation",
+      repositoryResolvedRevision: "a".repeat(40),
+      cacheRevision: "a".repeat(40),
+      loaderRevisionOption: "a".repeat(40),
+      selectedCandidate: { device: "webgpu", dtype: "q4" },
+      cacheReuse: undefined,
+      preparation: undefined,
+      cacheAfter: undefined,
+      cacheInspectionError: undefined,
+      error: undefined,
+    };
+    const runtimeReady = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(runtimeReady?.status).toBe("implementation-ready");
+    expect(runtimeReady?.summary).toContain("Production cache-only runtime acceptance succeeded");
+    expect(runtimeReady?.questions[0]?.evidencePaths).toContain("download-lane/cache-acceptance.json");
+
+    value.downloadEvidence.runtimeCompletion = {
+      ...value.downloadEvidence.runtimeCompletion,
+      source: "reused-production-cache",
+      cacheRevision: "main",
+      loaderRevisionOption: null,
+    };
+    const legacyMainReport = evaluateEvidenceReadiness({ run: value });
+    const legacyDownload = legacyMainReport.domains.find(item => item.domainId === "download");
+    expect(legacyDownload?.status).toBe("partial");
+    expect(legacyDownload?.summary).toContain("exact identity");
+    expect(legacyDownload?.questions[0]?.answer).toContain("revisionIdentity=legacy-main-unverified");
+    expect(legacyMainReport.domains.find(item => item.domainId === "template-tokenizer")?.status).toBe("partial");
+    expect(legacyMainReport.domains.find(item => item.domainId === "runtime-load")?.status).toBe("partial");
+    expect(legacyMainReport.domains.find(item => item.domainId === "plain-text")?.status).toBe("partial");
+
+    value.downloadEvidence.runtimeCompletion = {
+      ...value.downloadEvidence.runtimeCompletion,
+      status: "failed",
+      source: "cache-reuse-failed",
+      cacheRevision: null,
+      loaderRevisionOption: null,
+      selectedCandidate: undefined,
+      error: { name: "RuntimeRejected", message: "runtime rejected cached artifacts" },
+    };
+    const runtimeFailed = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(runtimeFailed?.status).toBe("insufficient");
+    expect(runtimeFailed?.summary).toContain("runtime rejected cached artifacts");
+
+    value.downloadEvidence.run.resolvedRevision = "b".repeat(40);
+    const mismatch = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
+    expect(mismatch?.status).toBe("insufficient");
+    expect(mismatch?.summary).toContain("same frozen repository revision");
+  });
+
+
   it("keeps runtime readiness insufficient when runtime asset identity is unavailable", () => {
     const value = run();
     if (value.runtimeAssets === undefined) throw new Error("Runtime-assets fixture is unavailable");

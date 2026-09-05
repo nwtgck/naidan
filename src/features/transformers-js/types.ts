@@ -53,6 +53,8 @@ export interface TransformersJsModelLoadProgressObservation {
 
 export interface ModelLoadResult {
   device: string,
+  /** Exact Production dtype selected by runtime fallback when available. */
+  dtype?: TransformersJsProductionInvestigationDtype,
 }
 
 export interface ScannedModelFile {
@@ -186,6 +188,11 @@ export type TransformersJsProductionInvestigationProcessor =
   | 'tokenizer'
   | 'gemma4-processor'
   | 'qwen3_5-processor';
+
+export interface TransformersJsRuntimeArtifactPreparationResult {
+  processor: TransformersJsProductionInvestigationProcessor,
+  modelType: string | undefined,
+}
 export type TransformersJsProductionInvestigationStrategy =
   | 'standard'
   | 'gpt-oss'
@@ -515,7 +522,41 @@ export interface ITransformersJsWorker {
    * load instead of falling back to a remote fetch.
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  loadDownloadedModel(modelId: string, progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<ModelLoadResult>,
+  loadDownloadedModel(modelId: string, revision: string | undefined, progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<ModelLoadResult>,
+  /**
+   * Download Verification only: verifies exactly one Production candidate from
+   * already-downloaded artifacts. No candidate fallback or remote model fetch.
+   */
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
+  verifyDownloadedModelCandidate(
+    modelId: string,
+    revision: string | undefined,
+    candidate: TransformersJsProductionInvestigationCandidate,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is proxied across the Comlink boundary.
+    progressCallback: WorkerProxy<(x: ProgressInfo) => void>,
+  ): Promise<ModelLoadResult>,
+  /**
+   * Download Verification only: verifies one cached revision using the full
+   * Production candidate fallback sequence. No remote model fetch.
+   */
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
+  verifyDownloadedModelRevision(
+    modelId: string,
+    revision: string | undefined,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is proxied across the Comlink boundary.
+    progressCallback: WorkerProxy<(x: ProgressInfo) => void>,
+  ): Promise<ModelLoadResult>,
+  /**
+   * Download Verification only: lets Transformers.js prepare config/tokenizer/processor
+   * files for one immutable public Hub revision. Model/weight fetches are blocked.
+   */
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink remote boundaries use positional top-level arguments.
+  prepareModelRuntimeArtifacts(
+    modelId: string,
+    revision: string,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is proxied across the Comlink boundary.
+    progressCallback: WorkerProxy<(x: ProgressInfo) => void>,
+  ): Promise<TransformersJsRuntimeArtifactPreparationResult>,
   unloadModel(): Promise<void>,
   interrupt(): Promise<void>,
   resetCache(): Promise<void>,
@@ -550,8 +591,9 @@ export interface TransformersJsWorkerClient {
    * Loads a model that has already been fully downloaded. This MUST NOT start,
    * resume, repair, or otherwise perform any model download.
    */
-  loadDownloadedModel({ modelId, progressCallback }: {
+  loadDownloadedModel({ modelId, revision, progressCallback }: {
     modelId: string,
+    revision?: string,
     progressCallback: TransformersJsProgressCallback,
   }): Promise<ModelLoadResult>,
   unloadModel(): Promise<void>,

@@ -3,8 +3,10 @@ import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationLoadAttempt,
   ModelSupportInvestigationLoadAttemptCheckpoint,
+  ModelSupportInvestigationPlanningWorkerRun,
   ModelSupportInvestigationRun,
 } from "@/features/transformers-js/model-support-investigation/types";
+import { toPlanningWorkerRun } from "@/features/transformers-js/model-support-investigation/logic/planning-worker-run";
 import type {
   ITransformersJsWorker,
   TransformersJsModelLoadProgressObservation,
@@ -18,12 +20,17 @@ const mocks = vi.hoisted(() => ({
   wrap: vi.fn(),
   workerInstances: [] as Array<{ terminate: ReturnType<typeof vi.fn> }>,
   runProductionScenario: vi.fn(),
+  completeRuntimeEvidence: vi.fn(),
 }));
 
 vi.mock("comlink", () => ({
   releaseProxy: mocks.releaseProxy,
   proxy: mocks.proxy,
   wrap: mocks.wrap,
+}));
+
+vi.mock("@/features/transformers-js/download-verification/logic/complete-download-verification-runtime-evidence", () => ({
+  completeDownloadVerificationRuntimeEvidence: mocks.completeRuntimeEvidence,
 }));
 
 
@@ -58,6 +65,7 @@ function partialRun(): ModelSupportInvestigationRun {
       resolvedRevision: "a".repeat(40),
       pipelineTag: "text-generation",
     },
+    downloadEvidence: undefined,
     cache: undefined,
     declarations: {
       classCapabilities: [{
@@ -96,6 +104,49 @@ function partialRun(): ModelSupportInvestigationRun {
     laneComparison: undefined,
     error: undefined,
   } as unknown as ModelSupportInvestigationRun;
+}
+
+function planningRun(): ModelSupportInvestigationPlanningWorkerRun {
+  return toPlanningWorkerRun({ run: partialRun() });
+}
+
+function partialRunWithProbeDownloadEvidence({ exactRevision = "a".repeat(40) }: { exactRevision?: string } = {}): ModelSupportInvestigationPlanningWorkerRun {
+  const planning = partialRun();
+  planning.repository = {
+    ...planning.repository!,
+    requestedModelId: "org/model",
+    requestedRevision: "main",
+    resolvedRevision: exactRevision,
+  } as never;
+  planning.steps = [
+    ...planning.steps,
+    { id: "download-evidence", status: "passed", detail: "Probe-only Download Evidence collected" },
+    { id: "template-behavior", status: "blocked", detail: "Deferred until runtime completion" },
+  ];
+  planning.downloadEvidence = {
+    schemaVersion: 1,
+    runId: planning.runId,
+    mode: "probe-only",
+    run: {
+      modelId: "org/model",
+      normalizedModelId: "org/model",
+      requestedRevision: "main",
+      resolvedRevision: exactRevision,
+      repositoryFileCount: 0,
+      repositoryFiles: [],
+      transportObservations: [],
+      skippedModelArtifactCount: 0,
+      bytesConsumed: 0,
+      maximumBytes: 1024,
+      startedAt: planning.startedAt,
+      finishedAt: planning.completedAt,
+    },
+    modelArtifactObservations: [],
+    modelArtifactObservationError: undefined,
+    cacheBefore: undefined,
+    cacheInspectionError: undefined,
+  };
+  return toPlanningWorkerRun({ run: planning });
 }
 
 function attempt({ candidateId, status }: {
@@ -229,13 +280,16 @@ function productionRemote() {
 
 function remote({
   runPartialInvestigation,
+  inspectDownloadedTemplateBehavior,
   runCandidateAttempt,
 }: {
   runPartialInvestigation?: IModelSupportInvestigationWorker["runPartialInvestigation"],
+  inspectDownloadedTemplateBehavior?: IModelSupportInvestigationWorker["inspectDownloadedTemplateBehavior"],
   runCandidateAttempt?: IModelSupportInvestigationWorker["runCandidateAttempt"],
 }): IModelSupportInvestigationWorker & { [mocks.releaseProxy]: () => Promise<void> } {
   return {
     runPartialInvestigation: runPartialInvestigation ?? vi.fn(),
+    inspectDownloadedTemplateBehavior: inspectDownloadedTemplateBehavior ?? vi.fn(),
     runCandidateAttempt: runCandidateAttempt ?? vi.fn(),
     [mocks.releaseProxy]: vi.fn(async () => undefined),
   };
@@ -295,7 +349,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
               detail: "Inspecting tokenizer template behavior",
             },
           });
-          return new Promise<ModelSupportInvestigationRun>(() => undefined);
+          return new Promise<ModelSupportInvestigationPlanningWorkerRun>(() => undefined);
         }),
       });
       mocks.wrap.mockReturnValueOnce(planningRemote);
@@ -384,7 +438,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it("uses a fresh Worker for planning and every attempted candidate", async () => {
     const planningRemote = remote({
-      runPartialInvestigation: vi.fn(async () => partialRun()),
+      runPartialInvestigation: vi.fn(async () => planningRun()),
     });
     const firstAttemptRemote = remote({
       runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "failed" })),
@@ -414,6 +468,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       expect.any(Object),
       expect.any(Object),
       expect.any(Object),
+      null,
       expect.objectContaining({ candidateId: "webgpu-q4f16" }),
       expect.any(Function),
       expect.any(Function),
@@ -423,6 +478,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       expect.any(Object),
       expect.any(Object),
       expect.any(Object),
+      null,
       expect.objectContaining({ candidateId: "webgpu-q4" }),
       expect.any(Function),
       expect.any(Function),
@@ -454,7 +510,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
   });
   it("retries a failed Production load candidate in a fresh Worker and preserves both load attempts", async () => {
     const planningRemote = remote({
-      runPartialInvestigation: vi.fn(async () => partialRun()),
+      runPartialInvestigation: vi.fn(async () => planningRun()),
     });
     const successfulAttemptRemote = remote({
       runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "passed" })),
@@ -551,7 +607,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it("uses a fresh Production Worker for every failed load candidate and preserves all failures", async () => {
     const planningRemote = remote({
-      runPartialInvestigation: vi.fn(async () => partialRun()),
+      runPartialInvestigation: vi.fn(async () => planningRun()),
     });
     const successfulAttemptRemote = remote({
       runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "passed" })),
@@ -618,8 +674,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     type ProductionArgs = Parameters<ITransformersJsWorker["runModelSupportInvestigationScenario"]>;
     let latePlanningEvent: PlanningArgs[1] | undefined;
     let latePlanningCheckpoint: PlanningArgs[2] | undefined;
-    let lateCandidateEvent: CandidateArgs[5] | undefined;
-    let lateCandidateCheckpoint: CandidateArgs[6] | undefined;
+    let lateCandidateEvent: CandidateArgs[6] | undefined;
+    let lateCandidateCheckpoint: CandidateArgs[7] | undefined;
     let lateProductionProgress: ProductionArgs[1] | undefined;
     let lateProductionCheckpoint: ProductionArgs[2] | undefined;
 
@@ -627,12 +683,12 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       runPartialInvestigation: vi.fn(async (_modelId, onEvent, onRunCheckpoint) => {
         latePlanningEvent = onEvent;
         latePlanningCheckpoint = onRunCheckpoint;
-        return partialRun();
+        return planningRun();
       }),
     });
     const successfulAttemptRemote = remote({
-      runCandidateAttempt: vi.fn(async (_repository, _declarations, _templateBehavior, _candidate, onEvent, _onAttemptEvent, onAttemptCheckpoint) => {
-        lateCandidateEvent = onEvent;
+      runCandidateAttempt: vi.fn(async (_repository, _declarations, _templateBehavior, _loaderRevisionOption, _candidate, _onEvent, onAttemptEvent, onAttemptCheckpoint) => {
+        lateCandidateEvent = onAttemptEvent;
         lateCandidateCheckpoint = onAttemptCheckpoint;
         return attempt({ candidateId: "webgpu-q4f16", status: "passed" });
       }),
@@ -663,7 +719,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       event: { stepId: "repository-information", status: "running", detail: "stale planning event" },
     });
     latePlanningCheckpoint?.({
-      run: { ...partialRun(), currentOperation: "stale planning checkpoint" },
+      run: { ...planningRun(), currentOperation: "stale planning checkpoint" },
     });
     lateCandidateEvent?.({
       event: {
@@ -689,7 +745,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     vi.useFakeTimers();
     try {
       const planningRemote = remote({
-        runPartialInvestigation: vi.fn(async () => partialRun()),
+        runPartialInvestigation: vi.fn(async () => planningRun()),
       });
       const successfulAttemptRemote = remote({
         runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "passed" })),
@@ -729,7 +785,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     vi.useFakeTimers();
     try {
       const planningRemote = remote({
-        runPartialInvestigation: vi.fn(async () => partialRun()),
+        runPartialInvestigation: vi.fn(async () => planningRun()),
       });
       const successfulAttemptRemote = remote({
         runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "passed" })),
@@ -776,7 +832,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it("terminates an active Production Worker when the investigation client is disposed", async () => {
     const planningRemote = remote({
-      runPartialInvestigation: vi.fn(async () => partialRun()),
+      runPartialInvestigation: vi.fn(async () => planningRun()),
     });
     const successfulAttemptRemote = remote({
       runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "passed" })),
@@ -805,7 +861,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it("interrupts a hung Production Worker without waiting for its remote Promise", async () => {
     const planningRemote = remote({
-      runPartialInvestigation: vi.fn(async () => partialRun()),
+      runPartialInvestigation: vi.fn(async () => planningRun()),
     });
     const successfulAttemptRemote = remote({
       runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "passed" })),
@@ -838,7 +894,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it("preserves active Production load telemetry when interrupted and ignores late callbacks", async () => {
     const planningRemote = remote({
-      runPartialInvestigation: vi.fn(async () => partialRun()),
+      runPartialInvestigation: vi.fn(async () => planningRun()),
     });
     const successfulAttemptRemote = remote({
       runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "passed" })),
@@ -941,7 +997,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it("does not misclassify tokenizer runtime preparation as an active Production model load when interrupted", async () => {
     const planningRemote = remote({
-      runPartialInvestigation: vi.fn(async () => partialRun()),
+      runPartialInvestigation: vi.fn(async () => planningRun()),
     });
     const successfulAttemptRemote = remote({
       runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4f16", status: "passed" })),
@@ -1018,10 +1074,10 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     vi.useFakeTimers();
     try {
       const planningRemote = remote({
-        runPartialInvestigation: vi.fn(async () => partialRun()),
+        runPartialInvestigation: vi.fn(async () => planningRun()),
       });
       const timedOutAttemptRemote = remote({
-        runCandidateAttempt: vi.fn((_repository, _declarations, _templateBehavior, _candidate, _onEvent, onAttemptEvent) => {
+        runCandidateAttempt: vi.fn((_repository, _declarations, _templateBehavior, _loaderRevisionOption, _candidate, _onEvent, onAttemptEvent) => {
           onAttemptEvent({
             event: {
               stage: "model-load",
@@ -1116,6 +1172,188 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       },
     });
     expect(planningRemote[mocks.releaseProxy]).toHaveBeenCalledTimes(1);
+  });
+
+
+  it("hands one runtime-complete exact revision and selected candidate through template, Reference, and Production lanes", async () => {
+    const exactRevision = "b".repeat(40);
+    const planning = partialRunWithProbeDownloadEvidence({ exactRevision });
+    const completedEvidence = {
+      ...planning.downloadEvidence,
+      mode: "runtime-complete" as const,
+      runtimeCompletion: {
+        schemaVersion: 1 as const,
+        status: "accepted" as const,
+        source: "production-download-preparation" as const,
+        repositoryResolvedRevision: exactRevision,
+        cacheRevision: exactRevision,
+        loaderRevisionOption: exactRevision,
+        selectedCandidate: { device: "webgpu" as const, dtype: "q4" as const },
+        cacheReuse: undefined,
+        preparation: undefined,
+        cacheAfter: undefined,
+        cacheInspectionError: undefined,
+        error: undefined,
+      },
+    };
+    mocks.completeRuntimeEvidence.mockResolvedValue(completedEvidence);
+
+    const planningRemote = remote({ runPartialInvestigation: vi.fn(async () => planning) });
+    const templateBehavior = planning.templateBehavior!;
+    const templateRemote = remote({
+      inspectDownloadedTemplateBehavior: vi.fn(async () => templateBehavior),
+    });
+    const referenceAttempt = attempt({ candidateId: "webgpu-q4", status: "passed" });
+    referenceAttempt.loaderRevisionOption = exactRevision;
+    const attemptRemote = remote({
+      runCandidateAttempt: vi.fn(async () => referenceAttempt),
+    });
+    const production = productionRemote();
+    mocks.wrap
+      .mockReturnValueOnce(planningRemote)
+      .mockReturnValueOnce(templateRemote)
+      .mockReturnValueOnce(attemptRemote)
+      .mockReturnValueOnce(production);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const result = await client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
+
+    expect(mocks.completeRuntimeEvidence).toHaveBeenCalledTimes(1);
+    expect(templateRemote.inspectDownloadedTemplateBehavior).toHaveBeenCalledWith({
+      repository: expect.objectContaining({ resolvedRevision: exactRevision }),
+      loaderRevisionOption: exactRevision,
+    });
+    expect(attemptRemote.runCandidateAttempt).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Object),
+      templateBehavior,
+      exactRevision,
+      expect.objectContaining({ candidateId: "webgpu-q4", device: "webgpu", dtype: "q4" }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mocks.runProductionScenario).toHaveBeenCalledWith(
+      expect.objectContaining({
+        loadRevision: exactRevision,
+        candidates: [{ device: "webgpu", dtype: "q4" }],
+      }),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(result.downloadEvidence?.runtimeCompletion).toMatchObject({
+      status: "accepted",
+      loaderRevisionOption: exactRevision,
+      selectedCandidate: { device: "webgpu", dtype: "q4" },
+    });
+    expect(result.loadAttempts.map(item => item.candidateId)).toEqual(["webgpu-q4"]);
+  });
+
+  it("disallows legacy main reuse when bounded provenance already mismatched that namespace", async () => {
+    const exactRevision = "e".repeat(40);
+    const planning = partialRunWithProbeDownloadEvidence({ exactRevision });
+    planning.cache = {
+      provenance: {
+        files: [{ cacheRevision: "main", status: "mismatched" }],
+      },
+    } as never;
+    mocks.completeRuntimeEvidence.mockResolvedValue({
+      ...planning.downloadEvidence!,
+      mode: "runtime-complete" as const,
+      runtimeCompletion: {
+        schemaVersion: 1 as const,
+        status: "failed" as const,
+        source: "cache-reuse-failed" as const,
+        repositoryResolvedRevision: exactRevision,
+        cacheRevision: null,
+        loaderRevisionOption: null,
+        selectedCandidate: undefined,
+        cacheReuse: undefined,
+        preparation: undefined,
+        cacheAfter: undefined,
+        cacheInspectionError: undefined,
+        error: { name: "FixtureStop", message: "stop after checking policy" },
+      },
+    });
+    const planningRemote = remote({ runPartialInvestigation: vi.fn(async () => planning) });
+    mocks.wrap.mockReturnValueOnce(planningRemote);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    await client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
+
+    expect(mocks.completeRuntimeEvidence).toHaveBeenCalledWith(expect.objectContaining({
+      evidence: planning.downloadEvidence,
+      allowLegacyMainReuse: false,
+    }));
+  });
+
+  it("stops downstream runtime lanes when runtime-complete preparation fails", async () => {
+    const exactRevision = "c".repeat(40);
+    const planning = partialRunWithProbeDownloadEvidence({ exactRevision });
+    mocks.completeRuntimeEvidence.mockResolvedValue({
+      ...planning.downloadEvidence!,
+      mode: "runtime-complete" as const,
+      runtimeCompletion: {
+        schemaVersion: 1 as const,
+        status: "failed" as const,
+        source: "cache-reuse-failed" as const,
+        repositoryResolvedRevision: exactRevision,
+        cacheRevision: null,
+        loaderRevisionOption: null,
+        selectedCandidate: undefined,
+        cacheReuse: undefined,
+        preparation: undefined,
+        cacheAfter: undefined,
+        cacheInspectionError: undefined,
+        error: { name: "RuntimeRejected", message: "runtime cache rejected" },
+      },
+    });
+    const planningRemote = remote({ runPartialInvestigation: vi.fn(async () => planning) });
+    mocks.wrap.mockReturnValueOnce(planningRemote);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const result = await client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
+
+    expect(result.downloadEvidence?.runtimeCompletion).toMatchObject({
+      status: "failed",
+      error: { name: "RuntimeRejected", message: "runtime cache rejected" },
+    });
+    expect(result.steps.find(step => step.id === "download-evidence")).toMatchObject({ status: "failed" });
+    expect(result.steps.find(step => step.id === "loading-investigation")).toMatchObject({ status: "blocked" });
+    expect(result.steps.find(step => step.id === "lane-comparison")).toMatchObject({ status: "blocked" });
+    expect(result.loadAttempts).toEqual([]);
+    expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+    expect(mocks.wrap).toHaveBeenCalledTimes(1);
+  });
+
+  it("aborts runtime-complete preparation and freezes an interrupted checkpoint when stopped", async () => {
+    const planning = partialRunWithProbeDownloadEvidence({ exactRevision: "d".repeat(40) });
+    const planningRemote = remote({ runPartialInvestigation: vi.fn(async () => planning) });
+    mocks.wrap.mockReturnValueOnce(planningRemote);
+    let runtimeSignal: AbortSignal | undefined;
+    mocks.completeRuntimeEvidence.mockImplementation(({ signal }: { signal?: AbortSignal }) => {
+      runtimeSignal = signal;
+      return new Promise(() => undefined);
+    });
+    const onCheckpoint = vi.fn();
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint });
+    await vi.waitFor(() => expect(mocks.completeRuntimeEvidence).toHaveBeenCalledTimes(1));
+
+    await client.interrupt();
+    await expect(operation).rejects.toMatchObject({ name: "ModelSupportInvestigationUserInterruptedError" });
+    expect(runtimeSignal?.aborted).toBe(true);
+    expect(onCheckpoint).toHaveBeenLastCalledWith({
+      checkpoint: expect.objectContaining({
+        recovery: expect.objectContaining({ status: "interrupted" }),
+      }),
+    });
+    expect(mocks.runProductionScenario).not.toHaveBeenCalled();
   });
 
 });

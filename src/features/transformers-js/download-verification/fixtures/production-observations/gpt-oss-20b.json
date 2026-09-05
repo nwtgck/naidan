@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "historical-model-support-investigation-production-observation",
+    "observedAt": "2026-09-02T00:09:05.456Z",
+    "note": "Historical observation from the implementation under test at that time. It is not a declaration of the current Production route."
+  },
+  "modelId": "onnx-community/gpt-oss-20b-ONNX",
+  "resolvedRevision": "6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7",
+  "candidate": {
+    "device": "webgpu",
+    "dtype": "q4f16"
+  },
+  "autoClass": "AutoModelForCausalLM",
+  "modelType": "gpt_oss",
+  "sessionNames": [
+    "model"
+  ]
+}

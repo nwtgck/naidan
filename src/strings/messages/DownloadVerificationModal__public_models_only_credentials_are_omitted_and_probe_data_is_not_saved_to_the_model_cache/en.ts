@@ -1,0 +1,1 @@
+export const DownloadVerificationModal__public_models_only_credentials_are_omitted_and_probe_data_is_not_saved_to_the_model_cache = (): string => 'Public models only. Credentials are omitted, referrer data is suppressed, and probe bodies are not saved to the model cache.';

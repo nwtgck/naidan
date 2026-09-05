@@ -7,7 +7,7 @@ function baseRun(): ModelSupportInvestigationRun {
     schemaVersion: 1, runId: "run", modelId: "org/model", scope: "partial-runtime-preflight",
     startedAt: "2026-08-06T00:00:00.000Z", completedAt: "2026-08-06T00:00:01.000Z",
     status: "passed", currentOperation: "done", steps: [], runtimeAssets: undefined,
-    repository: undefined, cache: undefined, declarations: undefined, templateBehavior: undefined,
+    repository: undefined, downloadEvidence: undefined, cache: undefined, declarations: undefined, templateBehavior: undefined,
     modelFilePlan: undefined, loadAttempts: [],
     productionLane: { status: "not-run", observation: undefined, partialObservation: undefined, error: undefined },
     laneComparison: undefined, error: undefined,

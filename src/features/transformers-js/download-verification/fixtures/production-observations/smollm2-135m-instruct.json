@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "historical-model-support-investigation-production-observation",
+    "observedAt": "2026-09-02T00:06:39.500Z",
+    "note": "Historical observation from the implementation under test at that time. It is not a declaration of the current Production route."
+  },
+  "modelId": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "resolvedRevision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+  "candidate": {
+    "device": "webgpu",
+    "dtype": "q4f16"
+  },
+  "autoClass": "AutoModelForCausalLM",
+  "modelType": "llama",
+  "sessionNames": [
+    "model"
+  ]
+}

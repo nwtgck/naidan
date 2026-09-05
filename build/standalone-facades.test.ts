@@ -35,4 +35,22 @@ describe('standalone facades', () => {
     });
     expect((alias?.find as RegExp).test(`${facadePath}/components/ModelSupportInvestigationModal.vue`)).toBe(false);
   });
+
+  it('replaces the download verification facade with its standalone implementation', () => {
+    const facadePath = '@/features/transformers-js/download-verification';
+    const expectedStandalonePath = 'src/features/transformers-js/download-verification/index-standalone.ts';
+    const definition = STANDALONE_FACADES.find((facade) => facade.facadePath === facadePath);
+
+    expect(definition).toEqual({ facadePath, standalonePath: expectedStandalonePath });
+
+    const aliases = createStandaloneFacadeAliases({ resolvePath: (path) => `/repo/${path}` });
+    const alias = aliases.find(({ find }) => find instanceof RegExp && find.test(facadePath));
+
+    expect(alias).toEqual({
+      find: expect.any(RegExp),
+      replacement: `/repo/${expectedStandalonePath}`,
+    });
+    expect((alias?.find as RegExp).test(`${facadePath}/components/DownloadVerificationModal.vue`)).toBe(false);
+  });
+
 });

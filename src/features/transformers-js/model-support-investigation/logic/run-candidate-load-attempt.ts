@@ -63,6 +63,7 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   declarations,
   templateBehavior,
   candidate,
+  loaderRevisionOption,
   autoClass,
   loadDownloadedModel,
   observeLoadedModel,
@@ -82,6 +83,7 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
   declarations: ModelSupportInvestigationModelDeclarations,
   templateBehavior: ModelSupportInvestigationTemplateBehavior | undefined,
   candidate: ModelSupportInvestigationCandidateFilePlan,
+  loaderRevisionOption?: string | null,
   autoClass: ModelSupportInvestigationGenerationAutoClassName | undefined,
   /**
    * Loads only from already-downloaded artifacts. This callback MUST NOT start,
@@ -142,7 +144,9 @@ export async function runCandidateLoadAttempt<TModel, TInput>({
     dtype: candidate.dtype,
     autoClass,
     resolvedRevision: repository.resolvedRevision,
-    loaderRevisionOption: investigationModelLoadRevision({ requestedRevision: repository.requestedRevision }) ?? null,
+    loaderRevisionOption: loaderRevisionOption === undefined
+      ? investigationModelLoadRevision({ requestedRevision: repository.requestedRevision }) ?? null
+      : loaderRevisionOption,
     startedAt,
     modelLoadDurationMs: undefined,
     modelLoadProgress: undefined,

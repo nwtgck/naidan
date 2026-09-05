@@ -25,6 +25,7 @@ function updateLaneStep({ run, status, detail }: {
       return { ...step, status, detail };
     case "runtime-assets":
     case "repository-information":
+    case "download-evidence":
     case "existing-model-data":
     case "model-declarations":
     case "template-behavior":
@@ -75,21 +76,37 @@ export async function runProductionLaneComparison({
   const observedCandidate = loadedAttempt === undefined
     ? undefined
     : { device: loadedAttempt.device, dtype: loadedAttempt.dtype };
-  const orderedCandidates = observedCandidate === undefined
-    ? eligibleCandidates.map(candidate => ({ device: candidate.device, dtype: candidate.dtype }))
-    : [
-      observedCandidate,
-      ...eligibleCandidates
-        .filter(candidate => candidate.device !== observedCandidate.device || candidate.dtype !== observedCandidate.dtype)
-        .map(candidate => ({ device: candidate.device, dtype: candidate.dtype })),
-    ];
-  const firstCandidate = orderedCandidates[0];
-  const productionCandidates = firstCandidate === undefined
-    ? undefined
-    : [
-      firstCandidate,
-      ...orderedCandidates.slice(1),
-    ] as const;
+  const runtimeCompletion = updatedRun.downloadEvidence?.runtimeCompletion;
+  const productionCandidates = (() => {
+    if (runtimeCompletion !== undefined) {
+      switch (runtimeCompletion.status) {
+      case 'accepted': {
+        if (observedCandidate !== undefined) return [observedCandidate] as const;
+        const selected = runtimeCompletion.selectedCandidate;
+        return selected === undefined ? undefined : [selected] as const;
+      }
+      case 'failed':
+      case 'exhausted':
+        return undefined;
+      default: {
+        const _ex: never = runtimeCompletion.status;
+        throw new Error(`Unhandled runtime completion status: ${_ex}`);
+      }
+      }
+    }
+    const orderedCandidates = observedCandidate === undefined
+      ? eligibleCandidates.map(candidate => ({ device: candidate.device, dtype: candidate.dtype }))
+      : [
+        observedCandidate,
+        ...eligibleCandidates
+          .filter(candidate => candidate.device !== observedCandidate.device || candidate.dtype !== observedCandidate.dtype)
+          .map(candidate => ({ device: candidate.device, dtype: candidate.dtype })),
+      ];
+    const firstCandidate = orderedCandidates[0];
+    return firstCandidate === undefined
+      ? undefined
+      : [firstCandidate, ...orderedCandidates.slice(1)] as const;
+  })();
   const templateCase = updatedRun.templateBehavior?.cases.find(item => item.caseId === "user-generation");
   const repository = updatedRun.repository;
   if (productionCandidates === undefined || repository === undefined) {
@@ -148,7 +165,9 @@ export async function runProductionLaneComparison({
       scenario: {
         modelId: repository.normalizedModelId,
         resolvedRevision: repository.resolvedRevision,
-        loadRevision: investigationModelLoadRevision({ requestedRevision: repository.requestedRevision }),
+        loadRevision: runtimeCompletion === undefined
+          ? investigationModelLoadRevision({ requestedRevision: repository.requestedRevision })
+          : runtimeCompletion.loaderRevisionOption ?? undefined,
         candidates: [...productionCandidates],
         messages: (templateCase?.messages ?? [{ role: "user" as const, content: "Template probe user message." }]).map(message => ({
           role: message.role,

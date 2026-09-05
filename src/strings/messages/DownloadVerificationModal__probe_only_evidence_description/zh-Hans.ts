@@ -1,0 +1,1 @@
+export const DownloadVerificationModal__probe_only_evidence_description = (): string => '保存仅探测模式下的仓库、实际 Transformers.js 请求、传输、候选项和缓存清单事实。此独立探测不会验证运行时模型加载、推理或生成是否成功；runtime-complete Evidence 请通过 Model Support Investigation 获取。';

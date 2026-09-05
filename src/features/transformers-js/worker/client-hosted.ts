@@ -25,7 +25,7 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
       async prefetchUrls({ urls: _urls, progressCallback: _progressCallback }) {
         throw createUnavailableEnvironmentError();
       },
-      async loadDownloadedModel({ modelId: _modelId, progressCallback: _progressCallback }) {
+      async loadDownloadedModel({ modelId: _modelId, revision: _revision, progressCallback: _progressCallback }) {
         throw createUnavailableEnvironmentError();
       },
       async unloadModel() {
@@ -66,12 +66,13 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
       return remote.prefetchUrls(urls, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
     },
-    async loadDownloadedModel({ modelId, progressCallback }: {
+    async loadDownloadedModel({ modelId, revision, progressCallback }: {
       modelId: string,
+      revision?: string,
       progressCallback: TransformersJsProgressCallback,
     }): Promise<ModelLoadResult> {
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-      return remote.loadDownloadedModel(modelId, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
+      return remote.loadDownloadedModel(modelId, revision, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
     },
     async unloadModel(): Promise<void> {
       return remote.unloadModel();
@@ -101,10 +102,13 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
     },
     async dispose(): Promise<void> {
       try {
-        await releaseWorkerRemote({ remote });
-      } finally {
-        worker.terminate();
+        const release = releaseWorkerRemote({ remote });
+        void Promise.resolve(release).catch(() => undefined);
+      } catch {
+        // Remote release is advisory. Worker termination is the terminal cleanup and
+        // must not wait for a Comlink release that can hang after an interrupted load.
       }
+      worker.terminate();
     },
   };
 }

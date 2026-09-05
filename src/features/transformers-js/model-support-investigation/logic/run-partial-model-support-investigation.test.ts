@@ -34,6 +34,7 @@ function runtimeRun(): ModelSupportInvestigationRun {
     steps: [
       { id: 'runtime-assets', status: 'passed', detail: 'runtime passed' },
       { id: 'repository-information', status: 'not-run', detail: undefined },
+      { id: 'download-evidence', status: 'not-run', detail: undefined },
       { id: 'existing-model-data', status: 'not-run', detail: undefined },
       { id: 'model-declarations', status: 'not-run', detail: undefined },
       { id: 'template-behavior', status: 'not-run', detail: undefined },
@@ -44,6 +45,7 @@ function runtimeRun(): ModelSupportInvestigationRun {
     ],
     runtimeAssets: undefined,
     repository: undefined,
+    downloadEvidence: undefined,
     cache: undefined,
     declarations: undefined,
     templateBehavior: undefined,
@@ -54,6 +56,40 @@ function runtimeRun(): ModelSupportInvestigationRun {
     error: undefined,
   };
 }
+
+function downloadEvidence({ repository, runId = 'run-1' }: {
+  repository: {
+    requestedModelId: string;
+    normalizedModelId: string;
+    resolvedRevision: string;
+  };
+  runId?: string;
+}): NonNullable<ModelSupportInvestigationRun['downloadEvidence']> {
+  return {
+    schemaVersion: 1,
+    runId,
+    mode: 'probe-only',
+    run: {
+      modelId: repository.requestedModelId,
+      normalizedModelId: repository.normalizedModelId,
+      requestedRevision: 'main',
+      resolvedRevision: repository.resolvedRevision,
+      repositoryFileCount: 0,
+      repositoryFiles: [],
+      transportObservations: [],
+      skippedModelArtifactCount: 0,
+      bytesConsumed: 0,
+      maximumBytes: 2 * 1024 * 1024,
+      startedAt: '2026-08-06T00:00:01.100Z',
+      finishedAt: '2026-08-06T00:00:01.200Z',
+    },
+    modelArtifactObservations: [],
+    modelArtifactObservationError: undefined,
+    cacheBefore: { modelId: repository.normalizedModelId, normalizedModelId: repository.normalizedModelId, revisions: [] },
+    cacheInspectionError: undefined,
+  };
+}
+
 
 describe('runPartialModelSupportInvestigation', () => {
 
@@ -149,6 +185,7 @@ describe('runPartialModelSupportInvestigation', () => {
       }),
       runRuntimePreflight: async () => runtimeRun(),
       inspectRepository: async () => repository,
+      collectDownloadEvidence: async ({ repository: frozenRepository, runId }) => downloadEvidence({ repository: frozenRepository, runId }),
       inspectCache: async () => ({
         normalizedModelId: 'org/model',
         rootPath: 'models/huggingface.co/org/model',
@@ -192,7 +229,7 @@ describe('runPartialModelSupportInvestigation', () => {
       cache: result.cache,
     });
     expect(result.templateBehavior?.tokenizerClass).toBe('ProbeTokenizer');
-    expect(events).toHaveLength(10);
+    expect(events).toHaveLength(12);
   });
 
   it('checkpoints the cache inventory before bounded provenance verification starts', async () => {
@@ -260,6 +297,7 @@ describe('runPartialModelSupportInvestigation', () => {
       }),
       runRuntimePreflight: async () => runtimeRun(),
       inspectRepository: async () => repository,
+      collectDownloadEvidence: async ({ repository: frozenRepository, runId }) => downloadEvidence({ repository: frozenRepository, runId }),
       inspectCache: async () => cache,
       verifyCacheProvenance,
       inspectDeclarations: async () => ({
@@ -306,6 +344,7 @@ describe('runPartialModelSupportInvestigation', () => {
       inspectRepository: async () => {
         throw new Error('repository unavailable', { cause: new TypeError('repository returned invalid content') });
       },
+      collectDownloadEvidence: vi.fn(),
       inspectCache: async () => ({
         normalizedModelId: 'org/model',
         rootPath: 'models/huggingface.co/org/model',
@@ -354,7 +393,7 @@ describe('runPartialModelSupportInvestigation', () => {
     expect(inspectTemplateBehavior).not.toHaveBeenCalled();
     expect(inspectModelFilePlan).not.toHaveBeenCalled();
     expect(inspectModelFilePlan).not.toHaveBeenCalled();
-    expect(events).toHaveLength(7);
+    expect(events).toHaveLength(8);
   });
 
   it('continues independent planning after a runtime integrity failure', async () => {
@@ -408,7 +447,9 @@ describe('runPartialModelSupportInvestigation', () => {
         exactModelVisibleMatch: true,
         firstMismatchIndex: undefined,
       }),
-      runRuntimePreflight: async () => failed, inspectRepository, inspectCache,
+      runRuntimePreflight: async () => failed, inspectRepository,
+      collectDownloadEvidence: async ({ repository: frozenRepository, runId }) => downloadEvidence({ repository: frozenRepository, runId }),
+      inspectCache,
       verifyCacheProvenance: async () => cacheProvenance(), inspectDeclarations, inspectTemplateBehavior, inspectModelFilePlan,
       onEvent: vi.fn(), now: () => '2026-08-06T00:00:02.000Z',
     });

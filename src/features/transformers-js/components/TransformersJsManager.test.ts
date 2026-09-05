@@ -174,6 +174,25 @@ describe('TransformersJsManager.vue', () => {
     expect(wrapper.text()).toContain('Resume');
   });
 
+  it('revalidates a heuristically complete model through explicit Production download preparation', async () => {
+    (transformersJsService.listCachedModels as any).mockResolvedValue([
+      { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
+    ]);
+
+    const wrapper = mount(TransformersJsManager);
+    await flushPromises();
+
+    const input = wrapper.find('input[placeholder*="Hugging Face model ID"]');
+    await input.setValue('hf.co/org/model1');
+    const downloadButton = wrapper.findAll('button').find(button => button.text().includes('Download Model'));
+    expect(downloadButton).toBeDefined();
+    await downloadButton!.trigger('click');
+    await flushPromises();
+
+    expect(transformersJsService.downloadModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/model1' });
+    expect(transformersJsService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/model1' });
+  });
+
   it('resumes an incomplete model through explicit download before loading it', async () => {
     (transformersJsService.listCachedModels as any).mockResolvedValue([
       { id: 'hf.co/org/incomplete', size: 500, fileCount: 2, lastModified: Date.now(), isComplete: false },

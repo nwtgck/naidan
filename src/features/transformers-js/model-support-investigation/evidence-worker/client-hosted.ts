@@ -4,6 +4,7 @@ import type {
   ModelSupportInvestigationEvidenceWorkerClient,
 } from "@/features/transformers-js/model-support-investigation/evidence-worker/types";
 import { createModelSupportInvestigationEvidenceWorkerRequest } from "@/features/transformers-js/model-support-investigation/evidence-worker/request";
+import { createDownloadVerificationEvidenceWorkerRequest } from "@/features/transformers-js/model-support-investigation/evidence-worker/download-verification-request";
 
 export const DEFAULT_EVIDENCE_EXPORT_TIMEOUT_MS = 60 * 1000;
 
@@ -14,6 +15,13 @@ export class ModelSupportInvestigationEvidenceExportTimeoutError extends Error {
     super(`Model Support Investigation Evidence export timed out after ${timeoutMs} ms`);
     this.name = "ModelSupportInvestigationEvidenceExportTimeoutError";
     this.timeoutMs = timeoutMs;
+  }
+}
+
+export class ModelSupportInvestigationEvidenceExportDisposedError extends Error {
+  constructor() {
+    super("Model Support Investigation Evidence export was cancelled because its Worker client was disposed");
+    this.name = "ModelSupportInvestigationEvidenceExportDisposedError";
   }
 }
 
@@ -36,6 +44,7 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
   const remote = wrapWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ endpoint: worker });
   let disposed = false;
   let workerTerminated = false;
+  const activeOperationRejectors = new Set<ReturnType<typeof Promise.withResolvers<never>>['reject']>();
 
   function terminateWorker(): void {
     if (workerTerminated) return;
@@ -52,39 +61,60 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
     }
   }
 
+  async function runExportOperation<T>({ operation }: { operation: Promise<T> }): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        terminateWorker();
+        reject(new ModelSupportInvestigationEvidenceExportTimeoutError({ timeoutMs }));
+      }, timeoutMs);
+    });
+    const cancelled = Promise.withResolvers<never>();
+    activeOperationRejectors.add(cancelled.reject);
+
+    try {
+      return await Promise.race([operation, timeout, cancelled.promise]);
+    } catch (error) {
+      // Each export gets a fresh Worker. A rejected, cancelled, or hung export is terminal
+      // for this client, so terminate immediately rather than awaiting remote cleanup.
+      terminateWorker();
+      throw error;
+    } finally {
+      activeOperationRejectors.delete(cancelled.reject);
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
   return {
     async createPartialEvidence({ run, recovery }) {
       if (disposed || workerTerminated) {
         throw new Error("Model Support Investigation Evidence Worker client is disposed");
       }
 
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => {
-          terminateWorker();
-          reject(new ModelSupportInvestigationEvidenceExportTimeoutError({ timeoutMs }));
-        }, timeoutMs);
+      return await runExportOperation({
+        operation: remote.createPartialEvidence({
+          request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }),
+        }),
       });
-
-      try {
-        return await Promise.race([
-          remote.createPartialEvidence({
-            request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }),
-          }),
-          timeout,
-        ]);
-      } catch (error) {
-        // Each export gets a fresh Worker. A rejected/hung export is terminal for this client, so
-        // terminate immediately rather than risking another hang while trying to release it.
-        terminateWorker();
-        throw error;
-      } finally {
-        if (timer !== undefined) clearTimeout(timer);
+    },
+    async createDownloadVerificationEvidence({ evidence }) {
+      if (disposed || workerTerminated) {
+        throw new Error("Model Support Investigation Evidence Worker client is disposed");
       }
+
+      return await runExportOperation({
+        operation: remote.createDownloadVerificationEvidence({
+          request: createDownloadVerificationEvidenceWorkerRequest({ evidence }),
+        }),
+      });
     },
     async dispose() {
       if (disposed) return;
       disposed = true;
+      for (const reject of activeOperationRejectors) {
+        reject(new ModelSupportInvestigationEvidenceExportDisposedError());
+      }
+      activeOperationRejectors.clear();
       if (workerTerminated) return;
       // Disposal is deliberately non-blocking. Evidence export is a recovery path, so a hung
       // Comlink release must never keep the UI spinner alive after the archive itself completed.

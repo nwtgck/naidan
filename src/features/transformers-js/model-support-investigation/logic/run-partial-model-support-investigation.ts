@@ -50,11 +50,13 @@ export async function runPartialModelSupportInvestigation({
   runRuntimePreflight,
   inspectPersistenceRoundTrip,
   inspectRepository,
+  collectDownloadEvidence,
   inspectCache,
   verifyCacheProvenance,
   inspectDeclarations,
   inspectTemplateBehavior,
   inspectModelFilePlan,
+  deferTemplateBehavior = false,
   onEvent,
   onRunUpdate = () => undefined,
   now,
@@ -62,6 +64,10 @@ export async function runPartialModelSupportInvestigation({
   runRuntimePreflight: () => Promise<ModelSupportInvestigationRun>,
   inspectPersistenceRoundTrip: () => Promise<ModelSupportInvestigationPersistenceRoundTrip>,
   inspectRepository: () => Promise<ModelSupportInvestigationRepository>,
+  collectDownloadEvidence: ({ repository, runId }: {
+    repository: ModelSupportInvestigationRepository,
+    runId: string,
+  }) => Promise<NonNullable<ModelSupportInvestigationRun['downloadEvidence']>>,
   inspectCache: () => Promise<ModelSupportInvestigationCacheInventory>,
   verifyCacheProvenance: ({ repository, cache }: {
     repository: ModelSupportInvestigationRepository,
@@ -78,6 +84,7 @@ export async function runPartialModelSupportInvestigation({
     declarations: ModelSupportInvestigationModelDeclarations,
     cache: ModelSupportInvestigationCacheInventory | undefined,
   }) => Promise<ModelSupportInvestigationModelFilePlan>,
+  deferTemplateBehavior?: boolean,
   onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
   onRunUpdate?: ({ run }: { run: ModelSupportInvestigationRun }) => void,
   now: () => string,
@@ -87,6 +94,7 @@ export async function runPartialModelSupportInvestigation({
     ...runtimeRun,
     scope: 'partial-runtime-repository-cache-declarations-template-model-files',
     repository: undefined,
+    downloadEvidence: undefined,
     cache: undefined,
     declarations: undefined,
     templateBehavior: undefined,
@@ -144,6 +152,33 @@ export async function runPartialModelSupportInvestigation({
     const detail = recordStepError({ run, stepId: 'repository-information', error }).message;
     errors.push(detail);
     emit({ stepId: 'repository-information', status: 'failed', detail });
+  }
+
+  if (run.repository === undefined) {
+    emit({
+      stepId: 'download-evidence',
+      status: 'blocked',
+      detail: 'Blocked because the resolved repository revision is unavailable',
+    });
+  } else {
+    emit({
+      stepId: 'download-evidence',
+      status: 'running',
+      detail: 'Collecting bounded transport and actual Transformers.js artifact-request evidence against the frozen revision',
+    });
+    try {
+      run.downloadEvidence = await collectDownloadEvidence({ repository: run.repository, runId: run.runId });
+      const observed = run.downloadEvidence.modelArtifactObservations.filter(item => item.status === 'observed').length;
+      emit({
+        stepId: 'download-evidence',
+        status: 'passed',
+        detail: `${observed} actual candidate artifact-request observations; ${run.downloadEvidence.run.transportObservations.length} bounded transport probes`,
+      });
+    } catch (error) {
+      const detail = recordStepError({ run, stepId: 'download-evidence', error }).message;
+      errors.push(detail);
+      emit({ stepId: 'download-evidence', status: 'failed', detail });
+    }
   }
 
   emit({ stepId: 'existing-model-data', status: 'running', detail: 'Inspecting existing OPFS model files and completion markers' });
@@ -246,24 +281,32 @@ export async function runPartialModelSupportInvestigation({
       }
     }
 
-    emit({
-      stepId: 'template-behavior',
-      status: 'running',
-      detail: 'Loading the tokenizer through the normal Chat revision while preserving the resolved commit as evidence',
-    });
-    try {
-      run.templateBehavior = await inspectTemplateBehavior({ repository: run.repository });
-      const passed = run.templateBehavior.cases.filter(item => item.status === 'passed').length;
-      const failed = run.templateBehavior.cases.length - passed;
+    if (deferTemplateBehavior) {
       emit({
         stepId: 'template-behavior',
-        status: 'passed',
-        detail: `${run.templateBehavior.tokenizerClass}: ${passed} template cases rendered, ${failed} recorded as unsupported or failed`,
+        status: 'blocked',
+        detail: 'Deferred until runtime-complete preparation has selected a Production-accepted cache revision',
       });
-    } catch (error) {
-      const detail = recordStepError({ run, stepId: 'template-behavior', error }).message;
-      errors.push(detail);
-      emit({ stepId: 'template-behavior', status: 'failed', detail });
+    } else {
+      emit({
+        stepId: 'template-behavior',
+        status: 'running',
+        detail: 'Loading the tokenizer through the normal Chat revision while preserving the resolved commit as evidence',
+      });
+      try {
+        run.templateBehavior = await inspectTemplateBehavior({ repository: run.repository });
+        const passed = run.templateBehavior.cases.filter(item => item.status === 'passed').length;
+        const failed = run.templateBehavior.cases.length - passed;
+        emit({
+          stepId: 'template-behavior',
+          status: 'passed',
+          detail: `${run.templateBehavior.tokenizerClass}: ${passed} template cases rendered, ${failed} recorded as unsupported or failed`,
+        });
+      } catch (error) {
+        const detail = recordStepError({ run, stepId: 'template-behavior', error }).message;
+        errors.push(detail);
+        emit({ stepId: 'template-behavior', status: 'failed', detail });
+      }
     }
   }
 
@@ -271,7 +314,7 @@ export async function runPartialModelSupportInvestigation({
   run.status = errors.length === 0 ? 'passed' : 'failed';
   run.error = errors.length === 0 ? undefined : errors.join('; ');
   run.currentOperation = errors.length === 0
-    ? 'Runtime, repository, existing model data, declaration, template behavior, and model file plan evidence collected'
+    ? 'Runtime, repository, download, existing model data, declaration, template behavior, and model file plan evidence collected'
     : 'Partial evidence collected with investigation failures';
   return run;
 }

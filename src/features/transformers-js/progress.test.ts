@@ -51,7 +51,7 @@ describe('transformersJsService progress logic', () => {
 
   it('should cap metadata progress at 5%', async () => {
     const mockRemote = {
-      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         // Send multiple small metadata files
         cb({ status: 'initiate', name: 'config.json' });
         cb({ status: 'progress', name: 'config.json', loaded: 1000, total: 1000 });
@@ -85,7 +85,7 @@ describe('transformersJsService progress logic', () => {
     vi.useFakeTimers();
 
     const mockRemote = {
-      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         // Metadata
         cb({ status: 'done', name: 'config.json', loaded: 1000, total: 1000 });
 
@@ -122,7 +122,7 @@ describe('transformersJsService progress logic', () => {
     vi.setSystemTime(now);
 
     const mockRemote = {
-      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         const floor = 200 * 1024 * 1024;
         const half = 100 * 1024 * 1024;
 
@@ -162,7 +162,7 @@ describe('transformersJsService progress logic', () => {
 
   it('should ensure monotonicity (progress never goes backwards)', async () => {
     const mockRemote = {
-      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         // High progress with small denominator
         cb({ status: 'initiate', name: 'file1.bin' });
         cb({ status: 'progress', name: 'file1.bin', loaded: 80, total: 100 }); // 80%? No, capped/floored.
@@ -206,7 +206,7 @@ describe('transformersJsService progress logic', () => {
 
   it('should never reach 100% progress until model is ready', async () => {
     const mockRemote = {
-      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         const startTime = Date.now();
         vi.stubGlobal('Date', { now: () => startTime + 5000 }); // Force Phase 3
 
@@ -236,7 +236,7 @@ describe('transformersJsService progress logic', () => {
 
   it('should throttle Transformers.js progress_total/progress pairs as one high-frequency stream', async () => {
     const mockRemote = {
-      loadDownloadedModel: vi.fn().mockImplementation(async (_id, cb) => {
+      loadDownloadedModel: vi.fn().mockImplementation(async (_id, _revision, cb) => {
         for (let index = 1; index <= 100; index += 1) {
           cb({ status: 'progress_total', loaded: index, total: 100, progress: index });
           cb({ status: 'progress', file: 'model.onnx', loaded: index, total: 100, progress: index });

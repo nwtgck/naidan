@@ -1,0 +1,1 @@
+export const DownloadVerificationModal__public_models_only_credentials_are_omitted_and_probe_data_is_not_saved_to_the_model_cache = (): string => 'Somente modelos públicos. Credenciais são omitidas, dados de referência são suprimidos e os corpos da sondagem não são salvos no cache do modelo.';
