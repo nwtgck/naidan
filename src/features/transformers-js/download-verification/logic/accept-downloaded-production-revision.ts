@@ -2,6 +2,7 @@ import { createDownloadVerificationCandidateAcceptanceWorkerClient } from '@/fea
 import { awaitWithAbort } from '@/features/transformers-js/download-verification/logic/await-with-abort';
 import { sanitizeDiagnosticText } from '@/features/transformers-js/download-verification/logic/run-browser-download-verification';
 import type { DownloadVerificationRevisionAcceptanceObservation } from '@/features/transformers-js/download-verification/types';
+import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 
 function revisionAcceptanceFailureStatus({ error }: { error: unknown }): 'rejected' | 'failed' {
   const message = error instanceof Error ? error.message : String(error);
@@ -40,12 +41,14 @@ export async function acceptDownloadedProductionRevision({
   repositoryResolvedRevision,
   cacheRevision,
   loadRevision,
+  candidates,
   signal,
 }: {
   modelId: string;
   repositoryResolvedRevision: string | undefined;
   cacheRevision: string;
   loadRevision?: string;
+  candidates?: readonly TransformersJsProductionInvestigationCandidate[];
   signal?: AbortSignal;
 }): Promise<DownloadVerificationRevisionAcceptanceObservation> {
   if (loadRevision === undefined && cacheRevision !== 'main') {
@@ -57,12 +60,42 @@ export async function acceptDownloadedProductionRevision({
   signal?.throwIfAborted();
   const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
   try {
-    const operation = client.verifyDownloadedModelRevision({
-      modelId,
-      loadRevision,
-      progressCallback: () => undefined,
-    });
-    const result = await awaitWithAbort({ operation, signal });
+    const result = await (async () => {
+      if (candidates === undefined) {
+        return await awaitWithAbort({
+          operation: client.verifyDownloadedModelRevision({
+            modelId,
+            loadRevision,
+            progressCallback: () => undefined,
+          }),
+          signal,
+        });
+      }
+
+      let lastError: unknown;
+      let firstNonMissingError: unknown;
+      for (const candidate of candidates) {
+        signal?.throwIfAborted();
+        try {
+          return await awaitWithAbort({
+            operation: client.verifyDownloadedModelCandidate({
+              modelId,
+              loadRevision,
+              candidate,
+              progressCallback: () => undefined,
+            }),
+            signal,
+          });
+        } catch (error) {
+          if (signal?.aborted === true) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+          lastError = error;
+          if (serializedError({ error }).name !== 'MissingDownloadedModelArtifact' && firstNonMissingError === undefined) {
+            firstNonMissingError = error;
+          }
+        }
+      }
+      throw firstNonMissingError ?? lastError ?? new Error('No eligible cached Production candidate was available for revision acceptance');
+    })();
     return {
       modelId,
       repositoryResolvedRevision: repositoryResolvedRevision ?? null,

@@ -162,6 +162,50 @@ describe('completeDownloadVerificationRuntimeEvidence', () => {
     });
   });
 
+  it('passes constrained candidates to cache reuse and exact-revision preparation', async () => {
+    const q4Candidates = [
+      { device: 'webgpu' as const, dtype: 'q4' as const },
+      { device: 'wasm' as const, dtype: 'q4' as const },
+    ];
+    const reusableByRevision = { [REVISION]: q4Candidates, main: [] };
+    const reuseRevision = vi.fn(async () => ({ reused: false as const, acceptance: undefined }));
+    const runPreparation = vi.fn(async () => ({
+      status: 'accepted' as const,
+      failureStage: undefined,
+      runtimeArtifacts: {
+        modelId: 'org/model', revision: REVISION, status: 'prepared' as const, processor: 'tokenizer' as const,
+        modelType: 'test', observationMethod: 'transformers-runtime-artifact-preparation' as const, error: undefined,
+      },
+      candidates: {
+        status: 'accepted' as const,
+        selectedCandidate: { device: 'webgpu' as const, dtype: 'q4' as const },
+        attempts: [],
+        error: undefined,
+      },
+    }));
+
+    await completeDownloadVerificationRuntimeEvidence({
+      evidence: evidence(),
+      storageRoot: {} as FileSystemDirectoryHandle,
+      candidateOrder: q4Candidates,
+      reusableCandidateOrderByRevision: reusableByRevision,
+      reuseRevision,
+      runPreparation,
+      inspectCachedRevisions: vi.fn(async () => inventory()),
+    });
+
+    expect(reuseRevision).toHaveBeenCalledWith(expect.objectContaining({
+      modelId: 'org/model',
+      resolvedRevision: REVISION,
+      candidateOrderByRevision: reusableByRevision,
+    }));
+    expect(runPreparation).toHaveBeenCalledWith(expect.objectContaining({
+      modelId: 'org/model',
+      revision: REVISION,
+      candidateOrder: q4Candidates,
+    }));
+  });
+
   it('prepares the frozen exact revision once when no reusable cache exists', async () => {
     const runPreparation = vi.fn(async () => ({
       status: 'accepted' as const,

@@ -87,6 +87,9 @@ describe('transformersJsService', () => {
 
     // Default navigator mock
     vi.stubGlobal('navigator', {
+      userAgent: '',
+      vendor: '',
+      hardwareConcurrency: 2,
       storage: {
         getDirectory: vi.fn().mockRejectedValue(new Error('No storage')),
       },

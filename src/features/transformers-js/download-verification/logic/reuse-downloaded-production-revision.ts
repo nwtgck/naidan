@@ -1,5 +1,6 @@
 import { inspectDownloadVerificationCachedRevisions, planDownloadVerificationCachedRevisionLoadCandidates } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
 import { acceptReusableDownloadedProductionRevisionsForDownload, type DownloadVerificationCachedRevisionAcceptanceResult } from '@/features/transformers-js/download-verification/logic/run-cached-revision-acceptance-orchestration';
+import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 
 export type DownloadVerificationReusableRevisionResult =
   | {
@@ -18,12 +19,14 @@ export async function reuseDownloadedProductionRevision({
   storageRoot,
   inspectCachedRevisions = inspectDownloadVerificationCachedRevisions,
   acceptReusableRevisions = acceptReusableDownloadedProductionRevisionsForDownload,
+  candidateOrderByRevision,
 }: {
   modelId: string;
   resolvedRevision: string;
   storageRoot?: FileSystemDirectoryHandle;
   inspectCachedRevisions?: typeof inspectDownloadVerificationCachedRevisions;
   acceptReusableRevisions?: typeof acceptReusableDownloadedProductionRevisionsForDownload;
+  candidateOrderByRevision?: Readonly<Record<string, readonly TransformersJsProductionInvestigationCandidate[]>>;
 }): Promise<DownloadVerificationReusableRevisionResult> {
   const resolvedStorageRoot = storageRoot ?? await navigator.storage.getDirectory();
   let inventory: Awaited<ReturnType<typeof inspectDownloadVerificationCachedRevisions>>;
@@ -38,7 +41,7 @@ export async function reuseDownloadedProductionRevision({
     return { reused: false, acceptance: undefined };
   }
 
-  const reuse = await acceptReusableRevisions({ inventory, resolvedRevision });
+  const reuse = await acceptReusableRevisions({ inventory, resolvedRevision, candidateOrderByRevision });
   switch (reuse.status) {
   case 'accepted':
     return {

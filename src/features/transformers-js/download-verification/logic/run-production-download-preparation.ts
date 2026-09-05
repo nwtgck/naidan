@@ -6,7 +6,7 @@ import type {
   DownloadVerificationCandidateOrchestrationResult,
   DownloadVerificationRuntimeArtifactPreparationObservation,
 } from '@/features/transformers-js/download-verification/types';
-import type { TransformersJsProgressCallback } from '@/features/transformers-js/types';
+import type { TransformersJsProductionInvestigationCandidate, TransformersJsProgressCallback } from '@/features/transformers-js/types';
 
 export type DownloadVerificationProductionDownloadPreparationRun =
   | {
@@ -22,11 +22,24 @@ export type DownloadVerificationProductionDownloadPreparationRun =
       candidates: DownloadVerificationCandidateOrchestrationResult;
     };
 
-export async function runProductionDownloadPreparation({ modelId, revision, progressCallback = () => undefined, signal }: {
+function candidateKey({ candidate }: { candidate: TransformersJsProductionInvestigationCandidate }): string {
+  return `${candidate.device}/${candidate.dtype}`;
+}
+
+export async function runProductionDownloadPreparation({
+  modelId,
+  revision,
+  progressCallback = () => undefined,
+  signal,
+  candidateOrder,
+  requiredModelPathsByCandidate,
+}: {
   modelId: string;
   revision: string;
   progressCallback?: TransformersJsProgressCallback;
   signal?: AbortSignal;
+  candidateOrder?: readonly TransformersJsProductionInvestigationCandidate[];
+  requiredModelPathsByCandidate?: Readonly<Record<string, readonly string[]>>;
 }): Promise<DownloadVerificationProductionDownloadPreparationRun> {
   const runtimeArtifacts = await prepareProductionRuntimeArtifacts({ modelId, revision, progressCallback, signal });
   switch (runtimeArtifacts.status) {
@@ -52,6 +65,7 @@ export async function runProductionDownloadPreparation({ modelId, revision, prog
       candidate,
       progressCallback,
       signal,
+      requiredModelPaths: requiredModelPathsByCandidate?.[candidateKey({ candidate })],
     }),
     acceptCandidate: async ({ candidate }) => await acceptDownloadedProductionCandidate({
       modelId,
@@ -62,6 +76,7 @@ export async function runProductionDownloadPreparation({ modelId, revision, prog
       signal,
     }),
     signal,
+    ...(candidateOrder === undefined ? {} : { candidates: candidateOrder }),
   });
   const failureStage = (() => {
     switch (candidates.status) {

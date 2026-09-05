@@ -2,7 +2,7 @@ import type { DownloadVerificationEvidenceInput, DownloadVerificationRuntimeComp
 import { inspectDownloadVerificationCachedRevisions } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
 import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
 import { runProductionDownloadPreparation } from '@/features/transformers-js/download-verification/logic/run-production-download-preparation';
-import type { TransformersJsProgressCallback } from '@/features/transformers-js/types';
+import type { TransformersJsProductionInvestigationCandidate, TransformersJsProgressCallback } from '@/features/transformers-js/types';
 
 function serializedError({ error }: { error: unknown }): { name: string; message: string } {
   if (error instanceof Error) return { name: error.name, message: error.message };
@@ -81,6 +81,9 @@ export async function completeDownloadVerificationRuntimeEvidence({
   runPreparation = runProductionDownloadPreparation,
   inspectCachedRevisions = inspectDownloadVerificationCachedRevisions,
   allowLegacyMainReuse = true,
+  candidateOrder,
+  reusableCandidateOrderByRevision,
+  requiredModelPathsByCandidate,
 }: {
   evidence: DownloadVerificationEvidenceInput;
   progressCallback?: TransformersJsProgressCallback;
@@ -90,6 +93,9 @@ export async function completeDownloadVerificationRuntimeEvidence({
   runPreparation?: typeof runProductionDownloadPreparation;
   inspectCachedRevisions?: typeof inspectDownloadVerificationCachedRevisions;
   allowLegacyMainReuse?: boolean;
+  candidateOrder?: readonly TransformersJsProductionInvestigationCandidate[];
+  reusableCandidateOrderByRevision?: Readonly<Record<string, readonly TransformersJsProductionInvestigationCandidate[]>>;
+  requiredModelPathsByCandidate?: Readonly<Record<string, readonly string[]>>;
 }): Promise<DownloadVerificationEvidenceInput> {
   signal?.throwIfAborted();
   const resolvedStorageRoot = storageRoot ?? await navigator.storage.getDirectory();
@@ -98,7 +104,12 @@ export async function completeDownloadVerificationRuntimeEvidence({
 
   let runtimeCompletion: DownloadVerificationRuntimeCompletionEvidence;
   try {
-    const reuse = await reuseRevision({ modelId, resolvedRevision: repositoryResolvedRevision, storageRoot: resolvedStorageRoot });
+    const reuse = await reuseRevision({
+      modelId,
+      resolvedRevision: repositoryResolvedRevision,
+      storageRoot: resolvedStorageRoot,
+      ...(reusableCandidateOrderByRevision === undefined ? {} : { candidateOrderByRevision: reusableCandidateOrderByRevision }),
+    });
     signal?.throwIfAborted();
     if (reuse.reused) {
       const cacheRevision = reuse.acceptance.selectedRevision?.revision ?? null;
@@ -136,6 +147,8 @@ export async function completeDownloadVerificationRuntimeEvidence({
       revision: repositoryResolvedRevision,
       progressCallback,
       signal,
+      ...(candidateOrder === undefined ? {} : { candidateOrder }),
+      ...(requiredModelPathsByCandidate === undefined ? {} : { requiredModelPathsByCandidate }),
     });
     signal?.throwIfAborted();
     const cacheObservation = await inspectCacheAfter({ modelId, storageRoot: resolvedStorageRoot, inspectCachedRevisions });

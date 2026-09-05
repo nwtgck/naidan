@@ -229,6 +229,10 @@ describe('runPartialModelSupportInvestigation', () => {
       cache: result.cache,
     });
     expect(result.templateBehavior?.tokenizerClass).toBe('ProbeTokenizer');
+    expect(result.steps.find(step => step.id === 'download-evidence')).toMatchObject({
+      status: 'running',
+      detail: '0 actual candidate artifact-request observations and 0 bounded transport probes collected; Production cache acceptance is pending',
+    });
     expect(events).toHaveLength(12);
   });
 

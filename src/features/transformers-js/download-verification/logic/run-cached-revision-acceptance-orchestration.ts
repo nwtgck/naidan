@@ -5,6 +5,7 @@ import {
   type DownloadVerificationCachedRevisionLoadCandidate,
 } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
 import type { DownloadVerificationRevisionAcceptanceObservation } from '@/features/transformers-js/download-verification/types';
+import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 
 export interface DownloadVerificationCachedRevisionAcceptanceAttempt {
   candidate: DownloadVerificationCachedRevisionLoadCandidate;
@@ -54,12 +55,14 @@ export async function runCachedRevisionAcceptanceOrchestration({
   resolvedRevision,
   acceptRevision,
   shouldContinueAfterFailedAcceptance = () => false,
+  candidateOrderByRevision,
   signal,
 }: {
   inventory: DownloadVerificationCachedRevisionInventory;
   resolvedRevision: string | undefined;
-  acceptRevision: ({ candidate }: {
+  acceptRevision: ({ candidate, candidateOrder }: {
     candidate: DownloadVerificationCachedRevisionLoadCandidate;
+    candidateOrder: readonly TransformersJsProductionInvestigationCandidate[] | undefined;
   }) => Promise<DownloadVerificationRevisionAcceptanceObservation>;
   shouldContinueAfterFailedAcceptance?: ({
     candidate,
@@ -68,9 +71,11 @@ export async function runCachedRevisionAcceptanceOrchestration({
     candidate: DownloadVerificationCachedRevisionLoadCandidate;
     acceptance: DownloadVerificationRevisionAcceptanceObservation;
   }) => boolean;
+  candidateOrderByRevision?: Readonly<Record<string, readonly TransformersJsProductionInvestigationCandidate[]>>;
   signal?: AbortSignal;
 }): Promise<DownloadVerificationCachedRevisionAcceptanceResult> {
-  const candidates = planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision });
+  const candidates = planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision })
+    .filter(candidate => candidateOrderByRevision?.[candidate.revision]?.length !== 0);
   if (candidates.length === 0) {
     return {
       status: 'unavailable',
@@ -83,7 +88,10 @@ export async function runCachedRevisionAcceptanceOrchestration({
   const attempts: DownloadVerificationCachedRevisionAcceptanceAttempt[] = [];
   for (const candidate of candidates) {
     signal?.throwIfAborted();
-    const acceptance = await acceptRevision({ candidate });
+    const acceptance = await acceptRevision({
+      candidate,
+      candidateOrder: candidateOrderByRevision?.[candidate.revision],
+    });
     signal?.throwIfAborted();
     attempts.push({ candidate, acceptance });
 
@@ -153,11 +161,12 @@ export async function acceptPlannedDownloadedProductionRevisions({
     inventory,
     resolvedRevision,
     signal,
-    acceptRevision: async ({ candidate }) => await acceptDownloadedProductionRevision({
+    acceptRevision: async ({ candidate, candidateOrder }) => await acceptDownloadedProductionRevision({
       modelId: inventory.modelId,
       repositoryResolvedRevision: resolvedRevision,
       cacheRevision: candidate.revision,
       loadRevision: candidate.loaderRevisionOption,
+      ...(candidateOrder === undefined ? {} : { candidates: candidateOrder }),
       signal,
     }),
   });
@@ -166,21 +175,25 @@ export async function acceptPlannedDownloadedProductionRevisions({
 export async function acceptReusableDownloadedProductionRevisionsForDownload({
   inventory,
   resolvedRevision,
+  candidateOrderByRevision,
   signal,
 }: {
   inventory: DownloadVerificationCachedRevisionInventory;
   resolvedRevision: string;
+  candidateOrderByRevision?: Readonly<Record<string, readonly TransformersJsProductionInvestigationCandidate[]>>;
   signal?: AbortSignal;
 }): Promise<DownloadVerificationCachedRevisionAcceptanceResult> {
   return await runCachedRevisionAcceptanceOrchestration({
     inventory,
     resolvedRevision,
+    candidateOrderByRevision,
     signal,
-    acceptRevision: async ({ candidate }) => await acceptDownloadedProductionRevision({
+    acceptRevision: async ({ candidate, candidateOrder }) => await acceptDownloadedProductionRevision({
       modelId: inventory.modelId,
       repositoryResolvedRevision: resolvedRevision,
       cacheRevision: candidate.revision,
       loadRevision: candidate.loaderRevisionOption,
+      ...(candidateOrder === undefined ? {} : { candidates: candidateOrder }),
       signal,
     }),
     // Explicit Download is allowed to repair the current exact revision. A

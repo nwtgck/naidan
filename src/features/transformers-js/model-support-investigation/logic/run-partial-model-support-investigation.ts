@@ -171,8 +171,8 @@ export async function runPartialModelSupportInvestigation({
       const observed = run.downloadEvidence.modelArtifactObservations.filter(item => item.status === 'observed').length;
       emit({
         stepId: 'download-evidence',
-        status: 'passed',
-        detail: `${observed} actual candidate artifact-request observations; ${run.downloadEvidence.run.transportObservations.length} bounded transport probes`,
+        status: 'running',
+        detail: `${observed} actual candidate artifact-request observations and ${run.downloadEvidence.run.transportObservations.length} bounded transport probes collected; Production cache acceptance is pending`,
       });
     } catch (error) {
       const detail = recordStepError({ run, stepId: 'download-evidence', error }).message;
