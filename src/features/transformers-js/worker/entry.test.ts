@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { WorkerToolDefinition } from '@/features/transformers-js/types';
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import {
+  createHuggingFaceFixtureServer,
+  type HuggingFaceRepositoryFixture,
+} from '@/features/transformers-js/download-verification/fixtures/hf-compatible-fixture-server';
+
+const nativeFetch = globalThis.fetch.bind(globalThis);
 
 // Hoisted spies for the module-level InterruptableStoppingCriteria singleton
 const mockInterruptFn = vi.hoisted(() => vi.fn());
@@ -8,6 +16,9 @@ const mockResetFn = vi.hoisted(() => vi.fn());
 
 // Mock @huggingface/transformers
 vi.mock('@huggingface/transformers', () => ({
+  AutoConfig: {
+    from_pretrained: vi.fn(),
+  },
   AutoProcessor: {
     from_pretrained: vi.fn(),
   },
@@ -131,6 +142,24 @@ function createMockFile(initialSize: number) {
   };
 }
 
+function readDownloadVerificationRepositoryFixture({ name }: { name: string }): HuggingFaceRepositoryFixture {
+  const path = resolve(
+    process.cwd(),
+    'src/features/transformers-js/download-verification/fixtures/repositories',
+    `${name}.json`,
+  );
+  return JSON.parse(readFileSync(path, 'utf8')) as HuggingFaceRepositoryFixture;
+}
+
+function rewriteHuggingFaceFetchToFixtureServer({ baseUrl }: { baseUrl: string }): typeof fetch {
+  return async (input, init) => {
+    const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const parsed = new URL(rawUrl);
+    if (parsed.hostname !== 'huggingface.co') return await nativeFetch(input, init);
+    return await nativeFetch(`${baseUrl}${parsed.pathname}${parsed.search}`, init);
+  };
+}
+
 describe('transformers-js.worker', () => {
   let mockRoot: any;
   let originalFetchMock: any;
@@ -244,13 +273,133 @@ describe('transformers-js.worker', () => {
 
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
-    const result = await workerObj.loadDownloadedModel('org/repo', () => { });
+    const result = await workerObj.loadDownloadedModel('org/repo', undefined, () => { });
 
     expect(result.device).toBe('wasm');
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(3);
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenLastCalledWith('org/repo', expect.objectContaining({
       device: 'wasm',
       dtype: 'q4',
+    }));
+  });
+
+  it('verifies exactly one downloaded Production candidate without falling through to another candidate', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const revision = '0123456789abcdef0123456789abcdef01234567';
+
+    (AutoModelForCausalLM.from_pretrained as any).mockResolvedValue({
+      dispose: vi.fn(),
+      config: { model_type: 'example' },
+    });
+    (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
+
+    const result = await workerObj.verifyDownloadedModelCandidate(
+      'org/repo',
+      revision,
+      { device: 'webgpu', dtype: 'q4' },
+      vi.fn(),
+    );
+
+    expect(result).toEqual({ device: 'webgpu', dtype: 'q4' });
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledWith('org/repo', expect.objectContaining({
+      device: 'webgpu',
+      dtype: 'q4',
+      local_files_only: true,
+      revision,
+    }));
+    expect(AutoTokenizer.from_pretrained).toHaveBeenCalledWith('org/repo', expect.objectContaining({
+      local_files_only: true,
+      revision,
+    }));
+  });
+
+  it('verifies one cached revision with the normal Production candidate fallback order', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const revision = '0123456789abcdef0123456789abcdef01234567';
+
+    (AutoModelForCausalLM.from_pretrained as any)
+      .mockRejectedValueOnce(new Error('q4f16 runtime rejected'))
+      .mockResolvedValueOnce({
+        dispose: vi.fn(),
+        config: { model_type: 'example' },
+      });
+    (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
+
+    const result = await workerObj.verifyDownloadedModelRevision(
+      'org/repo',
+      revision,
+      vi.fn(),
+    );
+
+    expect(result).toEqual({ device: 'webgpu', dtype: 'q4' });
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(2);
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenNthCalledWith(1, 'org/repo', expect.objectContaining({
+      device: 'webgpu',
+      dtype: 'q4f16',
+      local_files_only: true,
+      revision,
+    }));
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenNthCalledWith(2, 'org/repo', expect.objectContaining({
+      device: 'webgpu',
+      dtype: 'q4',
+      local_files_only: true,
+      revision,
+    }));
+    expect(AutoTokenizer.from_pretrained).toHaveBeenCalledWith('org/repo', expect.objectContaining({
+      local_files_only: true,
+      revision,
+    }));
+  });
+
+
+  it('does not let a final missing artifact hide an earlier runtime rejection for a cached revision', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const revision = '0123456789abcdef0123456789abcdef01234567';
+
+    (AutoModelForCausalLM.from_pretrained as any)
+      .mockRejectedValueOnce(new Error('q4f16 runtime rejected'))
+      .mockRejectedValueOnce(new Error('loadDownloadedModel() MUST NOT fetch model artifacts; q4 missing'))
+      .mockRejectedValueOnce(new Error('loadDownloadedModel() MUST NOT fetch model artifacts; wasm q4 missing'));
+
+    await expect(workerObj.verifyDownloadedModelRevision(
+      'org/repo',
+      revision,
+      vi.fn(),
+    )).rejects.toThrow('q4f16 runtime rejected');
+
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not fall through when the explicitly verified candidate is rejected', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    (AutoModelForCausalLM.from_pretrained as any).mockRejectedValue(new Error('q4f16 runtime rejected'));
+
+    await expect(workerObj.verifyDownloadedModelCandidate(
+      'org/repo',
+      undefined,
+      { device: 'webgpu', dtype: 'q4f16' },
+      vi.fn(),
+    )).rejects.toThrow('q4f16 runtime rejected');
+
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledWith('org/repo', expect.objectContaining({
+      device: 'webgpu',
+      dtype: 'q4f16',
+      local_files_only: true,
     }));
   });
 
@@ -265,7 +414,7 @@ describe('transformers-js.worker', () => {
       .mockResolvedValueOnce({ dispose: vi.fn(), config: { model_type: 'example' } });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
-    await workerObj.loadDownloadedModel('org/repo', vi.fn());
+    await workerObj.loadDownloadedModel('org/repo', undefined, vi.fn());
 
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenNthCalledWith(1, 'org/repo', expect.objectContaining({
       device: 'webgpu',
@@ -305,7 +454,7 @@ describe('transformers-js.worker', () => {
     });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
-    await workerObj.loadDownloadedModel('org/repo', vi.fn());
+    await workerObj.loadDownloadedModel('org/repo', undefined, vi.fn());
 
     expect(allowLocalModelsDuringLoad).toBe(true);
     expect(allowRemoteModelsDuringLoad).toBe(false);
@@ -331,7 +480,7 @@ describe('transformers-js.worker', () => {
 
     (AutoModelForCausalLM.from_pretrained as any).mockRejectedValue(new Error('missing downloaded artifact'));
 
-    await expect(workerObj.loadDownloadedModel('org/repo', vi.fn()))
+    await expect(workerObj.loadDownloadedModel('org/repo', undefined, vi.fn()))
       .rejects.toThrow('missing downloaded artifact');
 
     expect(env.allowLocalModels).toBe(true);
@@ -1041,7 +1190,7 @@ describe('transformers-js.worker', () => {
       },
     });
 
-    await workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn());
+    await workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', undefined, vi.fn());
 
     expect(AutoModelForImageTextToText.from_pretrained).toHaveBeenCalledWith('onnx-community/gemma-4-E2B-it-ONNX', expect.anything());
     expect(AutoProcessor.from_pretrained).toHaveBeenCalledWith('onnx-community/gemma-4-E2B-it-ONNX', expect.anything());
@@ -1056,12 +1205,615 @@ describe('transformers-js.worker', () => {
 
     (AutoModelForImageTextToText.supports as any).mockReturnValueOnce(false);
 
-    await expect(workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn()))
+    await expect(workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', undefined, vi.fn()))
       .rejects
       .toThrow('does not support gemma4');
 
     expect(AutoModelForImageTextToText.from_pretrained).not.toHaveBeenCalled();
     expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+  });
+
+  it('prepareModelRuntimeArtifacts should use the exact revision and shared Production processor routing', async () => {
+    const comlink = await import('comlink');
+    const { AutoConfig, AutoProcessor, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const revision = '0123456789abcdef0123456789abcdef01234567';
+    const defaultCache = env.customCache;
+
+    (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string }) => {
+      expect(env.allowLocalModels).toBe(false);
+      expect(env.allowRemoteModels).toBe(true);
+      expect(env.customCache).not.toBe(defaultCache);
+      expect(options.revision).toBe(revision);
+      return { model_type: 'qwen3_5_text' };
+    });
+    (AutoProcessor.from_pretrained as any).mockResolvedValue({});
+
+    const result = await workerObj.prepareModelRuntimeArtifacts('Qwen/Qwen3.5-2B-ONNX', revision, vi.fn());
+
+    expect(result).toEqual({ processor: 'qwen3_5-processor', modelType: 'qwen3_5_text' });
+    expect(AutoProcessor.from_pretrained).toHaveBeenCalledWith('Qwen/Qwen3.5-2B-ONNX', expect.objectContaining({
+      revision,
+      local_files_only: false,
+    }));
+    expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+    expect(env.allowLocalModels).toBe(true);
+    expect(env.allowRemoteModels).toBe(false);
+    expect(env.customCache).toBe(defaultCache);
+  });
+
+  it('prepareModelRuntimeArtifacts should block model artifacts before network fetch', async () => {
+    const comlink = await import('comlink');
+    const { AutoConfig, env } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const revision = '0123456789abcdef0123456789abcdef01234567';
+
+    (AutoConfig.from_pretrained as any).mockImplementation(async () => {
+      await (env.fetch as typeof fetch)(
+        `https://huggingface.co/org/repo/resolve/${revision}/onnx/model_q4.onnx?download=true#signed`,
+      );
+      return { model_type: 'llama' };
+    });
+
+    await expect(workerObj.prepareModelRuntimeArtifacts('org/repo', revision, vi.fn()))
+      .rejects
+      .toThrow(`Runtime artifact preparation MUST NOT fetch model artifacts: https://huggingface.co/org/repo/resolve/${revision}/onnx/model_q4.onnx`);
+    expect(originalFetchMock).not.toHaveBeenCalled();
+  });
+
+  it('runtime artifact preparation fetch enforces its byte limit even without Content-Length', async () => {
+    const module = await import('./entry');
+    const guardedFetch = module.TEST_ONLY.createRuntimeArtifactPreparationFetch({
+      baseFetch: vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(4));
+          controller.enqueue(new Uint8Array(5));
+          controller.close();
+        },
+      }))),
+      maximumByteLength: 8,
+    });
+
+    const response = await guardedFetch('https://huggingface.co/org/repo/resolve/main/tokenizer.json');
+    await expect(response.arrayBuffer()).rejects.toThrow('exceeded the non-model artifact byte limit (8 bytes)');
+  });
+
+  it('prepareModelRuntimeArtifacts should reject a non-immutable revision before loading anything', async () => {
+    const comlink = await import('comlink');
+    const { AutoConfig, AutoProcessor, AutoTokenizer } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    await expect(workerObj.prepareModelRuntimeArtifacts('org/repo', 'main', vi.fn()))
+      .rejects
+      .toThrow('requires an exact 40-character Hugging Face revision SHA');
+    expect(AutoConfig.from_pretrained).not.toHaveBeenCalled();
+    expect(AutoProcessor.from_pretrained).not.toHaveBeenCalled();
+    expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+  });
+
+  it('prepares an exact revision, streams its model artifact, and accepts that candidate without remote fetch', async () => {
+    const repository = readDownloadVerificationRepositoryFixture({ name: 'smollm2-135m-instruct' });
+    const modelFile = repository.files.find(candidate => candidate.path === 'onnx/model_q4f16.onnx');
+    const configFile = repository.files.find(candidate => candidate.path === 'config.json');
+    const tokenizerConfigFile = repository.files.find(candidate => candidate.path === 'tokenizer_config.json');
+    expect(modelFile).toBeDefined();
+    expect(configFile).toBeDefined();
+    expect(tokenizerConfigFile).toBeDefined();
+
+    const server = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
+    });
+
+    try {
+      const fixtureFetch = vi.fn(rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl }));
+      vi.stubGlobal('fetch', fixtureFetch);
+      global.self = {
+        ...global.self,
+        fetch: fixtureFetch,
+        location: {
+          origin: 'http://localhost:3000',
+          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+        } as any,
+      } as any;
+
+      const comlink = await import('comlink');
+      const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+      await import('./entry');
+      const workerObj = (comlink.expose as any).mock.calls[0][0];
+      const revision = repository.resolvedRevision;
+      const fileUrl = ({ path }: { path: string }) => (
+        `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
+      );
+      const modelUrl = fileUrl({ path: modelFile!.path });
+      const configUrl = fileUrl({ path: configFile!.path });
+      const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
+
+      (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string }) => {
+        expect(options.revision).toBe(revision);
+        const response = await (env.fetch as typeof fetch)(configUrl);
+        expect(response.ok).toBe(true);
+        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
+        return { model_type: 'llama' };
+      });
+      (AutoTokenizer.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
+        expect(options.revision).toBe(revision);
+        if (options.local_files_only === true) {
+          const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl);
+          expect(cached).toBeDefined();
+          return {
+            apply_chat_template: vi.fn(),
+            decode: vi.fn(),
+          };
+        }
+        const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
+        expect(response.ok).toBe(true);
+        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
+        return {};
+      });
+
+      const runtimeArtifacts = await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
+      expect(runtimeArtifacts).toEqual({ processor: 'tokenizer', modelType: 'llama' });
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
+
+      const prefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
+      expect(prefetch).toMatchObject({
+        requestedCount: 1,
+        cachedCount: 0,
+        downloadedCount: 1,
+        failedCount: 0,
+        complete: true,
+        files: [{ status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 }],
+      });
+      const cachedModel = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl);
+      expect(cachedModel).toBeDefined();
+      expect((await cachedModel!.arrayBuffer()).byteLength).toBe(8192);
+
+      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
+        expect(options.revision).toBe(revision);
+        expect(options.local_files_only).toBe(true);
+        const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl);
+        expect(cached).toBeDefined();
+        expect((await cached!.arrayBuffer()).byteLength).toBe(8192);
+        return {
+          dispose: vi.fn(),
+          config: { model_type: 'llama', is_encoder_decoder: false },
+        };
+      });
+
+      const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
+      const acceptance = await workerObj.verifyDownloadedModelCandidate(
+        repository.modelId,
+        revision,
+        { device: 'webgpu', dtype: 'q4f16' },
+        vi.fn(),
+      );
+
+      expect(acceptance).toEqual({ device: 'webgpu', dtype: 'q4f16' });
+      expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
+      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledWith(repository.modelId, expect.objectContaining({
+        revision,
+        device: 'webgpu',
+        dtype: 'q4f16',
+        local_files_only: true,
+      }));
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('keeps exact-revision runtime artifacts but no completed model when the model stream disconnects', async () => {
+    const repository = readDownloadVerificationRepositoryFixture({ name: 'smollm2-135m-instruct' });
+    const modelFile = repository.files.find(candidate => candidate.path === 'onnx/model_q4f16.onnx');
+    const configFile = repository.files.find(candidate => candidate.path === 'config.json');
+    const tokenizerConfigFile = repository.files.find(candidate => candidate.path === 'tokenizer_config.json');
+    expect(modelFile).toBeDefined();
+    expect(configFile).toBeDefined();
+    expect(tokenizerConfigFile).toBeDefined();
+
+    const runtimeServer = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
+    });
+    const modelServer = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: {
+        fullGet: 'disconnect',
+        syntheticFullGetBytes: 8192,
+        disconnectAfterBytes: 2048,
+      },
+    });
+
+    try {
+      const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
+      const modelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: modelServer.baseUrl });
+      const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        return rawUrl.includes('/onnx/model_q4f16.onnx')
+          ? await modelFetch(input, init)
+          : await runtimeFetch(input, init);
+      });
+      vi.stubGlobal('fetch', fixtureFetch);
+      global.self = {
+        ...global.self,
+        fetch: fixtureFetch,
+        location: {
+          origin: 'http://localhost:3000',
+          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+        } as any,
+      } as any;
+
+      const comlink = await import('comlink');
+      const { AutoConfig, AutoTokenizer, env } = await import('@huggingface/transformers');
+      await import('./entry');
+      const workerObj = (comlink.expose as any).mock.calls[0][0];
+      const revision = repository.resolvedRevision;
+      const fileUrl = ({ path }: { path: string }) => (
+        `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
+      );
+      const modelUrl = fileUrl({ path: modelFile!.path });
+      const configUrl = fileUrl({ path: configFile!.path });
+      const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
+
+      (AutoConfig.from_pretrained as any).mockImplementation(async () => {
+        const response = await (env.fetch as typeof fetch)(configUrl);
+        expect(response.ok).toBe(true);
+        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
+        return { model_type: 'llama' };
+      });
+      (AutoTokenizer.from_pretrained as any).mockImplementation(async () => {
+        const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
+        expect(response.ok).toBe(true);
+        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
+        return {};
+      });
+
+      await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
+      const prefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
+
+      expect(prefetch).toMatchObject({
+        requestedCount: 1,
+        downloadedCount: 0,
+        failedCount: 1,
+        complete: false,
+        files: [{ status: 'failed', failureStage: 'write' }],
+      });
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl)).toBeUndefined();
+    } finally {
+      await Promise.all([runtimeServer.close(), modelServer.close()]);
+    }
+  });
+
+  it('resumes the same exact revision after a model stream disconnect and then accepts it cache-only', async () => {
+    const repository = readDownloadVerificationRepositoryFixture({ name: 'smollm2-135m-instruct' });
+    const modelFile = repository.files.find(candidate => candidate.path === 'onnx/model_q4f16.onnx');
+    const configFile = repository.files.find(candidate => candidate.path === 'config.json');
+    const tokenizerConfigFile = repository.files.find(candidate => candidate.path === 'tokenizer_config.json');
+    expect(modelFile).toBeDefined();
+    expect(configFile).toBeDefined();
+    expect(tokenizerConfigFile).toBeDefined();
+
+    const runtimeServer = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
+    });
+    const failedModelServer = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: {
+        fullGet: 'disconnect',
+        syntheticFullGetBytes: 8192,
+        disconnectAfterBytes: 2048,
+      },
+    });
+    const resumedModelServer = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
+    });
+
+    let modelAttempt: 'failed' | 'resumed' = 'failed';
+    try {
+      const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
+      const failedModelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: failedModelServer.baseUrl });
+      const resumedModelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: resumedModelServer.baseUrl });
+      const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (!rawUrl.includes('/onnx/model_q4f16.onnx')) return await runtimeFetch(input, init);
+        return modelAttempt === 'failed'
+          ? await failedModelFetch(input, init)
+          : await resumedModelFetch(input, init);
+      });
+      vi.stubGlobal('fetch', fixtureFetch);
+      global.self = {
+        ...global.self,
+        fetch: fixtureFetch,
+        location: {
+          origin: 'http://localhost:3000',
+          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+        } as any,
+      } as any;
+
+      const comlink = await import('comlink');
+      const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+      await import('./entry');
+      const workerObj = (comlink.expose as any).mock.calls[0][0];
+      const revision = repository.resolvedRevision;
+      const fileUrl = ({ path }: { path: string }) => (
+        `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
+      );
+      const modelUrl = fileUrl({ path: modelFile!.path });
+      const configUrl = fileUrl({ path: configFile!.path });
+      const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
+
+      (AutoConfig.from_pretrained as any).mockImplementation(async () => {
+        const response = await (env.fetch as typeof fetch)(configUrl);
+        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
+        return { model_type: 'llama' };
+      });
+      (AutoTokenizer.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
+        if (options.local_files_only === true) {
+          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
+          return { apply_chat_template: vi.fn(), decode: vi.fn() };
+        }
+        const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
+        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
+        return {};
+      });
+
+      await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
+      const failedPrefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
+      expect(failedPrefetch).toMatchObject({
+        downloadedCount: 0,
+        failedCount: 1,
+        complete: false,
+        files: [{ status: 'failed', failureStage: 'write' }],
+      });
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl)).toBeUndefined();
+
+      modelAttempt = 'resumed';
+      const resumedPrefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
+      expect(resumedPrefetch).toMatchObject({
+        requestedCount: 1,
+        cachedCount: 0,
+        downloadedCount: 1,
+        failedCount: 0,
+        complete: true,
+        files: [{ status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 }],
+      });
+
+      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
+        expect(options.revision).toBe(revision);
+        expect(options.local_files_only).toBe(true);
+        const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl);
+        expect(cached).toBeDefined();
+        return {
+          dispose: vi.fn(),
+          config: { model_type: 'llama', is_encoder_decoder: false },
+        };
+      });
+
+      const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
+      await expect(workerObj.verifyDownloadedModelCandidate(
+        repository.modelId,
+        revision,
+        { device: 'webgpu', dtype: 'q4f16' },
+        vi.fn(),
+      )).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
+      expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
+    } finally {
+      await Promise.all([runtimeServer.close(), failedModelServer.close(), resumedModelServer.close()]);
+    }
+  });
+
+  it('resumes only the missing external-data shard for the same exact LFM revision', async () => {
+    const repository = readDownloadVerificationRepositoryFixture({ name: 'lfm2-5-2-6b' });
+    const requiredPaths = [
+      'onnx/model_q4f16.onnx',
+      'onnx/model_q4f16.onnx_data',
+      'onnx/model_q4f16.onnx_data_1',
+    ] as const;
+    const requiredFiles = requiredPaths.map(path => repository.files.find(candidate => candidate.path === path));
+    const configFile = repository.files.find(candidate => candidate.path === 'config.json');
+    const tokenizerConfigFile = repository.files.find(candidate => candidate.path === 'tokenizer_config.json');
+    expect(requiredFiles.every(file => file !== undefined)).toBe(true);
+    expect(configFile).toBeDefined();
+    expect(tokenizerConfigFile).toBeDefined();
+
+    const runtimeServer = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
+    });
+    const modelServer = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
+    });
+    const failedShardServer = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: {
+        fullGet: 'disconnect',
+        syntheticFullGetBytes: 8192,
+        disconnectAfterBytes: 2048,
+      },
+    });
+
+    let shardAttempt: 'failed' | 'resumed' = 'failed';
+    try {
+      const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
+      const modelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: modelServer.baseUrl });
+      const failedShardFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: failedShardServer.baseUrl });
+      const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (!rawUrl.includes('/onnx/')) return await runtimeFetch(input, init);
+        if (rawUrl.includes('/onnx/model_q4f16.onnx_data_1') && shardAttempt === 'failed') {
+          return await failedShardFetch(input, init);
+        }
+        return await modelFetch(input, init);
+      });
+      vi.stubGlobal('fetch', fixtureFetch);
+      global.self = {
+        ...global.self,
+        fetch: fixtureFetch,
+        location: {
+          origin: 'http://localhost:3000',
+          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+        } as any,
+      } as any;
+
+      const comlink = await import('comlink');
+      const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+      await import('./entry');
+      const workerObj = (comlink.expose as any).mock.calls[0][0];
+      const revision = repository.resolvedRevision;
+      const fileUrl = ({ path }: { path: string }) => (
+        `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
+      );
+      const modelUrls = requiredPaths.map(path => fileUrl({ path }));
+      const configUrl = fileUrl({ path: configFile!.path });
+      const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
+
+      (AutoConfig.from_pretrained as any).mockImplementation(async () => {
+        const response = await (env.fetch as typeof fetch)(configUrl);
+        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
+        return { model_type: 'lfm2' };
+      });
+      (AutoTokenizer.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
+        if (options.local_files_only === true) {
+          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
+          return { apply_chat_template: vi.fn(), decode: vi.fn() };
+        }
+        const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
+        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
+        return {};
+      });
+
+      await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
+      const firstPrefetch = await workerObj.prefetchUrls(modelUrls, vi.fn());
+      expect(firstPrefetch).toMatchObject({
+        requestedCount: 3,
+        cachedCount: 0,
+        downloadedCount: 2,
+        failedCount: 1,
+        complete: false,
+        files: [
+          { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
+          { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
+          { status: 'failed', failureStage: 'write' },
+        ],
+      });
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrls[0]!)).toBeDefined();
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrls[1]!)).toBeDefined();
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrls[2]!)).toBeUndefined();
+
+      const fetchCallCountBeforeResume = fixtureFetch.mock.calls.length;
+      shardAttempt = 'resumed';
+      const resumedPrefetch = await workerObj.prefetchUrls(modelUrls, vi.fn());
+      expect(resumedPrefetch).toMatchObject({
+        requestedCount: 3,
+        cachedCount: 2,
+        downloadedCount: 1,
+        failedCount: 0,
+        complete: true,
+        files: [
+          { status: 'cached', byteLength: 8192 },
+          { status: 'cached', byteLength: 8192 },
+          { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
+        ],
+      });
+      expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeResume + 1);
+
+      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
+        expect(options.revision).toBe(revision);
+        expect(options.local_files_only).toBe(true);
+        for (const url of modelUrls) {
+          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url)).toBeDefined();
+        }
+        return {
+          dispose: vi.fn(),
+          config: { model_type: 'lfm2', is_encoder_decoder: false },
+        };
+      });
+
+      const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
+      await expect(workerObj.verifyDownloadedModelCandidate(
+        repository.modelId,
+        revision,
+        { device: 'webgpu', dtype: 'q4f16' },
+        vi.fn(),
+      )).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
+      expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
+    } finally {
+      await Promise.all([runtimeServer.close(), modelServer.close(), failedShardServer.close()]);
+    }
+  });
+
+
+  it('observes the LFM2.5-230M repository boundary where q4f16 is unavailable but q4 core and external data can be prefetched', async () => {
+    const repository = readDownloadVerificationRepositoryFixture({ name: 'lfm2-5-230m' });
+    const server = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
+    });
+
+    try {
+      const fixtureFetch = vi.fn(rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl }));
+      vi.stubGlobal('fetch', fixtureFetch);
+      global.self = {
+        ...global.self,
+        fetch: fixtureFetch,
+        location: {
+          origin: 'http://localhost:3000',
+          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+        } as any,
+      } as any;
+
+      const comlink = await import('comlink');
+      await import('./entry');
+      const workerObj = (comlink.expose as any).mock.calls[0][0];
+      const revision = repository.resolvedRevision;
+      const fileUrl = ({ path }: { path: string }) => (
+        `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
+      );
+
+      const q4f16 = await workerObj.prefetchUrls([
+        fileUrl({ path: 'onnx/model_q4f16.onnx' }),
+        fileUrl({ path: 'onnx/model_q4f16.onnx_data' }),
+      ], vi.fn());
+      expect(q4f16).toMatchObject({
+        requestedCount: 2,
+        downloadedCount: 0,
+        failedCount: 2,
+        complete: false,
+        files: [
+          { status: 'failed', failureStage: 'response-status', httpStatus: 404 },
+          { status: 'failed', failureStage: 'response-status', httpStatus: 404 },
+        ],
+      });
+
+      const q4 = await workerObj.prefetchUrls([
+        fileUrl({ path: 'onnx/model_q4.onnx' }),
+        fileUrl({ path: 'onnx/model_q4.onnx_data' }),
+      ], vi.fn());
+      expect(q4).toMatchObject({
+        requestedCount: 2,
+        cachedCount: 0,
+        downloadedCount: 2,
+        failedCount: 0,
+        complete: true,
+        files: [
+          { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
+          { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
+        ],
+      });
+    } finally {
+      await server.close();
+    }
   });
 
   it('downloadModel should normalize various Hugging Face URL formats', async () => {
@@ -1181,13 +1933,142 @@ describe('transformers-js.worker', () => {
         expectedByteLength: 4,
       }],
     });
-    expect(originalFetchMock).toHaveBeenCalledWith('https://huggingface.co/org/repo/model.onnx');
+    expect(originalFetchMock).toHaveBeenCalledWith('https://huggingface.co/org/repo/model.onnx', undefined);
     expect(mockRoot.getDirectoryHandle).toHaveBeenCalledWith('models', { create: true });
     expect(progressUpdates.length).toBeGreaterThan(0);
     expect(progressUpdates[0]).toMatchObject({
       status: 'progress',
       file: 'model.onnx',
     });
+  });
+
+
+  it('prefetchUrls rejects an HTTP 200 HTML fallback instead of committing it as a model artifact', async () => {
+    const comlink = await import('comlink');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    originalFetchMock.mockResolvedValue(new Response('<!DOCTYPE html><html></html>', {
+      status: 200,
+      headers: {
+        'content-type': 'text/html',
+        'content-length': '28',
+      },
+    }));
+
+    const result = await workerObj.prefetchUrls([
+      'https://huggingface.co/org/repo/resolve/main/onnx/model_q4.onnx',
+    ], vi.fn());
+
+    expect(result).toMatchObject({
+      requestedCount: 1,
+      cachedCount: 0,
+      downloadedCount: 0,
+      failedCount: 1,
+      complete: false,
+      files: [{ status: 'failed', failureStage: 'response-status', httpStatus: 404 }],
+    });
+  });
+
+  it('prefetchUrls streams a tiny real HTTP response through staging into completed OPFS cache', async () => {
+    const repository = readDownloadVerificationRepositoryFixture({ name: 'smollm2-135m-instruct' });
+    const file = repository.files.find(candidate => candidate.path === 'onnx/model_q4f16.onnx');
+    expect(file).toBeDefined();
+    const server = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
+    });
+
+    try {
+      const fixtureFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl });
+      vi.stubGlobal('fetch', fixtureFetch);
+      global.self = {
+        ...global.self,
+        fetch: fixtureFetch,
+        location: {
+          origin: 'http://localhost:3000',
+          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+        } as any,
+      } as any;
+
+      const comlink = await import('comlink');
+      const { env } = await import('@huggingface/transformers');
+      await import('./entry');
+      const workerObj = (comlink.expose as any).mock.calls[0][0];
+      const encodedPath = file!.path.split('/').map(part => encodeURIComponent(part)).join('/');
+      const url = `https://huggingface.co/${repository.modelId}/resolve/${repository.resolvedRevision}/${encodedPath}`;
+
+      const result = await workerObj.prefetchUrls([url], vi.fn());
+
+      expect(result).toMatchObject({
+        requestedCount: 1,
+        cachedCount: 0,
+        downloadedCount: 1,
+        failedCount: 0,
+        complete: true,
+        files: [{
+          status: 'downloaded',
+          byteLength: 8192,
+          expectedByteLength: 8192,
+        }],
+      });
+      const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url);
+      expect(cached).toBeDefined();
+      expect((await cached!.arrayBuffer()).byteLength).toBe(8192);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('prefetchUrls leaves no completed OPFS entry when the real HTTP stream disconnects mid-write', async () => {
+    const repository = readDownloadVerificationRepositoryFixture({ name: 'smollm2-135m-instruct' });
+    const file = repository.files.find(candidate => candidate.path === 'onnx/model_q4f16.onnx');
+    expect(file).toBeDefined();
+    const server = await createHuggingFaceFixtureServer({
+      repository,
+      behavior: {
+        fullGet: 'disconnect',
+        syntheticFullGetBytes: 8192,
+        disconnectAfterBytes: 2048,
+      },
+    });
+
+    try {
+      const fixtureFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl });
+      vi.stubGlobal('fetch', fixtureFetch);
+      global.self = {
+        ...global.self,
+        fetch: fixtureFetch,
+        location: {
+          origin: 'http://localhost:3000',
+          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+        } as any,
+      } as any;
+
+      const comlink = await import('comlink');
+      const { env } = await import('@huggingface/transformers');
+      await import('./entry');
+      const workerObj = (comlink.expose as any).mock.calls[0][0];
+      const encodedPath = file!.path.split('/').map(part => encodeURIComponent(part)).join('/');
+      const url = `https://huggingface.co/${repository.modelId}/resolve/${repository.resolvedRevision}/${encodedPath}`;
+
+      const result = await workerObj.prefetchUrls([url], vi.fn());
+
+      expect(result).toMatchObject({
+        requestedCount: 1,
+        downloadedCount: 0,
+        failedCount: 1,
+        complete: false,
+        files: [{
+          status: 'failed',
+          failureStage: 'write',
+        }],
+      });
+      const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url);
+      expect(cached).toBeUndefined();
+    } finally {
+      await server.close();
+    }
   });
 
   it('prefetchUrls should report partial failures without exposing signed query parameters', async () => {
@@ -1210,7 +2091,7 @@ describe('transformers-js.worker', () => {
       'https://huggingface.co/org/repo/b.onnx?token=secret',
     ], () => { });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       requestedCount: 2,
       cachedCount: 0,
       downloadedCount: 1,
@@ -1233,10 +2114,44 @@ describe('transformers-js.worker', () => {
           error: {
             name: 'Error',
             message: 'HTTP 503 Unavailable',
+            thrownType: 'Error',
           },
         },
       ],
     });
+  });
+
+
+  it('prefetchUrls sanitizes signed URLs from failure error messages, stacks, and causes', async () => {
+    const comlink = await import('comlink');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const signedUrl = 'https://huggingface.co/org/repo/model.onnx?token=secret&X-Amz-Signature=also-secret';
+    originalFetchMock.mockRejectedValue(new TypeError(`fetch failed for ${signedUrl}`, {
+      cause: new Error(`socket closed at ${signedUrl}`),
+    }));
+
+    const result = await workerObj.prefetchUrls([signedUrl], vi.fn());
+
+    expect(result).toMatchObject({
+      failedCount: 1,
+      files: [{
+        status: 'failed',
+        url: 'https://huggingface.co/org/repo/model.onnx',
+        failureStage: 'fetch',
+        error: {
+          name: 'TypeError',
+          message: 'fetch failed for https://huggingface.co/org/repo/model.onnx',
+          cause: {
+            name: 'Error',
+            message: 'socket closed at https://huggingface.co/org/repo/model.onnx',
+          },
+        },
+      }],
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('secret');
+    expect(serialized).not.toContain('X-Amz-Signature');
   });
 
   describe('Fetch Interceptor', () => {
@@ -1381,7 +2296,7 @@ describe('transformers-js.worker', () => {
       await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadDownloadedModel('standard-model', vi.fn());
+      await workerObj.loadDownloadedModel('standard-model', undefined, vi.fn());
     });
 
     it('uses the remaining declared model context instead of a fixed 1024-token fallback', async () => {
@@ -1756,7 +2671,7 @@ Use shell tools.<|im_end|>
       await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadDownloadedModel('onnx-community/Qwen3.5-2B-ONNX', vi.fn());
+      await workerObj.loadDownloadedModel('onnx-community/Qwen3.5-2B-ONNX', undefined, vi.fn());
     });
 
     it('observes the existing Qwen3.5 reasoning effort prompt differential', async () => {
@@ -2283,7 +3198,7 @@ file-a
       await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn());
+      await workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', undefined, vi.fn());
     });
 
     it('uses the processor chat template and forwards multimodal inputs to model.generate', async () => {
@@ -2462,7 +3377,7 @@ file-a
       await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
-      await workerObj.loadDownloadedModel('my-gpt-oss-model', vi.fn());
+      await workerObj.loadDownloadedModel('my-gpt-oss-model', undefined, vi.fn());
     });
 
     const GPT_OSS_TOOL_CALL_TOKENS = [

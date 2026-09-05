@@ -1,0 +1,597 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "hugging-face-model-api-captured-by-model-support-investigation",
+    "observedAt": "2026-09-02T00:08:20.837Z",
+    "note": "Public repository facts only. No large artifact body is stored in this fixture."
+  },
+  "modelId": "onnx-community/gemma-4-E2B-it-ONNX",
+  "requestedRevision": "main",
+  "resolvedRevision": "9f4bef82ea6e296bc69f8a2f5939f73af81b07a6",
+  "modelType": "gemma4",
+  "architectures": [
+    "Gemma4ForConditionalGeneration"
+  ],
+  "transformersJsConfig": {
+    "use_external_data_format": {
+      "audio_encoder": 1,
+      "vision_encoder": 1,
+      "decoder_model_merged.onnx": 5,
+      "decoder_model_merged_fp16.onnx": 3,
+      "decoder_model_merged_quantized.onnx": 2,
+      "decoder_model_merged_q4.onnx": 1,
+      "decoder_model_merged_q4f16.onnx": 1,
+      "embed_tokens.onnx": 2,
+      "embed_tokens_fp16.onnx": 2,
+      "embed_tokens_quantized.onnx": 3,
+      "embed_tokens_q4.onnx": 1,
+      "embed_tokens_q4f16.onnx": 1
+    },
+    "kv_cache_dtype": {
+      "q4f16": "float16",
+      "fp16": "float16"
+    }
+  },
+  "files": [
+    {
+      "path": ".gitattributes",
+      "size": 3828,
+      "blobId": "0cb9a4e534706488d6812d01208b830de4790dcd"
+    },
+    {
+      "path": "chat_template.jinja",
+      "size": 16317,
+      "blobId": "07e50e69a8c445f2c31a089b828e85b2a93942bf"
+    },
+    {
+      "path": "config.json",
+      "size": 5549,
+      "blobId": "a7f7623b5229c8498655847bd9cdeea34e5017f6"
+    },
+    {
+      "path": "generation_config.json",
+      "size": 238,
+      "blobId": "b2b0ab11eaf5317ad648bb48ce64b110532d661a"
+    },
+    {
+      "path": "onnx/audio_encoder_fp16.onnx",
+      "size": 219310,
+      "blobId": "e00e3d2dc161b1996425d4c7c63c4a35110ff34a",
+      "lfs": {
+        "sha256": "f40fa9ce8da3996822d064762ffcbac24f44721e72f62d870dbd66619099ebf9",
+        "size": 219310,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/audio_encoder_fp16.onnx_data",
+      "size": 589840640,
+      "blobId": "260b2ef2eddd1f96c678ce227e6837dd8e1f312d",
+      "lfs": {
+        "sha256": "eb81ececc02d80405b8455f3f6206daedfcf1f3ea3f3286d838a62f83747f931",
+        "size": 589840640,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/audio_encoder_q4.onnx",
+      "size": 261229,
+      "blobId": "412b17e1338fbc3cc2b7091a91ffcfe35767c092",
+      "lfs": {
+        "sha256": "c8a1d1f7821ef93809155448e4e441aadf14a4a159da5e6ce9ca7468f80b44dc",
+        "size": 261229,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/audio_encoder_q4.onnx_data",
+      "size": 190083584,
+      "blobId": "346b165646bc8b44d8bd2e094da66b806e0d57ed",
+      "lfs": {
+        "sha256": "ae533f4fd4103b2f76b0d60082bf0de8567c2225d65dfe34461662b20d4da320",
+        "size": 190083584,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/audio_encoder_q4f16.onnx",
+      "size": 260446,
+      "blobId": "1a1d19d72bf23bc787c67dee5c26ef4a5d71eb7a",
+      "lfs": {
+        "sha256": "5e0deb22791685c792d4b8e089deef9670fa4a4cecde434213d6a742e58fc3fa",
+        "size": 260446,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/audio_encoder_q4f16.onnx_data",
+      "size": 171258112,
+      "blobId": "3c76e4d7cc2e6524c583241e74198c6b9ae20d9a",
+      "lfs": {
+        "sha256": "df58e61a00bafa9449ee5fd52895ce952f158bbdd1fe38df8a68f48f36842e62",
+        "size": 171258112,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/audio_encoder_quantized.onnx",
+      "size": 265016,
+      "blobId": "3d176c274f6b2b95c4c91be114e9c87e59703862",
+      "lfs": {
+        "sha256": "f12a5f8c5db8cd7be763453657b74f458cb591a03cfeb9b9ebc941db182525f0",
+        "size": 265016,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/audio_encoder_quantized.onnx_data",
+      "size": 341877248,
+      "blobId": "57794a5927d78a73f532b252ea5e9c21c0ec057d",
+      "lfs": {
+        "sha256": "33257b54b4bc8f84b873244a649be6aa90847e121bfaa648227081a7f55cc4ae",
+        "size": 341877248,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/audio_encoder.onnx",
+      "size": 220280,
+      "blobId": "5a6a93f06f1ec72e102451e33c6b5bb60f8b16ee",
+      "lfs": {
+        "sha256": "01e8bdf202be608abe55ed3f1f180b897a73387b5c76f8801c9023c6dbc525b0",
+        "size": 220280,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/audio_encoder.onnx_data",
+      "size": 1179042304,
+      "blobId": "114cf5ce5997bdbff6cbca049b001c09461be4c5",
+      "lfs": {
+        "sha256": "fd9fc0d5a06df02638d681ce15c51b84ba94fa7824e0e25effbeba4f02b9ba3c",
+        "size": 1179042304,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged_fp16.onnx",
+      "size": 549636,
+      "blobId": "e2bc666ec0007456598ab0ebf93623fe24b9da74",
+      "lfs": {
+        "sha256": "34e54181a58d4896c60773ccdb2833ba963114953b7cc0685b34f1c91321e4d4",
+        "size": 549636,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged_fp16.onnx_data",
+      "size": 2094595072,
+      "blobId": "71a42f7f7d605d7e6d065fd53fb77ac7ea3da4af",
+      "lfs": {
+        "sha256": "072088206a214a434615401ce4da3c524fab05e100b716d5e7d5a58164a366ab",
+        "size": 2094595072,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged_fp16.onnx_data_1",
+      "size": 1860925440,
+      "blobId": "ec74c31d79709dbf72a2ff3301cdf08f4f424e74",
+      "lfs": {
+        "sha256": "4ccc497a2f29a82b47b3566038e020a3ce10ce5026aa2cb83550e90f4b54c8f4",
+        "size": 1860925440,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged_fp16.onnx_data_2",
+      "size": 805306368,
+      "blobId": "59512058112e7493cbe978c048a6fc76b60216c7",
+      "lfs": {
+        "sha256": "f35317efd0a159769d6499c327742121a4bc13767b1b3725cfe21a9ab75a430a",
+        "size": 805306368,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4.onnx",
+      "size": 647599,
+      "blobId": "f0f1894024ebe5df79a8d10c7c3c0d3cd282bfdb",
+      "lfs": {
+        "sha256": "c6edb929bf342c524728d37efd400285ee71525e8fe64ff996341f78c3e577d2",
+        "size": 647599,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4.onnx_data",
+      "size": 1864102912,
+      "blobId": "b8a20d0bdc401a1c973e80117bc1545bcbf89cb4",
+      "lfs": {
+        "sha256": "b879fe4b946c9b9ff6acb60f7c5eda3d2c9c4df8625895feb2d1e269002f0345",
+        "size": 1864102912,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4f16.onnx",
+      "size": 673231,
+      "blobId": "7adc582aa61c3e48cc7ce273d5da80043076fb1a",
+      "lfs": {
+        "sha256": "73c0f1fe04f9a3a048fb3319c0671b6cf0346bf33a3a8624c853bcffe01c24a4",
+        "size": 673231,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4f16.onnx_data",
+      "size": 1519700992,
+      "blobId": "60066fedf33c0457b82a7dbef4f16ec57f46f676",
+      "lfs": {
+        "sha256": "3b27245a7396cb7039a4e4118bd2a8aa35106bae381522edf7c4867b5f22bb10",
+        "size": 1519700992,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged_quantized.onnx",
+      "size": 654818,
+      "blobId": "444b46aeef86472f31f014580517432ba18f9326",
+      "lfs": {
+        "sha256": "ce3bad4d5330dd3ed1bd588907754c393004114ac4c4f14eac7f228f2d9705ad",
+        "size": 654818,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged_quantized.onnx_data",
+      "size": 2094681088,
+      "blobId": "95489f460dc995964e604a698d2c0d82cb1bd504",
+      "lfs": {
+        "sha256": "7e04502814af3a6086397aa2eff45abc1b564df2eca6a9be049a00f82c1745d2",
+        "size": 2094681088,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged_quantized.onnx_data_1",
+      "size": 944775168,
+      "blobId": "801cc0dfa4829fa96beae517981cc4bb04475cf8",
+      "lfs": {
+        "sha256": "2cc09f165ded30fe1e48cd8997f2db7e8f0ebadb1108fa9b1b51201d86a04535",
+        "size": 944775168,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx",
+      "size": 524763,
+      "blobId": "4686f677f8c03fe5d3e63666d31ea774b13211b1",
+      "lfs": {
+        "sha256": "d7f0448a61b944293f327f0a8742a2d47f226627fffc62084d34010f6e068c49",
+        "size": 524763,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data",
+      "size": 2065537024,
+      "blobId": "52783542a9eb190650a77189e8e2b1028b4581df",
+      "lfs": {
+        "sha256": "3014f451f610db57a094d1dd67a54b6a5480608ec93bb2273932374bc1cb811f",
+        "size": 2065537024,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data_1",
+      "size": 1972701184,
+      "blobId": "2cc82591580f00625a890206f8f7142626e139de",
+      "lfs": {
+        "sha256": "9cadb0ea679d5ca07a1e1d509bc640edad9776ac793a4faa3eae4c45c214be25",
+        "size": 1972701184,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data_2",
+      "size": 2063852544,
+      "blobId": "344875169bbb4e01f90047020db2f4d41bcff5bd",
+      "lfs": {
+        "sha256": "57a949dd5fa1b8477af8871809117d55143f5e693c874e9cc05b452104b92907",
+        "size": 2063852544,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data_3",
+      "size": 1809004544,
+      "blobId": "82f18b403ee7dbe85278848cee91a5c1184ae368",
+      "lfs": {
+        "sha256": "93fa5ec36406f5240a9316847ab8b81ddc8f445b8a2f2cf19024890546660a31",
+        "size": 1809004544,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data_4",
+      "size": 1610612736,
+      "blobId": "dbd40101545e09f3fb15fdbea504acefa3a13c37",
+      "lfs": {
+        "sha256": "b4ac4dec680d3a0a0e936f6ae1f95345f6e9fe3f18667595df870abdeb7da776",
+        "size": 1610612736,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/embed_tokens_fp16.onnx",
+      "size": 4713,
+      "blobId": "05e0a4e530620143b4cabeca483b1d5fc4599f2d",
+      "lfs": {
+        "sha256": "0cf75108f796accccd4756724f331acac6f464d656d5c0cf1766e9305772abdc",
+        "size": 4713,
+        "pointerSize": 129
+      }
+    },
+    {
+      "path": "onnx/embed_tokens_fp16.onnx_data",
+      "size": 805306368,
+      "blobId": "24f8c45edc4e9b8447e8523751942a1ac00dbf23",
+      "lfs": {
+        "sha256": "fc6055646b44b9eca25abe2941612b1f104d56dd2f9b8b54776e328e351d4fd7",
+        "size": 805306368,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/embed_tokens_fp16.onnx_data_1",
+      "size": 4697620480,
+      "blobId": "8e35ab3f9e69d7f7e59f1156b40044e14af027fb",
+      "lfs": {
+        "sha256": "7d7bf38285e3f007b5d28c3cd4d81e0b8f69c2534a53d25fb2952ab9b17b48ca",
+        "size": 4697620480,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/embed_tokens_q4.onnx",
+      "size": 5142,
+      "blobId": "9e1626c51f8eb67484b81246ca86c7e7a97e6c03",
+      "lfs": {
+        "sha256": "2d8c8a2bcc30e8ded7f636967c2a58a346116583356dd933720b005fc88079c4",
+        "size": 5142,
+        "pointerSize": 129
+      }
+    },
+    {
+      "path": "onnx/embed_tokens_q4.onnx_data",
+      "size": 1762656256,
+      "blobId": "4a9f2576309dd5c8773d4f86317c0665f2541965",
+      "lfs": {
+        "sha256": "40fa957d9988b8a0160c8b0eb5c3f781a237627e9f7153f30514a4ffb2e62888",
+        "size": 1762656256,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/embed_tokens_q4f16.onnx",
+      "size": 5621,
+      "blobId": "9a21220623b4686d5296e5b9b290861f08540a50",
+      "lfs": {
+        "sha256": "d7ca53f6a169471b5699b2f57ee4c7aa2c73732b0152f3909e64b71384444825",
+        "size": 5621,
+        "pointerSize": 129
+      }
+    },
+    {
+      "path": "onnx/embed_tokens_q4f16.onnx_data",
+      "size": 1590689792,
+      "blobId": "c8226442549810cfceccfa4ba8d48165044db38d",
+      "lfs": {
+        "sha256": "024b199e6358ed42970f807686add5f9430d7e254ca7ce22fc9c83f015b9c517",
+        "size": 1590689792,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx",
+      "size": 5174,
+      "blobId": "9b8caad5445902045daf3d5619b473542229b679",
+      "lfs": {
+        "sha256": "06511401d70359582048796351c894adbd452471f2815b0198b93100e82b37e8",
+        "size": 5174,
+        "pointerSize": 129
+      }
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx_data",
+      "size": 465567744,
+      "blobId": "1befc79ac512ef4bc0cd65cd1afa50937849150c",
+      "lfs": {
+        "sha256": "5ea1f5dd855f51b685aeeee967481467c148a41ebdd733d58856b407945b46a3",
+        "size": 465567744,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx_data_1",
+      "size": 2348810240,
+      "blobId": "a896f815bd8b8c94b30e01c4df4f86e31ff4bba0",
+      "lfs": {
+        "sha256": "143ff6a1eea191af79be401378bf8970d56ebde33daa6445a156e28acf6a7bc9",
+        "size": 2348810240,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx_data_2",
+      "size": 367001600,
+      "blobId": "39f77572a9046f2b2fcd5a2936f22c5818635553",
+      "lfs": {
+        "sha256": "c90b413e9bde49f74c6634e7516b8b3980e207c979ee8af075f342cc1f3eecbe",
+        "size": 367001600,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/embed_tokens.onnx",
+      "size": 4243,
+      "blobId": "b99263b46b991ec4e1c8ec2999f60ef3a0a9b0fe",
+      "lfs": {
+        "sha256": "93840f00078b7f22ae3302ca15643d363059214e8a9e32ddd38dce1a6cfa6ece",
+        "size": 4243,
+        "pointerSize": 129
+      }
+    },
+    {
+      "path": "onnx/embed_tokens.onnx_data",
+      "size": 1610612736,
+      "blobId": "9776a6456064228179dd6993fb3401ab4f4acdfb",
+      "lfs": {
+        "sha256": "1a9d41b71f0b15c47807d3874db443daf67ade7d9750c361c00fcab95ac508c0",
+        "size": 1610612736,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/embed_tokens.onnx_data_1",
+      "size": 9395240960,
+      "blobId": "d9f0b3fc3ffbc4ef2b44d075be78657e5fd80760",
+      "lfs": {
+        "sha256": "cd460a24efb42f32cd4c15a2a4ab6e596bb64399b589508960217b3d6d6ba9c3",
+        "size": 9395240960,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/vision_encoder_fp16.onnx",
+      "size": 150672,
+      "blobId": "3d8917f4bd400e2d359f478116bef1ac205f8726",
+      "lfs": {
+        "sha256": "2e8a95ce26015f10bf7249c2f36ab593fa630bd8b9fd9cb4deb6c308a7e75712",
+        "size": 150672,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/vision_encoder_fp16.onnx_data",
+      "size": 337088192,
+      "blobId": "be629095d3002cc5aac6badd7d02ef8f3d139acd",
+      "lfs": {
+        "sha256": "1c968a2928b5087f6f5e3628fee436088ad5bfbc5d79d97410322c40aab0b867",
+        "size": 337088192,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/vision_encoder_q4.onnx",
+      "size": 200072,
+      "blobId": "a8928248a2d75ada8f6e391717eb5cdb3edfc4a1",
+      "lfs": {
+        "sha256": "8bc90fb094fca9ea9aec7f2ef069e37ee01cb3b454f571bf46843e056b951182",
+        "size": 200072,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/vision_encoder_q4.onnx_data",
+      "size": 112105664,
+      "blobId": "62e3cd72ccdf14bcf624828dd25d8d3ac6af78f8",
+      "lfs": {
+        "sha256": "df747f790d1f7f451227124388fef863f09d4fb5a6f7e5052472a4f407cc23b9",
+        "size": 112105664,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/vision_encoder_q4f16.onnx",
+      "size": 189124,
+      "blobId": "fb8bdb1a027b4157a5de4abff2fd4e02fb7c8b8b",
+      "lfs": {
+        "sha256": "e0a4e48e519ade4eeddbb4cdadb812a7251aea871f7fb5f50576615fd3af22a3",
+        "size": 189124,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/vision_encoder_q4f16.onnx_data",
+      "size": 99189440,
+      "blobId": "3e5a288365720812e5a50c76ae1fd62f1805f506",
+      "lfs": {
+        "sha256": "0835071d2c79c105f8e1b549b7f8dd8c9af07fa95f01ead2e7add280602d3c6d",
+        "size": 99189440,
+        "pointerSize": 133
+      }
+    },
+    {
+      "path": "onnx/vision_encoder_quantized.onnx",
+      "size": 203173,
+      "blobId": "68f0ea369a663ecfd75567369059376ce73fe279",
+      "lfs": {
+        "sha256": "bae62d0e57f2b665f3e3ba5d0312337eac9860f69e14de88bfdf2e17fa52a8ea",
+        "size": 203173,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/vision_encoder_quantized.onnx_data",
+      "size": 198376640,
+      "blobId": "d21386ea6797b71c1e778a61e5741cc8587fa9d5",
+      "lfs": {
+        "sha256": "8ea7a1a2eb1f800621ab6772540af3d6988743cb475475c3df086e00389ca707",
+        "size": 198376640,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "onnx/vision_encoder.onnx",
+      "size": 161900,
+      "blobId": "d3bb3beb8e110e498c6ab70f05182d80f78a4cef",
+      "lfs": {
+        "sha256": "d34fd8510310ae330704c5b3d1571e6a8faa419cd5cd5d709a230fddc366310d",
+        "size": 161900,
+        "pointerSize": 131
+      }
+    },
+    {
+      "path": "onnx/vision_encoder.onnx_data",
+      "size": 674174144,
+      "blobId": "f39ba0180832163df2bdda5d71930ad5e3f98fb7",
+      "lfs": {
+        "sha256": "f0468ff0c7994459072f712da835eada7a9a8eb21f92ca561ab61570ed3ef15b",
+        "size": 674174144,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "preprocessor_config.json",
+      "size": 43,
+      "blobId": "6418e09c5fdb500f7ad9e86a7de9de7e60317f34"
+    },
+    {
+      "path": "processor_config.json",
+      "size": 1689,
+      "blobId": "5465974d23e1eca2c46c2809b26c997946ce0d90"
+    },
+    {
+      "path": "README.md",
+      "size": 27835,
+      "blobId": "41da8cef4f3ee193804632958c71968d7cbeff81"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 18807,
+      "blobId": "8dc6453271e40decb8ebdb68f4f9421d306dd6b3"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 19439251,
+      "blobId": "d781f9b567efe2d2c999ec37ba3ff3a505838c60",
+      "lfs": {
+        "sha256": "47bd35616c7c782aaca6ccf48c75f3461d5877170984b8836b375107d0a9f566",
+        "size": 19439251,
+        "pointerSize": 133
+      }
+    }
+  ]
+}

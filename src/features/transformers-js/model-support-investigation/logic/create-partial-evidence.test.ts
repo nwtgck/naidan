@@ -121,6 +121,63 @@ describe("createPartialModelSupportEvidence", () => {
         libraryName: undefined,
         metadata: {},
       },
+      downloadEvidence: {
+        schemaVersion: 1,
+        runId: "run-1",
+        mode: "probe-only",
+        run: {
+          modelId: "hf.co/org/model",
+          normalizedModelId: "org/model",
+          requestedRevision: "main",
+          resolvedRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          repositoryFileCount: 2,
+          repositoryFiles: [
+            { path: "onnx/model_q4.onnx", size: 100, blobId: undefined, lfsOid: undefined, lfsSha256: undefined, lfsSize: undefined },
+            { path: "onnx/model_q4.onnx_data", size: 200, blobId: undefined, lfsOid: undefined, lfsSha256: undefined, lfsSize: undefined },
+          ],
+          transportObservations: [{
+            path: "onnx/model_q4.onnx_data",
+            method: "HEAD",
+            status: 200,
+            redirected: false,
+            finalUrl: "https://huggingface.co/org/model/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/onnx/model_q4.onnx_data",
+            finalOrigin: "https://huggingface.co",
+            contentLength: 200,
+            contentRange: undefined,
+            acceptRanges: "bytes",
+            contentType: "application/octet-stream",
+            etag: undefined,
+            rangeHonored: undefined,
+            bytesConsumed: 0,
+            abortedByByteBudget: false,
+            error: undefined,
+          }],
+          skippedModelArtifactCount: 0,
+          bytesConsumed: 0,
+          maximumBytes: 2 * 1024 * 1024,
+          startedAt: "2026-08-06T00:00:00.100Z",
+          finishedAt: "2026-08-06T00:00:00.200Z",
+        },
+        modelArtifactObservations: [{
+          modelId: "org/model",
+          revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          autoClass: "AutoModelForCausalLM",
+          candidate: { device: "webgpu", dtype: "q4" },
+          status: "observed",
+          observationMethod: "held-model-artifact-fetch-quiescence",
+          quiescenceMs: 100,
+          timeoutMs: 1000,
+          paths: ["onnx/model_q4.onnx", "onnx/model_q4.onnx_data"],
+          requests: [
+            { path: "onnx/model_q4.onnx", url: "https://huggingface.co/org/model/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/onnx/model_q4.onnx" },
+            { path: "onnx/model_q4.onnx_data", url: "https://huggingface.co/org/model/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/onnx/model_q4.onnx_data" },
+          ],
+          error: undefined,
+        }],
+        modelArtifactObservationError: undefined,
+        cacheBefore: undefined,
+        cacheInspectionError: undefined,
+      },
       cache: {
         normalizedModelId: "org/model",
         rootPath: "models/huggingface.co/org/model",
@@ -218,6 +275,11 @@ describe("createPartialModelSupportEvidence", () => {
     expect(archive.file("runtime-assets/environment.json")).not.toBeNull();
     expect(archive.file("runtime-assets/backend-controls.json")).not.toBeNull();
     expect(archive.file("repository/repository.json")).not.toBeNull();
+    expect(archive.file("download-lane/repository.json")).not.toBeNull();
+    expect(archive.file("download-lane/artifact-requests.json")).not.toBeNull();
+    expect(archive.file("download-lane/transport.json")).not.toBeNull();
+    expect(archive.file("download-lane/candidates.json")).not.toBeNull();
+    expect(archive.file("download-lane/test-readiness.json")).not.toBeNull();
     expect(archive.file("cache/inventory.json")).not.toBeNull();
     expect(archive.file("cache/provenance.json")).not.toBeNull();
     expect(archive.file("repository/declarations.json")).not.toBeNull();
@@ -271,6 +333,18 @@ describe("createPartialModelSupportEvidence", () => {
     }
     const questions = JSON.parse(await archive.file("questions.json")!.async("text"));
     expect(questions).toContainEqual(expect.objectContaining({ domainId: "runtime-assets" }));
+    const readiness = JSON.parse(await archive.file("readiness.json")!.async("text"));
+    expect(readiness.domains).toContainEqual(expect.objectContaining({
+      domainId: "download",
+      questions: expect.arrayContaining([expect.objectContaining({
+        answer: expect.stringContaining("revision=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        evidencePaths: expect.arrayContaining([
+          "download-lane/repository.json",
+          "download-lane/artifact-requests.json",
+          "download-lane/test-readiness.json",
+        ]),
+      })]),
+    }));
     const supportBoundaries = JSON.parse(await archive.file("support-boundaries.json")!.async("text"));
     const referencedPaths = [
       ...questions.flatMap((question: { evidencePaths: string[] }) => question.evidencePaths),
@@ -325,6 +399,7 @@ describe("createPartialModelSupportEvidence", () => {
       steps: [],
       runtimeAssets: undefined,
       repository: undefined,
+      downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,
       templateBehavior: undefined,
@@ -592,6 +667,7 @@ describe("createPartialModelSupportEvidence", () => {
       steps: [],
       runtimeAssets: undefined,
       repository: undefined,
+      downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,
       templateBehavior: undefined,
@@ -1107,6 +1183,7 @@ describe("createPartialModelSupportEvidence", () => {
       ],
       runtimeAssets: undefined,
       repository: undefined,
+      downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,
       templateBehavior: undefined,
@@ -1179,6 +1256,7 @@ SyntaxError: Unexpected token '<'
       ],
       runtimeAssets: undefined,
       repository: undefined,
+      downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,
       templateBehavior: undefined,
@@ -1302,6 +1380,7 @@ SyntaxError: Unexpected token '<'
         ],
       },
       repository: undefined,
+      downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,
       templateBehavior: undefined,

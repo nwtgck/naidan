@@ -215,16 +215,11 @@ const downloadModelById = async ({ modelId }: { modelId: string }) => {
   if (!normalizedModelId || isStandalone) return;
 
   lastDownloadError.value = null;
-  // A complete model needs no download. Incomplete models are intentionally
-  // allowed through so this explicit download operation can resume/repair them.
-  const isAlreadyComplete = cachedModels.value.some(m => (
-    (m.id === normalizedModelId || m.id === `hf.co/${normalizedModelId}`)
-    && m.isComplete
-  ));
-  if (isAlreadyComplete) {
-    addToast({ message: await ensureStrings.TransformersJsManager__model_is_already_downloaded() });
-    return;
-  }
+  // listCachedModels().isComplete only describes the committed files currently
+  // present in OPFS; it is not authoritative for the Production-required file
+  // set. Explicit Download therefore always runs the Production preparation.
+  // Existing complete files are cache hits, so this remains a cheap no-op when
+  // the selected Production candidate is already fully available.
 
   try {
     await transformersJsService.downloadModel({ modelId: normalizedModelId });

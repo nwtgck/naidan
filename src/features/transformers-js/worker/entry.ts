@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-imports -- Dedicated worker entry intentionally imports transformers.js runtime directly. */
 import {
+  AutoConfig,
   AutoProcessor,
   AutoTokenizer,
   AutoModelForCausalLM,
@@ -45,8 +46,11 @@ import {
   type Gemma4ProcessorLike,
 } from '@/features/transformers-js/models/gemma4';
 import {
-  isQwen3_5Model,
-} from '@/features/transformers-js/models/qwen3_5';
+  normalizeTransformersJsProductionModelId,
+  selectTransformersJsProductionAutoClass,
+  selectTransformersJsProductionRuntimeArtifactLoader,
+} from '@/features/transformers-js/production-routing';
+import { TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES } from '@/features/transformers-js/production-load-candidates';
 import {
   selectGenerationStrategy,
   type GenerationStrategy,
@@ -54,7 +58,10 @@ import {
   type WorkerGenerationRuntimeState,
 } from '@/features/transformers-js/generation-strategies';
 import { urlToPath, writeToOpfsWithStaging } from '@/features/transformers-js/utils';
-import { configureHostedTransformersRuntime } from '@/features/transformers-js/runtime/configure-hosted-runtime';
+import {
+  configureHostedTransformersRuntime,
+  isHuggingFaceModelArtifactUrl,
+} from '@/features/transformers-js/runtime/configure-hosted-runtime';
 import { createHostedTransformersModelFetch } from '@/features/transformers-js/runtime/model-fetch';
 import { createOpfsModelCache } from '@/features/transformers-js/runtime/opfs-model-cache';
 import { promiseAllKeyed } from '@/utils/promise';
@@ -142,16 +149,36 @@ function parseExpectedByteLength({ response }: { response: Response }): number |
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
-function serializePrefetchError({ error }: { error: unknown }): { name: string, message: string } {
+function sanitizePrefetchDiagnosticText({ value }: { value: string }): string {
+  return value.replace(/https?:\/\/[^\s"'<>]+/giu, rawUrl => sanitizePrefetchUrl({ url: rawUrl }));
+}
+
+function serializePrefetchErrorCause({ error }: { error: unknown }): TransformersJsProductionInvestigationError['cause'] {
+  if (!(error instanceof Error)) return undefined;
+  return {
+    name: error.name,
+    message: sanitizePrefetchDiagnosticText({ value: error.message }),
+    stack: error.stack === undefined ? undefined : sanitizePrefetchDiagnosticText({ value: error.stack }),
+    thrownType: error.constructor.name || 'Error',
+  };
+}
+
+function serializePrefetchError({ error }: { error: unknown }): TransformersJsProductionInvestigationError {
   if (error instanceof Error) {
+    const cause = 'cause' in error ? serializePrefetchErrorCause({ error: error.cause }) : undefined;
     return {
       name: error.name,
-      message: error.message,
+      message: sanitizePrefetchDiagnosticText({ value: error.message }),
+      stack: error.stack === undefined ? undefined : sanitizePrefetchDiagnosticText({ value: error.stack }),
+      thrownType: error.constructor.name || 'Error',
+      cause,
+      causeChain: cause === undefined ? undefined : [cause],
     };
   }
   return {
     name: 'NonErrorThrownValue',
-    message: typeof error === 'string' ? error : 'A non-Error value was thrown',
+    message: sanitizePrefetchDiagnosticText({ value: typeof error === 'string' ? error : 'A non-Error value was thrown' }),
+    thrownType: error === null ? 'null' : typeof error,
   };
 }
 
@@ -369,20 +396,6 @@ type ProductionLoadRoute = {
   runtimePreparationDurationMs: number,
 };
 
-function normalizeProductionModelId({ modelId }: { modelId: string }): string {
-  if (modelId.startsWith('hf.co/')) return modelId.substring(6);
-  if (modelId.startsWith('https://huggingface.co/')) return modelId.substring(23);
-  return modelId;
-}
-
-function selectProductionAutoClass({ modelId }: {
-  modelId: string,
-}): TransformersJsProductionInvestigationAutoClass {
-  return isGemma4Model({ modelType: undefined, activeModelId: modelId })
-    ? 'AutoModelForImageTextToText'
-    : 'AutoModelForCausalLM';
-}
-
 async function loadDownloadedProductionModelCandidate({
   cleanModelId,
   autoClass,
@@ -430,26 +443,147 @@ async function loadDownloadedProductionTokenizerOrProcessor({
     local_files_only: true,
     ...(revision === undefined ? {} : { revision }),
   };
-  if (isGemma4Model({
+  const runtimeArtifactLoader = selectTransformersJsProductionRuntimeArtifactLoader({
+    modelId: cleanModelId,
     modelType: (model as ModelInternals).config?.model_type,
-    activeModelId: cleanModelId,
-  })) {
+  });
+  switch (runtimeArtifactLoader) {
+  case 'gemma4-processor':
     gemma4Processor = await AutoProcessor.from_pretrained(cleanModelId, sharedOptions) as unknown as Gemma4ProcessorLike;
     generationRuntimeState.gemma4Processor = gemma4Processor;
     tokenizer = gemma4Processor.tokenizer;
-    return 'gemma4-processor';
-  }
-  if (isQwen3_5Model({
-    modelType: (model as ModelInternals).config?.model_type,
-    activeModelId: cleanModelId,
-  })) {
+    return runtimeArtifactLoader;
+  case 'qwen3_5-processor':
     qwen3_5Processor = await AutoProcessor.from_pretrained(cleanModelId, sharedOptions) as unknown as Qwen3_5ProcessorLike;
     generationRuntimeState.qwen3_5Processor = qwen3_5Processor;
     tokenizer = qwen3_5Processor.tokenizer;
-    return 'qwen3_5-processor';
+    return runtimeArtifactLoader;
+  case 'tokenizer':
+    tokenizer = await AutoTokenizer.from_pretrained(cleanModelId, sharedOptions);
+    return runtimeArtifactLoader;
+  default: {
+    const _ex: never = runtimeArtifactLoader;
+    throw new Error(`Unhandled Production runtime artifact loader: ${_ex}`);
   }
-  tokenizer = await AutoTokenizer.from_pretrained(cleanModelId, sharedOptions);
-  return 'tokenizer';
+  }
+}
+
+
+const MAX_RUNTIME_ARTIFACT_PREPARATION_FILE_BYTES = 64 * 1024 * 1024;
+
+function requestUrl({ input }: { input: RequestInfo | URL }): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+function createRuntimeArtifactPreparationFetch({
+  baseFetch,
+  maximumByteLength = MAX_RUNTIME_ARTIFACT_PREPARATION_FILE_BYTES,
+}: {
+  baseFetch: typeof fetch,
+  maximumByteLength?: number,
+}): typeof fetch {
+  return async (input, init) => {
+    const url = requestUrl({ input });
+    if (isHuggingFaceModelArtifactUrl({ url })) {
+      throw new Error(
+        `Runtime artifact preparation MUST NOT fetch model artifacts: ${sanitizePrefetchUrl({ url })}`,
+      );
+    }
+
+    const response = await baseFetch(input, {
+      ...init,
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+    });
+    const expectedByteLength = parseExpectedByteLength({ response });
+    if (expectedByteLength !== undefined && expectedByteLength > maximumByteLength) {
+      await response.body?.cancel();
+      throw new Error(
+        `Runtime artifact preparation refused an unexpectedly large non-model artifact (${expectedByteLength} bytes): ${sanitizePrefetchUrl({ url })}`,
+      );
+    }
+    if (response.body === null) return response;
+
+    let receivedByteLength = 0;
+    const guardedBody = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        receivedByteLength += chunk.byteLength;
+        if (receivedByteLength > maximumByteLength) {
+          controller.error(new Error(
+            `Runtime artifact preparation exceeded the non-model artifact byte limit (${maximumByteLength} bytes): ${sanitizePrefetchUrl({ url })}`,
+          ));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }));
+    return new Response(guardedBody, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  };
+}
+
+async function prepareProductionRuntimeArtifacts({
+  modelId,
+  revision,
+  progressCallback,
+}: {
+  modelId: string,
+  revision: string,
+  progressCallback: TransformersProgressCallback,
+}): Promise<{
+  processor: TransformersJsProductionInvestigationProcessor,
+  modelType: string | undefined,
+}> {
+  const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
+  if (cleanModelId.startsWith('user/')) {
+    throw new Error('Runtime artifact preparation only supports public Hugging Face models');
+  }
+  if (!/^[0-9a-f]{40}$/iu.test(revision)) {
+    throw new Error(`Runtime artifact preparation requires an exact 40-character Hugging Face revision SHA: ${revision}`);
+  }
+
+  const guardedFetch = createRuntimeArtifactPreparationFetch({ baseFetch: interceptedFetch });
+  return await withDownloadModelAccessMode({
+    isLocal: false,
+    run: async () => {
+      const previousFetch = env.fetch;
+      env.fetch = guardedFetch;
+      try {
+        const sharedOptions = {
+          revision,
+          progress_callback: progressCallback,
+          local_files_only: false,
+        };
+        const config = await AutoConfig.from_pretrained(cleanModelId, sharedOptions) as { model_type?: string };
+        const modelType = config.model_type;
+        const processor = selectTransformersJsProductionRuntimeArtifactLoader({
+          modelId: cleanModelId,
+          modelType,
+        });
+        switch (processor) {
+        case 'gemma4-processor':
+        case 'qwen3_5-processor':
+          await AutoProcessor.from_pretrained(cleanModelId, sharedOptions);
+          break;
+        case 'tokenizer':
+          await AutoTokenizer.from_pretrained(cleanModelId, sharedOptions);
+          break;
+        default: {
+          const _ex: never = processor;
+          throw new Error(`Unhandled Production runtime artifact loader: ${_ex}`);
+        }
+        }
+        return { processor, modelType };
+      } finally {
+        env.fetch = previousFetch;
+      }
+    },
+  });
 }
 
 async function loadProductionRuntime({
@@ -477,8 +611,8 @@ async function loadProductionRuntime({
     attempt: TransformersJsProductionInvestigationCandidateLoadAttempt,
   }) => TransformersJsProductionInvestigationCandidateLoadAttempt | void,
 }): Promise<ProductionLoadRoute> {
-  const cleanModelId = normalizeProductionModelId({ modelId });
-  const autoClass = selectProductionAutoClass({ modelId: cleanModelId });
+  const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
+  const autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId });
   assertGemma4RuntimeSupport({ modelId: cleanModelId });
   const rawProgressCallback: TransformersProgressCallback = info => progressCallback({ info });
 
@@ -883,7 +1017,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       console.log(`[transformersJsWorker] Prefetching: ${url}`);
       let response: Response;
       try {
-        response = await originalFetch(originalUrl);
+        response = await interceptedFetch(originalUrl);
       } catch (error) {
         files.push(createPrefetchFailure({ url, path, failureStage: 'fetch', error }));
         continue;
@@ -988,16 +1122,17 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
    * perform any model download. Missing/incomplete artifacts must fail here.
    */
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  async loadDownloadedModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<ModelLoadResult> {
+  async loadDownloadedModel(modelId: string, revision: string | undefined, progressCallback: (x: ProgressInfo) => void): Promise<ModelLoadResult> {
     console.log('[transformersJsWorker] Starting loadDownloadedModel:', modelId);
 
     await this.unloadModel();
     activeModelId = modelId;
     generationRuntimeState.activeModelId = modelId;
 
-    const cleanModelId = normalizeProductionModelId({ modelId });
-    const autoClass = selectProductionAutoClass({ modelId: cleanModelId });
+    const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
+    const autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId });
     let loadedDevice: TransformersJsProductionInvestigationDevice = 'wasm';
+    let loadedDtype: TransformersJsProductionInvestigationCandidate['dtype'] | undefined;
 
     try {
       assertGemma4RuntimeSupport({ modelId: cleanModelId });
@@ -1019,10 +1154,11 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
                 cleanModelId,
                 autoClass,
                 candidate,
-                revision: undefined,
+                revision,
                 progressCallback,
               });
               loadedDevice = candidate.device;
+              loadedDtype = candidate.dtype;
               debugLog({
                 event: 'worker tryLoad success',
                 details: {
@@ -1049,34 +1185,143 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
             }
           };
 
-          try {
-            model = await tryLoad({ candidate: { device: 'webgpu', dtype: 'q4f16' } });
-          } catch (error) {
-            console.warn('[transformersJsWorker] webgpu/q4f16 failed:', error);
+          let lastCandidateError: unknown;
+          for (const candidate of TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES) {
             try {
-              model = await tryLoad({ candidate: { device: 'webgpu', dtype: 'q4' } });
-            } catch (secondError) {
-              console.warn('[transformersJsWorker] webgpu/q4 failed, falling back to wasm/q4:', secondError);
-              model = await tryLoad({ candidate: { device: 'wasm', dtype: 'q4' } });
+              model = await tryLoad({ candidate });
+              break;
+            } catch (error) {
+              lastCandidateError = error;
+              console.warn(`[transformersJsWorker] ${candidate.device}/${candidate.dtype} failed:`, error);
             }
+          }
+          if (model === null) {
+            throw lastCandidateError instanceof Error
+              ? lastCandidateError
+              : new Error('No production load candidate succeeded');
           }
           console.log('[transformersJsWorker] Model loaded successfully.');
 
           await loadDownloadedProductionTokenizerOrProcessor({
             cleanModelId,
-            revision: undefined,
+            revision,
             progressCallback,
           });
         },
       });
 
-      return { device: loadedDevice };
+      return { device: loadedDevice, dtype: loadedDtype };
     } catch (error) {
       const errorMessage = typeof error === 'number'
         ? `Low-level engine error (code ${error}). This usually means memory allocation failed or the model format is incompatible.`
         : (error instanceof Error ? error.message : String(error));
       console.error('[transformersJsWorker] Detailed load error:', error, errorMessage);
       throw new Error(errorMessage);
+    }
+  },
+
+  /**
+   * Download Verification runtime-artifact preparation primitive. This lets
+   * Transformers.js itself resolve config/tokenizer/processor files for one
+   * immutable Hub revision while blocking all model/weight fetches.
+   */
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink remote boundaries use positional top-level arguments.
+  async prepareModelRuntimeArtifacts(modelId, revision, progressCallback) {
+    return await prepareProductionRuntimeArtifacts({
+      modelId,
+      revision,
+      progressCallback,
+    });
+  },
+
+  /**
+   * Download Verification acceptance primitive. This intentionally reuses the
+   * same Production runtime loader while constraining it to one candidate.
+   * The access mode remains cache-only, so missing artifacts fail closed.
+   */
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink remote boundaries use positional top-level arguments.
+  async verifyDownloadedModelCandidate(modelId, revision, candidate, progressCallback): Promise<ModelLoadResult> {
+    await this.unloadModel();
+    activeModelId = modelId;
+    generationRuntimeState.activeModelId = modelId;
+
+    const route = await loadProductionRuntime({
+      modelId,
+      revision,
+      candidates: [candidate],
+      progressCallback: ({ info }) => progressCallback(info),
+      serializeError: ({ error }) => {
+        const normalized = error instanceof Error ? error : new Error(String(error));
+        return {
+          name: normalized.name,
+          message: normalized.message,
+          stack: normalized.stack,
+        };
+      },
+    });
+    return { device: route.candidate.device, dtype: route.candidate.dtype };
+  },
+
+  /**
+   * Download Verification revision acceptance primitive. It runs the exact
+   * Production fallback sequence against one explicit cache revision.
+   */
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink remote boundaries use positional top-level arguments.
+  async verifyDownloadedModelRevision(modelId, revision, progressCallback): Promise<ModelLoadResult> {
+    await this.unloadModel();
+    activeModelId = modelId;
+    generationRuntimeState.activeModelId = modelId;
+
+    const attempts: TransformersJsProductionInvestigationCandidateLoadAttempt[] = [];
+    let candidatePassed = false;
+    try {
+      const route = await loadProductionRuntime({
+        modelId,
+        revision,
+        candidates: [...TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES],
+        progressCallback: ({ info }) => progressCallback(info),
+        serializeError: ({ error }) => {
+          const normalized = error instanceof Error ? error : new Error(String(error));
+          return {
+            name: normalized.name,
+            message: normalized.message,
+            stack: normalized.stack,
+          };
+        },
+        onCandidateAttempt: ({ attempt }) => {
+          attempts.push(attempt);
+          switch (attempt.status) {
+          case 'passed':
+            candidatePassed = true;
+            break;
+          case 'failed':
+            break;
+          default: {
+            const _ex: never = attempt.status;
+            throw new Error(`Unhandled Production candidate attempt status: ${String(_ex)}`);
+          }
+          }
+        },
+      });
+      return { device: route.candidate.device, dtype: route.candidate.dtype };
+    } catch (error) {
+      // If no candidate ever loaded, do not let a final missing-artifact error
+      // erase an earlier runtime rejection. Explicit Download may repair only a
+      // genuinely incomplete cache; runtime rejection is not evidence that a
+      // multi-GB re-download will help.
+      if (!candidatePassed) {
+        const nonMissingFailure = attempts.find(attempt => (
+          attempt.status === 'failed'
+          && attempt.error !== undefined
+          && !attempt.error.message.includes('MUST NOT fetch model artifacts')
+        ));
+        if (nonMissingFailure?.error !== undefined) {
+          const preserved = new Error(nonMissingFailure.error.message);
+          preserved.name = nonMissingFailure.error.name;
+          throw preserved;
+        }
+      }
+      throw error;
     }
   },
 
@@ -1857,4 +2102,5 @@ export type { ITransformersJsWorker as TransformersJsWorker };
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  createRuntimeArtifactPreparationFetch,
 };

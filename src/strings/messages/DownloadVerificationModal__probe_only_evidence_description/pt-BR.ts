@@ -1,0 +1,1 @@
+export const DownloadVerificationModal__probe_only_evidence_description = (): string => 'Fatos de probe-only sobre repositório, solicitações reais do Transformers.js, transporte, candidatos e inventário de cache. Este probe independente não verifica carregamento do modelo, inferência ou geração em runtime; use Model Support Investigation para Evidence runtime-complete.';

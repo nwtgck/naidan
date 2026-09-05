@@ -4,6 +4,7 @@ import type {
   ModelSupportInvestigationCheckpoint,
   ModelSupportInvestigationLoadAttemptEvent,
   ModelSupportInvestigationLoadAttemptStage,
+  ModelSupportInvestigationStep,
   ModelSupportInvestigationWorkerClient,
 } from "@/features/transformers-js/model-support-investigation/types";
 import type {
@@ -16,6 +17,8 @@ import type {
   TransformersJsProductionInvestigationScenario,
 } from "@/features/transformers-js/types";
 import { runModelLoadInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-model-load-investigation";
+import { completeDownloadVerificationRuntimeEvidence } from "@/features/transformers-js/download-verification/logic/complete-download-verification-runtime-evidence";
+import type { DownloadVerificationRuntimeCompletionEvidence } from "@/features/transformers-js/download-verification/evidence/types";
 import { runProductionLaneComparison } from "@/features/transformers-js/model-support-investigation/logic/run-production-lane-comparison";
 import { fromPlanningWorkerRun } from "@/features/transformers-js/model-support-investigation/logic/planning-worker-run";
 import {
@@ -138,6 +141,111 @@ function productionLoadProgressDetail({
   }
 }
 
+function updateDownloadEvidenceCoordinatorStep({
+  steps,
+  status,
+  detail,
+}: {
+  steps: ModelSupportInvestigationStep[],
+  status: ModelSupportInvestigationStep['status'],
+  detail: string,
+}): ModelSupportInvestigationStep[] {
+  return steps.map(step => {
+    switch (step.id) {
+    case 'download-evidence':
+      return { ...step, status, detail };
+    case 'runtime-assets':
+    case 'repository-information':
+    case 'existing-model-data':
+    case 'model-declarations':
+    case 'template-behavior':
+    case 'model-file-plan':
+    case 'loading-investigation':
+    case 'lane-comparison':
+    case 'evidence-export':
+      return step;
+    default: {
+      const _ex: never = step.id;
+      return _ex;
+    }
+    }
+  });
+}
+
+function updateTemplateBehaviorCoordinatorStep({
+  steps,
+  status,
+  detail,
+}: {
+  steps: ModelSupportInvestigationStep[],
+  status: ModelSupportInvestigationStep['status'],
+  detail: string,
+}): ModelSupportInvestigationStep[] {
+  return steps.map(step => {
+    switch (step.id) {
+    case 'template-behavior':
+      return { ...step, status, detail };
+    case 'runtime-assets':
+    case 'repository-information':
+    case 'download-evidence':
+    case 'existing-model-data':
+    case 'model-declarations':
+    case 'model-file-plan':
+    case 'loading-investigation':
+    case 'lane-comparison':
+    case 'evidence-export':
+      return step;
+    default: {
+      const _ex: never = step.id;
+      return _ex;
+    }
+    }
+  });
+}
+
+function legacyMainHasBoundedMismatch({ provenance }: {
+  provenance: { files: Array<{ cacheRevision: string; status: string }> } | undefined,
+}): boolean {
+  return provenance?.files.some(file => (
+    file.cacheRevision === 'main' && file.status === 'mismatched'
+  )) ?? false;
+}
+
+function runtimeRevisionIdentityDetail({ completion }: {
+  completion: DownloadVerificationRuntimeCompletionEvidence,
+}): string {
+  const exact = completion.cacheRevision === completion.repositoryResolvedRevision
+    && completion.loaderRevisionOption === completion.repositoryResolvedRevision;
+  return exact ? '' : '; exact frozen-revision identity remains unverified';
+}
+
+function runtimeCompletionOutcome({ completion }: {
+  completion: DownloadVerificationRuntimeCompletionEvidence | undefined,
+}): { accepted: boolean; detail: string; errorDetail: string | undefined } {
+  if (completion === undefined) {
+    return { accepted: false, detail: 'Runtime cache completion evidence is missing', errorDetail: 'Runtime completion evidence is missing' };
+  }
+  switch (completion.status) {
+  case 'accepted':
+    return {
+      accepted: true,
+      detail: `Runtime cache accepted from ${completion.source} at ${completion.loaderRevisionOption ?? 'main'}${completion.selectedCandidate === undefined ? '' : ` using ${completion.selectedCandidate.device}/${completion.selectedCandidate.dtype}`}${runtimeRevisionIdentityDetail({ completion })}`,
+      errorDetail: undefined,
+    };
+  case 'failed':
+  case 'exhausted':
+    return {
+      accepted: false,
+      detail: `Runtime cache completion ended with ${completion.status}`,
+      errorDetail: completion.error?.message ?? `Runtime completion status: ${completion.status}`,
+    };
+  default: {
+    const _ex: never = completion.status;
+    throw new Error(`Unhandled runtime completion status: ${_ex}`);
+  }
+  }
+}
+
 export function createModelSupportInvestigationWorkerClient({
   planningTimeoutMs = DEFAULT_PLANNING_TIMEOUT_MS,
   candidateAttemptTimeoutMs = DEFAULT_CANDIDATE_ATTEMPT_TIMEOUT_MS,
@@ -152,6 +260,7 @@ export function createModelSupportInvestigationWorkerClient({
   let disposed = false;
   let userInterruptionRequested = false;
   let activeInterrupt: (() => void) | undefined;
+  let activeRuntimeAbortController: AbortController | undefined;
 
   const terminateAllWorkers = (): void => {
     for (const worker of activeWorkers) worker.terminate();
@@ -242,6 +351,7 @@ export function createModelSupportInvestigationWorkerClient({
       activeInterrupt = () => {
         if (userInterruptionRequested) return;
         flushActiveProductionInterruptionEvidence?.();
+        activeRuntimeAbortController?.abort(userInterruptionError);
         userInterruptionRequested = true;
         terminateAllWorkers();
         checkpoint = interruptInvestigationCheckpoint({ checkpoint, error: userInterruptionError, now });
@@ -291,6 +401,7 @@ export function createModelSupportInvestigationWorkerClient({
                       return "runtime-assets";
                     case "runtime-assets":
                     case "repository-information":
+                    case "download-evidence":
                     case "existing-model-data":
                     case "model-declarations":
                     case "template-behavior":
@@ -320,9 +431,99 @@ export function createModelSupportInvestigationWorkerClient({
         checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: partialRun, now });
         publishCheckpoint();
 
+        if (partialRun.downloadEvidence !== undefined) {
+          const runtimeAbortController = new AbortController();
+          activeRuntimeAbortController = runtimeAbortController;
+          publishEvent({
+            event: {
+              stepId: "download-evidence",
+              status: "running",
+              detail: "Preparing or reusing one Production-accepted runtime cache for downstream investigation lanes",
+            },
+          });
+          try {
+            const completedEvidence = await awaitInterruptible({
+              operation: completeDownloadVerificationRuntimeEvidence({
+                evidence: partialRun.downloadEvidence,
+                signal: runtimeAbortController.signal,
+                allowLegacyMainReuse: !legacyMainHasBoundedMismatch({ provenance: partialRun.cache?.provenance }),
+              }),
+            });
+            partialRun = { ...partialRun, downloadEvidence: completedEvidence };
+            const completion = completedEvidence.runtimeCompletion;
+            const outcome = runtimeCompletionOutcome({ completion });
+            partialRun.steps = updateDownloadEvidenceCoordinatorStep({
+              steps: partialRun.steps,
+              status: outcome.accepted ? 'passed' : 'failed',
+              detail: outcome.detail,
+            });
+            partialRun.currentOperation = outcome.detail;
+            partialRun.completedAt = now();
+            if (!outcome.accepted) {
+              partialRun.status = 'failed';
+              const detail = outcome.errorDetail ?? 'Runtime completion failed without an error detail';
+              partialRun.error = partialRun.error === undefined ? detail : `${partialRun.error}; ${detail}`;
+            }
+            checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: partialRun, now });
+            publishCheckpoint();
+          } finally {
+            if (activeRuntimeAbortController === runtimeAbortController) activeRuntimeAbortController = undefined;
+          }
+        }
+
+        const runtimeCompletion = partialRun.downloadEvidence?.runtimeCompletion;
+        const runtimeCompletionAccepted = runtimeCompletionOutcome({ completion: runtimeCompletion }).accepted;
+        if (runtimeCompletionAccepted && runtimeCompletion !== undefined && partialRun.repository !== undefined) {
+          const templateHandle = createWorkerHandle();
+          try {
+            publishEvent({
+              event: {
+                stepId: 'template-behavior',
+                status: 'running',
+                detail: `Loading tokenizer cache-only from ${runtimeCompletion.loaderRevisionOption ?? 'main'} after runtime completion`,
+              },
+            });
+            partialRun.templateBehavior = await awaitInterruptible({
+              operation: templateHandle.remote.inspectDownloadedTemplateBehavior({
+                repository: partialRun.repository,
+                loaderRevisionOption: runtimeCompletion.loaderRevisionOption,
+              }),
+            });
+            const passed = partialRun.templateBehavior.cases.filter(item => item.status === 'passed').length;
+            const failed = partialRun.templateBehavior.cases.length - passed;
+            const detail = `${partialRun.templateBehavior.tokenizerClass}: ${passed} template cases rendered, ${failed} unsupported or failed, from the accepted runtime cache`;
+            partialRun.steps = updateTemplateBehaviorCoordinatorStep({
+              steps: partialRun.steps,
+              status: 'passed',
+              detail,
+            });
+            partialRun.currentOperation = detail;
+            partialRun.completedAt = now();
+            checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: partialRun, now });
+            publishCheckpoint();
+          } catch (error) {
+            if (userInterruptionRequested || isModelSupportInvestigationUserInterruptedError({ error })) throw userInterruptionError;
+            const serialized = serializeInvestigationError({ error });
+            const detail = `Template behavior failed after runtime completion: ${serialized.message}`;
+            partialRun.steps = updateTemplateBehaviorCoordinatorStep({
+              steps: partialRun.steps,
+              status: 'failed',
+              detail,
+            });
+            partialRun.status = 'failed';
+            partialRun.error = partialRun.error === undefined ? detail : `${partialRun.error}; ${detail}`;
+            partialRun.currentOperation = detail;
+            partialRun.completedAt = now();
+            checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: partialRun, now });
+            publishCheckpoint();
+          } finally {
+            if (!userInterruptionRequested) await releaseWorkerHandle({ handle: templateHandle });
+          }
+        }
+
         const loadRun = await runModelLoadInvestigation({
           partialRun,
-          runAttempt: async ({ candidate, onAttemptCheckpoint }) => {
+          runAttempt: async ({ candidate, loaderRevisionOption, onAttemptCheckpoint }) => {
             const { repository, declarations, templateBehavior } = partialRun;
             if (repository === undefined || declarations === undefined) {
               throw new Error("Candidate attempt prerequisites are unavailable");
@@ -337,6 +538,7 @@ export function createModelSupportInvestigationWorkerClient({
                 repository,
                 declarations,
                 templateBehavior,
+                loaderRevisionOption,
                 candidate,
                 workerProxy({ value: ({ event }) => {
                   if (!attemptAcceptingCallbacks) return;
@@ -634,6 +836,7 @@ export function createModelSupportInvestigationWorkerClient({
         }
         throw interruptedByUser ? userInterruptionError : error;
       } finally {
+        activeRuntimeAbortController = undefined;
         activeInterrupt = undefined;
       }
     },

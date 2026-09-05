@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "hugging-face-model-api-captured-by-model-support-investigation",
+    "observedAt": "2026-09-02T00:08:52.586Z",
+    "note": "Public repository facts only. No large artifact body is stored in this fixture."
+  },
+  "modelId": "onnx-community/gpt-oss-20b-ONNX",
+  "requestedRevision": "main",
+  "resolvedRevision": "6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7",
+  "modelType": "gpt_oss",
+  "architectures": [
+    "GptOssForCausalLM"
+  ],
+  "transformersJsConfig": {
+    "dtype": "q4f16",
+    "kv_cache_dtype": {
+      "q4f16": "float16",
+      "fp16": "float16"
+    },
+    "use_external_data_format": {
+      "model_q4f16.onnx": 7
+    }
+  },
+  "files": [
+    {
+      "path": ".gitattributes",
+      "size": 2023,
+      "blobId": "e1d63f12a088a5412205a7f03dd1078d265a2198"
+    },
+    {
+      "path": "chat_template.jinja",
+      "size": 16330,
+      "blobId": "c49175f4deecfa97124e068f7e3e84c5c1ed23cd"
+    },
+    {
+      "path": "config.json",
+      "size": 2096,
+      "blobId": "fee3d3a0efef8f3aa09a6071a915f3c8fc4ba896"
+    },
+    {
+      "path": "genai_config.json",
+      "size": 1720,
+      "blobId": "135ce185cd5beba4f280ddb9a0be3cc2588a6e13"
+    },
+    {
+      "path": "generation_config.json",
+      "size": 175,
+      "blobId": "5f140da1ddd74b4d6944fc4932a51da32b2d1a24"
+    },
+    {
+      "path": "onnx/model_q4f16.onnx",
+      "size": 55192622,
+      "blobId": "0ad3cac88aa1274d76bf91356f08f169eb7aba7e",
+      "lfs": {
+        "sha256": "5834cda2698332a02b1451a2935d10e7484b871bfa30c3a8b62cb72cc74e6a83",
+        "size": 55192622,
+        "pointerSize": 133
+      }
+    },
+    {
+      "path": "onnx/model_q4f16.onnx_data",
+      "size": 2070839296,
+      "blobId": "a6037c33209a4a2812d27fafef7447c1d83b7f2e",
+      "lfs": {
+        "sha256": "2fb5a8564a09f6521e51b06f29384439b1285ccf9166533fceb4ed6af206aa7a",
+        "size": 2070839296,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_q4f16.onnx_data_1",
+      "size": 2057011200,
+      "blobId": "ee9e1e14674a198745babdddd3d60c2c9a10a991",
+      "lfs": {
+        "sha256": "0d3370b50d98413348135365c925b6af46346171693041c115d96f79c3f4fe21",
+        "size": 2057011200,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_q4f16.onnx_data_2",
+      "size": 1974067200,
+      "blobId": "d085c7da2659d26830300ed60763b72bec082998",
+      "lfs": {
+        "sha256": "ff26e086a3887371ac51a89aeac752cbe2dce20cec514a2190d54287d302b4d4",
+        "size": 1974067200,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_q4f16.onnx_data_3",
+      "size": 2057011200,
+      "blobId": "02a4739d495165af4b58f21c78745e3e3e6caa30",
+      "lfs": {
+        "sha256": "d4c49f1cb2f941bc5d457546c0b35707b518e0401d4dd9716238f45b7d6ef235",
+        "size": 2057011200,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_q4f16.onnx_data_4",
+      "size": 1974067200,
+      "blobId": "92fff727d064f549cdb7fd09d26e94519c101592",
+      "lfs": {
+        "sha256": "3619260fcfd26b367cd886f1d21a24332f111ded159ca388b7e0d8f1026b414e",
+        "size": 1974067200,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_q4f16.onnx_data_5",
+      "size": 2096824320,
+      "blobId": "2b285ca24b90a908d7857b7ee835a8e2777f7260",
+      "lfs": {
+        "sha256": "4848013f1019367d427e5802c58b0adeb4f5cae31e1ff639fa39f9e70ef6660c",
+        "size": 2096824320,
+        "pointerSize": 135
+      }
+    },
+    {
+      "path": "onnx/model_q4f16.onnx_data_6",
+      "size": 339033600,
+      "blobId": "3b6f9aa75f3988122abf11a39b912bcf6ff50d75",
+      "lfs": {
+        "sha256": "74f352935e9af66748ad0afe803aee88f94735865ac3a6ff3f3380885fb1c18c",
+        "size": 339033600,
+        "pointerSize": 134
+      }
+    },
+    {
+      "path": "README.md",
+      "size": 2504,
+      "blobId": "c5298e10dee76dd1239c8e3ec79cd5f2c25aaeb2"
+    },
+    {
+      "path": "special_tokens_map.json",
+      "size": 463,
+      "blobId": "2f1a3490a65ddc2d2d7a5c902fe8bedcd4fb7795"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 20918,
+      "blobId": "1f3617ebea3f3c542aaeaa4ec14c10707ffaf463"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 27868174,
+      "blobId": "6ec3ef1795cbbda6b7cb7d1f114919cbe3fdd647",
+      "lfs": {
+        "sha256": "0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3",
+        "size": 27868174,
+        "pointerSize": 133
+      }
+    }
+  ]
+}

@@ -72,10 +72,14 @@ describe("Transformers.js Comlink transport contracts", () => {
         onRunCheckpoint({ run: { modelId } as never });
         return { modelId } as never;
       },
+      async inspectDownloadedTemplateBehavior() {
+        return {} as never;
+      },
       async runCandidateAttempt(
         _repository,
         _declarations,
         _templateBehavior,
+        _loaderRevisionOption,
         _candidate,
         onEvent,
         onAttemptEvent,
@@ -104,6 +108,7 @@ describe("Transformers.js Comlink transport contracts", () => {
         {} as never,
         {} as never,
         {} as never,
+        null,
         {} as never,
         Comlink.proxy(onEvent),
         Comlink.proxy(onAttemptEvent),

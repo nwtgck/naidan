@@ -67,6 +67,7 @@ function run({ supportedClass = true, candidates = [candidate("webgpu-q4f16"), c
       libraryName: "transformers",
       metadata: {},
     },
+    downloadEvidence: undefined,
     cache: undefined,
     declarations: {
       normalizedModelId: "org/model",
@@ -216,6 +217,35 @@ describe("runModelLoadInvestigation", () => {
     expect(result.loadAttempts).toHaveLength(2);
     expect(result.steps.find(step => step.id === "loading-investigation")?.status).toBe("passed");
     expect(result.currentOperation).toBe("Minimum real-model generation evidence collected");
+  });
+
+  it("uses the exact candidate accepted by reused Production cache instead of re-exploring fallback candidates", async () => {
+    const partialRun = run();
+    partialRun.downloadEvidence = {
+      runtimeCompletion: {
+        status: 'accepted',
+        loaderRevisionOption: 'a'.repeat(40),
+        selectedCandidate: { device: 'webgpu', dtype: 'q4' },
+      },
+    } as NonNullable<ModelSupportInvestigationRun['downloadEvidence']>;
+    const runAttempt = vi.fn(async ({ candidate: candidatePlan }: { candidate: ModelSupportInvestigationCandidateFilePlan }) => (
+      attempt({ candidatePlan, status: 'passed' })
+    ));
+
+    const result = await runModelLoadInvestigation({
+      partialRun,
+      runAttempt,
+      onEvent: vi.fn(),
+      now: () => 'after',
+      createAttemptId: () => 'unexpected',
+    });
+
+    expect(runAttempt).toHaveBeenCalledTimes(1);
+    expect(runAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      candidate: expect.objectContaining({ candidateId: 'webgpu-q4', device: 'webgpu', dtype: 'q4' }),
+      loaderRevisionOption: 'a'.repeat(40),
+    }));
+    expect(result.loadAttempts.map(item => item.candidateId)).toEqual(['webgpu-q4']);
   });
 
   it("still probes the real model when Runtime Integrity Preflight failed", async () => {

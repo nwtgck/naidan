@@ -113,6 +113,7 @@ const completedRun: ModelSupportInvestigationRun = {
     libraryName: 'transformers',
     metadata: {},
   },
+  downloadEvidence: undefined,
   cache: {
     normalizedModelId: 'org/model',
     rootPath: 'models/huggingface.co/org/model',

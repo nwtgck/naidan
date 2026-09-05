@@ -1,4 +1,8 @@
 import type {
+  DownloadVerificationEvidenceInput,
+  DownloadVerificationProbeEvidenceInput,
+} from '@/features/transformers-js/download-verification/evidence/types';
+import type {
   TransformersJsProductionInvestigationError,
   TransformersJsProductionInvestigationObservation,
   TransformersJsProductionInvestigationPartialObservation,
@@ -21,6 +25,7 @@ export interface ModelSupportInvestigationJsonObject {
 export type ModelSupportInvestigationStepId =
   | "runtime-assets"
   | "repository-information"
+  | "download-evidence"
   | "existing-model-data"
   | "model-declarations"
   | "template-behavior"
@@ -832,6 +837,7 @@ export interface ModelSupportInvestigationRun {
   runtimeAssets: ModelSupportInvestigationRuntimeAssets | undefined,
   runtimeAssetsPartial?: ModelSupportInvestigationRuntimeAssetsPartial,
   repository: ModelSupportInvestigationRepository | undefined,
+  downloadEvidence: DownloadVerificationEvidenceInput | undefined,
   cache: ModelSupportInvestigationCacheInventory | undefined,
   declarations: ModelSupportInvestigationModelDeclarations | undefined,
   templateBehavior: ModelSupportInvestigationTemplateBehavior | undefined,
@@ -847,8 +853,10 @@ export interface ModelSupportInvestigationRun {
 
 export type ModelSupportInvestigationPlanningWorkerRun = Omit<
   ModelSupportInvestigationRun,
-  'loadAttempts' | 'activeLoadAttempt' | 'productionLane' | 'laneComparison'
->;
+  'downloadEvidence' | 'loadAttempts' | 'activeLoadAttempt' | 'productionLane' | 'laneComparison'
+> & {
+  downloadEvidence: DownloadVerificationProbeEvidenceInput | undefined,
+};
 
 export type ModelSupportInvestigationEvidenceReadinessStatus =
   | "implementation-ready"
@@ -859,6 +867,7 @@ export type ModelSupportInvestigationEvidenceReadinessStatus =
 export type ModelSupportInvestigationEvidenceDomainId =
   | "runtime-assets"
   | "repository"
+  | "download"
   | "cache"
   | "model-declarations"
   | "template-tokenizer"
@@ -976,11 +985,16 @@ export interface IModelSupportInvestigationWorker {
     onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
     onRunCheckpoint: WorkerProxy<({ run }: { run: ModelSupportInvestigationPlanningWorkerRun }) => void>,
   ): Promise<ModelSupportInvestigationPlanningWorkerRun>,
+  inspectDownloadedTemplateBehavior({ repository, loaderRevisionOption }: {
+    repository: ModelSupportInvestigationRepository,
+    loaderRevisionOption: string | null,
+  }): Promise<ModelSupportInvestigationTemplateBehavior>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runCandidateAttempt(
     repository: ModelSupportInvestigationRepository,
     declarations: ModelSupportInvestigationModelDeclarations,
     templateBehavior: ModelSupportInvestigationTemplateBehavior | undefined,
+    loaderRevisionOption: string | null,
     candidate: ModelSupportInvestigationCandidateFilePlan,
     onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
     onAttemptEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationLoadAttemptEvent }) => void>,

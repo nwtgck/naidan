@@ -280,6 +280,7 @@ describe("model-support-investigation worker", () => {
           inputIds: [1, 2],
         }],
       } as never,
+      null,
       {
         candidateId: "webgpu-q4",
         device: "webgpu",
@@ -409,6 +410,7 @@ describe("model-support-investigation worker", () => {
         }],
       } as never,
       undefined,
+      null,
       {
         candidateId: "webgpu-q4",
         device: "webgpu",
@@ -463,6 +465,7 @@ describe("model-support-investigation worker", () => {
         }],
       } as never,
       undefined,
+      null,
       {
         candidateId: "webgpu-q4",
         device: "webgpu",
@@ -546,6 +549,7 @@ describe("model-support-investigation worker", () => {
           assistantToolCallSuffixTokenIds: [9, 10],
         },
       } as never,
+      null,
       {
         candidateId: "webgpu-q4",
         device: "webgpu",

@@ -1,7 +1,34 @@
+import type { DownloadVerificationProbeEvidenceInput } from '@/features/transformers-js/download-verification/evidence/types';
 import type {
   ModelSupportInvestigationPlanningWorkerRun,
   ModelSupportInvestigationRun,
 } from '@/features/transformers-js/model-support-investigation/types';
+
+function toPlanningDownloadEvidence({
+  evidence,
+}: {
+  evidence: ModelSupportInvestigationRun['downloadEvidence'],
+}): DownloadVerificationProbeEvidenceInput | undefined {
+  if (evidence === undefined) return undefined;
+  switch (evidence.mode) {
+  case 'probe-only':
+    break;
+  case 'runtime-complete':
+    throw new Error('Planning Worker must not return Download Evidence mode runtime-complete');
+  default: {
+    const _ex: never = evidence.mode;
+    throw new Error(`Unhandled Download Evidence mode: ${String(_ex)}`);
+  }
+  }
+  if (evidence.runtimeCompletion !== undefined) {
+    throw new Error('Planning Worker must not return runtime-complete Download Evidence');
+  }
+  return {
+    ...evidence,
+    mode: 'probe-only',
+    runtimeCompletion: undefined,
+  };
+}
 
 export function toPlanningWorkerRun({
   run,
@@ -9,6 +36,7 @@ export function toPlanningWorkerRun({
   run: ModelSupportInvestigationRun,
 }): ModelSupportInvestigationPlanningWorkerRun {
   const {
+    downloadEvidence,
     loadAttempts,
     activeLoadAttempt,
     productionLane,
@@ -36,7 +64,10 @@ export function toPlanningWorkerRun({
   if (laneComparison !== undefined) {
     throw new Error('Planning Worker must not return lane comparison evidence');
   }
-  return planningRun;
+  return {
+    ...planningRun,
+    downloadEvidence: toPlanningDownloadEvidence({ evidence: downloadEvidence }),
+  };
 }
 
 export function fromPlanningWorkerRun({

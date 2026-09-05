@@ -47,6 +47,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void,
+  (e: 'openDownloadVerification'): void,
 }>();
 
 const { settings, availableModels: rawAvailableModels, isFetchingModels } = useSettings();
@@ -377,6 +378,7 @@ defineExpose({
               <DeveloperTab
                 v-if="activeTab === 'developer'"
                 :storage-type="form.storageType"
+                @open-download-verification="emit('openDownloadVerification')"
               />
 
               <!-- About Tab -->

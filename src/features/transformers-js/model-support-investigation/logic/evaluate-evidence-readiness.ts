@@ -5,6 +5,7 @@ import type {
   ModelSupportInvestigationToolParserObservation,
   ModelSupportInvestigationToolResultTemplateRoundTrip,
 } from "@/features/transformers-js/model-support-investigation/types";
+import type { DownloadVerificationRuntimeCompletionEvidence } from "@/features/transformers-js/download-verification/evidence/types";
 import type {
   TransformersJsProductionInvestigationActiveCandidateLoadAttempt,
   TransformersJsProductionInvestigationReasoningEffortObservation,
@@ -205,6 +206,34 @@ function productionToolResultContinuationAnswer({ observation }: {
   }
 }
 
+function runtimeCompletionRevisionIdentity({ completion }: {
+  completion: DownloadVerificationRuntimeCompletionEvidence | undefined,
+}): 'exact-resolved-revision' | 'legacy-main-unverified' | 'unverified' | undefined {
+  if (completion === undefined || completion.status !== 'accepted') return undefined;
+  if (
+    completion.cacheRevision === completion.repositoryResolvedRevision
+    && completion.loaderRevisionOption === completion.repositoryResolvedRevision
+  ) return 'exact-resolved-revision';
+  if (completion.cacheRevision === 'main' && completion.loaderRevisionOption === null) return 'legacy-main-unverified';
+  return 'unverified';
+}
+
+function downgradeForUnverifiedRuntimeRevision({
+  status,
+  unverified,
+}: {
+  status: ModelSupportInvestigationEvidenceDomainReadiness['status'],
+  unverified: boolean,
+}): ModelSupportInvestigationEvidenceDomainReadiness['status'] {
+  return unverified && status === 'implementation-ready' ? 'partial' : status;
+}
+
+function appendRuntimeRevisionCaveat({ summary, unverified }: { summary: string; unverified: boolean }): string {
+  return unverified
+    ? `${summary} Runtime observations used a Production-accepted legacy main cache whose exact identity with the frozen repository revision was not proven.`
+    : summary;
+}
+
 export function evaluateEvidenceReadiness({ run }: {
   run: ModelSupportInvestigationRun,
 }): ModelSupportInvestigationEvidenceReadinessReport {
@@ -246,11 +275,33 @@ export function evaluateEvidenceReadiness({ run }: {
   );
   const runtimeStepErrorCount = stepErrorCount({ stepId: "runtime-assets" });
   const repositoryStepErrorCount = stepErrorCount({ stepId: "repository-information" });
+  const downloadStepErrorCount = stepErrorCount({ stepId: "download-evidence" });
   const cacheStepErrorCount = stepErrorCount({ stepId: "existing-model-data" });
   const declarationsStepErrorCount = stepErrorCount({ stepId: "model-declarations" });
   const templateStepErrorCount = stepErrorCount({ stepId: "template-behavior" });
   const modelFilePlanStepErrorCount = stepErrorCount({ stepId: "model-file-plan" });
   const revisionReady = run.repository !== undefined && /^[0-9a-f]{40}$/i.test(run.repository.resolvedRevision);
+  const downloadEvidence = run.downloadEvidence;
+  const downloadRevisionMatches = downloadEvidence !== undefined
+    && run.repository !== undefined
+    && downloadEvidence.run.resolvedRevision === run.repository.resolvedRevision;
+  const observedDownloadCandidateCount = downloadEvidence?.modelArtifactObservations.filter(item => item.status === 'observed').length ?? 0;
+  const failedDownloadCandidateCount = downloadEvidence?.modelArtifactObservations.filter(item => item.status === 'failed').length ?? 0;
+  const downloadTransportCount = downloadEvidence?.run.transportObservations.length ?? 0;
+  const successfulDownloadTransportCount = downloadEvidence?.run.transportObservations.filter(item => item.error === undefined).length ?? 0;
+  const downloadRuntimeCompletion = downloadEvidence?.runtimeCompletion;
+  const downloadRuntimeAccepted = downloadRuntimeCompletion?.status === 'accepted';
+  const downloadRuntimeRevisionIdentity = runtimeCompletionRevisionIdentity({ completion: downloadRuntimeCompletion });
+  const downloadRuntimeRevisionUnverified = downloadRuntimeAccepted && downloadRuntimeRevisionIdentity !== 'exact-resolved-revision';
+  const downloadReadinessStatus = (() => {
+    if (downloadEvidence === undefined) return downloadStepErrorCount > 0 ? 'insufficient' as const : 'not-observed' as const;
+    if (!downloadRevisionMatches || downloadStepErrorCount > 0) return 'insufficient' as const;
+    if (downloadRuntimeCompletion !== undefined && !downloadRuntimeAccepted) return 'insufficient' as const;
+    if (observedDownloadCandidateCount === 0) return 'partial' as const;
+    if (failedDownloadCandidateCount > 0 || successfulDownloadTransportCount !== downloadTransportCount) return 'partial' as const;
+    if (downloadRuntimeRevisionUnverified) return 'partial' as const;
+    return 'implementation-ready' as const;
+  })();
   const supportedClassCount = run.declarations?.classCapabilities.filter(item => item.supports === true).length ?? 0;
   const generationTemplate = run.templateBehavior?.cases.find(item => (
     item.caseId === "user-generation" && item.status === "passed" && (item.inputIds?.length ?? 0) > 0
@@ -765,6 +816,42 @@ export function evaluateEvidenceReadiness({ run }: {
         : ["repository/repository.json", ...(repositoryStepErrorCount > 0 ? ["errors.json"] : [])],
     }),
     domain({
+      domainId: "download",
+      status: downloadReadinessStatus,
+      summary: downloadEvidence === undefined
+        ? downloadStepErrorCount > 0
+          ? `Download Evidence collection failed with ${downloadStepErrorCount} structured error(s).`
+          : "Download Evidence was not observed."
+        : !downloadRevisionMatches
+          ? "Download Evidence does not reference the same frozen repository revision as the investigation run."
+          : downloadRuntimeCompletion !== undefined && !downloadRuntimeAccepted
+            ? `Download runtime completion ended with ${downloadRuntimeCompletion.status}${downloadRuntimeCompletion.error === undefined ? '.' : `: ${downloadRuntimeCompletion.error.name}: ${downloadRuntimeCompletion.error.message}`}`
+            : downloadRuntimeAccepted
+              ? downloadRuntimeRevisionUnverified
+                ? `${observedDownloadCandidateCount} actual Transformers.js candidate artifact-request observation(s); ${successfulDownloadTransportCount}/${downloadTransportCount} bounded transport probes completed without an observed transport error; Production cache-only runtime acceptance succeeded at legacy main, but exact identity with frozen revision ${downloadRuntimeCompletion.repositoryResolvedRevision} remains unverified.`
+                : `${observedDownloadCandidateCount} actual Transformers.js candidate artifact-request observation(s); ${successfulDownloadTransportCount}/${downloadTransportCount} bounded transport probes completed without an observed transport error; Production cache-only runtime acceptance succeeded at ${downloadRuntimeCompletion.loaderRevisionOption ?? 'main'} with exact frozen-revision identity.`
+              : `${observedDownloadCandidateCount} actual Transformers.js candidate artifact-request observation(s); ${successfulDownloadTransportCount}/${downloadTransportCount} bounded transport probes completed without an observed transport error.`,
+      questionId: "download-production-artifact-discovery",
+      answer: downloadEvidence === undefined
+        ? "Unobserved"
+        : `revision=${downloadEvidence.run.resolvedRevision}; observedCandidates=${observedDownloadCandidateCount}; failedCandidates=${failedDownloadCandidateCount}; transport=${successfulDownloadTransportCount}/${downloadTransportCount}; bytes=${downloadEvidence.run.bytesConsumed}/${downloadEvidence.run.maximumBytes}; runtime=${downloadRuntimeCompletion?.status ?? 'not-run'}; loaderRevision=${downloadRuntimeCompletion?.loaderRevisionOption ?? 'main'}; revisionIdentity=${downloadRuntimeRevisionIdentity ?? 'not-observed'}`,
+      evidencePaths: downloadEvidence === undefined
+        ? (downloadStepErrorCount > 0 ? ["errors.json"] : [])
+        : [
+          "download-lane/repository.json",
+          "download-lane/artifact-requests.json",
+          "download-lane/transport.json",
+          "download-lane/candidates.json",
+          "download-lane/test-readiness.json",
+          ...(downloadRuntimeCompletion === undefined ? [] : [
+            "download-lane/cache-after.json",
+            "download-lane/prefetch.json",
+            "download-lane/cache-acceptance.json",
+          ]),
+          ...(downloadStepErrorCount > 0 ? ["errors.json"] : []),
+        ],
+    }),
+    domain({
       domainId: "cache",
       status: cacheReadinessStatus,
       summary: cacheStepErrorCount > 0
@@ -804,12 +891,18 @@ export function evaluateEvidenceReadiness({ run }: {
     }),
     domain({
       domainId: "template-tokenizer",
-      status: run.templateBehavior === undefined
-        ? templateStepErrorCount > 0 ? "insufficient" : "not-observed"
-        : generationInputIds === undefined ? "partial" : "implementation-ready",
-      summary: run.templateBehavior === undefined && templateStepErrorCount > 0
-        ? `Tokenizer/template inspection failed with ${templateStepErrorCount} structured error(s).`
-        : generationInputIds === undefined ? "A deterministic generation prompt token sequence was not verified." : `The user-generation case produced ${generationInputIds.length} input tokens.`,
+      status: downgradeForUnverifiedRuntimeRevision({
+        status: run.templateBehavior === undefined
+          ? templateStepErrorCount > 0 ? "insufficient" : "not-observed"
+          : generationInputIds === undefined ? "partial" : "implementation-ready",
+        unverified: downloadRuntimeRevisionUnverified,
+      }),
+      summary: appendRuntimeRevisionCaveat({
+        summary: run.templateBehavior === undefined && templateStepErrorCount > 0
+          ? `Tokenizer/template inspection failed with ${templateStepErrorCount} structured error(s).`
+          : generationInputIds === undefined ? "A deterministic generation prompt token sequence was not verified." : `The user-generation case produced ${generationInputIds.length} input tokens.`,
+        unverified: downloadRuntimeRevisionUnverified && run.templateBehavior !== undefined,
+      }),
       questionId: "reference-generation-input-ids",
       answer: generationInputIds === undefined
         ? templateStepErrorCount > 0 ? "Inspection failed; see structured step errors" : "Unobserved"
@@ -838,12 +931,18 @@ export function evaluateEvidenceReadiness({ run }: {
     }),
     domain({
       domainId: "runtime-load",
-      status: sessionFilesReady ? "implementation-ready" : loadedAttempt !== undefined ? "partial" : run.loadAttempts.length > 0 ? "partial" : "not-observed",
-      summary: sessionFilesReady
-        ? "A fixed candidate loaded successfully, and every observed Session was exactly correlated to a unique core ONNX basename."
-        : loadedAttempt !== undefined
-          ? `A fixed candidate loaded successfully, but ${unresolvedSessionFileCorrelationCount} of ${sessionFileCorrelations.length} Session-to-file correlations remain unresolved; generation may still be unavailable.`
-          : "No successful real-model load was observed.",
+      status: downgradeForUnverifiedRuntimeRevision({
+        status: sessionFilesReady ? "implementation-ready" : loadedAttempt !== undefined ? "partial" : run.loadAttempts.length > 0 ? "partial" : "not-observed",
+        unverified: downloadRuntimeRevisionUnverified,
+      }),
+      summary: appendRuntimeRevisionCaveat({
+        summary: sessionFilesReady
+          ? "A fixed candidate loaded successfully, and every observed Session was exactly correlated to a unique core ONNX basename."
+          : loadedAttempt !== undefined
+            ? `A fixed candidate loaded successfully, but ${unresolvedSessionFileCorrelationCount} of ${sessionFileCorrelations.length} Session-to-file correlations remain unresolved; generation may still be unavailable.`
+            : "No successful real-model load was observed.",
+        unverified: downloadRuntimeRevisionUnverified && loadedAttempt !== undefined,
+      }),
       questionId: "real-model-load-and-session-files",
       answer: loadedAttempt === undefined
         ? "Unobserved"
@@ -852,16 +951,22 @@ export function evaluateEvidenceReadiness({ run }: {
     }),
     domain({
       domainId: "plain-text",
-      status: naturalReady
-        ? "implementation-ready"
-        : runtimeGenerationReady || productionPlainTextReady
-          ? "partial"
-          : "not-observed",
-      summary: naturalReady
-        ? "A bounded, non-forced greedy Reference output baseline was observed."
-        : productionPlainTextReady
-          ? `The Naidan Production Lane generated ${productionPlainTextTokenCount} token(s), but the bounded Reference natural baseline was not observed.`
-          : "A bounded natural output baseline was not observed.",
+      status: downgradeForUnverifiedRuntimeRevision({
+        status: naturalReady
+          ? "implementation-ready"
+          : runtimeGenerationReady || productionPlainTextReady
+            ? "partial"
+            : "not-observed",
+        unverified: downloadRuntimeRevisionUnverified,
+      }),
+      summary: appendRuntimeRevisionCaveat({
+        summary: naturalReady
+          ? "A bounded, non-forced greedy Reference output baseline was observed."
+          : productionPlainTextReady
+            ? `The Naidan Production Lane generated ${productionPlainTextTokenCount} token(s), but the bounded Reference natural baseline was not observed.`
+            : "A bounded natural output baseline was not observed.",
+        unverified: downloadRuntimeRevisionUnverified && (naturalReady || runtimeGenerationReady || productionPlainTextReady),
+      }),
       questionId: "bounded-natural-output",
       answer: (() => {
         const naturalGeneration = passedAttempt?.naturalGeneration;
@@ -891,16 +996,16 @@ export function evaluateEvidenceReadiness({ run }: {
     }),
     domain({
       domainId: "production-routing",
-      status: productionReadiness.status,
-      summary: productionReadiness.summary,
+      status: downgradeForUnverifiedRuntimeRevision({ status: productionReadiness.status, unverified: downloadRuntimeRevisionUnverified }),
+      summary: appendRuntimeRevisionCaveat({ summary: productionReadiness.summary, unverified: downloadRuntimeRevisionUnverified && productionReadiness.status !== 'not-observed' }),
       questionId: "production-route-and-reference-token-diff",
       answer: productionReadiness.answer,
       evidencePaths: productionReadiness.evidencePaths,
     }),
     domain({
       domainId: "continuity-kv-cache",
-      status: continuityReadiness.status,
-      summary: continuityReadiness.summary,
+      status: downgradeForUnverifiedRuntimeRevision({ status: continuityReadiness.status, unverified: downloadRuntimeRevisionUnverified }),
+      summary: appendRuntimeRevisionCaveat({ summary: continuityReadiness.summary, unverified: downloadRuntimeRevisionUnverified && continuityReadiness.status !== 'not-observed' }),
       questionId: "continuity-kv-cache-behavior",
       answer: continuityReadiness.answer,
       evidencePaths: continuityReadiness.evidencePaths,

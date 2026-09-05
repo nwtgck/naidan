@@ -28,6 +28,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     const archive = { blob: new Blob(["zip"]), fileName: "evidence.zip" };
     const remote: IModelSupportInvestigationEvidenceWorker = {
       createPartialEvidence: vi.fn(async () => archive),
+      createDownloadVerificationEvidence: vi.fn(async () => archive),
     };
     mocks.wrap.mockReturnValue(remote);
     mocks.release.mockResolvedValue(undefined);
@@ -50,10 +51,31 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     expect(mocks.terminate).toHaveBeenCalledTimes(1);
   });
 
+  it("serializes Download Verification evidence through the same dedicated Worker", async () => {
+    const archive = { blob: new Blob(["zip"]), fileName: "download-evidence.zip" };
+    const remote: IModelSupportInvestigationEvidenceWorker = {
+      createPartialEvidence: vi.fn(async () => archive),
+      createDownloadVerificationEvidence: vi.fn(async () => archive),
+    };
+    mocks.wrap.mockReturnValue(remote);
+    mocks.release.mockResolvedValue(undefined);
+
+    const { createModelSupportInvestigationEvidenceWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationEvidenceWorkerClient();
+    const evidence = { schemaVersion: 1, runId: "download-run-1", mode: "probe-only" } as Parameters<typeof client.createDownloadVerificationEvidence>[0]["evidence"];
+    await expect(client.createDownloadVerificationEvidence({ evidence })).resolves.toBe(archive);
+
+    const request = vi.mocked(remote.createDownloadVerificationEvidence).mock.calls[0]?.[0].request;
+    expect(request).toBeInstanceOf(Blob);
+    expect(JSON.parse(await request!.text())).toEqual({ schemaVersion: 1, evidence });
+    await client.dispose();
+  });
+
   it("terminates a hung export at the deadline without trying to release the dead Worker", async () => {
     vi.useFakeTimers();
     const remote: IModelSupportInvestigationEvidenceWorker = {
       createPartialEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
+      createDownloadVerificationEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
     };
     mocks.wrap.mockReturnValue(remote);
 
@@ -83,6 +105,9 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
       createPartialEvidence: vi.fn(async () => {
         throw new Error("worker export failed");
       }),
+      createDownloadVerificationEvidence: vi.fn(async () => {
+        throw new Error("worker export failed");
+      }),
     };
     mocks.wrap.mockReturnValue(remote);
 
@@ -97,10 +122,36 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     expect(mocks.terminate).toHaveBeenCalledTimes(1);
   });
 
+  it("cancels an in-flight Evidence export immediately when the client is disposed", async () => {
+    vi.useFakeTimers();
+    const remote: IModelSupportInvestigationEvidenceWorker = {
+      createPartialEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
+      createDownloadVerificationEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
+    };
+    mocks.wrap.mockReturnValue(remote);
+    mocks.release.mockResolvedValue(undefined);
+
+    const {
+      createModelSupportInvestigationEvidenceWorkerClient,
+      ModelSupportInvestigationEvidenceExportDisposedError,
+    } = await import("./client-hosted");
+    const client = createModelSupportInvestigationEvidenceWorkerClient({ timeoutMs: 60_000 });
+    const evidence = { schemaVersion: 1, runId: "download-run-cancel", mode: "probe-only" } as Parameters<typeof client.createDownloadVerificationEvidence>[0]["evidence"];
+    const exportPromise = client.createDownloadVerificationEvidence({ evidence });
+
+    await client.dispose();
+    await expect(exportPromise).rejects.toEqual(new ModelSupportInvestigationEvidenceExportDisposedError());
+
+    expect(mocks.release).toHaveBeenCalledTimes(1);
+    expect(mocks.terminate).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("does not block disposal when the best-effort Comlink release never settles", async () => {
     const archive = { blob: new Blob(["zip"]), fileName: "evidence.zip" };
     const remote: IModelSupportInvestigationEvidenceWorker = {
       createPartialEvidence: vi.fn(async () => archive),
+      createDownloadVerificationEvidence: vi.fn(async () => archive),
     };
     mocks.wrap.mockReturnValue(remote);
     mocks.release.mockReturnValue(new Promise<never>(() => undefined));

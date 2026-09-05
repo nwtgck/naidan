@@ -298,15 +298,19 @@ function deriveToolTemplateProvenance({
 
 export async function inspectTemplateBehavior({
   repository,
+  loaderRevisionOption,
   loadTokenizer,
 }: {
   repository: ModelSupportInvestigationRepository,
+  loaderRevisionOption?: string | null,
   loadTokenizer: ({ modelId, revision }: {
     modelId: string,
     revision: string | undefined,
   }) => Promise<ModelSupportInvestigationTemplateTokenizer>,
 }): Promise<ModelSupportInvestigationTemplateBehavior> {
-  const loaderRevision = investigationModelLoadRevision({ requestedRevision: repository.requestedRevision });
+  const loaderRevision = loaderRevisionOption === undefined
+    ? investigationModelLoadRevision({ requestedRevision: repository.requestedRevision })
+    : loaderRevisionOption ?? undefined;
   const tokenizer = await loadTokenizer({
     modelId: repository.normalizedModelId,
     // Match normal Chat and reuse its resolve/main OPFS entries. The frozen SHA

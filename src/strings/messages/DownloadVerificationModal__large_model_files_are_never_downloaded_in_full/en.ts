@@ -1,0 +1,1 @@
+export const DownloadVerificationModal__large_model_files_are_never_downloaded_in_full = (): string => 'Large model files are never downloaded in full. HEAD and bounded Range requests are used when needed.';

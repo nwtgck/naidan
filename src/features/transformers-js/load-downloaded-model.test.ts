@@ -45,6 +45,7 @@ describe('loadDownloadedModel download boundary', () => {
 
     expect(mocks.loadDownloadedModel).toHaveBeenCalledWith({
       modelId: 'org/not-downloaded',
+      revision: undefined,
       progressCallback: expect.any(Function),
     });
     expect(mocks.createScannerClient).not.toHaveBeenCalled();

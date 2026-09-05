@@ -515,6 +515,7 @@ const cacheSummary = computed(() => {
 const steps = ref<ModelSupportInvestigationStep[]>([
   { id: "runtime-assets", status: "running", detail: undefined },
   { id: "repository-information", status: "not-run", detail: undefined },
+  { id: "download-evidence", status: "not-run", detail: undefined },
   { id: "existing-model-data", status: "not-run", detail: undefined },
   { id: "model-declarations", status: "not-run", detail: undefined },
   { id: "template-behavior", status: "not-run", detail: undefined },
@@ -556,6 +557,7 @@ function withEvidenceExportStep({
         return { ...step, status, detail };
       case "runtime-assets":
       case "repository-information":
+      case "download-evidence":
       case "existing-model-data":
       case "model-declarations":
       case "template-behavior":
@@ -605,6 +607,8 @@ function stepLabel({ stepId }: { stepId: ModelSupportInvestigationStepId }): str
     return lazyStrings.ModelSupportInvestigationModal__runtime_assets();
   case "repository-information":
     return lazyStrings.ModelSupportInvestigationModal__repository_information();
+  case "download-evidence":
+    return lazyStrings.DownloadVerificationModal__download_verification();
   case "existing-model-data":
     return lazyStrings.ModelSupportInvestigationModal__existing_model_data();
   case "model-declarations":
@@ -761,6 +765,7 @@ async function startInvestigation(): Promise<void> {
       case "runtime-assets":
         return { ...step, status: "failed", detail };
       case "repository-information":
+      case "download-evidence":
       case "existing-model-data":
       case "model-declarations":
       case "template-behavior":
@@ -800,6 +805,7 @@ function updateEvidenceExportPresentation({
       return { ...step, status, detail };
     case "runtime-assets":
     case "repository-information":
+    case "download-evidence":
     case "existing-model-data":
     case "model-declarations":
     case "template-behavior":

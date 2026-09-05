@@ -19,6 +19,7 @@ import {
   assessEvidencePackage,
   renderEvidencePackageAssessmentMarkdown,
 } from "@/features/transformers-js/model-support-investigation/logic/assess-evidence-package";
+import { createDownloadVerificationEvidenceLaneFiles } from '@/features/transformers-js/download-verification/evidence/create-download-verification-evidence';
 
 async function sha256Hex({ bytes }: { bytes: Uint8Array }): Promise<string> {
   const input = new Uint8Array(bytes.byteLength);
@@ -505,6 +506,12 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
   }
   if (run.repository !== undefined) {
     zip.file("repository/repository.json", `${JSON.stringify(run.repository, undefined, 2)}\n`);
+  }
+  if (run.downloadEvidence !== undefined) {
+    const { files } = createDownloadVerificationEvidenceLaneFiles({ evidence: run.downloadEvidence });
+    for (const [path, content] of Object.entries(files)) {
+      zip.file(path, content);
+    }
   }
   if (run.cache !== undefined) {
     zip.file("cache/inventory.json", `${JSON.stringify(run.cache, undefined, 2)}\n`);

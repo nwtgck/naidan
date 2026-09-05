@@ -1,0 +1,1 @@
+export const DownloadVerificationModal__public_models_only_credentials_are_omitted_and_probe_data_is_not_saved_to_the_model_cache = (): string => '공개 모델만 대상으로 합니다. 인증 정보는 보내지 않고 Referrer를 억제하며 Probe 본문은 모델 캐시에 저장하지 않습니다.';
