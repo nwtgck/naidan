@@ -4,7 +4,7 @@ export const cpCommandDefinition = {
   meta: {
     name: 'cp',
     description: 'Copy files',
-    usage: 'cp [-R] [-H|-L|-P] [-f|-n] [-T] [-t DIR] source... destination',
+    usage: 'cp [-R] [-H|-L|-P] [-f|-n] [--parents] [-T] [-t DIR] source... destination',
   },
   load: async () => (await import('./index.ts')).cpCommandImplementation.fn,
 } satisfies WeshCommandDefinition;

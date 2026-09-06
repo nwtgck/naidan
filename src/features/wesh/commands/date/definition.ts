@@ -4,7 +4,7 @@ export const dateCommandDefinition = {
   meta: {
     name: 'date',
     description: 'Print the system date and time',
-    usage: 'date [-u] [-d STRING] [-I[TIMESPEC]] [--rfc-3339=TIMESPEC] [+FORMAT]',
+    usage: 'date [-u] [-d STRING | -r FILE | -f DATEFILE] [-I[TIMESPEC]] [--rfc-3339=TIMESPEC] [+FORMAT]',
   },
   load: async () => (await import('./index.ts')).dateCommandImplementation.fn,
 } satisfies WeshCommandDefinition;

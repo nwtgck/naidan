@@ -20,9 +20,11 @@ describe('wesh ls', () => {
   async function writeFile({
     path,
     data,
+    mtime,
   }: {
     path: string,
     data: string,
+    mtime?: number,
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -39,6 +41,9 @@ describe('wesh ls', () => {
     const writable = await handle.createWritable();
     await writable.write(data);
     await writable.close();
+    if (mtime !== undefined) {
+      handle.lastModified = mtime;
+    }
   }
 
   async function execute({
@@ -75,6 +80,110 @@ zeta.txt
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('supports common time, size, and reverse sorting forms', async () => {
+    await writeFile({ path: 'sorted/old.txt', data: 'aa', mtime: 1_000 });
+    await writeFile({ path: 'sorted/middle.txt', data: 'bbb', mtime: 2_000 });
+    await writeFile({ path: 'sorted/new.txt', data: 'cccc', mtime: 3_000 });
+
+    const cases = [
+      ['-t', `\
+new.txt
+middle.txt
+old.txt
+`],
+      ['--sort=time', `\
+new.txt
+middle.txt
+old.txt
+`],
+      ['-S', `\
+new.txt
+middle.txt
+old.txt
+`],
+      ['--sort=size', `\
+new.txt
+middle.txt
+old.txt
+`],
+      ['-r', `\
+old.txt
+new.txt
+middle.txt
+`],
+      ['--reverse', `\
+old.txt
+new.txt
+middle.txt
+`],
+      ['-tr', `\
+old.txt
+middle.txt
+new.txt
+`],
+      ['-Sr', `\
+old.txt
+middle.txt
+new.txt
+`],
+    ] as const;
+
+    for (const [options, expected] of cases) {
+      const result = await execute({ script: `ls ${options} sorted` });
+      expect(result.result.exitCode, options).toBe(0);
+      expect(result.stdout.text, options).toBe(expected);
+      expect(result.stderr.text, options).toBe('');
+    }
+
+    const longTime = await execute({ script: 'ls -lt sorted' });
+    const longTimeReverse = await execute({ script: 'ls -ltr sorted' });
+    const longSize = await execute({ script: 'ls -lS sorted' });
+    expect(longTime.stdout.text).toBe(`\
+-          4 new.txt
+-          3 middle.txt
+-          2 old.txt
+`);
+    expect(longTimeReverse.stdout.text).toBe(`\
+-          2 old.txt
+-          3 middle.txt
+-          4 new.txt
+`);
+    expect(longSize.stdout.text).toBe(`\
+-          4 new.txt
+-          3 middle.txt
+-          2 old.txt
+`);
+    for (const result of [longTime, longTimeReverse, longSize]) {
+      expect(result.result.exitCode).toBe(0);
+      expect(result.stderr.text).toBe('');
+    }
+  });
+
+  it('uses the last sort selector and supports --sort=name', async () => {
+    await writeFile({ path: 'modes/large-old', data: '1234567890', mtime: 1_000 });
+    await writeFile({ path: 'modes/small-new', data: 'x', mtime: 2_000 });
+
+    const timeThenSize = await execute({ script: 'ls -tS modes' });
+    const sizeThenTime = await execute({ script: 'ls -St modes' });
+    const resetToName = await execute({ script: 'ls -S --sort=name modes' });
+    const invalid = await execute({ script: 'ls --sort=bogus modes' });
+
+    expect(timeThenSize.stdout.text).toBe(`\
+large-old
+small-new
+`);
+    expect(sizeThenTime.stdout.text).toBe(`\
+small-new
+large-old
+`);
+    expect(resetToName.stdout.text).toBe(`\
+large-old
+small-new
+`);
+    expect(invalid.result.exitCode).toBe(2);
+    expect(invalid.stderr.text).toContain("invalid argument 'bogus' for '--sort'");
   });
 
   it('uses C-locale ordering and lists file operands before directories', async () => {
@@ -447,7 +556,18 @@ dir
     expect(stdout.text).toContain(`\
 dir:
 file.txt`);
-    expect(stderr.text).toContain('ls: missing:');
+    expect(stderr.text).toBe('ls: missing: No such file or directory\n');
+    expect(result.exitCode).toBe(2);
+  });
+  it('normalizes browser type-mismatch errors for intermediate file path components', async () => {
+    await writeFile({ path: 'parent', data: 'file' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'ls parent/child',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('ls: parent/child: Not a directory\n');
     expect(result.exitCode).toBe(2);
   });
 });

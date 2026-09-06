@@ -2,6 +2,7 @@ import { parseStandardArgv, type ArgvDiagnostic, type ParsedStandardArgv, type S
 import { decodeCommandDataBytes } from '@/features/wesh/commands/_shared/data-codec';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import { compileBasicRegularExpression } from '@/features/wesh/commands/_shared/posix-regexp';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/features/wesh/types';
@@ -972,7 +973,8 @@ export const nlCommandImplementation: WeshCommandImplementation = {
             throw error;
           }
           await writer.flush();
-          const message = error instanceof Error ? error.message : String(error);
+          const message = getPathErrorReason({ error })
+            ?? (error instanceof Error ? error.message : String(error));
           await context.text().error({ text: `nl: ${file}: ${message}\n` });
           hadError = true;
         }

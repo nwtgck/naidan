@@ -234,6 +234,132 @@ describe('wesh awk', () => {
     }
   });
 
+  it('uses C-locale byte coordinates for UTF-8 strings and regular expressions', async () => {
+    await writeFile({
+      path: 'utf8',
+      data: Uint8Array.from([
+        0x61,
+        0xc3, 0xa9,
+        0xf0, 0x9f, 0x98, 0x80,
+        0x62,
+        0x0a,
+      ]),
+    });
+    await writeFile({
+      path: 'é.txt',
+      data: 'path-boundary\n',
+    });
+
+    const coordinates = await execute({
+      script: String.raw`awk '{ print length($0), index($0,"b"), substr($0,2,2) }' utf8`,
+    });
+    const matchedLiteral = await execute({
+      script: String.raw`awk 'BEGIN { s="é😀x"; print match(s,/😀/), RSTART, RLENGTH; print match("é",/../), RSTART, RLENGTH }'`,
+    });
+    const emptyFs = await execute({
+      script: String.raw`awk 'BEGIN { FS="" } { print NF; for (i=1; i<=NF; i++) printf "%s", $i; printf "\n" }' utf8`,
+    });
+    const emptySplit = await execute({
+      script: String.raw`awk 'BEGIN { n=split("é😀", a, ""); print n; for (i=1; i<=n; i++) printf "%s", a[i] }'`,
+    });
+    const globalDot = await execute({
+      script: String.raw`awk 'BEGIN { s="é"; n=gsub(/./,"X",s); printf "%d:%s", n, s }'`,
+    });
+    const singleDot = await execute({
+      script: String.raw`awk 'BEGIN { s="é"; n=sub(/./,"X",s); printf "%d:%s", n, s }'`,
+    });
+    const commandLineValue = await execute({
+      script: String.raw`awk -v 'value=é😀' 'BEGIN { print length(value) }'`,
+    });
+    const byteEscapes = await execute({
+      script: String.raw`awk 'BEGIN { printf "%s%s", "\377", "\xff" }'`,
+    });
+    const unicodePath = await execute({
+      script: String.raw`awk '{ print }' 'é.txt'`,
+    });
+    const redirectedUnicodePath = await execute({
+      script: String.raw`awk 'BEGIN { print "ok" > "é.out" }'`,
+    });
+    const getlineUnicodePath = await execute({
+      script: String.raw`awk 'BEGIN { getline value < "é.out"; print value }'`,
+    });
+
+    expect(coordinates.stdout.buffer).toEqual(
+      Uint8Array.from([0x38, 0x20, 0x38, 0x20, 0xc3, 0xa9, 0x0a]),
+    );
+    expect(matchedLiteral.stdout.text).toBe(`\
+3 3 4
+1 1 2
+`);
+    expect(emptyFs.stdout.buffer).toEqual(Uint8Array.from([
+      0x38, 0x0a,
+      0x61,
+      0xc3, 0xa9,
+      0xf0, 0x9f, 0x98, 0x80,
+      0x62,
+      0x0a,
+    ]));
+    expect(emptySplit.stdout.buffer).toEqual(Uint8Array.from([
+      0x36, 0x0a,
+      0xc3, 0xa9,
+      0xf0, 0x9f, 0x98, 0x80,
+    ]));
+    expect(globalDot.stdout.text).toBe('2:XX');
+    expect(singleDot.stdout.buffer).toEqual(Uint8Array.from([0x31, 0x3a, 0x58, 0xa9]));
+    expect(commandLineValue.stdout.text).toBe('6\n');
+    expect(byteEscapes.stdout.buffer).toEqual(Uint8Array.from([0xff, 0xff]));
+    expect(unicodePath.stdout.text).toBe('path-boundary\n');
+    expect(redirectedUnicodePath.stdout.text).toBe('');
+    expect(getlineUnicodePath.stdout.text).toBe('ok\n');
+    expect(await readFile({ path: 'é.out' })).toBe('ok\n');
+
+    for (const execution of [
+      coordinates,
+      matchedLiteral,
+      emptyFs,
+      emptySplit,
+      globalDot,
+      singleDot,
+      commandLineValue,
+      byteEscapes,
+      unicodePath,
+      redirectedUnicodePath,
+      getlineUnicodePath,
+    ]) {
+      expect(execution.stderr.text).toBe('');
+      expect(execution.result.exitCode).toBe(0);
+    }
+  });
+
+  it('emits percent-c values as C-locale bytes across output boundaries', async () => {
+    const matrix = await execute({
+      script: String.raw`awk 'BEGIN { printf "%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c", -2, -1, 0, 1, 65, 127, 128, 255, 256, 257, 8364, 1114111, 1114112, 65.9, "abc", "65", "", "é", "€", "🙂" }'`,
+    });
+    const formatted = await execute({
+      script: String.raw`awk 'BEGIN { value=sprintf("%c%c", 255, "é"); printf "%s", value }'`,
+    });
+    const redirected = await execute({
+      script: String.raw`awk 'BEGIN { printf "%c%c", -1, "é" > "percent-c"; close("percent-c") }'`,
+    });
+    const piped = await execute({
+      script: String.raw`awk 'BEGIN { printf "%c%c", 128, "€" | "cat"; close("cat") }'`,
+    });
+
+    expect(matrix.stdout.buffer).toEqual(Uint8Array.from([
+      0xfe, 0xff, 0x00, 0x01, 0x41, 0x7f, 0x80, 0xff, 0x00, 0x01,
+      0xac, 0xff, 0x00, 0x41, 0x61, 0x36, 0x00, 0xc3, 0xe2, 0xf0,
+    ]));
+    expect(formatted.stdout.buffer).toEqual(Uint8Array.from([0xff, 0xc3]));
+    expect(redirected.stdout.buffer).toEqual(new Uint8Array());
+    expect(await readFileBytes({ path: 'percent-c' })).toEqual(Uint8Array.from([0xff, 0xc3]));
+    expect(piped.stdout.buffer).toEqual(Uint8Array.from([0x80, 0xe2]));
+
+    for (const execution of [matrix, formatted, redirected, piped]) {
+      expect(execution.stderr.text).toBe('');
+      expect(execution.result.exitCode).toBe(0);
+    }
+  });
+
   it('prints help and rejects invalid options', async () => {
     const help = await execute({ script: 'awk --help' });
     const invalid = await execute({ script: 'awk --bogus' });
@@ -528,6 +654,52 @@ b
     expect(paragraph.result.exitCode).toBe(0);
   });
 
+  it('uses only adjacent LF bytes as paragraph separators', async () => {
+    const spaces = await execute({
+      script: String.raw`awk 'BEGIN { RS = "" } { gsub(/\n/, "<LF>"); print "[" $0 "]" }'`,
+      stdinText: ['a', ' ', 'b', ''].join('\n'),
+    });
+    const tabs = await execute({
+      script: String.raw`awk 'BEGIN { RS = "" } { gsub(/\n/, "<LF>"); print "[" $0 "]" }'`,
+      stdinText: ['a', '\t', 'b', ''].join('\n'),
+    });
+    const crlf = await execute({
+      script: String.raw`awk 'BEGIN { RS = "" } { gsub(/\r/, "<CR>"); gsub(/\n/, "<LF>"); print "[" $0 "]" }'`,
+      stdinText: ['a\r', '\r', 'b\r', ''].join('\n'),
+    });
+    const mixed = await execute({
+      script: String.raw`awk 'BEGIN { RS = "" } { gsub(/\r/, "<CR>"); gsub(/\n/, "<LF>"); print "[" $0 "]" }'`,
+      stdinText: ['a\r', '', 'b\r', ''].join('\n'),
+    });
+    const whitespaceOnly = await execute({
+      script: String.raw`awk 'BEGIN { RS = "" } { gsub(/\n/, "<LF>"); print "[" $0 "]" }'`,
+      stdinText: [' ', ''].join('\n'),
+    });
+
+    expect(spaces.stdout.text).toBe('[a<LF> <LF>b]\n');
+    expect(spaces.stderr.text).toBe('');
+    expect(spaces.result.exitCode).toBe(0);
+
+    expect(tabs.stdout.text).toBe('[a<LF>\t<LF>b]\n');
+    expect(tabs.stderr.text).toBe('');
+    expect(tabs.result.exitCode).toBe(0);
+
+    expect(crlf.stdout.text).toBe('[a<CR><LF><CR><LF>b<CR>]\n');
+    expect(crlf.stderr.text).toBe('');
+    expect(crlf.result.exitCode).toBe(0);
+
+    expect(mixed.stdout.text).toBe(`\
+[a<CR>]
+[b<CR>]
+`);
+    expect(mixed.stderr.text).toBe('');
+    expect(mixed.result.exitCode).toBe(0);
+
+    expect(whitespaceOnly.stdout.text).toBe('[ ]\n');
+    expect(whitespaceOnly.stderr.text).toBe('');
+    expect(whitespaceOnly.result.exitCode).toBe(0);
+  });
+
   it('reports missing program and file errors', async () => {
     const missingProgram = await execute({ script: 'awk' });
     const missingFile = await execute({ script: `awk '{ print $1 }' missing.txt` });
@@ -766,6 +938,30 @@ awk 'BEGIN { count = split("a,b::c", parts, /[,:]+/); print count, parts[1], par
     expect(result.exitCode).toBe(0);
   });
 
+  it('treats empty text as zero fields for custom separators', async () => {
+    const split = await execute({
+      script: String.raw`awk 'BEGIN { parts[1] = "stale"; count = split("", parts, ","); print count, ("1" in parts) }'`,
+    });
+    const record = await execute({
+      script: String.raw`printf '\n' | awk -F, '{ print NF, ("1=[" $1 "]") }'`,
+    });
+    const reassigned = await execute({
+      script: String.raw`printf 'a,b\n' | awk -F, '{ $0 = ""; print NF, ("1=[" $1 "]") }'`,
+    });
+
+    expect(split.stdout.text).toBe('0 0\n');
+    expect(split.stderr.text).toBe('');
+    expect(split.result.exitCode).toBe(0);
+
+    expect(record.stdout.text).toBe('0 1=[]\n');
+    expect(record.stderr.text).toBe('');
+    expect(record.result.exitCode).toBe(0);
+
+    expect(reassigned.stdout.text).toBe('0 1=[]\n');
+    expect(reassigned.stderr.text).toBe('');
+    expect(reassigned.result.exitCode).toBe(0);
+  });
+
   it('supports split into arrays and the in operator', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -970,6 +1166,47 @@ BETA 20
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('preserves assigned NF values while materializing the truncated field count', async () => {
+    const positiveFraction = await execute({
+      script: String.raw`printf 'a b c d\n' | awk '{ NF = 1.9; print "NF=" NF, "1=[" $1 "]", "2=[" $2 "]", "0=[" $0 "]" }'`,
+    });
+    const negativeFractionNearZero = await execute({
+      script: String.raw`printf 'a b c d\n' | awk '{ NF = -0.1; print "NF=" NF, "1=[" $1 "]", "0=[" $0 "]" }'`,
+    });
+    const beginFraction = await execute({
+      script: String.raw`awk 'BEGIN { NF = 1.9; print "NF=" NF, "1=[" $1 "]", "0=[" $0 "]" }'`,
+    });
+
+    expect(positiveFraction.stdout.text).toBe('NF=1.9 1=[a] 2=[] 0=[a]\n');
+    expect(positiveFraction.stderr.text).toBe('');
+    expect(positiveFraction.result.exitCode).toBe(0);
+
+    expect(negativeFractionNearZero.stdout.text).toBe('NF=-0.1 1=[] 0=[]\n');
+    expect(negativeFractionNearZero.stderr.text).toBe('');
+    expect(negativeFractionNearZero.result.exitCode).toBe(0);
+
+    expect(beginFraction.stdout.text).toBe('NF=1.9 1=[] 0=[]\n');
+    expect(beginFraction.stderr.text).toBe('');
+    expect(beginFraction.result.exitCode).toBe(0);
+  });
+
+  it('rejects NF assignments whose truncated field count is negative', async () => {
+    const record = await execute({
+      script: String.raw`printf 'a b c d\n' | awk '{ NF = -2.9; print "unreachable" }'`,
+    });
+    const begin = await execute({
+      script: String.raw`awk 'BEGIN { NF = -1; print "unreachable" }'`,
+    });
+
+    expect(record.stdout.text).toBe('');
+    expect(record.stderr.text).toContain('awk: negative value assigned to NF: -2.9');
+    expect(record.result.exitCode).toBe(2);
+
+    expect(begin.stdout.text).toBe('');
+    expect(begin.stderr.text).toContain('awk: negative value assigned to NF: -1');
+    expect(begin.result.exitCode).toBe(2);
   });
 
   it('allows record and field assignment before the first input record', async () => {
@@ -1246,6 +1483,22 @@ matched 2
     expect(assignments.result.exitCode).toBe(0);
   });
 
+  it('supports alternate form for exponential and general printf conversions', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: String.raw`awk 'BEGIN {
+        printf "%#.0e|%#.0E\n", 1, 1
+        printf "%#g|%#.3g|%#.5g|%#.1g|%#G\n", 1, 1, 12.3, 12, 0
+      }'`,
+    });
+
+    expect(stdout.text).toBe(`\
+1.e+00|1.E+00
+1.00000|1.00|12.300|1.e+01|0.00000
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports common printf sign, alternate-form, alignment, and zero-padding flags', async () => {
     const formatted = await execute({
       script: `awk 'BEGIN { printf "[%-5s][%+d][% d][%#x][%05d]\n", "x", 3, 3, 15, -7 }'`,
@@ -1312,6 +1565,46 @@ after
     expect(result.stdout.text).toBe('0.5 1 100 0.25\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
+  });
+
+  it('classifies complete exponent-form input fields as numeric strings', async () => {
+    await writeFile({
+      path: 'exponents.txt',
+      data: `\
+1e2 100
++1e2 100
+-1e2 -100
+1E-2 0.01
+01e2 100
+.5e1 5
+1e+0 1
+1e2x 100
+`,
+    });
+    await writeFile({ path: 'spaced-exponent.txt', data: ' 1e2 ,100\n' });
+
+    const fields = await execute({
+      script: `awk '{ print ($1 == $2), ($1 + 0) }' exponents.txt`,
+    });
+    const record = await execute({
+      script: `awk -F, '{ print ($1 == $2), ($1 + 0) }' spaced-exponent.txt`,
+    });
+
+    expect(fields.stdout.text).toBe(`\
+1 100
+1 100
+1 -100
+1 0.01
+1 100
+1 5
+1 1
+0 100
+`);
+    expect(fields.stderr.text).toBe('');
+    expect(fields.result.exitCode).toBe(0);
+    expect(record.stdout.text).toBe('1 100\n');
+    expect(record.stderr.text).toBe('');
+    expect(record.result.exitCode).toBe(0);
   });
 
   it('supports user-defined functions with local parameters, recursion, arrays, and output', async () => {

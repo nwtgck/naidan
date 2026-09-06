@@ -9,6 +9,24 @@ import {
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
 
+describe('wesh zip input error classification', () => {
+  it('recognizes same-realm browser-style NotFoundError values by name', () => {
+    const error = new Error('browser-specific missing-path text');
+    error.name = 'NotFoundError';
+
+    expect(ZIP_TEST_ONLY.isUnmatchedZipInputError({ error })).toBe(true);
+    expect(ZIP_TEST_ONLY.isUnmatchedZipInputError({
+      error: new Error('Too many levels of symbolic links: /loop'),
+    })).toBe(true);
+    expect(ZIP_TEST_ONLY.isUnmatchedZipInputError({
+      error: new DOMException('browser-specific type text', 'TypeMismatchError'),
+    })).toBe(true);
+    expect(ZIP_TEST_ONLY.isUnmatchedZipInputError({
+      error: new Error('Permission denied'),
+    })).toBe(false);
+  });
+});
+
 describe('wesh zip and unzip', () => {
 
   it('parses Info-ZIP exclusion pattern phases without swallowing later options', () => {
@@ -422,6 +440,38 @@ describe('wesh zip and unzip', () => {
     expect(await archive.file('payload.txt')?.async('string')).toBe('payload\n');
   });
 
+  it('reports an existing archive directory as an invalid zip structure', async () => {
+    await rootHandle.getDirectoryHandle('out.zip', { create: true });
+    await writeFile({ path: 'payload.txt', data: 'payload\n' });
+
+    const attempted = await execute({
+      script: 'zip -q out.zip payload.txt',
+      stdinText: '',
+    });
+
+    expect(attempted.result.exitCode).toBe(3);
+    expect(attempted.stdout.text).toBe('\nzip error: Zip file structure invalid (out.zip)\n');
+    expect(attempted.stderr.text).toBe('');
+    await expect(rootHandle.getDirectoryHandle('out.zip')).resolves.toBeDefined();
+  });
+
+  it('reports an archive symlink to a directory as an invalid zip structure', async () => {
+    await rootHandle.getDirectoryHandle('target', { create: true });
+    await wesh.vfs.symlink({ path: '/out.zip', targetPath: 'target' });
+    await writeFile({ path: 'payload.txt', data: 'payload\n' });
+
+    const attempted = await execute({
+      script: 'zip -q out.zip payload.txt',
+      stdinText: '',
+    });
+
+    expect(attempted.result.exitCode).toBe(3);
+    expect(attempted.stdout.text).toBe('\nzip error: Zip file structure invalid (out.zip)\n');
+    expect(attempted.stderr.text).toBe('');
+    expect((await wesh.vfs.lstat({ path: '/out.zip' })).type).toBe('symlink');
+    expect(await wesh.vfs.readlink({ path: '/out.zip' })).toBe('target');
+  });
+
   it('does not replace a cyclic archive symbolic link as if it were dangling', async () => {
     await writeFile({ path: 'payload.txt', data: 'payload\n' });
     await wesh.vfs.symlink({ path: '/archive.zip', targetPath: 'archive.zip' });
@@ -529,6 +579,93 @@ describe('wesh zip and unzip', () => {
       'tree/file.txt',
       'tree/loop/',
     ]);
+  });
+
+  it('treats a symbolic-link cycle input as an unmatched name', async () => {
+    await writeFile({ path: 'good', data: 'payload\n' });
+    await wesh.vfs.symlink({ path: '/loop', targetPath: '/loop' });
+
+    const visible = await execute({
+      script: 'zip cycle.zip good loop',
+      stdinText: '',
+    });
+    const quiet = await execute({
+      script: 'zip -q cycle-quiet.zip good loop',
+      stdinText: '',
+    });
+
+    expect(visible.result.exitCode).toBe(0);
+    expect(visible.stdout.text).toContain('\tzip warning: name not matched: loop\n');
+    expect(visible.stdout.text).not.toContain('zip error: Too many levels of symbolic links');
+    expect(visible.stderr.text).toBe('');
+    expect(quiet.result.exitCode).toBe(0);
+    expect(quiet.stdout.text).toBe('');
+    expect(quiet.stderr.text).toBe('');
+
+    for (const archiveName of ['cycle.zip', 'cycle-quiet.zip']) {
+      const archiveHandle = await rootHandle.getFileHandle(archiveName);
+      const archive = await JSZip.loadAsync(await (await archiveHandle.getFile()).arrayBuffer());
+      expect(Object.keys(archive.files)).toEqual(['good']);
+    }
+  });
+
+  it('ignores FIFO inputs without counting them as archive matches or errors', async () => {
+    const made = await execute({
+      script: 'mkfifo pipe',
+      stdinText: '',
+    });
+    expect(made.result.exitCode).toBe(0);
+    await writeFile({ path: 'good', data: 'payload\n' });
+
+    const only = await execute({
+      script: 'zip fifo-only.zip pipe',
+      stdinText: '',
+    });
+    const mixed = await execute({
+      script: 'zip -q fifo-mixed.zip good pipe',
+      stdinText: '',
+    });
+
+    expect(only.result.exitCode).toBe(12);
+    expect(only.stdout.text).toBe(
+      '\tzip warning: ignoring FIFO (Named Pipe) - use -FI to read: pipe\n'
+      + '\nzip error: Nothing to do! (fifo-only.zip)\n',
+    );
+    expect(only.stderr.text).toBe('');
+    expect(mixed.result.exitCode).toBe(0);
+    expect(mixed.stdout.text).toBe('');
+    expect(mixed.stderr.text).toBe('');
+
+    const archiveHandle = await rootHandle.getFileHandle('fifo-mixed.zip');
+    const archive = await JSZip.loadAsync(await (await archiveHandle.getFile()).arrayBuffer());
+    expect(Object.keys(archive.files)).toEqual(['good']);
+  });
+
+  it('ignores character-device inputs without counting them as archive matches or errors', async () => {
+    await writeFile({ path: 'good', data: 'payload\n' });
+
+    const only = await execute({
+      script: 'zip chardev-only.zip /dev/null',
+      stdinText: '',
+    });
+    const mixed = await execute({
+      script: 'zip -q chardev-mixed.zip good /dev/null',
+      stdinText: '',
+    });
+
+    expect(only.result.exitCode).toBe(12);
+    expect(only.stdout.text).toBe(
+      '\tzip warning: ignoring special file: /dev/null\n'
+      + '\nzip error: Nothing to do! (chardev-only.zip)\n',
+    );
+    expect(only.stderr.text).toBe('');
+    expect(mixed.result.exitCode).toBe(0);
+    expect(mixed.stdout.text).toBe('');
+    expect(mixed.stderr.text).toBe('');
+
+    const archiveHandle = await rootHandle.getFileHandle('chardev-mixed.zip');
+    const archive = await JSZip.loadAsync(await (await archiveHandle.getFile()).arrayBuffer());
+    expect(Object.keys(archive.files)).toEqual(['good']);
   });
 
   it('aligns unzip test output by UTF-8 byte length', async () => {
@@ -694,6 +831,369 @@ describe('wesh zip and unzip', () => {
     });
     expect(hidden.result.exitCode).toBe(0);
     await expect(rootHandle.getFileHandle('.hidden')).resolves.toBeDefined();
+  });
+
+  it('updates only newer existing entries and new names with zip -u', async () => {
+    const baseTime = 1_700_000_000_000;
+    await writeFile({ path: 'newer.txt', data: 'archive newer\n', mtime: baseTime });
+    await writeFile({ path: 'older.txt', data: 'archive older\n', mtime: baseTime });
+    await writeFile({ path: 'equal.txt', data: 'archive equal\n', mtime: baseTime });
+    const created = await execute({
+      script: 'zip -q archive.zip newer.txt older.txt equal.txt',
+      stdinText: '',
+    });
+    expect(created.result.exitCode).toBe(0);
+
+    await writeFile({ path: 'newer.txt', data: 'source newer\n', mtime: baseTime + 4_000 });
+    await writeFile({ path: 'older.txt', data: 'source older\n', mtime: baseTime - 4_000 });
+    await writeFile({ path: 'equal.txt', data: 'source equal\n', mtime: baseTime });
+    await writeFile({ path: 'added.txt', data: 'source added\n', mtime: baseTime + 8_000 });
+
+    const updated = await execute({
+      script: 'zip -qu archive.zip newer.txt older.txt equal.txt added.txt',
+      stdinText: '',
+    });
+    expect(updated.stdout.text).toBe('');
+    expect(updated.stderr.text).toBe('');
+    expect(updated.result.exitCode).toBe(0);
+
+    const archiveHandle = await rootHandle.getFileHandle('archive.zip');
+    const archive = await JSZip.loadAsync(await (await archiveHandle.getFile()).arrayBuffer());
+    await expect(archive.file('newer.txt')?.async('string')).resolves.toBe('source newer\n');
+    await expect(archive.file('older.txt')?.async('string')).resolves.toBe('archive older\n');
+    await expect(archive.file('equal.txt')?.async('string')).resolves.toBe('archive equal\n');
+    await expect(archive.file('added.txt')?.async('string')).resolves.toBe('source added\n');
+
+    const beforeNoop = new Uint8Array(await (await archiveHandle.getFile()).arrayBuffer());
+    const noop = await execute({
+      script: 'zip -qu archive.zip older.txt equal.txt',
+      stdinText: '',
+    });
+    expect(noop.stdout.text).toBe('');
+    expect(noop.stderr.text).toBe('');
+    expect(noop.result.exitCode).toBe(12);
+    const afterNoop = new Uint8Array(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    expect(afterNoop).toEqual(beforeNoop);
+  });
+
+  it.each([
+    ['-f', 'zip -qf archive.zip newer.txt older.txt equal.txt added.txt'],
+    ['--freshen', 'zip -q --freshen archive.zip newer.txt older.txt equal.txt added.txt'],
+  ])('freshens only newer existing entries with %s', async (_flag, script) => {
+    const baseTime = 1_700_000_000_000;
+    await writeFile({ path: 'newer.txt', data: 'archive newer\n', mtime: baseTime });
+    await writeFile({ path: 'older.txt', data: 'archive older\n', mtime: baseTime });
+    await writeFile({ path: 'equal.txt', data: 'archive equal\n', mtime: baseTime });
+    await execute({
+      script: 'zip -q archive.zip newer.txt older.txt equal.txt',
+      stdinText: '',
+    });
+
+    await writeFile({ path: 'newer.txt', data: 'source newer\n', mtime: baseTime + 4_000 });
+    await writeFile({ path: 'older.txt', data: 'source older\n', mtime: baseTime - 4_000 });
+    await writeFile({ path: 'equal.txt', data: 'source equal\n', mtime: baseTime });
+    await writeFile({ path: 'added.txt', data: 'source added\n', mtime: baseTime + 8_000 });
+
+    const freshened = await execute({ script, stdinText: '' });
+    expect(freshened.stdout.text).toBe('');
+    expect(freshened.stderr.text).toBe('');
+    expect(freshened.result.exitCode).toBe(0);
+
+    const archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    await expect(archive.file('newer.txt')?.async('string')).resolves.toBe('source newer\n');
+    await expect(archive.file('older.txt')?.async('string')).resolves.toBe('archive older\n');
+    await expect(archive.file('equal.txt')?.async('string')).resolves.toBe('archive equal\n');
+    expect(archive.file('added.txt')).toBeNull();
+
+    const noop = await execute({
+      script: 'zip -qf archive.zip older.txt equal.txt added.txt',
+      stdinText: '',
+    });
+    expect(noop.stdout.text).toBe('');
+    expect(noop.stderr.text).toBe('');
+    expect(noop.result.exitCode).toBe(12);
+  });
+
+  it('applies update and freshen selection under recursive input', async () => {
+    const baseTime = 1_700_000_000_000;
+    await writeFile({ path: 'tree/newer.txt', data: 'archive newer\n', mtime: baseTime });
+    await writeFile({ path: 'tree/older.txt', data: 'archive older\n', mtime: baseTime });
+    await execute({ script: 'zip -qr archive.zip tree', stdinText: '' });
+
+    await writeFile({ path: 'tree/newer.txt', data: 'source newer\n', mtime: baseTime + 4_000 });
+    await writeFile({ path: 'tree/older.txt', data: 'source older\n', mtime: baseTime - 4_000 });
+    await writeFile({ path: 'tree/added.txt', data: 'source added\n', mtime: baseTime + 8_000 });
+
+    const updated = await execute({ script: 'zip -qru archive.zip tree', stdinText: '' });
+    expect(updated.result.exitCode).toBe(0);
+    let archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    await expect(archive.file('tree/newer.txt')?.async('string')).resolves.toBe('source newer\n');
+    await expect(archive.file('tree/older.txt')?.async('string')).resolves.toBe('archive older\n');
+    await expect(archive.file('tree/added.txt')?.async('string')).resolves.toBe('source added\n');
+
+    await writeFile({ path: 'tree/newer.txt', data: 'freshened newer\n', mtime: baseTime + 12_000 });
+    await writeFile({ path: 'tree/fresh-new.txt', data: 'fresh new\n', mtime: baseTime + 12_000 });
+    const freshened = await execute({ script: 'zip -qrf archive.zip tree', stdinText: '' });
+    expect(freshened.result.exitCode).toBe(0);
+    archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    await expect(archive.file('tree/newer.txt')?.async('string')).resolves.toBe('freshened newer\n');
+    expect(archive.file('tree/fresh-new.txt')).toBeNull();
+  });
+
+  it('does not create an archive when freshening a missing archive', async () => {
+    await writeFile({ path: 'payload.txt', data: 'payload\n' });
+
+    const freshened = await execute({
+      script: 'zip -qf missing.zip payload.txt',
+      stdinText: '',
+    });
+
+    expect(freshened.stdout.text).toBe('');
+    expect(freshened.stderr.text).toBe('');
+    expect(freshened.result.exitCode).toBe(12);
+    await expect(rootHandle.getFileHandle('missing.zip')).rejects.toThrow();
+  });
+
+  it.each([
+    ['-d', 'zip -qd archive.zip remove.txt'],
+    ['--delete', 'zip -q --delete archive.zip remove.txt'],
+  ])('deletes an exact archive member with %s', async (_flag, script) => {
+    await writeFile({ path: 'keep.txt', data: 'keep\n' });
+    await writeFile({ path: 'remove.txt', data: 'remove\n' });
+    await execute({ script: 'zip -q archive.zip keep.txt remove.txt', stdinText: '' });
+
+    const deleted = await execute({ script, stdinText: '' });
+
+    expect(deleted.stdout.text).toBe('');
+    expect(deleted.stderr.text).toBe('');
+    expect(deleted.result.exitCode).toBe(0);
+    const archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    expect(Object.keys(archive.files)).toEqual(['keep.txt']);
+    await expect(archive.file('keep.txt')?.async('string')).resolves.toBe('keep\n');
+  });
+
+  it('deletes wildcard and multiple member patterns without failing on an unmatched pattern', async () => {
+    await writeFile({ path: 'root.txt', data: 'root\n' });
+    await writeFile({ path: 'keep.bin', data: 'keep\n' });
+    await writeFile({ path: 'dir/nested.txt', data: 'nested\n' });
+    await writeFile({ path: 'dir/keep.dat', data: 'nested keep\n' });
+    await execute({ script: 'zip -qr archive.zip root.txt keep.bin dir', stdinText: '' });
+
+    const deleted = await execute({
+      script: "zip -qd archive.zip '*.txt' missing.member dir/keep.dat",
+      stdinText: '',
+    });
+
+    expect(deleted.result.exitCode).toBe(0);
+    const archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    expect(Object.keys(archive.files)).toEqual(['keep.bin', 'dir/']);
+  });
+
+  it('distinguishes an exact directory member from a directory wildcard in delete mode', async () => {
+    await writeFile({ path: 'dir/file.txt', data: 'payload\n' });
+    await execute({ script: 'zip -qr archive.zip dir', stdinText: '' });
+
+    const exactDirectory = await execute({ script: "zip -qd archive.zip 'dir/'", stdinText: '' });
+    expect(exactDirectory.result.exitCode).toBe(0);
+    let archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    expect(archive.file('dir/')).toBeNull();
+    await expect(archive.file('dir/file.txt')?.async('string')).resolves.toBe('payload\n');
+
+    const directoryWildcard = await execute({ script: "zip -qd archive.zip 'dir/*'", stdinText: '' });
+    expect(directoryWildcard.result.exitCode).toBe(0);
+    archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    expect(Object.keys(archive.files)).toEqual([]);
+  });
+
+  it('returns 12 and preserves the archive byte-for-byte when delete matches nothing', async () => {
+    await writeFile({ path: 'keep.txt', data: 'keep\n' });
+    await execute({ script: 'zip -q archive.zip keep.txt', stdinText: '' });
+    const before = new Uint8Array(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+
+    const deleted = await execute({ script: 'zip -qd archive.zip absent.txt', stdinText: '' });
+
+    expect(deleted.stdout.text).toBe('');
+    expect(deleted.stderr.text).toBe('');
+    expect(deleted.result.exitCode).toBe(12);
+    const after = new Uint8Array(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    expect(after).toEqual(before);
+  });
+
+  it.each([
+    ['-m', 'zip -qm archive.zip payload.txt'],
+    ['--move', 'zip -q --move archive.zip payload.txt'],
+  ])('moves a regular file into the archive with %s', async (_flag, script) => {
+    await writeFile({ path: 'payload.txt', data: 'payload\n' });
+
+    const moved = await execute({ script, stdinText: '' });
+
+    expect(moved.stdout.text).toBe('');
+    expect(moved.stderr.text).toBe('');
+    expect(moved.result.exitCode).toBe(0);
+    await expect(rootHandle.getFileHandle('payload.txt')).rejects.toThrow();
+    const archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    await expect(archive.file('payload.txt')?.async('string')).resolves.toBe('payload\n');
+  });
+
+  it('moves multiple and recursive inputs only after the archive succeeds', async () => {
+    await writeFile({ path: 'a.txt', data: 'a\n' });
+    await writeFile({ path: 'tree/b.txt', data: 'b\n' });
+    await writeFile({ path: 'tree/sub/c.txt', data: 'c\n' });
+
+    const moved = await execute({
+      script: 'zip -qrm archive.zip a.txt tree missing',
+      stdinText: '',
+    });
+
+    expect(moved.stdout.text).toBe('');
+    expect(moved.stderr.text).toBe('');
+    expect(moved.result.exitCode).toBe(0);
+    await expect(rootHandle.getFileHandle('a.txt')).rejects.toThrow();
+    await expect(rootHandle.getDirectoryHandle('tree')).rejects.toThrow();
+    const archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    expect(Object.keys(archive.files)).toEqual([
+      'a.txt',
+      'tree/',
+      'tree/b.txt',
+      'tree/sub/',
+      'tree/sub/c.txt',
+    ]);
+
+    await writeFile({ path: 'preserved.txt', data: 'preserved\n' });
+    await rootHandle.getDirectoryHandle('blocked.zip', { create: true });
+    const failed = await execute({
+      script: 'zip -qm blocked.zip preserved.txt',
+      stdinText: '',
+    });
+    expect(failed.result.exitCode).toBe(3);
+    await expect(readFile({ path: 'preserved.txt' })).resolves.toBe('preserved\n');
+  });
+
+  it('moves sources after updating an existing archive and when streaming to stdout', async () => {
+    const existing = new JSZip();
+    existing.file('old.txt', 'old\n');
+    await writeFileBytes({
+      path: 'archive.zip',
+      data: await existing.generateAsync({ type: 'uint8array', compression: 'STORE' }),
+    });
+    await writeFile({ path: 'new.txt', data: 'new\n' });
+
+    const updated = await execute({
+      script: 'zip -qm archive.zip new.txt',
+      stdinText: '',
+    });
+    expect(updated.result.exitCode).toBe(0);
+    await expect(rootHandle.getFileHandle('new.txt')).rejects.toThrow();
+    let archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    await expect(archive.file('old.txt')?.async('string')).resolves.toBe('old\n');
+    await expect(archive.file('new.txt')?.async('string')).resolves.toBe('new\n');
+
+    await writeFile({ path: 'streamed.txt', data: 'streamed\n' });
+    const streamed = await execute({ script: 'zip -qm - streamed.txt', stdinText: '' });
+    expect(streamed.result.exitCode).toBe(0);
+    expect(streamed.stderr.text).toBe('');
+    await expect(rootHandle.getFileHandle('streamed.txt')).rejects.toThrow();
+    archive = await JSZip.loadAsync(streamed.stdout.buffer);
+    await expect(archive.file('streamed.txt')?.async('string')).resolves.toBe('streamed\n');
+  });
+
+  it('uses resulting archive membership rather than rewrite selection for update/freshen move deletion', async () => {
+    const baseTime = 1_700_000_000_000;
+    await writeFile({ path: 'older.txt', data: 'archive older\n', mtime: baseTime });
+    await writeFile({ path: 'newer.txt', data: 'archive newer\n', mtime: baseTime });
+    await writeFile({ path: 'equal.txt', data: 'archive equal\n', mtime: baseTime });
+    await execute({
+      script: 'zip -q archive.zip older.txt newer.txt equal.txt',
+      stdinText: '',
+    });
+
+    await writeFile({ path: 'older.txt', data: 'source older\n', mtime: baseTime - 4_000 });
+    await writeFile({ path: 'newer.txt', data: 'source newer\n', mtime: baseTime + 4_000 });
+    await writeFile({ path: 'equal.txt', data: 'source equal\n', mtime: baseTime });
+    await writeFile({ path: 'added.txt', data: 'source added\n', mtime: baseTime + 8_000 });
+
+    const updated = await execute({
+      script: 'zip -qum archive.zip older.txt newer.txt equal.txt added.txt',
+      stdinText: '',
+    });
+    expect(updated.result.exitCode).toBe(0);
+    for (const name of ['older.txt', 'newer.txt', 'equal.txt', 'added.txt']) {
+      await expect(rootHandle.getFileHandle(name)).rejects.toThrow();
+    }
+    let archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    await expect(archive.file('older.txt')?.async('string')).resolves.toBe('archive older\n');
+    await expect(archive.file('equal.txt')?.async('string')).resolves.toBe('archive equal\n');
+    await expect(archive.file('newer.txt')?.async('string')).resolves.toBe('source newer\n');
+    await expect(archive.file('added.txt')?.async('string')).resolves.toBe('source added\n');
+
+    await writeFile({ path: 'older.txt', data: 'again older\n', mtime: baseTime - 8_000 });
+    await writeFile({ path: 'equal.txt', data: 'again equal\n', mtime: baseTime });
+    const updateNoop = await execute({
+      script: 'zip -qum archive.zip older.txt equal.txt',
+      stdinText: '',
+    });
+    expect(updateNoop.result.exitCode).toBe(12);
+    await expect(rootHandle.getFileHandle('older.txt')).rejects.toThrow();
+    await expect(rootHandle.getFileHandle('equal.txt')).rejects.toThrow();
+
+    await writeFile({ path: 'older.txt', data: 'fresh older\n', mtime: baseTime - 8_000 });
+    await writeFile({ path: 'equal.txt', data: 'fresh equal\n', mtime: baseTime });
+    await writeFile({ path: 'fresh-new.txt', data: 'fresh new\n', mtime: baseTime + 12_000 });
+    const freshenNoop = await execute({
+      script: 'zip -qfm archive.zip older.txt equal.txt fresh-new.txt',
+      stdinText: '',
+    });
+    expect(freshenNoop.result.exitCode).toBe(12);
+    await expect(rootHandle.getFileHandle('older.txt')).rejects.toThrow();
+    await expect(rootHandle.getFileHandle('equal.txt')).rejects.toThrow();
+    await expect(readFile({ path: 'fresh-new.txt' })).resolves.toBe('fresh new\n');
+    archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    expect(archive.file('fresh-new.txt')).toBeNull();
+  });
+
+  it('removes a moved symbolic link without deleting its target', async () => {
+    await writeFile({ path: 'target.txt', data: 'target\n' });
+    await wesh.vfs.symlink({ path: '/link.txt', targetPath: 'target.txt' });
+
+    const moved = await execute({ script: 'zip -qm archive.zip link.txt', stdinText: '' });
+
+    expect(moved.result.exitCode).toBe(0);
+    await expect(wesh.vfs.lstat({ path: '/link.txt' })).rejects.toThrow();
+    await expect(readFile({ path: 'target.txt' })).resolves.toBe('target\n');
+    const archive = await JSZip.loadAsync(
+      await (await (await rootHandle.getFileHandle('archive.zip')).getFile()).arrayBuffer(),
+    );
+    await expect(archive.file('link.txt')?.async('string')).resolves.toBe('target\n');
   });
 
   it('supports zip -x exclude patterns', async () => {
@@ -989,6 +1489,19 @@ describe('wesh zip and unzip', () => {
     expect(missing.stdout.text).toBe('\nzip error: Nothing to do! (archive.zip)\n');
     expect(missing.stderr.text).toBe('');
     expect(missing.result.exitCode).toBe(12);
+  });
+
+  it('treats intermediate-file type mismatches as unmatched zip inputs', async () => {
+    await writeFile({ path: 'parent', data: 'file' });
+
+    const quiet = await execute({
+      script: 'zip -q archive.zip parent/child',
+      stdinText: '',
+    });
+
+    expect(quiet.stdout.text).toBe('\nzip error: Nothing to do! (archive.zip)\n');
+    expect(quiet.stderr.text).toBe('');
+    expect(quiet.result.exitCode).toBe(12);
   });
 
   it('supports unzip -x exclude patterns and reports missing archives like unzip', async () => {

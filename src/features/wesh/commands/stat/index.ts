@@ -1,5 +1,6 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvOccurrence, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import { resolveCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 import type {
@@ -364,7 +365,8 @@ export const statCommandImplementation: WeshCommandImplementation = {
           format: compiled.format,
         });
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getPathErrorReason({ error })
+          ?? (error instanceof Error ? error.message : String(error));
         await text.error({
           text: `stat: cannot stat ${quoteStatName({
             value: operand,

@@ -119,7 +119,20 @@ file line
     });
 
     expect(stdout.text).toBe('present\n');
-    expect(stderr.text).toContain('cat: missing.txt:');
+    expect(stderr.text).toBe('cat: missing.txt: No such file or directory\n');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('normalizes browser type-mismatch errors for intermediate file path components', async () => {
+    await writeFile({ name: 'parent', data: 'file' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cat parent/child',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('cat: parent/child: Not a directory\n');
     expect(result.exitCode).toBe(1);
   });
 

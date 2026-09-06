@@ -14,6 +14,7 @@ import {
 import type { FileCommandClassification } from './types';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { getWeshCodePointDisplayWidth } from '@/features/wesh/utils/display-width';
+import { isPathTypeMismatchError } from '@/features/wesh/commands/_shared/path-errors';
 
 const fileArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -40,6 +41,20 @@ const fileArgvSpec: StandardArgvParserSpec = {
       long: 'dereference',
       effects: [{ key: 'followSymlinks', value: true }],
       help: { summary: 'follow symbolic links' },
+    },
+    {
+      kind: 'flag',
+      short: 'h',
+      long: 'no-dereference',
+      effects: [{ key: 'followSymlinks', value: false }],
+      help: { summary: 'do not follow symbolic links', category: 'advanced' },
+    },
+    {
+      kind: 'flag',
+      short: 'E',
+      long: undefined,
+      effects: [{ key: 'errorStatus', value: true }],
+      help: { summary: 'on filesystem errors, print ERROR and return failure', category: 'advanced' },
     },
     {
       kind: 'flag',
@@ -183,6 +198,20 @@ function getFileOperandDisplayWidth({
   return width;
 }
 
+function fileSystemErrorReason({
+  error,
+}: {
+  error: unknown,
+}): string {
+  if (isPathTypeMismatchError({ error })) {
+    return 'Not a directory';
+  }
+  if (error instanceof Error && /too many levels of symbolic links/iu.test(error.message)) {
+    return 'Too many levels of symbolic links';
+  }
+  return 'No such file or directory';
+}
+
 async function describePath({
   context,
   path,
@@ -192,6 +221,7 @@ async function describePath({
   operandDisplayWidth,
   alignmentWidth,
   outputSeparator,
+  errorStatus,
 }: {
   context: WeshCommandContext,
   path: string,
@@ -201,6 +231,7 @@ async function describePath({
   operandDisplayWidth: number,
   alignmentWidth: number,
   outputSeparator: string,
+  errorStatus: boolean,
 }): Promise<{ ok: true } | { ok: false }> {
   const displayPath = getDisplayPath({ path });
   try {
@@ -224,13 +255,17 @@ async function describePath({
     const text = brief ? `${description}\n` : `${displayPath}${outputSeparator}${padding}${description}\n`;
     await context.text().print({ text });
     return brokenSymlinkEncoding ? { ok: false } : { ok: true };
-  } catch {
+  } catch (error: unknown) {
+    const reason = fileSystemErrorReason({ error });
     const padding = ' '.repeat(Math.max(1, alignmentWidth - operandDisplayWidth + 1));
+    const description = errorStatus
+      ? `ERROR: cannot stat \`${displayPath}' (${reason})`
+      : `cannot open \`${displayPath}' (${reason})`;
     const text = brief
-      ? `cannot open \`${displayPath}' (No such file or directory)\n`
-      : `${displayPath}${outputSeparator}${padding}cannot open \`${displayPath}' (No such file or directory)\n`;
+      ? `${description}\n`
+      : `${displayPath}${outputSeparator}${padding}${description}\n`;
     await context.text().print({ text });
-    return { ok: true };
+    return errorStatus ? { ok: false } : { ok: true };
   }
 }
 
@@ -319,6 +354,7 @@ export const fileCommandImplementation: WeshCommandImplementation = {
         operandDisplayWidth: operand.displayWidth,
         alignmentWidth,
         outputSeparator,
+        errorStatus: parsed.optionValues.errorStatus === true,
       });
       if (!result.ok) hadFailure = true;
     }

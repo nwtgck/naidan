@@ -4,7 +4,7 @@ export const gzipCommandDefinition = {
   meta: {
     name: 'gzip',
     description: 'Compress files',
-    usage: 'gzip [file...]',
+    usage: 'gzip [OPTION]... [FILE]...',
   },
   load: async () => (await import('./index.ts')).gzipCommandImplementation.fn,
 } satisfies WeshCommandDefinition;

@@ -324,25 +324,31 @@ export const pasteCommandImplementation: WeshCommandImplementation = {
       if (serial) {
         let stdinIterator: AsyncIterator<Uint8Array> | undefined;
         for (const file of files) {
-          const source = await getIterator({ file, stdinIterator });
-          const iterator = source.iterator;
-          stdinIterator = source.stdinIterator;
-          iterators.add(iterator);
-          let valueIndex = 0;
-          while (true) {
-            const next = await iterator.next();
-            if (next.done) {
-              break;
+          try {
+            const source = await getIterator({ file, stdinIterator });
+            const iterator = source.iterator;
+            stdinIterator = source.stdinIterator;
+            iterators.add(iterator);
+            let valueIndex = 0;
+            while (true) {
+              const next = await iterator.next();
+              if (next.done) {
+                break;
+              }
+              if (valueIndex > 0) {
+                await writer.write({
+                  chunks: [delimiterForIndex({ delimiters, index: valueIndex - 1 })],
+                });
+              }
+              await writer.write({ chunks: [next.value] });
+              valueIndex += 1;
             }
-            if (valueIndex > 0) {
-              await writer.write({
-                chunks: [delimiterForIndex({ delimiters, index: valueIndex - 1 })],
-              });
-            }
-            await writer.write({ chunks: [next.value] });
-            valueIndex += 1;
+            await writer.write({ chunks: [recordTerminator] });
+          } catch (error: unknown) {
+            exitCode = 1;
+            const message = error instanceof Error ? error.message : String(error);
+            await context.text().error({ text: `paste: ${file}: ${message}\n` });
           }
-          await writer.write({ chunks: [recordTerminator] });
         }
         return { exitCode };
       }
@@ -350,7 +356,14 @@ export const pasteCommandImplementation: WeshCommandImplementation = {
       let stdinIterator: AsyncIterator<Uint8Array> | undefined;
       const sources: AsyncIterator<Uint8Array>[] = [];
       for (const file of files) {
-        const source = await getIterator({ file, stdinIterator });
+        let source: Awaited<ReturnType<typeof getIterator>>;
+        try {
+          source = await getIterator({ file, stdinIterator });
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          await context.text().error({ text: `paste: ${file}: ${message}\n` });
+          return { exitCode: 1 };
+        }
         const iterator = source.iterator;
         stdinIterator = source.stdinIterator;
         sources.push(iterator);
@@ -387,8 +400,7 @@ export const pasteCommandImplementation: WeshCommandImplementation = {
       return { exitCode };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      const failingPath = parsed.positionals.find((path) => path !== '-') ?? '-';
-      await context.text().error({ text: `paste: ${failingPath}: ${message}\n` });
+      await context.text().error({ text: `paste: ${message}\n` });
       return { exitCode: 1 };
     } finally {
       await writer.flush();

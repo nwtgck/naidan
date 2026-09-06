@@ -1,5 +1,6 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import { getPathErrorReason, isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import {
@@ -11,17 +12,6 @@ import {
 
 type CanonicalizationMode = 'default' | 'existing' | 'missing';
 type SymlinkResolutionMode = 'logical' | 'physical' | 'strip';
-
-function isPathNotFoundError({ error }: { error: unknown }): boolean {
-  if (error instanceof DOMException) {
-    return error.name === 'NotFoundError';
-  }
-  return error instanceof Error && (
-    error.name === 'NotFoundError'
-    || error.message.includes('NotFoundError')
-    || error.message.startsWith('Path not found:')
-  );
-}
 
 function stripTrailingSlashes({ path }: { path: string }): string {
   let end = path.length;
@@ -416,7 +406,8 @@ export const realpathCommandImplementation: WeshCommandImplementation = {
       }
     } catch (error: unknown) {
       if (!quiet) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getPathErrorReason({ error })
+          ?? (error instanceof Error ? error.message : String(error));
         await text.error({ text: `realpath: ${relativeToInput ?? relativeBaseInput ?? ''}: ${message}\n` });
       }
       return { exitCode: 1 };
@@ -438,7 +429,8 @@ export const realpathCommandImplementation: WeshCommandImplementation = {
         await text.print({ text: `${output}${terminator}` });
       } catch (error: unknown) {
         if (!quiet) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message = getPathErrorReason({ error })
+            ?? (error instanceof Error ? error.message : String(error));
           await text.error({ text: `realpath: ${operand}: ${message}\n` });
         }
         exitCode = 1;

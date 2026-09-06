@@ -443,6 +443,63 @@ cat out/second.txt`,
     expect(copied.result.exitCode).toBe(0);
   });
 
+  it('supports --parents for nested, permuted, target-directory, dash-leading, and recursive sources', async () => {
+    await writeFile({ path: 'parents-src/nested/a.txt', data: 'a' });
+    await writeFile({ path: 'parents-src/nested/b.txt', data: 'b' });
+    await writeFile({ path: 'parents-src/-dash.txt', data: 'dash' });
+    await mkdir({ path: 'parents-out-one' });
+    await mkdir({ path: 'parents-out-two' });
+    await mkdir({ path: 'parents-out-three' });
+    await mkdir({ path: 'parents-out-four' });
+    await mkdir({ path: 'parents-out-five' });
+
+    const nested = await execute({
+      script: 'cp --parents parents-src/nested/a.txt parents-out-one',
+    });
+    const permuted = await execute({
+      script: 'cp ./parents-src/nested/b.txt --parents parents-out-two',
+    });
+    const targeted = await execute({
+      script: 'cp --parents -t parents-out-three parents-src/nested/a.txt parents-src/nested/b.txt',
+    });
+    const dashLeading = await execute({
+      script: 'cp --parents -- parents-src/-dash.txt parents-out-four',
+    });
+    const recursive = await execute({
+      script: 'cp -R --parents parents-src/nested parents-out-five',
+    });
+
+    for (const outcome of [nested, permuted, targeted, dashLeading, recursive]) {
+      expect(outcome.result.exitCode).toBe(0);
+      expect(outcome.stderr.text).toBe('');
+    }
+    expect((await execute({ script: 'cat parents-out-one/parents-src/nested/a.txt' })).stdout.text).toBe('a');
+    expect((await execute({ script: 'cat parents-out-two/parents-src/nested/b.txt' })).stdout.text).toBe('b');
+    expect((await execute({ script: 'cat parents-out-three/parents-src/nested/a.txt' })).stdout.text).toBe('a');
+    expect((await execute({ script: 'cat parents-out-three/parents-src/nested/b.txt' })).stdout.text).toBe('b');
+    expect((await execute({ script: 'cat parents-out-four/parents-src/-dash.txt' })).stdout.text).toBe('dash');
+    expect((await execute({ script: 'cat parents-out-five/parents-src/nested/a.txt' })).stdout.text).toBe('a');
+    expect((await execute({ script: 'cat parents-out-five/parents-src/nested/b.txt' })).stdout.text).toBe('b');
+  });
+
+  it('requires a directory destination for --parents and rejects -T', async () => {
+    await writeFile({ path: 'parents-source.txt', data: 'source' });
+    await writeFile({ path: 'parents-destination.txt', data: 'destination' });
+
+    const nonDirectory = await execute({
+      script: 'cp --parents parents-source.txt parents-destination.txt',
+    });
+    const noTargetDirectory = await execute({
+      script: 'cp --parents -T parents-source.txt parents-destination.txt',
+    });
+
+    expect(nonDirectory.result.exitCode).toBe(1);
+    expect(nonDirectory.stderr.text).toContain("target 'parents-destination.txt' is not a directory");
+    expect(noTargetDirectory.result.exitCode).toBe(1);
+    expect(noTargetDirectory.stderr.text).toContain('cannot combine --parents and --no-target-directory (-T)');
+    expect((await execute({ script: 'cat parents-destination.txt' })).stdout.text).toBe('destination');
+  });
+
   it('supports -T to force treating the destination as a normal file path', async () => {
     await writeFile({ path: 'plain.txt', data: 'plain' });
 
@@ -576,8 +633,18 @@ cat dest/present.txt`,
     expect(copied.stdout.text).toBe(`\
 1
 present`);
-    expect(copied.stderr.text).toContain('cp: missing.txt:');
+    expect(copied.stderr.text).toContain('cp: missing.txt: No such file or directory');
     expect(copied.result.exitCode).toBe(0);
+  });
+
+  it('normalizes browser type-mismatch errors for intermediate source path components', async () => {
+    await writeFile({ path: 'parent', data: 'file' });
+
+    const copied = await execute({ script: 'cp parent/child copied.txt' });
+
+    expect(copied.stdout.text).toBe('');
+    expect(copied.stderr.text).toBe('cp: parent/child: Not a directory\n');
+    expect(copied.result.exitCode).toBe(1);
   });
 
   it('rejects -t combined with -T before copying', async () => {

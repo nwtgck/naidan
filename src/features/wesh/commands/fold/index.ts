@@ -1,6 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
@@ -17,13 +18,9 @@ const NEWLINE_BYTE = 0x0a;
 const CARRIAGE_RETURN_BYTE = 0x0d;
 const SPACE_BYTE = 0x20;
 const OUTPUT_BUFFER_LENGTH = 16 * 1024;
+const NEWLINE_BYTES = Uint8Array.of(NEWLINE_BYTE);
 
 type FoldWidthMode = 'columns' | 'bytes';
-
-type FoldByteLine = {
-  readonly bytes: Uint8Array,
-  readonly hadNewline: boolean,
-};
 
 function parseWidth({
   value,
@@ -75,62 +72,6 @@ function concatenateChunks({
     offset += chunk.byteLength;
   }
   return combined;
-}
-
-async function* iterateByteLineRecords({
-  chunks,
-}: {
-  chunks: AsyncIterable<Uint8Array>,
-}): AsyncIterable<FoldByteLine> {
-  let fragments: Uint8Array[] = [];
-  let fragmentLength = 0;
-
-  const createRecord = ({
-    finalFragment,
-    hadNewline,
-  }: {
-    finalFragment: Uint8Array,
-    hadNewline: boolean,
-  }): FoldByteLine => {
-    const totalLength = fragmentLength + finalFragment.byteLength;
-    const bytes = fragments.length === 0
-      ? new Uint8Array(finalFragment)
-      : concatenateChunks({
-        chunks: [...fragments, finalFragment],
-        totalLength,
-      });
-    fragments = [];
-    fragmentLength = 0;
-    return { bytes, hadNewline };
-  };
-
-  for await (const chunk of chunks) {
-    let recordStart = 0;
-    for (let index = 0; index < chunk.byteLength; index += 1) {
-      if (chunk[index] !== NEWLINE_BYTE) {
-        continue;
-      }
-
-      yield createRecord({
-        finalFragment: chunk.subarray(recordStart, index),
-        hadNewline: true,
-      });
-      recordStart = index + 1;
-    }
-
-    if (recordStart < chunk.byteLength) {
-      const fragment = chunk.subarray(recordStart);
-      fragments.push(fragment);
-      fragmentLength += fragment.byteLength;
-    }
-  }
-
-  if (fragments.length > 0) {
-    yield createRecord({
-      finalFragment: new Uint8Array(0),
-      hadNewline: false,
-    });
-  }
 }
 
 async function writeAllBytesToHandle({
@@ -232,84 +173,91 @@ function isBlankByte({ byte }: { byte: number }): boolean {
   return byte === SPACE_BYTE || byte === TAB_BYTE;
 }
 
-function foldLineBytes({
-  bytes,
+async function processFoldChunks({
+  handle,
+  chunks,
   width,
   breakAtSpaces,
   widthMode,
 }: {
-  bytes: Uint8Array,
-  width: number,
-  breakAtSpaces: boolean,
-  widthMode: FoldWidthMode,
-}): readonly Uint8Array[] {
-  if (bytes.byteLength === 0) {
-    return [bytes];
-  }
-
-  const folded: Uint8Array[] = [];
-  let segmentStart = 0;
-  let index = 0;
-  let column = 0;
-  let lastBlankEnd: number | undefined;
-
-  while (index < bytes.byteLength) {
-    const byte = bytes[index]!;
-    const nextColumn = advanceColumn({
-      column,
-      byte,
-      widthMode,
-    });
-
-    if (nextColumn > width && index > segmentStart) {
-      const segmentEnd = breakAtSpaces && lastBlankEnd !== undefined
-        ? lastBlankEnd
-        : index;
-      folded.push(bytes.subarray(segmentStart, segmentEnd));
-      segmentStart = segmentEnd;
-      index = segmentStart;
-      column = 0;
-      lastBlankEnd = undefined;
-      continue;
-    }
-
-    column = nextColumn;
-    index += 1;
-    if (isBlankByte({ byte })) {
-      lastBlankEnd = index;
-    }
-  }
-
-  folded.push(bytes.subarray(segmentStart));
-  return folded;
-}
-
-async function writeFoldedLine({
-  writer,
-  line,
-  width,
-  breakAtSpaces,
-  widthMode,
-}: {
-  writer: ReturnType<typeof createBufferedBinaryWriter>,
-  line: FoldByteLine,
+  handle: WeshFileHandle,
+  chunks: AsyncIterable<Uint8Array>,
   width: number,
   breakAtSpaces: boolean,
   widthMode: FoldWidthMode,
 }): Promise<void> {
-  const foldedLines = foldLineBytes({
-    bytes: line.bytes,
-    width,
-    breakAtSpaces,
-    widthMode,
+  const writer = createBufferedBinaryWriter({
+    handle,
+    maxBufferLength: OUTPUT_BUFFER_LENGTH,
   });
+  let segmentBytes: number[] = [];
+  let column = 0;
+  let lastBlankEnd: number | undefined;
 
-  for (let index = 0; index < foldedLines.length; index += 1) {
-    await writer.write({ bytes: foldedLines[index]! });
-    if (line.hadNewline || index < foldedLines.length - 1) {
-      await writer.write({ bytes: Uint8Array.of(NEWLINE_BYTE) });
+  const resetSegment = (): void => {
+    segmentBytes = [];
+    column = 0;
+    lastBlankEnd = undefined;
+  };
+
+  const writeCompletedSegment = async ({
+    bytes,
+  }: {
+    bytes: readonly number[],
+  }): Promise<void> => {
+    await writer.write({ bytes: Uint8Array.from(bytes) });
+    await writer.write({ bytes: NEWLINE_BYTES });
+  };
+
+  const processByte = async ({ byte }: { byte: number }): Promise<void> => {
+    const pendingBytes = [byte];
+    while (pendingBytes.length > 0) {
+      const currentByte = pendingBytes.pop()!;
+      const nextColumn = advanceColumn({
+        column,
+        byte: currentByte,
+        widthMode,
+      });
+
+      if (nextColumn > width && segmentBytes.length > 0) {
+        const segmentEnd = breakAtSpaces && lastBlankEnd !== undefined
+          ? lastBlankEnd
+          : segmentBytes.length;
+        const remainder = segmentBytes.slice(segmentEnd);
+        await writeCompletedSegment({ bytes: segmentBytes.slice(0, segmentEnd) });
+        resetSegment();
+
+        pendingBytes.push(currentByte);
+        for (let index = remainder.length - 1; index >= 0; index -= 1) {
+          pendingBytes.push(remainder[index]!);
+        }
+        continue;
+      }
+
+      segmentBytes.push(currentByte);
+      column = nextColumn;
+      if (isBlankByte({ byte: currentByte })) {
+        lastBlankEnd = segmentBytes.length;
+      }
+    }
+  };
+
+  for await (const chunk of chunks) {
+    for (const byte of chunk) {
+      if (byte === NEWLINE_BYTE) {
+        await writer.write({ bytes: Uint8Array.from(segmentBytes) });
+        await writer.write({ bytes: NEWLINE_BYTES });
+        resetSegment();
+        continue;
+      }
+      await processByte({ byte });
     }
   }
+
+  if (segmentBytes.length > 0) {
+    await writer.write({ bytes: Uint8Array.from(segmentBytes) });
+  }
+  await writer.flush();
 }
 
 async function processFoldStream({
@@ -325,22 +273,13 @@ async function processFoldStream({
   breakAtSpaces: boolean,
   widthMode: FoldWidthMode,
 }): Promise<void> {
-  const writer = createBufferedBinaryWriter({
+  await processFoldChunks({
     handle: context.stdout,
-    maxBufferLength: OUTPUT_BUFFER_LENGTH,
-  });
-  for await (const line of iterateByteLineRecords({
     chunks: iterateReadableStreamChunks({ stream }),
-  })) {
-    await writeFoldedLine({
-      writer,
-      line,
-      width,
-      breakAtSpaces,
-      widthMode,
-    });
-  }
-  await writer.flush();
+    width,
+    breakAtSpaces,
+    widthMode,
+  });
 }
 
 const foldArgvSpec: StandardArgvParserSpec = {
@@ -464,7 +403,8 @@ export const foldCommandImplementation: WeshCommandImplementation = {
           widthMode,
         });
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getPathErrorReason({ error })
+          ?? (error instanceof Error ? error.message : String(error));
         await context.text().error({
           text: `fold: ${input}: ${message}\n`,
         });
@@ -479,4 +419,5 @@ export const foldCommandImplementation: WeshCommandImplementation = {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  processFoldChunks,
 };

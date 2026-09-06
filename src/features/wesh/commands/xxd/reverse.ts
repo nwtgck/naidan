@@ -1,4 +1,5 @@
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
+import { resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshFileHandle } from '@/features/wesh/types';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
 import { withXxdOperandError } from './errors';
@@ -132,10 +133,11 @@ async function createReverseOutput({
     };
   }
 
+  const resolvedOutputPath = resolvePath({ cwd: context.cwd, path: output });
   const handle = await withXxdOperandError({
     operand: output,
     operation: async () => context.files.open({
-      path: output,
+      path: resolvedOutputPath,
       flags: {
         access: 'read-write',
         creation: 'if-needed',

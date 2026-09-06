@@ -191,6 +191,16 @@ describe('wesh stat', () => {
     expect(result.exitCode).toBe(1);
   });
 
+  it('normalizes browser type-mismatch errors for intermediate path components', async () => {
+    await writeFile({ path: 'parent', data: 'file', mtime: undefined });
+
+    const { result, stdout, stderr } = await execute({ script: 'stat parent/child' });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe("stat: cannot stat 'parent/child': Not a directory\n");
+    expect(result.exitCode).toBe(1);
+  });
+
   it('keeps dangling links usable without -L and continues after per-file failures', async () => {
     await writeFile({ path: 'after.txt', data: 'ok', mtime: FIXED_MTIME });
     await wesh.vfs.symlink({ path: '/dangling', targetPath: '/missing-target' });

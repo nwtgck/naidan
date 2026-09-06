@@ -14,6 +14,12 @@ import type {
 } from '@/features/wesh/types';
 
 type PsColumnKey = 'user' | 'pid' | 'ppid' | 'pgid' | 'stat' | 'args' | 'comm' | 'cwd';
+type PsSortKey = 'user' | 'pid' | 'ppid' | 'pgid' | 'stat' | 'cwd';
+
+interface PsSortSpecifier {
+  key: PsSortKey,
+  direction: 1 | -1,
+}
 
 interface PsColumnDefinition {
   key: PsColumnKey,
@@ -51,6 +57,40 @@ const psArgvSpec: StandardArgvParserSpec = {
     },
     {
       kind: 'value',
+      short: 'q',
+      long: 'quick-pid',
+      key: 'quickPidList',
+      valueName: 'PIDLIST',
+      allowAttachedValue: true,
+      parseValue: undefined,
+      help: { summary: 'select by process ID list in the given order', valueName: 'PIDLIST', category: 'common' },
+    },
+    {
+      kind: 'value',
+      short: undefined,
+      long: 'ppid',
+      key: 'ppidList',
+      valueName: 'PIDLIST',
+      allowAttachedValue: true,
+      parseValue: undefined,
+      help: { summary: 'select by parent process ID list', valueName: 'PIDLIST', category: 'common' },
+    },
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'no-headers',
+      effects: [{ key: 'noHeaders', value: true }],
+      help: { summary: 'print no header line at all', category: 'common' },
+    },
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'forest',
+      effects: [{ key: 'forest', value: true }],
+      help: { summary: 'show process hierarchy as an ASCII tree', category: 'common' },
+    },
+    {
+      kind: 'value',
       short: 'o',
       long: 'format',
       key: 'format',
@@ -58,6 +98,16 @@ const psArgvSpec: StandardArgvParserSpec = {
       allowAttachedValue: true,
       parseValue: undefined,
       help: { summary: 'select output columns', valueName: 'FORMAT', category: 'common' },
+    },
+    {
+      kind: 'value',
+      short: undefined,
+      long: 'sort',
+      key: 'sort',
+      valueName: 'KEYS',
+      allowAttachedValue: true,
+      parseValue: undefined,
+      help: { summary: 'sort by existing process metadata', valueName: 'KEYS', category: 'advanced' },
     },
     {
       kind: 'flag',
@@ -79,6 +129,8 @@ const psArgvSpec: StandardArgvParserSpec = {
   treatSingleDashAsPositional: true,
   specialTokenParsers: [],
 };
+
+const USER_DEFINED_PID_FAMILY_MINIMUM_WIDTH = 7;
 
 const psColumns: Record<PsColumnKey, PsColumnDefinition> = {
   user: {
@@ -244,10 +296,17 @@ function parseFormatList({
       };
     }
 
-    columns.push(customHeader === undefined
-      ? definition
-      : {
+    const userDefinedDefinition = definition.key === 'pid' || definition.key === 'ppid' || definition.key === 'pgid'
+      ? {
         ...definition,
+        minimumWidth: Math.max(definition.minimumWidth, USER_DEFINED_PID_FAMILY_MINIMUM_WIDTH),
+      }
+      : definition;
+
+    columns.push(customHeader === undefined
+      ? userDefinedDefinition
+      : {
+        ...userDefinedDefinition,
         header: customHeader,
       });
   }
@@ -256,6 +315,151 @@ function parseFormatList({
     kind: 'ok',
     columns,
   };
+}
+
+function parseSortList({
+  raw,
+}: {
+  raw: string,
+}): { kind: 'ok', specifiers: PsSortSpecifier[] } | { kind: 'error', message: string } {
+  const tokens = raw.split(',');
+  if (tokens.length === 0 || tokens.some((token) => token.length === 0)) {
+    return { kind: 'error', message: 'ps: sort list cannot be empty' };
+  }
+
+  const specifiers: PsSortSpecifier[] = [];
+  for (const token of tokens) {
+    const prefix = token[0];
+    const direction: 1 | -1 = prefix === '-' ? -1 : 1;
+    const keyText = prefix === '-' || prefix === '+' ? token.slice(1) : token;
+    const normalized = keyText.toLowerCase();
+    const key = (() => {
+      switch (normalized) {
+      case 'pid':
+      case 'ppid':
+      case 'pgid':
+      case 'stat':
+      case 'user':
+      case 'cwd':
+        return normalized;
+      default:
+        return undefined;
+      }
+    })();
+    if (key === undefined) {
+      return { kind: 'error', message: `ps: unsupported sort key: ${keyText}` };
+    }
+    specifiers.push({ key, direction });
+  }
+  return { kind: 'ok', specifiers };
+}
+
+function compareStrings({ left, right }: { left: string, right: string }): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function sortProcesses({
+  processes,
+  specifiers,
+}: {
+  processes: WeshProcessSnapshot[],
+  specifiers: readonly PsSortSpecifier[],
+}): WeshProcessSnapshot[] {
+  return processes.slice().sort((left, right) => {
+    for (const specifier of specifiers) {
+      const comparison = (() => {
+        switch (specifier.key) {
+        case 'pid': return left.pid - right.pid;
+        case 'ppid': return left.ppid - right.ppid;
+        case 'pgid': return left.pgid - right.pgid;
+        case 'stat': return compareStrings({ left: psColumns.stat.getValue({ process: left }), right: psColumns.stat.getValue({ process: right }) });
+        case 'user': return compareStrings({ left: left.user, right: right.user });
+        case 'cwd': return compareStrings({ left: left.cwd, right: right.cwd });
+        default: {
+          const _ex: never = specifier.key;
+          throw new Error(`Unhandled ps sort key: ${_ex}`);
+        }
+        }
+      })();
+      if (comparison !== 0) return comparison * specifier.direction;
+    }
+    return 0;
+  });
+}
+
+interface PsForestLayout {
+  processes: WeshProcessSnapshot[],
+  depthByPid: ReadonlyMap<number, number>,
+}
+
+function layoutProcessesAsForest({
+  processes,
+}: {
+  processes: WeshProcessSnapshot[],
+}): PsForestLayout {
+  const processByPid = new Map<number, WeshProcessSnapshot>();
+  for (const process of processes) {
+    if (!processByPid.has(process.pid)) processByPid.set(process.pid, process);
+  }
+
+  const childrenByParentPid = new Map<number, WeshProcessSnapshot[]>();
+  for (const process of processes) {
+    if (process.ppid === process.pid || !processByPid.has(process.ppid)) continue;
+    const children = childrenByParentPid.get(process.ppid) ?? [];
+    children.push(process);
+    childrenByParentPid.set(process.ppid, children);
+  }
+
+  const ordered: WeshProcessSnapshot[] = [];
+  const depthByPid = new Map<number, number>();
+  const visitedPids = new Set<number>();
+
+  const visit = ({ process, depth }: { process: WeshProcessSnapshot, depth: number }): void => {
+    if (visitedPids.has(process.pid)) return;
+    visitedPids.add(process.pid);
+    ordered.push(process);
+    depthByPid.set(process.pid, depth);
+    for (const child of childrenByParentPid.get(process.pid) ?? []) {
+      visit({ process: child, depth: depth + 1 });
+    }
+  };
+
+  for (const process of processes) {
+    if (process.ppid === process.pid || !processByPid.has(process.ppid)) {
+      visit({ process, depth: 0 });
+    }
+  }
+
+  // A malformed cycle has no natural root. Keep output finite and deterministic by
+  // starting each still-unvisited component at the first process in the requested order.
+  for (const process of processes) {
+    visit({ process, depth: 0 });
+  }
+
+  return { processes: ordered, depthByPid };
+}
+
+function forestCommandPrefix({ depth }: { depth: number }): string {
+  if (depth <= 0) return '';
+  return `${' '.repeat(1 + ((depth - 1) * 4))}\\_ `;
+}
+
+function decorateForestColumns({
+  columns,
+  depthByPid,
+}: {
+  columns: PsColumnDefinition[],
+  depthByPid: ReadonlyMap<number, number>,
+}): PsColumnDefinition[] {
+  return columns.map((column) => {
+    if (column.key !== 'args' && column.key !== 'comm') return column;
+    return {
+      ...column,
+      getValue: ({ process }) => `${forestCommandPrefix({ depth: depthByPid.get(process.pid) ?? 0 })}${column.getValue({ process })}`,
+    };
+  });
 }
 
 function defaultColumns(): PsColumnDefinition[] {
@@ -317,9 +521,11 @@ function sanitizePsValue({
 function formatProcesses({
   columns,
   processes,
+  includeHeader = true,
 }: {
   columns: PsColumnDefinition[],
   processes: WeshProcessSnapshot[],
+  includeHeader?: boolean,
 }): string {
   const headers = columns.map((column) => sanitizePsValue({ value: column.header }));
   const widths = columns.map((column, index) => Math.max(
@@ -361,7 +567,7 @@ function formatProcesses({
     width: widths[index]!,
   })).join(' ').replace(/[ \t]+$/u, '');
   const lines: string[] = [];
-  if (header.length > 0) lines.push(header);
+  if (includeHeader && header.length > 0) lines.push(header);
   for (const process of processes) {
     let line = '';
     for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
@@ -395,7 +601,7 @@ export const psCommandImplementation: WeshCommandImplementation = {
       parsed,
       findSemanticIssue: ({ parsed: candidate }) => candidate.occurrences.find((occurrence) => (
         occurrence.kind === 'value'
-        && occurrence.key === 'pidList'
+        && (occurrence.key === 'pidList' || occurrence.key === 'quickPidList' || occurrence.key === 'ppidList')
         && typeof occurrence.value === 'string'
         && parsePidList({ raw: occurrence.value }).kind === 'error'
       )),
@@ -421,7 +627,31 @@ export const psCommandImplementation: WeshCommandImplementation = {
         return occurrence.value;
       });
 
+    const quickPidSelections = parsed.occurrences
+      .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> => (
+        occurrence.kind === 'value' && occurrence.key === 'quickPidList'
+      ))
+      .map((occurrence) => {
+        if (!isStringValue(occurrence.value)) {
+          throw new Error('ps: internal error: expected string quick PID list');
+        }
+        return occurrence.value;
+      });
+
+    const ppidSelections = parsed.occurrences
+      .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> => (
+        occurrence.kind === 'value' && occurrence.key === 'ppidList'
+      ))
+      .map((occurrence) => {
+        if (!isStringValue(occurrence.value)) {
+          throw new Error('ps: internal error: expected string parent PID list');
+        }
+        return occurrence.value;
+      });
+
     const selectedPids = new Set<number>();
+    const quickPids: number[] = [];
+    const selectedParentPids = new Set<number>();
     for (const rawPidList of pidSelections) {
       const parsedPidList = parsePidList({ raw: rawPidList });
       switch (parsedPidList.kind) {
@@ -443,6 +673,62 @@ export const psCommandImplementation: WeshCommandImplementation = {
         throw new Error(`Unhandled ps pid list parse result: ${JSON.stringify(_ex)}`);
       }
       }
+    }
+
+    for (const rawPidList of quickPidSelections) {
+      const parsedPidList = parsePidList({ raw: rawPidList });
+      switch (parsedPidList.kind) {
+      case 'error':
+        await writeCommandUsageError({
+          context,
+          command: 'ps',
+          message: parsedPidList.message,
+          argvSpec: psArgvSpec,
+        });
+        return { exitCode: 1 };
+      case 'ok':
+        quickPids.push(...parsedPidList.pids);
+        break;
+      default: {
+        const _ex: never = parsedPidList;
+        throw new Error(`Unhandled ps quick PID list parse result: ${JSON.stringify(_ex)}`);
+      }
+      }
+    }
+
+    for (const rawPpidList of ppidSelections) {
+      const parsedPpidList = parsePidList({ raw: rawPpidList });
+      switch (parsedPpidList.kind) {
+      case 'error':
+        await writeCommandUsageError({
+          context,
+          command: 'ps',
+          message: parsedPpidList.message,
+          argvSpec: psArgvSpec,
+        });
+        return { exitCode: 1 };
+      case 'ok':
+        for (const ppid of parsedPpidList.pids) selectedParentPids.add(ppid);
+        break;
+      default: {
+        const _ex: never = parsedPpidList;
+        throw new Error(`Unhandled ps parent PID list parse result: ${JSON.stringify(_ex)}`);
+      }
+      }
+    }
+
+    const quickSelectionActive = quickPidSelections.length > 0;
+    if (
+      quickSelectionActive
+      && (parsed.optionValues.all === true || pidSelections.length > 0 || ppidSelections.length > 0)
+    ) {
+      await writeCommandUsageError({
+        context,
+        command: 'ps',
+        message: 'ps: q/-q/--quick-pid cannot be combined with other selection options',
+        argvSpec: psArgvSpec,
+      });
+      return { exitCode: 1 };
     }
 
     if (parsed.optionValues.help === true) {
@@ -522,14 +808,74 @@ export const psCommandImplementation: WeshCommandImplementation = {
     }
     }
 
+    const sortOccurrences = parsed.occurrences
+      .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> => (
+        occurrence.kind === 'value' && occurrence.key === 'sort'
+      ));
+    const sortSpecifiers: PsSortSpecifier[] = [];
+    for (const sortOccurrence of sortOccurrences) {
+      if (!isStringValue(sortOccurrence.value)) {
+        throw new Error('ps: internal error: expected string sort list');
+      }
+      const parsedSort = parseSortList({ raw: sortOccurrence.value });
+      switch (parsedSort.kind) {
+      case 'error':
+        await writeCommandUsageError({
+          context,
+          command: 'ps',
+          message: parsedSort.message,
+          argvSpec: psArgvSpec,
+        });
+        return { exitCode: 1 };
+      case 'ok':
+        sortSpecifiers.push(...parsedSort.specifiers);
+        break;
+      default: {
+        const _ex: never = parsedSort;
+        throw new Error(`Unhandled ps sort parse result: ${JSON.stringify(_ex)}`);
+      }
+      }
+    }
+
+    if (quickSelectionActive && parsed.optionValues.forest === true) {
+      await writeCommandUsageError({
+        context,
+        command: 'ps',
+        message: 'ps: q/-q/--quick-pid cannot be used together with forest type listings',
+        argvSpec: psArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (quickSelectionActive && sortOccurrences.length > 0) {
+      await writeCommandUsageError({
+        context,
+        command: 'ps',
+        message: 'ps: q/-q,--quick-pid cannot be used together with sort options',
+        argvSpec: psArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
     const selectedProcesses = (() => {
+      if (quickSelectionActive) {
+        const processByPid = new Map(
+          processes
+            .filter(process => process.state !== 'terminated')
+            .map(process => [process.pid, process] as const),
+        );
+        return quickPids.flatMap((pid) => {
+          const process = processByPid.get(pid);
+          return process === undefined ? [] : [process];
+        });
+      }
       if (parsed.optionValues.all === true) {
         return processes.filter(process => process.state !== 'terminated');
       }
-      if (selectedPids.size > 0) {
+      if (selectedPids.size > 0 || selectedParentPids.size > 0) {
         return processes.filter(process => (
           process.state !== 'terminated' &&
-          selectedPids.has(process.pid)
+          (selectedPids.has(process.pid) || selectedParentPids.has(process.ppid))
         ));
       }
       return defaultProcessSelection({
@@ -538,14 +884,28 @@ export const psCommandImplementation: WeshCommandImplementation = {
       });
     })();
 
+    const selectedOrder = quickSelectionActive || sortSpecifiers.length === 0
+      ? selectedProcesses
+      : sortProcesses({ processes: selectedProcesses, specifiers: sortSpecifiers });
+    const forestLayout = parsed.optionValues.forest === true
+      ? layoutProcessesAsForest({ processes: selectedOrder })
+      : undefined;
+    const orderedProcesses = forestLayout?.processes ?? selectedOrder;
+    const outputColumns = forestLayout === undefined
+      ? columns.columns
+      : decorateForestColumns({ columns: columns.columns, depthByPid: forestLayout.depthByPid });
+
     await context.text().print({
       text: formatProcesses({
-        columns: columns.columns,
-        processes: selectedProcesses,
+        columns: outputColumns,
+        processes: orderedProcesses,
+        includeHeader: parsed.optionValues.noHeaders !== true,
       }),
     });
     return {
-      exitCode: selectedPids.size > 0 && selectedProcesses.length === 0 ? 1 : 0,
+      exitCode: (
+        quickSelectionActive || selectedPids.size > 0 || selectedParentPids.size > 0
+      ) && selectedProcesses.length === 0 ? 1 : 0,
     };
   },
 };
@@ -553,7 +913,11 @@ export const psCommandImplementation: WeshCommandImplementation = {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  decorateForestColumns,
   defaultColumns,
   formatProcesses,
+  layoutProcessesAsForest,
   parseFormatList,
+  parseSortList,
+  sortProcesses,
 };

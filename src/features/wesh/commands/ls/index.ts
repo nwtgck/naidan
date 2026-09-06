@@ -7,11 +7,14 @@ import type {
   WeshFileType,
   WeshStat,
 } from '@/features/wesh/types';
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 
 type LsSymlinkMode = 'logical' | 'command-line' | 'physical';
 
 type LsClassifyMode = 'always' | 'never';
+
+type LsSortMode = 'name' | 'time' | 'size';
 
 const LS_CLASSIFY_ARGUMENTS: readonly {
   readonly name: string,
@@ -74,6 +77,54 @@ function resolvePath({
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
+function parseLsSortMode({ rawValue }: { rawValue: string }) {
+  switch (rawValue) {
+  case 'name':
+  case 'time':
+  case 'size':
+    return { kind: 'parsed', value: rawValue } as const;
+  default:
+    return { kind: 'invalid', message: `invalid argument '${rawValue}' for '--sort'` } as const;
+  }
+}
+
+function compareLsSortValues({
+  sortMode,
+  leftName,
+  rightName,
+  leftStat,
+  rightStat,
+}: {
+  sortMode: LsSortMode,
+  leftName: string,
+  rightName: string,
+  leftStat: WeshStat | undefined,
+  rightStat: WeshStat | undefined,
+}): number {
+  let leftValue: number | undefined;
+  let rightValue: number | undefined;
+  switch (sortMode) {
+  case 'name':
+    break;
+  case 'time':
+    leftValue = leftStat?.mtime;
+    rightValue = rightStat?.mtime;
+    break;
+  case 'size':
+    leftValue = leftStat?.size;
+    rightValue = rightStat?.size;
+    break;
+  default: {
+    const _ex: never = sortMode;
+    throw new Error(`Unhandled ls sort mode: ${_ex}`);
+  }
+  }
+  if (leftValue !== undefined && rightValue !== undefined && leftValue !== rightValue) {
+    return leftValue > rightValue ? -1 : 1;
+  }
+  return compareCStrings({ left: leftName, right: rightName });
+}
+
 const lsLongOption = {
   semantic: { kind: 'effects', effects: [{ key: 'l', value: true }] },
   forms: [{ kind: 'short', name: 'l', value: { kind: 'none' } }],
@@ -115,6 +166,25 @@ const lsHumanReadableOption = {
   forms: [
     { kind: 'short', name: 'h', value: { kind: 'none' } },
     { kind: 'long', name: 'human-readable', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsTimeSortOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'sortMode', value: 'time' }] },
+  forms: [{ kind: 'short', name: 't', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsSizeSortOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'sortMode', value: 'size' }] },
+  forms: [{ kind: 'short', name: 'S', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsSortOption = {
+  semantic: { kind: 'required-value', key: 'sortMode', parse: parseLsSortMode },
+  forms: [{ kind: 'long', name: 'sort', value: { kind: 'required', missingValueName: 'WORD' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
+const lsReverseOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'reverse', value: true }] },
+  forms: [
+    { kind: 'short', name: 'r', value: { kind: 'none' } },
+    { kind: 'long', name: 'reverse', value: { kind: 'none' } },
   ],
 } as const satisfies ArgvOptionDefinition<StandardArgvAction<'classify'>>;
 const lsDereferenceOption = {
@@ -173,11 +243,9 @@ const lsArgvCatalog = defineArgvCatalog<StandardArgvAction<'classify'>>({
     'numeric-uid-gid',
     'quote-name',
     'quoting-style',
-    'reverse',
     'show-control-chars',
     'si',
     'size',
-    'sort',
     'tabsize',
     'time',
     'time-style',
@@ -185,7 +253,7 @@ const lsArgvCatalog = defineArgvCatalog<StandardArgvAction<'classify'>>({
     'width',
     'zero',
   ],
-  definitions: [lsLongOption, lsAllOption, lsAlmostAllOption, lsRecursiveOption, lsDirectoryOption, lsClassifyShortOption, lsClassifyLongOption, lsOnePerLineOption, lsHumanReadableOption, lsDereferenceOption, lsDereferenceCommandLineOption, lsHelpOption],
+  definitions: [lsLongOption, lsAllOption, lsAlmostAllOption, lsRecursiveOption, lsDirectoryOption, lsClassifyShortOption, lsClassifyLongOption, lsOnePerLineOption, lsHumanReadableOption, lsTimeSortOption, lsSizeSortOption, lsSortOption, lsReverseOption, lsDereferenceOption, lsDereferenceCommandLineOption, lsHelpOption],
 });
 
 const lsArgvHelp = defineArgvHelpPresentation({
@@ -199,6 +267,10 @@ const lsArgvHelp = defineArgvHelpPresentation({
     { forms: [...lsClassifyShortOption.forms, ...lsClassifyLongOption.forms], summary: 'append indicator characters to entries', valueName: 'WHEN', category: 'common' },
     { forms: lsOnePerLineOption.forms, summary: 'list one file per line', category: 'advanced' },
     { forms: lsHumanReadableOption.forms, summary: 'with -l, print sizes in human readable format', category: 'common' },
+    { forms: lsTimeSortOption.forms, summary: 'sort by modification time, newest first', category: 'common' },
+    { forms: lsSizeSortOption.forms, summary: 'sort by file size, largest first', category: 'common' },
+    { forms: lsSortOption.forms, summary: 'sort by WORD: name, time, or size', valueName: 'WORD', category: 'common' },
+    { forms: lsReverseOption.forms, summary: 'reverse the sort order', category: 'common' },
     { forms: lsDereferenceOption.forms, summary: 'when listing symlinks, show the target type', category: 'advanced' },
     { forms: lsDereferenceCommandLineOption.forms, summary: 'follow command-line symlinks', category: 'advanced' },
     { forms: lsHelpOption.forms, summary: 'display this help and exit', category: 'common' },
@@ -310,6 +382,8 @@ export const lsCommandImplementation: WeshCommandImplementation = {
     const h = parsed.optionValues.h === true;
     const d = parsed.optionValues.directory === true;
     const R = parsed.optionValues.R === true;
+    const sortMode = (parsed.optionValues.sortMode as LsSortMode | undefined) ?? 'name';
+    const reverse = parsed.optionValues.reverse === true;
     const explicitSymlinkMode = parsed.optionValues.symlinkMode as LsSymlinkMode | undefined;
     const symlinkMode = explicitSymlinkMode ?? (
       l || d || classify
@@ -435,7 +509,31 @@ export const lsCommandImplementation: WeshCommandImplementation = {
             allEntries.push(child);
           }
         }
-        allEntries.sort((left, right) => compareCStrings({ left: left.name, right: right.name }));
+        const sortStats = new Map<WeshEntryRef, WeshStat>();
+        switch (sortMode) {
+        case 'name':
+          break;
+        case 'time':
+        case 'size':
+          for (const child of allEntries) {
+            sortStats.set(child, await context.files.statEntry({ entry: child }));
+          }
+          break;
+        default: {
+          const _ex: never = sortMode;
+          throw new Error(`Unhandled ls sort mode: ${_ex}`);
+        }
+        }
+        allEntries.sort((left, right) => {
+          const compared = compareLsSortValues({
+            sortMode,
+            leftName: left.name,
+            rightName: right.name,
+            leftStat: sortStats.get(left),
+            rightStat: sortStats.get(right),
+          });
+          return reverse ? -compared : compared;
+        });
 
         if (printHeader) {
           if (isCommandLineArgument && listedTopLevelOperand) {
@@ -498,7 +596,8 @@ export const lsCommandImplementation: WeshCommandImplementation = {
               const childDisplayPath = displayPath === '/'
                 ? `/${child.name}`
                 : `${displayPath}/${child.name}`;
-              const message = error instanceof Error ? error.message : String(error);
+              const message = getPathErrorReason({ error })
+                ?? (error instanceof Error ? error.message : String(error));
               await text.error({ text: `ls: cannot access '${childDisplayPath}': ${message}\n` });
               exitCode = Math.max(exitCode, 1);
             }
@@ -512,7 +611,7 @@ export const lsCommandImplementation: WeshCommandImplementation = {
             longFormat: l,
             humanReadable: h,
             classify,
-            stat: undefined,
+            stat: resolvedChild === child ? sortStats.get(child) : undefined,
             getStat: () => context.files.statEntry({ entry: resolvedChild }),
           });
           await text.print({ text: line + (one || l ? '\n' : '  ') });
@@ -567,18 +666,15 @@ export const lsCommandImplementation: WeshCommandImplementation = {
         if (activeRecursiveDirectoryPath !== undefined) {
           activeRecursiveDirectoryPaths.delete(activeRecursiveDirectoryPath);
         }
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getPathErrorReason({ error })
+          ?? (error instanceof Error ? error.message : String(error));
         await text.error({ text: `ls: ${displayPath}: ${message}\n` });
         exitCode = 2;
       }
     }
 
-    const paths: Array<{ path: string, isDirectory: boolean }> = [];
+    const paths: Array<{ path: string, isDirectory: boolean, stat: WeshStat | undefined }> = [];
     for (const path of pathOperands) {
-      if (d) {
-        paths.push({ path, isDirectory: false });
-        continue;
-      }
       try {
         const fullPath = resolvePath({ cwd: context.cwd, path });
         const entry = await resolveListingEntry({
@@ -587,16 +683,23 @@ export const lsCommandImplementation: WeshCommandImplementation = {
           isCommandLineArgument: true,
         });
         const stat = await context.files.statEntry({ entry });
-        paths.push({ path, isDirectory: stat.type === 'directory' });
+        paths.push({ path, isDirectory: !d && stat.type === 'directory', stat });
       } catch {
-        paths.push({ path, isDirectory: false });
+        paths.push({ path, isDirectory: false, stat: undefined });
       }
     }
     paths.sort((left, right) => {
       if (left.isDirectory !== right.isDirectory) {
         return left.isDirectory ? 1 : -1;
       }
-      return compareCStrings({ left: left.path, right: right.path });
+      const compared = compareLsSortValues({
+        sortMode,
+        leftName: left.path,
+        rightName: right.path,
+        leftStat: left.stat,
+        rightStat: right.stat,
+      });
+      return reverse ? -compared : compared;
     });
 
     for (let index = 0; index < paths.length; index++) {

@@ -1,5 +1,6 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { openHandleReadStream, openFileReadStream, writeAllBytesToHandle, writeAllStreamToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
@@ -391,10 +392,8 @@ export const catCommandImplementation: WeshCommandImplementation = {
           if (shouldForwardSignal) {
             throw e;
           }
-          const rawMessage = e instanceof Error ? e.message : String(e);
-          const message = rawMessage.includes('NotFoundError')
-            ? 'No such file or directory'
-            : rawMessage;
+          const message = getPathErrorReason({ error: e })
+            ?? (e instanceof Error ? e.message : String(e));
           await text.error({ text: `cat: ${f}: ${message}\n` });
           hadError = true;
         }

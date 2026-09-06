@@ -50,6 +50,11 @@ export type FileCommandClassification =
       language: FileCommandScriptLanguage,
       text: FileCommandTextDetails,
     }
+  | {
+      kind: 'generic_script',
+      command: string,
+      text: FileCommandTextDetails,
+    }
   | { kind: 'ascii_text', text: FileCommandTextDetails }
   | { kind: 'extended_ascii_text', text: FileCommandTextDetails }
   | { kind: 'utf8_text', text: FileCommandTextDetails }

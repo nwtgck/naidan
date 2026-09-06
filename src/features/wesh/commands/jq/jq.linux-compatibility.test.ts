@@ -3115,6 +3115,54 @@ null
     expect(execution.result.exitCode).toBe(0);
   });
 
+  it("stops capture-free nullable-first repetitions before an overlapping continuation", async () => {
+    const execution = await execute({
+      filter: String.raw`[
+        ("bb" | match("(?:a?|b)*b") | [.offset,.length,.string]),
+        ("bb" | [match("(?:a?|b)*b"; "g") | [.offset,.length,.string]]),
+        ("bb" | match("(?:a*|b)*b") | [.offset,.length,.string]),
+        ("bb" | match("(?:a{0,1}|b)*b") | [.offset,.length,.string]),
+        ("bb" | match("(?:(?:a)?|b)*b") | [.offset,.length,.string]),
+        ("bb" | match("(?:a?|b)+b") | [.offset,.length,.string]),
+        ("bb" | match("(?:a?|b){1,3}b") | [.offset,.length,.string]),
+        ("bb" | match("(?:a?|b)*[bx]") | [.offset,.length,.string]),
+        ("bx" | match("(?:a?|b)*x") | [.offset,.length,.string]),
+        ("bb" | match("(?:a?|b)*b"; "l") | [.offset,.length,.string]),
+        ("bb" | match("(?:a?|b)*b"; "gl") | [.offset,.length,.string])
+      ]`,
+      stdinText: "null\n",
+    });
+
+    expect(execution.stdout.text).toBe(
+      '[[0,1,"b"],[[0,1,"b"],[1,1,"b"]],[0,1,"b"],[0,1,"b"],[0,1,"b"],[0,1,"b"],[0,1,"b"],[0,1,"b"],[0,2,"bx"],[0,2,"bb"],[0,2,"bb"]]\n',
+    );
+    expect(execution.stderr.text).toBe("");
+    expect(execution.result.exitCode).toBe(0);
+  });
+
+  it("stops capture-free nullable-first repetitions before compound continuations", async () => {
+    const execution = await execute({
+      filter: String.raw`[
+        ("bb" | match("(?:a?|b)*b(?!x)") | [.offset,.length,.string]),
+        ("bb" | [match("(?:a?|b)*b(?!x)"; "g") | [.offset,.length,.string]]),
+        ("bbb" | match("(?:a?|b)*(?:b|x)b") | [.offset,.length,.string]),
+        ("bbbb" | [match("(?:a?|b)*(?:b|x)b"; "g") | [.offset,.length,.string]]),
+        ("bb" | match("(?:a?|b)*bx?") | [.offset,.length,.string]),
+        ("bb" | [match("(?:a?|b)*bx?"; "g") | [.offset,.length,.string]]),
+        ("bbc" | match("(?:a?|b)*bc") | [.offset,.length,.string]),
+        ("bbx" | match("(?:a?|b)*b(?=x)") | [.offset,.length,.string]),
+        ("bb" | match("(?:a?|b)*b$") | [.offset,.length,.string])
+      ]`,
+      stdinText: "null\n",
+    });
+
+    expect(execution.stdout.text).toBe(
+      '[[0,1,"b"],[[0,1,"b"],[1,1,"b"]],[0,2,"bb"],[[0,2,"bb"],[2,2,"bb"]],[0,1,"b"],[[0,1,"b"],[1,1,"b"]],[0,3,"bbc"],[0,2,"bb"],[0,2,"bb"]]\n',
+    );
+    expect(execution.stderr.text).toBe("");
+    expect(execution.result.exitCode).toBe(0);
+  });
+
   it("preserves ordinary optional capture history behind a whole-match guard", async () => {
     const execution = await execute({
       filter: String.raw`[

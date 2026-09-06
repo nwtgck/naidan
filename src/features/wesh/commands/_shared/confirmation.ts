@@ -1,18 +1,18 @@
-export function createAffirmativeResponseReader({
+export function createTextInputLineReader({
   input,
 }: {
   input: AsyncIterable<string>,
-}): () => Promise<boolean> {
+}): () => Promise<string | undefined> {
   const iterator = input[Symbol.asyncIterator]();
   let pendingLines: string[] = [];
   let pendingLineIndex = 0;
 
-  return async (): Promise<boolean> => {
+  return async (): Promise<string | undefined> => {
     while (pendingLineIndex >= pendingLines.length) {
       pendingLines = [];
       pendingLineIndex = 0;
       const result = await iterator.next();
-      if (result.done) return false;
+      if (result.done) return undefined;
 
       const lines = result.value.split('\n');
       if (result.value.endsWith('\n')) {
@@ -23,7 +23,20 @@ export function createAffirmativeResponseReader({
       }
     }
 
-    return /^[yY]/u.test(pendingLines[pendingLineIndex++]!);
+    return pendingLines[pendingLineIndex++];
+  };
+}
+
+export function createAffirmativeResponseReader({
+  input,
+}: {
+  input: AsyncIterable<string>,
+}): () => Promise<boolean> {
+  const readLine = createTextInputLineReader({ input });
+
+  return async (): Promise<boolean> => {
+    const line = await readLine();
+    return line !== undefined && /^[yY]/u.test(line);
   };
 }
 
@@ -31,4 +44,5 @@ export function createAffirmativeResponseReader({
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
   createAffirmativeResponseReader,
+  createTextInputLineReader,
 };

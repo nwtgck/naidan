@@ -804,10 +804,22 @@ alpha
       script: "grep -s alpha missing.txt",
     });
 
-    expect(noisy.stderr.text).toContain("grep: missing.txt:");
+    expect(noisy.stderr.text).toBe("grep: missing.txt: No such file or directory\n");
     expect(noisy.result.exitCode).toBe(2);
     expect(quiet.stderr.text).toBe("");
     expect(quiet.result.exitCode).toBe(2);
+  });
+
+  it("normalizes browser type-mismatch errors for intermediate file path components", async () => {
+    await writeFile({ path: "parent", data: "file" });
+
+    const { result, stdout, stderr } = await execute({
+      script: "grep alpha parent/child",
+    });
+
+    expect(stdout.text).toBe("");
+    expect(stderr.text).toBe("grep: parent/child: Not a directory\n");
+    expect(result.exitCode).toBe(2);
   });
 
   it("treats - as stdin when it appears in the file list", async () => {

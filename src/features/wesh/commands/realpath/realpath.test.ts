@@ -114,7 +114,7 @@ describe('wesh realpath', () => {
     expect(allowMissingComponents.stderr.text).toBe('');
     expect(allowMissingComponents.result.exitCode).toBe(0);
     expect(requireExisting.stdout.text).toBe('');
-    expect(requireExisting.stderr.text).toContain('realpath: dir/missing.txt:');
+    expect(requireExisting.stderr.text).toBe('realpath: dir/missing.txt: No such file or directory\n');
     expect(requireExisting.result.exitCode).toBe(1);
   });
 

@@ -228,6 +228,16 @@ printf 'status=%s directory=%s\n' "$?" "$(test -d destination; echo $?)"
     }
   });
 
+  it('normalizes browser type-mismatch errors when the link parent is a file', async () => {
+    await writeFile({ path: 'parent', data: 'file' });
+
+    const execution = await execute({ script: 'ln -s target parent/child' });
+
+    expect(execution.stdout.text).toBe('');
+    expect(execution.stderr.text).toBe("ln: failed to create symbolic link 'parent/child': Not a directory\n");
+    expect(execution.result.exitCode).toBe(1);
+  });
+
   it('supports relative links and an explicit target directory', async () => {
     const execution = await execute({
       script: `\

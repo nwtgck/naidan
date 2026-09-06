@@ -4,7 +4,7 @@ export const psCommandDefinition = {
   meta: {
     name: 'ps',
     description: 'Report process status',
-    usage: 'ps [-eA] [-p PIDLIST] [-o FORMAT]',
+    usage: 'ps [-eA] [-p PIDLIST] [-q PIDLIST] [--forest] [-o FORMAT]',
   },
   load: async () => (await import('./index.ts')).psCommandImplementation.fn,
 } satisfies WeshCommandDefinition;

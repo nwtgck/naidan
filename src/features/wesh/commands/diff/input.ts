@@ -290,6 +290,24 @@ function createComparableLines({
   return { hashes, normalized };
 }
 
+export function createExactLineComparator({
+  left,
+  right,
+}: {
+  left: DiffInput,
+  right: DiffInput,
+}): ({ leftIndex, rightIndex }: { leftIndex: number, rightIndex: number }) => boolean {
+  return ({ leftIndex, rightIndex }): boolean => {
+    if (left.lines.hasLineFeed[leftIndex] !== right.lines.hasLineFeed[rightIndex]) {
+      return false;
+    }
+    return areBytesIdentical({
+      left: getLineBytes({ input: left, lineIndex: leftIndex, stripTrailingCarriageReturn: false }),
+      right: getLineBytes({ input: right, lineIndex: rightIndex, stripTrailingCarriageReturn: false }),
+    });
+  };
+}
+
 export function createLineComparator({
   left,
   right,
@@ -302,8 +320,15 @@ export function createLineComparator({
   const leftComparable = createComparableLines({ input: left, options });
   const rightComparable = createComparableLines({ input: right, options });
 
+  const ignoresLineFeedDifference = options.ignoreTrailingSpace
+    || options.ignoreSpaceChange
+    || options.ignoreAllSpace;
+
   return ({ leftIndex, rightIndex }): boolean => {
-    if (left.lines.hasLineFeed[leftIndex] !== right.lines.hasLineFeed[rightIndex]) {
+    if (
+      !ignoresLineFeedDifference
+      && left.lines.hasLineFeed[leftIndex] !== right.lines.hasLineFeed[rightIndex]
+    ) {
       return false;
     }
     if (leftComparable.hashes[leftIndex] !== rightComparable.hashes[rightIndex]) {

@@ -4,7 +4,7 @@ export const fileCommandDefinition = {
   meta: {
     name: 'file',
     description: 'Determine file type',
-    usage: 'file [-b] [-F SEPARATOR] [-i] [-L] [--brief] [--mime] [--mime-type] [--mime-encoding] [--help] FILE...',
+    usage: 'file [-bE] [-F SEPARATOR] [-i] [-h|-L] [--brief] [--mime] [--mime-type] [--mime-encoding] [--help] FILE...',
   },
   load: async () => (await import('./index.ts')).fileCommandImplementation.fn,
 } satisfies WeshCommandDefinition;

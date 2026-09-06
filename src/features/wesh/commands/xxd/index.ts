@@ -1,6 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { openCommandInputStream } from '@/features/wesh/commands/_shared/binary-input';
+import { resolvePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
@@ -394,6 +395,9 @@ export const xxdCommandImplementation: WeshCommandImplementation = {
     try {
       const plain = parsed.optionValues.plain === true;
       const inputPath = parsed.positionals[0];
+      const resolvedInputPath = inputPath === undefined || inputPath === '-'
+        ? undefined
+        : resolvePath({ cwd: context.cwd, path: inputPath });
       if (reverse) {
         if (
           seekParsed.value < BigInt(Number.MIN_SAFE_INTEGER)
@@ -412,9 +416,9 @@ export const xxdCommandImplementation: WeshCommandImplementation = {
         return { exitCode: 0 };
       }
 
-      const inputStat = inputPath === undefined || inputPath === '-'
+      const inputStat = resolvedInputPath === undefined
         ? await context.stdin.stat()
-        : await context.files.stat({ path: inputPath });
+        : await context.files.stat({ path: resolvedInputPath });
       const inputName = inputPath === undefined || inputPath === '-' ? 'stdin' : inputPath;
       let resolvedForwardSeek = seekParsed.value;
       let inputIsPastEnd = false;
@@ -458,17 +462,15 @@ export const xxdCommandImplementation: WeshCommandImplementation = {
       const initialDisplayOffset = resolvedForwardSeek + displayOffsetParsed.value;
 
       const outputPath = parsed.positionals[1];
+      const resolvedOutputPath = outputPath === undefined || outputPath === '-'
+        ? undefined
+        : resolvePath({ cwd: context.cwd, path: outputPath });
       let inputAndOutputAreSameFile = false;
-      if (
-        inputPath !== undefined
-        && inputPath !== '-'
-        && outputPath !== undefined
-        && outputPath !== '-'
-      ) {
+      if (resolvedInputPath !== undefined && resolvedOutputPath !== undefined) {
         try {
-          const inputStat = await context.files.stat({ path: inputPath });
-          const outputStat = await context.files.stat({ path: outputPath });
-          inputAndOutputAreSameFile = inputPath === outputPath
+          const inputStat = await context.files.stat({ path: resolvedInputPath });
+          const outputStat = await context.files.stat({ path: resolvedOutputPath });
+          inputAndOutputAreSameFile = resolvedInputPath === resolvedOutputPath
             || (inputStat.ino !== 0 && inputStat.ino === outputStat.ino);
         } catch {
           // Missing output files and ordinary input-open failures are handled by
@@ -479,12 +481,12 @@ export const xxdCommandImplementation: WeshCommandImplementation = {
         context,
         input: inputPath,
       });
-      const outputHandle = outputPath === undefined || outputPath === '-'
+      const outputHandle = resolvedOutputPath === undefined
         ? context.stdout
         : await withXxdOperandError({
-          operand: outputPath,
+          operand: outputPath ?? '-',
           operation: async () => context.files.open({
-            path: outputPath,
+            path: resolvedOutputPath,
             flags: {
               access: 'write',
               creation: 'if-needed',

@@ -5,6 +5,7 @@ import { splitByPosixLeftmostLongestMatches } from '@/features/wesh/commands/_sh
 import { compileAwkRegularExpression } from '@/features/wesh/commands/awk/regexp';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit, stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
+import { createAwkByteCharacter, decodeAwkByteStringToText, decodeAwkDataBytes, encodeAwkTextToByteString } from '@/features/wesh/commands/awk/byte-string';
 import { parseAwkProgram } from '@/features/wesh/commands/awk/parser';
 import { createAwkRuntime, executeAwkBegin, executeAwkEnd, executeAwkRecord, flushAwkRuntimeCommandPipes, flushAwkRuntimeIo, getAwkRuntimeArrayEntryAsString, getAwkRuntimeVariableAsString, isAwkFunctionExitControl } from '@/features/wesh/commands/awk/runtime';
 import type { AwkValue } from '@/features/wesh/commands/awk/types';
@@ -130,7 +131,7 @@ async function *readSingleCharacterSeparatedAwkRecords({
       delimiterByte: separatorBytes[0]!,
     })) {
       yield {
-        text: decodeCommandDataBytes({ bytes: record.bytes }),
+        text: decodeAwkDataBytes({ bytes: record.bytes }),
         fields: [],
         hadNewline: record.termination === 'delimiter',
       };
@@ -138,7 +139,7 @@ async function *readSingleCharacterSeparatedAwkRecords({
     return;
   }
 
-  const input = decodeCommandDataBytes({ bytes: await readAllStreamBytes({ stream }) });
+  const input = decodeAwkDataBytes({ bytes: await readAllStreamBytes({ stream }) });
   let recordStart = 0;
   let separatorIndex = input.indexOf(recordSeparator, recordStart);
   while (separatorIndex >= 0) {
@@ -168,12 +169,12 @@ async function *readAwkRecords({
       return;
     }
 
-    const input = decodeCommandDataBytes({ bytes: await readAllStreamBytes({ stream }) });
+    const input = decodeAwkDataBytes({ bytes: await readAllStreamBytes({ stream }) });
     if (recordSeparator === '') {
       const records = input
-        .replace(/^(?:[ \t]*\r?\n)+/, '')
-        .replace(/(?:\r?\n[ \t]*)+$/, '')
-        .split(/\r?\n(?:[ \t]*\r?\n)+/);
+        .replace(/^\n+/, '')
+        .replace(/\n+$/, '')
+        .split(/\n\n+/);
       if (records.at(-1) === '') records.pop();
       for (const record of records) {
         yield {
@@ -208,7 +209,7 @@ async function *readAwkRecords({
     delimiterByte: 0x0a,
   })) {
     yield {
-      text: decodeCommandDataBytes({ bytes: record.bytes }),
+      text: decodeAwkDataBytes({ bytes: record.bytes }),
       fields: [],
       hadNewline: record.termination === 'delimiter',
     };
@@ -275,18 +276,28 @@ function decodeAwkAssignmentEscapes({
   value: string,
 }): string {
   let result = '';
-  for (let index = 0; index < value.length; index += 1) {
+  let ordinaryStart = 0;
+  let index = 0;
+
+  const appendOrdinaryText = ({ end }: { end: number }): void => {
+    if (end <= ordinaryStart) return;
+    result += encodeAwkTextToByteString({ text: value.slice(ordinaryStart, end) });
+  };
+
+  while (index < value.length) {
     const current = value[index]!;
     if (current !== '\\' || index + 1 >= value.length) {
-      result += current;
+      index += 1;
       continue;
     }
 
+    appendOrdinaryText({ end: index });
     const escaped = value[index + 1]!;
     const decodedCharacter = decodeAwkAssignmentSingleCharacterEscape({ escaped });
     if (decodedCharacter !== undefined) {
       result += decodedCharacter;
-      index += 1;
+      index += 2;
+      ordinaryStart = index;
       continue;
     }
 
@@ -297,8 +308,9 @@ function decodeAwkAssignmentEscapes({
         if (next === undefined || !/^[0-7]$/.test(next)) break;
         digits += next;
       }
-      result += String.fromCodePoint(Number.parseInt(digits, 8) & 0xff);
-      index += digits.length;
+      result += createAwkByteCharacter({ byte: Number.parseInt(digits, 8) });
+      index += 1 + digits.length;
+      ordinaryStart = index;
       continue;
     }
 
@@ -310,15 +322,19 @@ function decodeAwkAssignmentEscapes({
         digits += next;
       }
       if (digits.length > 0) {
-        result += String.fromCodePoint(Number.parseInt(digits, 16));
-        index += 1 + digits.length;
+        result += createAwkByteCharacter({ byte: Number.parseInt(digits, 16) });
+        index += 2 + digits.length;
+        ordinaryStart = index;
         continue;
       }
     }
 
-    result += `\\${escaped}`;
-    index += 1;
+    result += `\\${encodeAwkTextToByteString({ text: escaped })}`;
+    index += 2;
+    ordinaryStart = index;
   }
+
+  appendOrdinaryText({ end: value.length });
   return result;
 }
 
@@ -468,7 +484,10 @@ export const awkCommandImplementation: WeshCommandImplementation = {
 
     const argvEntries = new Map<string, AwkValue>([
       ['0', 'awk'],
-      ...positionals.map((value, index): [string, AwkValue] => [String(index + 1), value]),
+      ...positionals.map((value, index): [string, AwkValue] => [
+        String(index + 1),
+        encodeAwkTextToByteString({ text: value }),
+      ]),
     ]);
     runtimeVariables.set('ARGC', positionals.length + 1);
 
@@ -493,7 +512,10 @@ export const awkCommandImplementation: WeshCommandImplementation = {
     }: {
       input: string,
     }): Promise<InputRecordIterator> => {
-      const stream = await openAwkInputStream({ context, input });
+      const stream = await openAwkInputStream({
+        context,
+        input: decodeAwkByteStringToText({ text: input }),
+      });
       return readAwkRecords({
         stream,
         recordSeparator: getAwkRuntimeVariableAsString({
@@ -539,7 +561,7 @@ export const awkCommandImplementation: WeshCommandImplementation = {
           currentInputIterator = await createInputIterator({ input: currentOperand });
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
-          throw new Error(`awk: ${currentOperand}: ${message}`);
+          throw new Error(`awk: ${decodeAwkByteStringToText({ text: currentOperand })}: ${message}`);
         }
       }
     };
@@ -582,7 +604,7 @@ export const awkCommandImplementation: WeshCommandImplementation = {
         let exitCode: number;
         try {
           const result = await context.executeShell({
-            script: command,
+            script: decodeAwkByteStringToText({ text: command }),
             stdin: context.stdin,
             stdout: capture.handle,
             stderr: context.stderr,
@@ -641,7 +663,12 @@ export const awkCommandImplementation: WeshCommandImplementation = {
       variables: runtimeVariables,
       arrays: new Map([
         ['ARGV', argvEntries],
-        ['ENVIRON', new Map<string, AwkValue>(context.env)],
+        ['ENVIRON', new Map<string, AwkValue>(
+          [...context.env].map(([name, value]) => [
+            encodeAwkTextToByteString({ text: name }),
+            encodeAwkTextToByteString({ text: value }),
+          ]),
+        )],
       ]),
       functions: parsedProgram.program.functions,
       readCurrentInput,
@@ -661,7 +688,7 @@ export const awkCommandImplementation: WeshCommandImplementation = {
         await outputWriter.flush();
         try {
           const result = await context.executeShell({
-            script: systemScript,
+            script: decodeAwkByteStringToText({ text: systemScript }),
             stdin: context.stdin,
             stdout: context.stdout,
             stderr: context.stderr,
@@ -678,7 +705,7 @@ export const awkCommandImplementation: WeshCommandImplementation = {
         const capture = createTextCaptureHandle();
         try {
           const result = await context.executeShell({
-            script: command,
+            script: decodeAwkByteStringToText({ text: command }),
             stdin: createTextReadHandle({ text: input }),
             stdout: capture.handle,
             stderr: context.stderr,
@@ -705,7 +732,10 @@ export const awkCommandImplementation: WeshCommandImplementation = {
           }
         })();
         const handle = await context.files.open({
-          path: resolvePath({ cwd: context.cwd, path }),
+          path: resolvePath({
+            cwd: context.cwd,
+            path: decodeAwkByteStringToText({ text: path }),
+          }),
           flags: {
             access: 'write',
             creation: 'if-needed',

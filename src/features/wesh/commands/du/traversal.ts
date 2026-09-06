@@ -1,3 +1,4 @@
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import type {
   WeshCommandContext,
   WeshEntryRef,
@@ -250,7 +251,7 @@ export async function traverseDuOperand({
   } catch (error: unknown) {
     await reportError({
       displayPath: operand,
-      message: error instanceof Error ? error.message : String(error),
+      message: getPathErrorReason({ error }) ?? (error instanceof Error ? error.message : String(error)),
     });
     return {
       value: 0n,
@@ -347,7 +348,7 @@ export async function traverseDuOperand({
         } catch (error: unknown) {
           await reportError({
             displayPath: frame.displayPath,
-            message: error instanceof Error ? error.message : String(error),
+            message: getPathErrorReason({ error }) ?? (error instanceof Error ? error.message : String(error)),
           });
           exitCode = 1;
           seenIdentities?.delete(frame.identity);
@@ -378,7 +379,7 @@ export async function traverseDuOperand({
         } catch (error: unknown) {
           await reportError({
             displayPath: frame.displayPath,
-            message: error instanceof Error ? error.message : String(error),
+            message: getPathErrorReason({ error }) ?? (error instanceof Error ? error.message : String(error)),
           });
           exitCode = 1;
           await closeIterator({ iterator: frame.directoryIterator });
@@ -413,7 +414,7 @@ export async function traverseDuOperand({
         } catch (error: unknown) {
           await reportError({
             displayPath: childDisplayPath,
-            message: error instanceof Error ? error.message : String(error),
+            message: getPathErrorReason({ error }) ?? (error instanceof Error ? error.message : String(error)),
           });
           exitCode = 1;
           continue;

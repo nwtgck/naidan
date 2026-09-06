@@ -816,6 +816,108 @@ src/link
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports -newermt with absolute, epoch, relative-anchor, equality, and negation semantics', async () => {
+    const old = await writeFile({ path: 'old', data: 'old' });
+    const equal = await writeFile({ path: 'equal', data: 'equal' });
+    const newFile = await writeFile({ path: 'new', data: 'new' });
+    const epoch = await writeFile({ path: 'epoch', data: 'epoch' });
+    const before = await writeFile({ path: 'before', data: 'before' });
+    const after = await writeFile({ path: 'after', data: 'after' });
+    old.lastModified = Date.parse('2023-12-31T23:59:59Z');
+    equal.lastModified = Date.parse('2024-01-01T00:00:00Z');
+    newFile.lastModified = Date.parse('2024-01-01T00:00:01Z');
+    epoch.lastModified = 1_000;
+    before.lastModified = Date.parse('2024-01-01T12:00:00Z');
+    after.lastModified = Date.parse('2024-01-02T12:00:00Z');
+
+    const absolute = await execute({
+      script: "find . -type f -newermt '2024-01-01 00:00:00 UTC' -print",
+    });
+    const strictEquality = await execute({
+      script: "find equal -newermt '2024-01-01 00:00:00 UTC' -print",
+    });
+    const epochThreshold = await execute({
+      script: "find epoch -newermt '@0' -print",
+    });
+    const anchoredRelative = await execute({
+      script: "find . -type f -newermt '2024-01-01 00:00:00 UTC + 1 day' -print",
+    });
+    const negated = await execute({
+      script: "find old equal epoch ! -newermt '2024-01-01 00:00:00 UTC' -print",
+    });
+
+    expect(absolute.result.exitCode).toBe(0);
+    expect(absolute.stdout.text).toBe(`\
+./new
+./before
+./after
+`);
+    expect(absolute.stderr.text).toBe('');
+    expect(strictEquality.result.exitCode).toBe(0);
+    expect(strictEquality.stdout.text).toBe('');
+    expect(strictEquality.stderr.text).toBe('');
+    expect(epochThreshold.result.exitCode).toBe(0);
+    expect(epochThreshold.stdout.text).toBe('epoch\n');
+    expect(epochThreshold.stderr.text).toBe('');
+    expect(anchoredRelative.result.exitCode).toBe(0);
+    expect(anchoredRelative.stdout.text).toBe('./after\n');
+    expect(anchoredRelative.stderr.text).toBe('');
+    expect(negated.result.exitCode).toBe(0);
+    expect(negated.stdout.text).toBe(`\
+old
+equal
+epoch
+`);
+    expect(negated.stderr.text).toBe('');
+  });
+
+  it('supports a bounded machine-oriented -printf directive profile', async () => {
+    const file = await writeFile({ path: 'printf-root/sub/file.txt', data: 'abc' });
+    file.lastModified = 1_250;
+    const linkResult = await execute({ script: 'ln -s sub/file.txt printf-root/link' });
+    expect(linkResult.result.exitCode).toBe(0);
+
+    const startingPoint = await execute({
+      script: "find printf-root/sub/file.txt -printf '%H|%P|%p|%f|%h|%d|%s|%y|%l|%T@|%%\\n'",
+    });
+    const nested = await execute({
+      script: "find printf-root -type f -printf '%P|%d|%p\\n'",
+    });
+    const symlink = await execute({
+      script: "find printf-root/link -printf '%y|%l\\n'",
+    });
+    const nulNoImplicitNewline = await execute({
+      script: "find printf-root/sub/file.txt -printf '%p\\0X'",
+    });
+
+    expect(startingPoint.result.exitCode).toBe(0);
+    expect(startingPoint.stdout.text).toBe(
+      'printf-root/sub/file.txt||printf-root/sub/file.txt|file.txt|printf-root/sub|0|3|f||1.2500000000|%\n',
+    );
+    expect(startingPoint.stderr.text).toBe('');
+    expect(nested.result.exitCode).toBe(0);
+    expect(nested.stdout.text).toBe('sub/file.txt|2|printf-root/sub/file.txt\n');
+    expect(nested.stderr.text).toBe('');
+    expect(symlink.result.exitCode).toBe(0);
+    expect(symlink.stdout.text).toBe('l|sub/file.txt\n');
+    expect(symlink.stderr.text).toBe('');
+    expect(nulNoImplicitNewline.result.exitCode).toBe(0);
+    expect(nulNoImplicitNewline.stdout.text).toBe('printf-root/sub/file.txt\0X');
+    expect(nulNoImplicitNewline.stderr.text).toBe('');
+  });
+
+  it('rejects unsupported -printf directives instead of silently fabricating output', async () => {
+    await writeFile({ path: 'printf-file', data: 'x' });
+
+    const unsupported = await execute({ script: "find printf-file -printf '%u'" });
+    const missing = await execute({ script: 'find printf-file -printf' });
+
+    expect(unsupported.result.exitCode).toBe(1);
+    expect(unsupported.stderr.text).toContain("unsupported -printf directive '%u'");
+    expect(missing.result.exitCode).toBe(1);
+    expect(missing.stderr.text).toContain("missing argument to '-printf'");
+  });
+
   it('supports -print0 for null-delimited output', async () => {
     await writeFile({ path: 'src/app.ts', data: 'console.log(1);\n' });
     await writeFile({ path: 'src/main.ts', data: 'console.log(2);\n' });
@@ -1184,6 +1286,110 @@ find: 'definitely-missing-find-command': No such file or directory
   });
 
 
+  it('runs -execdir from each matched parent directory', async () => {
+    await writeFile({ path: 'root/one/a.txt', data: 'a\n' });
+    await writeFile({ path: 'root/two/b.txt', data: 'b\n' });
+
+    const execution = await execute({
+      script: String.raw`find root -type f -execdir pwd \;`,
+    });
+
+    expect(execution.stdout.text).toBe(`\
+/root/one
+/root/two
+`);
+    expect(execution.stderr.text).toBe('');
+    expect(execution.result.exitCode).toBe(0);
+  });
+
+  it('partitions batched -execdir invocations by parent directory and uses relative placeholders', async () => {
+    await writeFile({ path: 'root/one/a.txt', data: 'a\n' });
+    await writeFile({ path: 'root/one/b.txt', data: 'b\n' });
+    await writeFile({ path: 'root/two/c.txt', data: 'c\n' });
+
+    const output = await execute({
+      script: String.raw`find root -type f -execdir printf '%s\n' '{}' +`,
+    });
+    const grouping = await execute({
+      script: String.raw`find root -type f -execdir touch batch-marker '{}' +`,
+    });
+
+    expect(output.stdout.text).toBe(`\
+./a.txt
+./b.txt
+./c.txt
+`);
+    expect(output.stderr.text).toBe('');
+    expect(output.result.exitCode).toBe(0);
+    expect(grouping.stdout.text).toBe('');
+    expect(grouping.stderr.text).toBe('');
+    expect(grouping.result.exitCode).toBe(0);
+    expect(await fileExists({ path: 'root/one/batch-marker' })).toBe(true);
+    expect(await fileExists({ path: 'root/two/batch-marker' })).toBe(true);
+  });
+
+  it('restores the caller cwd after -execdir execution', async () => {
+    await writeFile({ path: 'root/one/a.txt', data: 'a\n' });
+
+    const execution = await execute({
+      script: String.raw`cd root && find one -type f -execdir pwd \; && pwd`,
+    });
+
+    expect(execution.stdout.text).toBe(`\
+/root/one
+/root
+`);
+    expect(execution.stderr.text).toBe('');
+    expect(execution.result.exitCode).toBe(0);
+  });
+
+  it('fails closed for unsafe PATH values before -execdir executes', async () => {
+    await writeFile({ path: 'root/a.txt', data: 'a\n' });
+
+    const unsafeDot = await execute({
+      script: String.raw`PATH=.:/usr/bin:/bin find root -type f -execdir printf '%s\n' '{}' \;`,
+    });
+    const unsafeEmpty = await execute({
+      script: String.raw`PATH=/usr/bin::/bin find root -type f -execdir printf '%s\n' '{}' \;`,
+    });
+    const unsafeRelative = await execute({
+      script: String.raw`PATH=tools:/usr/bin:/bin find root -type f -execdir printf '%s\n' '{}' \;`,
+    });
+    const unsafeAbsoluteAction = await execute({
+      script: String.raw`PATH=.:/usr/bin:/bin find root -type f -execdir /usr/bin/printf '%s\n' '{}' \;`,
+    });
+
+    for (const execution of [unsafeDot, unsafeEmpty, unsafeRelative, unsafeAbsoluteAction]) {
+      expect(execution.stdout.text).toBe('');
+      expect(execution.stderr.text).toContain('-execdir requires PATH entries to be absolute and non-empty');
+      expect(execution.result.exitCode).toBe(1);
+    }
+  });
+
+  it('allows absolute-only and absent PATH values for -execdir', async () => {
+    await writeFile({ path: 'root/a.txt', data: 'a\n' });
+
+    const safeStandard = await execute({
+      script: String.raw`PATH=/usr/bin:/bin find root -type f -execdir printf '%s\n' '{}' \;`,
+    });
+    const safeReversed = await execute({
+      script: String.raw`PATH=/bin:/usr/bin find root -type f -execdir printf '%s\n' '{}' \;`,
+    });
+    const absent = await execute({
+      script: String.raw`env -u PATH find root -type f -execdir printf '%s\n' '{}' \;`,
+    });
+    const absentAbsoluteAction = await execute({
+      script: String.raw`env -u PATH find root -type f -execdir /usr/bin/printf '%s\n' '{}' \;`,
+    });
+
+    for (const execution of [safeStandard, safeReversed, absent, absentAbsoluteAction]) {
+      expect(execution.stdout.text).toBe('./a.txt\n');
+      expect(execution.stderr.text).toBe('');
+      expect(execution.result.exitCode).toBe(0);
+    }
+  });
+
+
   it('evaluates both sides of the comma operator and returns the right result', async () => {
     await writeFile({ path: 'src/a.txt', data: 'a\n' });
     await writeFile({ path: 'src/b.log', data: 'b\n' });
@@ -1320,6 +1526,7 @@ regex-root/a1
       tokens: Array.from({ length: 20_000 }, () => '-true'),
       characterLocaleMode: 'ascii',
       symlinkMode: 'physical',
+      dateExpressionBaseTime: 0,
     });
 
     expect(parsed.ok).toBe(true);
@@ -1359,6 +1566,7 @@ regex-root/a1
       ],
       characterLocaleMode: 'ascii',
       symlinkMode: 'physical',
+      dateExpressionBaseTime: 0,
     });
 
     expect(parsed.ok).toBe(true);
@@ -1387,6 +1595,7 @@ regex-root/a1
       tokens: [...Array.from({ length: 20_000 }, () => '!'), '-true'],
       characterLocaleMode: 'ascii',
       symlinkMode: 'physical',
+      dateExpressionBaseTime: 0,
     });
 
     expect(parsed.ok).toBe(true);

@@ -1,7 +1,7 @@
 import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type ParsedStandardArgv, type StandardArgvAction, type StandardArgvPolicy, type StandardArgvRawValue, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import { resolveBackupControl, selectBackupSuffix, type BackupControl } from '@/features/wesh/commands/_shared/backup-domain';
 import { createAffirmativeResponseReader } from '@/features/wesh/commands/_shared/confirmation';
-import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
+import { getPathErrorReason, isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { normalizePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
@@ -534,7 +534,15 @@ export const lnCommandImplementation: WeshCommandImplementation = {
           toPath: resolvePath({ cwd: context.cwd, path: targetPath }),
         })
         : targetPath;
-      await context.files.symlink({ path: linkPath, targetPath: storedTarget });
+      try {
+        await context.files.symlink({ path: linkPath, targetPath: storedTarget });
+      } catch (error: unknown) {
+        const reason = getPathErrorReason({ error });
+        if (reason !== undefined) {
+          throw new Error(`failed to create symbolic link '${displayLinkPath}': ${reason}`);
+        }
+        throw error;
+      }
       if (verbose) {
         await text.print({ text: `'${displayLinkPath}' -> '${storedTarget}'\n` });
       }
@@ -574,23 +582,28 @@ export const lnCommandImplementation: WeshCommandImplementation = {
 
     let exitCode = 0;
     for (const targetPath of targetPaths) {
+      const targetBasename = basename({ path: targetPath });
+      const requestedLinkPath = destinationPath === undefined
+        ? linkOperand
+        : `${destinationPath}/${targetBasename}`;
+      const displayLinkPath = destinationPath === undefined
+        ? linkOperand
+        : `${linkOperand.replace(/\/+$/u, '')}/${targetBasename}`;
       try {
-        const targetBasename = basename({ path: targetPath });
         const linked = await createLink({
           targetPath,
-          requestedLinkPath: destinationPath === undefined
-            ? linkOperand
-            : `${destinationPath}/${targetBasename}`,
-          displayLinkPath: destinationPath === undefined
-            ? linkOperand
-            : `${linkOperand.replace(/\/+$/u, '')}/${targetBasename}`,
+          requestedLinkPath,
+          displayLinkPath,
           resolveDirectoryDestination: destinationPath === undefined,
         });
         if (!linked) {
           exitCode = 1;
         }
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
+        const reason = getPathErrorReason({ error });
+        const message = reason === undefined
+          ? (error instanceof Error ? error.message : String(error))
+          : `failed to create symbolic link '${displayLinkPath}': ${reason}`;
         await text.error({ text: `ln: ${message}\n` });
         exitCode = 1;
       }

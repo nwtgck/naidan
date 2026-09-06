@@ -2,6 +2,7 @@ import { exceedsSafeRegularExpressionInputLimit } from '@/features/wesh/commands
 import { foldAsciiCase, uppercaseAscii } from '@/features/wesh/commands/_shared/locale';
 import type { AwkAssignmentOperator, AwkAssignmentTarget, AwkBinaryOperator, AwkExpression, AwkFunctionDefinition, AwkNumericString, AwkPattern, AwkProgram, AwkStatement, AwkUnaryOperator, AwkValue } from './types';
 import { findPosixLeftmostLongestMatch, splitByPosixLeftmostLongestMatches } from '@/features/wesh/commands/_shared/posix-regexp';
+import { createAwkByteCharacter } from '@/features/wesh/commands/awk/byte-string';
 import { compileAwkRegularExpression } from '@/features/wesh/commands/awk/regexp';
 
 const float64BitsView = new DataView(new ArrayBuffer(8));
@@ -18,10 +19,14 @@ export function isAwkFunctionExitControl({ error }: { error: unknown }): boolean
   return error instanceof AwkFunctionExitControl;
 }
 
-interface AwkRecord {
+interface AwkInputRecord {
   text: string,
   fields: AwkValue[],
   hadNewline: boolean,
+}
+
+interface AwkRecord extends AwkInputRecord {
+  nfValue: number,
 }
 
 interface AwkArrayAliasTarget {
@@ -64,9 +69,9 @@ export interface AwkRuntimeState {
     mode: 'truncate' | 'append',
     text: string,
   }): Promise<void>,
-  readCurrentInput(): Promise<{ status: -1 | 0 | 1, record: AwkRecord | undefined }>,
-  readFileInput({ path }: { path: string }): Promise<{ status: -1 | 0 | 1, record: AwkRecord | undefined }>,
-  readCommandInput({ command }: { command: string }): Promise<{ status: -1 | 0 | 1, record: AwkRecord | undefined }>,
+  readCurrentInput(): Promise<{ status: -1 | 0 | 1, record: AwkInputRecord | undefined }>,
+  readFileInput({ path }: { path: string }): Promise<{ status: -1 | 0 | 1, record: AwkInputRecord | undefined }>,
+  readCommandInput({ command }: { command: string }): Promise<{ status: -1 | 0 | 1, record: AwkInputRecord | undefined }>,
   closeInput({ path }: { path: string }): Promise<number | undefined>,
   flushOutput({ output }: { output: string[] }): Promise<void>,
   executeSystem({ script, output }: { script: string, output: string[] }): Promise<number>,
@@ -82,7 +87,7 @@ function isNumericLike({
 }: {
   value: string,
 }): boolean {
-  return /^[ \t]*[-+]?(?:\d+\.?\d*|\.\d+)[ \t]*$/.test(value);
+  return /^[ \t]*[-+]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][-+]?\d+)?[ \t]*$/.test(value);
 }
 
 function createInputValue({ value }: { value: string }): AwkValue {
@@ -189,10 +194,12 @@ function formatExponentialNumber({
   value,
   precision,
   uppercase,
+  alternateForm,
 }: {
   value: number,
   precision: number,
   uppercase: boolean,
+  alternateForm: boolean,
 }): string {
   if (!Number.isFinite(value)) return coerceToString({ value });
   const negative = value < 0 || Object.is(value, -0);
@@ -213,7 +220,7 @@ function formatExponentialNumber({
   }
   const digits = rounded.toString().padStart(digitCount, '0');
   const mantissa = precision === 0
-    ? digits
+    ? (alternateForm ? `${digits}.` : digits)
     : `${digits[0]}.${digits.slice(1)}`;
   const marker = uppercase ? 'E' : 'e';
   const exponentSign = exponent < 0 ? '-' : '+';
@@ -224,24 +231,39 @@ function formatExponentialNumber({
 function formatGeneralNumber({
   value,
   precision,
+  alternateForm,
 }: {
   value: number,
   precision: number,
+  alternateForm: boolean,
 }): string {
-  if (value === 0) return Object.is(value, -0) ? '-0' : '0';
+  if (value === 0) {
+    if (!alternateForm) return Object.is(value, -0) ? '-0' : '0';
+    return formatFixedNumber({
+      value,
+      precision: Math.max(0, precision - 1),
+    });
+  }
   const exponent = Math.floor(Math.log10(Math.abs(value)));
   if (exponent < -4 || exponent >= precision) {
-    return formatExponentialNumber({
+    const formatted = formatExponentialNumber({
       value,
       precision: Math.max(0, precision - 1),
       uppercase: false,
-    }).replace(/(\.\d*?[1-9])0+(e)/, '$1$2').replace(/\.0+(e)/, '$1');
+      alternateForm,
+    });
+    return alternateForm
+      ? formatted
+      : formatted.replace(/(\.\d*?[1-9])0+(e)/, '$1$2').replace(/\.0+(e)/, '$1');
   }
 
   const fractionDigits = Math.max(0, precision - 1 - exponent);
-  return formatFixedNumber({ value, precision: fractionDigits })
-    .replace(/(\.\d*?[1-9])0+$/, '$1')
-    .replace(/\.0+$/, '');
+  const formatted = formatFixedNumber({ value, precision: fractionDigits });
+  return alternateForm
+    ? formatted
+    : formatted
+      .replace(/(\.\d*?[1-9])0+$/, '$1')
+      .replace(/\.0+$/, '');
 }
 
 function coerceToString({
@@ -263,7 +285,7 @@ function coerceToString({
       return (float64BitsView.getBigUint64(0, false) >> 63n) === 1n ? '-nan' : '+nan';
     }
     if (Number.isInteger(value)) return String(value);
-    return formatGeneralNumber({ value, precision: 6 });
+    return formatGeneralNumber({ value, precision: 6, alternateForm: false });
   }
 
   return String(value);
@@ -381,6 +403,10 @@ function splitFields({
   line: string,
   fieldSeparator: string | RegExp,
 }): AwkValue[] {
+  if (line === '') {
+    return [];
+  }
+
   if (typeof fieldSeparator === 'string') {
     if (fieldSeparator === '') {
       return Array.from(line, (value) => createInputValue({ value }));
@@ -420,7 +446,7 @@ function getVariable({
   case 'FNR':
     return state.fnr;
   case 'NF':
-    return state.currentRecord?.fields.length ?? 0;
+    return state.currentRecord?.nfValue ?? 0;
   case 'FILENAME':
     return state.filename;
   case 'FS':
@@ -550,10 +576,15 @@ function setVariable({
     state.filename = coerceToString({ value });
     return;
   case 'NF': {
-    const nextFieldCount = Math.max(0, Math.trunc(coerceToNumber({ value })));
+    const assignedNfValue = coerceToNumber({ value });
+    const nextFieldCount = Math.trunc(assignedNfValue);
+    if (nextFieldCount < 0) {
+      throw new Error(`awk: negative value assigned to NF: ${assignedNfValue}`);
+    }
     const currentRecord = state.currentRecord ?? {
       text: '',
       fields: [],
+      nfValue: 0,
       hadNewline: false,
     };
     if (
@@ -572,6 +603,7 @@ function setVariable({
     state.currentRecord = {
       ...currentRecord,
       fields,
+      nfValue: assignedNfValue,
       text: fields.map((field) => coerceToString({ value: field })).join(outputFieldSeparator),
     };
     return;
@@ -621,15 +653,17 @@ function setCurrentRecord({
   record,
 }: {
   state: AwkRuntimeState,
-  record: AwkRecord,
+  record: AwkInputRecord,
 }): void {
   const fieldSeparator = coerceToString({ value: getVariable({ state, name: 'FS' }) });
+  const fields = splitFields({
+    line: record.text,
+    fieldSeparator,
+  });
   state.currentRecord = {
     ...record,
-    fields: splitFields({
-      line: record.text,
-      fieldSeparator,
-    }),
+    fields,
+    nfValue: fields.length,
   };
 }
 
@@ -641,13 +675,15 @@ function setCurrentRecordText({
   text: string,
 }): void {
   const fieldSeparator = coerceToString({ value: getVariable({ state, name: 'FS' }) });
+  const fields = splitFields({
+    line: text,
+    fieldSeparator,
+  });
   state.currentRecord = {
-    ...(state.currentRecord ?? { hadNewline: false }),
+    ...(state.currentRecord ?? { fields: [], nfValue: 0, hadNewline: false }),
     text,
-    fields: splitFields({
-      line: text,
-      fieldSeparator,
-    }),
+    fields,
+    nfValue: fields.length,
   };
 }
 
@@ -668,6 +704,7 @@ function setFieldValue({
   const currentRecord = state.currentRecord ?? {
     text: '',
     fields: [],
+    nfValue: 0,
     hadNewline: false,
   };
   if (
@@ -688,6 +725,7 @@ function setFieldValue({
   state.currentRecord = {
     ...currentRecord,
     fields,
+    nfValue: index > currentRecord.nfValue ? index : currentRecord.nfValue,
     text: fields.map((field) => coerceToString({ value: field })).join(outputFieldSeparator),
   };
 }
@@ -1266,6 +1304,7 @@ function formatPrintfOutput({
           value: coerceToNumber({ value: argument }),
           precision: precision ?? 6,
           uppercase: conversion === 'E',
+          alternateForm: flags.includes('#'),
         });
       case 'f':
         return formatFixedNumber({
@@ -1278,6 +1317,7 @@ function formatPrintfOutput({
         const formatted = formatGeneralNumber({
           value,
           precision: Math.max(1, precision ?? 6),
+          alternateForm: flags.includes('#'),
         });
         switch (conversion) {
         case 'g':
@@ -1292,7 +1332,9 @@ function formatPrintfOutput({
       }
       case 'c': {
         if (typeof argument === 'string' && argument.length > 0) return argument[0] ?? '';
-        return String.fromCodePoint(Math.trunc(coerceToNumber({ value: argument })));
+        return createAwkByteCharacter({
+          byte: Math.trunc(coerceToNumber({ value: argument })),
+        });
       }
       case 'o': {
         const integer = Math.trunc(coerceToNumber({ value: argument })) >>> 0;
@@ -2603,6 +2645,7 @@ function splitRecords({
     return {
       text: normalized,
       fields: [],
+      nfValue: 0,
       hadNewline: true,
     };
   });
@@ -2629,9 +2672,9 @@ export function createAwkRuntime({
     mode: 'truncate' | 'append',
     text: string,
   }): Promise<void>,
-  readCurrentInput(): Promise<{ status: -1 | 0 | 1, record: AwkRecord | undefined }>,
-  readFileInput({ path }: { path: string }): Promise<{ status: -1 | 0 | 1, record: AwkRecord | undefined }>,
-  readCommandInput({ command }: { command: string }): Promise<{ status: -1 | 0 | 1, record: AwkRecord | undefined }>,
+  readCurrentInput(): Promise<{ status: -1 | 0 | 1, record: AwkInputRecord | undefined }>,
+  readFileInput({ path }: { path: string }): Promise<{ status: -1 | 0 | 1, record: AwkInputRecord | undefined }>,
+  readCommandInput({ command }: { command: string }): Promise<{ status: -1 | 0 | 1, record: AwkInputRecord | undefined }>,
   closeInput({ path }: { path: string }): Promise<number | undefined>,
   flushOutput({ output }: { output: string[] }): Promise<void>,
   executeSystem({ script, output }: { script: string, output: string[] }): Promise<number>,
@@ -2792,19 +2835,21 @@ export async function executeAwkRecord({
 }: {
   program: AwkProgram,
   runtime: AwkRuntimeState,
-  record: AwkRecord,
+  record: AwkInputRecord,
   output: string[],
 }): Promise<void> {
   runtime.outputTarget = output;
   runtime.nr += 1;
   runtime.fnr += 1;
   const fieldSeparator = coerceToString({ value: getVariable({ state: runtime, name: 'FS' }) });
+  const fields = splitFields({
+    line: record.text,
+    fieldSeparator,
+  });
   runtime.currentRecord = {
     ...record,
-    fields: splitFields({
-      line: record.text,
-      fieldSeparator,
-    }),
+    fields,
+    nfValue: fields.length,
   };
 
   for (const rule of program.rules) {

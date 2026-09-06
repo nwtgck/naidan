@@ -4,7 +4,7 @@ export const zipCommandDefinition = {
   meta: {
     name: 'zip',
     description: 'Package and compress files into ZIP archives',
-    usage: 'zip [-rjq0-9] zipfile file...',
+    usage: 'zip [OPTION]... ZIPFILE [FILE]...',
   },
   load: async () => (await import('./index.ts')).zipCommandImplementation.fn,
 } satisfies WeshCommandDefinition;

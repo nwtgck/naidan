@@ -1,5 +1,10 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { createTextInputLineReader } from '@/features/wesh/commands/_shared/confirmation';
+import {
+  isPathNotFoundError,
+  isPathTypeMismatchError,
+} from '@/features/wesh/commands/_shared/path-errors';
 import { resolveInternalTemporaryDirectory } from '@/features/wesh/commands/_shared/temporary-directory';
 import {
   createBlobZipSource,
@@ -69,8 +74,27 @@ interface SplitUnzipArgsResult {
 
 interface OpenedZipArchive {
   readonly reader: StreamingZipReader,
-  readonly usedImplicitSuffix?: boolean,
   close(): Promise<void>,
+}
+
+interface ZipCandidateDiagnostic {
+  readonly archiveOperand: string,
+  readonly error: unknown,
+}
+
+interface SelectedZipArchive extends OpenedZipArchive {
+  readonly diagnosticArchiveOperand: string,
+  readonly rejectedCandidates: readonly ZipCandidateDiagnostic[],
+}
+
+class UnzipArchiveCandidatesExhaustedError extends Error {
+  readonly rejectedCandidates: readonly ZipCandidateDiagnostic[];
+
+  constructor({ rejectedCandidates }: { rejectedCandidates: readonly ZipCandidateDiagnostic[] }) {
+    super('no usable ZIP archive candidate');
+    this.name = 'UnzipArchiveCandidatesExhaustedError';
+    this.rejectedCandidates = rejectedCandidates;
+  }
 }
 
 class UnzipParentPathConflictError extends Error {
@@ -114,11 +138,99 @@ function formatListDate({ date }: { date: Date }): string {
   return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
+interface GlobCharacterClassToken {
+  readonly char: string,
+  readonly quoted: boolean,
+}
+
+interface ParsedGlobCharacterClass {
+  readonly source: string,
+  readonly endIndex: number,
+}
+
+function escapeRegExpLiteral({ char }: { char: string }): string {
+  return char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseGlobCharacterClass({
+  pattern,
+  startIndex,
+}: {
+  pattern: string,
+  startIndex: number,
+}): ParsedGlobCharacterClass | undefined {
+  const tokens: GlobCharacterClassToken[] = [];
+  let index = startIndex + 1;
+
+  while (index < pattern.length) {
+    const char = pattern[index];
+    if (char === undefined) {
+      break;
+    }
+    if (char === '\\') {
+      const quoted = pattern[index + 1];
+      if (quoted === undefined) {
+        tokens.push({ char: '\\', quoted: true });
+        index += 1;
+      } else {
+        tokens.push({ char: quoted, quoted: true });
+        index += 2;
+      }
+      continue;
+    }
+    if (char === ']' && tokens.length > 0) {
+      const first = tokens[0];
+      const isNegated = first !== undefined
+        && !first.quoted
+        && (first.char === '!' || first.char === '^');
+      const classTokens = isNegated ? tokens.slice(1) : tokens;
+      if (classTokens.length === 0) {
+        return undefined;
+      }
+      let source = isNegated ? '[^' : '[';
+      for (const [tokenIndex, token] of classTokens.entries()) {
+        if (token.char === '-' && !token.quoted) {
+          source += '-';
+          continue;
+        }
+        if (
+          token.quoted
+          || token.char === '\\'
+          || token.char === ']'
+          || token.char === '['
+          || token.char === '^'
+          || (token.char === '-' && (tokenIndex === 0 || tokenIndex === classTokens.length - 1))
+        ) {
+          source += `\\${token.char}`;
+          continue;
+        }
+        source += token.char;
+      }
+      source += ']';
+      return { source, endIndex: index };
+    }
+    tokens.push({ char, quoted: false });
+    index += 1;
+  }
+
+  return undefined;
+}
+
 function globToRegExp({ pattern }: { pattern: string }): RegExp {
   let source = '^';
   for (let index = 0; index < pattern.length; index += 1) {
     const char = pattern[index];
     if (char === undefined) {
+      continue;
+    }
+    if (char === '\\') {
+      const quoted = pattern[index + 1];
+      if (quoted === undefined) {
+        source += '\\\\';
+      } else {
+        source += escapeRegExpLiteral({ char: quoted });
+        index += 1;
+      }
       continue;
     }
     if (char === '*') {
@@ -130,14 +242,14 @@ function globToRegExp({ pattern }: { pattern: string }): RegExp {
       continue;
     }
     if (char === '[') {
-      const endIndex = pattern.indexOf(']', index + 1);
-      if (endIndex > index) {
-        source += pattern.slice(index, endIndex + 1);
-        index = endIndex;
+      const parsedClass = parseGlobCharacterClass({ pattern, startIndex: index });
+      if (parsedClass !== undefined) {
+        source += parsedClass.source;
+        index = parsedClass.endIndex;
         continue;
       }
     }
-    source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    source += escapeRegExpLiteral({ char });
   }
   source += '$';
   return new RegExp(source);
@@ -317,10 +429,6 @@ function splitUnzipArgs({
   return { mainArgs, excludePatterns, missingDestinationValue };
 }
 
-function isNotFoundError({ message }: { message: string }): boolean {
-  return message.includes('NotFoundError') || message.includes('ENOENT');
-}
-
 function createTemporarySuffix(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
@@ -432,26 +540,112 @@ async function openZipArchive({
   }
 }
 
+function isStructurallyInvalidZipCandidateError({ error }: { error: unknown }): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message === 'End of central directory not found'
+    || error.message === 'Invalid ZIP central directory range'
+    || error.message === 'Invalid ZIP central directory entry'
+    || error.message === 'ZIP central directory size mismatch'
+    || error.message === 'ZIP read range is outside the archive'
+    || error.message.startsWith('ZIP central directory entry exceeds directory bounds')
+    || error.message.startsWith('ZIP source returned ');
+}
+
+function isRetryableZipCandidateError({ error }: { error: unknown }): boolean {
+  return isPathNotFoundError({ error })
+    || isPathTypeMismatchError({ error })
+    || isStructurallyInvalidZipCandidateError({ error });
+}
+
+async function validateZipArchiveCandidate({ archive }: { archive: OpenedZipArchive }): Promise<void> {
+  const iterator = archive.reader.entries()[Symbol.asyncIterator]();
+  try {
+    await iterator.next();
+  } finally {
+    await iterator.return?.();
+  }
+}
+
 async function openZipArchiveWithImplicitSuffix({
   context,
   archivePath,
+  archiveOperand,
 }: {
   context: WeshCommandContext,
   archivePath: string,
-}): Promise<OpenedZipArchive> {
-  try {
-    return await openZipArchive({ context, archivePath });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (
-      archivePath === '-'
-      || archivePath.toLowerCase().endsWith('.zip')
-      || !isNotFoundError({ message })
-    ) {
-      throw error;
+  archiveOperand: string,
+}): Promise<SelectedZipArchive> {
+  if (archivePath === '-') {
+    const archive = await openZipArchive({ context, archivePath });
+    return {
+      ...archive,
+      diagnosticArchiveOperand: archiveOperand,
+      rejectedCandidates: [],
+    };
+  }
+
+  const candidates = [
+    { path: archivePath, operand: archiveOperand },
+    { path: `${archivePath}.zip`, operand: `${archiveOperand}.zip` },
+    { path: `${archivePath}.ZIP`, operand: `${archiveOperand}.ZIP` },
+  ] as const;
+  const rejectedCandidates: ZipCandidateDiagnostic[] = [];
+
+  for (const candidate of candidates) {
+    let archive: OpenedZipArchive | undefined;
+    try {
+      archive = await openZipArchive({ context, archivePath: candidate.path });
+      await validateZipArchiveCandidate({ archive });
+      return {
+        ...archive,
+        diagnosticArchiveOperand: candidate.operand,
+        rejectedCandidates,
+      };
+    } catch (error: unknown) {
+      await archive?.close();
+      if (!isRetryableZipCandidateError({ error })) {
+        throw error;
+      }
+      if (isStructurallyInvalidZipCandidateError({ error })) {
+        rejectedCandidates.push({ archiveOperand: candidate.operand, error });
+      }
     }
-    const archive = await openZipArchive({ context, archivePath: `${archivePath}.zip` });
-    return { ...archive, usedImplicitSuffix: true };
+  }
+
+  throw new UnzipArchiveCandidatesExhaustedError({ rejectedCandidates });
+}
+
+function formatInvalidArchiveCandidateDiagnostic({ archiveOperand }: { archiveOperand: string }): string {
+  return `[${archiveOperand}]\n`
+    + '  End-of-central-directory signature not found.  Either this file is not\n'
+    + '  a zipfile, or it constitutes one disk of a multi-part archive.  In the\n'
+    + '  latter case the central directory and zipfile comment will be found on\n'
+    + '  the last disk(s) of this archive.\n';
+}
+
+async function reportRejectedArchiveCandidates({
+  context,
+  rejectedCandidates,
+  useStdout,
+}: {
+  context: WeshCommandContext,
+  rejectedCandidates: readonly ZipCandidateDiagnostic[],
+  useStdout: boolean,
+}): Promise<void> {
+  for (const candidate of rejectedCandidates) {
+    if (!isStructurallyInvalidZipCandidateError({ error: candidate.error })) {
+      continue;
+    }
+    const text = formatInvalidArchiveCandidateDiagnostic({
+      archiveOperand: candidate.archiveOperand,
+    });
+    if (useStdout) {
+      await context.text().print({ text });
+    } else {
+      await context.text().error({ text });
+    }
   }
 }
 
@@ -989,6 +1183,94 @@ async function pipeEntries({
   }
 }
 
+type UnzipOverwritePromptMode = 'prompt' | 'overwrite-all' | 'skip-all';
+
+type UnzipOverwriteDecision =
+  | { readonly kind: 'overwrite' }
+  | { readonly kind: 'skip' }
+  | { readonly kind: 'rename', readonly path: string }
+  | { readonly kind: 'eof' };
+
+interface UnzipOverwritePromptState {
+  mode: UnzipOverwritePromptMode,
+  readonly readLine: () => Promise<string | undefined>,
+}
+
+async function readUnzipOverwriteDecision({
+  context,
+  displayPath,
+  state,
+}: {
+  context: WeshCommandContext,
+  displayPath: string,
+  state: UnzipOverwritePromptState,
+}): Promise<UnzipOverwriteDecision> {
+  switch (state.mode) {
+  case 'overwrite-all':
+    return { kind: 'overwrite' };
+  case 'skip-all':
+    return { kind: 'skip' };
+  case 'prompt':
+    break;
+  default: {
+    const _exhaustiveCheck: never = state.mode;
+    throw new Error(`Unhandled unzip overwrite prompt mode: ${String(_exhaustiveCheck)}`);
+  }
+  }
+
+  while (true) {
+    await context.text().error({
+      text: `replace ${displayPath}? [y]es, [n]o, [A]ll, [N]one, [r]ename: `,
+    });
+    const response = await state.readLine();
+    if (response === undefined) {
+      state.mode = 'skip-all';
+      await context.text().error({
+        text: `\
+ NULL
+(EOF or read error, treating as "[N]one" ...)
+`,
+      });
+      return { kind: 'eof' };
+    }
+
+    switch (response[0]) {
+    case 'y':
+    case 'Y':
+      return { kind: 'overwrite' };
+    case 'n':
+      return { kind: 'skip' };
+    case 'A':
+      state.mode = 'overwrite-all';
+      return { kind: 'overwrite' };
+    case 'N':
+      state.mode = 'skip-all';
+      return { kind: 'skip' };
+    case 'r':
+    case 'R': {
+      await context.text().error({ text: 'new name: ' });
+      const renamedPath = await state.readLine();
+      if (renamedPath === undefined) {
+        state.mode = 'skip-all';
+        await context.text().error({
+          text: `\
+ NULL
+(EOF or read error, treating as "[N]one" ...)
+`,
+        });
+        return { kind: 'eof' };
+      }
+      if (renamedPath === '') {
+        continue;
+      }
+      return { kind: 'rename', path: renamedPath };
+    }
+    default:
+      continue;
+    }
+  }
+}
+
 async function extractEntries({
   context,
   reader,
@@ -1020,6 +1302,10 @@ async function extractEntries({
   }
   let exitCode = 0;
   const extractedSymbolicLinkPaths = new Set<string>();
+  const overwritePromptState: UnzipOverwritePromptState = {
+    mode: 'prompt',
+    readLine: createTextInputLineReader({ input: context.text().input }),
+  };
   for await (const entry of reader.entries()) {
     if (!entryMatches({
       entry,
@@ -1035,11 +1321,10 @@ async function extractEntries({
         continue;
       }
       const safePath = sanitizeArchivePath({ path: entry.name });
-      const relativePath = junkPaths ? basename({ path: safePath }) : safePath;
+      let relativePath = junkPaths ? basename({ path: safePath }) : safePath;
       if (relativePath === '') {
         continue;
       }
-      const destinationPath = resolvePath({ cwd: destinationRoot, path: relativePath });
       if (entry.isDirectory) {
         await ensureArchiveDirectoryPath({
           context,
@@ -1048,19 +1333,55 @@ async function extractEntries({
         });
         continue;
       }
-      await ensureArchiveEntryParent({ context, destinationRoot, relativePath });
-      const existingType = await getPathType({ context, path: destinationPath });
-      if (existingType !== undefined) {
+
+      let destinationPath = resolvePath({ cwd: destinationRoot, path: relativePath });
+      let skipEntry = false;
+      while (true) {
+        await ensureArchiveEntryParent({ context, destinationRoot, relativePath });
+        const existingType = await getPathType({ context, path: destinationPath });
+        if (existingType === undefined) {
+          break;
+        }
         if (neverOverwrite) {
-          continue;
+          skipEntry = true;
+          break;
         }
+
         if (!overwrite) {
-          await context.text().error({
-            text: `unzip: ${destinationPath} already exists; use -o to overwrite or -n to skip\n`,
+          const decision = await readUnzipOverwriteDecision({
+            context,
+            displayPath: relativePath,
+            state: overwritePromptState,
           });
-          exitCode = Math.max(exitCode, 1);
-          continue;
+          switch (decision.kind) {
+          case 'skip':
+            skipEntry = true;
+            break;
+          case 'eof':
+            exitCode = Math.max(exitCode, 1);
+            skipEntry = true;
+            break;
+          case 'rename': {
+            relativePath = sanitizeArchivePath({ path: decision.path });
+            if (relativePath === '') {
+              skipEntry = true;
+              break;
+            }
+            destinationPath = resolvePath({ cwd: destinationRoot, path: relativePath });
+            continue;
+          }
+          case 'overwrite':
+            break;
+          default: {
+            const _exhaustiveCheck: never = decision;
+            throw new Error(`Unhandled unzip overwrite decision: ${JSON.stringify(_exhaustiveCheck)}`);
+          }
+          }
+          if (skipEntry) {
+            break;
+          }
         }
+
         switch (existingType) {
         case 'directory':
           throw new UnzipReplacementConflictError(`cannot replace directory with ZIP entry: ${entry.name}`);
@@ -1082,6 +1403,11 @@ async function extractEntries({
         }
         await context.files.unlink({ path: destinationPath });
         extractedSymbolicLinkPaths.delete(destinationPath);
+        break;
+      }
+
+      if (skipEntry) {
+        continue;
       }
       if (entry.isSymbolicLink && entry.uncompressedSize > 0) {
         await writeSymbolicLinkEntry({ context, reader, entry, destinationPath });
@@ -1183,7 +1509,7 @@ export const unzipCommandImplementation: WeshCommandImplementation = {
     const isNonExtractingMode = parsed.optionValues.list === true
       || parsed.optionValues.test === true
       || parsed.optionValues.pipeToStdout === true;
-    let archive: OpenedZipArchive | undefined;
+    let archive: SelectedZipArchive | undefined;
 
     if (destinationOption !== undefined && isNonExtractingMode) {
       await context.text().error({ text: 'caution:  not extracting; -d ignored\n' });
@@ -1193,10 +1519,17 @@ export const unzipCommandImplementation: WeshCommandImplementation = {
     }
 
     try {
-      archive = await openZipArchiveWithImplicitSuffix({ context, archivePath });
-      const diagnosticArchiveOperand = archive.usedImplicitSuffix
-        ? `${archiveOperand}.zip`
-        : archiveOperand;
+      archive = await openZipArchiveWithImplicitSuffix({
+        context,
+        archivePath,
+        archiveOperand,
+      });
+      const diagnosticArchiveOperand = archive.diagnosticArchiveOperand;
+      await reportRejectedArchiveCandidates({
+        context,
+        rejectedCandidates: archive.rejectedCandidates,
+        useStdout: parsed.optionValues.test === true || parsed.optionValues.list === true,
+      });
       if (parsed.optionValues.list === true) {
         await listEntries({
           context,
@@ -1279,8 +1612,21 @@ export const unzipCommandImplementation: WeshCommandImplementation = {
       });
       return { exitCode: extractionExitCode !== 0 ? extractionExitCode : hadUnmatchedPattern ? 11 : 0 };
     } catch (error: unknown) {
+      if (error instanceof UnzipArchiveCandidatesExhaustedError) {
+        await reportRejectedArchiveCandidates({
+          context,
+          rejectedCandidates: error.rejectedCandidates,
+          useStdout: parsed.optionValues.test === true || parsed.optionValues.list === true,
+        });
+        if (preArchiveOptions.quietCount < 3) {
+          await context.text().error({
+            text: `unzip:  cannot find or open ${archiveOperand}, ${archiveOperand}.zip or ${archiveOperand}.ZIP.\n`,
+          });
+        }
+        return { exitCode: 9 };
+      }
       const message = error instanceof Error ? error.message : String(error);
-      if (isNotFoundError({ message })) {
+      if (isPathNotFoundError({ error })) {
         if (preArchiveOptions.quietCount < 3) {
           await context.text().error({
             text: `unzip:  cannot find or open ${archiveOperand}, ${archiveOperand}.zip or ${archiveOperand}.ZIP.\n`,

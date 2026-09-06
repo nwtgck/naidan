@@ -1,5 +1,6 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { iterateNullTerminatedPathnames } from '@/features/wesh/commands/_shared/files0-from';
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import { resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshStat } from '@/features/wesh/types';
@@ -701,7 +702,8 @@ export const wcCommandImplementation: WeshCommandImplementation = {
         });
       } catch (e: unknown) {
         hadError = true;
-        const message = e instanceof Error ? e.message : String(e);
+        const message = getPathErrorReason({ error: e })
+          ?? (e instanceof Error ? e.message : String(e));
         await text.error({ text: `wc: ${inputName}: ${message}\n` });
       }
     };
@@ -734,7 +736,8 @@ export const wcCommandImplementation: WeshCommandImplementation = {
         }
       } catch (e: unknown) {
         hadError = true;
-        const message = e instanceof Error ? e.message : String(e);
+        const message = getPathErrorReason({ error: e })
+          ?? (e instanceof Error ? e.message : String(e));
         await text.error({ text: `wc: cannot open '${files0From}' for reading: ${message}\n` });
       }
     }

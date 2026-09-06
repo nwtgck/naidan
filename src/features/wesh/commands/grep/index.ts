@@ -1,4 +1,5 @@
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import type {
   WeshCommandImplementation,
   WeshCommandResult,
@@ -2882,7 +2883,8 @@ export const grepCommandImplementation: WeshCommandImplementation = {
       if (noMessages) {
         return;
       }
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getPathErrorReason({ error })
+        ?? (error instanceof Error ? error.message : String(error));
       await text.error({ text: `grep: ${displayName}: ${message}\n` });
     };
 

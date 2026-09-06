@@ -5,14 +5,16 @@ import type {
 
 function formatTextQualifiers({
   text,
+  includeNoLineTerminatorQualifier = true,
 }: {
   text: FileCommandTextDetails,
+  includeNoLineTerminatorQualifier?: boolean,
 }): string {
   const qualifiers: string[] = [];
   if (text.veryLongLineLength !== undefined) {
     qualifiers.push(`with very long lines (${text.veryLongLineLength})`);
   }
-  if (text.lineTerminators.length === 0) {
+  if (text.lineTerminators.length === 0 && includeNoLineTerminatorQualifier) {
     qualifiers.push('with no line terminators');
   } else if (!(text.lineTerminators.length === 1 && text.lineTerminators[0] === 'lf')) {
     const names = text.lineTerminators.map((terminator) => {
@@ -66,7 +68,7 @@ function formatGenericText({
   }
 }
 
-function formatStructuredTextSuffix({
+function formatStructuredTextEncoding({
   text,
 }: {
   text: FileCommandTextDetails,
@@ -89,6 +91,14 @@ function formatStructuredTextSuffix({
     throw new Error(`Unhandled structured text encoding: ${_ex}`);
   }
   }
+}
+
+function formatStructuredTextSuffix({
+  text,
+}: {
+  text: FileCommandTextDetails,
+}): string {
+  return `${formatStructuredTextEncoding({ text })}${formatTextQualifiers({ text })}`;
 }
 
 export function formatFileClassification({
@@ -120,21 +130,33 @@ export function formatFileClassification({
   case 'html':
     return `HTML document, ${formatStructuredTextSuffix({ text: classification.text })}`;
   case 'script': {
-    const text = formatStructuredTextSuffix({ text: classification.text });
+    const text = formatStructuredTextEncoding({ text: classification.text });
+    const qualifiers = formatTextQualifiers({
+      text: classification.text,
+      includeNoLineTerminatorQualifier: false,
+    });
     switch (classification.language) {
     case 'posix_shell':
-      return `POSIX shell script, ${text} executable`;
+      return `POSIX shell script, ${text} executable${qualifiers}`;
     case 'bash':
-      return `Bourne-Again shell script, ${text} executable`;
+      return `Bourne-Again shell script, ${text} executable${qualifiers}`;
     case 'python':
-      return `Python script, ${text} executable`;
+      return `Python script, ${text} executable${qualifiers}`;
     case 'node':
-      return `Node.js script executable, ${text}`;
+      return `Node.js script executable, ${text}${qualifiers}`;
     default: {
       const _ex: never = classification.language;
       throw new Error(`Unhandled script language: ${_ex}`);
     }
     }
+  }
+  case 'generic_script': {
+    const text = formatStructuredTextEncoding({ text: classification.text });
+    const qualifiers = formatTextQualifiers({
+      text: classification.text,
+      includeNoLineTerminatorQualifier: false,
+    });
+    return `a ${classification.command} script, ${text} executable${qualifiers}`;
   }
   case 'ascii_text':
   case 'extended_ascii_text':
@@ -197,6 +219,8 @@ export function formatFileMimeType({
       throw new Error(`Unhandled script language MIME type: ${_ex}`);
     }
     }
+  case 'generic_script':
+    return 'text/plain';
   case 'ascii_text':
   case 'extended_ascii_text':
   case 'utf8_text':
@@ -222,6 +246,7 @@ export function formatFileMimeEncoding({
   case 'svg':
   case 'html':
   case 'script':
+  case 'generic_script':
   case 'ascii_text':
   case 'extended_ascii_text':
   case 'utf8_text':

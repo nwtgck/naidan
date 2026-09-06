@@ -7,7 +7,8 @@ import { parseBackupControlLongOption, resolveBackupControl, selectBackupSuffix,
 import { findCopyMovePreHelpSemanticError } from '@/features/wesh/commands/_shared/copy-move-pre-help';
 import { createAffirmativeResponseReader } from '@/features/wesh/commands/_shared/confirmation';
 import { getCoreUmaskOrDefault, getOptionalCoreMethod } from '@/features/wesh/commands/_shared/core-capability';
-import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
+import { getPathErrorReason, isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
+import { dirnamePath } from '@/features/wesh/commands/_shared/path';
 import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/features/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
@@ -137,6 +138,7 @@ const cpArgvSpec: StandardArgvParserSpec = {
     { kind: 'flag', short: 'L', long: 'dereference', effects: [{ key: 'symlinkMode', value: 'logical' }], help: { summary: 'always follow symlinks', category: 'advanced' } },
     { kind: 'flag', short: 'P', long: 'no-dereference', effects: [{ key: 'symlinkMode', value: 'physical' }], help: { summary: 'never follow symlinks', category: 'advanced' } },
     { kind: 'flag', short: 'T', long: 'no-target-directory', effects: [{ key: 'noTargetDirectory', value: true }], help: { summary: 'treat destination as a normal file', category: 'advanced' } },
+    { kind: 'flag', short: undefined, long: 'parents', effects: [{ key: 'parents', value: true }], help: { summary: 'use full source file name under DIRECTORY', category: 'advanced' } },
     { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }], help: { summary: 'remove existing destination files', category: 'common' } },
     { kind: 'flag', short: 'i', long: 'interactive', effects: [{ key: 'overwriteMode', value: 'interactive' }], help: { summary: 'prompt before overwrite', category: 'common' } },
     { kind: 'flag', short: 'n', long: 'no-clobber', effects: [{ key: 'overwriteMode', value: 'no-clobber' }], help: { summary: 'do not overwrite existing files', category: 'common' } },
@@ -334,6 +336,7 @@ export const cpCommandImplementation: WeshCommandImplementation = {
       : '~';
     const verbose = parsed.optionValues.verbose === true;
     const noTargetDirectory = parsed.optionValues.noTargetDirectory === true;
+    const parents = parsed.optionValues.parents === true;
 
     if (
       backupRequested
@@ -369,6 +372,16 @@ export const cpCommandImplementation: WeshCommandImplementation = {
         context,
         command: 'cp',
         message: 'cp: cannot combine --target-directory (-t) and --no-target-directory (-T)',
+        argvSpec: cpArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (parents && noTargetDirectory) {
+      await writeCommandUsageError({
+        context,
+        command: 'cp',
+        message: 'cp: cannot combine --parents and --no-target-directory (-T)',
         argvSpec: cpArgvSpec,
       });
       return { exitCode: 1 };
@@ -922,22 +935,46 @@ export const cpCommandImplementation: WeshCommandImplementation = {
       }
     };
 
+    const resolveParentsRelativePath = ({
+      sourceOperand,
+    }: {
+      sourceOperand: string,
+    }): string => {
+      const normalizedSource = normalizePath({ cwd: context.cwd, path: sourceOperand });
+      if (sourceOperand.startsWith('/')) {
+        return normalizedSource.replace(/^\/+/u, '');
+      }
+
+      const normalizedCwd = normalizePath({ cwd: '/', path: context.cwd });
+      if (normalizedSource === normalizedCwd) {
+        return basename({ path: normalizedSource });
+      }
+      const prefix = normalizedCwd === '/' ? '/' : `${normalizedCwd}/`;
+      if (!normalizedSource.startsWith(prefix)) {
+        throw new Error(`with --parents, source '${sourceOperand}' resolves outside the current directory`);
+      }
+      return normalizedSource.slice(prefix.length);
+    };
+
     const resolveDestinationTarget = async ({
       srcPath,
       destPath,
       destDisplayPath,
       treatDestAsDirectory,
+      parentsRelativePath,
     }: {
       srcPath: string,
       destPath: string,
       destDisplayPath: string,
       treatDestAsDirectory: boolean,
+      parentsRelativePath: string | undefined,
     }): Promise<{ readonly path: string, readonly displayPath: string }> => {
       const sourceBasename = basename({ path: srcPath });
       if (treatDestAsDirectory) {
+        const relativeTarget = parentsRelativePath ?? sourceBasename;
         return {
-          path: `${destPath}/${sourceBasename}`,
-          displayPath: `${destDisplayPath.replace(/\/+$/u, '')}/${sourceBasename}`,
+          path: `${destPath}/${relativeTarget}`,
+          displayPath: `${destDisplayPath.replace(/\/+$/u, '')}/${relativeTarget}`,
         };
       }
 
@@ -974,7 +1011,7 @@ export const cpCommandImplementation: WeshCommandImplementation = {
     try {
       const fullDest = resolvePath({ cwd: context.cwd, path: destOperand });
       const treatDestAsDirectory = (() => {
-        if (targetDirectory !== undefined) {
+        if (targetDirectory !== undefined || parents) {
           return true;
         }
         if (sourceOperands.length > 1) {
@@ -1003,12 +1040,22 @@ export const cpCommandImplementation: WeshCommandImplementation = {
       for (const sourceOperand of sourceOperands) {
         try {
           const fullSrc = resolvePath({ cwd: context.cwd, path: sourceOperand });
+          const parentsRelativePath = parents
+            ? resolveParentsRelativePath({ sourceOperand })
+            : undefined;
           const target = await resolveDestinationTarget({
             srcPath: fullSrc,
             destPath: fullDest,
             destDisplayPath: destOperand,
             treatDestAsDirectory,
+            parentsRelativePath,
           });
+          if (parentsRelativePath !== undefined) {
+            await context.files.mkdir({
+              path: dirnamePath({ path: target.path }),
+              recursive: true,
+            });
+          }
           await copyOne({
             srcPath: fullSrc,
             srcDisplayPath: sourceOperand,
@@ -1020,13 +1067,15 @@ export const cpCommandImplementation: WeshCommandImplementation = {
           });
         } catch (e: unknown) {
           hadError = true;
-          const message = e instanceof Error ? e.message : String(e);
+          const message = getPathErrorReason({ error: e })
+            ?? (e instanceof Error ? e.message : String(e));
           await text.error({ text: `cp: ${sourceOperand}: ${message}\n` });
         }
       }
       return { exitCode: hadError || interactiveDeclined ? 1 : 0 };
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = getPathErrorReason({ error: e })
+        ?? (e instanceof Error ? e.message : String(e));
       await text.error({ text: `cp: ${sourceOperands[0] ?? ''}: ${message}\n` });
       return { exitCode: 1 };
     }

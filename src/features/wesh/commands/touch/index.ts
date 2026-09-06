@@ -8,8 +8,7 @@ import {
   standardSemanticIssuePrecedesDiagnostic,
   stopStandardArgvAtFirstEarlyExit,
 } from '@/features/wesh/commands/_shared/argv';
-import { containsNonAsciiDateWhitespace, trimAsciiDateWhitespace } from '@/features/wesh/commands/_shared/date-whitespace';
-import { foldAsciiCase } from '@/features/wesh/commands/_shared/locale';
+import { parseDateExpressionMilliseconds } from '@/features/wesh/commands/_shared/date-expression';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { writeAllFileBytes } from '@/features/wesh/utils/fs';
 import { canonicalizePathAllowingMissingLeaf, resolvePath } from '@/features/wesh/path';
@@ -21,83 +20,9 @@ type TouchTimeSelection =
   | { readonly kind: 'date', readonly value: string, readonly referencePath: string | undefined }
   | { readonly kind: 'timestamp', readonly value: string };
 
-const relativeDateUnitsMilliseconds = {
-  second: 1_000,
-  minute: 60_000,
-  hour: 3_600_000,
-  day: 86_400_000,
-  week: 604_800_000,
-} as const;
-
-type RelativeDateUnit = keyof typeof relativeDateUnitsMilliseconds;
-
-function parseRelativeDateValue({
-  value,
-  baseTime,
-}: {
-  value: string,
-  baseTime: number,
-}): number | undefined {
-  const normalized = foldAsciiCase({ value: trimAsciiDateWhitespace({ value }) });
-  switch (normalized) {
-  case 'now':
-  case 'today':
-    return baseTime;
-  case 'yesterday':
-    return baseTime - relativeDateUnitsMilliseconds.day;
-  case 'tomorrow':
-    return baseTime + relativeDateUnitsMilliseconds.day;
-  default:
-    break;
-  }
-
-  const match = /^(?:(next|last)[\t\n\v\f\r ]+)?([+-]?\d+)?[\t\n\v\f\r ]*(seconds?|minutes?|hours?|days?|weeks?)(?:[\t\n\v\f\r ]+(ago))?$/.exec(normalized);
-  if (match === null) return undefined;
-
-  const directionWord = match[1];
-  const rawAmount = match[2];
-  const ago = match[4] !== undefined;
-  if (directionWord !== undefined && rawAmount !== undefined) return undefined;
-
-  const singularUnit = match[3]?.replace(/s$/, '') as RelativeDateUnit | undefined;
-  if (singularUnit === undefined || !(singularUnit in relativeDateUnitsMilliseconds)) {
-    return undefined;
-  }
-
-  const amount = rawAmount === undefined ? 1 : Number(rawAmount);
-  if (!Number.isFinite(amount)) return undefined;
-
-  let direction = 1;
-  if (directionWord === 'last' || ago) direction = -1;
-  const delta = amount * relativeDateUnitsMilliseconds[singularUnit] * direction;
-  const result = baseTime + delta;
-  if (!Number.isSafeInteger(result)) return undefined;
-  return result;
-}
-
 function parseDateValue({ value, baseTime }: { value: string, baseTime: number }): number {
-  if (containsNonAsciiDateWhitespace({ value })) {
-    throw new Error(`invalid date format '${value}'`);
-  }
-
-  const epochMatch = /^@([+-]?\d+)(?:\.(\d+))?$/.exec(value);
-  if (epochMatch !== null) {
-    const wholeSeconds = Number(epochMatch[1]);
-    const fractionalDigits = epochMatch[2] ?? '';
-    const milliseconds = Number((fractionalDigits + '000').slice(0, 3));
-    const sign = wholeSeconds < 0 || epochMatch[1]?.startsWith('-') === true ? -1 : 1;
-    const result = wholeSeconds * 1000 + sign * milliseconds;
-    if (!Number.isSafeInteger(result)) {
-      throw new Error(`invalid date format '${value}'`);
-    }
-    return result;
-  }
-
-  const relative = parseRelativeDateValue({ value, baseTime });
-  if (relative !== undefined) return relative;
-
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed) || !Number.isSafeInteger(parsed)) {
+  const parsed = parseDateExpressionMilliseconds({ value, baseTime });
+  if (parsed === undefined) {
     throw new Error(`invalid date format '${value}'`);
   }
   return parsed;

@@ -4,7 +4,7 @@ export const lsCommandDefinition = {
   meta: {
     name: 'ls',
     description: 'List directory contents',
-    usage: 'ls [path...] [-l] [-a] [-A] [-R] [-1] [-h] [-L] [-H]',
+    usage: 'ls [path...] [-l] [-a] [-A] [-R] [-1] [-h] [-L] [-H] [-t|-S] [-r]',
   },
   load: async () => (await import('./index.ts')).lsCommandImplementation.fn,
 } satisfies WeshCommandDefinition;

@@ -3340,6 +3340,143 @@ function rewriteJqTerminalOptionalCaptureHistoryBranches({
   });
 }
 
+function isJqNullableFirstSelectionSimpleNullableAlternative({
+  source,
+}: {
+  source: string;
+}): boolean {
+  if (source.length === 0 || collectJqCapturingGroups({ source }).length !== 0) {
+    return false;
+  }
+  if (containsJqRegularExpressionBackreference({ source })) return false;
+
+  let atomSource: string;
+  let quantifierStartIndex: number;
+  if (source.startsWith("(?:")) {
+    const groupEndIndex = mapJqGroupEndIndexes({ source }).get(0);
+    const group = parseJqGroupPrefix({ source, startIndex: 0 });
+    if (
+      groupEndIndex === undefined
+      || group?.prefix !== "(?:"
+    ) return false;
+    atomSource = source.slice(group.contentStart, groupEndIndex);
+    quantifierStartIndex = groupEndIndex + 1;
+  } else {
+    const atomEndIndex = source[0] === "["
+      ? findJqCharacterClassEnd({ source, startIndex: 0 })
+      : source[0] === "\\"
+        ? findJqEscapeEnd({ source, startIndex: 0 })
+        : String.fromCodePoint(source.codePointAt(0) ?? 0).length - 1;
+    atomSource = source.slice(0, atomEndIndex + 1);
+    quantifierStartIndex = atomEndIndex + 1;
+  }
+
+  if (jqQuantifiedBackreferenceTargetFiniteCharacters({ source: atomSource }) === undefined) {
+    return false;
+  }
+  const quantifier = parseJqBackreferenceQuantifier({
+    source,
+    startIndex: quantifierStartIndex,
+  });
+  return quantifier !== undefined
+    && quantifier.endIndex === source.length
+    && quantifier.minimumRepetitions === 0
+    && (quantifier.maximumRepetitions === 1 || quantifier.maximumRepetitions === null)
+    && quantifier.greedy
+    && !quantifier.possessive;
+}
+
+function isJqNullableFirstSelectionSingleCodePointAlternative({
+  source,
+}: {
+  source: string;
+}): boolean {
+  return collectJqCapturingGroups({ source }).length === 0
+    && !containsJqRegularExpressionBackreference({ source })
+    && jqQuantifiedBackreferenceTargetFiniteCharacters({ source }) !== undefined;
+}
+
+function isJqNullableFirstSelectionCloneSafeContinuation({
+  source,
+}: {
+  source: string;
+}): boolean {
+  return source.length !== 0
+    && collectJqCapturingGroups({ source }).length === 0
+    && !containsJqRegularExpressionBackreference({ source })
+    && splitTopLevelAlternatives({ source }).length === 1;
+}
+
+function rewriteJqNullableFirstRepeatedAlternativeSelection({
+  source,
+}: {
+  source: string;
+}): string {
+  if (
+    collectJqCapturingGroups({ source }).length !== 0
+    || containsJqRegularExpressionBackreference({ source })
+    || splitTopLevelAlternatives({ source }).length !== 1
+  ) return source;
+
+  const groupEndIndexes = mapJqGroupEndIndexes({ source });
+  for (const [groupStartIndex, groupEndIndex] of groupEndIndexes) {
+    const isTopLevel = ![...groupEndIndexes].some(([otherStart, otherEnd]) =>
+      otherStart < groupStartIndex && groupEndIndex < otherEnd
+    );
+    if (!isTopLevel) continue;
+
+    const group = parseJqGroupPrefix({ source, startIndex: groupStartIndex });
+    if (group?.prefix !== "(?:") continue;
+    const quantifier = parseJqCaptureHistoryGroupQuantifier({
+      source,
+      startIndex: groupEndIndex + 1,
+    });
+    if (
+      quantifier === undefined
+      || !quantifier.greedy
+      || quantifier.maximumRepetitions === 0
+      || quantifier.endIndex >= source.length
+    ) continue;
+
+    const continuation = source.slice(quantifier.endIndex);
+    if (!isJqNullableFirstSelectionCloneSafeContinuation({
+      source: continuation,
+    })) continue;
+
+    const content = source.slice(group.contentStart, groupEndIndex);
+    const alternatives = splitTopLevelAlternatives({ source: content });
+    const firstAlternative = alternatives[0];
+    if (
+      firstAlternative === undefined
+      || alternatives.length < 2
+      || !isJqNullableFirstSelectionSimpleNullableAlternative({
+        source: firstAlternative,
+      })
+      || alternatives.slice(1).some((alternative) =>
+        !isJqNullableFirstSelectionSingleCodePointAlternative({
+          source: alternative,
+        })
+      )
+    ) continue;
+
+    const guardedContinuation = `(?!(?:${continuation}))`;
+    const rewrittenContent = [
+      firstAlternative,
+      ...alternatives.slice(1).map((alternative) =>
+        `${guardedContinuation}${alternative}`
+      ),
+    ].join("|");
+    const rewrittenSource = source.slice(0, group.contentStart)
+      + rewrittenContent
+      + source.slice(groupEndIndex);
+    return rewrittenSource.length <= JQ_MAX_DYNAMIC_CAPTURE_HISTORY_SOURCE_BUDGET
+      ? rewrittenSource
+      : source;
+  }
+
+  return source;
+}
+
 function collectSingletonRequiredSevenCodePointCaptureHistoryGroupSignatures({
   source,
 }: {
@@ -6077,6 +6214,13 @@ function compileJqRegularExpressionInternal({
       source = translateJqDotOperators({ source });
     }
     source = translateAbsoluteAnchors({ source });
+    if (
+      terminalOptionalCaptureHistoryStopCompatible
+      && source.includes("|")
+      && source.includes("?")
+    ) {
+      source = rewriteJqNullableFirstRepeatedAlternativeSelection({ source });
+    }
     if (
       terminalOptionalCaptureHistoryStopCompatible
       && source.includes("|")

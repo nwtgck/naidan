@@ -1,4 +1,6 @@
 import { parseFindLikeArgv } from '@/features/wesh/argv';
+import { parseDateExpressionMilliseconds } from '@/features/wesh/commands/_shared/date-expression';
+import { dirnamePath } from '@/features/wesh/commands/_shared/path';
 import { parseFilePermissionMode } from '@/features/wesh/commands/_shared/file-mode';
 import { foldAsciiCase, resolveCharacterLocaleMode, type WeshCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
 import {
@@ -29,6 +31,20 @@ type FindRegexSyntax =
   | 'extended-posix-awk'
   | 'extended-awk';
 type FindNumericComparison = 'eq' | 'lt' | 'gt';
+type FindPrintfDirective =
+  | 'path'
+  | 'relativePath'
+  | 'startPath'
+  | 'basename'
+  | 'dirname'
+  | 'size'
+  | 'type'
+  | 'linkTarget'
+  | 'depth'
+  | 'mtimeSeconds';
+type FindPrintfToken =
+  | { readonly kind: 'literal', readonly value: string }
+  | { readonly kind: 'directive', readonly directive: FindPrintfDirective };
 type FindLeadingSymlinkOption = '-P' | '-H' | '-L';
 
 type FindExpression =
@@ -46,14 +62,16 @@ type FindExpression =
   | { kind: 'age', comparison: FindNumericComparison, count: number, unitMilliseconds: number, rounding: 'ceilExact' | 'floorAll' }
   | { kind: 'perm', matchMode: 'exact' | 'all' | 'any', mode: number }
   | { kind: 'newer', referencePath: string, referenceMtime: number }
+  | { kind: 'newerMtime', thresholdMtime: number }
   | { kind: 'print' }
   | { kind: 'print0' }
+  | { kind: 'printf', tokens: readonly FindPrintfToken[] }
   | { kind: 'prune' }
   | { kind: 'delete' }
   | { kind: 'quit' }
   | { kind: 'true' }
   | { kind: 'false' }
-  | { kind: 'exec', id: number, mode: 'single' | 'batch', command: string, args: string[] };
+  | { kind: 'exec', id: number, mode: 'single' | 'batch', executionDirectory: 'current' | 'entry-parent', command: string, args: string[] };
 
 interface FindEntry {
   entryRef: WeshEntryRef,
@@ -61,6 +79,9 @@ interface FindEntry {
   displayPath: string,
   type: WeshFileType,
   name: string,
+  startPath: string,
+  relativePath: string,
+  depth: number,
   size: number,
   mode: number,
   mtime: number,
@@ -86,6 +107,7 @@ interface PendingExecBatch {
   id: number,
   command: string,
   argsTemplate: string[],
+  executionCwd: string | undefined,
   entries: PendingExecBatchEntry[],
   argumentBytes: number,
 }
@@ -139,11 +161,15 @@ function canEvaluateWithoutFullStat({
     case 'false':
     case 'exec':
       break;
+    case 'printf':
+      if (findPrintfRequiresFullStat({ tokens: current.tokens })) return false;
+      break;
     case 'empty':
     case 'size':
     case 'age':
     case 'perm':
     case 'newer':
+    case 'newerMtime':
       return false;
     default: {
       const _ex: never = current;
@@ -180,6 +206,176 @@ function basename({ path }: { path: string }): string {
   const end = path.endsWith('/') ? path.length - 1 : path.length;
   const separatorIndex = path.lastIndexOf('/', end - 1);
   return path.slice(separatorIndex + 1, end);
+}
+
+function parseFindPrintfFormat({
+  value,
+}: {
+  value: string,
+}): { ok: true, tokens: readonly FindPrintfToken[] } | { ok: false, message: string } {
+  const tokens: FindPrintfToken[] = [];
+  let literal = '';
+
+  const flushLiteral = (): void => {
+    if (literal.length === 0) return;
+    tokens.push({ kind: 'literal', value: literal });
+    literal = '';
+  };
+
+  const directiveByCharacter: Readonly<Record<string, FindPrintfDirective>> = {
+    p: 'path',
+    P: 'relativePath',
+    H: 'startPath',
+    f: 'basename',
+    h: 'dirname',
+    s: 'size',
+    y: 'type',
+    l: 'linkTarget',
+    d: 'depth',
+  };
+  const escapeByCharacter: Readonly<Record<string, string>> = {
+    '0': '\0',
+    a: '\x07',
+    b: '\b',
+    f: '\f',
+    n: '\n',
+    r: '\r',
+    t: '\t',
+    v: '\v',
+    '\\': '\\',
+  };
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (character === '%') {
+      const nextCharacter = value[index + 1];
+      if (nextCharacter === undefined) {
+        return { ok: false, message: "invalid -printf format: trailing '%'" };
+      }
+      if (nextCharacter === '%') {
+        literal += '%';
+        index += 1;
+        continue;
+      }
+      if (nextCharacter === 'T' && value[index + 2] === '@') {
+        flushLiteral();
+        tokens.push({ kind: 'directive', directive: 'mtimeSeconds' });
+        index += 2;
+        continue;
+      }
+      const directive = directiveByCharacter[nextCharacter];
+      if (directive === undefined) {
+        return { ok: false, message: `unsupported -printf directive '%${nextCharacter}'` };
+      }
+      flushLiteral();
+      tokens.push({ kind: 'directive', directive });
+      index += 1;
+      continue;
+    }
+
+    if (character === '\\') {
+      const nextCharacter = value[index + 1];
+      if (nextCharacter === undefined) {
+        return { ok: false, message: 'invalid -printf format: trailing backslash' };
+      }
+      const escaped = escapeByCharacter[nextCharacter];
+      if (escaped === undefined) {
+        return { ok: false, message: `unsupported -printf escape '\\${nextCharacter}'` };
+      }
+      literal += escaped;
+      index += 1;
+      continue;
+    }
+
+    literal += character;
+  }
+
+  flushLiteral();
+  return { ok: true, tokens };
+}
+
+function findPrintfRequiresFullStat({
+  tokens,
+}: {
+  tokens: readonly FindPrintfToken[],
+}): boolean {
+  return tokens.some((token) => token.kind === 'directive'
+    && (token.directive === 'size' || token.directive === 'mtimeSeconds'));
+}
+
+function findTypeCharacter({ type }: { type: WeshFileType }): string {
+  switch (type) {
+  case 'file': return 'f';
+  case 'directory': return 'd';
+  case 'symlink': return 'l';
+  case 'fifo': return 'p';
+  case 'chardev': return 'c';
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled find file type: ${_ex}`);
+  }
+  }
+}
+
+async function renderFindPrintf({
+  tokens,
+  entry,
+  context,
+}: {
+  tokens: readonly FindPrintfToken[],
+  entry: FindEntry,
+  context: WeshCommandContext,
+}): Promise<string> {
+  let output = '';
+  for (const token of tokens) {
+    switch (token.kind) {
+    case 'literal':
+      output += token.value;
+      break;
+    case 'directive': {
+      switch (token.directive) {
+      case 'path': output += entry.displayPath; break;
+      case 'relativePath': output += entry.relativePath; break;
+      case 'startPath': output += entry.startPath; break;
+      case 'basename': output += entry.name; break;
+      case 'dirname': output += dirnamePath({ path: entry.displayPath }); break;
+      case 'size': output += String(entry.size); break;
+      case 'type': output += findTypeCharacter({ type: entry.type }); break;
+      case 'linkTarget': {
+        switch (entry.type) {
+        case 'symlink':
+          output += await context.files.readlinkEntry({
+            entry: asSymlinkEntryRef({ entry: entry.entryRef }),
+          });
+          break;
+        case 'file':
+        case 'directory':
+        case 'fifo':
+        case 'chardev':
+          break;
+        default: {
+          const _ex: never = entry.type;
+          throw new Error(`Unhandled find file type: ${_ex}`);
+        }
+        }
+        break;
+      }
+      case 'depth': output += String(entry.depth); break;
+      case 'mtimeSeconds': output += (entry.mtime / 1000).toFixed(10); break;
+      default: {
+        const _ex: never = token.directive;
+        throw new Error(`Unhandled find -printf directive: ${_ex}`);
+      }
+      }
+      break;
+    }
+    default: {
+      const _ex: never = token;
+      throw new Error(`Unhandled find -printf token kind: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+    }
+    }
+  }
+  return output;
 }
 
 function consumeGlobCharacterClass({
@@ -878,6 +1074,7 @@ function findEarlyExitRequest({
       tokens: parsedPrefix.expressionTokens,
       characterLocaleMode,
       symlinkMode: resolveFindLeadingSymlinkMode({ leadingOptions: prefix.leadingOptions }),
+      dateExpressionBaseTime: Date.now(),
     });
     if (!expressionPrefix.ok) continue;
 
@@ -995,10 +1192,12 @@ function tokenizeFindExpression({
   tokens,
   characterLocaleMode,
   symlinkMode,
+  dateExpressionBaseTime,
 }: {
   tokens: string[],
   characterLocaleMode: WeshCharacterLocaleMode,
   symlinkMode: FindTraversalOptions['symlinkMode'],
+  dateExpressionBaseTime: number,
 }): {
   ok: true,
   traversal: FindTraversalOptions,
@@ -1091,14 +1290,17 @@ function tokenizeFindExpression({
       '-mtime',
       '-perm',
       '-newer',
+      '-newermt',
       '-print',
       '-print0',
+      '-printf',
       '-prune',
       '-delete',
       '-quit',
       '-true',
       '-false',
       '-exec',
+      '-execdir',
     ].includes(token);
   }
 
@@ -1117,6 +1319,7 @@ function tokenizeFindExpression({
         break;
       case 'print':
       case 'print0':
+      case 'printf':
       case 'prune':
       case 'delete':
       case 'quit':
@@ -1132,6 +1335,7 @@ function tokenizeFindExpression({
       case 'age':
       case 'perm':
       case 'newer':
+      case 'newerMtime':
       case 'true':
       case 'false':
         break;
@@ -1475,10 +1679,29 @@ function tokenizeFindExpression({
         referenceMtime: Number.NaN,
       };
     }
+    case '-newermt': {
+      const value = next();
+      if (value === undefined) return "missing argument to '-newermt'";
+      const thresholdMtime = parseDateExpressionMilliseconds({
+        value,
+        baseTime: dateExpressionBaseTime,
+      });
+      if (thresholdMtime === undefined) {
+        return `invalid date '${value}' for '-newermt'`;
+      }
+      return { kind: 'newerMtime', thresholdMtime };
+    }
     case '-print':
       return { kind: 'print' };
     case '-print0':
       return { kind: 'print0' };
+    case '-printf': {
+      const value = next();
+      if (value === undefined) return "missing argument to '-printf'";
+      const parsedFormat = parseFindPrintfFormat({ value });
+      if (!parsedFormat.ok) return parsedFormat.message;
+      return { kind: 'printf', tokens: parsedFormat.tokens };
+    }
     case '-prune':
       return { kind: 'prune' };
     case '-delete':
@@ -1489,13 +1712,27 @@ function tokenizeFindExpression({
       return { kind: 'true' };
     case '-false':
       return { kind: 'false' };
-    case '-exec': {
+    case '-exec':
+    case '-execdir': {
+      const execPredicate = token;
+      const executionDirectory: 'current' | 'entry-parent' = (() => {
+        switch (execPredicate) {
+        case '-exec':
+          return 'current';
+        case '-execdir':
+          return 'entry-parent';
+        default: {
+          const _ex: never = execPredicate;
+          throw new Error(`Unhandled find exec predicate: ${_ex}`);
+        }
+        }
+      })();
       const argv: string[] = [];
       let mode: 'single' | 'batch' | undefined;
 
       while (true) {
         const arg = next();
-        if (arg === undefined) return "missing terminating ';' for -exec";
+        if (arg === undefined) return `missing terminating ';' for ${execPredicate}`;
         if (arg === ';' || arg === '+') {
           switch (arg) {
           case ';':
@@ -1514,28 +1751,28 @@ function tokenizeFindExpression({
         argv.push(arg);
       }
 
-      if (argv.length === 0) return 'missing command for -exec';
+      if (argv.length === 0) return `missing command for ${execPredicate}`;
       const command = argv[0];
-      if (command === undefined) return 'missing command for -exec';
-      if (mode === undefined) return "missing terminating ';' for -exec";
+      if (command === undefined) return `missing command for ${execPredicate}`;
+      if (mode === undefined) return `missing terminating ';' for ${execPredicate}`;
       switch (mode) {
       case 'batch': {
         let placeholderIndex = -1;
         for (let argumentIndex = 0; argumentIndex < argv.length; argumentIndex += 1) {
           if (argv[argumentIndex] !== '{}') continue;
           if (placeholderIndex !== -1) {
-            return "only one '{}' is supported with '-exec ... {} +'";
+            return `only one '{}' is supported with '${execPredicate} ... {} +'`;
           }
           placeholderIndex = argumentIndex;
         }
         if (placeholderIndex === -1) {
-          return "only one '{}' is supported with '-exec ... {} +'";
+          return `only one '{}' is supported with '${execPredicate} ... {} +'`;
         }
         if (placeholderIndex !== argv.length - 1) {
-          return "'{}' must appear by itself immediately before '+' in '-exec ... {} +'";
+          return `'{}' must appear by itself immediately before '+' in '${execPredicate} ... {} +'`;
         }
         if (argv.some((arg) => arg !== '{}' && arg.includes('{}'))) {
-          return "'{}' must appear by itself in '-exec ... {} +'";
+          return `'{}' must appear by itself in '${execPredicate} ... {} +'`;
         }
         break;
       }
@@ -1551,6 +1788,7 @@ function tokenizeFindExpression({
         kind: 'exec',
         id: nextExecId++,
         mode,
+        executionDirectory,
         command,
         args: argv.slice(1),
       };
@@ -1636,8 +1874,10 @@ async function resolveFindExpressionReferences({
       case 'size':
       case 'age':
       case 'perm':
+      case 'newerMtime':
       case 'print':
       case 'print0':
+      case 'printf':
       case 'prune':
       case 'delete':
       case 'quit':
@@ -1696,7 +1936,7 @@ async function evaluateExpression({
   expr: FindExpression,
   entry: FindEntry,
   context: WeshCommandContext,
-  pendingExecBatches: Map<number, PendingExecBatch>,
+  pendingExecBatches: Map<string, PendingExecBatch>,
   stdout: FindOutputWriter,
   evaluationTime: number,
 }): Promise<FindEvaluationResult> {
@@ -1734,8 +1974,10 @@ async function evaluateExpression({
       case 'age':
       case 'perm':
       case 'newer':
+      case 'newerMtime':
       case 'print':
       case 'print0':
+      case 'printf':
       case 'prune':
       case 'delete':
       case 'quit':
@@ -1867,7 +2109,7 @@ async function evaluateLeafExpression({
   expr: FindExpression,
   entry: FindEntry,
   context: WeshCommandContext,
-  pendingExecBatches: Map<number, PendingExecBatch>,
+  pendingExecBatches: Map<string, PendingExecBatch>,
   stdout: FindOutputWriter,
   evaluationTime: number,
 }): Promise<FindEvaluationResult> {
@@ -1991,11 +2233,16 @@ async function evaluateLeafExpression({
   }
   case 'newer':
     return entry.mtime > expr.referenceMtime ? EVAL_MATCHED : EVAL_NOT_MATCHED;
+  case 'newerMtime':
+    return entry.mtime > expr.thresholdMtime ? EVAL_MATCHED : EVAL_NOT_MATCHED;
   case 'print':
     await stdout.write({ text: `${entry.displayPath}\n` });
     return { matched: true, actionInvoked: true, shouldPrune: false, shouldQuit: false, exitCode: 0 };
   case 'print0':
     await stdout.write({ text: `${entry.displayPath}\0` });
+    return { matched: true, actionInvoked: true, shouldPrune: false, shouldQuit: false, exitCode: 0 };
+  case 'printf':
+    await stdout.write({ text: await renderFindPrintf({ tokens: expr.tokens, entry, context }) });
     return { matched: true, actionInvoked: true, shouldPrune: false, shouldQuit: false, exitCode: 0 };
   case 'prune':
     return { matched: true, actionInvoked: true, shouldPrune: true, shouldQuit: false, exitCode: 0 };
@@ -2024,26 +2271,45 @@ async function evaluateLeafExpression({
     return EVAL_NOT_MATCHED;
   case 'exec': {
     const execMode: 'single' | 'batch' = expr.mode;
+    const executionTarget: { readonly cwd: string | undefined, readonly path: string } = (() => {
+      switch (expr.executionDirectory) {
+      case 'current':
+        return { cwd: undefined, path: entry.displayPath };
+      case 'entry-parent':
+        return {
+          cwd: dirnamePath({ path: entry.fullPath }),
+          path: `./${entry.name}`,
+        };
+      default: {
+        const _ex: never = expr.executionDirectory;
+        throw new Error(`Unhandled find exec execution directory: ${_ex}`);
+      }
+      }
+    })();
+    const executionCwd = executionTarget.cwd;
+    const executionPath = executionTarget.path;
     switch (execMode) {
     case 'batch': {
-      let pending = pendingExecBatches.get(expr.id);
+      const pendingKey = getPendingExecBatchKey({ id: expr.id, executionCwd });
+      let pending = pendingExecBatches.get(pendingKey);
       if (pending === undefined) {
         pending = {
           id: expr.id,
           command: expr.command,
           argsTemplate: expr.args,
+          executionCwd,
           entries: [],
           argumentBytes: getStaticBatchExecArgumentBytes({
             command: expr.command,
             argsTemplate: expr.args,
           }),
         };
-        pendingExecBatches.set(expr.id, pending);
+        pendingExecBatches.set(pendingKey, pending);
       }
 
       const pathArgumentBytes = getPathBatchExecArgumentBytes({
         argsTemplate: pending.argsTemplate,
-        path: entry.displayPath,
+        path: executionPath,
       });
       let batchExitCode = 0;
       if (
@@ -2060,7 +2326,7 @@ async function evaluateLeafExpression({
       }
 
       pending.entries.push({
-        path: entry.displayPath,
+        path: executionPath,
         entryRef: entry.entryRef,
       });
       pending.argumentBytes += pathArgumentBytes;
@@ -2089,7 +2355,7 @@ async function evaluateLeafExpression({
       const invocation = buildSingleExecInvocation({
         argsTemplate: expr.args,
         entry: {
-          path: entry.displayPath,
+          path: executionPath,
           entryRef: entry.entryRef,
         },
       });
@@ -2098,6 +2364,7 @@ async function evaluateLeafExpression({
         command: expr.command,
         args: invocation.args,
         argumentEntryRefs: invocation.argumentEntryRefs,
+        cwd: executionCwd,
       });
       return {
         matched: result?.exitCode === 0,
@@ -2150,6 +2417,16 @@ function getPathBatchExecArgumentBytes({
     }
   }
   return bytes;
+}
+
+function getPendingExecBatchKey({
+  id,
+  executionCwd,
+}: {
+  id: number,
+  executionCwd: string | undefined,
+}): string {
+  return executionCwd === undefined ? `${id}` : `${id}\0${executionCwd}`;
 }
 
 function buildExecArgument({
@@ -2278,6 +2555,7 @@ async function flushPendingExecBatch({
     command: pending.command,
     args: invocation.args,
     argumentEntryRefs: invocation.argumentEntryRefs,
+    cwd: pending.executionCwd,
   });
   return result?.exitCode ?? 1;
 }
@@ -2287,13 +2565,20 @@ async function executeFindSubcommand({
   command,
   args,
   argumentEntryRefs,
+  cwd,
 }: {
   context: WeshCommandContext,
   command: string,
   args: string[],
   argumentEntryRefs: Array<WeshEntryRef | undefined>,
+  cwd?: string,
 }): Promise<WeshCommandResult | undefined> {
+  const originalPwd = context.env.get('PWD');
+  const originalOldPwd = context.env.get('OLDPWD');
   try {
+    if (cwd !== undefined) {
+      context.setCwd({ path: cwd });
+    }
     return await context.executeCommand({
       command,
       args,
@@ -2306,7 +2591,82 @@ async function executeFindSubcommand({
       text: `find: '${command}': No such file or directory\n`,
     });
     return undefined;
+  } finally {
+    if (cwd !== undefined) {
+      context.setCwd({ path: context.cwd });
+      if (originalPwd === undefined) context.unsetEnv({ key: 'PWD' });
+      else context.setEnv({ key: 'PWD', value: originalPwd });
+      if (originalOldPwd === undefined) context.unsetEnv({ key: 'OLDPWD' });
+      else context.setEnv({ key: 'OLDPWD', value: originalOldPwd });
+    }
   }
+}
+
+function hasExecDirAction({
+  expr,
+}: {
+  expr: FindExpression,
+}): boolean {
+  const pending: FindExpression[] = [expr];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    switch (current.kind) {
+    case 'and':
+    case 'or':
+    case 'comma':
+      pending.push(current.right, current.left);
+      break;
+    case 'not':
+      pending.push(current.expr);
+      break;
+    case 'exec':
+      switch (current.executionDirectory) {
+      case 'entry-parent':
+        return true;
+      case 'current':
+        break;
+      default: {
+        const _ex: never = current.executionDirectory;
+        throw new Error(`Unhandled find exec execution directory: ${_ex}`);
+      }
+      }
+      break;
+    case 'name':
+    case 'path':
+    case 'linkName':
+    case 'regex':
+    case 'type':
+    case 'empty':
+    case 'size':
+    case 'age':
+    case 'perm':
+    case 'newer':
+    case 'newerMtime':
+    case 'print':
+    case 'print0':
+    case 'printf':
+    case 'prune':
+    case 'delete':
+    case 'quit':
+    case 'true':
+    case 'false':
+      break;
+    default: {
+      const _ex: never = current;
+      throw new Error(`Unhandled find expression: ${_ex}`);
+    }
+    }
+  }
+  return false;
+}
+
+function hasUnsafeExecDirPath({
+  pathValue,
+}: {
+  pathValue: string | undefined,
+}): boolean {
+  if (pathValue === undefined) return false;
+  return pathValue.split(':').some((entry) => entry.length === 0 || !entry.startsWith('/'));
 }
 
 function hasExpressionAction({
@@ -2362,8 +2722,10 @@ function hasExpressionAction({
     case 'age':
     case 'perm':
     case 'newer':
+    case 'newerMtime':
     case 'print':
     case 'print0':
+    case 'printf':
     case 'quit':
     case 'true':
     case 'false':
@@ -2432,12 +2794,14 @@ export const findCommandImplementation: WeshCommandImplementation = {
     }
     }
 
+    const evaluationTime = Date.now();
     const split = splitFindLeadingOptions({ args: context.args });
     const parsed = parseFindLikeArgv({ args: split.remainingArgs });
     const expression = tokenizeFindExpression({
       tokens: parsed.expressionTokens,
       characterLocaleMode,
       symlinkMode: resolveFindLeadingSymlinkMode({ leadingOptions: split.leadingOptions }),
+      dateExpressionBaseTime: evaluationTime,
     });
 
     if (!expression.ok) {
@@ -2462,8 +2826,20 @@ export const findCommandImplementation: WeshCommandImplementation = {
       return { exitCode: 1 };
     }
 
+    if (
+      hasExecDirAction({ expr: expression.expr })
+      && hasUnsafeExecDirPath({ pathValue: context.env.get('PATH') })
+    ) {
+      await writeCommandUsageError({
+        context,
+        command: 'find',
+        message: 'find: -execdir requires PATH entries to be absolute and non-empty',
+      });
+      return { exitCode: 1 };
+    }
+
     let exitCode = 0;
-    const pendingExecBatches = new Map<number, PendingExecBatch>();
+    const pendingExecBatches = new Map<string, PendingExecBatch>();
     const stdout = createBufferedTextWriter({
       handle: context.stdout,
       maxBufferLength: 16 * 1024,
@@ -2494,8 +2870,6 @@ export const findCommandImplementation: WeshCommandImplementation = {
     const canSkipFullStat = canEvaluateWithoutFullStat({
       expr: resolvedExpression,
     });
-    const evaluationTime = Date.now();
-
     const isNotFoundError = ({ error }: { error: unknown }): boolean => {
       if (error instanceof DOMException) return error.name === 'NotFoundError';
       return error instanceof Error && error.message.includes('NotFoundError');
@@ -2569,11 +2943,17 @@ export const findCommandImplementation: WeshCommandImplementation = {
       operationPath,
       displayPath,
       name,
+      startPath,
+      relativePath,
+      depth,
     }: {
       entryRef: WeshEntryRef,
       operationPath: string,
       displayPath: string,
       name: string,
+      startPath: string,
+      relativePath: string,
+      depth: number,
     }): Promise<FindEntry> => {
       if (canSkipFullStat) {
         return {
@@ -2582,6 +2962,9 @@ export const findCommandImplementation: WeshCommandImplementation = {
           displayPath,
           type: entryRef.type,
           name,
+          startPath,
+          relativePath,
+          depth,
           size: 0,
           mode: 0,
           mtime: 0,
@@ -2595,6 +2978,9 @@ export const findCommandImplementation: WeshCommandImplementation = {
         displayPath,
         type: stat.type,
         name,
+        startPath,
+        relativePath,
+        depth,
         size: stat.size,
         mode: stat.mode,
         mtime: stat.mtime,
@@ -2606,12 +2992,16 @@ export const findCommandImplementation: WeshCommandImplementation = {
       operationPath,
       displayPath,
       name,
+      startPath,
+      relativePath,
       depth,
     }: {
       entryRef: WeshEntryRef,
       operationPath: string,
       displayPath: string,
       name: string,
+      startPath: string,
+      relativePath: string,
       depth: number,
     }): Promise<void> => {
       if (shouldQuit) return;
@@ -2622,6 +3012,9 @@ export const findCommandImplementation: WeshCommandImplementation = {
           operationPath,
           displayPath,
           name,
+          startPath,
+          relativePath,
+          depth,
         });
         const directoryIdentity = (() => {
           switch (finalizedEntry.type) {
@@ -2696,6 +3089,8 @@ export const findCommandImplementation: WeshCommandImplementation = {
                 operationPath: childOperationPath,
                 displayPath: childDisplayPath,
                 name: child.name,
+                startPath,
+                relativePath: relativePath.length === 0 ? child.name : `${relativePath}/${child.name}`,
                 depth: depth + 1,
               });
               if (shouldQuit) break;
@@ -2743,6 +3138,8 @@ export const findCommandImplementation: WeshCommandImplementation = {
           operationPath: fullPath,
           displayPath: path,
           name: basename({ path }),
+          startPath: path,
+          relativePath: '',
           depth: 0,
         });
       } catch (error: unknown) {

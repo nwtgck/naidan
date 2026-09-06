@@ -44,8 +44,9 @@ describe('wesh ps', () => {
     const badPid = await execute({ script: 'ps -p abc' });
 
     expect(help.stdout.text).toContain('Report process status');
-    expect(help.stdout.text).toContain('usage: ps [-eA] [-p PIDLIST] [-o FORMAT]');
+    expect(help.stdout.text).toContain('usage: ps [-eA] [-p PIDLIST] [-q PIDLIST] [--forest] [-o FORMAT]');
     expect(help.stdout.text).toContain('-p');
+    expect(help.stdout.text).toContain('-q');
     expect(help.stdout.text).toContain('-o');
     expect(help.stdout.text).toContain('-f');
     expect(help.stderr.text).toBe('');
@@ -146,11 +147,11 @@ b`,
       columns: parsedColumns.columns,
       processes,
     })).toBe(`\
-COMMAND   PID
-a?b         2
-a b         3
-a?b         4
-a?b         5
+COMMAND     PID
+a?b           2
+a b           3
+a?b           4
+a?b           5
 `);
     const customHeaderColumns = TEST_ONLY.parseFormatList({ raw: 'args=COMMAND,pid=\u001b[31m' });
     if (customHeaderColumns.kind !== 'ok') throw new Error(customHeaderColumns.message);
@@ -158,8 +159,8 @@ a?b         5
       columns: customHeaderColumns.columns,
       processes: processes.slice(0, 1),
     })).toBe(`\
-COMMAND ?[31m
-a?b         2
+COMMAND   ?[31m
+a?b           2
 `);
   });
 
@@ -181,11 +182,11 @@ a?b         2
       columns: parsedColumns.columns,
       processes,
     })).toBe(`\
-COMMAND   PID
-a           2
-表          3
-e\u0301           4
-😀          5
+COMMAND     PID
+a             2
+表            3
+e\u0301             4
+😀            5
 `);
   });
 
@@ -211,9 +212,117 @@ e\u0301           4
     const lines = stdout.text.trimEnd().split('\n');
     expect(result.exitCode).toBe(0);
     expect(stderr.text).toBe('');
-    expect(lines[0]).toBe('  PID  PPID  PGID STAT COMMAND');
+    expect(lines[0]).toBe('    PID    PPID    PGID STAT COMMAND');
     expect(lines.some(line => line.includes('wesh -l'))).toBe(true);
     expect(lines.some(line => line.includes('ps -e -o pid,ppid,pgid,stat,args'))).toBe(true);
+  });
+
+  it('supports bounded --sort keys over existing process metadata', async () => {
+    const descendingPid = await execute({ script: 'ps -e --sort=-pid -o pid=' });
+    const compound = await execute({ script: 'ps -e --sort=ppid,pid -o ppid=,pid=' });
+    const metadata = await execute({ script: 'ps -e --sort=stat,user,cwd,pid -o pid=' });
+
+    expect(descendingPid.result.exitCode).toBe(0);
+    expect(descendingPid.stderr.text).toBe('');
+    const descendingPids = descendingPid.stdout.text.trim().split(/\s+/u).map(Number);
+    expect(descendingPids.length).toBeGreaterThan(1);
+    expect(descendingPids).toEqual(descendingPids.slice().sort((left, right) => right - left));
+
+    expect(compound.result.exitCode).toBe(0);
+    expect(compound.stderr.text).toBe('');
+    const pairs = compound.stdout.text.trim().split('\n').map((line) => line.trim().split(/\s+/u).map(Number));
+    for (let index = 1; index < pairs.length; index += 1) {
+      const previous = pairs[index - 1]!;
+      const current = pairs[index]!;
+      expect(
+        current[0]! > previous[0]!
+        || (current[0] === previous[0] && current[1]! >= previous[1]!),
+      ).toBe(true);
+    }
+
+    expect(metadata.result.exitCode).toBe(0);
+    expect(metadata.stderr.text).toBe('');
+  });
+
+  it('renders --forest from existing PID/PPID topology', async () => {
+    const result = await execute({
+      script: 'ps -e --forest -o pid=,ppid=,args=',
+    });
+
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stderr.text).toBe('');
+    expect(result.stdout.text).toMatch(/\\_ .*ps -e --forest -o pid=,ppid=,args=/u);
+  });
+
+  it('keeps forest topology finite and stable for missing parents, multiple roots, and cycles', () => {
+    const process = ({
+      pid,
+      ppid,
+      argv0,
+    }: {
+      pid: number,
+      ppid: number,
+      argv0: string,
+    }): WeshProcessSnapshot => ({
+      pid,
+      ppid,
+      pgid: 1,
+      state: 'running',
+      user: 'user',
+      argv0,
+      args: [],
+      cwd: '/',
+    });
+    const processes = [
+      process({ pid: 30, ppid: 31, argv0: 'cycle-a' }),
+      process({ pid: 10, ppid: 99, argv0: 'orphan' }),
+      process({ pid: 1, ppid: 0, argv0: 'root' }),
+      process({ pid: 3, ppid: 1, argv0: 'child-b' }),
+      process({ pid: 2, ppid: 1, argv0: 'child-a' }),
+      process({ pid: 4, ppid: 2, argv0: 'grandchild' }),
+      process({ pid: 31, ppid: 30, argv0: 'cycle-b' }),
+    ];
+
+    const layout = TEST_ONLY.layoutProcessesAsForest({ processes });
+
+    expect(layout.processes.map(({ pid }) => pid)).toEqual([10, 1, 3, 2, 4, 30, 31]);
+    expect([...layout.depthByPid.entries()]).toEqual([
+      [10, 0],
+      [1, 0],
+      [3, 1],
+      [2, 1],
+      [4, 2],
+      [30, 0],
+      [31, 1],
+    ]);
+
+    const parsedColumns = TEST_ONLY.parseFormatList({ raw: 'args=' });
+    if (parsedColumns.kind !== 'ok') throw new Error(parsedColumns.message);
+    const columns = TEST_ONLY.decorateForestColumns({
+      columns: parsedColumns.columns,
+      depthByPid: layout.depthByPid,
+    });
+    expect(TEST_ONLY.formatProcesses({
+      columns,
+      processes: layout.processes,
+      includeHeader: false,
+    })).toBe(`\
+orphan
+root
+ \\_ child-b
+ \\_ child-a
+     \\_ grandchild
+cycle-a
+ \\_ cycle-b
+`);
+  });
+
+  it('rejects ps sort keys whose metadata is not authoritative in the command layer', async () => {
+    const unsupported = await execute({ script: 'ps -e --sort=comm -o pid=' });
+
+    expect(unsupported.result.exitCode).toBe(1);
+    expect(unsupported.stdout.text).toBe('');
+    expect(unsupported.stderr.text).toContain('ps: unsupported sort key: comm');
   });
 
   it('supports the common -ef fuller listing form', async () => {
@@ -240,9 +349,71 @@ e\u0301           4
 
     expect(result.exitCode).toBe(0);
     expect(stderr.text).toBe('');
-    expect(stdout.text).toContain('  PID COMMAND');
+    expect(stdout.text).toContain('    PID COMMAND');
     expect(stdout.text).toContain(`${shellPid}`);
     expect(stdout.text).toContain('wesh');
+  });
+
+  it('supports quick PID selection while preserving requested order and duplicates', async () => {
+    const shellPid = (wesh as unknown as { shellPid: number }).shellPid;
+
+    const quick = await execute({
+      script: `ps -q ${shellPid},1,${shellPid} -o pid=`,
+    });
+    const long = await execute({
+      script: `ps --quick-pid=${shellPid} --no-headers -o pid`,
+    });
+
+    expect(quick.result.exitCode).toBe(0);
+    expect(quick.stderr.text).toBe('');
+    expect(quick.stdout.text.trimEnd().split('\n').map(line => Number(line.trim()))).toEqual([
+      shellPid,
+      1,
+      shellPid,
+    ]);
+    expect(long.result.exitCode).toBe(0);
+    expect(long.stderr.text).toBe('');
+    expect(long.stdout.text.trim()).toBe(`${shellPid}`);
+  });
+
+  it('rejects quick PID selection combined with other selection or sort options', async () => {
+    const shellPid = (wesh as unknown as { shellPid: number }).shellPid;
+    const selectionCases = [
+      `ps -q ${shellPid} -p 1 -o pid=`,
+      `ps -q ${shellPid} --ppid 1 -o pid=`,
+      `ps -q ${shellPid} -e -o pid=`,
+    ];
+
+    for (const script of selectionCases) {
+      const rejected = await execute({ script });
+      expect(rejected.result.exitCode).toBe(1);
+      expect(rejected.stdout.text).toBe('');
+      expect(rejected.stderr.text).toContain('cannot be combined with other selection options');
+    }
+
+    const sorted = await execute({
+      script: `ps -q ${shellPid} --sort=-pid -o pid=`,
+    });
+    expect(sorted.result.exitCode).toBe(1);
+    expect(sorted.stdout.text).toBe('');
+    expect(sorted.stderr.text).toContain('cannot be used together with sort options');
+
+    const forest = await execute({
+      script: `ps -q ${shellPid} --forest -o pid=`,
+    });
+    expect(forest.result.exitCode).toBe(1);
+    expect(forest.stdout.text).toBe('');
+    expect(forest.stderr.text).toContain('cannot be used together with forest type listings');
+  });
+
+  it('returns 1 when quick PID selection finds no process', async () => {
+    const missing = await execute({
+      script: 'ps -q 99999999 -o pid=',
+    });
+
+    expect(missing.result.exitCode).toBe(1);
+    expect(missing.stdout.text).toBe('');
+    expect(missing.stderr.text).toBe('');
   });
 
   it('supports header suppression and custom headers in -o formats', async () => {
@@ -259,7 +430,7 @@ e\u0301           4
     expect(suppressed.stdout.text.trim()).toBe(`${shellPid}`);
     expect(suppressed.result.exitCode).toBe(0);
     expect(custom.stderr.text).toBe('');
-    expect(custom.stdout.text.split('\n')[0]).toBe(' PIDX CMDX');
+    expect(custom.stdout.text.split('\n')[0]).toBe('   PIDX CMDX');
     expect(custom.result.exitCode).toBe(0);
   });
 
@@ -273,7 +444,7 @@ e\u0301           4
     const lines = stdout.text.trimEnd().split('\n');
     expect(result.exitCode).toBe(0);
     expect(stderr.text).toBe('');
-    expect(lines[0]).toBe('  PID  PPID');
+    expect(lines[0]).toBe('    PID    PPID');
     expect(lines[1]?.trim().split(/\s+/u)).toHaveLength(3);
     expect(lines[1]).toContain('wesh');
   });
@@ -298,6 +469,22 @@ e\u0301           4
       expect(stderr.text).toContain('ps: invalid process ID');
       expect(result.exitCode).toBe(1);
     }
+  });
+
+  it('uses procps minimum widths for PID-family columns in -o formats', async () => {
+    const combined = await execute({
+      script: 'ps -p 999999 -o pid=PID,pgid=PGID,ppid=PPID,stat=STAT,args=COMMAND',
+    });
+    const shortHeader = await execute({
+      script: 'ps -p 999999 -o pid=Z',
+    });
+
+    expect(combined.stdout.text).toBe('    PID    PGID    PPID STAT COMMAND\n');
+    expect(combined.stderr.text).toBe('');
+    expect(combined.result.exitCode).toBe(1);
+    expect(shortHeader.stdout.text).toBe('      Z\n');
+    expect(shortHeader.stderr.text).toBe('');
+    expect(shortHeader.result.exitCode).toBe(1);
   });
 
   it('preserves non-ASCII trailing whitespace in custom headers', async () => {
@@ -341,6 +528,29 @@ e\u0301           4
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(1);
+  });
+
+  it('supports --ppid selection over authoritative process metadata', async () => {
+    const shellPid = (wesh as unknown as { shellPid: number }).shellPid;
+    const { result, stdout, stderr } = await execute({
+      script: `ps --ppid ${shellPid} -o ppid=,args=`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain(`${shellPid}`);
+    expect(stdout.text).toContain('ps --ppid');
+  });
+
+  it('supports --no-headers without changing selected rows', async () => {
+    const shellPid = (wesh as unknown as { shellPid: number }).shellPid;
+    const { result, stdout, stderr } = await execute({
+      script: `ps -p ${shellPid} --no-headers -o pid`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text.trim()).toBe(`${shellPid}`);
   });
 
   it('supports combining -f with -p for a fuller targeted listing', async () => {

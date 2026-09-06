@@ -11,6 +11,7 @@ import type {
   AwkToken,
   AwkUnaryOperator,
 } from './types';
+import { createAwkByteCharacter, encodeAwkTextToByteString } from '@/features/wesh/commands/awk/byte-string';
 import { compileAwkRegularExpression } from '@/features/wesh/commands/awk/regexp';
 
 const AWK_EXPRESSION_NESTING_LIMIT = 128;
@@ -175,7 +176,7 @@ function consumeAwkStringEscape({
       index += 1;
     }
     return {
-      value: String.fromCharCode(Number.parseInt(digits, 8) & 0xff),
+      value: createAwkByteCharacter({ byte: Number.parseInt(digits, 8) }),
       endIndex: index,
     };
   }
@@ -188,7 +189,7 @@ function consumeAwkStringEscape({
       index += 1;
     }
     if (digits.length > 0) {
-      return { value: String.fromCharCode(Number.parseInt(digits, 16)), endIndex: index };
+      return { value: createAwkByteCharacter({ byte: Number.parseInt(digits, 16) }), endIndex: index };
     }
   }
 
@@ -217,7 +218,7 @@ function consumeAwkRegexLiteralEscape({
       index += 1;
     }
     return {
-      value: String.fromCharCode(Number.parseInt(digits, 8) & 0xff),
+      value: createAwkByteCharacter({ byte: Number.parseInt(digits, 8) }),
       endIndex: index,
     };
   }
@@ -230,7 +231,7 @@ function consumeAwkRegexLiteralEscape({
       index += 1;
     }
     if (digits.length > 0) {
-      return { value: String.fromCharCode(Number.parseInt(digits, 16)), endIndex: index };
+      return { value: createAwkByteCharacter({ byte: Number.parseInt(digits, 16) }), endIndex: index };
     }
   }
 
@@ -293,8 +294,12 @@ export function tokenizeAwkProgram({
           continue;
         }
 
-        value += current;
-        index += 1;
+        let literalEnd = index + 1;
+        while (literalEnd < script.length && script[literalEnd] !== '"' && script[literalEnd] !== '\\') {
+          literalEnd += 1;
+        }
+        value += encodeAwkTextToByteString({ text: script.slice(index, literalEnd) });
+        index = literalEnd;
       }
 
       if (!terminated) {
@@ -325,8 +330,12 @@ export function tokenizeAwkProgram({
           continue;
         }
 
-        value += current;
-        index += 1;
+        let literalEnd = index + 1;
+        while (literalEnd < script.length && script[literalEnd] !== '/' && script[literalEnd] !== '\\') {
+          literalEnd += 1;
+        }
+        value += encodeAwkTextToByteString({ text: script.slice(index, literalEnd) });
+        index = literalEnd;
       }
 
       if (!terminated) {

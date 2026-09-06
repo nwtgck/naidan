@@ -294,6 +294,7 @@ printf 'status=%s exists=%s\n' "$?" "$(test -e ./-; echo $?)"`,
       '\t1 day\n',
       'NEXT DAY',
       '2024-01-02',
+      '2024-01-01 00:00:00 UTC + 1 day',
     ];
     for (const value of validValues) {
       const result = await execute({

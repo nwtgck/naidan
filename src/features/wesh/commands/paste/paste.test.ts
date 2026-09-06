@@ -260,6 +260,37 @@ y
     expect(result.exitCode).toBe(1);
   });
 
+  it('continues serial processing after missing operands and diagnoses the actual operand', async () => {
+    await writeFile({ path: 'g1', data: `\
+a
+b
+` });
+    await writeFile({ path: 'g2', data: 'c\n' });
+
+    const middleMissing = await execute({ script: 'paste -s g1 missing g2' });
+    const firstMissing = await execute({ script: 'paste -s absent g1' });
+
+    expect(middleMissing.stdout.text).toBe('a\tb\nc\n');
+    expect(middleMissing.stderr.text).toContain('paste: missing:');
+    expect(middleMissing.stderr.text).not.toContain('paste: g1:');
+    expect(middleMissing.result.exitCode).toBe(1);
+
+    expect(firstMissing.stdout.text).toBe('a\tb\n');
+    expect(firstMissing.stderr.text).toContain('paste: absent:');
+    expect(firstMissing.result.exitCode).toBe(1);
+  });
+
+  it('attributes parallel open failures to the operand that failed', async () => {
+    await writeFile({ path: 'valid', data: 'one\n' });
+
+    const result = await execute({ script: 'paste valid missing' });
+
+    expect(result.stdout.text).toBe('');
+    expect(result.stderr.text).toContain('paste: missing:');
+    expect(result.stderr.text).not.toContain('paste: valid:');
+    expect(result.result.exitCode).toBe(1);
+  });
+
   it('consumes repeated stdin operands sequentially', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'paste - -',

@@ -15,6 +15,24 @@ import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext, 
 
 type MvOverwriteMode = 'default' | 'force' | 'interactive' | 'no-clobber';
 
+class MvSourceBackupAliasError extends Error {
+  readonly destinationDisplayPath: string;
+  readonly sourceDisplayPath: string;
+
+  constructor({
+    destinationDisplayPath,
+    sourceDisplayPath,
+  }: {
+    destinationDisplayPath: string;
+    sourceDisplayPath: string;
+  }) {
+    super('selected backup path aliases source');
+    this.name = 'MvSourceBackupAliasError';
+    this.destinationDisplayPath = destinationDisplayPath;
+    this.sourceDisplayPath = sourceDisplayPath;
+  }
+}
+
 function resolvePath({
   cwd,
   path,
@@ -36,6 +54,19 @@ function basename({
   const normalized = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path;
   const parts = normalized.split('/').filter(Boolean);
   return parts[parts.length - 1] ?? normalized;
+}
+
+function resolveMvSimpleBackupSuffix({
+  explicitSuffix,
+  environmentSuffix,
+}: {
+  explicitSuffix: string | undefined;
+  environmentSuffix: string | undefined;
+}): string {
+  const selected = explicitSuffix !== undefined
+    ? explicitSuffix
+    : environmentSuffix;
+  return selected === undefined || selected.length === 0 ? '~' : selected;
 }
 
 
@@ -281,12 +312,16 @@ async function moveDirectoryRecursively({
 
 async function backupExistingDestination({
   context,
+  sourceEntry,
+  sourceDisplayPath,
   destinationEntry,
   destinationPath,
   displayPath,
   suffix,
 }: {
   context: WeshCommandContext;
+  sourceEntry: WeshEntryRef;
+  sourceDisplayPath: string;
   destinationEntry: WeshEntryRef;
   destinationPath: string;
   displayPath: string;
@@ -314,6 +349,15 @@ async function backupExistingDestination({
       path: backupPath,
       finalSymlinkTreatment: 'no-follow',
     });
+    if (
+      existingBackup.fullPath === sourceEntry.fullPath
+      && (sourceEntry.type === 'file' || sourceEntry.type === 'fifo')
+    ) {
+      throw new MvSourceBackupAliasError({
+        destinationDisplayPath: displayPath,
+        sourceDisplayPath,
+      });
+    }
     const existingBackupStat = await context.files.statEntry({ entry: existingBackup });
     switch (existingBackupStat.type) {
     case 'directory':
@@ -542,9 +586,12 @@ export const mvCommandImplementation: WeshCommandImplementation = {
     })();
     let interactiveDeclined = false;
     const backupEnabled = backupRequested && backupControl !== 'none';
-    const backupSuffix = typeof parsed.optionValues.backupSuffix === 'string'
-      ? parsed.optionValues.backupSuffix
-      : '~';
+    const backupSuffix = resolveMvSimpleBackupSuffix({
+      explicitSuffix: typeof parsed.optionValues.backupSuffix === 'string'
+        ? parsed.optionValues.backupSuffix
+        : undefined,
+      environmentSuffix: context.env.get('SIMPLE_BACKUP_SUFFIX'),
+    });
     const verbose = parsed.optionValues.verbose === true;
     const noTargetDirectory = parsed.optionValues.noTargetDirectory === true;
 
@@ -768,6 +815,8 @@ export const mvCommandImplementation: WeshCommandImplementation = {
           const backupDisplayPath = selectedBackupSuffix !== undefined && destinationEntry !== undefined
             ? await backupExistingDestination({
               context,
+              sourceEntry,
+              sourceDisplayPath: sourceOperand,
               destinationEntry,
               destinationPath: targetPath,
               displayPath: target.displayPath,
@@ -844,6 +893,12 @@ export const mvCommandImplementation: WeshCommandImplementation = {
           }
         } catch (e: unknown) {
           hadError = true;
+          if (e instanceof MvSourceBackupAliasError) {
+            await text.error({
+              text: `mv: backing up '${e.destinationDisplayPath}' might destroy source;  '${e.sourceDisplayPath}' not moved\n`,
+            });
+            continue;
+          }
           const message = e instanceof Error ? e.message : String(e);
           await text.error({ text: `mv: ${sourceOperand}: ${message}\n` });
         }

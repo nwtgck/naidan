@@ -1,6 +1,7 @@
 import { createChangeGroups, createDiffOperations } from "./algorithm";
 import {
   areBytesIdentical,
+  createExactLineComparator,
   createLineComparator,
   decodeLineForPattern,
   isBinaryInput,
@@ -275,10 +276,12 @@ export async function compareDiffInputs({
     right,
     options: settings.comparisonOptions,
   });
+  const areExactlyEqual = createExactLineComparator({ left, right });
   const operations = createDiffOperations({
     leftLength: left.lines.starts.length,
     rightLength: right.lines.starts.length,
     areEqual,
+    areExactlyEqual,
     preferSpeedOverCompatibility: settings.preferSpeedOverCompatibility,
   });
   const allGroups = createChangeGroups({ operations });
