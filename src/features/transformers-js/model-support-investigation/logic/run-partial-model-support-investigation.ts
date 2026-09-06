@@ -10,8 +10,11 @@ import type {
   ModelSupportInvestigationStep,
   ModelSupportInvestigationStepId,
   ModelSupportInvestigationTemplateBehavior,
+  ModelSupportInvestigationRuntimeTarget,
 } from '@/features/transformers-js/model-support-investigation/types';
 import { serializeInvestigationError } from '@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error';
+import type { ModelSupportInvestigationExecutionPlan, ModelSupportInvestigationExternalNetworkPolicy } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
+import { runtimeTargetFromLocalCache, runtimeTargetFromRepository, selectLocalCacheRevision } from '@/features/transformers-js/model-support-investigation/logic/runtime-target';
 
 
 function recordStepError({
@@ -46,8 +49,43 @@ function updateStep({
   });
 }
 
+function declarationInspectionDetail({ runtimeTarget }: {
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+}): string {
+  switch (runtimeTarget.source) {
+  case 'repository':
+    return 'Fetching lightweight declarations from the resolved commit and checking public Auto classes';
+  case 'local-cache':
+    return `Reading completed local declarations from cache revision ${runtimeTarget.evidenceRevision} and checking public Auto classes`;
+  default: {
+    const _ex: never = runtimeTarget.source;
+    return _ex;
+  }
+  }
+}
+
+function modelFilePlanDetail({ runtimeTarget, eligible, candidateCount, failed }: {
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+  eligible: number,
+  candidateCount: number,
+  failed: number,
+}): string {
+  switch (runtimeTarget.source) {
+  case 'repository':
+    return `${eligible} of ${candidateCount} fixed candidates have all required repository files; ${failed} Registry failures`;
+  case 'local-cache':
+    return `${eligible} of ${candidateCount} fixed candidates have all required completed local cache files at revision ${runtimeTarget.evidenceRevision}; ${failed} Registry failures`;
+  default: {
+    const _ex: never = runtimeTarget.source;
+    return _ex;
+  }
+  }
+}
+
 export async function runPartialModelSupportInvestigation({
   runRuntimePreflight,
+  externalNetworkPolicy,
+  executionPlan,
   inspectPersistenceRoundTrip,
   inspectRepository,
   collectDownloadEvidence,
@@ -62,6 +100,8 @@ export async function runPartialModelSupportInvestigation({
   now,
 }: {
   runRuntimePreflight: () => Promise<ModelSupportInvestigationRun>,
+  externalNetworkPolicy: ModelSupportInvestigationExternalNetworkPolicy,
+  executionPlan: ModelSupportInvestigationExecutionPlan,
   inspectPersistenceRoundTrip: () => Promise<ModelSupportInvestigationPersistenceRoundTrip>,
   inspectRepository: () => Promise<ModelSupportInvestigationRepository>,
   collectDownloadEvidence: ({ repository, runId }: {
@@ -73,14 +113,18 @@ export async function runPartialModelSupportInvestigation({
     repository: ModelSupportInvestigationRepository,
     cache: ModelSupportInvestigationCacheInventory,
   }) => Promise<ModelSupportInvestigationCacheProvenance>,
-  inspectDeclarations: ({ repository }: {
-    repository: ModelSupportInvestigationRepository,
+  inspectDeclarations: ({ runtimeTarget, repository, cache }: {
+    runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+    repository: ModelSupportInvestigationRepository | undefined,
+    cache: ModelSupportInvestigationCacheInventory | undefined,
   }) => Promise<ModelSupportInvestigationModelDeclarations>,
-  inspectTemplateBehavior: ({ repository }: {
-    repository: ModelSupportInvestigationRepository,
+  inspectTemplateBehavior: ({ runtimeTarget, repository }: {
+    runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+    repository: ModelSupportInvestigationRepository | undefined,
   }) => Promise<ModelSupportInvestigationTemplateBehavior>,
-  inspectModelFilePlan: ({ repository, declarations, cache }: {
-    repository: ModelSupportInvestigationRepository,
+  inspectModelFilePlan: ({ runtimeTarget, repository, declarations, cache }: {
+    runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+    repository: ModelSupportInvestigationRepository | undefined,
     declarations: ModelSupportInvestigationModelDeclarations,
     cache: ModelSupportInvestigationCacheInventory | undefined,
   }) => Promise<ModelSupportInvestigationModelFilePlan>,
@@ -94,6 +138,7 @@ export async function runPartialModelSupportInvestigation({
     ...runtimeRun,
     scope: 'partial-runtime-repository-cache-declarations-template-model-files',
     repository: undefined,
+    runtimeTarget: undefined,
     downloadEvidence: undefined,
     cache: undefined,
     declarations: undefined,
@@ -104,15 +149,19 @@ export async function runPartialModelSupportInvestigation({
     laneComparison: undefined,
     stepErrors: structuredClone(runtimeRun.stepErrors ?? {}),
   };
-  try {
-    run.persistenceRoundTrip = await inspectPersistenceRoundTrip();
-  } catch (error) {
-    run.persistenceRoundTrip = {
-      status: 'failed',
-      fixtureId: 'tool-call-history-v1',
-      method: 'chat-content-dto-json-roundtrip-v1',
-      error: serializeInvestigationError({ error }),
-    };
+  if (executionPlan.continuity) {
+    try {
+      run.persistenceRoundTrip = await inspectPersistenceRoundTrip();
+    } catch (error) {
+      run.persistenceRoundTrip = {
+        status: 'failed',
+        fixtureId: 'tool-call-history-v1',
+        method: 'chat-content-dto-json-roundtrip-v1',
+        error: serializeInvestigationError({ error }),
+      };
+    }
+  } else {
+    run.persistenceRoundTrip = undefined;
   }
   onRunUpdate({ run: structuredClone(run) });
 
@@ -140,45 +189,77 @@ export async function runPartialModelSupportInvestigation({
     onEvent({ event: { stepId, status, detail } });
   };
 
-  emit({ stepId: 'repository-information', status: 'running', detail: 'Resolving Hugging Face repository metadata and commit SHA' });
-  try {
-    run.repository = await inspectRepository();
+  if (!executionPlan.repositoryDownload) {
     emit({
       stepId: 'repository-information',
-      status: 'passed',
-      detail: `Resolved ${run.repository.resolvedRevision} with ${run.repository.fileCount} repository files`,
+      status: 'skipped',
+      detail: 'Skipped because Repository / Download is not selected by investigation scope',
     });
-  } catch (error) {
-    const detail = recordStepError({ run, stepId: 'repository-information', error }).message;
-    errors.push(detail);
-    emit({ stepId: 'repository-information', status: 'failed', detail });
-  }
-
-  if (run.repository === undefined) {
     emit({
       stepId: 'download-evidence',
-      status: 'blocked',
-      detail: 'Blocked because the resolved repository revision is unavailable',
+      status: 'skipped',
+      detail: 'Skipped because Repository / Download is not selected by investigation scope',
     });
-  } else {
+  } else switch (externalNetworkPolicy) {
+  case 'deny':
+    emit({
+      stepId: 'repository-information',
+      status: 'skipped',
+      detail: 'Skipped because external network access is disabled by investigation policy',
+    });
     emit({
       stepId: 'download-evidence',
-      status: 'running',
-      detail: 'Collecting bounded transport and actual Transformers.js artifact-request evidence against the frozen revision',
+      status: 'skipped',
+      detail: 'Skipped because external network access is disabled by investigation policy',
     });
+    break;
+  case 'allow':
+    emit({ stepId: 'repository-information', status: 'running', detail: 'Resolving Hugging Face repository metadata and commit SHA' });
     try {
-      run.downloadEvidence = await collectDownloadEvidence({ repository: run.repository, runId: run.runId });
-      const observed = run.downloadEvidence.modelArtifactObservations.filter(item => item.status === 'observed').length;
+      run.repository = await inspectRepository();
+      run.runtimeTarget = runtimeTargetFromRepository({ repository: run.repository });
+      emit({
+        stepId: 'repository-information',
+        status: 'passed',
+        detail: `Resolved ${run.repository.resolvedRevision} with ${run.repository.fileCount} repository files`,
+      });
+    } catch (error) {
+      const detail = recordStepError({ run, stepId: 'repository-information', error }).message;
+      errors.push(detail);
+      emit({ stepId: 'repository-information', status: 'failed', detail });
+    }
+
+    if (run.repository === undefined) {
+      emit({
+        stepId: 'download-evidence',
+        status: 'blocked',
+        detail: 'Blocked because the resolved repository revision is unavailable',
+      });
+    } else {
       emit({
         stepId: 'download-evidence',
         status: 'running',
-        detail: `${observed} actual candidate artifact-request observations and ${run.downloadEvidence.run.transportObservations.length} bounded transport probes collected; Production cache acceptance is pending`,
+        detail: 'Collecting bounded transport and actual Transformers.js artifact-request evidence against the frozen revision',
       });
-    } catch (error) {
-      const detail = recordStepError({ run, stepId: 'download-evidence', error }).message;
-      errors.push(detail);
-      emit({ stepId: 'download-evidence', status: 'failed', detail });
+      try {
+        run.downloadEvidence = await collectDownloadEvidence({ repository: run.repository, runId: run.runId });
+        const observed = run.downloadEvidence.modelArtifactObservations.filter(item => item.status === 'observed').length;
+        emit({
+          stepId: 'download-evidence',
+          status: 'running',
+          detail: `${observed} actual candidate artifact-request observations and ${run.downloadEvidence.run.transportObservations.length} bounded transport probes collected; Production cache acceptance is pending`,
+        });
+      } catch (error) {
+        const detail = recordStepError({ run, stepId: 'download-evidence', error }).message;
+        errors.push(detail);
+        emit({ stepId: 'download-evidence', status: 'failed', detail });
+      }
     }
+    break;
+  default: {
+    const _ex: never = externalNetworkPolicy;
+    return _ex;
+  }
   }
 
   emit({ stepId: 'existing-model-data', status: 'running', detail: 'Inspecting existing OPFS model files and completion markers' });
@@ -207,8 +288,45 @@ export async function runPartialModelSupportInvestigation({
     emit({ stepId: 'existing-model-data', status: 'failed', detail });
   }
 
-  if (run.repository === undefined) {
-    const blockedDetail = 'Blocked because the resolved repository revision is unavailable';
+  let localRuntimeTargetFailure: string | undefined;
+  if (run.runtimeTarget === undefined && run.cache !== undefined) {
+    const selection = selectLocalCacheRevision({ cache: run.cache });
+    run.runtimeTarget = runtimeTargetFromLocalCache({ cache: run.cache });
+    if (run.runtimeTarget === undefined) {
+      switch (selection.status) {
+      case 'unavailable':
+      case 'ambiguous':
+        localRuntimeTargetFailure = selection.reason;
+        break;
+      case 'selected':
+        localRuntimeTargetFailure = 'Local cache revision was selected but no RuntimeTarget could be constructed';
+        break;
+      default: {
+        const _ex: never = selection;
+        throw new Error(`Unhandled local cache revision selection: ${String(_ex)}`);
+      }
+      }
+    }
+  }
+  onRunUpdate({ run: structuredClone(run) });
+
+  if (run.runtimeTarget === undefined) {
+    const blockedDetail = (() => {
+      switch (externalNetworkPolicy) {
+      case 'deny':
+        return localRuntimeTargetFailure === undefined
+          ? 'Blocked because remote repository evidence was skipped and no usable local RuntimeTarget was found'
+          : `Blocked because remote repository evidence was skipped and local RuntimeTarget is unavailable: ${localRuntimeTargetFailure}`;
+      case 'allow':
+        return localRuntimeTargetFailure === undefined
+          ? 'Blocked because neither remote repository evidence nor a usable local RuntimeTarget is available'
+          : `Blocked because remote repository resolution failed and local RuntimeTarget is unavailable: ${localRuntimeTargetFailure}`;
+      default: {
+        const _ex: never = externalNetworkPolicy;
+        throw new Error(`Unhandled external network policy: ${_ex}`);
+      }
+      }
+    })();
     emit({
       stepId: 'model-declarations',
       status: 'blocked',
@@ -228,10 +346,10 @@ export async function runPartialModelSupportInvestigation({
     emit({
       stepId: 'model-declarations',
       status: 'running',
-      detail: 'Fetching lightweight declarations from the resolved commit and checking public Auto classes',
+      detail: declarationInspectionDetail({ runtimeTarget: run.runtimeTarget }),
     });
     try {
-      run.declarations = await inspectDeclarations({ repository: run.repository });
+      run.declarations = await inspectDeclarations({ runtimeTarget: run.runtimeTarget, repository: run.repository, cache: run.cache });
       const supported = run.declarations.classCapabilities
         .filter(entry => entry.supports === true)
         .map(entry => entry.autoClass);
@@ -263,6 +381,7 @@ export async function runPartialModelSupportInvestigation({
       });
       try {
         run.modelFilePlan = await inspectModelFilePlan({
+          runtimeTarget: run.runtimeTarget,
           repository: run.repository,
           declarations: run.declarations,
           cache: run.cache,
@@ -272,7 +391,12 @@ export async function runPartialModelSupportInvestigation({
         emit({
           stepId: 'model-file-plan',
           status: 'passed',
-          detail: `${eligible} of ${run.modelFilePlan.candidates.length} fixed candidates have all required repository files; ${failed} Registry failures`,
+          detail: modelFilePlanDetail({
+            runtimeTarget: run.runtimeTarget,
+            eligible,
+            candidateCount: run.modelFilePlan.candidates.length,
+            failed,
+          }),
         });
       } catch (error) {
         const detail = recordStepError({ run, stepId: 'model-file-plan', error }).message;
@@ -281,7 +405,13 @@ export async function runPartialModelSupportInvestigation({
       }
     }
 
-    if (deferTemplateBehavior) {
+    if (!executionPlan.generation) {
+      emit({
+        stepId: 'template-behavior',
+        status: 'skipped',
+        detail: 'Skipped because Generation is not selected by investigation scope',
+      });
+    } else if (deferTemplateBehavior && run.runtimeTarget.source === 'repository') {
       emit({
         stepId: 'template-behavior',
         status: 'blocked',
@@ -294,7 +424,7 @@ export async function runPartialModelSupportInvestigation({
         detail: 'Loading the tokenizer through the normal Chat revision while preserving the resolved commit as evidence',
       });
       try {
-        run.templateBehavior = await inspectTemplateBehavior({ repository: run.repository });
+        run.templateBehavior = await inspectTemplateBehavior({ runtimeTarget: run.runtimeTarget, repository: run.repository });
         const passed = run.templateBehavior.cases.filter(item => item.status === 'passed').length;
         const failed = run.templateBehavior.cases.length - passed;
         emit({
@@ -314,7 +444,7 @@ export async function runPartialModelSupportInvestigation({
   run.status = errors.length === 0 ? 'passed' : 'failed';
   run.error = errors.length === 0 ? undefined : errors.join('; ');
   run.currentOperation = errors.length === 0
-    ? 'Runtime, repository, download, existing model data, declaration, template behavior, and model file plan evidence collected'
+    ? 'Selected investigation planning evidence collected'
     : 'Partial evidence collected with investigation failures';
   return run;
 }

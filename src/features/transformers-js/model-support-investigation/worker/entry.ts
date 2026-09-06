@@ -38,13 +38,14 @@ import {
   verifyModelCacheProvenance,
 } from "@/features/transformers-js/model-support-investigation/logic/verify-model-cache-provenance";
 import { evaluateCandidateRequiredFileCoverage } from "@/features/transformers-js/model-support-investigation/logic/evaluate-candidate-required-file-coverage";
-import { inspectModelDeclarations } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-declarations";
-import { inspectTemplateBehavior } from "@/features/transformers-js/model-support-investigation/logic/inspect-template-behavior";
-import { inspectModelFilePlan } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-file-plan";
+import { inspectCachedModelDeclarations, inspectModelDeclarations } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-declarations";
+import { inspectTemplateBehaviorForTarget } from "@/features/transformers-js/model-support-investigation/logic/inspect-template-behavior";
+import { inspectLocalModelFilePlan, inspectModelFilePlan, type ModelSupportInvestigationGetModelFiles } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-file-plan";
 import { inspectChatPersistenceRoundTrip } from "@/features/transformers-js/model-support-investigation/logic/inspect-chat-persistence-roundtrip";
 import { inspectRuntimeEnvironment } from "@/features/transformers-js/model-support-investigation/logic/inspect-runtime-environment";
 import { correlateSessionFiles } from "@/features/transformers-js/model-support-investigation/logic/correlate-session-files";
 import { runCandidateLoadAttempt } from "@/features/transformers-js/model-support-investigation/logic/run-candidate-load-attempt";
+import { readCompletedCachedModelFile } from "@/features/transformers-js/model-support-investigation/logic/read-completed-cached-model-file";
 import { createModelLoadProgressTracker } from "@/features/transformers-js/model-support-investigation/logic/model-load-progress";
 import { createForcedTokenSequenceLogitsProcessorList } from "@/features/transformers-js/model-support-investigation/worker/forced-token-sequence-logits-processor";
 import { compareForcedTokenSequence } from "@/features/transformers-js/model-support-investigation/logic/plan-tool-protocol-probe";
@@ -58,6 +59,7 @@ import { configureHostedTransformersRuntime } from "@/features/transformers-js/r
 import { createHostedTransformersModelFetch } from "@/features/transformers-js/runtime/model-fetch";
 import { createOpfsModelCache } from "@/features/transformers-js/runtime/opfs-model-cache";
 import { collectDownloadVerificationEvidence } from '@/features/transformers-js/download-verification/logic/collect-download-verification-evidence';
+import { createModelSupportInvestigationNetworkFetch } from '@/features/transformers-js/model-support-investigation/logic/create-investigation-network-fetch';
 import {
   createRuntimeControlModelBytes,
   RUNTIME_CONTROL_FIXTURE_ID,
@@ -76,6 +78,7 @@ const { assets, runtimeFetch } = configureHostedTransformersRuntime({
   createDecompressionStream: () => new DecompressionStream("gzip"),
 });
 const modelFetch = createHostedTransformersModelFetch({ runtimeFetch });
+const MODEL_SUPPORT_INVESTIGATION_MAXIMUM_MODEL_ARTIFACT_RANGE_BYTES = 32 * 1024;
 const downloadedModelCacheOnlyFetch: typeof fetch = async input => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   throw new Error(
@@ -360,14 +363,28 @@ function reconstructProductionTextStreamerChunks({
 
 const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback must be a top-level remote argument to remain transferable.
-  async runPartialInvestigation(modelId, onEvent, onRunCheckpoint) {
+  async runPartialInvestigation(request, onEvent, onRunCheckpoint) {
+    const { modelId, externalNetworkPolicy, executionPlan, ...unhandledRequest } = request;
+    unhandledRequest satisfies Record<PropertyKey, never>;
+    const investigationFetch = createModelSupportInvestigationNetworkFetch({
+      runtimeFetch,
+      applicationOrigin: self.location.origin,
+      externalNetworkPolicy,
+      maximumModelArtifactRangeBytes: MODEL_SUPPORT_INVESTIGATION_MAXIMUM_MODEL_ARTIFACT_RANGE_BYTES,
+    });
+    // The planning worker never receives full-model download capability. Even with
+    // external network access enabled, model-weight requests are limited to HEAD or
+    // bounded byte ranges. Model Load has a separate cache-only fetch boundary below.
+    self.fetch = createHostedTransformersModelFetch({ runtimeFetch: investigationFetch });
     const run = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy,
+      executionPlan,
       inspectPersistenceRoundTrip: () => inspectChatPersistenceRoundTrip(),
       runRuntimePreflight: () => runRuntimeIntegrityPreflight({
         modelId,
         assets,
         applicationOrigin: self.location.origin,
-        runtimeFetch,
+        runtimeFetch: investigationFetch,
         importRuntimeModule: async ({ url }) => {
           await import(/* @vite-ignore */ url);
         },
@@ -462,12 +479,12 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
       inspectRepository: () => inspectHuggingFaceRepository({
         modelId,
         requestedRevision: "main",
-        repositoryFetch: runtimeFetch,
+        repositoryFetch: investigationFetch,
       }),
       collectDownloadEvidence: async ({ repository, runId }) => collectDownloadVerificationEvidence({
         modelId: repository.normalizedModelId,
         runId,
-        browserFetch: runtimeFetch,
+        browserFetch: investigationFetch,
         storageRoot: await navigator.storage.getDirectory(),
         resolvedRepository: {
           modelId: repository.requestedModelId,
@@ -492,14 +509,12 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         inventory: cache,
         repository,
         storageRoot: await navigator.storage.getDirectory(),
-        repositoryFetch: runtimeFetch,
+        repositoryFetch: investigationFetch,
         rangeBytes: MODEL_CACHE_PROVENANCE_RANGE_BYTES,
         maximumFileCount: MODEL_CACHE_PROVENANCE_MAXIMUM_FILE_COUNT,
       }),
-      inspectDeclarations: ({ repository }) => inspectModelDeclarations({
-        repository,
-        repositoryFetch: runtimeFetch,
-        autoClasses: {
+      inspectDeclarations: async ({ runtimeTarget, repository, cache }) => {
+        const autoClasses = {
           AutoModel,
           AutoModelForAudioTextToText,
           AutoModelForCausalLM,
@@ -507,10 +522,34 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           AutoModelForSeq2SeqLM,
           AutoModelForSpeechSeq2Seq,
           AutoModelForVision2Seq,
-        },
-      }),
-      inspectTemplateBehavior: ({ repository }) => inspectTemplateBehavior({
-        repository,
+        };
+        switch (runtimeTarget.source) {
+        case "repository":
+          if (repository === undefined) throw new Error("Repository RuntimeTarget requires repository evidence");
+          return await inspectModelDeclarations({ repository, repositoryFetch: investigationFetch, autoClasses });
+        case "local-cache": {
+          if (cache === undefined) throw new Error("Local-cache RuntimeTarget requires cache evidence");
+          const storageRoot = await navigator.storage.getDirectory();
+          return await inspectCachedModelDeclarations({
+            runtimeTarget,
+            cache,
+            readCachedFile: ({ repositoryPath }) => readCompletedCachedModelFile({
+              storageRoot,
+              normalizedModelId: runtimeTarget.normalizedModelId,
+              revision: runtimeTarget.evidenceRevision,
+              repositoryPath,
+            }),
+            autoClasses,
+          });
+        }
+        default: {
+          const _ex: never = runtimeTarget.source;
+          return _ex;
+        }
+        }
+      },
+      inspectTemplateBehavior: ({ runtimeTarget }) => inspectTemplateBehaviorForTarget({
+        runtimeTarget,
         loadTokenizer: async ({ modelId: tokenizerModelId, revision }) => AutoTokenizer.from_pretrained(
           tokenizerModelId,
           {
@@ -520,17 +559,24 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         ),
       }),
       deferTemplateBehavior: true,
-      inspectModelFilePlan: async ({ repository, declarations, cache }) => {
+      inspectModelFilePlan: async ({ runtimeTarget, repository, declarations, cache }) => {
         const config = new PretrainedConfig(declarations.config);
-        return inspectModelFilePlan({
-          repository,
-          declarations,
-          cache,
-          getModelFiles: ({ modelId: registryModelId, device, dtype }) => ModelRegistry.get_model_files(
-            registryModelId,
-            { config, device, dtype },
-          ),
-        });
+        const getModelFiles: ModelSupportInvestigationGetModelFiles = ({ modelId: registryModelId, device, dtype }) => ModelRegistry.get_model_files(
+          registryModelId,
+          { config, device, dtype },
+        );
+        switch (runtimeTarget.source) {
+        case "repository":
+          if (repository === undefined) throw new Error("Repository RuntimeTarget requires repository evidence");
+          return await inspectModelFilePlan({ repository, declarations, cache, getModelFiles });
+        case "local-cache":
+          if (cache === undefined) throw new Error("Local-cache RuntimeTarget requires cache evidence");
+          return await inspectLocalModelFilePlan({ runtimeTarget, declarations, cache, getModelFiles });
+        default: {
+          const _ex: never = runtimeTarget.source;
+          return _ex;
+        }
+        }
       },
       onEvent,
       onRunUpdate: ({ run: updatedRun }) => onRunCheckpoint({ run: toPlanningWorkerRun({ run: updatedRun }) }),
@@ -538,10 +584,9 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
     });
     return toPlanningWorkerRun({ run });
   },
-  async inspectDownloadedTemplateBehavior({ repository, loaderRevisionOption }) {
-    return await inspectTemplateBehavior({
-      repository,
-      loaderRevisionOption,
+  async inspectDownloadedTemplateBehavior({ runtimeTarget }) {
+    return await inspectTemplateBehaviorForTarget({
+      runtimeTarget,
       loadTokenizer: async ({ modelId: tokenizerModelId, revision }) => AutoTokenizer.from_pretrained(
         tokenizerModelId,
         {
@@ -552,7 +597,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
     });
   },
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level remote arguments to remain transferable.
-  async runCandidateAttempt(repository, declarations, templateBehavior, loaderRevisionOption, candidate, onEvent, onAttemptEvent, onAttemptCheckpoint) {
+  async runCandidateAttempt(runtimeTarget, declarations, templateBehavior, candidate, executionOptions, onEvent, onAttemptEvent, onAttemptCheckpoint) {
     // Keep the measured load path identical to normal Chat. Repository SHA
     // resolution is Evidence/provenance metadata, not a second cache namespace.
     const modelLoadProgress = createModelLoadProgressTracker({ candidateId: candidate.candidateId });
@@ -564,23 +609,23 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         modelLoadProgress.observeCacheMatch({ observation, at: new Date().toISOString() });
       },
     });
-    const loadRevision = loaderRevisionOption ?? undefined;
+    const loadRevision = runtimeTarget.loaderRevisionOption ?? undefined;
     const config = new PretrainedConfig(declarations.config);
-    const autoClass = selectGenerationAutoClass({ repository, declarations });
+    const autoClass = selectGenerationAutoClass({ runtimeTarget, declarations });
     let candidateTokenizer: PreTrainedTokenizer | undefined;
     const loadCandidateTokenizer = async (): Promise<PreTrainedTokenizer> => {
-      candidateTokenizer ??= await AutoTokenizer.from_pretrained(repository.normalizedModelId, {
+      candidateTokenizer ??= await AutoTokenizer.from_pretrained(runtimeTarget.normalizedModelId, {
         ...(loadRevision === undefined ? {} : { revision: loadRevision }),
         local_files_only: true,
       });
       return candidateTokenizer;
     };
     const attempt = await runCandidateLoadAttempt({
-      repository,
+      runtimeTarget,
       declarations,
       templateBehavior,
       candidate,
-      loaderRevisionOption,
+      executionOptions,
       autoClass,
       loadDownloadedModel: async ({ onProgressObservation }) => {
         if (autoClass === undefined) {
@@ -608,7 +653,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         try {
           return await loadDownloadedCandidateModel({
             autoClass,
-            modelId: repository.normalizedModelId,
+            modelId: runtimeTarget.normalizedModelId,
             revision: loadRevision,
             config,
             device: candidate.device,
@@ -719,7 +764,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           });
           const strategy = selectGenerationStrategy({
             modelType: typeof model.config.model_type === "string" ? model.config.model_type : undefined,
-            activeModelId: repository.normalizedModelId,
+            activeModelId: runtimeTarget.normalizedModelId,
             hasTools: true,
           }).kind;
           let parserObservation;
@@ -813,7 +858,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
     });
     try {
       const inventory = await inspectModelCache({
-        modelId: repository.normalizedModelId,
+        modelId: runtimeTarget.normalizedModelId,
         storageRoot: await navigator.storage.getDirectory(),
       });
       return {

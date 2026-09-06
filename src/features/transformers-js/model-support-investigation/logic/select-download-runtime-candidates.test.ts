@@ -158,7 +158,7 @@ describe('selectDownloadRuntimeCandidates', () => {
       'onnx/embed_tokens_q4f16.onnx_data',
       'onnx/vision_encoder_q4f16.onnx',
       'onnx/vision_encoder_q4f16.onnx_data',
-    ].map(path => ({
+    ].map((path, index) => ({
       path,
       kind: path.endsWith('.onnx') ? 'core-onnx' as const : 'external-data' as const,
       requirement: 'required' as const,
@@ -166,7 +166,12 @@ describe('selectDownloadRuntimeCandidates', () => {
       repositorySize: 10,
       repositoryBlobId: undefined,
       repositoryLfsOid: undefined,
-      cacheMatches: [],
+      cacheMatches: index < 4 ? [{
+        path: `resolve/${REVISION}/${path}`,
+        size: 10,
+        hasCompletionMarker: true,
+        observation: 'complete-marker-observed-revision-unknown' as const,
+      }] : [],
     }));
 
     const result = selectDownloadRuntimeCandidates({ modelFilePlan });
@@ -179,5 +184,6 @@ describe('selectDownloadRuntimeCandidates', () => {
       'onnx/vision_encoder_q4f16.onnx',
       'onnx/vision_encoder_q4f16.onnx_data',
     ]);
+    expect(result.reusableCandidateOrderByRevision[REVISION]).not.toContainEqual({ device: 'webgpu', dtype: 'q4f16' });
   });
 });

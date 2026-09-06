@@ -243,6 +243,8 @@ export interface TransformersJsProductionInvestigationScenario {
   resolvedRevision: string,
   loadRevision: string | undefined,
   candidates: [TransformersJsProductionInvestigationCandidate, ...TransformersJsProductionInvestigationCandidate[]],
+  runContinuity?: boolean,
+  runCapabilityProbes?: boolean,
   messages: ChatMessage[],
   followUpMessage: ChatMessage,
   toolResultContinuation: {
@@ -503,8 +505,8 @@ export interface TransformersJsProductionInvestigationObservation {
   firstTurn: TransformersJsProductionInvestigationFirstTurnObservation,
   continuity: TransformersJsProductionInvestigationContinuityObservation,
   toolResultContinuation: TransformersJsProductionInvestigationToolResultContinuationObservation,
-  reasoning: TransformersJsProductionInvestigationReasoningObservation,
-  multimodal: TransformersJsProductionInvestigationMultimodalObservation,
+  reasoning: TransformersJsProductionInvestigationReasoningObservation | undefined,
+  multimodal: TransformersJsProductionInvestigationMultimodalObservation | undefined,
 }
 
 // We define the interface here so that the service can use it

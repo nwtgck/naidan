@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { toToolCallId } from '@/01-models/ids';
 import ModelSupportInvestigationModal from './ModelSupportInvestigationModal.vue';
-import type { ModelSupportInvestigationRun } from '@/features/transformers-js/model-support-investigation/types';
+import type { ModelSupportInvestigationRun, ModelSupportInvestigationWorkerClient } from '@/features/transformers-js/model-support-investigation/types';
 
 const fixtureToolCallId = toToolCallId({ raw: 'call_fixture' });
 
@@ -112,6 +112,14 @@ const completedRun: ModelSupportInvestigationRun = {
     pipelineTag: 'text-generation',
     libraryName: 'transformers',
     metadata: {},
+  },
+  runtimeTarget: {
+    normalizedModelId: 'org/model',
+    evidenceRevision: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    loaderRevisionOption: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    source: 'repository',
+    revisionIdentity: 'exact-resolved-revision',
+    pipelineTag: 'text-generation',
   },
   downloadEvidence: undefined,
   cache: {
@@ -443,6 +451,10 @@ describe('ModelSupportInvestigationModal', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn() },
+    });
     workerMocks.runPartialInvestigation.mockImplementation(async ({ onEvent }) => {
       onEvent({
         event: {
@@ -471,19 +483,350 @@ describe('ModelSupportInvestigationModal', () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
   });
 
-  it('runs the real-worker boundary automatically and shows partial findings', async () => {
+  it('prefills the selected model without starting an investigation on mount', async () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
 
+    expect(wrapper.get('[data-testid="model-support-target-row-org/model"]').text()).toContain('org/model');
+    expect((wrapper.get('[data-testid="model-support-targets-input"]').element as HTMLTextAreaElement).value).toBe('');
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('keeps committed models above a separate input and accepts multi-line paste', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/seed' },
+    });
+
+    await wrapper.get('[data-testid="model-support-targets-input"]').trigger('paste', {
+      clipboardData: {
+        getData: () => `\
+org/one
+https://hf.co/org/two
+org/one`,
+      },
+    });
     await flushPromises();
 
+    expect(wrapper.find('[data-testid="model-support-target-row-org/seed"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="model-support-target-row-org/one"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="model-support-target-row-org/two"]').exists()).toBe(true);
+    expect((wrapper.get('[data-testid="model-support-targets-input"]').element as HTMLTextAreaElement).value).toBe('');
+    expect(wrapper.findAll('[data-testid^="model-support-target-row-"]')).toHaveLength(3);
+    wrapper.unmount();
+  });
+
+  it('moves from Setup to Review without starting and can return to Setup', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    expect(wrapper.get('[data-testid="model-support-stage-setup"]').attributes('data-state')).toBe('active');
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="model-support-investigation-setup"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="model-support-investigation-review"]').text()).toContain('org/model');
+    expect(wrapper.get('[data-testid="model-support-stage-review"]').attributes('data-state')).toBe('active');
+    expect(wrapper.get('[data-testid="model-support-review-scope-model-load"]').attributes('data-state')).toBe('selected');
+
+    await wrapper.get('[data-testid="model-support-investigation-back"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="model-support-investigation-setup"]').exists()).toBe(true);
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('validates bulk targets before starting and does not guess invalid model IDs', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: '' },
+    });
+
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`
+org/first
+https://hf.co/org/second
+not-a-model-id
+# comment
+org/first
+`);
+
+    expect(wrapper.get('[data-testid="model-support-target-errors"]').text()).toContain('Invalid model on line 4.');
+    expect(wrapper.get('[data-testid="model-support-investigation-next"]').attributes('disabled')).toBeDefined();
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('copies the canonical deduplicated target list', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: '' },
+    });
+
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`
+org/first
+https://huggingface.co/org/second
+org/first
+# comment
+`);
+    await wrapper.get('[data-testid="model-support-copy-targets"]').trigger('click');
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(`\
+org/first
+org/second`);
+    wrapper.unmount();
+  });
+
+  it('contains clipboard rejection at the Copy interaction boundary', async () => {
+    vi.mocked(navigator.clipboard.writeText).mockRejectedValueOnce(new Error('clipboard denied'));
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'org/model' },
+    });
+
+    await wrapper.get('[data-testid="model-support-copy-targets"]').trigger('click');
+    await flushPromises();
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('org/model');
+    expect(wrapper.get('[data-testid="model-support-target-row-org/model"]').text()).toContain('org/model');
+    wrapper.unmount();
+  });
+
+  it('runs multiple normalized targets sequentially and keeps per-target status', async () => {
+    const callOrder: string[] = [];
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      callOrder.push(`start:${modelId}`);
+      await Promise.resolve();
+      callOrder.push(`finish:${modelId}`);
+      return {
+        ...structuredClone(completedRun),
+        runId: `run-${modelId}`,
+        modelId,
+      };
+    });
+    workerMocks.dispose.mockImplementation(async () => {
+      callOrder.push('dispose');
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: '' },
+    });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`
+https://hf.co/org/first
+org/second
+`);
+
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.runPartialInvestigation.mock.calls.map(call => call[0].modelId)).toEqual([
+      'org/first',
+      'org/second',
+    ]);
+    expect(callOrder).toEqual([
+      'start:org/first',
+      'finish:org/first',
+      'dispose',
+      'start:org/second',
+      'finish:org/second',
+      'dispose',
+    ]);
+    expect(wrapper.get('[data-testid="model-support-target-org/first"]').attributes('data-status')).toBe('passed');
+    expect(wrapper.get('[data-testid="model-support-target-org/second"]').attributes('data-status')).toBe('passed');
+    wrapper.unmount();
+  });
+
+  it('retains each completed model dossier for later Evidence export', async () => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({
+      ...structuredClone(completedRun),
+      runId: `run-${modelId}`,
+      modelId,
+    }));
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: '' },
+    });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second
+`);
+
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.get('[data-testid="model-support-target-org/first"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls.at(-1)?.[0].run).toMatchObject({
+      modelId: 'org/first',
+      runId: 'run-org/first',
+    });
+
+    await wrapper.get('[data-testid="model-support-target-org/second"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls.at(-1)?.[0].run).toMatchObject({
+      modelId: 'org/second',
+      runId: 'run-org/second',
+    });
+    wrapper.unmount();
+  });
+
+  it('does not replace a completed target result when client disposal fails', async () => {
+    workerMocks.dispose.mockRejectedValue(new Error('dispose failed'));
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(1);
+    expect(workerMocks.dispose).toHaveBeenCalledTimes(1);
+    expect(wrapper.get('[data-testid="model-support-target-org/model"]').attributes('data-status')).toBe('passed');
+    wrapper.unmount();
+  });
+
+  it('applies investigation presets to scope and network policy before Start', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    expect(wrapper.get('[data-testid="model-support-preset-full"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-scope-model-load"]').attributes('data-state')).toBe('selected');
+
+    await wrapper.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    expect(wrapper.get('[data-testid="model-support-preset-download-focused"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-scope-repository-download"]').attributes('data-state')).toBe('selected');
+    expect(wrapper.get('[data-testid="model-support-scope-model-load"]').attributes('data-state')).toBe('not-selected');
+    expect(wrapper.get('[data-testid="model-support-scope-generation"]').attributes('data-state')).toBe('not-selected');
+
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledWith(expect.objectContaining({
+      configuration: {
+        externalNetworkPolicy: 'allow',
+        scope: {
+          'repository-download': 'selected',
+          'model-load': 'not-selected',
+          generation: 'not-selected',
+          continuity: 'not-selected',
+          'capability-probes': 'not-selected',
+        },
+      },
+    }));
+    wrapper.unmount();
+  });
+
+  it('shows dependency-required scope without forcing Repository / Download', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    await wrapper.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-scope-repository-download"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-scope-continuity"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="model-support-preset-custom"]').attributes('data-active')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-scope-repository-download"]').attributes('data-state')).toBe('not-selected');
+    expect(wrapper.get('[data-testid="model-support-scope-model-load"]').attributes('data-state')).toBe('required');
+    expect(wrapper.get('[data-testid="model-support-scope-model-load"]').text()).toContain('Required by selected scope');
+    expect(wrapper.get('[data-testid="model-support-scope-generation"]').attributes('data-state')).toBe('required');
+    expect(wrapper.get('[data-testid="model-support-scope-continuity"]').attributes('data-state')).toBe('selected');
+    expect(wrapper.get('[data-testid="model-support-scope-capability-probes"]').attributes('data-state')).toBe('not-selected');
+    wrapper.unmount();
+  });
+
+  it('disables Start when no investigation scope is selected', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    await wrapper.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-scope-repository-download"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="model-support-preset-custom"]').attributes('data-active')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-investigation-next"]').attributes('disabled')).toBeDefined();
+
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('applies the Offline preset as full scope with external network denied', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    await wrapper.get('[data-testid="model-support-preset-offline"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="model-support-preset-offline"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-network-deny"]').attributes('aria-pressed')).toBe('true');
+    for (const scopeId of ['repository-download', 'model-load', 'generation', 'continuity', 'capability-probes']) {
+      expect(wrapper.get(`[data-testid="model-support-scope-${scopeId}"]`).attributes('data-state')).toBe('selected');
+    }
+    wrapper.unmount();
+  });
+
+  it('applies the external-network policy selected before Start', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+
+    expect(wrapper.get('[data-testid="model-support-network-allow"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-network-deny"]').attributes('aria-pressed')).toBe('false');
+
+    await wrapper.get('[data-testid="model-support-network-deny"]').trigger('click');
+    expect(wrapper.get('[data-testid="model-support-network-allow"]').attributes('aria-pressed')).toBe('false');
+    expect(wrapper.get('[data-testid="model-support-network-deny"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-testid="model-support-investigation-next"]').attributes('disabled')).toBeUndefined();
+
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledWith(expect.objectContaining({
+      configuration: expect.objectContaining({ externalNetworkPolicy: 'deny' }),
+    }));
+    wrapper.unmount();
+  });
+
+  it('waits for explicit Start, normalizes the seeded target, and shows partial findings', async () => {
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="model-support-target-row-org/model"]').text()).toContain('org/model');
+    expect(wrapper.get('[data-testid="model-support-targets-input"]').element).toHaveProperty('value', '');
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="model-support-investigation-running-results"]').classes()).toContain('overflow-y-auto');
+    expect(wrapper.find('[data-testid="model-support-investigation-setup"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="model-support-investigation-review"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="model-support-stage-running-results"]').attributes('data-state')).toBe('active');
     expect(workerMocks.runPartialInvestigation).toHaveBeenCalledWith({
-      modelId: 'hf.co/org/model',
+      modelId: 'org/model',
+      configuration: {
+        externalNetworkPolicy: 'allow',
+        scope: {
+          'repository-download': 'selected',
+          'model-load': 'selected',
+          generation: 'selected',
+          continuity: 'selected',
+          'capability-probes': 'selected',
+        },
+      },
       onEvent: expect.any(Function),
       onCheckpoint: expect.any(Function),
     });
-    expect(wrapper.text()).toContain('hf.co/org/model');
+    expect(wrapper.text()).toContain('org/model');
     expect(wrapper.text()).toContain('may be fingerprinting information');
     expect(wrapper.text()).toContain('Same-origin ONNX Runtime module, WASM, and control inference verified');
     expect(wrapper.get('[data-testid="model-support-lane-comparison"]').text()).toContain('AutoModelForCausalLM · tokenizer · standard · new_chat_model');
@@ -543,6 +886,8 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     const stop = wrapper.get('[data-testid="model-support-investigation-stop"]');
@@ -554,6 +899,48 @@ describe('ModelSupportInvestigationModal', () => {
     expect(wrapper.find('[data-testid="model-support-investigation-stop"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="model-support-investigation-close"]').attributes('disabled')).toBeUndefined();
     wrapper.unmount();
+  });
+
+  it('treats Stop interrupt transport failure as best-effort cleanup', async () => {
+    workerMocks.runPartialInvestigation.mockImplementation(() => new Promise(() => {}));
+    workerMocks.interrupt
+      .mockRejectedValueOnce(new Error('interrupt transport failed'))
+      .mockResolvedValue(undefined);
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.get('[data-testid="model-support-investigation-stop"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.interrupt).toHaveBeenCalledTimes(1);
+    expect(workerMocks.dispose).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="model-support-investigation-stop"]').exists()).toBe(true);
+
+    wrapper.unmount();
+    await flushPromises();
+    expect(workerMocks.interrupt).toHaveBeenCalledTimes(2);
+    expect(workerMocks.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats unmount interrupt transport failure as best-effort cleanup', async () => {
+    workerMocks.runPartialInvestigation.mockImplementation(() => new Promise(() => {}));
+    workerMocks.interrupt.mockRejectedValue(new Error('interrupt transport failed'));
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    wrapper.unmount();
+    await flushPromises();
+
+    expect(workerMocks.interrupt).toHaveBeenCalledTimes(1);
+    expect(workerMocks.dispose).toHaveBeenCalledTimes(1);
   });
 
   it('exports the last interrupted checkpoint after force-stopping a hung investigation', async () => {
@@ -673,6 +1060,8 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
     expect(wrapper.get('[data-testid="model-support-production-load-attempts"]').text()).toContain(
       'webgpu/q4f16: failed (Error: q4f16 load failed) → webgpu/q4: running (raw-events=100000, published-samples=2, cache=11 hit/1 miss/2 alias · opfs-matched-bytes=1582178925 · remote-fetch-attempts=0)',
@@ -711,6 +1100,8 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     const summary = wrapper.get('[data-testid="model-support-persistence-roundtrip"]').text();
@@ -766,6 +1157,8 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     const summary = wrapper.get('[data-testid="model-support-production-continuity"]').text();
@@ -831,6 +1224,8 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
 
     await flushPromises();
 
@@ -887,6 +1282,8 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     expect(wrapper.get('[data-testid="model-support-current-operation"]').text()).not.toContain('progress_total');
@@ -930,6 +1327,8 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     const download = wrapper.get('[data-testid="model-support-investigation-download"]');
@@ -950,10 +1349,35 @@ describe('ModelSupportInvestigationModal', () => {
     wrapper.unmount();
   });
 
+  it('clicks a connected Evidence download anchor before revoking its Object URL', async () => {
+    const click = vi.mocked(HTMLAnchorElement.prototype.click);
+    click.mockImplementation(function (this: HTMLAnchorElement) {
+      expect(this.isConnected).toBe(true);
+      expect(this.download).toBe('evidence.zip');
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    });
+
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await vi.waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+
+    expect(document.querySelector('a[download="evidence.zip"]')).toBeNull();
+    await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:evidence'));
+    wrapper.unmount();
+  });
+
   it('records verified evidence export success in the packaged run and UI', async () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
@@ -969,11 +1393,31 @@ describe('ModelSupportInvestigationModal', () => {
     wrapper.unmount();
   });
 
+  it('keeps a successful evidence export successful when Evidence Worker cleanup fails', async () => {
+    evidenceMocks.dispose.mockRejectedValueOnce(new Error('cleanup failed'));
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: 'hf.co/org/model' },
+    });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+
+    expect(evidenceMocks.dispose).toHaveBeenCalledTimes(1);
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(wrapper.get('[data-testid="model-support-step-evidence-export"]').text()).toContain('Passed');
+    wrapper.unmount();
+  });
+
   it('records evidence export verification failure without downloading an archive', async () => {
     evidenceMocks.createPartialEvidence.mockRejectedValue(new Error('archive verification failed'));
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
@@ -998,6 +1442,8 @@ describe('ModelSupportInvestigationModal', () => {
     const wrapper = mount(ModelSupportInvestigationModal, {
       props: { modelId: 'hf.co/org/model' },
     });
+    await wrapper.get('[data-testid="model-support-investigation-next"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
 
     expect(wrapper.get('[data-testid="model-support-boundary-assessment"]').text()).toContain('transformers-js-capability');

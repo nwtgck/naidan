@@ -131,6 +131,7 @@ function createRuntimeRun({
       ? undefined
       : { "runtime-assets": structuredClone(structuredFailures) },
     repository: undefined,
+    runtimeTarget: undefined,
     downloadEvidence: undefined,
     cache: undefined,
     declarations: undefined,

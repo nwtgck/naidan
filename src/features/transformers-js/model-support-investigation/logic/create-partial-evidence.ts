@@ -397,6 +397,9 @@ export async function createPartialModelSupportEvidence({ run, recovery }: {
 - Status: ${run.status}
 - Model: ${run.modelId}
 - Run ID: ${run.runId}
+- External network policy: ${run.requestedConfiguration?.externalNetworkPolicy ?? "not-recorded"}
+- Requested investigation scope: ${run.requestedConfiguration === undefined ? "not-recorded" : JSON.stringify(run.requestedConfiguration.scope)}
+- Effective execution plan: ${run.executionPlan === undefined ? "not-recorded" : JSON.stringify(run.executionPlan)}
 - Started: ${run.startedAt}
 - Completed: ${run.completedAt}
 - Evidence readiness: ${readiness.overall}
@@ -420,6 +423,12 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
   )), undefined, 2)}\n`);
   zip.file("support-boundaries.json", `${JSON.stringify(supportBoundaries, undefined, 2)}\n`);
   zip.file("run.json", `${JSON.stringify(run, undefined, 2)}\n`);
+  if (run.requestedConfiguration !== undefined || run.executionPlan !== undefined) {
+    zip.file("execution-policy/policy.json", `${JSON.stringify({
+      requestedConfiguration: run.requestedConfiguration,
+      effectiveExecutionPlan: run.executionPlan,
+    }, undefined, 2)}\n`);
+  }
   if (recovery !== undefined) {
     zip.file("recovery/checkpoint.json", `${JSON.stringify(recovery, undefined, 2)}\n`);
   }
@@ -507,6 +516,9 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
   if (run.repository !== undefined) {
     zip.file("repository/repository.json", `${JSON.stringify(run.repository, undefined, 2)}\n`);
   }
+  if (run.runtimeTarget !== undefined) {
+    zip.file("runtime-target/target.json", `${JSON.stringify(run.runtimeTarget, undefined, 2)}\n`);
+  }
   if (run.downloadEvidence !== undefined) {
     const { files } = createDownloadVerificationEvidenceLaneFiles({ evidence: run.downloadEvidence });
     for (const [path, content] of Object.entries(files)) {
@@ -520,7 +532,7 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
     }
   }
   if (run.declarations !== undefined) {
-    zip.file("repository/declarations.json", `${JSON.stringify(run.declarations, undefined, 2)}\n`);
+    zip.file("model/declarations.json", `${JSON.stringify(run.declarations, undefined, 2)}\n`);
     zip.file(
       "runtime-assets/class-capabilities.json",
       `${JSON.stringify(run.declarations.classCapabilities, undefined, 2)}\n`,

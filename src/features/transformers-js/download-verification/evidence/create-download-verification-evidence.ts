@@ -212,7 +212,7 @@ function summaryMarkdown({ evidence, candidates }: {
   const runtimeLine = evidence.runtimeCompletion === undefined
     ? '- Runtime completion: not run'
     : `- Runtime completion: ${evidence.runtimeCompletion.status} (${evidence.runtimeCompletion.source})`;
-  return `# Download Verification Evidence\n\n- Mode: ${evidence.mode}\n- Model: ${evidence.run.normalizedModelId}\n- Requested revision: ${evidence.run.requestedRevision}\n- Resolved revision: ${evidence.run.resolvedRevision}\n- Repository files: ${evidence.run.repositoryFileCount}\n- Transport probes: ${evidence.run.transportObservations.length}\n- Transport bytes consumed: ${evidence.run.bytesConsumed} / ${evidence.run.maximumBytes}\n- Actual Transformers.js candidate observations: ${evidence.modelArtifactObservations.length}\n- Candidate observation failures: ${observationFailures}\n- First repository-complete candidate: ${completeCandidate === undefined ? 'not established' : `${completeCandidate.candidate.device}/${completeCandidate.candidate.dtype}`}\n${runtimeLine}\n\nThis archive is observational evidence. Repository completeness alone is not proof that ONNX Runtime can create a session or generate tokens. Runtime-complete mode records Production cache preparation/acceptance, but first inference and generation remain separate Model Support Investigation evidence. Model weight bodies are never embedded in this archive.\n`;
+  return `# Download Verification Evidence\n\n- Mode: ${evidence.mode}\n- Model: ${evidence.run.normalizedModelId}\n- Requested revision: ${evidence.run.requestedRevision}\n- Resolved revision: ${evidence.run.resolvedRevision}\n- Repository files: ${evidence.run.repositoryFileCount}\n- Transport probes: ${evidence.run.transportObservations.length}\n- Transport bytes consumed: ${evidence.run.bytesConsumed} / ${evidence.run.maximumBytes}\n- Actual Transformers.js candidate observations: ${evidence.modelArtifactObservations.length}\n- Candidate observation failures: ${observationFailures}\n- First repository-complete candidate: ${completeCandidate === undefined ? 'not established' : `${completeCandidate.candidate.device}/${completeCandidate.candidate.dtype}`}\n${runtimeLine}\n\nThis archive is observational evidence. Repository completeness alone is not proof that ONNX Runtime can create a session or generate tokens. Runtime-complete mode records cache-only Production acceptance when a previously downloaded candidate is available; Model Support Investigation does not download missing model weights. First inference and generation remain separate Model Support Investigation evidence. Model weight bodies are never embedded in this archive.\n`;
 }
 
 function prefetchNotRunReason({ evidence }: { evidence: DownloadVerificationEvidenceInput }): string {
@@ -222,8 +222,11 @@ function prefetchNotRunReason({ evidence }: { evidence: DownloadVerificationEvid
   case 'reused-production-cache':
     return 'A Production-accepted cached revision was reused; no model download preparation was needed.';
   case 'production-download-preparation':
+    return 'Legacy runtime-complete evidence recorded Production model download preparation.';
+  case 'cache-only-unavailable':
+    return 'No complete Production candidate was available in local cache; Model Support Investigation intentionally did not download missing model artifacts.';
   case 'cache-reuse-failed':
-    return 'Production model download preparation did not produce a recorded preparation result.';
+    return 'Production cache-only acceptance failed before any model artifact download could be attempted.';
   default: {
     const _ex: never = completion.source;
     throw new Error(`Unhandled runtime completion source: ${_ex}`);

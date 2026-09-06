@@ -760,6 +760,77 @@ describe('transformers-js.worker', () => {
     expect(dispose).toHaveBeenCalledOnce();
   });
 
+  it('skips Production continuity and capability probes when investigation scope disables them', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const generate = vi.fn().mockResolvedValue({
+      past_key_values: { layer_0: {} },
+      sequences: { data: BigInt64Array.from([10n, 11n, 20n]) },
+    });
+    (AutoModelForCausalLM.from_pretrained as any).mockResolvedValue({
+      dispose: vi.fn(),
+      generate,
+      config: { model_type: 'example', is_encoder_decoder: false },
+    });
+    const applyChatTemplate = vi.fn(() => ({
+      input_ids: { data: BigInt64Array.from([10n, 11n]) },
+      attention_mask: { data: BigInt64Array.from([1n, 1n]) },
+    }));
+    (AutoTokenizer.from_pretrained as any).mockResolvedValue({
+      apply_chat_template: applyChatTemplate,
+      decode: vi.fn(() => 'observed production output'),
+    });
+    const progress = vi.fn();
+
+    const observation = await workerObj.runModelSupportInvestigationScenario(
+      {
+        modelId: 'org/model',
+        resolvedRevision: 'a'.repeat(40),
+        loadRevision: undefined,
+        candidates: [{ device: 'webgpu', dtype: 'q4' }],
+        runContinuity: false,
+        runCapabilityProbes: false,
+        messages: [{ role: 'user', content: 'hello' }],
+        followUpMessage: { role: 'user', content: 'Continue with one short sentence.' },
+        toolResultContinuation: {
+          toolCall: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          toolResultContent: '{"temperatureC":20}',
+          expectedInputTokenIds: [50, 51, 52],
+          maxNewTokens: 16,
+        },
+        maxNewTokens: 16,
+      },
+      progress,
+      vi.fn(),
+    );
+
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(applyChatTemplate).toHaveBeenCalled();
+    expect(observation.firstTurn).toMatchObject({ status: 'passed' });
+    expect(observation.continuity).toEqual({
+      status: 'not-run',
+      reason: 'Continuity / KV cache was not selected by investigation scope',
+    });
+    expect(observation.toolResultContinuation).toEqual({
+      status: 'not-run',
+      reason: 'Capability probes were not selected by investigation scope',
+    });
+    expect(observation.reasoning).toBeUndefined();
+    expect(observation.multimodal).toBeUndefined();
+    const stages = progress.mock.calls
+      .map(call => call[0]?.event)
+      .filter((event): event is { kind: 'stage', status: string } => event?.kind === 'stage')
+      .map(event => event.status);
+    expect(stages).toContain('model-support-production-first-turn');
+    expect(stages).toContain('model-support-production-complete');
+    expect(stages).not.toContain('model-support-production-continuity');
+    expect(stages).not.toContain('model-support-production-tool-result-continuation');
+    expect(stages).not.toContain('model-support-production-reasoning-differential');
+    expect(stages).not.toContain('model-support-production-multimodal');
+  });
+
   it('records decoded token context around a reconstructed Production continuity prefix mismatch', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');

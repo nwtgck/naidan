@@ -119,7 +119,7 @@ export function assessSupportBoundaries({ run }: {
       boundary: "transformers-js-capability",
       basis: "exact-observation",
       summary: `No inspected public generative Auto class reported support for model type ${run.declarations.modelType}.`,
-      evidencePaths: ["repository/declarations.json", "runtime-assets/class-capabilities.json"],
+      evidencePaths: ["model/declarations.json", "runtime-assets/class-capabilities.json"],
       contradictoryEvidencePaths: [],
     });
   }
@@ -130,14 +130,40 @@ export function assessSupportBoundaries({ run }: {
     && run.modelFilePlan.candidates.some(candidate => (
       candidate.missingRequiredFileCount > 0 || candidate.zeroByteRequiredFileCount > 0
     ))) {
-    assessments.push({
-      assessmentId: "required-repository-artifacts-unavailable",
-      boundary: "repository-artifact",
-      basis: "exact-observation",
-      summary: "Every fixed quantized candidate is missing at least one required repository artifact or has a zero-byte required artifact.",
-      evidencePaths: ["repository/repository.json", "model-files/plans.json"],
-      contradictoryEvidencePaths: [],
-    });
+    const runtimeTargetSource = run.runtimeTarget?.source;
+    switch (runtimeTargetSource) {
+    case "local-cache":
+      assessments.push({
+        assessmentId: "local-cache-artifacts-incomplete",
+        boundary: "unresolved",
+        basis: "exact-observation",
+        summary: "Every fixed quantized candidate is missing at least one required completed local-cache artifact or has a zero-byte local artifact. This observation does not establish that the corresponding repository artifact is absent.",
+        evidencePaths: [
+          "runtime-target/target.json",
+          ...(run.cache === undefined ? [] : ["cache/inventory.json"]),
+          "model-files/plans.json",
+        ],
+        contradictoryEvidencePaths: [],
+      });
+      break;
+    case "repository":
+    case undefined:
+      if (run.repository !== undefined) {
+        assessments.push({
+          assessmentId: "required-repository-artifacts-unavailable",
+          boundary: "repository-artifact",
+          basis: "exact-observation",
+          summary: "Every fixed quantized candidate is missing at least one required repository artifact or has a zero-byte required artifact.",
+          evidencePaths: ["repository/repository.json", "model-files/plans.json"],
+          contradictoryEvidencePaths: [],
+        });
+      }
+      break;
+    default: {
+      const _ex: never = runtimeTargetSource;
+      return _ex;
+    }
+    }
   }
 
   const passedReferenceAttempt = run.loadAttempts.find(attempt => attempt.status === "passed");
@@ -297,7 +323,23 @@ export function assessSupportBoundaries({ run }: {
     const continuity = productionObservation.continuity;
     if (continuity !== undefined) {
       switch (continuity.status) {
-      case "failed":
+      case "failed": {
+        const assistantContent = continuity.assistantMessage.content;
+        const channelTaggedAssistantContent = typeof assistantContent === "string"
+          && assistantContent.includes("<|channel|>")
+          && assistantContent.includes("<|message|>");
+        const templateRequiresStructuredReasoning = continuity.error.message.includes("thinking")
+          && continuity.error.message.includes("content field");
+        if (channelTaggedAssistantContent && templateRequiresStructuredReasoning) {
+          assessments.push({
+            assessmentId: "production-history-channel-content-contract-mismatch",
+            boundary: "naidan-production-adapter",
+            basis: "exact-observation",
+            summary: "Naidan Production retained channel-tagged assistant output in ChatMessage.content, and the next-turn chat template rejected that representation because reasoning and final content must be mapped to separate structured fields.",
+            evidencePaths: ["production-lane/continuity.json", "errors.json"],
+            contradictoryEvidencePaths: [],
+          });
+        }
         assessments.push({
           assessmentId: "production-continuity-failed-after-first-turn",
           boundary: "naidan-production-adapter",
@@ -307,6 +349,7 @@ export function assessSupportBoundaries({ run }: {
           contradictoryEvidencePaths: [],
         });
         break;
+      }
       case "passed": {
         const cacheDecision = continuity.secondTurn.cacheDecision;
         const cacheDecisionContradictsHandoff = (() => {

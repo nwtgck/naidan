@@ -47,6 +47,14 @@ function run(): ModelSupportInvestigationRun {
       control: { status: "passed", inputValue: 7, outputValue: 7 },
     },
     repository: { resolvedRevision: "a".repeat(40) },
+    runtimeTarget: {
+      normalizedModelId: "org/model",
+      evidenceRevision: "a".repeat(40),
+      loaderRevisionOption: null,
+      source: "repository",
+      revisionIdentity: "exact-resolved-revision",
+      pipelineTag: undefined,
+    },
     cache: {
       revisionProvenanceReason: "Completion markers do not independently prove file bytes",
       provenance: {
@@ -158,6 +166,59 @@ function run(): ModelSupportInvestigationRun {
 }
 
 describe("evaluateEvidenceReadiness", () => {
+  it("marks scope-excluded runtime domains not applicable instead of unobserved", () => {
+    const scopedRun = run();
+    scopedRun.executionPlan = {
+      repositoryDownload: true,
+      modelLoad: false,
+      generation: false,
+      continuity: false,
+      capabilityProbes: false,
+    };
+
+    const report = evaluateEvidenceReadiness({ run: scopedRun });
+    for (const domainId of [
+      "runtime-load",
+      "template-tokenizer",
+      "plain-text",
+      "production-routing",
+      "continuity-kv-cache",
+      "tools",
+      "reasoning",
+      "multimodal",
+    ] as const) {
+      const domain = report.domains.find(item => item.domainId === domainId);
+      expect(domain).toMatchObject({
+        status: "not-applicable",
+        questions: [{ status: "not-applicable", answer: "Not applicable to the selected investigation scope", evidencePaths: [] }],
+      });
+    }
+    expect(report.domains.find(item => item.domainId === "repository")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "download")?.status).not.toBe("not-applicable");
+  });
+
+  it("keeps required Continuity domains active while excluding unselected capability probes", () => {
+    const scopedRun = run();
+    scopedRun.executionPlan = {
+      repositoryDownload: false,
+      modelLoad: true,
+      generation: true,
+      continuity: true,
+      capabilityProbes: false,
+    };
+
+    const report = evaluateEvidenceReadiness({ run: scopedRun });
+    expect(report.domains.find(item => item.domainId === "repository")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "download")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "runtime-load")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "template-tokenizer")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "plain-text")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "continuity-kv-cache")?.status).not.toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "tools")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "reasoning")?.status).toBe("not-applicable");
+    expect(report.domains.find(item => item.domainId === "multimodal")?.status).toBe("not-applicable");
+  });
+
   it("marks observed implementation domains ready without claiming unobserved capabilities", () => {
     const report = evaluateEvidenceReadiness({ run: run() });
 
@@ -274,6 +335,51 @@ describe("evaluateEvidenceReadiness", () => {
     expect(mismatch?.summary).toContain("same frozen repository revision");
   });
 
+
+  it("treats intentional offline repository skipping as partial when an immutable local runtime target is available", () => {
+    const value = run();
+    value.repository = undefined;
+    value.downloadEvidence = undefined;
+    value.runtimeTarget = {
+      normalizedModelId: "org/model",
+      evidenceRevision: "b".repeat(40),
+      loaderRevisionOption: "b".repeat(40),
+      source: "local-cache",
+      revisionIdentity: "local-immutable-revision",
+      pipelineTag: undefined,
+    };
+    value.steps = [{ id: "repository-information", status: "skipped", detail: "External network denied" }];
+
+    const report = evaluateEvidenceReadiness({ run: value });
+    expect(report.overall).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "repository")?.status).toBe("not-observed");
+    expect(report.domains.find(item => item.domainId === "execution-target")).toMatchObject({
+      status: "implementation-ready",
+      questions: [expect.objectContaining({ evidencePaths: ["runtime-target/target.json"] })],
+    });
+  });
+
+  it("downgrades runtime observations for an offline legacy main target without inventing an immutable revision", () => {
+    const value = run();
+    value.repository = undefined;
+    value.downloadEvidence = undefined;
+    value.runtimeTarget = {
+      normalizedModelId: "org/model",
+      evidenceRevision: "main",
+      loaderRevisionOption: null,
+      source: "local-cache",
+      revisionIdentity: "legacy-main-unverified",
+      pipelineTag: undefined,
+    };
+    value.steps = [{ id: "repository-information", status: "skipped", detail: "External network denied" }];
+
+    const report = evaluateEvidenceReadiness({ run: value });
+    expect(report.overall).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "execution-target")?.status).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "runtime-load")?.status).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "plain-text")?.status).toBe("partial");
+    expect(report.domains.find(item => item.domainId === "runtime-load")?.summary).toContain("exact immutable model revision was not proven");
+  });
 
   it("keeps runtime readiness insufficient when runtime asset identity is unavailable", () => {
     const value = run();
@@ -704,63 +810,6 @@ TypeError: fixture inspection failed
     const continuity = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === 'continuity-kv-cache');
     expect(continuity).toMatchObject({ status: 'insufficient' });
     expect(continuity?.summary).toContain('changed model-visible synthetic history');
-  });
-
-  it("marks continuity implementation-ready when exact prefix and persistence serialization evidence agree", () => {
-    const value = run();
-    value.persistenceRoundTrip = {
-      status: "observed", fixtureId: "tool-call-history-v1", method: "chat-content-dto-json-roundtrip-v1",
-      modelVisibleProjectionMethod: "build-chat-generation-messages-v1",
-      serializedByteLength: 128, serializedSha256: "b".repeat(64),
-      originalMessages: [{ role: "user", content: "fixture", tool_calls: undefined, tool_call_id: undefined }],
-      restoredMessages: [{ role: "user", content: "fixture", tool_calls: undefined, tool_call_id: undefined }],
-      exactModelVisibleMatch: true, firstMismatchIndex: undefined,
-    };
-    value.productionLane = {
-      status: "running", observation: undefined,
-      partialObservation: {
-        route: { autoClass: "AutoModelForCausalLM", processor: "processor", strategy: "qwen3_5", modelType: "qwen3_5" },
-        continuity: {
-          status: "passed",
-          secondTurn: { pastKeyValuesProvided: false, cacheDecision: { status: "not-reused", reason: "qwen3_5-message-count-mismatch" } },
-          prefixComparison: { mode: "full-input-prefix", comparisonInputSource: "reconstructed-full-conversation", exactPrefixMatch: true, firstMismatchIndex: undefined },
-        },
-      } as never,
-      error: undefined,
-    };
-
-    const continuity = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "continuity-kv-cache");
-    expect(continuity).toMatchObject({ status: "implementation-ready" });
-    expect(continuity?.questions[0]?.answer).toContain("preserved 1 model-visible synthetic messages exactly");
-    expect(continuity?.questions[0]?.evidencePaths).toContain("continuity/persistence-roundtrip.json");
-  });
-
-  it("marks continuity insufficient when persistence serialization changes model-visible history", () => {
-    const value = run();
-    value.persistenceRoundTrip = {
-      status: "observed", fixtureId: "tool-call-history-v1", method: "chat-content-dto-json-roundtrip-v1",
-      modelVisibleProjectionMethod: "build-chat-generation-messages-v1",
-      serializedByteLength: 128, serializedSha256: "b".repeat(64),
-      originalMessages: [{ role: "assistant", content: "before", tool_calls: undefined, tool_call_id: undefined }],
-      restoredMessages: [{ role: "assistant", content: "after", tool_calls: undefined, tool_call_id: undefined }],
-      exactModelVisibleMatch: false, firstMismatchIndex: 0,
-    };
-    value.productionLane = {
-      status: "running", observation: undefined,
-      partialObservation: {
-        route: { autoClass: "AutoModelForCausalLM", processor: "processor", strategy: "qwen3_5", modelType: "qwen3_5" },
-        continuity: {
-          status: "passed",
-          secondTurn: { pastKeyValuesProvided: false, cacheDecision: { status: "not-reused", reason: "qwen3_5-message-count-mismatch" } },
-          prefixComparison: { mode: "full-input-prefix", comparisonInputSource: "reconstructed-full-conversation", exactPrefixMatch: true, firstMismatchIndex: undefined },
-        },
-      } as never,
-      error: undefined,
-    };
-
-    const continuity = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "continuity-kv-cache");
-    expect(continuity).toMatchObject({ status: "insufficient" });
-    expect(continuity?.summary).toContain("changed model-visible synthetic history");
   });
 
   it("marks continuity insufficient when the strategy cache decision contradicts the model.generate handoff", () => {

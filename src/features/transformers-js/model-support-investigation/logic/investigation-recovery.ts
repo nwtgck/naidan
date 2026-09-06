@@ -100,6 +100,7 @@ export function createInitialInvestigationCheckpoint({
       ],
       runtimeAssets: undefined,
       repository: undefined,
+      runtimeTarget: undefined,
       downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,
@@ -221,6 +222,7 @@ export function interruptInvestigationCheckpoint({
     case "running":
       return { ...step, status: "failed", detail: `Interrupted: ${serialized.message}` };
     case "not-run":
+    case "skipped":
     case "passed":
     case "failed":
     case "blocked":

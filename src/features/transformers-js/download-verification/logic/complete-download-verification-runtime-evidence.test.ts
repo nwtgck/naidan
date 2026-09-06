@@ -2,6 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { completeDownloadVerificationRuntimeEvidence } from '@/features/transformers-js/download-verification/logic/complete-download-verification-runtime-evidence';
 import type { DownloadVerificationEvidenceInput } from '@/features/transformers-js/download-verification/evidence/types';
 
+const safetyMocks = vi.hoisted(() => ({
+  runProductionDownloadPreparation: vi.fn(),
+}));
+
+vi.mock('@/features/transformers-js/download-verification/logic/run-production-download-preparation', () => ({
+  runProductionDownloadPreparation: safetyMocks.runProductionDownloadPreparation,
+}));
+
 const REVISION = '1'.repeat(40);
 
 function evidence(): DownloadVerificationEvidenceInput {
@@ -34,36 +42,53 @@ function inventory() {
   return { modelId: 'org/model', normalizedModelId: 'org/model', revisions: [] };
 }
 
+function acceptedReuse(args: {
+  revision?: string,
+  loadRevision?: string | undefined,
+}) {
+  const revision = args.revision ?? REVISION;
+  const loadRevision = Object.prototype.hasOwnProperty.call(args, 'loadRevision')
+    ? args.loadRevision
+    : REVISION;
+  return {
+    reused: true as const,
+    loadRevision,
+    acceptance: {
+      status: 'accepted' as const,
+      selectedRevision: {
+        revision,
+        loaderRevisionOption: loadRevision,
+        source: revision === 'main' ? 'legacy-main' as const : 'current-resolved-revision' as const,
+      },
+      attempts: [{
+        candidate: {
+          revision,
+          loaderRevisionOption: loadRevision,
+          source: revision === 'main' ? 'legacy-main' as const : 'current-resolved-revision' as const,
+        },
+        acceptance: {
+          modelId: 'org/model',
+          repositoryResolvedRevision: REVISION,
+          cacheRevision: revision,
+          loaderRevisionOption: loadRevision ?? null,
+          status: 'accepted' as const,
+          selectedDevice: 'webgpu' as const,
+          selectedDtype: 'q4' as const,
+          observationMethod: 'production-cache-only-revision-runtime-preparation' as const,
+          error: undefined,
+        },
+      }],
+      error: undefined,
+    },
+  };
+}
+
 describe('completeDownloadVerificationRuntimeEvidence', () => {
-  it('reuses an accepted Production cache without running download preparation', async () => {
-    const runPreparation = vi.fn();
+  it('reuses an accepted exact Production cache without any download preparation capability', async () => {
     const result = await completeDownloadVerificationRuntimeEvidence({
       evidence: evidence(),
       storageRoot: {} as FileSystemDirectoryHandle,
-      reuseRevision: vi.fn(async () => ({
-        reused: true as const,
-        loadRevision: REVISION,
-        acceptance: {
-          status: 'accepted' as const,
-          selectedRevision: { revision: REVISION, loaderRevisionOption: REVISION, source: 'current-resolved-revision' as const },
-          attempts: [{
-            candidate: { revision: REVISION, loaderRevisionOption: REVISION, source: 'current-resolved-revision' as const },
-            acceptance: {
-              modelId: 'org/model',
-              repositoryResolvedRevision: REVISION,
-              cacheRevision: REVISION,
-              loaderRevisionOption: REVISION,
-              status: 'accepted' as const,
-              selectedDevice: 'webgpu' as const,
-              selectedDtype: 'q4' as const,
-              observationMethod: 'production-cache-only-revision-runtime-preparation' as const,
-              error: undefined,
-            },
-          }],
-          error: undefined,
-        },
-      })),
-      runPreparation,
+      reuseRevision: vi.fn(async () => acceptedReuse({})),
       inspectCachedRevisions: vi.fn(async () => inventory()),
     });
 
@@ -74,39 +99,15 @@ describe('completeDownloadVerificationRuntimeEvidence', () => {
       cacheRevision: REVISION,
       loaderRevisionOption: REVISION,
       selectedCandidate: { device: 'webgpu', dtype: 'q4' },
+      preparation: undefined,
     });
-    expect(runPreparation).not.toHaveBeenCalled();
   });
 
-  it('reuses Production-accepted legacy main without claiming exact frozen-revision identity', async () => {
-    const runPreparation = vi.fn();
+  it('reuses Production-accepted legacy main only when that unverified identity is allowed', async () => {
     const result = await completeDownloadVerificationRuntimeEvidence({
       evidence: evidence(),
       storageRoot: {} as FileSystemDirectoryHandle,
-      reuseRevision: vi.fn(async () => ({
-        reused: true as const,
-        loadRevision: undefined,
-        acceptance: {
-          status: 'accepted' as const,
-          selectedRevision: { revision: 'main', loaderRevisionOption: undefined, source: 'legacy-main' as const },
-          attempts: [{
-            candidate: { revision: 'main', loaderRevisionOption: undefined, source: 'legacy-main' as const },
-            acceptance: {
-              modelId: 'org/model',
-              repositoryResolvedRevision: REVISION,
-              cacheRevision: 'main',
-              loaderRevisionOption: null,
-              status: 'accepted' as const,
-              selectedDevice: 'webgpu' as const,
-              selectedDtype: 'q4' as const,
-              observationMethod: 'production-cache-only-revision-runtime-preparation' as const,
-              error: undefined,
-            },
-          }],
-          error: undefined,
-        },
-      })),
-      runPreparation,
+      reuseRevision: vi.fn(async () => acceptedReuse({ revision: 'main', loadRevision: undefined })),
       inspectCachedRevisions: vi.fn(async () => inventory()),
     });
 
@@ -116,81 +117,44 @@ describe('completeDownloadVerificationRuntimeEvidence', () => {
       cacheRevision: 'main',
       loaderRevisionOption: null,
       selectedCandidate: { device: 'webgpu', dtype: 'q4' },
+      preparation: undefined,
     });
-    expect(runPreparation).not.toHaveBeenCalled();
   });
 
-  it('prepares the frozen exact revision when MSI disallows a mismatched legacy main reuse', async () => {
-    const runPreparation = vi.fn(async () => ({
-      status: 'accepted' as const,
-      failureStage: undefined,
-      runtimeArtifacts: {
-        modelId: 'org/model', revision: REVISION, status: 'prepared' as const, processor: 'tokenizer' as const,
-        modelType: 'test', observationMethod: 'transformers-runtime-artifact-preparation' as const, error: undefined,
-      },
-      candidates: {
-        status: 'accepted' as const,
-        selectedCandidate: { device: 'webgpu' as const, dtype: 'q4' as const },
-        attempts: [],
-        error: undefined,
-      },
-    }));
+  it('blocks instead of downloading when an accepted legacy main cannot satisfy exact-revision policy', async () => {
     const result = await completeDownloadVerificationRuntimeEvidence({
       evidence: evidence(),
       storageRoot: {} as FileSystemDirectoryHandle,
       allowLegacyMainReuse: false,
-      reuseRevision: vi.fn(async () => ({
-        reused: true as const,
-        loadRevision: undefined,
-        acceptance: {
-          status: 'accepted' as const,
-          selectedRevision: { revision: 'main', loaderRevisionOption: undefined, source: 'legacy-main' as const },
-          attempts: [],
-          error: undefined,
-        },
-      })),
-      runPreparation,
+      reuseRevision: vi.fn(async () => acceptedReuse({ revision: 'main', loadRevision: undefined })),
       inspectCachedRevisions: vi.fn(async () => inventory()),
     });
 
-    expect(runPreparation).toHaveBeenCalledTimes(1);
     expect(result.runtimeCompletion).toMatchObject({
-      status: 'accepted',
-      source: 'production-download-preparation',
-      cacheRevision: REVISION,
-      loaderRevisionOption: REVISION,
+      status: 'exhausted',
+      source: 'cache-only-unavailable',
+      cacheRevision: null,
+      loaderRevisionOption: null,
+      preparation: undefined,
+      error: {
+        name: 'ModelSupportInvestigationLocalCacheIncomplete',
+      },
     });
   });
 
-  it('passes constrained candidates to cache reuse and exact-revision preparation', async () => {
+  it('passes repository-eligible local candidate constraints only to cache-only acceptance', async () => {
     const q4Candidates = [
       { device: 'webgpu' as const, dtype: 'q4' as const },
       { device: 'wasm' as const, dtype: 'q4' as const },
     ];
     const reusableByRevision = { [REVISION]: q4Candidates, main: [] };
     const reuseRevision = vi.fn(async () => ({ reused: false as const, acceptance: undefined }));
-    const runPreparation = vi.fn(async () => ({
-      status: 'accepted' as const,
-      failureStage: undefined,
-      runtimeArtifacts: {
-        modelId: 'org/model', revision: REVISION, status: 'prepared' as const, processor: 'tokenizer' as const,
-        modelType: 'test', observationMethod: 'transformers-runtime-artifact-preparation' as const, error: undefined,
-      },
-      candidates: {
-        status: 'accepted' as const,
-        selectedCandidate: { device: 'webgpu' as const, dtype: 'q4' as const },
-        attempts: [],
-        error: undefined,
-      },
-    }));
 
-    await completeDownloadVerificationRuntimeEvidence({
+    const result = await completeDownloadVerificationRuntimeEvidence({
       evidence: evidence(),
       storageRoot: {} as FileSystemDirectoryHandle,
-      candidateOrder: q4Candidates,
       reusableCandidateOrderByRevision: reusableByRevision,
       reuseRevision,
-      runPreparation,
       inspectCachedRevisions: vi.fn(async () => inventory()),
     });
 
@@ -199,88 +163,49 @@ describe('completeDownloadVerificationRuntimeEvidence', () => {
       resolvedRevision: REVISION,
       candidateOrderByRevision: reusableByRevision,
     }));
-    expect(runPreparation).toHaveBeenCalledWith(expect.objectContaining({
-      modelId: 'org/model',
-      revision: REVISION,
-      candidateOrder: q4Candidates,
-    }));
+    expect(result.runtimeCompletion).toMatchObject({
+      status: 'exhausted',
+      source: 'cache-only-unavailable',
+      preparation: undefined,
+    });
   });
 
-  it('prepares the frozen exact revision once when no reusable cache exists', async () => {
-    const runPreparation = vi.fn(async () => ({
-      status: 'accepted' as const,
-      failureStage: undefined,
-      runtimeArtifacts: {
-        modelId: 'org/model', revision: REVISION, status: 'prepared' as const, processor: 'tokenizer' as const,
-        modelType: 'test', observationMethod: 'transformers-runtime-artifact-preparation' as const, error: undefined,
-      },
-      candidates: {
-        status: 'accepted' as const,
-        selectedCandidate: { device: 'webgpu' as const, dtype: 'q4' as const },
-        attempts: [],
-        error: undefined,
-      },
-    }));
+  it('records incomplete local cache as blocked runtime evidence instead of attempting a model download', async () => {
+    safetyMocks.runProductionDownloadPreparation.mockClear();
     const result = await completeDownloadVerificationRuntimeEvidence({
       evidence: evidence(),
       storageRoot: {} as FileSystemDirectoryHandle,
       reuseRevision: vi.fn(async () => ({ reused: false as const, acceptance: undefined })),
-      runPreparation,
       inspectCachedRevisions: vi.fn(async () => inventory()),
     });
 
-    expect(runPreparation).toHaveBeenCalledTimes(1);
-    expect(runPreparation).toHaveBeenCalledWith(expect.objectContaining({ modelId: 'org/model', revision: REVISION }));
     expect(result.runtimeCompletion).toMatchObject({
-      status: 'accepted',
-      source: 'production-download-preparation',
-      cacheRevision: REVISION,
-      loaderRevisionOption: REVISION,
-      selectedCandidate: { device: 'webgpu', dtype: 'q4' },
+      status: 'exhausted',
+      source: 'cache-only-unavailable',
+      preparation: undefined,
+      error: {
+        name: 'ModelSupportInvestigationLocalCacheIncomplete',
+        message: expect.stringContaining('does not download, resume, repair, or complete model weight artifacts'),
+      },
     });
+    expect(safetyMocks.runProductionDownloadPreparation).not.toHaveBeenCalled();
   });
 
-  it('does not run expensive preparation when cache reuse fails closed', async () => {
-    const runPreparation = vi.fn();
+  it('fails closed when cache-only acceptance itself cannot safely inspect the cache', async () => {
     const result = await completeDownloadVerificationRuntimeEvidence({
       evidence: evidence(),
       storageRoot: {} as FileSystemDirectoryHandle,
       reuseRevision: vi.fn(async () => {
         throw new Error('CachedRevisionRuntimeRejected: bad cache');
       }),
-      runPreparation,
       inspectCachedRevisions: vi.fn(async () => inventory()),
     });
 
-    expect(runPreparation).not.toHaveBeenCalled();
     expect(result.runtimeCompletion).toMatchObject({
       status: 'failed',
       source: 'cache-reuse-failed',
+      preparation: undefined,
       error: { message: 'CachedRevisionRuntimeRejected: bad cache' },
-    });
-  });
-
-  it('preserves exhausted preparation as runtime-complete evidence', async () => {
-    const result = await completeDownloadVerificationRuntimeEvidence({
-      evidence: evidence(),
-      storageRoot: {} as FileSystemDirectoryHandle,
-      reuseRevision: vi.fn(async () => ({ reused: false as const, acceptance: undefined })),
-      runPreparation: vi.fn(async () => ({
-        status: 'exhausted' as const,
-        failureStage: undefined,
-        runtimeArtifacts: {
-          modelId: 'org/model', revision: REVISION, status: 'prepared' as const, processor: 'tokenizer' as const,
-          modelType: 'test', observationMethod: 'transformers-runtime-artifact-preparation' as const, error: undefined,
-        },
-        candidates: { status: 'exhausted' as const, selectedCandidate: undefined, attempts: [], error: undefined },
-      })),
-      inspectCachedRevisions: vi.fn(async () => inventory()),
-    });
-
-    expect(result.runtimeCompletion).toMatchObject({
-      status: 'exhausted',
-      source: 'production-download-preparation',
-      error: { name: 'ProductionDownloadPreparationExhausted' },
     });
   });
 });

@@ -10,7 +10,6 @@ import type {
 import { selectGenerationAutoClass } from "@/features/transformers-js/model-support-investigation/logic/select-generation-auto-class";
 import { CandidateAttemptTimeoutError } from "@/features/transformers-js/model-support-investigation/logic/candidate-attempt-timeout";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
-import { investigationModelLoadRevision } from "@/features/transformers-js/model-support-investigation/logic/investigation-model-load-revision";
 import { isModelSupportInvestigationUserInterruptedError } from "@/features/transformers-js/model-support-investigation/logic/investigation-interruption";
 
 function updateLoadingStep({ run, status, detail }: {
@@ -148,23 +147,32 @@ export async function runModelLoadInvestigation({
     onEvent({ event: { stepId: "loading-investigation", status, detail } });
   };
 
-  const { repository, declarations, modelFilePlan } = run;
-  if (repository === undefined || declarations === undefined || modelFilePlan === undefined) {
+  const { runtimeTarget, declarations, modelFilePlan } = run;
+  if (runtimeTarget === undefined || declarations === undefined || modelFilePlan === undefined) {
     const missing = [
-      repository === undefined ? "repository" : undefined,
+      runtimeTarget === undefined ? "runtime target" : undefined,
       declarations === undefined ? "declarations" : undefined,
       modelFilePlan === undefined ? "model file plan" : undefined,
     ].filter((value): value is string => value !== undefined);
-    const detail = `Blocked because ${missing.join(", ")} evidence is unavailable`;
+    const repositoryWasPolicySkipped = run.steps.some(step => (
+      step.id === 'repository-information' && step.status === 'skipped'
+    ));
+    const detail = repositoryWasPolicySkipped
+      ? `Blocked because ${missing.join(", ")} evidence is unavailable after remote repository inspection was skipped by policy`
+      : `Blocked because ${missing.join(", ")} evidence is unavailable`;
     emit({ status: "blocked", detail });
-    run.status = "failed";
-    run.error = appendError({ existing: run.error, detail });
-    run.currentOperation = "Model loading investigation was blocked by missing prerequisite evidence";
+    if (!repositoryWasPolicySkipped) {
+      run.status = "failed";
+      run.error = appendError({ existing: run.error, detail });
+    }
+    run.currentOperation = repositoryWasPolicySkipped
+      ? "Model loading investigation is blocked by the current local-only planning limitation"
+      : "Model loading investigation was blocked by missing prerequisite evidence";
     run.completedAt = now();
     return run;
   }
 
-  const autoClass = selectGenerationAutoClass({ repository, declarations });
+  const autoClass = selectGenerationAutoClass({ runtimeTarget, declarations });
   if (autoClass === undefined) {
     const detail = "Blocked because no supported public generative Auto class was observed";
     emit({ status: "blocked", detail });
@@ -177,11 +185,19 @@ export async function runModelLoadInvestigation({
 
   const runtimeCompletion = run.downloadEvidence?.runtimeCompletion;
   if (runtimeCompletion !== undefined && runtimeCompletion.status !== 'accepted') {
-    const detail = `Blocked because runtime-complete download preparation ended with ${runtimeCompletion.status}`;
+    const expectedLocalCacheBlock = runtimeCompletion.status === 'exhausted'
+      && runtimeCompletion.source === 'cache-only-unavailable';
+    const detail = expectedLocalCacheBlock
+      ? 'Blocked because no complete local Production candidate is available; Model Support Investigation does not download missing model artifacts'
+      : `Blocked because runtime cache acceptance ended with ${runtimeCompletion.status}`;
     emit({ status: "blocked", detail });
-    run.status = "failed";
-    run.error = appendError({ existing: run.error, detail });
-    run.currentOperation = "Model loading investigation was blocked by incomplete Production cache preparation";
+    if (!expectedLocalCacheBlock) {
+      run.status = "failed";
+      run.error = appendError({ existing: run.error, detail });
+    }
+    run.currentOperation = expectedLocalCacheBlock
+      ? "Model loading investigation is blocked by incomplete local model cache"
+      : "Model loading investigation was blocked by failed Production cache acceptance";
     run.completedAt = now();
     return run;
   }
@@ -194,17 +210,24 @@ export async function runModelLoadInvestigation({
       candidate.device === selectedRuntimeCandidate.device && candidate.dtype === selectedRuntimeCandidate.dtype
     ));
   if (candidates.length === 0) {
-    const detail = "Blocked because no fixed q4f16 or q4 candidate has all required repository files";
+    const localCacheBlock = runtimeTarget.source === "local-cache";
+    const detail = localCacheBlock
+      ? "Blocked because no fixed q4f16 or q4 candidate has all required completed local cache files; Model Support Investigation does not download missing model artifacts"
+      : "Blocked because no fixed q4f16 or q4 candidate has all required runtime files available";
     emit({ status: "blocked", detail });
-    run.status = "failed";
-    run.error = appendError({ existing: run.error, detail });
-    run.currentOperation = "Model loading investigation was blocked by candidate file availability";
+    if (!localCacheBlock) {
+      run.status = "failed";
+      run.error = appendError({ existing: run.error, detail });
+    }
+    run.currentOperation = localCacheBlock
+      ? "Model loading investigation is blocked by incomplete local model cache"
+      : "Model loading investigation was blocked by candidate file availability";
     run.completedAt = now();
     return run;
   }
 
   const loaderRevisionOption = runtimeCompletion === undefined
-    ? investigationModelLoadRevision({ requestedRevision: repository.requestedRevision }) ?? null
+    ? runtimeTarget.loaderRevisionOption
     : runtimeCompletion.loaderRevisionOption;
   let successfulAttempt: ModelSupportInvestigationLoadAttempt | undefined;
   emit({ status: "running", detail: `Starting ${candidates[0]?.candidateId} in a fresh investigation Worker using ${loaderRevisionOption ?? 'main'} cache revision` });
@@ -230,7 +253,7 @@ export async function runModelLoadInvestigation({
       attempt = unexpectedAttempt({
         candidate,
         autoClass,
-        repositoryRevision: repository.resolvedRevision,
+        repositoryRevision: runtimeTarget.evidenceRevision,
         loaderRevisionOption,
         error,
         checkpoint: latestAttemptCheckpoint,
@@ -265,17 +288,32 @@ export async function runModelLoadInvestigation({
     }
   }
 
+  const generationWasSkippedByScope = successfulAttempt?.events.some(event => (
+    event.stage === "first-generation" && event.status === "skipped"
+  )) === true;
+
   if (successfulAttempt === undefined) {
+    const generationRequired = run.executionPlan?.generation ?? true;
     const loadedWithoutInput = run.loadAttempts.find(attempt => (
       attempt.loadedModel !== undefined && attempt.failureStage === "input-build"
     ));
-    const detail = loadedWithoutInput === undefined
-      ? `${run.loadAttempts.length} eligible candidates failed before minimum generation completed`
-      : `${loadedWithoutInput.candidateId} loaded successfully, but deterministic generation input was unavailable`;
+    const detail = !generationRequired
+      ? `${run.loadAttempts.length} eligible candidates failed before model loading completed`
+      : loadedWithoutInput === undefined
+        ? `${run.loadAttempts.length} eligible candidates failed before minimum generation completed`
+        : `${loadedWithoutInput.candidateId} loaded successfully, but deterministic generation input was unavailable`;
     emit({ status: "failed", detail });
     run.status = "failed";
     run.error = appendError({ existing: run.error, detail });
-    run.currentOperation = "Model load attempts completed without a successful minimum generation";
+    run.currentOperation = generationRequired
+      ? "Model load attempts completed without a successful minimum generation"
+      : "Model load attempts completed without a successful model load";
+  } else if (generationWasSkippedByScope) {
+    emit({
+      status: "passed",
+      detail: `${successfulAttempt.candidateId} loaded successfully; generation was skipped by investigation scope`,
+    });
+    run.currentOperation = "Model load evidence collected; generation was not requested";
   } else {
     emit({
       status: "passed",

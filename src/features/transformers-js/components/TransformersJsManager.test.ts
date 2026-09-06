@@ -12,6 +12,14 @@ vi.mock('../../../utils/opfs-detection', () => ({
   checkOPFSSupport: vi.fn(),
 }));
 
+vi.mock('@/features/transformers-js/model-support-investigation', () => ({
+  isModelSupportInvestigationAvailable: true,
+  loadModelSupportInvestigationModal: async () => ({
+    props: ['modelId'],
+    template: '<div data-testid="model-support-investigation-stub" :data-model-id="modelId" />',
+  }),
+}));
+
 vi.mock('@vueuse/core', async () => {
   const actual = await vi.importActual('@vueuse/core') as any;
   return {
@@ -71,6 +79,12 @@ vi.mock('lucide-vue-next', () => ({
   PlusIcon: { template: '<span>Plus</span>' },
   HardDriveDownloadIcon: { template: '<span>HardDriveDownload</span>' },
   XIcon: { template: '<span>X</span>' },
+  CircleIcon: { template: '<span>Circle</span>' },
+  CircleSlash2Icon: { template: '<span>CircleSlash2</span>' },
+  CopyIcon: { template: '<span>Copy</span>' },
+  PlayIcon: { template: '<span>Play</span>' },
+  SearchCheckIcon: { template: '<span>SearchCheck</span>' },
+  SquareIcon: { template: '<span>Square</span>' },
   BrainCircuitIcon: { template: '<span>BrainCircuit</span>' },
   PowerOffIcon: { template: '<span>PowerOff</span>' },
   ExternalLinkIcon: { template: '<span>ExternalLink</span>' },
@@ -149,6 +163,21 @@ describe('TransformersJsManager.vue', () => {
     const investigateButton = wrapper.find('[data-testid="model-support-investigate-hf.co/org/model1"]');
     expect(investigateButton.exists()).toBe(true);
     expect(investigateButton.text()).toBe('Investigate');
+  });
+
+  it('opens model support investigation with the selected cached model prefilled', async () => {
+    (transformersJsService.listCachedModels as any).mockResolvedValue([
+      { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
+    ]);
+
+    const wrapper = mount(TransformersJsManager);
+    await flushPromises();
+
+    await wrapper.get('[data-testid="model-support-investigate-hf.co/org/model1"]').trigger('click');
+    await flushPromises();
+
+    const modal = wrapper.get('[data-testid="model-support-investigation-stub"]');
+    expect(modal.attributes('data-model-id')).toBe('hf.co/org/model1');
   });
 
   it('shows Gemma 4 in the preset model list', async () => {

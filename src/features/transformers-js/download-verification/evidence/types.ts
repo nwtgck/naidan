@@ -16,7 +16,7 @@ export type DownloadVerificationEvidenceStability =
 export interface DownloadVerificationRuntimeCompletionEvidence {
   schemaVersion: 1;
   status: 'accepted' | 'failed' | 'exhausted';
-  source: 'reused-production-cache' | 'production-download-preparation' | 'cache-reuse-failed';
+  source: 'reused-production-cache' | 'production-download-preparation' | 'cache-only-unavailable' | 'cache-reuse-failed';
   repositoryResolvedRevision: string;
   cacheRevision: string | null;
   loaderRevisionOption: string | null;

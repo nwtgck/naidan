@@ -46,6 +46,23 @@ describe("createPartialModelSupportEvidence", () => {
       schemaVersion: 1,
       runId: "run-1",
       modelId: "hf.co/org/model",
+      requestedConfiguration: {
+        externalNetworkPolicy: "allow",
+        scope: {
+          "repository-download": "selected",
+          "model-load": "not-selected",
+          generation: "selected",
+          continuity: "not-selected",
+          "capability-probes": "not-selected",
+        },
+      },
+      executionPlan: {
+        repositoryDownload: true,
+        modelLoad: true,
+        generation: true,
+        continuity: false,
+        capabilityProbes: false,
+      },
       scope: "partial-runtime-repository-cache-declarations-template-model-files",
       startedAt: "2026-08-06T00:00:00.000Z",
       completedAt: "2026-08-06T00:00:01.000Z",
@@ -120,6 +137,14 @@ describe("createPartialModelSupportEvidence", () => {
         pipelineTag: undefined,
         libraryName: undefined,
         metadata: {},
+      },
+      runtimeTarget: {
+        normalizedModelId: "org/model",
+        evidenceRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        loaderRevisionOption: null,
+        source: "repository",
+        revisionIdentity: "exact-resolved-revision",
+        pipelineTag: undefined,
       },
       downloadEvidence: {
         schemaVersion: 1,
@@ -275,6 +300,17 @@ describe("createPartialModelSupportEvidence", () => {
     expect(archive.file("runtime-assets/environment.json")).not.toBeNull();
     expect(archive.file("runtime-assets/backend-controls.json")).not.toBeNull();
     expect(archive.file("repository/repository.json")).not.toBeNull();
+    expect(archive.file("execution-policy/policy.json")).not.toBeNull();
+    expect(JSON.parse(await archive.file("execution-policy/policy.json")!.async("text"))).toEqual({
+      requestedConfiguration: run.requestedConfiguration,
+      effectiveExecutionPlan: run.executionPlan,
+    });
+    expect(archive.file("runtime-target/target.json")).not.toBeNull();
+    expect(JSON.parse(await archive.file("runtime-target/target.json")!.async("text"))).toMatchObject({
+      source: "repository",
+      evidenceRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      revisionIdentity: "exact-resolved-revision",
+    });
     expect(archive.file("download-lane/repository.json")).not.toBeNull();
     expect(archive.file("download-lane/artifact-requests.json")).not.toBeNull();
     expect(archive.file("download-lane/transport.json")).not.toBeNull();
@@ -282,7 +318,7 @@ describe("createPartialModelSupportEvidence", () => {
     expect(archive.file("download-lane/test-readiness.json")).not.toBeNull();
     expect(archive.file("cache/inventory.json")).not.toBeNull();
     expect(archive.file("cache/provenance.json")).not.toBeNull();
-    expect(archive.file("repository/declarations.json")).not.toBeNull();
+    expect(archive.file("model/declarations.json")).not.toBeNull();
     expect(archive.file("runtime-assets/class-capabilities.json")).not.toBeNull();
     expect(archive.file("template-behavior/matrix.json")).not.toBeNull();
     expect(archive.file("model-files/plans.json")).not.toBeNull();
@@ -399,6 +435,7 @@ describe("createPartialModelSupportEvidence", () => {
       steps: [],
       runtimeAssets: undefined,
       repository: undefined,
+      runtimeTarget: undefined,
       downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,
@@ -667,6 +704,7 @@ describe("createPartialModelSupportEvidence", () => {
       steps: [],
       runtimeAssets: undefined,
       repository: undefined,
+      runtimeTarget: undefined,
       downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,
@@ -960,6 +998,37 @@ describe("createPartialModelSupportEvidence", () => {
       status: "partial",
     }));
 
+    const channelHistoryMismatchRun = structuredClone(base);
+    const channelHistoryObservation = channelHistoryMismatchRun.productionLane.observation;
+    if (channelHistoryObservation === undefined) throw new Error("Production observation fixture is unavailable");
+    channelHistoryObservation.continuity = {
+      status: "failed",
+      assistantMessage: {
+        role: "assistant",
+        content: "<|channel|>analysis<|message|>The user asked a question.",
+      },
+      followUpMessage: { role: "user", content: "Continue." },
+      error: {
+        name: "Error",
+        message: "You have passed a message containing <|channel|> tags in the content field. Pass analysis messages in the thinking field and final messages in the content field.",
+      },
+    };
+    channelHistoryMismatchRun.laneComparison = undefined;
+    const { blob: channelHistoryMismatchBlob } = await createPartialModelSupportEvidence({
+      run: channelHistoryMismatchRun,
+      recovery: undefined,
+    });
+    const channelHistoryMismatchArchive = await JSZip.loadAsync(await channelHistoryMismatchBlob.arrayBuffer());
+    const channelHistoryMismatchBoundaries = JSON.parse(
+      await channelHistoryMismatchArchive.file("support-boundaries.json")!.async("text"),
+    );
+    expect(channelHistoryMismatchBoundaries).toContainEqual(expect.objectContaining({
+      assessmentId: "production-history-channel-content-contract-mismatch",
+      boundary: "naidan-production-adapter",
+      basis: "exact-observation",
+      evidencePaths: ["production-lane/continuity.json", "errors.json"],
+    }));
+
     const checkpointRun = structuredClone(base);
     const checkpointSource = checkpointRun.productionLane.observation;
     if (checkpointSource === undefined) throw new Error("Production observation fixture is unavailable");
@@ -1183,6 +1252,7 @@ describe("createPartialModelSupportEvidence", () => {
       ],
       runtimeAssets: undefined,
       repository: undefined,
+      runtimeTarget: undefined,
       downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,
@@ -1256,6 +1326,7 @@ SyntaxError: Unexpected token '<'
       ],
       runtimeAssets: undefined,
       repository: undefined,
+      runtimeTarget: undefined,
       downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,
@@ -1380,6 +1451,7 @@ SyntaxError: Unexpected token '<'
         ],
       },
       repository: undefined,
+      runtimeTarget: undefined,
       downloadEvidence: undefined,
       cache: undefined,
       declarations: undefined,

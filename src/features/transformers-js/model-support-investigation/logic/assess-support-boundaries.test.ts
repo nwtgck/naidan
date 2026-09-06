@@ -7,7 +7,7 @@ function baseRun(): ModelSupportInvestigationRun {
     schemaVersion: 1, runId: "run", modelId: "org/model", scope: "partial-runtime-preflight",
     startedAt: "2026-08-06T00:00:00.000Z", completedAt: "2026-08-06T00:00:01.000Z",
     status: "passed", currentOperation: "done", steps: [], runtimeAssets: undefined,
-    repository: undefined, downloadEvidence: undefined, cache: undefined, declarations: undefined, templateBehavior: undefined,
+    repository: undefined, runtimeTarget: undefined, downloadEvidence: undefined, cache: undefined, declarations: undefined, templateBehavior: undefined,
     modelFilePlan: undefined, loadAttempts: [],
     productionLane: { status: "not-run", observation: undefined, partialObservation: undefined, error: undefined },
     laneComparison: undefined, error: undefined,
@@ -31,6 +31,16 @@ describe("assessSupportBoundaries", () => {
 
   it("classifies missing required repository files", () => {
     const run = baseRun();
+    run.repository = {
+      requestedModelId: "hf.co/org/model", normalizedModelId: "org/model", requestedRevision: "main",
+      resolvedRevision: "a".repeat(40), apiUrl: "https://huggingface.co/api/models/org/model/revision/main?blobs=true",
+      responseUrl: "https://huggingface.co/api/models/org/model/revision/main?blobs=true", fileCount: 0, files: [],
+      pipelineTag: undefined, libraryName: undefined, metadata: {},
+    };
+    run.runtimeTarget = {
+      normalizedModelId: "org/model", evidenceRevision: "a".repeat(40), loaderRevisionOption: null,
+      source: "repository", revisionIdentity: "exact-resolved-revision", pipelineTag: undefined,
+    };
     run.modelFilePlan = {
       normalizedModelId: "org/model", resolvedRevision: "a".repeat(40), modelType: "model",
       registrySource: "ModelRegistry.get_model_files", cacheRevisionProvenance: "not-observed",
@@ -43,6 +53,33 @@ describe("assessSupportBoundaries", () => {
       }],
     };
     expect(assessSupportBoundaries({ run })[0]).toEqual(expect.objectContaining({ boundary: "repository-artifact" }));
+  });
+
+  it("keeps incomplete local-cache artifacts unresolved without claiming repository absence", () => {
+    const run = baseRun();
+    run.runtimeTarget = {
+      normalizedModelId: "org/model", evidenceRevision: "b".repeat(40), loaderRevisionOption: "b".repeat(40),
+      source: "local-cache", revisionIdentity: "local-immutable-revision", pipelineTag: undefined,
+    };
+    run.modelFilePlan = {
+      normalizedModelId: "org/model", resolvedRevision: "b".repeat(40), modelType: "model",
+      registrySource: "ModelRegistry.get_model_files", cacheRevisionProvenance: "not-observed",
+      cacheRevisionProvenanceReason: "not observed", candidates: [{
+        candidateId: "wasm-q4", device: "wasm", dtype: "q4", registryStatus: "planned", registryError: undefined,
+        registryReturnedFileCount: 1, duplicatePaths: [], files: [], requiredFileCount: 1, optionalFileCount: 0,
+        missingRequiredFileCount: 1, zeroByteRequiredFileCount: 0, missingOptionalFileCount: 0,
+        cacheObservedRequiredFileCount: 0, cacheCompleteMarkerRequiredFileCount: 0, eligibility: "ineligible",
+        ineligibleReasons: ["missing required file"],
+      }],
+    };
+
+    const assessments = assessSupportBoundaries({ run });
+    expect(assessments).toEqual([expect.objectContaining({
+      assessmentId: "local-cache-artifacts-incomplete",
+      boundary: "unresolved",
+      evidencePaths: expect.arrayContaining(["runtime-target/target.json", "model-files/plans.json"]),
+    })]);
+    expect(assessments[0]?.evidencePaths).not.toContain("repository/repository.json");
   });
 
   it("keeps real-model failures unresolved after the runtime control passes", () => {
@@ -370,31 +407,37 @@ describe("assessSupportBoundaries", () => {
     }));
   });
 
-  it("classifies persistence serialization that changes model-visible history at the Naidan adapter boundary", () => {
+  it("identifies channel-tagged assistant history rejected by the next-turn structured reasoning contract", () => {
     const run = baseRun();
-    run.persistenceRoundTrip = {
-      status: "observed", fixtureId: "tool-call-history-v1", method: "chat-content-dto-json-roundtrip-v1",
-      serializedByteLength: 64, serializedSha256: "b".repeat(64),
-      originalMessages: [{ role: "assistant", content: "before", tool_calls: undefined, tool_call_id: undefined }],
-      restoredMessages: [{ role: "assistant", content: "after", tool_calls: undefined, tool_call_id: undefined }],
-      exactModelVisibleMatch: false, firstMismatchIndex: 0,
+    run.productionLane = {
+      status: "passed",
+      observation: {
+        continuity: {
+          status: "failed",
+          assistantMessage: {
+            role: "assistant",
+            content: "<|channel|>analysis<|message|>The user asked a question.",
+          },
+          followUpMessage: { role: "user", content: "Continue." },
+          error: {
+            name: "Error",
+            message: "You have passed a message containing <|channel|> tags in the content field. Pass analysis messages in the thinking field and final messages in the content field.",
+          },
+        },
+        toolResultContinuation: { status: "not-run", reason: "not requested" },
+      } as never,
+      error: undefined,
     };
 
-    expect(assessSupportBoundaries({ run })).toContainEqual(expect.objectContaining({
-      assessmentId: "persistence-roundtrip-altered-model-visible-history", boundary: "naidan-production-adapter", basis: "exact-observation",
+    const assessments = assessSupportBoundaries({ run });
+    expect(assessments).toContainEqual(expect.objectContaining({
+      assessmentId: "production-history-channel-content-contract-mismatch",
+      boundary: "naidan-production-adapter",
+      basis: "exact-observation",
+      evidencePaths: ["production-lane/continuity.json", "errors.json"],
     }));
-  });
-
-  it("keeps a failed persistence serialization probe cross-boundary", () => {
-    const run = baseRun();
-    run.persistenceRoundTrip = {
-      status: "failed", fixtureId: "tool-call-history-v1", method: "chat-content-dto-json-roundtrip-v1",
-      error: { name: "FixturePersistenceError", message: "roundtrip failed" },
-    };
-
-    expect(assessSupportBoundaries({ run })).toContainEqual(expect.objectContaining({
-      assessmentId: "persistence-roundtrip-failed", boundary: "cross-boundary",
-      evidencePaths: ["continuity/persistence-roundtrip.json", "errors.json"],
+    expect(assessments).toContainEqual(expect.objectContaining({
+      assessmentId: "production-continuity-failed-after-first-turn",
     }));
   });
 

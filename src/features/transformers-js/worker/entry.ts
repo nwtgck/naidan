@@ -1544,6 +1544,12 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       publishObservationCheckpoint();
 
       const continuity: TransformersJsProductionInvestigationObservation['continuity'] = await (async () => {
+        if (scenario.runContinuity === false) {
+          return {
+            status: 'not-run',
+            reason: 'Continuity / KV cache was not selected by investigation scope',
+          };
+        }
         reportStage({ status: 'model-support-production-continuity' });
         switch (firstTurn.status) {
         case 'failed':
@@ -1642,6 +1648,12 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       publishObservationCheckpoint();
 
       const toolResultContinuation = await (async (): Promise<TransformersJsProductionInvestigationObservation['toolResultContinuation']> => {
+        if (scenario.runCapabilityProbes === false) {
+          return {
+            status: 'not-run',
+            reason: 'Capability probes were not selected by investigation scope',
+          };
+        }
         const continuationScenario = scenario.toolResultContinuation;
         if (continuationScenario === undefined) {
           return {
@@ -1720,23 +1732,25 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       partialObservation.toolResultContinuation = toolResultContinuation;
       publishObservationCheckpoint();
 
-      reportStage({ status: 'model-support-production-reasoning-differential' });
-      const reasoning: TransformersJsProductionInvestigationObservation['reasoning'] = await (async () => {
-        switch (strategy.kind) {
-        case 'standard':
-        case 'gpt-oss':
-        case 'gemma4':
-          return {
-            status: 'unavailable',
-            reason: `The existing ${strategy.kind} Production strategy does not map Naidan reasoning effort to a model prompt.`,
-          };
-        case 'qwen3_5':
-          break;
-        default: {
-          const _ex: never = strategy.kind;
-          throw new Error(`Unhandled Production reasoning strategy: ${_ex}`);
-        }
-        }
+      const reasoning: TransformersJsProductionInvestigationObservation['reasoning'] = scenario.runCapabilityProbes === false
+        ? undefined
+        : await (async () => {
+          reportStage({ status: 'model-support-production-reasoning-differential' });
+          switch (strategy.kind) {
+          case 'standard':
+          case 'gpt-oss':
+          case 'gemma4':
+            return {
+              status: 'unavailable',
+              reason: `The existing ${strategy.kind} Production strategy does not map Naidan reasoning effort to a model prompt.`,
+            };
+          case 'qwen3_5':
+            break;
+          default: {
+            const _ex: never = strategy.kind;
+            throw new Error(`Unhandled Production reasoning strategy: ${_ex}`);
+          }
+          }
 
         type ReasoningEffortRunResult =
           | {
@@ -1875,75 +1889,77 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
           throw new Error(`Unhandled disabled reasoning attempt: ${((_ex satisfies never) as { readonly status: string }).status}`);
         }
         }
-      })();
+        })();
       partialObservation.reasoning = reasoning;
       publishObservationCheckpoint();
 
-      reportStage({ status: 'model-support-production-multimodal' });
-      const multimodal: TransformersJsProductionInvestigationObservation['multimodal'] = await (async () => {
-        switch (strategy.kind) {
-        case 'gemma4': {
-          const {
-            dataUrl,
-            prompt,
-            maxNewTokens,
-            ...fixture
-          } = scenario.multimodalFixture;
-          resetGenerationContinuationState();
-          try {
-            const turn = await runObservedProductionTurn({
-              loadedModel,
-              loadedTokenizer,
-              strategy,
-              messages: [{
-                role: 'user',
-                content: [
-                  { type: 'text', text: prompt },
-                  { type: 'image_url', image_url: { url: dataUrl } },
-                ],
-              }],
+      const multimodal: TransformersJsProductionInvestigationObservation['multimodal'] = scenario.runCapabilityProbes === false
+        ? undefined
+        : await (async () => {
+          reportStage({ status: 'model-support-production-multimodal' });
+          switch (strategy.kind) {
+          case 'gemma4': {
+            const {
+              dataUrl,
+              prompt,
               maxNewTokens,
-              isEncoderDecoder,
-              tools: undefined,
-              reasoningEffort: undefined,
-            });
-            return {
-              status: 'observed',
-              source: 'fixed-synthetic-fixture-and-existing-production-strategy',
-              strategy: 'gemma4',
-              fixture: { ...fixture, prompt, maxNewTokens },
-              turn,
-            };
-          } catch (error) {
-            const serialized = serializeInvestigationError({ error, maxLength: 1024 });
-            return {
-              status: 'failed',
-              source: 'fixed-synthetic-fixture-and-existing-production-strategy',
-              strategy: 'gemma4',
-              fixture: { ...fixture, prompt, maxNewTokens },
-              error: serialized,
-            };
+              ...fixture
+            } = scenario.multimodalFixture;
+            resetGenerationContinuationState();
+            try {
+              const turn = await runObservedProductionTurn({
+                loadedModel,
+                loadedTokenizer,
+                strategy,
+                messages: [{
+                  role: 'user',
+                  content: [
+                    { type: 'text', text: prompt },
+                    { type: 'image_url', image_url: { url: dataUrl } },
+                  ],
+                }],
+                maxNewTokens,
+                isEncoderDecoder,
+                tools: undefined,
+                reasoningEffort: undefined,
+              });
+              return {
+                status: 'observed',
+                source: 'fixed-synthetic-fixture-and-existing-production-strategy',
+                strategy: 'gemma4',
+                fixture: { ...fixture, prompt, maxNewTokens },
+                turn,
+              };
+            } catch (error) {
+              const serialized = serializeInvestigationError({ error, maxLength: 1024 });
+              return {
+                status: 'failed',
+                source: 'fixed-synthetic-fixture-and-existing-production-strategy',
+                strategy: 'gemma4',
+                fixture: { ...fixture, prompt, maxNewTokens },
+                error: serialized,
+              };
+            }
           }
-        }
-        case 'qwen3_5':
-          return {
-            status: 'unavailable',
-            strategy: 'qwen3_5',
-            reason: 'The existing Qwen3.5 Production strategy serializes multimodal message parts into text and does not pass fixed image bytes to its processor.',
-          };
-        case 'standard':
-        case 'gpt-oss':
-          return {
-            status: 'unavailable',
-            strategy: strategy.kind,
-            reason: `The existing ${strategy.kind} Production strategy does not load an image processor.`,
-          };
-        default: {
-          const _ex: never = strategy.kind;
-          throw new Error(`Unhandled Production multimodal strategy: ${_ex}`);
-        }
-        }
-      })();
+          case 'qwen3_5':
+            return {
+              status: 'unavailable',
+              strategy: 'qwen3_5',
+              reason: 'The existing Qwen3.5 Production strategy serializes multimodal message parts into text and does not pass fixed image bytes to its processor.',
+            };
+          case 'standard':
+          case 'gpt-oss':
+            return {
+              status: 'unavailable',
+              strategy: strategy.kind,
+              reason: `The existing ${strategy.kind} Production strategy does not load an image processor.`,
+            };
+          default: {
+            const _ex: never = strategy.kind;
+            throw new Error(`Unhandled Production multimodal strategy: ${_ex}`);
+          }
+          }
+        })();
       partialObservation.multimodal = multimodal;
       publishObservationCheckpoint();
 

@@ -9,7 +9,6 @@ import type {
   ModelSupportInvestigationStep,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { compareInvestigationLanes } from "@/features/transformers-js/model-support-investigation/logic/compare-investigation-lanes";
-import { investigationModelLoadRevision } from "@/features/transformers-js/model-support-investigation/logic/investigation-model-load-revision";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from "@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image";
 import { isModelSupportInvestigationUserInterruptedError } from "@/features/transformers-js/model-support-investigation/logic/investigation-interruption";
@@ -46,6 +45,8 @@ export async function runProductionLaneComparison({
   runProductionScenario,
   onEvent,
   onRunUpdate,
+  runContinuity = true,
+  runCapabilityProbes = true,
   now,
 }: {
   run: ModelSupportInvestigationRun,
@@ -55,6 +56,8 @@ export async function runProductionLaneComparison({
   }) => Promise<TransformersJsProductionInvestigationObservation>,
   onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
   onRunUpdate?: ({ run }: { run: ModelSupportInvestigationRun }) => void,
+  runContinuity?: boolean,
+  runCapabilityProbes?: boolean,
   now: () => string,
 }): Promise<ModelSupportInvestigationRun> {
   const updatedRun: ModelSupportInvestigationRun = {
@@ -108,11 +111,11 @@ export async function runProductionLaneComparison({
       : [firstCandidate, ...orderedCandidates.slice(1)] as const;
   })();
   const templateCase = updatedRun.templateBehavior?.cases.find(item => item.caseId === "user-generation");
-  const repository = updatedRun.repository;
-  if (productionCandidates === undefined || repository === undefined) {
+  const runtimeTarget = updatedRun.runtimeTarget;
+  if (productionCandidates === undefined || runtimeTarget === undefined) {
     const missingPrerequisites = [
       productionCandidates === undefined ? "eligible Production Lane candidate" : undefined,
-      repository === undefined ? "resolved repository revision" : undefined,
+      runtimeTarget === undefined ? "runtime target" : undefined,
     ].filter((item): item is string => item !== undefined);
     const detail = `Blocked because these prerequisites are unavailable: ${missingPrerequisites.join(", ")}`;
     emit({ status: "blocked", detail });
@@ -163,12 +166,12 @@ export async function runProductionLaneComparison({
   try {
     const observation = await runProductionScenario({
       scenario: {
-        modelId: repository.normalizedModelId,
-        resolvedRevision: repository.resolvedRevision,
-        loadRevision: runtimeCompletion === undefined
-          ? investigationModelLoadRevision({ requestedRevision: repository.requestedRevision })
-          : runtimeCompletion.loaderRevisionOption ?? undefined,
+        modelId: runtimeTarget.normalizedModelId,
+        resolvedRevision: runtimeTarget.evidenceRevision,
+        loadRevision: runtimeTarget.loaderRevisionOption ?? undefined,
         candidates: [...productionCandidates],
+        runContinuity,
+        runCapabilityProbes,
         messages: (templateCase?.messages ?? [{ role: "user" as const, content: "Template probe user message." }]).map(message => ({
           role: message.role,
           content: message.content,

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { configurationForPreset, createDefaultInvestigationConfiguration } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationLoadAttempt,
@@ -65,6 +66,14 @@ function partialRun(): ModelSupportInvestigationRun {
       resolvedRevision: "a".repeat(40),
       pipelineTag: "text-generation",
     },
+    runtimeTarget: {
+      normalizedModelId: "org/model",
+      evidenceRevision: "a".repeat(40),
+      loaderRevisionOption: null,
+      source: "repository",
+      revisionIdentity: "exact-resolved-revision",
+      pipelineTag: "text-generation",
+    },
     downloadEvidence: undefined,
     cache: undefined,
     declarations: {
@@ -110,6 +119,45 @@ function planningRun(): ModelSupportInvestigationPlanningWorkerRun {
   return toPlanningWorkerRun({ run: partialRun() });
 }
 
+function localPlanningRun({ complete }: { complete: boolean }): ModelSupportInvestigationPlanningWorkerRun {
+  const revision = "b".repeat(40);
+  const run = partialRun();
+  run.repository = undefined;
+  run.runtimeTarget = {
+    normalizedModelId: "org/model",
+    evidenceRevision: revision,
+    loaderRevisionOption: revision,
+    source: "local-cache",
+    revisionIdentity: "local-immutable-revision",
+    pipelineTag: undefined,
+  };
+  run.downloadEvidence = undefined;
+  run.steps = [
+    { id: "repository-information", status: "skipped", detail: "Skipped because external network access is disabled by investigation policy" },
+    { id: "download-evidence", status: "skipped", detail: "Skipped because external network access is disabled by investigation policy" },
+    ...run.steps,
+  ];
+  run.modelFilePlan = {
+    normalizedModelId: "org/model",
+    resolvedRevision: revision,
+    modelType: "llama",
+    registrySource: "ModelRegistry.get_model_files",
+    cacheRevisionProvenance: "not-observed",
+    cacheRevisionProvenanceReason: "Remote repository evidence was intentionally skipped",
+    candidates: [{
+      candidateId: "webgpu-q4",
+      device: "webgpu",
+      dtype: "q4",
+      eligibility: complete ? "eligible" : "ineligible",
+      eligibilityReason: complete ? "All required files are complete in local cache" : "Required local model artifact is missing",
+      registryStatus: "passed",
+      requiredFiles: [],
+      missingRequiredFiles: complete ? [] : ["onnx/model_q4.onnx_data"],
+    } as never],
+  };
+  return toPlanningWorkerRun({ run });
+}
+
 function partialRunWithProbeDownloadEvidence({ exactRevision = "a".repeat(40) }: { exactRevision?: string } = {}): ModelSupportInvestigationPlanningWorkerRun {
   const planning = partialRun();
   planning.repository = {
@@ -118,6 +166,14 @@ function partialRunWithProbeDownloadEvidence({ exactRevision = "a".repeat(40) }:
     requestedRevision: "main",
     resolvedRevision: exactRevision,
   } as never;
+  planning.runtimeTarget = {
+    normalizedModelId: "org/model",
+    evidenceRevision: exactRevision,
+    loaderRevisionOption: null,
+    source: "repository",
+    revisionIdentity: "exact-resolved-revision",
+    pipelineTag: "text-generation",
+  };
   planning.steps = [
     ...planning.steps,
     { id: "download-evidence", status: "passed", detail: "Probe-only Download Evidence collected" },
@@ -358,7 +414,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
       const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
       const client = createModelSupportInvestigationWorkerClient({ planningTimeoutMs: 10 });
-      const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent, onCheckpoint });
+      const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent, onCheckpoint });
       const rejection = expect(operation).rejects.toMatchObject({
         name: "PlanningTimeoutError",
         stage: "template-behavior",
@@ -399,7 +455,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent, onCheckpoint });
+    const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent, onCheckpoint });
     await vi.waitFor(() => {
       expect(planningRemote.runPartialInvestigation).toHaveBeenCalledTimes(1);
     });
@@ -455,12 +511,12 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    const result = await client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
+    const result = await client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
 
     expect(mocks.workerInstances).toHaveLength(4);
     expect(mocks.workerInstances.every(instance => instance.terminate.mock.calls.length === 1)).toBe(true);
     expect(planningRemote.runPartialInvestigation).toHaveBeenCalledWith(
-      "org/model",
+      { modelId: "org/model", externalNetworkPolicy: "allow", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
       expect.any(Function),
       expect.any(Function),
     );
@@ -468,8 +524,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       expect.any(Object),
       expect.any(Object),
       expect.any(Object),
-      null,
       expect.objectContaining({ candidateId: "webgpu-q4f16" }),
+      expect.objectContaining({ generation: true, capabilityProbes: true }),
       expect.any(Function),
       expect.any(Function),
       expect.any(Function),
@@ -478,8 +534,8 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       expect.any(Object),
       expect.any(Object),
       expect.any(Object),
-      null,
       expect.objectContaining({ candidateId: "webgpu-q4" }),
+      expect.objectContaining({ generation: true, capabilityProbes: true }),
       expect.any(Function),
       expect.any(Function),
       expect.any(Function),
@@ -508,6 +564,469 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     await client.dispose();
     expect(mocks.workerInstances).toHaveLength(4);
   });
+  it("treats settled Worker release failures as best-effort cleanup", async () => {
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => planningRun()),
+    });
+    planningRemote[mocks.releaseProxy] = vi.fn(async () => {
+      throw new Error("planning release failed");
+    });
+    const attemptRemote = remote({
+      runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4", status: "passed" })),
+    });
+    const production = productionRemote();
+    production[mocks.releaseProxy] = vi.fn(async () => {
+      throw new Error("production release failed");
+    });
+    mocks.wrap
+      .mockReturnValueOnce(planningRemote)
+      .mockReturnValueOnce(attemptRemote)
+      .mockReturnValueOnce(production);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const result = await client.runPartialInvestigation({
+      modelId: "org/model",
+      configuration: createDefaultInvestigationConfiguration(),
+      onEvent: vi.fn(),
+      onCheckpoint: vi.fn(),
+    });
+
+    expect(result.status).toBe("passed");
+    expect(result.productionLane.status).toBe("passed");
+    expect(planningRemote[mocks.releaseProxy]).toHaveBeenCalledTimes(1);
+    expect(production[mocks.releaseProxy]).toHaveBeenCalledTimes(1);
+    expect(mocks.workerInstances.every(instance => instance.terminate.mock.calls.length === 1)).toBe(true);
+  });
+
+  it("runs a complete local cache through Reference and Production with external network denied and no runtime download preparation", async () => {
+    const planning = localPlanningRun({ complete: true });
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => planning),
+    });
+    const attemptRemote = remote({
+      runCandidateAttempt: vi.fn(async () => ({
+        ...attempt({ candidateId: "webgpu-q4", status: "passed" }),
+        resolvedRevision: "b".repeat(40),
+        loaderRevisionOption: "b".repeat(40),
+      })),
+    });
+    const production = productionRemote();
+    mocks.wrap
+      .mockReturnValueOnce(planningRemote)
+      .mockReturnValueOnce(attemptRemote)
+      .mockReturnValueOnce(production);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const configuration = createDefaultInvestigationConfiguration();
+    configuration.externalNetworkPolicy = "deny";
+    const result = await client.runPartialInvestigation({
+      modelId: "org/model",
+      configuration,
+      onEvent: vi.fn(),
+      onCheckpoint: vi.fn(),
+    });
+
+    expect(planningRemote.runPartialInvestigation).toHaveBeenCalledWith(
+      { modelId: "org/model", externalNetworkPolicy: "deny", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mocks.completeRuntimeEvidence).not.toHaveBeenCalled();
+    expect(attemptRemote.runCandidateAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "local-cache",
+        evidenceRevision: "b".repeat(40),
+        loaderRevisionOption: "b".repeat(40),
+      }),
+      expect.any(Object),
+      expect.any(Object),
+      expect.objectContaining({ candidateId: "webgpu-q4" }),
+      expect.objectContaining({ generation: true, capabilityProbes: true }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mocks.runProductionScenario).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: "org/model",
+        resolvedRevision: "b".repeat(40),
+        loadRevision: "b".repeat(40),
+        candidates: [{ device: "webgpu", dtype: "q4" }],
+      }),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(result.steps.find(step => step.id === "repository-information")?.status).toBe("skipped");
+    expect(result.steps.find(step => step.id === "download-evidence")?.status).toBe("skipped");
+    expect(result.steps.find(step => step.id === "loading-investigation")?.status).toBe("passed");
+    expect(result.steps.find(step => step.id === "lane-comparison")?.status).toBe("passed");
+    expect(result.productionLane.status).toBe("passed");
+  });
+
+  it("keeps download-focused investigation probe-only and never starts Model Load", async () => {
+    const planning = partialRunWithProbeDownloadEvidence();
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => planning),
+    });
+    mocks.wrap.mockReturnValueOnce(planningRemote);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const result = await client.runPartialInvestigation({
+      modelId: "org/model",
+      configuration: configurationForPreset({ preset: "download-focused" }),
+      onEvent: vi.fn(),
+      onCheckpoint: vi.fn(),
+    });
+
+    expect(planningRemote.runPartialInvestigation).toHaveBeenCalledWith(
+      { modelId: "org/model", externalNetworkPolicy: "allow", executionPlan: { repositoryDownload: true, modelLoad: false, generation: false, continuity: false, capabilityProbes: false } },
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mocks.completeRuntimeEvidence).not.toHaveBeenCalled();
+    expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+    expect(mocks.workerInstances).toHaveLength(1);
+    expect(result.loadAttempts).toEqual([]);
+    expect(result.steps.find(step => step.id === "download-evidence")).toMatchObject({
+      status: "passed",
+      detail: expect.stringContaining("Probe-only Download Evidence"),
+    });
+    expect(result.steps.find(step => step.id === "loading-investigation")?.status).toBe("skipped");
+    expect(result.steps.find(step => step.id === "lane-comparison")?.status).toBe("skipped");
+    expect(result.productionLane.status).toBe("not-run");
+  });
+
+  it("does not inspect tokenizer/template after remote runtime acceptance when Model Load is selected without Generation", async () => {
+    const exactRevision = "a".repeat(40);
+    const planning = partialRunWithProbeDownloadEvidence({ exactRevision });
+    planning.modelFilePlan = partialRun().modelFilePlan as never;
+    planning.templateBehavior = undefined;
+    planning.steps = planning.steps.map(step => (
+      step.id === "template-behavior"
+        ? { ...step, status: "skipped", detail: "Skipped because Generation is not selected by investigation scope" }
+        : step
+    ));
+    mocks.completeRuntimeEvidence.mockResolvedValue({
+      ...planning.downloadEvidence!,
+      mode: "runtime-complete",
+      runtimeCompletion: {
+        schemaVersion: 1,
+        status: "accepted",
+        source: "production-download-preparation",
+        repositoryResolvedRevision: exactRevision,
+        cacheRevision: exactRevision,
+        loaderRevisionOption: exactRevision,
+        selectedCandidate: { device: "webgpu", dtype: "q4" },
+        cacheReuse: undefined,
+        preparation: undefined,
+        cacheAfter: undefined,
+        cacheInspectionError: undefined,
+        error: undefined,
+      },
+    });
+
+    const planningRemote = remote({ runPartialInvestigation: vi.fn(async () => planning) });
+    const attemptRemote = remote({
+      runCandidateAttempt: vi.fn(async () => ({
+        ...attempt({ candidateId: "webgpu-q4", status: "passed" }),
+        resolvedRevision: exactRevision,
+        loaderRevisionOption: exactRevision,
+        generatedTokenIds: [],
+        generatedText: undefined,
+        naturalGeneration: undefined,
+      })),
+    });
+    mocks.wrap
+      .mockReturnValueOnce(planningRemote)
+      .mockReturnValueOnce(attemptRemote);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const configuration = createDefaultInvestigationConfiguration();
+    configuration.scope = {
+      "repository-download": "selected",
+      "model-load": "selected",
+      generation: "not-selected",
+      continuity: "not-selected",
+      "capability-probes": "not-selected",
+    };
+
+    const result = await client.runPartialInvestigation({
+      modelId: "org/model",
+      configuration,
+      onEvent: vi.fn(),
+      onCheckpoint: vi.fn(),
+    });
+
+    expect(mocks.completeRuntimeEvidence).toHaveBeenCalledOnce();
+    expect(mocks.workerInstances).toHaveLength(2);
+    expect(attemptRemote.inspectDownloadedTemplateBehavior).not.toHaveBeenCalled();
+    expect(attemptRemote.runCandidateAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ loaderRevisionOption: exactRevision }),
+      expect.any(Object),
+      undefined,
+      expect.objectContaining({ candidateId: "webgpu-q4" }),
+      { generation: false, capabilityProbes: false },
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+    expect(result.steps.find(step => step.id === "template-behavior")?.status).toBe("skipped");
+    expect(result.steps.find(step => step.id === "loading-investigation")?.status).toBe("passed");
+  });
+
+  it("runs cache-only Model Load without generation when only Model Load is selected", async () => {
+    const planning = localPlanningRun({ complete: true });
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => planning),
+    });
+    const attemptRemote = remote({
+      runCandidateAttempt: vi.fn(async () => ({
+        ...attempt({ candidateId: "webgpu-q4", status: "passed" }),
+        resolvedRevision: "b".repeat(40),
+        loaderRevisionOption: "b".repeat(40),
+        generatedTokenIds: [],
+        generatedText: undefined,
+        naturalGeneration: undefined,
+      })),
+    });
+    mocks.wrap
+      .mockReturnValueOnce(planningRemote)
+      .mockReturnValueOnce(attemptRemote);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const configuration = createDefaultInvestigationConfiguration();
+    configuration.externalNetworkPolicy = "deny";
+    configuration.scope = {
+      "repository-download": "not-selected",
+      "model-load": "selected",
+      generation: "not-selected",
+      continuity: "not-selected",
+      "capability-probes": "not-selected",
+    };
+    const result = await client.runPartialInvestigation({
+      modelId: "org/model",
+      configuration,
+      onEvent: vi.fn(),
+      onCheckpoint: vi.fn(),
+    });
+
+    expect(planningRemote.runPartialInvestigation).toHaveBeenCalledWith(
+      { modelId: "org/model", externalNetworkPolicy: "deny", executionPlan: { repositoryDownload: false, modelLoad: true, generation: false, continuity: false, capabilityProbes: false } },
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mocks.completeRuntimeEvidence).not.toHaveBeenCalled();
+    expect(attemptRemote.runCandidateAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "local-cache" }),
+      expect.any(Object),
+      expect.any(Object),
+      expect.objectContaining({ candidateId: "webgpu-q4" }),
+      { generation: false, capabilityProbes: false },
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+    expect(result.steps.find(step => step.id === "loading-investigation")?.status).toBe("passed");
+    expect(result.steps.find(step => step.id === "lane-comparison")?.status).toBe("skipped");
+    expect(result.productionLane.status).toBe("not-run");
+  });
+
+  it("runs generation while disabling Production continuity and capability probes when they are not selected", async () => {
+    const planning = localPlanningRun({ complete: true });
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => planning),
+    });
+    const attemptRemote = remote({
+      runCandidateAttempt: vi.fn(async () => ({
+        ...attempt({ candidateId: "webgpu-q4", status: "passed" }),
+        resolvedRevision: "b".repeat(40),
+        loaderRevisionOption: "b".repeat(40),
+      })),
+    });
+    const production = productionRemote();
+    mocks.wrap
+      .mockReturnValueOnce(planningRemote)
+      .mockReturnValueOnce(attemptRemote)
+      .mockReturnValueOnce(production);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const configuration = createDefaultInvestigationConfiguration();
+    configuration.externalNetworkPolicy = "deny";
+    configuration.scope = {
+      "repository-download": "not-selected",
+      "model-load": "not-selected",
+      generation: "selected",
+      continuity: "not-selected",
+      "capability-probes": "not-selected",
+    };
+    const result = await client.runPartialInvestigation({
+      modelId: "org/model",
+      configuration,
+      onEvent: vi.fn(),
+      onCheckpoint: vi.fn(),
+    });
+
+    expect(planningRemote.runPartialInvestigation).toHaveBeenCalledWith(
+      { modelId: "org/model", externalNetworkPolicy: "deny", executionPlan: { repositoryDownload: false, modelLoad: true, generation: true, continuity: false, capabilityProbes: false } },
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(attemptRemote.runCandidateAttempt).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Object),
+      expect.any(Object),
+      expect.objectContaining({ candidateId: "webgpu-q4" }),
+      { generation: true, capabilityProbes: false },
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mocks.runProductionScenario).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: "org/model",
+        runContinuity: false,
+        runCapabilityProbes: false,
+      }),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(result.steps.find(step => step.id === "loading-investigation")?.status).toBe("passed");
+    expect(result.steps.find(step => step.id === "lane-comparison")?.status).toBe("passed");
+    expect(result.productionLane.status).toBe("passed");
+    expect(result.requestedConfiguration).toEqual(configuration);
+    expect(result.executionPlan).toEqual({
+      repositoryDownload: false,
+      modelLoad: true,
+      generation: true,
+      continuity: false,
+      capabilityProbes: false,
+    });
+  });
+
+  it.each([
+    {
+      label: "Continuity only",
+      selectedScope: "continuity" as const,
+      expectedContinuity: true,
+      expectedCapabilityProbes: false,
+    },
+    {
+      label: "Capability probes only",
+      selectedScope: "capability-probes" as const,
+      expectedContinuity: false,
+      expectedCapabilityProbes: true,
+    },
+  ])("runs required Model Load and Generation for $label", async ({
+    selectedScope,
+    expectedContinuity,
+    expectedCapabilityProbes,
+  }) => {
+    const planning = localPlanningRun({ complete: true });
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => planning),
+    });
+    const attemptRemote = remote({
+      runCandidateAttempt: vi.fn(async () => ({
+        ...attempt({ candidateId: "webgpu-q4", status: "passed" }),
+        resolvedRevision: "b".repeat(40),
+        loaderRevisionOption: "b".repeat(40),
+      })),
+    });
+    const production = productionRemote();
+    mocks.wrap
+      .mockReturnValueOnce(planningRemote)
+      .mockReturnValueOnce(attemptRemote)
+      .mockReturnValueOnce(production);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const configuration = createDefaultInvestigationConfiguration();
+    configuration.externalNetworkPolicy = "deny";
+    configuration.scope = {
+      "repository-download": "not-selected",
+      "model-load": "not-selected",
+      generation: "not-selected",
+      continuity: selectedScope === "continuity" ? "selected" : "not-selected",
+      "capability-probes": selectedScope === "capability-probes" ? "selected" : "not-selected",
+    };
+
+    const result = await client.runPartialInvestigation({
+      modelId: "org/model",
+      configuration,
+      onEvent: vi.fn(),
+      onCheckpoint: vi.fn(),
+    });
+
+    expect(attemptRemote.runCandidateAttempt).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Object),
+      expect.any(Object),
+      expect.objectContaining({ candidateId: "webgpu-q4" }),
+      { generation: true, capabilityProbes: expectedCapabilityProbes },
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mocks.runProductionScenario).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runContinuity: expectedContinuity,
+        runCapabilityProbes: expectedCapabilityProbes,
+      }),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(result.executionPlan).toEqual({
+      repositoryDownload: false,
+      modelLoad: true,
+      generation: true,
+      continuity: expectedContinuity,
+      capabilityProbes: expectedCapabilityProbes,
+    });
+  });
+
+  it("blocks Model Load and Production for an incomplete local cache without external network or model download preparation", async () => {
+    const planning = localPlanningRun({ complete: false });
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => planning),
+    });
+    mocks.wrap.mockReturnValueOnce(planningRemote);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const configuration = createDefaultInvestigationConfiguration();
+    configuration.externalNetworkPolicy = "deny";
+    const result = await client.runPartialInvestigation({
+      modelId: "org/model",
+      configuration,
+      onEvent: vi.fn(),
+      onCheckpoint: vi.fn(),
+    });
+
+    expect(planningRemote.runPartialInvestigation).toHaveBeenCalledWith(
+      { modelId: "org/model", externalNetworkPolicy: "deny", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mocks.completeRuntimeEvidence).not.toHaveBeenCalled();
+    expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+    expect(mocks.workerInstances).toHaveLength(1);
+    expect(result.loadAttempts).toEqual([]);
+    expect(result.steps.find(step => step.id === "repository-information")?.status).toBe("skipped");
+    expect(result.steps.find(step => step.id === "download-evidence")?.status).toBe("skipped");
+    expect(result.steps.find(step => step.id === "loading-investigation")?.status).toBe("blocked");
+    expect(result.steps.find(step => step.id === "lane-comparison")?.status).toBe("blocked");
+    expect(result.productionLane.status).toBe("not-run");
+    expect(result.error).toBeUndefined();
+  });
+
   it("retries a failed Production load candidate in a fresh Worker and preserves both load attempts", async () => {
     const planningRemote = remote({
       runPartialInvestigation: vi.fn(async () => planningRun()),
@@ -561,7 +1080,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    const result = await client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint });
+    const result = await client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint });
 
     expect(mocks.runProductionScenario).toHaveBeenCalledTimes(2);
     expect(mocks.runProductionScenario.mock.calls[0]?.[0].candidates).toEqual([
@@ -648,7 +1167,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    const result = await client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
+    const result = await client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
 
     expect(mocks.runProductionScenario).toHaveBeenCalledTimes(3);
     expect(mocks.runProductionScenario.mock.calls.map(call => call[0].candidates)).toEqual([
@@ -687,7 +1206,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       }),
     });
     const successfulAttemptRemote = remote({
-      runCandidateAttempt: vi.fn(async (_repository, _declarations, _templateBehavior, _loaderRevisionOption, _candidate, _onEvent, onAttemptEvent, onAttemptCheckpoint) => {
+      runCandidateAttempt: vi.fn(async (_runtimeTarget, _declarations, _templateBehavior, _candidate, _executionOptions, _onEvent, onAttemptEvent, onAttemptCheckpoint) => {
         lateCandidateEvent = onAttemptEvent;
         lateCandidateCheckpoint = onAttemptCheckpoint;
         return attempt({ candidateId: "webgpu-q4f16", status: "passed" });
@@ -710,7 +1229,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    const result = await client.runPartialInvestigation({ modelId: "org/model", onEvent, onCheckpoint });
+    const result = await client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent, onCheckpoint });
     expect(result.productionLane.status).toBe("passed");
     const eventCount = onEvent.mock.calls.length;
     const checkpointCount = onCheckpoint.mock.calls.length;
@@ -759,7 +1278,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
       const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
       const client = createModelSupportInvestigationWorkerClient({ productionLaneTimeoutMs: 10 });
-      const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
+      const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
       await vi.advanceTimersByTimeAsync(10);
       const result = await operation;
 
@@ -803,7 +1322,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
       const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
       const client = createModelSupportInvestigationWorkerClient({ productionLaneTimeoutMs: 10 });
-      const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent, onCheckpoint: vi.fn() });
+      const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent, onCheckpoint: vi.fn() });
       await vi.advanceTimersByTimeAsync(10);
       const result = await operation;
 
@@ -848,7 +1367,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    void client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
+    void client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
     await vi.waitFor(() => {
       expect(mocks.runProductionScenario).toHaveBeenCalledTimes(1);
     });
@@ -876,7 +1395,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint });
+    const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint });
     await vi.waitFor(() => {
       expect(mocks.runProductionScenario).toHaveBeenCalledTimes(1);
     });
@@ -942,7 +1461,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint });
+    const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint });
     await vi.waitFor(() => {
       expect(mocks.runProductionScenario).toHaveBeenCalledTimes(1);
       expect(onCheckpoint.mock.calls.some(([value]) => (
@@ -1045,7 +1564,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint });
+    const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint });
     await vi.waitFor(() => {
       expect(mocks.runProductionScenario).toHaveBeenCalledTimes(1);
     });
@@ -1077,7 +1596,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
         runPartialInvestigation: vi.fn(async () => planningRun()),
       });
       const timedOutAttemptRemote = remote({
-        runCandidateAttempt: vi.fn((_repository, _declarations, _templateBehavior, _loaderRevisionOption, _candidate, _onEvent, onAttemptEvent) => {
+        runCandidateAttempt: vi.fn((_runtimeTarget, _declarations, _templateBehavior, _candidate, _executionOptions, _onEvent, onAttemptEvent) => {
           onAttemptEvent({
             event: {
               stage: "model-load",
@@ -1101,7 +1620,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
       const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
       const client = createModelSupportInvestigationWorkerClient({ candidateAttemptTimeoutMs: 10 });
-      const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
+      const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
       await vi.advanceTimersByTimeAsync(10);
       const result = await operation;
 
@@ -1150,6 +1669,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const client = createModelSupportInvestigationWorkerClient();
     await expect(client.runPartialInvestigation({
       modelId: "org/model",
+      configuration: createDefaultInvestigationConfiguration(),
       onEvent: vi.fn(),
       onCheckpoint,
     })).rejects.toThrow("planning Worker exited");
@@ -1270,14 +1790,10 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    const result = await client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
+    const result = await client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
 
     expect(mocks.completeRuntimeEvidence).toHaveBeenCalledTimes(1);
     expect(mocks.completeRuntimeEvidence).toHaveBeenCalledWith(expect.objectContaining({
-      candidateOrder: [
-        { device: "webgpu", dtype: "q4" },
-        { device: "wasm", dtype: "q4" },
-      ],
       reusableCandidateOrderByRevision: {
         [exactRevision]: [
           { device: "webgpu", dtype: "q4" },
@@ -1285,21 +1801,22 @@ describe("createModelSupportInvestigationWorkerClient", () => {
         ],
         main: [],
       },
-      requiredModelPathsByCandidate: {
-        "webgpu/q4": ["onnx/model_q4.onnx"],
-        "wasm/q4": ["onnx/model_q4.onnx"],
-      },
     }));
+    expect(mocks.completeRuntimeEvidence.mock.calls[0]?.[0]).not.toHaveProperty('candidateOrder');
+    expect(mocks.completeRuntimeEvidence.mock.calls[0]?.[0]).not.toHaveProperty('requiredModelPathsByCandidate');
     expect(templateRemote.inspectDownloadedTemplateBehavior).toHaveBeenCalledWith({
-      repository: expect.objectContaining({ resolvedRevision: exactRevision }),
-      loaderRevisionOption: exactRevision,
+      runtimeTarget: expect.objectContaining({
+        normalizedModelId: "org/model",
+        evidenceRevision: exactRevision,
+        loaderRevisionOption: exactRevision,
+      }),
     });
     expect(attemptRemote.runCandidateAttempt).toHaveBeenCalledWith(
       expect.any(Object),
       expect.any(Object),
       templateBehavior,
-      exactRevision,
       expect.objectContaining({ candidateId: "webgpu-q4", device: "webgpu", dtype: "q4" }),
+      expect.objectContaining({ generation: true, capabilityProbes: true }),
       expect.any(Function),
       expect.any(Function),
       expect.any(Function),
@@ -1351,7 +1868,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    await client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
+    await client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
 
     expect(mocks.completeRuntimeEvidence).toHaveBeenCalledWith(expect.objectContaining({
       evidence: planning.downloadEvidence,
@@ -1385,7 +1902,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    const result = await client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint: vi.fn() });
+    const result = await client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
 
     expect(result.downloadEvidence?.runtimeCompletion).toMatchObject({
       status: "failed",
@@ -1395,6 +1912,50 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     expect(result.steps.find(step => step.id === "loading-investigation")).toMatchObject({ status: "blocked" });
     expect(result.steps.find(step => step.id === "lane-comparison")).toMatchObject({ status: "blocked" });
     expect(result.loadAttempts).toEqual([]);
+    expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+    expect(mocks.wrap).toHaveBeenCalledTimes(1);
+  });
+
+  it("records an incomplete local cache as an expected block without downloading or failing the investigation", async () => {
+    const exactRevision = "c".repeat(40);
+    const planning = partialRunWithProbeDownloadEvidence({ exactRevision });
+    mocks.completeRuntimeEvidence.mockResolvedValue({
+      ...planning.downloadEvidence!,
+      mode: "runtime-complete" as const,
+      runtimeCompletion: {
+        schemaVersion: 1 as const,
+        status: "exhausted" as const,
+        source: "cache-only-unavailable" as const,
+        repositoryResolvedRevision: exactRevision,
+        cacheRevision: null,
+        loaderRevisionOption: null,
+        selectedCandidate: undefined,
+        cacheReuse: undefined,
+        preparation: undefined,
+        cacheAfter: undefined,
+        cacheInspectionError: undefined,
+        error: {
+          name: "ModelSupportInvestigationLocalCacheIncomplete",
+          message: "No complete local Production candidate is available; investigation does not download model artifacts",
+        },
+      },
+    });
+    const planningRemote = remote({ runPartialInvestigation: vi.fn(async () => planning) });
+    mocks.wrap.mockReturnValueOnce(planningRemote);
+
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient();
+    const result = await client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
+
+    expect(result.downloadEvidence?.runtimeCompletion).toMatchObject({
+      status: "exhausted",
+      source: "cache-only-unavailable",
+    });
+    expect(result.steps.find(step => step.id === "download-evidence")).toMatchObject({ status: "passed" });
+    expect(result.steps.find(step => step.id === "loading-investigation")).toMatchObject({ status: "blocked" });
+    expect(result.steps.find(step => step.id === "lane-comparison")).toMatchObject({ status: "blocked" });
+    expect(result.loadAttempts).toEqual([]);
+    expect(result.error).toBeUndefined();
     expect(mocks.runProductionScenario).not.toHaveBeenCalled();
     expect(mocks.wrap).toHaveBeenCalledTimes(1);
   });
@@ -1412,7 +1973,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    const operation = client.runPartialInvestigation({ modelId: "org/model", onEvent: vi.fn(), onCheckpoint });
+    const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint });
     await vi.waitFor(() => expect(mocks.completeRuntimeEvidence).toHaveBeenCalledTimes(1));
 
     await client.interrupt();

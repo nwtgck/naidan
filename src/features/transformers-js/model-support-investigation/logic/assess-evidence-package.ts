@@ -47,7 +47,13 @@ export function assessEvidencePackage({
       ]),
     ],
   });
-  const missingRequiredCoreFiles = MODEL_SUPPORT_EVIDENCE_REQUIRED_CORE_FILES
+  const requiredCoreFiles = [
+    ...MODEL_SUPPORT_EVIDENCE_REQUIRED_CORE_FILES,
+    ...((run.requestedConfiguration !== undefined || run.executionPlan !== undefined)
+      ? ["execution-policy/policy.json" as const]
+      : []),
+  ];
+  const missingRequiredCoreFiles = requiredCoreFiles
     .filter(path => !availablePaths.has(path));
   const missingReferencedEvidencePaths = referencedEvidencePaths
     .filter(path => !availablePaths.has(path));
@@ -103,7 +109,7 @@ export function assessEvidencePackage({
     recoveryStatus: recovery?.status ?? "not-recorded",
     readinessOverall: readiness.overall,
     availableFileCount: availablePaths.size,
-    requiredCoreFiles: [...MODEL_SUPPORT_EVIDENCE_REQUIRED_CORE_FILES],
+    requiredCoreFiles,
     missingRequiredCoreFiles,
     referencedEvidencePathCount: referencedEvidencePaths.length,
     missingReferencedEvidencePaths,

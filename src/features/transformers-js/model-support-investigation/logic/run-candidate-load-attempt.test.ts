@@ -2,16 +2,19 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   ModelSupportInvestigationCandidateFilePlan,
   ModelSupportInvestigationModelDeclarations,
-  ModelSupportInvestigationRepository,
+  ModelSupportInvestigationRuntimeTarget,
   ModelSupportInvestigationTemplateBehavior,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { runCandidateLoadAttempt } from "@/features/transformers-js/model-support-investigation/logic/run-candidate-load-attempt";
 
-const repository = {
+const runtimeTarget = {
   normalizedModelId: "org/model",
-  requestedRevision: "main",
-  resolvedRevision: "a".repeat(40),
-} as ModelSupportInvestigationRepository;
+  evidenceRevision: "a".repeat(40),
+  loaderRevisionOption: null,
+  source: "repository",
+  revisionIdentity: "exact-resolved-revision",
+  pipelineTag: "text-generation",
+} as ModelSupportInvestigationRuntimeTarget;
 const declarations = {
   modelType: "llama",
 } as ModelSupportInvestigationModelDeclarations;
@@ -55,7 +58,7 @@ describe("runCandidateLoadAttempt", () => {
       .mockReturnValueOnce(100)
       .mockReturnValueOnce(6_900);
     const result = await runCandidateLoadAttempt({
-      repository,
+      runtimeTarget,
       declarations,
       templateBehavior,
       candidate,
@@ -179,10 +182,73 @@ describe("runCandidateLoadAttempt", () => {
     ]);
   });
 
+  it("can observe model load without running generation or capability probes", async () => {
+    const model = { id: "model" };
+    const buildInput = vi.fn();
+    const generateMinimumToken = vi.fn();
+    const generateNaturalBaseline = vi.fn();
+    const generateToolProtocolProbe = vi.fn();
+    const disposeModel = vi.fn(async () => undefined);
+
+    const result = await runCandidateLoadAttempt({
+      runtimeTarget,
+      declarations,
+      templateBehavior,
+      candidate,
+      executionOptions: { generation: false, capabilityProbes: false },
+      autoClass: "AutoModelForCausalLM",
+      loadDownloadedModel: async () => model,
+      observeLoadedModel: () => ({
+        modelType: "llama",
+        isEncoderDecoder: false,
+        sessions: [{ name: "model", inputNames: ["input_ids"], outputNames: ["logits"] }],
+        sessionFileCorrelations: [],
+        effectiveMinimumGenerationConfig: {
+          maxNewTokens: 1, doSample: false, bosTokenId: 1, eosTokenId: 2, padTokenId: 0, decoderStartTokenId: undefined,
+        },
+      }),
+      buildInput,
+      generateMinimumToken,
+      generateNaturalBaseline,
+      generateToolProtocolProbe,
+      disposeInput: vi.fn(async () => undefined),
+      disposeModel,
+      onAttemptEvent: vi.fn(),
+      now: now(),
+      createAttemptId: () => "load-only",
+    });
+
+    expect(result).toMatchObject({
+      status: "passed",
+      loadedModel: { modelType: "llama" },
+      selectedInputStrategy: undefined,
+      generatedTokenIds: [],
+      naturalGeneration: undefined,
+      toolProtocolProbe: undefined,
+    });
+    expect(buildInput).not.toHaveBeenCalled();
+    expect(generateMinimumToken).not.toHaveBeenCalled();
+    expect(generateNaturalBaseline).not.toHaveBeenCalled();
+    expect(generateToolProtocolProbe).not.toHaveBeenCalled();
+    expect(result.events.map(event => [event.stage, event.status])).toEqual([
+      ["worker-start", "passed"],
+      ["auto-class-selection", "passed"],
+      ["model-load", "running"],
+      ["model-load", "passed"],
+      ["input-build", "skipped"],
+      ["first-generation", "skipped"],
+      ["natural-generation", "skipped"],
+      ["tool-protocol-probe", "skipped"],
+      ["dispose", "running"],
+      ["dispose", "passed"],
+    ]);
+    expect(disposeModel).toHaveBeenCalledWith({ model });
+  });
+
   it("preserves the model-load failure and does not dispose an absent model", async () => {
     const disposeModel = vi.fn(async () => undefined);
     const result = await runCandidateLoadAttempt({
-      repository,
+      runtimeTarget,
       declarations,
       templateBehavior,
       candidate,
@@ -211,7 +277,7 @@ describe("runCandidateLoadAttempt", () => {
   it("blocks before loading when no public generative Auto class was observed", async () => {
     const loadDownloadedModel = vi.fn();
     const result = await runCandidateLoadAttempt({
-      repository,
+      runtimeTarget,
       declarations,
       templateBehavior,
       candidate,
@@ -241,7 +307,7 @@ describe("runCandidateLoadAttempt", () => {
     const generateMinimumToken = vi.fn();
     const disposeModel = vi.fn(async () => undefined);
     const result = await runCandidateLoadAttempt({
-      repository: { ...repository, pipelineTag: "image-text-to-text" },
+      runtimeTarget: { ...runtimeTarget, pipelineTag: "image-text-to-text" },
       declarations,
       templateBehavior,
       candidate,
@@ -288,7 +354,7 @@ describe("runCandidateLoadAttempt", () => {
     const loadDownloadedModel = vi.fn(async () => model);
     const disposeModel = vi.fn(async () => undefined);
     const result = await runCandidateLoadAttempt({
-      repository,
+      runtimeTarget,
       declarations,
       templateBehavior: undefined,
       candidate,
@@ -347,7 +413,7 @@ describe("runCandidateLoadAttempt", () => {
     const model = { id: "model" };
     const generateMinimumToken = vi.fn(async () => ({ generatedTokenIds: [42], generatedText: "answer", modelType: "llama" }));
     const result = await runCandidateLoadAttempt({
-      repository,
+      runtimeTarget,
       declarations,
       templateBehavior: undefined,
       candidate,
@@ -424,7 +490,7 @@ describe("runCandidateLoadAttempt", () => {
       return { generatedTokenIds: [42], generatedText: "answer", modelType: "llama" };
     });
     const result = await runCandidateLoadAttempt({
-      repository,
+      runtimeTarget,
       declarations,
       templateBehavior,
       candidate,
@@ -496,7 +562,7 @@ describe("runCandidateLoadAttempt", () => {
       return { generatedTokenIds: [42], generatedText: "answer", modelType: "llama" };
     });
     const result = await runCandidateLoadAttempt({
-      repository,
+      runtimeTarget,
       declarations,
       templateBehavior,
       candidate,
@@ -574,7 +640,7 @@ describe("runCandidateLoadAttempt", () => {
       },
     }));
     const result = await runCandidateLoadAttempt({
-      repository,
+      runtimeTarget,
       declarations,
       templateBehavior: {
         ...templateBehavior,

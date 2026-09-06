@@ -1,3 +1,4 @@
+import type { ModelSupportInvestigationConfiguration, ModelSupportInvestigationExecutionPlan } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 import type {
   DownloadVerificationEvidenceInput,
   DownloadVerificationProbeEvidenceInput,
@@ -39,7 +40,8 @@ export type ModelSupportInvestigationStepStatus =
   | "running"
   | "passed"
   | "failed"
-  | "blocked";
+  | "blocked"
+  | "skipped";
 
 export interface ModelSupportInvestigationStep {
   id: ModelSupportInvestigationStepId,
@@ -224,6 +226,38 @@ export interface ModelSupportInvestigationRepository {
 }
 
 
+export type ModelSupportInvestigationRuntimeTargetRevisionIdentity =
+  | "exact-resolved-revision"
+  | "local-immutable-revision"
+  | "legacy-main-unverified";
+
+export interface ModelSupportInvestigationRuntimeTarget {
+  normalizedModelId: string,
+  evidenceRevision: string,
+  loaderRevisionOption: string | null,
+  source: "repository" | "local-cache",
+  revisionIdentity: ModelSupportInvestigationRuntimeTargetRevisionIdentity,
+  pipelineTag: string | undefined,
+}
+
+export type ModelSupportInvestigationLocalCacheRevisionSelection =
+  | {
+      status: "selected",
+      revision: string,
+      revisionIdentity: Exclude<ModelSupportInvestigationRuntimeTargetRevisionIdentity, "exact-resolved-revision">,
+      loaderRevisionOption: string | null,
+    }
+  | {
+      status: "unavailable",
+      reason: string,
+    }
+  | {
+      status: "ambiguous",
+      revisions: string[],
+      reason: string,
+    };
+
+
 export type ModelSupportInvestigationAutoClassName =
   | 'AutoModel'
   | 'AutoModelForCausalLM'
@@ -363,7 +397,7 @@ export interface ModelSupportInvestigationPlannedFile {
   path: string,
   kind: ModelSupportInvestigationPlannedFileKind,
   requirement: "required" | "optional",
-  repositoryObservation: "present" | "missing" | "zero-byte",
+  repositoryObservation: "present" | "missing" | "zero-byte" | "not-observed",
   repositorySize: number | undefined,
   repositoryBlobId: string | undefined,
   repositoryLfsOid: string | undefined,
@@ -397,6 +431,11 @@ export type ModelSupportInvestigationGenerationAutoClassName =
   | "AutoModelForImageTextToText"
   | "AutoModelForAudioTextToText"
   | "AutoModelForSpeechSeq2Seq";
+
+export interface ModelSupportInvestigationCandidateExecutionOptions {
+  generation: boolean,
+  capabilityProbes: boolean,
+}
 
 export type ModelSupportInvestigationLoadAttemptStage =
   | "worker-start"
@@ -821,6 +860,8 @@ export interface ModelSupportInvestigationRun {
   schemaVersion: 1,
   runId: string,
   modelId: string,
+  requestedConfiguration?: ModelSupportInvestigationConfiguration,
+  executionPlan?: ModelSupportInvestigationExecutionPlan,
   scope:
     | "partial-runtime-preflight"
     | "partial-runtime-repository-cache"
@@ -837,6 +878,7 @@ export interface ModelSupportInvestigationRun {
   runtimeAssets: ModelSupportInvestigationRuntimeAssets | undefined,
   runtimeAssetsPartial?: ModelSupportInvestigationRuntimeAssetsPartial,
   repository: ModelSupportInvestigationRepository | undefined,
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget | undefined,
   downloadEvidence: DownloadVerificationEvidenceInput | undefined,
   cache: ModelSupportInvestigationCacheInventory | undefined,
   declarations: ModelSupportInvestigationModelDeclarations | undefined,
@@ -862,11 +904,13 @@ export type ModelSupportInvestigationEvidenceReadinessStatus =
   | "implementation-ready"
   | "partial"
   | "insufficient"
-  | "not-observed";
+  | "not-observed"
+  | "not-applicable";
 
 export type ModelSupportInvestigationEvidenceDomainId =
   | "runtime-assets"
   | "repository"
+  | "execution-target"
   | "download"
   | "cache"
   | "model-declarations"
@@ -882,7 +926,7 @@ export type ModelSupportInvestigationEvidenceDomainId =
 
 export interface ModelSupportInvestigationEvidenceQuestion {
   questionId: string,
-  status: "answered" | "unobserved" | "contradictory",
+  status: "answered" | "unobserved" | "contradictory" | "not-applicable",
   answer: string,
   evidencePaths: string[],
 }
@@ -978,24 +1022,29 @@ export interface ModelSupportInvestigationCheckpoint {
   recovery: ModelSupportInvestigationRecovery,
 }
 
+export interface ModelSupportInvestigationPlanningRequest {
+  modelId: string,
+  externalNetworkPolicy: ModelSupportInvestigationConfiguration['externalNetworkPolicy'],
+  executionPlan: ModelSupportInvestigationExecutionPlan,
+}
+
 export interface IModelSupportInvestigationWorker {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runPartialInvestigation(
-    modelId: string,
+    request: ModelSupportInvestigationPlanningRequest,
     onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
     onRunCheckpoint: WorkerProxy<({ run }: { run: ModelSupportInvestigationPlanningWorkerRun }) => void>,
   ): Promise<ModelSupportInvestigationPlanningWorkerRun>,
-  inspectDownloadedTemplateBehavior({ repository, loaderRevisionOption }: {
-    repository: ModelSupportInvestigationRepository,
-    loaderRevisionOption: string | null,
+  inspectDownloadedTemplateBehavior({ runtimeTarget }: {
+    runtimeTarget: ModelSupportInvestigationRuntimeTarget,
   }): Promise<ModelSupportInvestigationTemplateBehavior>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runCandidateAttempt(
-    repository: ModelSupportInvestigationRepository,
+    runtimeTarget: ModelSupportInvestigationRuntimeTarget,
     declarations: ModelSupportInvestigationModelDeclarations,
     templateBehavior: ModelSupportInvestigationTemplateBehavior | undefined,
-    loaderRevisionOption: string | null,
     candidate: ModelSupportInvestigationCandidateFilePlan,
+    executionOptions: ModelSupportInvestigationCandidateExecutionOptions,
     onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
     onAttemptEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationLoadAttemptEvent }) => void>,
     onAttemptCheckpoint: WorkerProxy<({ attempt }: { attempt: ModelSupportInvestigationLoadAttemptCheckpoint }) => void>,
@@ -1003,8 +1052,9 @@ export interface IModelSupportInvestigationWorker {
 }
 
 export interface ModelSupportInvestigationWorkerClient {
-  runPartialInvestigation({ modelId, onEvent, onCheckpoint }: {
+  runPartialInvestigation({ modelId, configuration, onEvent, onCheckpoint }: {
     modelId: string,
+    configuration: ModelSupportInvestigationConfiguration,
     onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
     onCheckpoint: ({ checkpoint }: { checkpoint: ModelSupportInvestigationCheckpoint }) => void,
   }): Promise<ModelSupportInvestigationRun>,

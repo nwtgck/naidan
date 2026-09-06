@@ -3,8 +3,9 @@ import type {
   ModelSupportInvestigationCacheInventory,
   ModelSupportInvestigationModelDeclarations,
   ModelSupportInvestigationRepository,
+  ModelSupportInvestigationRuntimeTarget,
 } from "@/features/transformers-js/model-support-investigation/types";
-import { inspectModelFilePlan, TEST_ONLY } from "./inspect-model-file-plan";
+import { inspectLocalModelFilePlan, inspectModelFilePlan, TEST_ONLY } from "./inspect-model-file-plan";
 
 function repository(): ModelSupportInvestigationRepository {
   return {
@@ -78,6 +79,47 @@ function cache(): ModelSupportInvestigationCacheInventory {
         isWeightFile: true,
       },
     ],
+  };
+}
+
+
+function localRuntimeTarget(): ModelSupportInvestigationRuntimeTarget {
+  return {
+    normalizedModelId: "org/model",
+    evidenceRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    loaderRevisionOption: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    source: "local-cache",
+    revisionIdentity: "local-immutable-revision",
+    pipelineTag: undefined,
+  };
+}
+
+function localCache({ incompleteExternalData = false }: { incompleteExternalData?: boolean } = {}): ModelSupportInvestigationCacheInventory {
+  const revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const files = [
+    ["config.json", 120, true],
+    ["generation_config.json", 60, true],
+    ["onnx/model_q4.onnx", 400, true],
+    ["onnx/model_q4.onnx_data", 800, !incompleteExternalData],
+  ] as const;
+  return {
+    ...cache(),
+    revisionProvenance: "unknown",
+    totalBytes: files.reduce((sum, [, size]) => sum + size, 0),
+    fileCount: files.length,
+    completionMarkerCount: files.filter(([, , complete]) => complete).length,
+    incompleteFileCount: files.filter(([, , complete]) => !complete).length,
+    weightFileCount: 2,
+    allFilesHaveCompletionMarkers: !incompleteExternalData,
+    files: files.map(([repositoryPath, size, complete], index) => ({
+      path: `resolve/${revision}/${repositoryPath}`,
+      repositoryPath,
+      cacheRevision: revision,
+      size,
+      lastModified: index + 1,
+      hasCompletionMarker: complete,
+      isWeightFile: repositoryPath.endsWith(".onnx") || repositoryPath.includes(".onnx_data"),
+    })),
   };
 }
 
@@ -183,4 +225,50 @@ describe("inspectModelFilePlan", () => {
     expect(TEST_ONLY.fileKind({ path: "onnx/model_q4.onnx_data_2" })).toBe("external-data");
     expect(TEST_ONLY.fileKind({ path: "generation_config.json" })).toBe("optional-config");
   });
+
+  it("plans local candidates from completed files at the selected cache revision without repository availability", async () => {
+    const result = await inspectLocalModelFilePlan({
+      runtimeTarget: localRuntimeTarget(),
+      declarations: declarations(),
+      cache: localCache(),
+      getModelFiles: async ({ dtype }) => registryFiles({ dtype }),
+    });
+
+    expect(result.candidates[0]).toMatchObject({
+      candidateId: "webgpu-q4f16",
+      eligibility: "ineligible",
+      missingRequiredFileCount: 2,
+    });
+    expect(result.candidates[1]).toMatchObject({
+      candidateId: "webgpu-q4",
+      eligibility: "eligible",
+      missingRequiredFileCount: 0,
+      cacheCompleteMarkerRequiredFileCount: 3,
+    });
+    expect(result.candidates[1]?.files).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: "onnx/model_q4.onnx",
+        repositoryObservation: "not-observed",
+      }),
+    ]));
+  });
+
+  it("keeps a local candidate ineligible when required external data is incomplete", async () => {
+    const result = await inspectLocalModelFilePlan({
+      runtimeTarget: localRuntimeTarget(),
+      declarations: declarations(),
+      cache: localCache({ incompleteExternalData: true }),
+      getModelFiles: async ({ dtype }) => registryFiles({ dtype }),
+    });
+
+    expect(result.candidates[1]).toMatchObject({
+      candidateId: "webgpu-q4",
+      eligibility: "ineligible",
+      missingRequiredFileCount: 1,
+      ineligibleReasons: [
+        "missing completed local cache file at revision aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: onnx/model_q4.onnx_data",
+      ],
+    });
+  });
+
 });

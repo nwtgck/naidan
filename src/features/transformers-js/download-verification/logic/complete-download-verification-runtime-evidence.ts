@@ -1,53 +1,11 @@
 import type { DownloadVerificationEvidenceInput, DownloadVerificationRuntimeCompletionEvidence } from '@/features/transformers-js/download-verification/evidence/types';
 import { inspectDownloadVerificationCachedRevisions } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
 import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
-import { runProductionDownloadPreparation } from '@/features/transformers-js/download-verification/logic/run-production-download-preparation';
-import type { TransformersJsProductionInvestigationCandidate, TransformersJsProgressCallback } from '@/features/transformers-js/types';
+import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 
 function serializedError({ error }: { error: unknown }): { name: string; message: string } {
   if (error instanceof Error) return { name: error.name, message: error.message };
   return { name: 'Error', message: String(error) };
-}
-
-
-function runtimePreparationError({ preparation }: {
-  preparation: Awaited<ReturnType<typeof runProductionDownloadPreparation>>;
-}): { name: string; message: string } | undefined {
-  switch (preparation.status) {
-  case 'accepted':
-    return undefined;
-  case 'exhausted':
-    return {
-      name: 'ProductionDownloadPreparationExhausted',
-      message: 'No Production candidate was accepted after runtime-complete preparation',
-    };
-  case 'failed':
-    switch (preparation.failureStage) {
-    case 'runtime-artifacts':
-      return preparation.runtimeArtifacts.error ?? {
-        name: 'RuntimeArtifactPreparationFailed',
-        message: 'Production runtime artifact preparation failed without an error detail',
-      };
-    case 'candidate-orchestration':
-      return preparation.candidates?.error ?? {
-        name: 'CandidateOrchestrationFailed',
-        message: 'Production candidate orchestration failed without an error detail',
-      };
-    case undefined:
-      return {
-        name: 'ProductionDownloadPreparationFailed',
-        message: 'Production download preparation failed without identifying a failure stage',
-      };
-    default: {
-      const _ex: never = preparation;
-      throw new Error(`Unhandled Production download preparation failure variant: ${String(_ex)}`);
-    }
-    }
-  default: {
-    const _ex: never = preparation;
-    throw new Error(`Unhandled runtime-complete preparation result: ${String(_ex)}`);
-  }
-  }
 }
 
 async function inspectCacheAfter({
@@ -72,30 +30,29 @@ async function inspectCacheAfter({
   }
 }
 
+function unavailableLocalCacheError(): { name: string; message: string } {
+  return {
+    name: 'ModelSupportInvestigationLocalCacheIncomplete',
+    message: 'No Production candidate is fully available in the downloaded-model cache. Model Support Investigation does not download, resume, repair, or complete model weight artifacts.',
+  };
+}
+
 export async function completeDownloadVerificationRuntimeEvidence({
   evidence,
-  progressCallback = () => undefined,
   signal,
   storageRoot,
   reuseRevision = reuseDownloadedProductionRevision,
-  runPreparation = runProductionDownloadPreparation,
   inspectCachedRevisions = inspectDownloadVerificationCachedRevisions,
   allowLegacyMainReuse = true,
-  candidateOrder,
   reusableCandidateOrderByRevision,
-  requiredModelPathsByCandidate,
 }: {
   evidence: DownloadVerificationEvidenceInput;
-  progressCallback?: TransformersJsProgressCallback;
   signal?: AbortSignal;
   storageRoot?: FileSystemDirectoryHandle;
   reuseRevision?: typeof reuseDownloadedProductionRevision;
-  runPreparation?: typeof runProductionDownloadPreparation;
   inspectCachedRevisions?: typeof inspectDownloadVerificationCachedRevisions;
   allowLegacyMainReuse?: boolean;
-  candidateOrder?: readonly TransformersJsProductionInvestigationCandidate[];
   reusableCandidateOrderByRevision?: Readonly<Record<string, readonly TransformersJsProductionInvestigationCandidate[]>>;
-  requiredModelPathsByCandidate?: Readonly<Record<string, readonly string[]>>;
 }): Promise<DownloadVerificationEvidenceInput> {
   signal?.throwIfAborted();
   const resolvedStorageRoot = storageRoot ?? await navigator.storage.getDirectory();
@@ -104,6 +61,12 @@ export async function completeDownloadVerificationRuntimeEvidence({
 
   let runtimeCompletion: DownloadVerificationRuntimeCompletionEvidence;
   try {
+    // Model Support Investigation is observational. It must never acquire the
+    // full-artifact download capability simply to make later probes runnable.
+    // This cache-only acceptance boundary is intentionally separate from the
+    // explicit user model-download flow. Missing model weights or external-data
+    // shards are evidence that blocks downstream runtime probes; they are not a
+    // reason for MSI to download, resume, repair, or complete the model cache.
     const reuse = await reuseRevision({
       modelId,
       resolvedRevision: repositoryResolvedRevision,
@@ -142,53 +105,20 @@ export async function completeDownloadVerificationRuntimeEvidence({
       }
     }
 
-    const preparation = await runPreparation({
-      modelId,
-      revision: repositoryResolvedRevision,
-      progressCallback,
-      signal,
-      ...(candidateOrder === undefined ? {} : { candidateOrder }),
-      ...(requiredModelPathsByCandidate === undefined ? {} : { requiredModelPathsByCandidate }),
-    });
-    signal?.throwIfAborted();
     const cacheObservation = await inspectCacheAfter({ modelId, storageRoot: resolvedStorageRoot, inspectCachedRevisions });
-    switch (preparation.status) {
-    case 'accepted':
-      runtimeCompletion = {
-        schemaVersion: 1,
-        status: 'accepted',
-        source: 'production-download-preparation',
-        repositoryResolvedRevision,
-        cacheRevision: repositoryResolvedRevision,
-        loaderRevisionOption: repositoryResolvedRevision,
-        selectedCandidate: preparation.candidates.selectedCandidate,
-        cacheReuse: reuse.acceptance,
-        preparation,
-        ...cacheObservation,
-        error: undefined,
-      };
-      break;
-    case 'failed':
-    case 'exhausted':
-      runtimeCompletion = {
-        schemaVersion: 1,
-        status: preparation.status,
-        source: 'production-download-preparation',
-        repositoryResolvedRevision,
-        cacheRevision: repositoryResolvedRevision,
-        loaderRevisionOption: repositoryResolvedRevision,
-        selectedCandidate: undefined,
-        cacheReuse: reuse.acceptance,
-        preparation,
-        ...cacheObservation,
-        error: runtimePreparationError({ preparation }),
-      };
-      break;
-    default: {
-      const _ex: never = preparation;
-      throw new Error(`Unhandled runtime-complete preparation result: ${String(_ex)}`);
-    }
-    }
+    runtimeCompletion = {
+      schemaVersion: 1,
+      status: 'exhausted',
+      source: 'cache-only-unavailable',
+      repositoryResolvedRevision,
+      cacheRevision: null,
+      loaderRevisionOption: null,
+      selectedCandidate: undefined,
+      cacheReuse: reuse.acceptance,
+      preparation: undefined,
+      ...cacheObservation,
+      error: unavailableLocalCacheError(),
+    };
   } catch (error) {
     signal?.throwIfAborted();
     const cacheObservation = await inspectCacheAfter({ modelId, storageRoot: resolvedStorageRoot, inspectCachedRevisions });
@@ -213,4 +143,5 @@ export async function completeDownloadVerificationRuntimeEvidence({
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  unavailableLocalCacheError,
 };

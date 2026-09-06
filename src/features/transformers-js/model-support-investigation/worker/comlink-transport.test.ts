@@ -67,10 +67,10 @@ describe("Transformers.js Comlink transport contracts", () => {
     };
 
     const exposedWorker: IModelSupportInvestigationWorker = {
-      async runPartialInvestigation(modelId, onEvent, onRunCheckpoint) {
+      async runPartialInvestigation(request, onEvent, onRunCheckpoint) {
         onEvent({ event: planningEvent });
-        onRunCheckpoint({ run: { modelId } as never });
-        return { modelId } as never;
+        onRunCheckpoint({ run: { modelId: request.modelId } as never });
+        return { modelId: request.modelId } as never;
       },
       async inspectDownloadedTemplateBehavior() {
         return {} as never;
@@ -100,7 +100,7 @@ describe("Transformers.js Comlink transport contracts", () => {
 
     try {
       const planningResult = await remote.runPartialInvestigation(
-        "org/model",
+        { modelId: "org/model", externalNetworkPolicy: "allow", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
         Comlink.proxy(onEvent),
         Comlink.proxy(onRunCheckpoint),
       );
@@ -108,7 +108,7 @@ describe("Transformers.js Comlink transport contracts", () => {
         {} as never,
         {} as never,
         {} as never,
-        null,
+        {} as never,
         {} as never,
         Comlink.proxy(onEvent),
         Comlink.proxy(onAttemptEvent),

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("comlink", () => ({ expose: mocks.expose }));
 
 vi.mock("@/features/transformers-js/runtime/configure-hosted-runtime", () => ({
+  isModelWeightFileName: ({ fileName }: { fileName: string }) => /\.(?:onnx|data)$/iu.test(fileName) || fileName.includes('_data'),
   configureHostedTransformersRuntime: () => ({
     assets: {
       variant: "asyncify",
@@ -257,8 +258,10 @@ describe("model-support-investigation worker", () => {
     const result = await exposedWorker().runCandidateAttempt(
       {
         normalizedModelId: "org/model",
-        requestedRevision: "main",
-        resolvedRevision: "a".repeat(40),
+        evidenceRevision: "a".repeat(40),
+        loaderRevisionOption: null,
+        source: "repository",
+        revisionIdentity: "exact-resolved-revision",
         pipelineTag: "text-generation",
       } as never,
       {
@@ -280,7 +283,6 @@ describe("model-support-investigation worker", () => {
           inputIds: [1, 2],
         }],
       } as never,
-      null,
       {
         candidateId: "webgpu-q4",
         device: "webgpu",
@@ -289,6 +291,7 @@ describe("model-support-investigation worker", () => {
         ineligibleReasons: [],
         files: [{ path: "onnx/model.onnx", kind: "core-onnx", requirement: "required" }],
       } as never,
+      { generation: true, capabilityProbes: true },
       onEvent,
       vi.fn(),
       onAttemptCheckpoint,
@@ -396,8 +399,10 @@ describe("model-support-investigation worker", () => {
     const result = await exposedWorker().runCandidateAttempt(
       {
         normalizedModelId: "org/model",
-        requestedRevision: "main",
-        resolvedRevision: "a".repeat(40),
+        evidenceRevision: "a".repeat(40),
+        loaderRevisionOption: null,
+        source: "repository",
+        revisionIdentity: "exact-resolved-revision",
         pipelineTag: "text-generation",
       } as never,
       {
@@ -410,7 +415,6 @@ describe("model-support-investigation worker", () => {
         }],
       } as never,
       undefined,
-      null,
       {
         candidateId: "webgpu-q4",
         device: "webgpu",
@@ -419,6 +423,7 @@ describe("model-support-investigation worker", () => {
         ineligibleReasons: [],
         files: [{ path: "onnx/model.onnx", kind: "core-onnx", requirement: "required" }],
       } as never,
+      { generation: true, capabilityProbes: true },
       vi.fn(),
       vi.fn(),
       vi.fn(),
@@ -451,8 +456,10 @@ describe("model-support-investigation worker", () => {
     const result = await exposedWorker().runCandidateAttempt(
       {
         normalizedModelId: "org/model",
-        requestedRevision: "main",
-        resolvedRevision: "a".repeat(40),
+        evidenceRevision: "a".repeat(40),
+        loaderRevisionOption: null,
+        source: "repository",
+        revisionIdentity: "exact-resolved-revision",
         pipelineTag: "text-generation",
       } as never,
       {
@@ -465,7 +472,6 @@ describe("model-support-investigation worker", () => {
         }],
       } as never,
       undefined,
-      null,
       {
         candidateId: "webgpu-q4",
         device: "webgpu",
@@ -474,6 +480,7 @@ describe("model-support-investigation worker", () => {
         ineligibleReasons: [],
         files: [{ path: "onnx/model.onnx", kind: "core-onnx", requirement: "required" }],
       } as never,
+      { generation: true, capabilityProbes: true },
       vi.fn(),
       vi.fn(),
       vi.fn(),
@@ -506,8 +513,10 @@ describe("model-support-investigation worker", () => {
     const result = await exposedWorker().runCandidateAttempt(
       {
         normalizedModelId: "org/model",
-        requestedRevision: "main",
-        resolvedRevision: "a".repeat(40),
+        evidenceRevision: "a".repeat(40),
+        loaderRevisionOption: null,
+        source: "repository",
+        revisionIdentity: "exact-resolved-revision",
         pipelineTag: "text-generation",
       } as never,
       {
@@ -549,7 +558,6 @@ describe("model-support-investigation worker", () => {
           assistantToolCallSuffixTokenIds: [9, 10],
         },
       } as never,
-      null,
       {
         candidateId: "webgpu-q4",
         device: "webgpu",
@@ -558,6 +566,7 @@ describe("model-support-investigation worker", () => {
         ineligibleReasons: [],
         files: [{ path: "onnx/model.onnx", kind: "core-onnx", requirement: "required" }],
       } as never,
+      { generation: true, capabilityProbes: true },
       vi.fn(),
       vi.fn(),
       vi.fn(),

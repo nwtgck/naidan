@@ -5,8 +5,10 @@ import {
   CheckCircle2Icon,
   CircleIcon,
   CircleSlash2Icon,
+  CopyIcon,
   DownloadIcon,
   Loader2Icon,
+  PlayIcon,
   SearchCheckIcon,
   SquareIcon,
   XIcon,
@@ -24,6 +26,20 @@ import type {
 } from "@/features/transformers-js/model-support-investigation/types";
 import { createModelSupportInvestigationWorkerClient } from "@/features/transformers-js/model-support-investigation/worker/client-hosted";
 import { createModelSupportInvestigationEvidenceWorkerClient } from "@/features/transformers-js/model-support-investigation/evidence-worker/client-hosted";
+import {
+  canonicalInvestigationTargetList,
+  configurationForPreset,
+  createDefaultInvestigationConfiguration,
+  deriveInvestigationPreset,
+  normalizeInvestigationTarget,
+  parseInvestigationTargets,
+  resolveEffectiveScope,
+  type ModelSupportInvestigationConfiguration,
+  type ModelSupportInvestigationExternalNetworkPolicy,
+  type ModelSupportInvestigationPreset,
+  type ModelSupportInvestigationScopeId,
+} from "@/features/transformers-js/model-support-investigation/logic/investigation-config";
+import { runInvestigationTargetsSequentially, type ModelSupportInvestigationTargetExecution } from "@/features/transformers-js/model-support-investigation/logic/run-investigation-targets-sequentially";
 import { evaluateEvidenceReadiness } from "@/features/transformers-js/model-support-investigation/logic/evaluate-evidence-readiness";
 import { assessSupportBoundaries } from "@/features/transformers-js/model-support-investigation/logic/assess-support-boundaries";
 import type { TransformersJsProductionInvestigationActiveCandidateLoadAttempt } from "@/features/transformers-js/types";
@@ -37,9 +53,54 @@ const emit = defineEmits<{
 }>();
 
 const modalContent = ref<HTMLElement | undefined>(undefined);
+const normalizedSeededTarget = normalizeInvestigationTarget({ input: props.modelId });
+const committedTargets = ref<string[]>(normalizedSeededTarget === undefined ? [] : [normalizedSeededTarget]);
+const targetDraft = ref(normalizedSeededTarget === undefined ? props.modelId.trim() : '');
+const targetDraftParseResult = computed(() => parseInvestigationTargets({ text: targetDraft.value }));
+const targetParseResult = computed(() => {
+  const targets = [...committedTargets.value];
+  const seen = new Set(targets);
+  for (const target of targetDraftParseResult.value.targets) {
+    if (seen.has(target)) continue;
+    seen.add(target);
+    targets.push(target);
+  }
+  return { targets, errors: targetDraftParseResult.value.errors };
+});
+const investigationConfiguration = ref(createDefaultInvestigationConfiguration());
+const investigationPreset = computed(() => deriveInvestigationPreset({ configuration: investigationConfiguration.value }));
+const effectiveScope = computed(() => resolveEffectiveScope({ scope: investigationConfiguration.value.scope }));
+const hasRequestedScope = computed(() => Object.values(investigationConfiguration.value.scope).some(value => value === 'selected'));
+const setupStage = ref<'setup' | 'review'>('setup');
+const reviewSnapshot = shallowRef<{
+  targets: string[],
+  configuration: ModelSupportInvestigationConfiguration,
+} | undefined>(undefined);
+const reviewEffectiveScope = computed(() => (
+  reviewSnapshot.value === undefined
+    ? undefined
+    : resolveEffectiveScope({ scope: reviewSnapshot.value.configuration.scope })
+));
+const reviewPreset = computed(() => (
+  reviewSnapshot.value === undefined
+    ? undefined
+    : deriveInvestigationPreset({ configuration: reviewSnapshot.value.configuration })
+));
+const investigationScopeIds: readonly ModelSupportInvestigationScopeId[] = [
+  'repository-download',
+  'model-load',
+  'generation',
+  'continuity',
+  'capability-probes',
+];
+const targetExecutions = shallowRef<ModelSupportInvestigationTargetExecution[]>([]);
+const selectedTarget = ref<string | undefined>(undefined);
 const run = shallowRef<ModelSupportInvestigationRun | undefined>(undefined);
 const recovery = ref<ModelSupportInvestigationRecovery | undefined>(undefined);
-const running = ref(true);
+const recoveryByTarget = new Map<string, ModelSupportInvestigationRecovery | undefined>();
+const runByTarget = new Map<string, ModelSupportInvestigationRun>();
+const started = ref(false);
+const running = ref(false);
 const stopping = ref(false);
 const evidenceExporting = ref(false);
 const currentOperation = ref<string | undefined>(undefined);
@@ -47,7 +108,10 @@ const latestProgress = ref<ModelSupportInvestigationProgressObservation | undefi
 const progressClockMs = ref(Date.now());
 let progressClock: ReturnType<typeof setInterval> | undefined;
 const displayedCurrentOperation = computed(() => (
-  currentOperation.value ?? lazyStrings.ModelSupportInvestigationModal__checking_same_origin_runtime_assets()
+  currentOperation.value
+  ?? (started.value
+    ? lazyStrings.ModelSupportInvestigationModal__checking_same_origin_runtime_assets()
+    : lazyStrings.ModelSupportInvestigationModal__ready_to_start())
 ));
 
 function formatModelLoadCacheDiagnostic({ progress }: {
@@ -512,20 +576,24 @@ const cacheSummary = computed(() => {
     zeroByteFileCount: cache.zeroByteFileCount,
   });
 });
-const steps = ref<ModelSupportInvestigationStep[]>([
-  { id: "runtime-assets", status: "running", detail: undefined },
-  { id: "repository-information", status: "not-run", detail: undefined },
-  { id: "download-evidence", status: "not-run", detail: undefined },
-  { id: "existing-model-data", status: "not-run", detail: undefined },
-  { id: "model-declarations", status: "not-run", detail: undefined },
-  { id: "template-behavior", status: "not-run", detail: undefined },
-  { id: "model-file-plan", status: "not-run", detail: undefined },
-  { id: "loading-investigation", status: "not-run", detail: undefined },
-  { id: "lane-comparison", status: "not-run", detail: undefined },
-  { id: "evidence-export", status: "not-run", detail: undefined },
-]);
-const client = createModelSupportInvestigationWorkerClient();
-let clientDisposed = false;
+function initialInvestigationSteps(): ModelSupportInvestigationStep[] {
+  return [
+    { id: "runtime-assets", status: "not-run", detail: undefined },
+    { id: "repository-information", status: "not-run", detail: undefined },
+    { id: "download-evidence", status: "not-run", detail: undefined },
+    { id: "existing-model-data", status: "not-run", detail: undefined },
+    { id: "model-declarations", status: "not-run", detail: undefined },
+    { id: "template-behavior", status: "not-run", detail: undefined },
+    { id: "model-file-plan", status: "not-run", detail: undefined },
+    { id: "loading-investigation", status: "not-run", detail: undefined },
+    { id: "lane-comparison", status: "not-run", detail: undefined },
+    { id: "evidence-export", status: "not-run", detail: undefined },
+  ];
+}
+
+const steps = ref<ModelSupportInvestigationStep[]>(initialInvestigationSteps());
+let activeClient: ReturnType<typeof createModelSupportInvestigationWorkerClient> | undefined;
+let interruptionRequested = false;
 
 const findingDetails = computed(() => steps.value
   .filter(step => step.detail !== undefined)
@@ -673,6 +741,8 @@ function statusLabel({ status }: { status: ModelSupportInvestigationStep["status
     return lazyStrings.ModelSupportInvestigationModal__not_run();
   case "blocked":
     return lazyStrings.ModelSupportInvestigationModal__blocked();
+  case "skipped":
+    return lazyStrings.ModelSupportInvestigationModal__skipped();
   default: {
     const _ex: never = status;
     return _ex;
@@ -718,71 +788,301 @@ function handleKeydown({ event }: { event: KeyboardEvent }): void {
   }
 }
 
-async function disposeClient(): Promise<void> {
-  if (clientDisposed) return;
-  clientDisposed = true;
-  await client.dispose();
+async function disposeClientBestEffort({ client }: {
+  client: ReturnType<typeof createModelSupportInvestigationWorkerClient>,
+}): Promise<void> {
+  try {
+    await client.dispose();
+  } catch {
+    // Worker cleanup is advisory after a run has settled. A dispose failure must not
+    // replace an already-observed investigation result or surface as an unhandled rejection.
+  }
+}
+
+async function interruptClientBestEffort({ client }: {
+  client: ReturnType<typeof createModelSupportInvestigationWorkerClient> | undefined,
+}): Promise<void> {
+  if (client === undefined) return;
+  try {
+    await client.interrupt();
+  } catch {
+    // Interrupt is a cleanup/control request. Transport failure must not surface as an
+    // unhandled rejection or replace already-observed investigation Evidence.
+  }
+}
+
+async function disposeActiveClient(): Promise<void> {
+  const client = activeClient;
+  if (client === undefined) return;
+  activeClient = undefined;
+  await disposeClientBestEffort({ client });
 }
 
 async function stopInvestigation(): Promise<void> {
   if (!running.value || stopping.value) return;
   stopping.value = true;
+  interruptionRequested = true;
   try {
-    await client.interrupt();
+    await interruptClientBestEffort({ client: activeClient });
   } finally {
     stopping.value = false;
   }
 }
 
-async function startInvestigation(): Promise<void> {
+function applyRunPresentation({
+  target,
+  sourceRun,
+  sourceRecovery,
+}: {
+  target: string,
+  sourceRun: ModelSupportInvestigationRun,
+  sourceRecovery: ModelSupportInvestigationRecovery | undefined,
+}): void {
+  selectedTarget.value = target;
+  run.value = sourceRun;
+  recovery.value = sourceRecovery;
+  recoveryByTarget.set(target, sourceRecovery);
+  runByTarget.set(target, structuredClone(sourceRun));
+  steps.value = sourceRun.steps;
+  currentOperation.value = sourceRun.currentOperation;
+  const progress = sourceRecovery?.lastEvent?.progress;
+  if (progress !== undefined) latestProgress.value = progress;
+}
+
+async function runSingleTarget({ target, configuration }: {
+  target: string,
+  configuration: ModelSupportInvestigationConfiguration,
+}): Promise<ModelSupportInvestigationRun> {
+  const client = createModelSupportInvestigationWorkerClient();
+  activeClient = client;
+  selectedTarget.value = target;
+  run.value = undefined;
+  recovery.value = undefined;
+  steps.value = initialInvestigationSteps();
+  currentOperation.value = lazyStrings.ModelSupportInvestigationModal__checking_same_origin_runtime_assets();
+  latestProgress.value = undefined;
   try {
     const completedRun = await client.runPartialInvestigation({
-      modelId: props.modelId,
+      modelId: target,
+      configuration: structuredClone(configuration),
       onEvent: ({ event }) => updateStep({ event }),
       onCheckpoint: ({ checkpoint }) => {
-        run.value = checkpoint.run;
-        recovery.value = checkpoint.recovery;
-        steps.value = checkpoint.run.steps;
-        currentOperation.value = checkpoint.run.currentOperation;
-        if (checkpoint.recovery.lastEvent?.progress !== undefined) {
-          latestProgress.value = checkpoint.recovery.lastEvent.progress;
-        }
+        applyRunPresentation({
+          target,
+          sourceRun: checkpoint.run,
+          sourceRecovery: checkpoint.recovery,
+        });
       },
     });
-    run.value = completedRun;
-    steps.value = completedRun.steps;
-    currentOperation.value = completedRun.currentOperation;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    if (run.value !== undefined) {
-      currentOperation.value = run.value.currentOperation;
-      steps.value = run.value.steps;
-      return;
-    }
-    currentOperation.value = detail;
-    steps.value = steps.value.map(step => {
-      switch (step.id) {
-      case "runtime-assets":
-        return { ...step, status: "failed", detail };
-      case "repository-information":
-      case "download-evidence":
-      case "existing-model-data":
-      case "model-declarations":
-      case "template-behavior":
-      case "model-file-plan":
-      case "loading-investigation":
-      case "lane-comparison":
-      case "evidence-export":
-        return step;
-      default: {
-        const _ex: never = step.id;
-        return _ex;
-      }
-      }
+    applyRunPresentation({
+      target,
+      sourceRun: completedRun,
+      sourceRecovery: recoveryByTarget.get(target),
     });
+    return completedRun;
+  } finally {
+    if (activeClient === client) activeClient = undefined;
+    await disposeClientBestEffort({ client });
+  }
+}
+
+function selectTargetExecution({ executionIndex }: { executionIndex: number }): void {
+  const execution = targetExecutions.value[executionIndex];
+  if (running.value || execution?.run === undefined) return;
+  applyRunPresentation({
+    target: execution.target,
+    sourceRun: execution.run,
+    sourceRecovery: recoveryByTarget.get(execution.target),
+  });
+}
+
+function appendCommittedTargets({ targets }: { targets: readonly string[] }): void {
+  const seen = new Set(committedTargets.value);
+  const next = [...committedTargets.value];
+  for (const target of targets) {
+    if (seen.has(target)) continue;
+    seen.add(target);
+    next.push(target);
+  }
+  committedTargets.value = next;
+}
+
+function commitTargetDraft(): boolean {
+  if (targetDraft.value.trim().length === 0) return true;
+  const parsed = targetDraftParseResult.value;
+  if (parsed.errors.length > 0) return false;
+  appendCommittedTargets({ targets: parsed.targets });
+  targetDraft.value = '';
+  return true;
+}
+
+function handleTargetDraftPaste({ event }: { event: ClipboardEvent }): void {
+  const pasted = event.clipboardData?.getData('text') ?? '';
+  if (pasted.length === 0) return;
+  const combined = targetDraft.value.trim().length === 0
+    ? pasted
+    : `${targetDraft.value}\n${pasted}`;
+  const parsed = parseInvestigationTargets({ text: combined });
+  event.preventDefault();
+  if (parsed.errors.length > 0) {
+    targetDraft.value = combined;
+    return;
+  }
+  appendCommittedTargets({ targets: parsed.targets });
+  targetDraft.value = '';
+}
+
+function handleTargetDraftKeydown({ event }: { event: KeyboardEvent }): void {
+  if (event.key !== 'Enter' || event.shiftKey) return;
+  event.preventDefault();
+  commitTargetDraft();
+}
+
+function removeCommittedTarget({ targetIndex }: { targetIndex: number }): void {
+  if (running.value) return;
+  committedTargets.value = committedTargets.value.filter((_target, index) => index !== targetIndex);
+}
+
+function copyModelList(): void {
+  if (targetParseResult.value.errors.length > 0) return;
+  const value = canonicalInvestigationTargetList({ targets: targetParseResult.value.targets });
+  if (value.length === 0) return;
+  try {
+    void Promise.resolve(navigator.clipboard.writeText(value)).catch(() => {
+      // Clipboard permission and platform failures are non-semantic UI failures. Do not
+      // surface them as an unhandled event-handler rejection or affect investigation state.
+    });
+  } catch {
+    // Some hosts or test doubles can fail synchronously despite the Clipboard API Promise contract.
+  }
+}
+
+function openReview(): void {
+  if (running.value || !hasRequestedScope.value || !commitTargetDraft()) return;
+  if (committedTargets.value.length === 0) return;
+  reviewSnapshot.value = {
+    targets: [...committedTargets.value],
+    configuration: structuredClone(toRaw(investigationConfiguration.value)),
+  };
+  setupStage.value = 'review';
+}
+
+function backToSetup(): void {
+  if (running.value) return;
+  setupStage.value = 'setup';
+  reviewSnapshot.value = undefined;
+}
+
+function presetLabel({ preset }: { preset: ModelSupportInvestigationPreset }): string | undefined {
+  switch (preset) {
+  case 'full':
+    return lazyStrings.ModelSupportInvestigationModal__full_investigation();
+  case 'offline':
+    return lazyStrings.ModelSupportInvestigationModal__offline();
+  case 'download-focused':
+    return lazyStrings.ModelSupportInvestigationModal__download_focused();
+  case 'custom':
+    return lazyStrings.ModelSupportInvestigationModal__custom();
+  default: {
+    const _ex: never = preset;
+    return _ex;
+  }
+  }
+}
+
+function scopeLabel({ scopeId }: { scopeId: ModelSupportInvestigationScopeId }): string | undefined {
+  switch (scopeId) {
+  case 'repository-download':
+    return lazyStrings.ModelSupportInvestigationModal__repository_and_download();
+  case 'model-load':
+    return lazyStrings.ModelSupportInvestigationModal__model_load();
+  case 'generation':
+    return lazyStrings.ModelSupportInvestigationModal__generation();
+  case 'continuity':
+    return lazyStrings.ModelSupportInvestigationModal__continuity_and_kv_cache();
+  case 'capability-probes':
+    return lazyStrings.ModelSupportInvestigationModal__capability_probes();
+  default: {
+    const _ex: never = scopeId;
+    return _ex;
+  }
+  }
+}
+
+function applyPreset({ preset }: { preset: Exclude<ModelSupportInvestigationPreset, 'custom'> }): void {
+  if (running.value) return;
+  investigationConfiguration.value = configurationForPreset({ preset });
+}
+
+function toggleScope({ scopeId }: { scopeId: ModelSupportInvestigationScopeId }): void {
+  if (running.value) return;
+  const configuration = structuredClone(toRaw(investigationConfiguration.value));
+  switch (configuration.scope[scopeId]) {
+  case 'selected':
+    configuration.scope[scopeId] = 'not-selected';
+    break;
+  case 'not-selected':
+    configuration.scope[scopeId] = 'selected';
+    break;
+  default: {
+    const _ex: never = configuration.scope[scopeId];
+    return _ex;
+  }
+  }
+  investigationConfiguration.value = configuration;
+}
+
+function setExternalNetworkPolicy({ policy }: {
+  policy: ModelSupportInvestigationExternalNetworkPolicy,
+}): void {
+  if (running.value) return;
+  const configuration = structuredClone(toRaw(investigationConfiguration.value));
+  configuration.externalNetworkPolicy = policy;
+  investigationConfiguration.value = configuration;
+}
+
+async function startInvestigation(): Promise<void> {
+  const snapshot = reviewSnapshot.value;
+  if (running.value || snapshot === undefined || snapshot.targets.length === 0) return;
+
+  started.value = true;
+  running.value = true;
+  stopping.value = false;
+  interruptionRequested = false;
+  targetExecutions.value = [];
+  recoveryByTarget.clear();
+  runByTarget.clear();
+  run.value = undefined;
+  recovery.value = undefined;
+  steps.value = initialInvestigationSteps();
+  currentOperation.value = undefined;
+  latestProgress.value = undefined;
+
+  const targets = [...snapshot.targets];
+  const configuration = structuredClone(snapshot.configuration);
+
+  try {
+    const executions = await runInvestigationTargetsSequentially({
+      targets,
+      runTarget: async ({ target }) => await runSingleTarget({ target, configuration }),
+      onUpdate: ({ executions: nextExecutions }) => {
+        targetExecutions.value = [...nextExecutions];
+      },
+      shouldInterrupt: () => interruptionRequested,
+      recoverRunAfterError: ({ target }) => runByTarget.get(target),
+    });
+    targetExecutions.value = executions;
+    if (run.value === undefined) {
+      const lastCompleted = [...executions].reverse().find(execution => execution.run !== undefined);
+      if (lastCompleted?.run !== undefined) {
+        const executionIndex = executions.indexOf(lastCompleted);
+        if (executionIndex >= 0) selectTargetExecution({ executionIndex });
+      }
+    }
   } finally {
     running.value = false;
-    await disposeClient();
+    stopping.value = false;
+    await disposeActiveClient();
   }
 }
 
@@ -844,18 +1144,26 @@ async function downloadPartialEvidence(): Promise<void> {
           recovery: recoverySnapshot,
         });
       } finally {
-        await evidenceClient.dispose();
+        try {
+          await evidenceClient.dispose();
+        } catch {
+          // Evidence has already been created successfully. Worker cleanup failure must not
+          // replace that semantic result or prevent the browser download from starting.
+        }
       }
     })();
     updateEvidenceExportPresentation({ status: "passed", detail: passedDetail });
     const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.style.display = "none";
+    document.body.append(anchor);
     try {
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = fileName;
       anchor.click();
     } finally {
-      URL.revokeObjectURL(url);
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -873,12 +1181,16 @@ onMounted(async () => {
   }, 1000);
   await nextTick();
   modalContent.value?.focus();
-  await startInvestigation();
 });
 
 onUnmounted(() => {
   if (progressClock !== undefined) clearInterval(progressClock);
-  void disposeClient();
+  interruptionRequested = true;
+  const client = activeClient;
+  void (async () => {
+    await interruptClientBestEffort({ client });
+    if (activeClient === client) await disposeActiveClient();
+  })();
 });
 
 
@@ -915,7 +1227,7 @@ defineExpose({
               {{ lazyStrings.ModelSupportInvestigationModal__model_support_investigation() }}
             </h2>
           </div>
-          <p tw-class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ modelId }}</p>
+          <p v-if="selectedTarget" tw-class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ selectedTarget }}</p>
           <p tw-class="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold uppercase tracking-wide">
             {{ lazyStrings.ModelSupportInvestigationModal__this_is_partial_evidence() }}
           </p>
@@ -935,8 +1247,303 @@ defineExpose({
         </button>
       </header>
 
-      <div tw-class="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)] min-h-0 flex-1 overflow-hidden">
-        <section tw-class="p-5 border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-gray-700 overflow-y-auto">
+      <nav
+        tw-class="px-6 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 grid grid-cols-3 gap-2"
+        data-testid="model-support-stage-indicator"
+      >
+        <div
+          tw-class="rounded-lg px-3 py-2 text-center text-[10px] font-bold"
+          :class="!started && setupStage === 'setup' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300' : 'text-gray-400'"
+          data-testid="model-support-stage-setup"
+          :data-state="started || setupStage === 'review' ? 'completed' : 'active'"
+        >
+          1 · {{ lazyStrings.ModelSupportInvestigationModal__setup() }}
+        </div>
+        <div
+          tw-class="rounded-lg px-3 py-2 text-center text-[10px] font-bold"
+          :class="!started && setupStage === 'review' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300' : 'text-gray-400'"
+          data-testid="model-support-stage-review"
+          :data-state="started ? 'completed' : (setupStage === 'review' ? 'active' : 'upcoming')"
+        >
+          2 · {{ lazyStrings.ModelSupportInvestigationModal__review() }}
+        </div>
+        <div
+          tw-class="rounded-lg px-3 py-2 text-center text-[10px] font-bold"
+          :class="started ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300' : 'text-gray-400'"
+          data-testid="model-support-stage-running-results"
+          :data-state="started ? 'active' : 'upcoming'"
+        >
+          3 · {{ lazyStrings.ModelSupportInvestigationModal__running_and_results() }}
+        </div>
+      </nav>
+
+      <section
+        v-if="!started && setupStage === 'setup'"
+        tw-class="px-6 py-5 bg-white dark:bg-gray-900 space-y-4 min-h-0 flex-1 overflow-y-auto"
+        data-testid="model-support-investigation-setup"
+      >
+        <div tw-class="flex items-center justify-between gap-3">
+          <div>
+            <p tw-class="text-xs font-bold text-gray-800 dark:text-gray-100">
+              {{ lazyStrings.ModelSupportInvestigationModal__targets() }}
+            </p>
+            <p tw-class="text-[10px] text-gray-500 dark:text-gray-400">
+              {{ lazyStrings.ModelSupportInvestigationModal__one_model_per_line() }}
+            </p>
+          </div>
+          <button
+            type="button"
+            :disabled="targetParseResult.targets.length === 0 || targetParseResult.errors.length > 0"
+            tw-class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+            data-testid="model-support-copy-targets"
+            @click="copyModelList"
+          >
+            <CopyIcon tw-class="w-3.5 h-3.5" />
+            {{ lazyStrings.ModelSupportInvestigationModal__copy_model_list() }}
+          </button>
+        </div>
+        <div
+          v-if="committedTargets.length > 0"
+          tw-class="space-y-1.5"
+          data-testid="model-support-target-list"
+        >
+          <div
+            v-for="(target, targetIndex) in committedTargets"
+            :key="target"
+            tw-class="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-2"
+            :data-testid="`model-support-target-row-${target}`"
+          >
+            <code tw-class="min-w-0 flex-1 text-xs text-gray-800 dark:text-gray-100 break-all">{{ target }}</code>
+            <button
+              type="button"
+              tw-class="shrink-0 p-1 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+              :data-testid="`model-support-target-remove-${target}`"
+              @click="removeCommittedTarget({ targetIndex })"
+            >
+              <XIcon tw-class="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+        <textarea
+          v-model="targetDraft"
+          rows="2"
+          tw-class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-3 py-2 font-mono text-xs text-gray-800 dark:text-gray-100 outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-300 dark:focus:border-purple-700 resize-y"
+          data-testid="model-support-targets-input"
+          :placeholder="lazyStrings.ModelSupportInvestigationModal__add_models_placeholder()"
+          @paste="handleTargetDraftPaste({ event: $event })"
+          @keydown="handleTargetDraftKeydown({ event: $event })"
+        />
+        <div
+          v-if="targetParseResult.errors.length > 0"
+          tw-class="space-y-1 rounded-xl border border-red-200 dark:border-red-900 bg-red-50/60 dark:bg-red-950/20 px-3 py-2"
+          data-testid="model-support-target-errors"
+        >
+          <p
+            v-for="error in targetParseResult.errors"
+            :key="`${error.lineNumber}:${error.input}`"
+            tw-class="text-[10px] text-red-600 dark:text-red-300"
+          >
+            {{ lazyStrings.ModelSupportInvestigationModal__invalid_model_line({ lineNumber: error.lineNumber }) }}
+          </p>
+        </div>
+        <div
+          tw-class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70 px-3 py-3 space-y-2"
+          data-testid="model-support-presets"
+        >
+          <div tw-class="flex items-center justify-between gap-3">
+            <p tw-class="text-xs font-bold text-gray-800 dark:text-gray-100">
+              {{ lazyStrings.ModelSupportInvestigationModal__presets() }}
+            </p>
+            <span tw-class="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+              {{ presetLabel({ preset: investigationPreset }) }}
+            </span>
+          </div>
+          <div tw-class="flex flex-wrap gap-1.5">
+            <button
+              v-for="preset in (['full', 'offline', 'download-focused'] as const)"
+              :key="preset"
+              type="button"
+              :disabled="running"
+              :aria-pressed="investigationPreset === preset"
+              :tw-class="investigationPreset === preset
+                ? 'px-3 py-1.5 rounded-lg text-[10px] font-bold bg-purple-600 text-white disabled:opacity-50'
+                : 'px-3 py-1.5 rounded-lg text-[10px] font-bold border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50'"
+              :data-testid="`model-support-preset-${preset}`"
+              @click="applyPreset({ preset })"
+            >
+              {{ presetLabel({ preset }) }}
+            </button>
+            <span
+              :tw-class="investigationPreset === 'custom'
+                ? 'px-3 py-1.5 rounded-lg text-[10px] font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                : 'px-3 py-1.5 rounded-lg text-[10px] font-bold text-gray-400 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'"
+              data-testid="model-support-preset-custom"
+              :data-active="investigationPreset === 'custom' ? 'true' : 'false'"
+            >
+              {{ presetLabel({ preset: 'custom' }) }}
+            </span>
+          </div>
+        </div>
+
+        <div
+          tw-class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70 px-3 py-3 space-y-2"
+          data-testid="model-support-investigation-scope"
+        >
+          <div tw-class="flex items-center justify-between gap-3">
+            <p tw-class="text-xs font-bold text-gray-800 dark:text-gray-100">
+              {{ lazyStrings.ModelSupportInvestigationModal__investigation_scope() }}
+            </p>
+            <span tw-class="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+              {{ lazyStrings.ModelSupportInvestigationModal__execution_policy() }}
+            </span>
+          </div>
+          <div tw-class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            <button
+              v-for="scopeId in investigationScopeIds"
+              :key="scopeId"
+              type="button"
+              :disabled="running || effectiveScope[scopeId] === 'required'"
+              :aria-pressed="effectiveScope[scopeId] !== 'not-selected'"
+              :data-state="effectiveScope[scopeId]"
+              :data-testid="`model-support-scope-${scopeId}`"
+              :tw-class="effectiveScope[scopeId] === 'selected'
+                ? 'min-w-0 flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 disabled:opacity-70'
+                : effectiveScope[scopeId] === 'required'
+                  ? 'min-w-0 flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 disabled:opacity-80'
+                  : 'min-w-0 flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50'"
+              @click="toggleScope({ scopeId })"
+            >
+              <span tw-class="text-[10px] font-bold truncate">{{ scopeLabel({ scopeId }) }}</span>
+              <span
+                v-if="effectiveScope[scopeId] === 'required'"
+                tw-class="shrink-0 text-[8px] font-bold uppercase tracking-wide"
+              >
+                {{ lazyStrings.ModelSupportInvestigationModal__required_by_selected_scope() }}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div
+          tw-class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70 px-3 py-3 space-y-2"
+          data-testid="model-support-external-network-policy"
+        >
+          <div tw-class="flex items-center justify-between gap-3">
+            <div tw-class="min-w-0">
+              <p tw-class="text-xs font-bold text-gray-800 dark:text-gray-100">
+                {{ lazyStrings.ModelSupportInvestigationModal__external_network_access() }}
+              </p>
+              <p tw-class="text-[10px] text-gray-500 dark:text-gray-400">
+                {{ lazyStrings.ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation() }}
+              </p>
+            </div>
+            <div tw-class="flex shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-white dark:bg-gray-900">
+              <button
+                type="button"
+                :disabled="running"
+                :aria-pressed="investigationConfiguration.externalNetworkPolicy === 'allow'"
+                :tw-class="investigationConfiguration.externalNetworkPolicy === 'allow'
+                  ? 'px-3 py-1.5 rounded-md text-[10px] font-bold bg-purple-600 text-white disabled:opacity-50'
+                  : 'px-3 py-1.5 rounded-md text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50'"
+                data-testid="model-support-network-allow"
+                @click="setExternalNetworkPolicy({ policy: 'allow' })"
+              >
+                {{ lazyStrings.ModelSupportInvestigationModal__allow() }}
+              </button>
+              <button
+                type="button"
+                :disabled="running"
+                :aria-pressed="investigationConfiguration.externalNetworkPolicy === 'deny'"
+                :tw-class="investigationConfiguration.externalNetworkPolicy === 'deny'
+                  ? 'px-3 py-1.5 rounded-md text-[10px] font-bold bg-purple-600 text-white disabled:opacity-50'
+                  : 'px-3 py-1.5 rounded-md text-[10px] font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50'"
+                data-testid="model-support-network-deny"
+                @click="setExternalNetworkPolicy({ policy: 'deny' })"
+              >
+                {{ lazyStrings.ModelSupportInvestigationModal__deny() }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        v-else-if="!started && setupStage === 'review'"
+        tw-class="px-6 py-5 bg-white dark:bg-gray-900 space-y-5 min-h-0 flex-1 overflow-y-auto"
+        data-testid="model-support-investigation-review"
+      >
+        <div tw-class="space-y-2">
+          <h3 tw-class="text-xs font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.ModelSupportInvestigationModal__targets() }}</h3>
+          <div tw-class="rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800">
+            <code
+              v-for="target in reviewSnapshot?.targets ?? []"
+              :key="target"
+              tw-class="block px-3 py-2 text-xs text-gray-700 dark:text-gray-200 break-all"
+            >{{ target }}</code>
+          </div>
+        </div>
+        <div tw-class="space-y-3">
+          <div tw-class="flex items-center justify-between gap-3">
+            <h3 tw-class="text-xs font-bold text-gray-800 dark:text-gray-100">{{ lazyStrings.ModelSupportInvestigationModal__execution_policy() }}</h3>
+            <span v-if="reviewPreset" tw-class="text-[9px] font-bold uppercase tracking-wider text-gray-400">{{ presetLabel({ preset: reviewPreset }) }}</span>
+          </div>
+          <div tw-class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70 p-3 space-y-2">
+            <div tw-class="flex items-center justify-between gap-3 text-[10px]">
+              <span tw-class="font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelSupportInvestigationModal__external_network_access() }}</span>
+              <span tw-class="font-bold text-gray-700 dark:text-gray-200">
+                {{ reviewSnapshot?.configuration.externalNetworkPolicy === 'allow' ? lazyStrings.ModelSupportInvestigationModal__allow() : lazyStrings.ModelSupportInvestigationModal__deny() }}
+              </span>
+            </div>
+            <div tw-class="space-y-1">
+              <div
+                v-for="scopeId in investigationScopeIds"
+                :key="scopeId"
+                tw-class="flex items-center justify-between gap-3 rounded-lg bg-white dark:bg-gray-900 px-3 py-2"
+                :data-testid="`model-support-review-scope-${scopeId}`"
+                :data-state="reviewEffectiveScope?.[scopeId] ?? 'not-selected'"
+              >
+                <span tw-class="text-[10px] font-bold text-gray-700 dark:text-gray-200">{{ scopeLabel({ scopeId }) }}</span>
+                <span v-if="reviewEffectiveScope?.[scopeId] === 'required'" tw-class="text-[8px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                  {{ lazyStrings.ModelSupportInvestigationModal__required_by_selected_scope() }}
+                </span>
+                <CheckCircle2Icon v-else-if="reviewEffectiveScope?.[scopeId] === 'selected'" tw-class="w-3.5 h-3.5 text-green-500" />
+                <CircleSlash2Icon v-else tw-class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
+              </div>
+            </div>
+          </div>
+          <p tw-class="text-[10px] text-gray-500 dark:text-gray-400">{{ lazyStrings.ModelSupportInvestigationModal__models_are_investigated_sequentially() }}</p>
+          <p tw-class="text-[10px] text-amber-600 dark:text-amber-400">{{ lazyStrings.ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation() }}</p>
+        </div>
+      </section>
+
+      <div
+        v-else
+        tw-class="min-h-0 flex-1 overflow-y-auto p-5 space-y-5"
+        data-testid="model-support-investigation-running-results"
+      >
+        <section tw-class="space-y-4">
+          <div
+            v-if="targetExecutions.length > 0"
+            tw-class="mb-4 rounded-xl border border-gray-200 dark:border-gray-700 p-2 space-y-1"
+            data-testid="model-support-target-executions"
+          >
+            <button
+              v-for="(execution, executionIndex) in targetExecutions"
+              :key="execution.target"
+              type="button"
+              :disabled="running || execution.run === undefined"
+              tw-class="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800 disabled:cursor-default disabled:hover:bg-transparent transition-colors"
+              :data-testid="`model-support-target-${execution.target}`"
+              :data-status="execution.status"
+              @click="selectTargetExecution({ executionIndex })"
+            >
+              <Loader2Icon v-if="execution.status === 'running'" tw-class="w-3.5 h-3.5 animate-spin text-purple-500" />
+              <CheckCircle2Icon v-else-if="execution.status === 'passed'" tw-class="w-3.5 h-3.5 text-green-500" />
+              <AlertCircleIcon v-else-if="execution.status === 'failed' || execution.status === 'interrupted'" tw-class="w-3.5 h-3.5 text-red-500" />
+              <CircleIcon v-else tw-class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
+              <span tw-class="font-mono text-[10px] text-gray-700 dark:text-gray-200 truncate">{{ execution.target }}</span>
+            </button>
+          </div>
           <div tw-class="space-y-2">
             <div
               v-for="step in steps"
@@ -948,6 +1555,7 @@ defineExpose({
               <CheckCircle2Icon v-else-if="step.status === 'passed'" tw-class="w-4 h-4 mt-0.5 text-green-500 shrink-0" />
               <AlertCircleIcon v-else-if="step.status === 'failed'" tw-class="w-4 h-4 mt-0.5 text-red-500 shrink-0" />
               <CircleSlash2Icon v-else-if="step.status === 'blocked'" tw-class="w-4 h-4 mt-0.5 text-amber-500 shrink-0" />
+              <CircleSlash2Icon v-else-if="step.status === 'skipped'" tw-class="w-4 h-4 mt-0.5 text-gray-400 shrink-0" />
               <CircleIcon v-else tw-class="w-4 h-4 mt-0.5 text-gray-300 dark:text-gray-600 shrink-0" />
               <div tw-class="min-w-0 flex-1">
                 <div tw-class="flex items-center justify-between gap-2">
@@ -960,13 +1568,14 @@ defineExpose({
           </div>
         </section>
 
-        <section tw-class="p-5 overflow-y-auto space-y-5">
+        <section tw-class="space-y-5">
           <div>
             <h3 tw-class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
               {{ lazyStrings.ModelSupportInvestigationModal__current_operation() }}
             </h3>
             <div tw-class="rounded-xl border border-purple-100 dark:border-purple-900/50 bg-purple-50/70 dark:bg-purple-900/20 p-4 flex items-start gap-3">
-              <Loader2Icon v-if="running" tw-class="w-4 h-4 mt-0.5 text-purple-500 animate-spin shrink-0" />
+              <CircleIcon v-if="!started" tw-class="w-4 h-4 mt-0.5 text-gray-300 dark:text-gray-600 shrink-0" />
+              <Loader2Icon v-else-if="running" tw-class="w-4 h-4 mt-0.5 text-purple-500 animate-spin shrink-0" />
               <CheckCircle2Icon v-else-if="run?.status === 'passed'" tw-class="w-4 h-4 mt-0.5 text-green-500 shrink-0" />
               <AlertCircleIcon v-else tw-class="w-4 h-4 mt-0.5 text-red-500 shrink-0" />
               <div tw-class="min-w-0">
@@ -1146,6 +1755,35 @@ defineExpose({
 
       <footer tw-class="px-6 py-4 bg-gray-50 dark:bg-gray-800/70 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3">
         <button
+          v-if="!started && setupStage === 'setup'"
+          type="button"
+          :disabled="targetParseResult.targets.length === 0 || targetParseResult.errors.length > 0 || !hasRequestedScope"
+          tw-class="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          data-testid="model-support-investigation-next"
+          @click="openReview"
+        >
+          {{ lazyStrings.ModelSupportInvestigationModal__next() }}
+        </button>
+        <button
+          v-if="!started && setupStage === 'review'"
+          type="button"
+          tw-class="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          data-testid="model-support-investigation-back"
+          @click="backToSetup"
+        >
+          {{ lazyStrings.ModelSupportInvestigationModal__back() }}
+        </button>
+        <button
+          v-if="!started && setupStage === 'review'"
+          type="button"
+          tw-class="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-2 transition-colors"
+          data-testid="model-support-investigation-start"
+          @click="startInvestigation"
+        >
+          <PlayIcon tw-class="w-4 h-4" />
+          {{ lazyStrings.ModelSupportInvestigationModal__start_investigation() }}
+        </button>
+        <button
           v-if="running"
           type="button"
           :disabled="stopping"
@@ -1158,6 +1796,7 @@ defineExpose({
           {{ lazyStrings.ModelSupportInvestigationModal__stop_investigation() }}
         </button>
         <button
+          v-if="started"
           type="button"
           :disabled="run === undefined || evidenceExporting"
           tw-class="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"

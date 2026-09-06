@@ -2,6 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import * as Comlink from 'comlink';
 import { isProxy, reactive } from 'vue';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+interface ActualTransformersWebModule {
+  AutoModelForCausalLM: {
+    supports: (modelType: string) => boolean;
+  };
+}
+
+async function loadActualTransformersWebModule(): Promise<ActualTransformersWebModule> {
+  const moduleUrl = pathToFileURL(resolve(
+    process.cwd(),
+    'node_modules/@huggingface/transformers/dist/transformers.web.js',
+  )).href;
+  return await import(/* @vite-ignore */ moduleUrl) as unknown as ActualTransformersWebModule;
+}
 
 // Mock Worker class
 class MockWorker {
@@ -76,9 +92,9 @@ function createMockFile(size: number, lastModified: number) {
 }
 
 describe('transformersJsService', () => {
-  it('should support qwen3_5 causal LM models', async () => {
-    const { AutoModelForCausalLM } = await import('@huggingface/transformers');
-    expect((AutoModelForCausalLM as any).supports('qwen3_5')).toBe(true);
+  it('should support qwen3_5 causal LM models in the actual Transformers.js web bundle', async () => {
+    const { AutoModelForCausalLM } = await loadActualTransformersWebModule();
+    expect(AutoModelForCausalLM.supports('qwen3_5')).toBe(true);
   });
 
   beforeEach(() => {

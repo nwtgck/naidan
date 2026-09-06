@@ -1,6 +1,7 @@
 import type {
   ModelSupportInvestigationJsonObject,
   ModelSupportInvestigationRepository,
+  ModelSupportInvestigationRuntimeTarget,
   ModelSupportInvestigationTemplateBehavior,
   ModelSupportInvestigationTemplateCase,
   ModelSupportInvestigationTemplateMessage,
@@ -296,6 +297,35 @@ function deriveToolTemplateProvenance({
   };
 }
 
+export async function inspectTemplateBehaviorForTarget({
+  runtimeTarget,
+  loadTokenizer,
+}: {
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+  loadTokenizer: ({ modelId, revision }: {
+    modelId: string,
+    revision: string | undefined,
+  }) => Promise<ModelSupportInvestigationTemplateTokenizer>,
+}): Promise<ModelSupportInvestigationTemplateBehavior> {
+  const loaderRevision = runtimeTarget.loaderRevisionOption ?? undefined;
+  const tokenizer = await loadTokenizer({
+    modelId: runtimeTarget.normalizedModelId,
+    revision: loaderRevision,
+  });
+  const cases = FIXTURES.map(fixture => inspectCase({ tokenizer, fixture }));
+  return {
+    normalizedModelId: runtimeTarget.normalizedModelId,
+    resolvedRevision: runtimeTarget.evidenceRevision,
+    loaderRevisionOption: runtimeTarget.loaderRevisionOption,
+    tokenizerClass: tokenizer.constructor.name,
+    declaredChatTemplate: tokenizer.chat_template === undefined
+      ? undefined
+      : parseInvestigationJson({ value: tokenizer.chat_template, label: 'Tokenizer chat_template' }),
+    cases,
+    toolTemplateProvenance: deriveToolTemplateProvenance({ cases }),
+  };
+}
+
 export async function inspectTemplateBehavior({
   repository,
   loaderRevisionOption,
@@ -309,26 +339,19 @@ export async function inspectTemplateBehavior({
   }) => Promise<ModelSupportInvestigationTemplateTokenizer>,
 }): Promise<ModelSupportInvestigationTemplateBehavior> {
   const loaderRevision = loaderRevisionOption === undefined
-    ? investigationModelLoadRevision({ requestedRevision: repository.requestedRevision })
-    : loaderRevisionOption ?? undefined;
-  const tokenizer = await loadTokenizer({
-    modelId: repository.normalizedModelId,
-    // Match normal Chat and reuse its resolve/main OPFS entries. The frozen SHA
-    // remains on the returned evidence and is used by repository/provenance checks.
-    revision: loaderRevision,
+    ? investigationModelLoadRevision({ requestedRevision: repository.requestedRevision }) ?? null
+    : loaderRevisionOption;
+  return inspectTemplateBehaviorForTarget({
+    runtimeTarget: {
+      normalizedModelId: repository.normalizedModelId,
+      evidenceRevision: repository.resolvedRevision,
+      loaderRevisionOption: loaderRevision,
+      source: 'repository',
+      revisionIdentity: 'exact-resolved-revision',
+      pipelineTag: repository.pipelineTag,
+    },
+    loadTokenizer,
   });
-  const cases = FIXTURES.map(fixture => inspectCase({ tokenizer, fixture }));
-  return {
-    normalizedModelId: repository.normalizedModelId,
-    resolvedRevision: repository.resolvedRevision,
-    loaderRevisionOption: loaderRevision ?? null,
-    tokenizerClass: tokenizer.constructor.name,
-    declaredChatTemplate: tokenizer.chat_template === undefined
-      ? undefined
-      : parseInvestigationJson({ value: tokenizer.chat_template, label: 'Tokenizer chat_template' }),
-    cases,
-    toolTemplateProvenance: deriveToolTemplateProvenance({ cases }),
-  };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
