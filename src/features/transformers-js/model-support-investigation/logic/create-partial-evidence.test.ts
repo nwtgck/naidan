@@ -1552,6 +1552,30 @@ SyntaxError: Unexpected token '<'
     expect(assessment.status).not.toBe("invalid");
   });
 
+  it("preserves a user-skipped target in the batch index", async () => {
+    const evidence = await createBatchModelSupportEvidence({
+      batchId: "batch-skipped-target",
+      items: [{
+        target: "onnx-community/gpt-oss-20b-ONNX",
+        status: "skipped",
+        run: undefined,
+        recovery: undefined,
+        error: "Model Support Investigation was stopped by the user",
+      }],
+    });
+
+    const archive = await JSZip.loadAsync(await evidence.blob.arrayBuffer());
+    const batchIndex = JSON.parse(await archive.file("batch.json")!.async("text")) as {
+      targets: Array<{ target: string, status: string, error?: string }>,
+    };
+    expect(batchIndex.targets).toEqual([{
+      index: 1,
+      target: "onnx-community/gpt-oss-20b-ONNX",
+      status: "skipped",
+      error: "Model Support Investigation was stopped by the user",
+    }]);
+  });
+
   it("exports the complete requested model index even when no target produced a run", async () => {
     const targets = [
       "HuggingFaceTB/SmolLM2-1.7B-Instruct",

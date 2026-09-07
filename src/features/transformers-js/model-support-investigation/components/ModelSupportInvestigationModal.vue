@@ -80,6 +80,14 @@ const investigationScopeIds: readonly ModelSupportInvestigationScopeId[] = [
   'capability-probes',
 ];
 const targetExecutions = shallowRef<ModelSupportInvestigationTargetExecution[]>([]);
+const currentRunningTarget = computed(() => targetExecutions.value.find(execution => execution.status === 'running')?.target);
+const canSkipCurrentTarget = computed(() => {
+  const currentTarget = currentRunningTarget.value;
+  if (currentTarget === undefined) return false;
+  const currentIndex = targetExecutions.value.findIndex(execution => execution.target === currentTarget);
+  if (currentIndex < 0) return false;
+  return targetExecutions.value.slice(currentIndex + 1).some(execution => execution.status === 'pending');
+});
 const selectedTarget = ref<string | undefined>(undefined);
 const run = shallowRef<ModelSupportInvestigationRun | undefined>(undefined);
 const recovery = ref<ModelSupportInvestigationRecovery | undefined>(undefined);
@@ -88,6 +96,7 @@ const runByTarget = new Map<string, ModelSupportInvestigationRun>();
 const started = ref(false);
 const running = ref(false);
 const stopping = ref(false);
+const skippingCurrentTarget = ref(false);
 const evidenceExporting = ref(false);
 const batchRunId = ref<string | undefined>(undefined);
 const currentOperation = ref<string | undefined>(undefined);
@@ -581,6 +590,7 @@ function initialInvestigationSteps(): ModelSupportInvestigationStep[] {
 const steps = ref<ModelSupportInvestigationStep[]>(initialInvestigationSteps());
 let activeClient: ReturnType<typeof createModelSupportInvestigationWorkerClient> | undefined;
 let interruptionRequested = false;
+let skipRequestedTarget: string | undefined;
 
 const findingDetails = computed(() => steps.value
   .filter(step => step.detail !== undefined)
@@ -788,13 +798,15 @@ async function disposeClientBestEffort({ client }: {
 
 async function interruptClientBestEffort({ client }: {
   client: ReturnType<typeof createModelSupportInvestigationWorkerClient> | undefined,
-}): Promise<void> {
-  if (client === undefined) return;
+}): Promise<boolean> {
+  if (client === undefined) return false;
   try {
     await client.interrupt();
+    return true;
   } catch {
     // Interrupt is a cleanup/control request. Transport failure must not surface as an
     // unhandled rejection or replace already-observed investigation Evidence.
+    return false;
   }
 }
 
@@ -809,10 +821,27 @@ async function stopInvestigation(): Promise<void> {
   if (!running.value || stopping.value) return;
   stopping.value = true;
   interruptionRequested = true;
+  skipRequestedTarget = undefined;
+  skippingCurrentTarget.value = false;
   try {
     await interruptClientBestEffort({ client: activeClient });
   } finally {
     stopping.value = false;
+  }
+}
+
+async function skipCurrentTarget(): Promise<void> {
+  if (!running.value || stopping.value || skippingCurrentTarget.value || !canSkipCurrentTarget.value) return;
+  const target = currentRunningTarget.value;
+  const client = activeClient;
+  if (target === undefined || client === undefined) return;
+
+  skipRequestedTarget = target;
+  skippingCurrentTarget.value = true;
+  const interruptionAccepted = await interruptClientBestEffort({ client });
+  if (!interruptionAccepted && skipRequestedTarget === target) {
+    skipRequestedTarget = undefined;
+    skippingCurrentTarget.value = false;
   }
 }
 
@@ -870,6 +899,7 @@ async function runSingleTarget({ target, configuration }: {
   } finally {
     if (activeClient === client) activeClient = undefined;
     await disposeClientBestEffort({ client });
+    if (skipRequestedTarget === target) skippingCurrentTarget.value = false;
   }
 }
 
@@ -1023,7 +1053,9 @@ async function startInvestigation(): Promise<void> {
   batchRunId.value = crypto.randomUUID();
   running.value = true;
   stopping.value = false;
+  skippingCurrentTarget.value = false;
   interruptionRequested = false;
+  skipRequestedTarget = undefined;
   targetExecutions.value = [];
   recoveryByTarget.clear();
   runByTarget.clear();
@@ -1042,6 +1074,11 @@ async function startInvestigation(): Promise<void> {
         targetExecutions.value = [...nextExecutions];
       },
       shouldInterrupt: () => interruptionRequested,
+      takeSkipRequest: ({ target }) => {
+        if (skipRequestedTarget !== target) return false;
+        skipRequestedTarget = undefined;
+        return true;
+      },
       recoverRunAfterError: ({ target }) => runByTarget.get(target),
     });
     targetExecutions.value = executions;
@@ -1055,6 +1092,8 @@ async function startInvestigation(): Promise<void> {
   } finally {
     running.value = false;
     stopping.value = false;
+    skippingCurrentTarget.value = false;
+    skipRequestedTarget = undefined;
     await disposeActiveClient();
   }
 }
@@ -1188,6 +1227,8 @@ onMounted(async () => {
 onUnmounted(() => {
   if (progressClock !== undefined) clearInterval(progressClock);
   interruptionRequested = true;
+  skipRequestedTarget = undefined;
+  skippingCurrentTarget.value = false;
   const client = activeClient;
   void (async () => {
     await interruptClientBestEffort({ client });
@@ -1517,6 +1558,7 @@ defineExpose({
               <Loader2Icon v-if="execution.status === 'running'" tw-class="w-3.5 h-3.5 animate-spin text-purple-500" />
               <CheckCircle2Icon v-else-if="execution.status === 'passed'" tw-class="w-3.5 h-3.5 text-green-500" />
               <AlertCircleIcon v-else-if="execution.status === 'failed' || execution.status === 'interrupted'" tw-class="w-3.5 h-3.5 text-red-500" />
+              <CircleSlash2Icon v-else-if="execution.status === 'skipped'" tw-class="w-3.5 h-3.5 text-gray-400" />
               <CircleIcon v-else tw-class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" />
               <span tw-class="font-mono text-[10px] text-gray-700 dark:text-gray-200 truncate">{{ execution.target }}</span>
             </button>
@@ -1741,6 +1783,18 @@ defineExpose({
         >
           <PlayIcon tw-class="w-4 h-4" />
           {{ lazyStrings.ModelSupportInvestigationModal__start_investigation() }}
+        </button>
+        <button
+          v-if="running && canSkipCurrentTarget"
+          type="button"
+          :disabled="stopping || skippingCurrentTarget"
+          tw-class="px-4 py-2.5 rounded-xl border border-amber-200 dark:border-amber-800 text-xs font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+          data-testid="model-support-investigation-skip-current"
+          @click="skipCurrentTarget"
+        >
+          <Loader2Icon v-if="skippingCurrentTarget" tw-class="w-4 h-4 animate-spin" />
+          <CircleSlash2Icon v-else tw-class="w-4 h-4" />
+          {{ lazyStrings.ModelSupportInvestigationModal__stop_this_model_and_continue() }}
         </button>
         <button
           v-if="running"

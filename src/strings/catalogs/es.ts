@@ -1119,6 +1119,7 @@ import { TransformersJsLoadingIndicator__transformers_js_error } from '@/strings
 import { ModelSupportInvestigationModal__download_verification } from '@/strings/messages/ModelSupportInvestigationModal__download_verification/es';
 import { ModelSupportInvestigationModal__blocked } from '@/strings/messages/ModelSupportInvestigationModal__blocked/es';
 import { ModelSupportInvestigationModal__skipped } from '@/strings/messages/ModelSupportInvestigationModal__skipped/es';
+import { ModelSupportInvestigationModal__stop_this_model_and_continue } from '@/strings/messages/ModelSupportInvestigationModal__stop_this_model_and_continue/es';
 import { ModelSupportInvestigationModal__candidate_eligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_eligible/es';
 import { ModelSupportInvestigationModal__candidate_ineligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_ineligible/es';
 import { ModelSupportInvestigationModal__candidate_plan_summary } from '@/strings/messages/ModelSupportInvestigationModal__candidate_plan_summary/es';
@@ -2784,6 +2785,7 @@ export const catalog = {
   ModelSupportInvestigationModal__download_verification,
   ModelSupportInvestigationModal__blocked,
   ModelSupportInvestigationModal__skipped,
+  ModelSupportInvestigationModal__stop_this_model_and_continue,
   ModelSupportInvestigationModal__candidate_eligible,
   ModelSupportInvestigationModal__candidate_ineligible,
   ModelSupportInvestigationModal__candidate_plan_summary,

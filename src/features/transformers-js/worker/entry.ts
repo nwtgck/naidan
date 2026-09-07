@@ -65,6 +65,7 @@ import {
   isHuggingFaceModelArtifactUrl,
 } from '@/features/transformers-js/runtime/configure-hosted-runtime';
 import { createHostedTransformersModelFetch } from '@/features/transformers-js/runtime/model-fetch';
+import { createDownloadedModelReadOnlyCache } from '@/features/transformers-js/runtime/downloaded-model-cache';
 import { createOpfsModelCache } from '@/features/transformers-js/runtime/opfs-model-cache';
 import { promiseAllKeyed } from '@/utils/promise';
 
@@ -322,11 +323,11 @@ async function withDownloadModelAccessMode<T>({
  */
 async function withDownloadedModelAccessMode<T>({
   run,
-  modelCache = downloadedModelCache,
+  modelCache,
   cacheOnlyFetch = downloadedModelCacheOnlyFetch,
 }: {
   run: () => Promise<T>,
-  modelCache?: ReturnType<typeof createOpfsModelCache>,
+  modelCache: ReturnType<typeof createOpfsModelCache>,
   cacheOnlyFetch?: typeof fetch,
 }): Promise<T> {
   const previousAllowLocalModels = env.allowLocalModels;
@@ -627,9 +628,13 @@ async function loadProductionRuntime({
   const autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId });
   assertGemma4RuntimeSupport({ modelId: cleanModelId });
   const rawProgressCallback: TransformersProgressCallback = info => progressCallback({ info });
+  const runtimeModelCache = modelCache ?? createDownloadedModelReadOnlyCache({
+    modelId: cleanModelId,
+    revision,
+  });
 
   return await withDownloadedModelAccessMode({
-    modelCache,
+    modelCache: runtimeModelCache,
     cacheOnlyFetch,
     run: async () => {
       let selectedCandidate: ProductionLoadCandidate | undefined;
@@ -1150,6 +1155,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       assertGemma4RuntimeSupport({ modelId: cleanModelId });
 
       await withDownloadedModelAccessMode({
+        modelCache: createDownloadedModelReadOnlyCache({ modelId: cleanModelId, revision }),
         run: async () => {
           const tryLoad = async ({ candidate }: { candidate: ProductionLoadCandidate }): Promise<PreTrainedModel> => {
             const startedAt = performance.now();
@@ -1433,8 +1439,9 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         }
       };
       publishObservationCheckpoint();
-      const observedModelCache = createOpfsModelCache({
-        mutationPolicy: 'read-only',
+      const observedModelCache = createDownloadedModelReadOnlyCache({
+        modelId: scenario.modelId,
+        revision: scenario.loadRevision,
         onMatchObservation: ({ observation }) => {
           if (activeLoadStartedAtMs === undefined) return;
           loadProgressTracker.observeCacheMatch({ observation, at: new Date().toISOString() });

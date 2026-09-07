@@ -1022,6 +1022,7 @@ export type ModelSupportInvestigationBatchTargetStatus =
   | "running"
   | "passed"
   | "failed"
+  | "skipped"
   | "interrupted";
 
 export interface ModelSupportInvestigationBatchEvidenceItem {

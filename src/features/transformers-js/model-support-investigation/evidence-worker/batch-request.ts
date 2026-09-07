@@ -10,7 +10,7 @@ interface ModelSupportInvestigationBatchEvidenceWorkerRequestPayload {
 
 const batchEvidenceItemSchema = z.object({
   target: z.string().min(1),
-  status: z.enum(["pending", "running", "passed", "failed", "interrupted"]),
+  status: z.enum(["pending", "running", "passed", "failed", "skipped", "interrupted"]),
   run: investigationJsonObjectSchema.optional(),
   recovery: investigationJsonObjectSchema.optional(),
   error: z.string().optional(),

@@ -4,13 +4,22 @@ import {
   readModelSupportInvestigationBatchEvidenceWorkerRequest,
 } from "@/features/transformers-js/model-support-investigation/evidence-worker/batch-request";
 
-const items = [{
-  target: "org/model-a",
-  status: "passed" as const,
-  run: { runId: "run-a", modelId: "org/model-a" } as never,
-  recovery: undefined,
-  error: undefined,
-}];
+const items = [
+  {
+    target: "org/model-a",
+    status: "passed" as const,
+    run: { runId: "run-a", modelId: "org/model-a" } as never,
+    recovery: undefined,
+    error: undefined,
+  },
+  {
+    target: "org/model-b",
+    status: "skipped" as const,
+    run: undefined,
+    recovery: undefined,
+    error: "Model Support Investigation was stopped by the user",
+  },
+];
 
 describe("Model Support Investigation batch Evidence Worker request", () => {
   it("round-trips every requested target as clone-safe JSON", async () => {

@@ -5,6 +5,7 @@ export type ModelSupportInvestigationTargetExecutionStatus =
   | 'running'
   | 'passed'
   | 'failed'
+  | 'skipped'
   | 'interrupted';
 
 export interface ModelSupportInvestigationTargetExecution {
@@ -23,12 +24,14 @@ export async function runInvestigationTargetsSequentially({
   runTarget,
   onUpdate,
   shouldInterrupt,
+  takeSkipRequest,
   recoverRunAfterError = () => undefined,
 }: {
   targets: readonly string[];
   runTarget: ({ target }: { target: string }) => Promise<ModelSupportInvestigationRun>;
   onUpdate: ({ executions }: { executions: readonly ModelSupportInvestigationTargetExecution[] }) => void;
   shouldInterrupt: () => boolean;
+  takeSkipRequest: ({ target }: { target: string }) => boolean;
   recoverRunAfterError?: ({ target, error }: { target: string; error: unknown }) => ModelSupportInvestigationRun | undefined;
 }): Promise<ModelSupportInvestigationTargetExecution[]> {
   const executions: ModelSupportInvestigationTargetExecution[] = targets.map(target => ({
@@ -48,8 +51,13 @@ export async function runInvestigationTargetsSequentially({
     try {
       const run = await runTarget({ target });
       execution.run = structuredClone(run);
-      execution.status = run.status;
-      execution.error = run.error;
+      if (takeSkipRequest({ target })) {
+        execution.status = 'skipped';
+        execution.error = run.error;
+      } else {
+        execution.status = run.status;
+        execution.error = run.error;
+      }
     } catch (error) {
       const partialRun = recoverRunAfterError({ target, error });
       execution.run = partialRun === undefined ? undefined : structuredClone(partialRun);
@@ -59,8 +67,13 @@ export async function runInvestigationTargetsSequentially({
         publish();
         break;
       }
-      execution.status = 'failed';
-      execution.error = errorMessage({ error });
+      if (takeSkipRequest({ target })) {
+        execution.status = 'skipped';
+        execution.error = errorMessage({ error });
+      } else {
+        execution.status = 'failed';
+        execution.error = errorMessage({ error });
+      }
     }
     publish();
   }

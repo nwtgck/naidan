@@ -48,6 +48,7 @@ describe('runInvestigationTargetsSequentially', () => {
       runTarget,
       onUpdate: () => undefined,
       shouldInterrupt: () => false,
+      takeSkipRequest: () => false,
     });
 
     expect(calls).toEqual([
@@ -74,10 +75,39 @@ describe('runInvestigationTargetsSequentially', () => {
       runTarget,
       onUpdate: () => undefined,
       shouldInterrupt: () => interrupt,
+      takeSkipRequest: () => false,
     });
 
     expect(runTarget).toHaveBeenCalledTimes(1);
     expect(executions.map(({ status }) => status)).toEqual(['interrupted', 'pending']);
+  });
+
+
+  it('marks only the current model as skipped and continues with the next model', async () => {
+    let skippedTarget: string | undefined = 'owner/b';
+    const runTarget = vi.fn(async ({ target }: { target: string }) => {
+      if (target === 'owner/b') throw new Error('stopped current model');
+      return run({ modelId: target, status: 'passed' });
+    });
+
+    const executions = await runInvestigationTargetsSequentially({
+      targets: ['owner/a', 'owner/b', 'owner/c'],
+      runTarget,
+      onUpdate: () => undefined,
+      shouldInterrupt: () => false,
+      takeSkipRequest: ({ target }) => {
+        if (skippedTarget !== target) return false;
+        skippedTarget = undefined;
+        return true;
+      },
+    });
+
+    expect(runTarget).toHaveBeenCalledTimes(3);
+    expect(executions.map(({ target, status }) => ({ target, status }))).toEqual([
+      { target: 'owner/a', status: 'passed' },
+      { target: 'owner/b', status: 'skipped' },
+      { target: 'owner/c', status: 'passed' },
+    ]);
   });
 
   it('keeps the last checkpointed run when one target throws and later targets continue', async () => {
@@ -93,6 +123,7 @@ describe('runInvestigationTargetsSequentially', () => {
       runTarget,
       onUpdate: () => undefined,
       shouldInterrupt: () => false,
+      takeSkipRequest: () => false,
       recoverRunAfterError: ({ target }) => target === 'owner/b' ? partial : undefined,
     });
 

@@ -717,7 +717,7 @@ async function createManifestFiles({ zip }: { zip: JSZip }): Promise<Array<{
 const batchEvidenceTargetSchema = z.object({
   index: z.number().int().positive(),
   target: z.string().min(1),
-  status: z.enum(["pending", "running", "passed", "failed", "interrupted"]),
+  status: z.enum(["pending", "running", "passed", "failed", "skipped", "interrupted"]),
   runId: z.string().min(1).optional(),
   error: z.string().optional(),
   evidencePath: z.string().min(1).optional(),

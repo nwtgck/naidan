@@ -632,6 +632,71 @@ org/second
     wrapper.unmount();
   });
 
+  it('stops only the current model, disposes its client, and continues with the next model', async () => {
+    let rejectFirst: ((error: Error) => void) | undefined;
+    const callOrder: string[] = [];
+    workerMocks.runPartialInvestigation.mockImplementation(({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      callOrder.push(`start:${modelId}`);
+      if (modelId === 'org/first') {
+        return new Promise((_resolve, reject) => {
+          rejectFirst = reject;
+        });
+      }
+      return Promise.resolve({
+        ...structuredClone(completedRun),
+        runId: `run-${modelId}`,
+        modelId,
+      });
+    });
+    workerMocks.interrupt.mockImplementation(async () => {
+      const error = new Error('Model Support Investigation was stopped by the user');
+      error.name = 'ModelSupportInvestigationUserInterruptedError';
+      rejectFirst?.(error);
+    });
+    workerMocks.dispose.mockImplementation(async () => {
+      callOrder.push('dispose');
+    });
+
+    const wrapper = mount(ModelSupportInvestigationModal, {
+      props: { modelId: '' },
+    });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second
+`);
+
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="model-support-investigation-skip-current"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="model-support-investigation-skip-current"]').trigger('click');
+    await flushPromises();
+
+    expect(workerMocks.interrupt).toHaveBeenCalledTimes(1);
+    expect(workerMocks.runPartialInvestigation.mock.calls.map(call => call[0].modelId)).toEqual([
+      'org/first',
+      'org/second',
+    ]);
+    expect(callOrder).toEqual([
+      'start:org/first',
+      'dispose',
+      'start:org/second',
+      'dispose',
+    ]);
+    expect(wrapper.get('[data-testid="model-support-target-org/first"]').attributes('data-status')).toBe('skipped');
+    expect(wrapper.get('[data-testid="model-support-target-org/second"]').attributes('data-status')).toBe('passed');
+
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createBatchEvidence.mock.calls[0]?.[0]).toMatchObject({
+      items: [
+        { target: 'org/first', status: 'skipped' },
+        { target: 'org/second', status: 'passed' },
+      ],
+    });
+    wrapper.unmount();
+  });
+
   it('exports every requested model dossier together when multiple targets were investigated', async () => {
     workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({
       ...structuredClone(completedRun),

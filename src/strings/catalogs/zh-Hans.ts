@@ -1119,6 +1119,7 @@ import { TransformersJsLoadingIndicator__transformers_js_error } from '@/strings
 import { ModelSupportInvestigationModal__download_verification } from '@/strings/messages/ModelSupportInvestigationModal__download_verification/zh-Hans';
 import { ModelSupportInvestigationModal__blocked } from '@/strings/messages/ModelSupportInvestigationModal__blocked/zh-Hans';
 import { ModelSupportInvestigationModal__skipped } from '@/strings/messages/ModelSupportInvestigationModal__skipped/zh-Hans';
+import { ModelSupportInvestigationModal__stop_this_model_and_continue } from '@/strings/messages/ModelSupportInvestigationModal__stop_this_model_and_continue/zh-Hans';
 import { ModelSupportInvestigationModal__candidate_eligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_eligible/zh-Hans';
 import { ModelSupportInvestigationModal__candidate_ineligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_ineligible/zh-Hans';
 import { ModelSupportInvestigationModal__candidate_plan_summary } from '@/strings/messages/ModelSupportInvestigationModal__candidate_plan_summary/zh-Hans';
@@ -2784,6 +2785,7 @@ export const catalog = {
   ModelSupportInvestigationModal__download_verification,
   ModelSupportInvestigationModal__blocked,
   ModelSupportInvestigationModal__skipped,
+  ModelSupportInvestigationModal__stop_this_model_and_continue,
   ModelSupportInvestigationModal__candidate_eligible,
   ModelSupportInvestigationModal__candidate_ineligible,
   ModelSupportInvestigationModal__candidate_plan_summary,

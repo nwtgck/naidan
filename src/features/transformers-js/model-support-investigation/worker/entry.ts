@@ -23,6 +23,7 @@ import type {
   ModelSupportInvestigationInputTensorMetadata,
   ModelSupportInvestigationJsonValue,
   ModelSupportInvestigationTemplateCase,
+  ModelSupportInvestigationRuntimeTarget,
   ModelSupportInvestigationTextInputStrategy,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { exposeWorkerRemote, type WorkerServerApi } from "@/utils/worker-transport";
@@ -57,6 +58,7 @@ import { observeToolResultTemplateRoundTrip } from "@/features/transformers-js/m
 import { selectGenerationStrategy } from "@/features/transformers-js/generation-strategies";
 import { configureHostedTransformersRuntime } from "@/features/transformers-js/runtime/configure-hosted-runtime";
 import { createHostedTransformersModelFetch } from "@/features/transformers-js/runtime/model-fetch";
+import { createDownloadedModelReadOnlyCache } from "@/features/transformers-js/runtime/downloaded-model-cache";
 import { createOpfsModelCache } from "@/features/transformers-js/runtime/opfs-model-cache";
 import { collectDownloadVerificationEvidence } from '@/features/transformers-js/download-verification/logic/collect-download-verification-evidence';
 import { createModelSupportInvestigationNetworkFetch } from '@/features/transformers-js/model-support-investigation/logic/create-investigation-network-fetch';
@@ -98,6 +100,25 @@ env.allowRemoteModels = false;
 env.useBrowserCache = false;
 env.useCustomCache = true;
 env.customCache = createOpfsModelCache({ mutationPolicy: 'read-only' });
+
+async function withRuntimeTargetModelCache<T>({
+  runtimeTarget,
+  run,
+}: {
+  runtimeTarget: ModelSupportInvestigationRuntimeTarget,
+  run: () => Promise<T>,
+}): Promise<T> {
+  const previousCustomCache = env.customCache;
+  env.customCache = createDownloadedModelReadOnlyCache({
+    modelId: runtimeTarget.normalizedModelId,
+    revision: runtimeTarget.loaderRevisionOption ?? undefined,
+  });
+  try {
+    return await run();
+  } finally {
+    env.customCache = previousCustomCache;
+  }
+}
 
 type CandidateModel =
   | Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>
@@ -585,15 +606,18 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
     return toPlanningWorkerRun({ run });
   },
   async inspectDownloadedTemplateBehavior({ runtimeTarget }) {
-    return await inspectTemplateBehaviorForTarget({
+    return await withRuntimeTargetModelCache({
       runtimeTarget,
-      loadTokenizer: async ({ modelId: tokenizerModelId, revision }) => AutoTokenizer.from_pretrained(
-        tokenizerModelId,
-        {
-          ...(revision === undefined ? {} : { revision }),
-          local_files_only: true,
-        },
-      ),
+      run: async () => await inspectTemplateBehaviorForTarget({
+        runtimeTarget,
+        loadTokenizer: async ({ modelId: tokenizerModelId, revision }) => AutoTokenizer.from_pretrained(
+          tokenizerModelId,
+          {
+            ...(revision === undefined ? {} : { revision }),
+            local_files_only: true,
+          },
+        ),
+      }),
     });
   },
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level remote arguments to remain transferable.
@@ -602,8 +626,9 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
     // resolution is Evidence/provenance metadata, not a second cache namespace.
     const modelLoadProgress = createModelLoadProgressTracker({ candidateId: candidate.candidateId });
     let modelLoadActive = false;
-    env.customCache = createOpfsModelCache({
-      mutationPolicy: 'read-only',
+    env.customCache = createDownloadedModelReadOnlyCache({
+      modelId: runtimeTarget.normalizedModelId,
+      revision: runtimeTarget.loaderRevisionOption ?? undefined,
       onMatchObservation: ({ observation }) => {
         if (!modelLoadActive) return;
         modelLoadProgress.observeCacheMatch({ observation, at: new Date().toISOString() });
