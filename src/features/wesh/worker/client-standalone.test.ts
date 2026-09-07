@@ -40,6 +40,7 @@ function createRemote({
 }): Comlink.Remote<IWeshWorker> {
   return {
     init: vi.fn(init ?? (async () => undefined)),
+    preloadNextCommand: vi.fn().mockResolvedValue({ status: 'done' }),
     startExecution: vi.fn(startExecution ?? (async () => ({ executionId: 'remote-exec-1' }))),
     awaitExecution: vi.fn(awaitExecution ?? (async () => ({ exitCode: 0 }))),
     interruptExecution: vi.fn().mockResolvedValue(true),

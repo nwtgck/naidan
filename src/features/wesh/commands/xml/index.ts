@@ -1,13 +1,8 @@
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { runXmlSelect } from '@/features/wesh/commands/xml/select';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
-export const xmlCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'xml',
-    description: 'XMLStarlet-like XML toolkit built on browser DOM/XPath APIs',
-    usage: 'xml <command> [options] [args]',
-  },
+export const xmlCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const [subcommand, ...rest] = context.args;
 

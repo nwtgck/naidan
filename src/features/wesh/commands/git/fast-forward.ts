@@ -1,6 +1,7 @@
 import { applyCheckoutTreePlan, planCheckoutTree } from './checkout';
 import type { GitCheckoutConflict } from './checkout';
 import { readCommit } from './commits';
+import type { GitObjectReadCache } from './objects';
 import type { GitWorktreeContentConfig } from './config';
 import type { GitFiles } from './files';
 import { readIndex, writeIndex } from './index-file';
@@ -13,20 +14,31 @@ export type GitFastForwardResult =
   | { type: 'updated', oldObjectId: string, newObjectId: string }
   | { type: 'checkout-conflict', conflicts: readonly GitCheckoutConflict[] };
 
-export async function fastForwardHead({ files, repository, targetObjectId, reflog, contentConfig }: {
+export async function fastForwardHead({ files, repository, targetObjectId, reflog, contentConfig, objectReadCache }: {
   files: GitFiles,
   repository: GitRepository,
   targetObjectId: string,
   reflog: GitReflogUpdate,
   contentConfig: GitWorktreeContentConfig,
+  objectReadCache?: GitObjectReadCache,
 }): Promise<GitFastForwardResult> {
   const head = await readHead({ files, repository });
   if (head.objectId === undefined) throw new Error('cannot fast-forward an unborn HEAD');
-  const currentCommit = await readCommit({ files, repository, objectId: head.objectId });
-  const targetCommit = await readCommit({ files, repository, objectId: targetObjectId });
-  const currentHeadEntries = await readTreeIntoIndex({ files, repository, treeObjectId: currentCommit.treeObjectId });
+  const currentCommit = await readCommit({ files, repository, objectId: head.objectId, objectReadCache });
+  const targetCommit = await readCommit({ files, repository, objectId: targetObjectId, objectReadCache });
+  const currentHeadEntries = await readTreeIntoIndex({
+    files,
+    repository,
+    treeObjectId: currentCommit.treeObjectId,
+    objectReadCache,
+  });
   const currentIndexEntries = await readIndex({ files, repository });
-  const targetEntries = await readTreeIntoIndex({ files, repository, treeObjectId: targetCommit.treeObjectId });
+  const targetEntries = await readTreeIntoIndex({
+    files,
+    repository,
+    treeObjectId: targetCommit.treeObjectId,
+    objectReadCache,
+  });
   const plan = await planCheckoutTree({
     files,
     repository,

@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import type { OllamaProvider, OllamaRunningModel } from '@/features/lm/ollama';
 import OllamaPsView from './OllamaPsView.vue';
@@ -42,7 +42,7 @@ function createProvider({
 }
 
 describe('OllamaPsView', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 

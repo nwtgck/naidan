@@ -1,6 +1,7 @@
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { toMessageId, toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { ref, computed } from 'vue';
@@ -9,6 +10,10 @@ import { createRouter, createWebHistory } from 'vue-router';
 
 import { setupScrollToMock } from '@/utils/test-utils';
 
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 // Mock router
 const router = createRouter({

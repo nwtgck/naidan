@@ -1,12 +1,20 @@
-import { readCommit } from './commits';
+import { createGitCommitCache, readCachedCommit } from './commits';
+import type { GitCommitCache } from './commits';
 import type { GitFiles } from './files';
 import type { GitRepository } from './repository';
 
-export async function isAncestor({ files, repository, ancestorObjectId, descendantObjectId }: {
+export type GitCommitGraphCache = GitCommitCache;
+
+export function createGitCommitGraphCache(): GitCommitGraphCache {
+  return createGitCommitCache();
+}
+
+export async function isAncestor({ files, repository, ancestorObjectId, descendantObjectId, cache }: {
   files: GitFiles,
   repository: GitRepository,
   ancestorObjectId: string,
   descendantObjectId: string,
+  cache: GitCommitGraphCache | undefined,
 }): Promise<boolean> {
   if (ancestorObjectId === descendantObjectId) return true;
   const pending = [descendantObjectId];
@@ -15,7 +23,7 @@ export async function isAncestor({ files, repository, ancestorObjectId, descenda
     const objectId = pending.pop()!;
     if (visited.has(objectId)) continue;
     visited.add(objectId);
-    const commit = await readCommit({ files, repository, objectId });
+    const commit = await readCachedCommit({ files, repository, objectId, cache });
     for (const parentObjectId of commit.parentObjectIds) {
       if (parentObjectId === ancestorObjectId) return true;
       if (!visited.has(parentObjectId)) pending.push(parentObjectId);
@@ -24,10 +32,11 @@ export async function isAncestor({ files, repository, ancestorObjectId, descenda
   return false;
 }
 
-async function collectAncestors({ files, repository, objectId }: {
+async function collectAncestors({ files, repository, objectId, cache }: {
   files: GitFiles,
   repository: GitRepository,
   objectId: string,
+  cache: GitCommitGraphCache,
 }): Promise<Set<string>> {
   const result = new Set<string>();
   const pending = [objectId];
@@ -35,7 +44,7 @@ async function collectAncestors({ files, repository, objectId }: {
     const current = pending.pop()!;
     if (result.has(current)) continue;
     result.add(current);
-    const commit = await readCommit({ files, repository, objectId: current });
+    const commit = await readCachedCommit({ files, repository, objectId: current, cache });
     for (const parent of commit.parentObjectIds) {
       if (!result.has(parent)) pending.push(parent);
     }
@@ -43,44 +52,53 @@ async function collectAncestors({ files, repository, objectId }: {
   return result;
 }
 
-export async function findMergeBases({ files, repository, leftObjectId, rightObjectId }: {
+export async function findMergeBases({ files, repository, leftObjectId, rightObjectId, cache }: {
   files: GitFiles,
   repository: GitRepository,
   leftObjectId: string,
   rightObjectId: string,
+  cache: GitCommitGraphCache | undefined,
 }): Promise<string[]> {
-  const leftAncestors = await collectAncestors({ files, repository, objectId: leftObjectId });
-  const rightAncestors = await collectAncestors({ files, repository, objectId: rightObjectId });
-  const common = [...leftAncestors].filter(objectId => rightAncestors.has(objectId));
-  const best: string[] = [];
-  for (const candidate of common) {
-    let dominated = false;
-    for (const other of common) {
-      if (candidate === other) continue;
-      if (await isAncestor({ files, repository, ancestorObjectId: candidate, descendantObjectId: other })) {
-        dominated = true;
-        break;
-      }
+  const graphCache = cache ?? createGitCommitGraphCache();
+  const leftAncestors = await collectAncestors({ files, repository, objectId: leftObjectId, cache: graphCache });
+  const rightAncestors = await collectAncestors({ files, repository, objectId: rightObjectId, cache: graphCache });
+  const [smallerAncestors, largerAncestors] = leftAncestors.size <= rightAncestors.size
+    ? [leftAncestors, rightAncestors]
+    : [rightAncestors, leftAncestors];
+  const common = new Set<string>();
+  for (const objectId of smallerAncestors) {
+    if (largerAncestors.has(objectId)) common.add(objectId);
+  }
+  const dominated = new Set<string>();
+  for (const objectId of common) {
+    const commit = graphCache.get(objectId)!;
+    for (const parentObjectId of commit.parentObjectIds) {
+      if (common.has(parentObjectId)) dominated.add(parentObjectId);
     }
-    if (!dominated) best.push(candidate);
+  }
+  const best: string[] = [];
+  for (const objectId of common) {
+    if (!dominated.has(objectId)) best.push(objectId);
   }
   return best.sort();
 }
 
 
-export async function collectRebaseCommits({ files, repository, upstreamObjectId, descendantObjectId }: {
+export async function collectRebaseCommits({ files, repository, upstreamObjectId, descendantObjectId, cache }: {
   files: GitFiles,
   repository: GitRepository,
   upstreamObjectId: string,
   descendantObjectId: string,
+  cache: GitCommitGraphCache | undefined,
 }): Promise<string[]> {
-  const excluded = await collectAncestors({ files, repository, objectId: upstreamObjectId });
+  const graphCache = cache ?? createGitCommitGraphCache();
+  const excluded = await collectAncestors({ files, repository, objectId: upstreamObjectId, cache: graphCache });
   const visited = new Set<string>();
   const result: string[] = [];
   const visit = async ({ objectId }: { objectId: string }): Promise<void> => {
     if (excluded.has(objectId) || visited.has(objectId)) return;
     visited.add(objectId);
-    const commit = await readCommit({ files, repository, objectId });
+    const commit = await readCachedCommit({ files, repository, objectId, cache: graphCache });
     for (const parentObjectId of commit.parentObjectIds) await visit({ objectId: parentObjectId });
     if (commit.parentObjectIds.length <= 1) result.push(objectId);
   };

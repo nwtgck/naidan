@@ -3,6 +3,7 @@ import type {
   ModelSupportInvestigationEvent,
   ModelSupportInvestigationGenerationAutoClassName,
   ModelSupportInvestigationLoadAttempt,
+  ModelSupportInvestigationLoadAttemptCheckpoint,
   ModelSupportInvestigationRun,
   ModelSupportInvestigationStep,
 } from "@/features/transformers-js/model-support-investigation/types";
@@ -46,6 +47,7 @@ function unexpectedAttempt({
   autoClass,
   repositoryRevision,
   error,
+  checkpoint,
   now,
   createAttemptId,
 }: {
@@ -53,10 +55,11 @@ function unexpectedAttempt({
   autoClass: ModelSupportInvestigationGenerationAutoClassName,
   repositoryRevision: string,
   error: unknown,
+  checkpoint: ModelSupportInvestigationLoadAttemptCheckpoint | undefined,
   now: () => string,
   createAttemptId: () => string,
 }): ModelSupportInvestigationLoadAttempt {
-  const startedAt = now();
+  const startedAt = checkpoint?.startedAt ?? now();
   const errorRecord = serializeInvestigationError({ error });
   const timeout = error instanceof CandidateAttemptTimeoutError ? error : undefined;
   const failureStage = timeout?.stage ?? "worker-start";
@@ -74,26 +77,29 @@ function unexpectedAttempt({
       at: now(),
     }];
   return {
-    attemptId: createAttemptId(),
+    attemptId: checkpoint?.attemptId ?? createAttemptId(),
     candidateId: candidate.candidateId,
     device: candidate.device,
     dtype: candidate.dtype,
-    autoClass,
+    autoClass: checkpoint?.autoClass ?? autoClass,
     resolvedRevision: repositoryRevision,
     startedAt,
     completedAt: now(),
     status: "failed",
     failureStage,
     events,
-    inputTokenCount: undefined,
-    inputTokenIds: [],
-    inputTensors: [],
-    loadedModel: undefined,
-    generatedTokenIds: [],
-    generatedText: undefined,
-    naturalGeneration: undefined,
-    toolProtocolProbe: undefined,
-    modelType: undefined,
+    inputStrategyAttempts: checkpoint?.inputStrategyAttempts ?? [],
+    interruptedInputStrategy: checkpoint?.activeInputStrategy,
+    selectedInputStrategy: checkpoint?.selectedInputStrategy,
+    inputTokenCount: checkpoint?.inputTokenCount,
+    inputTokenIds: checkpoint?.inputTokenIds ?? [],
+    inputTensors: checkpoint?.inputTensors ?? [],
+    loadedModel: checkpoint?.loadedModel,
+    generatedTokenIds: checkpoint?.generatedTokenIds ?? [],
+    generatedText: checkpoint?.generatedText,
+    naturalGeneration: checkpoint?.naturalGeneration,
+    toolProtocolProbe: checkpoint?.toolProtocolProbe,
+    modelType: checkpoint?.modelType,
     error: errorRecord,
   };
 }
@@ -102,15 +108,18 @@ export async function runModelLoadInvestigation({
   partialRun,
   runAttempt,
   onEvent,
+  onRunUpdate = () => undefined,
   now,
   createAttemptId,
 }: {
   partialRun: ModelSupportInvestigationRun,
-  runAttempt: ({ candidate, autoClass }: {
+  runAttempt: ({ candidate, autoClass, onAttemptCheckpoint }: {
     candidate: ModelSupportInvestigationCandidateFilePlan,
     autoClass: ModelSupportInvestigationGenerationAutoClassName,
+    onAttemptCheckpoint: ({ attempt }: { attempt: ModelSupportInvestigationLoadAttemptCheckpoint }) => void,
   }) => Promise<ModelSupportInvestigationLoadAttempt>,
   onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
+  onRunUpdate?: ({ run }: { run: ModelSupportInvestigationRun }) => void,
   now: () => string,
   createAttemptId: () => string,
 }): Promise<ModelSupportInvestigationRun> {
@@ -124,6 +133,9 @@ export async function runModelLoadInvestigation({
     detail: string,
   }): void => {
     updateLoadingStep({ run, status, detail });
+    run.currentOperation = detail;
+    run.completedAt = now();
+    onRunUpdate({ run: structuredClone(run) });
     onEvent({ event: { stepId: "loading-investigation", status, detail } });
   };
 
@@ -169,19 +181,36 @@ export async function runModelLoadInvestigation({
   emit({ status: "running", detail: `Starting ${candidates[0]?.candidateId} in a fresh investigation Worker` });
   for (const candidate of candidates) {
     let attempt: ModelSupportInvestigationLoadAttempt;
+    let latestAttemptCheckpoint: ModelSupportInvestigationLoadAttemptCheckpoint | undefined;
+    run.activeLoadAttempt = undefined;
     try {
-      attempt = await runAttempt({ candidate, autoClass });
+      attempt = await runAttempt({
+        candidate,
+        autoClass,
+        onAttemptCheckpoint: ({ attempt: checkpoint }) => {
+          latestAttemptCheckpoint = structuredClone(checkpoint);
+          run.activeLoadAttempt = structuredClone(checkpoint);
+          run.currentOperation = `${candidate.candidateId}: ${checkpoint.currentStage}`;
+          run.completedAt = now();
+          onRunUpdate({ run: structuredClone(run) });
+        },
+      });
     } catch (error) {
       attempt = unexpectedAttempt({
         candidate,
         autoClass,
         repositoryRevision: repository.resolvedRevision,
         error,
+        checkpoint: latestAttemptCheckpoint,
         now,
         createAttemptId,
       });
     }
+    run.activeLoadAttempt = undefined;
     run.loadAttempts.push(attempt);
+    run.currentOperation = `${attempt.candidateId}: attempt ${attempt.status}${attempt.failureStage === undefined ? '' : ` at ${attempt.failureStage}`}`;
+    run.completedAt = now();
+    onRunUpdate({ run: structuredClone(run) });
     switch (attempt.status) {
     case "passed":
       successfulAttempt = attempt;

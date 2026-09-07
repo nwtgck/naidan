@@ -7,7 +7,6 @@ import {
   type Tensor,
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
-import { ToolCallStreamParser } from './tool-call-parser';
 import {
   buildGemma4TemplateInput,
   isGemma4Model,
@@ -20,13 +19,25 @@ import {
   buildQwen3_5NoToolContinuationPrompt,
   buildQwen3_5Prompt,
   extractQwen3_5ConversationState,
-  isQwen3_5NoToolContinuationCandidate,
+  assessQwen3_5NoToolContinuationEligibility,
   isQwen3_5Model,
   sanitizeQwen3_5VisibleText,
   type Qwen3_5ReasoningMode,
   type Qwen3_5ConversationState,
 } from './models/qwen3_5';
 import type { WorkerToolDefinition } from './types';
+import { resolveGenerationBudget } from './generation-budget';
+import {
+  createReasoningStreamNormalizer,
+  detectReasoningStreamProtocol,
+  type ReasoningStreamProtocol,
+} from './reasoning-stream-protocol';
+import {
+  createStandardToolCallStreamParser,
+  detectStandardToolCallProtocol,
+  formatStandardMessagesForToolCallProtocol,
+  type StandardToolCallProtocol,
+} from './standard-tool-call-protocol';
 
 type ModelOutput = Record<string, unknown>;
 
@@ -35,7 +46,15 @@ interface GenerationResult {
   sequences?: unknown,
 }
 
+export type GenerationStrategyCacheDecision =
+  | { status: 'reused' | 'not-reused' | 'not-applicable', reason: string }
+  | { status: 'unavailable', reason: string };
+
 export interface GenerationStrategyObservationSink {
+  onFullConversationInputPrepared({ inputs, cacheDecision }: {
+    inputs: Record<string, unknown>,
+    cacheDecision: GenerationStrategyCacheDecision,
+  }): void,
   onGenerateStart({ inputs, pastKeyValues }: {
     inputs: Record<string, unknown>,
     pastKeyValues: unknown,
@@ -43,6 +62,22 @@ export interface GenerationStrategyObservationSink {
   onGenerateComplete({ result }: {
     result: GenerationResult & (ModelOutput | Tensor),
   }): void,
+}
+
+function emitGenerationObservation({
+  observationSink,
+  emit,
+}: {
+  observationSink: GenerationStrategyObservationSink | undefined,
+  emit: ({ sink }: { sink: GenerationStrategyObservationSink }) => void,
+}): void {
+  if (observationSink === undefined) return;
+  try {
+    emit({ sink: observationSink });
+  } catch {
+    // Investigation instrumentation is diagnostic-only. A broken observer must
+    // never change the Production generation result being measured.
+  }
 }
 
 interface TextGenerationModel extends PreTrainedModel {
@@ -68,6 +103,7 @@ interface GenerationStrategyContext {
   tokenizer: PreTrainedTokenizer,
   messages: ChatMessage[],
   onChunk: ({ chunk }: { chunk: string }) => void,
+  onRawChunk: ({ chunk }: { chunk: string }) => void,
   onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void,
   params: LmParameters | undefined,
   tools: WorkerToolDefinition[] | undefined,
@@ -82,7 +118,61 @@ interface GenerationStrategyContext {
 
 export interface GenerationStrategy {
   kind: 'standard' | 'gpt-oss' | 'qwen3_5' | 'gemma4',
-  generate({ model, tokenizer, messages, onChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog, observationSink }: GenerationStrategyContext): Promise<void>,
+  generate({ model, tokenizer, messages, onChunk, onRawChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog, observationSink }: GenerationStrategyContext): Promise<void>,
+}
+
+function detectStandardReasoningProtocol({
+  tokenizer,
+  formattedMessages,
+  templateOptions,
+  debugLog,
+}: {
+  tokenizer: PreTrainedTokenizer,
+  formattedMessages: Array<Record<string, unknown>>,
+  templateOptions: Record<string, unknown>,
+  debugLog: GenerationStrategyContext['debugLog'],
+}): ReasoningStreamProtocol {
+  try {
+    const renderedGenerationPrompt = tokenizer.apply_chat_template(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Transformers.js chat-template messages are structurally compatible with Naidan messages.
+      formattedMessages as any,
+      { ...templateOptions, tokenize: false, return_dict: false },
+    );
+    if (typeof renderedGenerationPrompt !== 'string') return 'generated-output';
+    const preliminaryProtocol = detectReasoningStreamProtocol({
+      renderedGenerationPrompt,
+      renderedConversationPrompt: undefined,
+    });
+    switch (preliminaryProtocol) {
+    case 'generated-output':
+      return preliminaryProtocol;
+    case 'prompt-open-think':
+      break;
+    default: {
+      const _ex: never = preliminaryProtocol;
+      throw new Error(`Unhandled reasoning stream protocol: ${String(_ex)}`);
+    }
+    }
+
+    const renderedConversationPrompt = tokenizer.apply_chat_template(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Transformers.js chat-template messages are structurally compatible with Naidan messages.
+      formattedMessages as any,
+      { ...templateOptions, add_generation_prompt: false, tokenize: false, return_dict: false },
+    );
+    if (typeof renderedConversationPrompt !== 'string') return 'generated-output';
+    return detectReasoningStreamProtocol({
+      renderedGenerationPrompt,
+      renderedConversationPrompt,
+    });
+  } catch (error) {
+    debugLog({
+      event: 'standard reasoning protocol observation unavailable',
+      details: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    return 'generated-output';
+  }
 }
 
 export function selectGenerationStrategy({
@@ -114,18 +204,21 @@ const standardGenerationStrategy: GenerationStrategy = {
     tokenizer,
     messages,
     onChunk,
+    onRawChunk,
     onToolCalls,
     params,
     tools,
     stoppingCriteria,
+    debugLog,
     observationSink,
   }: GenerationStrategyContext) {
-    const formattedMessages = messages.map(message => ({
-      role: message.role,
-      content: typeof message.content === 'string' ? message.content : '',
-      tool_calls: message.tool_calls,
-      tool_call_id: message.tool_call_id,
-    }));
+    const toolCallProtocol: StandardToolCallProtocol = tools && tools.length > 0
+      ? detectStandardToolCallProtocol({ tokenizer, debugLog })
+      : 'json-tagged';
+    const formattedMessages = formatStandardMessagesForToolCallProtocol({
+      messages,
+      protocol: toolCallProtocol,
+    });
 
     const templateOptions: Record<string, unknown> = {
       add_generation_prompt: true,
@@ -135,18 +228,48 @@ const standardGenerationStrategy: GenerationStrategy = {
       templateOptions['tools'] = tools;
     }
 
+    const reasoningProtocol = detectStandardReasoningProtocol({
+      tokenizer,
+      formattedMessages,
+      templateOptions,
+      debugLog,
+    });
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const inputs = tokenizer.apply_chat_template(formattedMessages as any, templateOptions) as Record<string, unknown>;
-    const toolCallParser = tools && tools.length > 0 ? new ToolCallStreamParser({ onText: ({ text }) => onChunk({ chunk: text }) }) : null;
-    const streamer = new TextStreamer(tokenizer, {
-      skip_prompt: true,
-      skip_special_tokens: true,
-      callback_function: (output: string) => {
+    emitGenerationObservation({
+      observationSink,
+      emit: ({ sink }) => sink.onFullConversationInputPrepared({
+        inputs,
+        cacheDecision: {
+          status: 'not-applicable',
+          reason: 'standard-strategy-does-not-use-past-key-values',
+        },
+      }),
+    });
+    const toolCallParser = tools && tools.length > 0
+      ? createStandardToolCallStreamParser({
+        protocol: toolCallProtocol,
+        tools,
+        onText: ({ text }) => onChunk({ chunk: text }),
+      })
+      : null;
+    const reasoningStream = createReasoningStreamNormalizer({
+      protocol: reasoningProtocol,
+      onOutput: ({ output }) => {
         if (toolCallParser) {
           toolCallParser.feed({ output });
         } else {
           onChunk({ chunk: output });
         }
+      },
+    });
+    const streamer = new TextStreamer(tokenizer, {
+      skip_prompt: true,
+      skip_special_tokens: true,
+      callback_function: (output: string) => {
+        onRawChunk({ chunk: output });
+        reasoningStream.feed({ output });
       },
     });
 
@@ -160,6 +283,7 @@ const standardGenerationStrategy: GenerationStrategy = {
       observationSink,
     });
 
+    reasoningStream.flush();
     if (toolCallParser) {
       toolCallParser.flush();
       const parsedToolCalls = toolCallParser.drainToolCalls();
@@ -193,6 +317,17 @@ const gptOssGenerationStrategy: GenerationStrategy = {
       tools,
       pastKeyValues: runtimeState.gptOssPastKeyValues,
       stoppingCriteria,
+      onInputPrepared: observationSink === undefined
+        ? undefined
+        : ({ fullConversationInputs, cacheDecision }) => {
+          emitGenerationObservation({
+            observationSink,
+            emit: ({ sink }) => sink.onFullConversationInputPrepared({
+              inputs: fullConversationInputs,
+              cacheDecision,
+            }),
+          });
+        },
       generateWithModel: async ({
         model,
         inputs,
@@ -240,6 +375,16 @@ const gemma4GenerationStrategy: GenerationStrategy = {
       null,
       { add_special_tokens: false },
     );
+    emitGenerationObservation({
+      observationSink,
+      emit: ({ sink }) => sink.onFullConversationInputPrepared({
+        inputs,
+        cacheDecision: {
+          status: 'not-applicable',
+          reason: 'gemma4-strategy-does-not-use-past-key-values',
+        },
+      }),
+    });
     let rawChunkIndex = 0;
     let rawStreamOutput = '';
 
@@ -311,27 +456,61 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
     }
     const reasoningMode = getQwen3_5ReasoningMode({ params });
 
-    const useNoToolContinuation = !tools?.length && isQwen3_5NoToolContinuationCandidate({
+    const continuationEligibility = assessQwen3_5NoToolContinuationEligibility({
       messages,
       conversationState: runtimeState.qwen3_5ConversationState,
       activeModelId: runtimeState.activeModelId,
-    }) && runtimeState.qwen3_5PastKeyValues !== null;
+    });
+    const useNoToolContinuation = !tools?.length
+      && continuationEligibility.status === 'eligible'
+      && runtimeState.qwen3_5PastKeyValues !== null;
 
+    const fullPrompt = buildQwen3_5Prompt({ messages, tools, reasoningMode });
     const prompt = useNoToolContinuation
       ? buildQwen3_5NoToolContinuationPrompt({
         promptHistory: runtimeState.qwen3_5ConversationState!.promptHistory,
         message: messages.at(-1)!,
         reasoningMode,
       })
-      : buildQwen3_5Prompt({ messages, tools, reasoningMode });
+      : fullPrompt;
 
     // Qwen3.5-WebGPU uses promptHistory + past_key_values for normal chat turns.
     // That keeps no-tool conversations responsive. Tool turns stay on the full
     // prompt path until we have a serializer that matches tool continuations exactly.
+    const processedInputs = await runtimeState.qwen3_5Processor(prompt);
     const inputs = applyQwen3_5ConversationState({
-      inputs: await runtimeState.qwen3_5Processor(prompt),
+      inputs: processedInputs,
       conversationState: runtimeState.qwen3_5ConversationState,
     });
+    if (observationSink !== undefined) {
+      const fullConversationInputs = useNoToolContinuation
+        ? await runtimeState.qwen3_5Processor(fullPrompt)
+        : processedInputs;
+      const cacheDecision: GenerationStrategyCacheDecision = (() => {
+        if (tools?.length) {
+          return { status: 'not-reused', reason: 'qwen3_5-tools-disable-no-tool-continuation' };
+        }
+        switch (continuationEligibility.status) {
+        case 'eligible':
+          return runtimeState.qwen3_5PastKeyValues === null
+            ? { status: 'not-reused', reason: 'qwen3_5-past-key-values-unavailable' }
+            : { status: 'reused', reason: 'qwen3_5-no-tool-continuation' };
+        case 'ineligible':
+          return { status: 'not-reused', reason: `qwen3_5-${continuationEligibility.reason}` };
+        default: {
+          const _ex: never = continuationEligibility;
+          return _ex;
+        }
+        }
+      })();
+      emitGenerationObservation({
+        observationSink,
+        emit: ({ sink }) => sink.onFullConversationInputPrepared({
+          inputs: fullConversationInputs,
+          cacheDecision,
+        }),
+      });
+    }
 
     debugLog({
       event: 'qwen prompt',
@@ -421,11 +600,23 @@ async function generateWithModel({
   const stoppingCriteriaList = new StoppingCriteriaList();
   stoppingCriteriaList.push(stoppingCriteria as never);
 
-  observationSink?.onGenerateStart({ inputs, pastKeyValues });
+  emitGenerationObservation({
+    observationSink,
+    emit: ({ sink }) => sink.onGenerateStart({ inputs, pastKeyValues }),
+  });
+  const generationBudget = resolveGenerationBudget({
+    modelConfig: model.config,
+    inputs,
+    pastKeyValues,
+    maxCompletionTokens: params?.maxCompletionTokens,
+  });
+  const generationLength = generationBudget.maxNewTokens === undefined
+    ? {}
+    : { max_new_tokens: generationBudget.maxNewTokens };
   const result = await (model as unknown as TextGenerationModel).generate({
     ...inputs,
     past_key_values: pastKeyValues,
-    max_new_tokens: params?.maxCompletionTokens || 1024,
+    ...generationLength,
     temperature: params?.temperature ?? 0.6,
     top_p: params?.topP ?? 0.9,
     do_sample: (params?.temperature ?? 0.6) > 0,
@@ -433,7 +624,10 @@ async function generateWithModel({
     stopping_criteria: stoppingCriteriaList,
     return_dict_in_generate: true,
   });
-  observationSink?.onGenerateComplete({ result });
+  emitGenerationObservation({
+    observationSink,
+    emit: ({ sink }) => sink.onGenerateComplete({ result }),
+  });
   return result;
 }
 

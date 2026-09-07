@@ -7,7 +7,7 @@ import {
 import { resolvePath } from '@/features/wesh/path';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
 } from '@/features/wesh/types';
 import { createBufferedTextWriter } from '@/features/wesh/utils/io';
@@ -103,12 +103,7 @@ function duOperandRequiresDirectory({ operand }: { operand: string }): boolean {
   return operand.endsWith('/');
 }
 
-export const duCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'du',
-    description: 'Estimate logical file size usage',
-    usage: 'du [OPTION]... [FILE]... | du [OPTION]... --files0-from=FILE',
-  },
+export const duCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseDuOptions({
       args: context.args,

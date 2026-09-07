@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -49,7 +50,7 @@ describe('wesh readlink', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -345,6 +346,16 @@ dir/file.txt
 
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
+  });
+
+  it('keeps unsupported --version in the GNU abbreviation namespace', async () => {
+    const ambiguous = await execute({ script: 'readlink --v' });
+
+    expect(ambiguous.stdout.text).toBe('');
+    expect(ambiguous.stderr.text).toContain("option '--v' is ambiguous");
+    expect(ambiguous.stderr.text).toContain("'--verbose'");
+    expect(ambiguous.stderr.text).toContain("'--version'");
+    expect(ambiguous.result.exitCode).not.toBe(0);
   });
 
 });

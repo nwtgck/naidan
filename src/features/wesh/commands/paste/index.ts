@@ -1,7 +1,6 @@
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
-import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { resolvePath } from '@/features/wesh/path';
 import { openFileReadStream, openHandleReadStream, writeAllBytesToHandle } from '@/features/wesh/utils/fs';
 import { iterateReadableStreamChunks } from '@/features/wesh/utils/stream';
@@ -118,26 +117,48 @@ function createBufferedByteWriter({
   };
 }
 
-const pasteArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'value',
-      short: 'd',
-      long: 'delimiters',
-      key: 'delimiters',
-      valueName: 'list',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'reuse characters from LIST as output delimiters', valueName: 'LIST', category: 'common' },
-    },
-    { kind: 'flag', short: 's', long: 'serial', effects: [{ key: 'serial', value: true }], help: { summary: 'paste one file at a time instead of in parallel', category: 'common' } },
-    { kind: 'flag', short: 'z', long: 'zero-terminated', effects: [{ key: 'zeroTerminated', value: true }], help: { summary: 'line delimiter is NUL, not newline', category: 'common' } },
-    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+const pasteDelimitersOption = {
+  semantic: { kind: 'required-value', key: 'delimiters', parse: undefined },
+  forms: [
+    { kind: 'short', name: 'd', value: { kind: 'required-attached-or-following', missingValueName: 'list' } },
+    { kind: 'long', name: 'delimiters', value: { kind: 'required', missingValueName: 'list' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const pasteSerialOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'serial', value: true }] },
+  forms: [
+    { kind: 'short', name: 's', value: { kind: 'none' } },
+    { kind: 'long', name: 'serial', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const pasteZeroTerminatedOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'zeroTerminated', value: true }] },
+  forms: [
+    { kind: 'short', name: 'z', value: { kind: 'none' } },
+    { kind: 'long', name: 'zero-terminated', value: { kind: 'none' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const pasteHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<never>>;
+const pasteArgvCatalog = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: ['version'],
+  definitions: [pasteDelimitersOption, pasteSerialOption, pasteZeroTerminatedOption, pasteHelpOption],
+});
+const pasteArgvHelp = defineArgvHelpPresentation({
+  catalog: pasteArgvCatalog,
+  rows: [
+    { forms: pasteDelimitersOption.forms, summary: 'reuse characters from LIST as output delimiters', valueName: 'LIST', category: 'common' },
+    { forms: pasteSerialOption.forms, summary: 'paste one file at a time instead of in parallel', category: 'common' },
+    { forms: pasteZeroTerminatedOption.forms, summary: 'line delimiter is NUL, not newline', category: 'common' },
+    { forms: pasteHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const pasteArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 async function* emptyPasteRecords(): AsyncIterable<Uint8Array> {
@@ -212,16 +233,17 @@ async function openPasteSource({
   };
 }
 
-export const pasteCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'paste',
-    description: 'Merge lines of files in parallel or serially',
-    usage: 'paste [OPTION]... [FILE]...',
-  },
+export const pasteCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({ args: context.args, spec: pasteArgvSpec, earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS }),
-      spec: pasteArgvSpec,
+      args: stopArgvAtFirstEarlyExit({
+        args: context.args,
+        catalog: pasteArgvCatalog,
+        policy: pasteArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
+      }),
+      catalog: pasteArgvCatalog,
+      policy: pasteArgvPolicy,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -230,7 +252,7 @@ export const pasteCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'paste',
         message: `paste: ${diagnostic.message}`,
-        argvSpec: pasteArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: pasteArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -239,7 +261,7 @@ export const pasteCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'paste',
-        argvSpec: pasteArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: pasteArgvHelp }),
       });
       return { exitCode: 0 };
     }
@@ -302,25 +324,31 @@ export const pasteCommandDefinition: WeshCommandDefinition = {
       if (serial) {
         let stdinIterator: AsyncIterator<Uint8Array> | undefined;
         for (const file of files) {
-          const source = await getIterator({ file, stdinIterator });
-          const iterator = source.iterator;
-          stdinIterator = source.stdinIterator;
-          iterators.add(iterator);
-          let valueIndex = 0;
-          while (true) {
-            const next = await iterator.next();
-            if (next.done) {
-              break;
+          try {
+            const source = await getIterator({ file, stdinIterator });
+            const iterator = source.iterator;
+            stdinIterator = source.stdinIterator;
+            iterators.add(iterator);
+            let valueIndex = 0;
+            while (true) {
+              const next = await iterator.next();
+              if (next.done) {
+                break;
+              }
+              if (valueIndex > 0) {
+                await writer.write({
+                  chunks: [delimiterForIndex({ delimiters, index: valueIndex - 1 })],
+                });
+              }
+              await writer.write({ chunks: [next.value] });
+              valueIndex += 1;
             }
-            if (valueIndex > 0) {
-              await writer.write({
-                chunks: [delimiterForIndex({ delimiters, index: valueIndex - 1 })],
-              });
-            }
-            await writer.write({ chunks: [next.value] });
-            valueIndex += 1;
+            await writer.write({ chunks: [recordTerminator] });
+          } catch (error: unknown) {
+            exitCode = 1;
+            const message = error instanceof Error ? error.message : String(error);
+            await context.text().error({ text: `paste: ${file}: ${message}\n` });
           }
-          await writer.write({ chunks: [recordTerminator] });
         }
         return { exitCode };
       }
@@ -328,7 +356,14 @@ export const pasteCommandDefinition: WeshCommandDefinition = {
       let stdinIterator: AsyncIterator<Uint8Array> | undefined;
       const sources: AsyncIterator<Uint8Array>[] = [];
       for (const file of files) {
-        const source = await getIterator({ file, stdinIterator });
+        let source: Awaited<ReturnType<typeof getIterator>>;
+        try {
+          source = await getIterator({ file, stdinIterator });
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          await context.text().error({ text: `paste: ${file}: ${message}\n` });
+          return { exitCode: 1 };
+        }
         const iterator = source.iterator;
         stdinIterator = source.stdinIterator;
         sources.push(iterator);
@@ -365,8 +400,7 @@ export const pasteCommandDefinition: WeshCommandDefinition = {
       return { exitCode };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      const failingPath = parsed.positionals.find((path) => path !== '-') ?? '-';
-      await context.text().error({ text: `paste: ${failingPath}: ${message}\n` });
+      await context.text().error({ text: `paste: ${message}\n` });
       return { exitCode: 1 };
     } finally {
       await writer.flush();

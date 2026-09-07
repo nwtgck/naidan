@@ -4,6 +4,7 @@ import { ref } from 'vue';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useLayout } from '@/composables/useLayout';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock usePWAUpdate
 vi.mock('../composables/usePWAUpdate', () => ({
@@ -14,6 +15,10 @@ vi.mock('../composables/usePWAUpdate', () => ({
 vi.mock('../composables/useLayout', () => ({
   useLayout: vi.fn(),
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('PWAUpdateNotification', () => {
   const mockUpdate = vi.fn();

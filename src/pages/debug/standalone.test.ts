@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   addToast: vi.fn(),
@@ -98,7 +98,7 @@ async function mountPage() {
 }
 
 describe('standalone verification page', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 

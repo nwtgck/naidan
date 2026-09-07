@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { ref } from 'vue';
 import { useFileExplorerOperations } from './useFileExplorerOperations';
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';
@@ -28,6 +29,10 @@ function makeEntry(name: string, kind: 'file' | 'directory' = 'file'): FileExplo
     canMutate: true,
   };
 }
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('useFileExplorerOperations', () => {
   let client: FileExplorerWorkerClient;

@@ -5,8 +5,11 @@ import {
   stopStandardArgvAtFirstEarlyExit,
 } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { containsNonAsciiDateWhitespace } from '@/features/wesh/commands/_shared/date-whitespace';
+import { parseDateExpressionMilliseconds } from '@/features/wesh/commands/_shared/date-expression';
+import { normalizePath } from '@/features/wesh/path';
+import { readAllFileText, readAllHandleBytes } from '@/features/wesh/utils/fs';
 
 type IsoPrecision = 'date' | 'hours' | 'minutes' | 'seconds' | 'ns';
 type Rfc3339Precision = 'date' | 'seconds' | 'ns';
@@ -46,6 +49,8 @@ const dateArgvSpec: StandardArgvParserSpec = {
   options: [
     { kind: 'flag', short: 'u', long: 'utc', effects: [{ key: 'utc', value: true }], help: { summary: 'display the time in UTC' } },
     { kind: 'value', short: 'd', long: 'date', key: 'dateString', valueName: 'STRING', allowAttachedValue: true, parseValue: undefined, help: { summary: 'display the time described by STRING', valueName: 'STRING', category: 'common' } },
+    { kind: 'value', short: 'r', long: 'reference', key: 'referencePath', valueName: 'FILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'display the last modification time of FILE', valueName: 'FILE', category: 'common' } },
+    { kind: 'value', short: 'f', long: 'file', key: 'dateFile', valueName: 'DATEFILE', allowAttachedValue: true, parseValue: undefined, help: { summary: 'like --date; once for each line of DATEFILE', valueName: 'DATEFILE', category: 'common' } },
     { kind: 'value', short: undefined, long: 'rfc-3339', key: 'rfc3339Precision', valueName: 'TIMESPEC', allowAttachedValue: false, parseValue: undefined, help: { summary: 'output date/time in RFC 3339 format', valueName: 'TIMESPEC', category: 'common' } },
     { kind: 'flag', short: 'R', long: 'rfc-email', effects: [{ key: 'rfcEmail', value: true }], help: { summary: 'output date and time in RFC 5322 format', category: 'common' } },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
@@ -667,27 +672,61 @@ function parseEpochDateOperand({ value }: { value: string }): DateInstant | unde
   };
 }
 
-function parseDateOperand({ value }: { value: string }): DateInstant | undefined {
+function parseDateOperand({
+  value,
+  baseTime,
+}: {
+  value: string,
+  baseTime: number,
+}): DateInstant | undefined {
   if (containsNonAsciiDateWhitespace({ value })) return undefined;
   const normalizedValue = value.trim();
   if (normalizedValue.startsWith('@')) {
     return parseEpochDateOperand({ value: normalizedValue.slice(1) });
   }
-  const date = new Date(normalizedValue);
-  if (Number.isNaN(date.getTime())) return undefined;
 
-  // JavaScript Date accepts common ISO/RFC3339-shaped timestamps with more than
-  // three fractional digits but stores only milliseconds. Preserve the source
-  // fraction when it belongs to the terminal seconds field so `%N` and ns output
-  // do not silently discard precision from an otherwise accepted date operand.
-  const fractionalSecondMatch = /(?:T|[ \t])\d{2}:\d{2}:\d{2}\.(\d+)(?=(?:[zZ]|[+-]\d{2}:?\d{2}|[ \t]+(?:UTC|GMT))?[ \t]*$)/u.exec(normalizedValue);
-  const nanosecondsWithinSecond = fractionalSecondMatch === null
-    ? date.getUTCMilliseconds() * 1_000_000
-    : Number.parseInt(fractionalSecondMatch[1]!.slice(0, 9).padEnd(9, '0'), 10);
+  const directDate = new Date(normalizedValue);
+  if (!Number.isNaN(directDate.getTime())) {
+    // JavaScript Date accepts common ISO/RFC3339-shaped timestamps with more than
+    // three fractional digits but stores only milliseconds. Preserve the source
+    // fraction when it belongs to the terminal seconds field so `%N` and ns output
+    // do not silently discard precision from an otherwise accepted date operand.
+    const fractionalSecondMatch = /(?:T|[ \t])\d{2}:\d{2}:\d{2}\.(\d+)(?=(?:[zZ]|[+-]\d{2}:?\d{2}|[ \t]+(?:UTC|GMT))?[ \t]*$)/u.exec(normalizedValue);
+    const nanosecondsWithinSecond = fractionalSecondMatch === null
+      ? directDate.getUTCMilliseconds() * 1_000_000
+      : Number.parseInt(fractionalSecondMatch[1]!.slice(0, 9).padEnd(9, '0'), 10);
+    return {
+      date: directDate,
+      nanosecondsWithinSecond,
+    };
+  }
+
+  const parsedMilliseconds = parseDateExpressionMilliseconds({ value: normalizedValue, baseTime });
+  if (parsedMilliseconds === undefined) return undefined;
+  const date = new Date(parsedMilliseconds);
+  if (Number.isNaN(date.getTime())) return undefined;
   return {
     date,
-    nanosecondsWithinSecond,
+    nanosecondsWithinSecond: date.getUTCMilliseconds() * 1_000_000,
   };
+}
+
+function dateInstantFromMilliseconds({
+  milliseconds,
+}: {
+  milliseconds: number,
+}): DateInstant | undefined {
+  if (!Number.isFinite(milliseconds)) return undefined;
+  const epochSeconds = Math.floor(milliseconds / 1000);
+  let nanosecondsWithinSecond = Math.round((milliseconds - epochSeconds * 1000) * 1_000_000);
+  let adjustedMilliseconds = milliseconds;
+  if (nanosecondsWithinSecond >= 1_000_000_000) {
+    adjustedMilliseconds = (epochSeconds + 1) * 1000;
+    nanosecondsWithinSecond = 0;
+  }
+  const date = new Date(adjustedMilliseconds);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return { date, nanosecondsWithinSecond };
 }
 
 function offsetWithColon({ offset }: { offset: string }): string {
@@ -747,12 +786,7 @@ function formatIsoOutput({
   }
 }
 
-export const dateCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'date',
-    description: 'Print the system date and time',
-    usage: 'date [-u] [-d STRING] [-I[TIMESPEC]] [--rfc-3339=TIMESPEC] [+FORMAT]',
-  },
+export const dateCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: normalizeDateIsoShortBundles({ args: context.args }),
@@ -827,6 +861,28 @@ export const dateCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
+    const sourceKinds = new Set<'date' | 'file' | 'reference'>();
+    for (const occurrence of parsed.occurrences) {
+      switch (occurrence.kind) {
+      case 'value':
+        if (occurrence.key === 'dateString') sourceKinds.add('date');
+        if (occurrence.key === 'referencePath') sourceKinds.add('reference');
+        if (occurrence.key === 'dateFile') sourceKinds.add('file');
+        break;
+      case 'flag':
+      case 'special':
+        break;
+      default: {
+        const _ex: never = occurrence;
+        throw new Error(`Unhandled date option occurrence: ${JSON.stringify(_ex)}`);
+      }
+      }
+    }
+    if (sourceKinds.size > 1) {
+      await text.error({ text: 'date: the options to specify dates for printing are mutually exclusive\n' });
+      return { exitCode: 1 };
+    }
+
     if (parsed.positionals.length > 1) {
       await writeCommandUsageError({
         context,
@@ -840,46 +896,99 @@ export const dateCommandDefinition: WeshCommandDefinition = {
     const dateString = typeof parsed.optionValues.dateString === 'string'
       ? parsed.optionValues.dateString
       : undefined;
+    const referencePath = typeof parsed.optionValues.referencePath === 'string'
+      ? parsed.optionValues.referencePath
+      : undefined;
+    const dateFile = typeof parsed.optionValues.dateFile === 'string'
+      ? parsed.optionValues.dateFile
+      : undefined;
     const positional = parsed.positionals[0];
     if (positional !== undefined && !positional.startsWith('+')) {
       await text.error({ text: `date: invalid date '${positional}'\n` });
       return { exitCode: 1 };
     }
 
-    const instant = dateString === undefined
-      ? (() => {
-        const date = new Date();
-        return {
-          date,
-          nanosecondsWithinSecond: date.getUTCMilliseconds() * 1_000_000,
-        } satisfies DateInstant;
-      })()
-      : parseDateOperand({ value: dateString });
-    if (instant === undefined) {
-      await text.error({ text: `date: invalid date '${dateString}'\n` });
-      return { exitCode: 1 };
-    }
-    const { date, nanosecondsWithinSecond } = instant;
-
+    const evaluationTime = Date.now();
     const zone = resolveDateZone({
       utc: parsed.optionValues.utc === true,
       timezone: context.env.get('TZ'),
     });
+    const format = parsed.positionals[0]?.startsWith('+') === true
+      ? parsed.positionals[0]!.slice(1)
+      : '%a %b %e %T %Z %Y';
 
-    let output: string;
-    if (isoPrecision !== undefined) {
-      output = formatIsoOutput({ date, nanosecondsWithinSecond, zone, precision: isoPrecision, separator: 'T' });
-    } else if (rfcPrecision !== undefined) {
-      output = formatIsoOutput({ date, nanosecondsWithinSecond, zone, precision: rfcPrecision, separator: ' ' });
-    } else if (parsed.optionValues.rfcEmail === true) {
-      output = formatRfcEmailOutput({ date, zone });
-    } else {
-      const format = parsed.positionals[0]?.startsWith('+') === true
-        ? parsed.positionals[0]!.slice(1)
-        : '%a %b %e %T %Z %Y';
-      output = formatDate({ format, date, nanosecondsWithinSecond, zone });
+    const printInstant = async ({ instant }: { instant: DateInstant }): Promise<void> => {
+      const { date, nanosecondsWithinSecond } = instant;
+      let output: string;
+      if (isoPrecision !== undefined) {
+        output = formatIsoOutput({ date, nanosecondsWithinSecond, zone, precision: isoPrecision, separator: 'T' });
+      } else if (rfcPrecision !== undefined) {
+        output = formatIsoOutput({ date, nanosecondsWithinSecond, zone, precision: rfcPrecision, separator: ' ' });
+      } else if (parsed.optionValues.rfcEmail === true) {
+        output = formatRfcEmailOutput({ date, zone });
+      } else {
+        output = formatDate({ format, date, nanosecondsWithinSecond, zone });
+      }
+      await text.print({ text: `${output}\n` });
+    };
+
+    if (dateFile !== undefined) {
+      let contents: string;
+      try {
+        contents = dateFile === '-'
+          ? new TextDecoder().decode(await readAllHandleBytes({ handle: context.stdin }))
+          : await readAllFileText({
+            files: context.files,
+            path: normalizePath({ cwd: context.cwd, path: dateFile }),
+          });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        await text.error({ text: `date: '${dateFile}': ${message}\n` });
+        return { exitCode: 1 };
+      }
+
+      const lines = contents.length === 0 ? [] : contents.split('\n');
+      if (contents.endsWith('\n')) lines.pop();
+      let hadInvalidLine = false;
+      for (const line of lines) {
+        const lineInstant = parseDateOperand({ value: line, baseTime: evaluationTime });
+        if (lineInstant === undefined) {
+          hadInvalidLine = true;
+          await text.error({ text: `date: invalid date '${line}'\n` });
+          continue;
+        }
+        await printInstant({ instant: lineInstant });
+      }
+      return { exitCode: hadInvalidLine ? 1 : 0 };
     }
-    await text.print({ text: `${output}\n` });
+
+    let instant: DateInstant | undefined;
+    if (referencePath !== undefined) {
+      try {
+        const stat = await context.files.stat({
+          path: normalizePath({ cwd: context.cwd, path: referencePath }),
+        });
+        instant = dateInstantFromMilliseconds({ milliseconds: stat.mtime });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        await text.error({ text: `date: '${referencePath}': ${message}\n` });
+        return { exitCode: 1 };
+      }
+    } else if (dateString !== undefined) {
+      instant = parseDateOperand({ value: dateString, baseTime: evaluationTime });
+    } else {
+      const date = new Date(evaluationTime);
+      instant = {
+        date,
+        nanosecondsWithinSecond: date.getUTCMilliseconds() * 1_000_000,
+      };
+    }
+    if (instant === undefined) {
+      const subject = dateString ?? referencePath ?? '';
+      await text.error({ text: `date: invalid date '${subject}'\n` });
+      return { exitCode: 1 };
+    }
+    await printInstant({ instant });
 
     return { exitCode: 0 };
   },

@@ -1,6 +1,6 @@
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
 } from '@/features/wesh/types';
 import { compareAsciiStrings } from '@/features/wesh/commands/_shared/ascii-order';
@@ -163,12 +163,7 @@ async function writeStateCapabilityError({
   return { exitCode: 1 };
 }
 
-export const setCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'set',
-    description: 'Display shell variables in reusable assignment form',
-    usage: 'set',
-  },
+export const setCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     if (isStandaloneCommandHelpRequest({ args: context.args, acceptedForms: [['--help']] })) {
       await writeCommandHelp({ context, command: 'set' });

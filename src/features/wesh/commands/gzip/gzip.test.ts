@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
+  createTestReadHandleFromBytes,
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
@@ -22,7 +24,7 @@ describe('wesh gzip family', () => {
     mtime,
   }: {
     path: string,
-    data: string,
+    data: string | Uint8Array,
     mtime?: number,
   }) {
     const segments = path.split('/').filter(Boolean);
@@ -66,22 +68,221 @@ describe('wesh gzip family', () => {
   async function execute({
     script,
     stdinText,
+    stdinBytes,
   }: {
     script: string,
-    stdinText: string,
+    stdinText?: string,
+    stdinBytes?: Uint8Array,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
-      stdin: createTestReadHandleFromText({ text: stdinText }),
+      source: createTextShellSource({ text: script }),
+      stdin: stdinBytes === undefined
+        ? createTestReadHandleFromText({ text: stdinText ?? '' })
+        : createTestReadHandleFromBytes({ bytes: stdinBytes }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
 
     return { result, stdout, stderr };
   }
+
+  const gzipHello = Uint8Array.from(
+    '1f8b0800000000000003cb48cdc9c9e7020020303a3606000000'
+      .match(/../gu)!
+      .map(byte => Number.parseInt(byte, 16)),
+  );
+  const gzipAlphabet = Uint8Array.from(
+    '1f8b08000000000000034b4c4a4e494d4bcfc8cccacec9cdcb2f282c2a2e292d2bafe00200fbb3268819000000'
+      .match(/../gu)!
+      .map(byte => Number.parseInt(byte, 16)),
+  );
+  const listHeader = '         compressed        uncompressed  ratio uncompressed_name\n';
+
+  it.each([
+    'gzip -l a.gz',
+    'gzip --list a.gz',
+    'gzip -l -- a.gz',
+  ])('lists a gzip file with GNU-compatible columns using %s', async (script) => {
+    await writeFile({ path: 'a.gz', data: gzipHello });
+
+    const listed = await execute({ script });
+
+    expect(listed.stdout.text).toBe(
+      `${listHeader}                 26                   6 -33.3% a\n`,
+    );
+    expect(listed.stderr.text).toBe('');
+    expect(listed.result.exitCode).toBe(0);
+  });
+
+  it('lists multiple gzip files and emits the GNU-style totals row', async () => {
+    await writeFile({ path: 'a.gz', data: gzipHello });
+    await writeFile({ path: 'b.gz', data: gzipAlphabet });
+
+    const listed = await execute({ script: 'gzip -l a.gz b.gz' });
+
+    expect(listed.stdout.text).toBe(
+      `${listHeader}`
+      + '                 26                   6 -33.3% a\n'
+      + '                 45                  25  -8.0% b\n'
+      + '                 71                  31 -71.0% (totals)\n',
+    );
+    expect(listed.stderr.text).toBe('');
+    expect(listed.result.exitCode).toBe(0);
+  });
+
+  it('lists a gzip stream from stdin as stdout', async () => {
+    const listed = await execute({
+      script: 'gzip -l',
+      stdinBytes: gzipHello,
+    });
+
+    expect(listed.stdout.text).toBe(
+      `${listHeader}                 26                   6 -33.3% stdout\n`,
+    );
+    expect(listed.stderr.text).toBe('');
+    expect(listed.result.exitCode).toBe(0);
+  });
+
+  it('excludes a stored gzip file-name header from the ratio calculation', async () => {
+    await writeFile({ path: 'named.txt', data: 'hello\n' });
+    const compressed = await execute({ script: 'gzip -k named.txt' });
+    expect(compressed.result.exitCode).toBe(0);
+
+    const listed = await execute({ script: 'gzip -l named.txt.gz' });
+
+    expect(listed.stdout.text).toMatch(/\s6 -33\.3% named\.txt\n$/u);
+    expect(listed.stderr.text).toBe('');
+    expect(listed.result.exitCode).toBe(0);
+  });
+
+  it('normalizes browser-shaped missing and type-mismatch path errors', async () => {
+    await writeFile({ path: 'parent', data: 'file' });
+
+    const missing = await execute({ script: 'gzip missing.txt', stdinText: '' });
+    const notDirectory = await execute({ script: 'gzip parent/child', stdinText: '' });
+
+    expect(missing.stdout.text).toBe('');
+    expect(missing.stderr.text).toBe('gzip: missing.txt: No such file or directory\n');
+    expect(missing.result.exitCode).toBe(1);
+    expect(notDirectory.stdout.text).toBe('');
+    expect(notDirectory.stderr.text).toBe('gzip: parent/child: Not a directory\n');
+    expect(notDirectory.result.exitCode).toBe(1);
+  });
+
+  it.each([
+    ['gzip -r tree'],
+    ['gzip --recursive tree'],
+    ['gzip tree -r'],
+    ['gzip -r -- tree'],
+  ])('recursively compresses nested regular files with %s', async (script) => {
+    await writeFile({ path: 'tree/a.txt', data: 'alpha\n' });
+    await writeFile({ path: 'tree/sub/b.txt', data: 'beta\n' });
+
+    const compressed = await execute({ script, stdinText: '' });
+
+    expect(compressed.stdout.text).toBe('');
+    expect(compressed.stderr.text).toBe('');
+    expect(compressed.result.exitCode).toBe(0);
+    await expect(wesh.vfs.lstat({ path: '/tree/a.txt' })).rejects.toThrow();
+    await expect(wesh.vfs.lstat({ path: '/tree/sub/b.txt' })).rejects.toThrow();
+    await expect(wesh.vfs.lstat({ path: '/tree/a.txt.gz' })).resolves.toMatchObject({ type: 'file' });
+    await expect(wesh.vfs.lstat({ path: '/tree/sub/b.txt.gz' })).resolves.toMatchObject({ type: 'file' });
+
+    const decoded = await execute({
+      script: "gzip -dc tree/a.txt.gz; gzip -dc tree/sub/b.txt.gz",
+      stdinText: '',
+    });
+    expect(decoded.stdout.text).toBe(`\
+alpha
+beta
+`);
+    expect(decoded.stderr.text).toBe('');
+    expect(decoded.result.exitCode).toBe(0);
+  });
+
+  it.each([
+    ['gzip -rk tree'],
+    ['gzip --recursive --keep tree'],
+  ])('keeps recursive inputs with %s', async (script) => {
+    await writeFile({ path: 'tree/a.txt', data: 'alpha\n' });
+    await writeFile({ path: 'tree/sub/b.txt', data: 'beta\n' });
+
+    const compressed = await execute({ script, stdinText: '' });
+
+    expect(compressed.stdout.text).toBe('');
+    expect(compressed.stderr.text).toBe('');
+    expect(compressed.result.exitCode).toBe(0);
+    for (const path of [
+      '/tree/a.txt',
+      '/tree/a.txt.gz',
+      '/tree/sub/b.txt',
+      '/tree/sub/b.txt.gz',
+    ]) {
+      await expect(wesh.vfs.lstat({ path })).resolves.toMatchObject({ type: 'file' });
+    }
+  });
+
+  it('aggregates recursive symlink and missing-input errors while continuing regular files', async () => {
+    await writeFile({ path: 'tree/a.txt', data: 'alpha\n' });
+    await writeFile({ path: 'tree/sub/b.txt', data: 'beta\n' });
+    await wesh.vfs.symlink({ path: '/tree/file-link', targetPath: 'a.txt' });
+    await wesh.vfs.symlink({ path: '/tree/dir-link', targetPath: 'sub' });
+    await wesh.vfs.symlink({ path: '/tree/dangling-link', targetPath: 'missing-target' });
+
+    const compressed = await execute({
+      script: 'gzip -r missing-before tree missing-after',
+      stdinText: '',
+    });
+
+    expect(compressed.stdout.text).toBe('');
+    expect(compressed.result.exitCode).toBe(1);
+    expect(compressed.stderr.text).toContain('gzip: missing-before: No such file or directory\n');
+    expect(compressed.stderr.text).toContain('gzip: missing-after: No such file or directory\n');
+    for (const link of ['file-link', 'dir-link', 'dangling-link']) {
+      expect(compressed.stderr.text).toContain(`gzip: tree/${link}: Too many levels of symbolic links\n`);
+      await expect(wesh.vfs.lstat({ path: `/tree/${link}` })).resolves.toMatchObject({ type: 'symlink' });
+    }
+    await expect(wesh.vfs.lstat({ path: '/tree/a.txt.gz' })).resolves.toMatchObject({ type: 'file' });
+    await expect(wesh.vfs.lstat({ path: '/tree/sub/b.txt.gz' })).resolves.toMatchObject({ type: 'file' });
+  });
+
+  it('does not follow a top-level symlink in recursive mode even with force', async () => {
+    await writeFile({ path: 'target.txt', data: 'target\n' });
+    await wesh.vfs.symlink({ path: '/link.txt', targetPath: 'target.txt' });
+
+    const compressed = await execute({ script: 'gzip -rf link.txt', stdinText: '' });
+
+    expect(compressed.stdout.text).toBe('');
+    expect(compressed.stderr.text).toBe('gzip: link.txt: Too many levels of symbolic links\n');
+    expect(compressed.result.exitCode).toBe(1);
+    await expect(wesh.vfs.lstat({ path: '/link.txt' })).resolves.toMatchObject({ type: 'symlink' });
+    await expect(wesh.vfs.lstat({ path: '/target.txt' })).resolves.toMatchObject({ type: 'file' });
+    await expect(wesh.vfs.lstat({ path: '/link.txt.gz' })).rejects.toThrow();
+  });
+
+  it('ignores recursive FIFOs without blocking and continues regular files', async () => {
+    await writeFile({ path: 'tree/a.txt', data: 'alpha\n' });
+    await wesh.vfs.mknod({ path: '/tree/pipe', type: 'fifo' });
+
+    const compressed = await execute({ script: 'gzip -r tree', stdinText: '' });
+
+    expect(compressed.stdout.text).toBe('');
+    expect(compressed.stderr.text).toBe('gzip: tree/pipe is not a directory or a regular file - ignored\n');
+    expect(compressed.result.exitCode).toBe(2);
+    await expect(wesh.vfs.lstat({ path: '/tree/a.txt.gz' })).resolves.toMatchObject({ type: 'file' });
+    await expect(wesh.vfs.lstat({ path: '/tree/pipe' })).resolves.toMatchObject({ type: 'fifo' });
+  });
+
+  it('rejects recursive decompression instead of silently pretending to support it', async () => {
+    const result = await execute({ script: 'gzip -dr tree', stdinText: '' });
+
+    expect(result.stdout.text).toBe('');
+    expect(result.stderr.text).toContain('gzip: recursive decompression is not supported');
+    expect(result.result.exitCode).toBe(1);
+  });
 
   it('supports gzip -c and keeps the source file', async () => {
     await writeFile({ path: 'plain.txt', data: 'hello gzip\n' });

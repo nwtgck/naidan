@@ -59,4 +59,17 @@ describe('decodeShellAnsiCQuote', () => {
     expect(decodeShellAnsiCQuote({ text: String.raw`a\U80000000b` })).toBe('ab');
     expect(decodeShellAnsiCQuote({ text: String.raw`a\UFFFFFFFFb` })).toBe('ab');
   });
+
+  it('stops numeric escapes at their Bash digit limits without consuming following text', () => {
+    expect(decodeShellAnsiCQuote({ text: String.raw`a\x414b` })).toBe('aA4b');
+    expect(decodeShellAnsiCQuote({ text: String.raw`a\1012b` })).toBe('aA2b');
+    expect(decodeShellAnsiCQuote({ text: String.raw`a\u0041zb` })).toBe('aAzb');
+    expect(decodeShellAnsiCQuote({ text: String.raw`a\U0001F600zb` })).toBe('a😀zb');
+  });
+
+  it('preserves long literal runs around decoded escapes', () => {
+    const prefix = 'prefix-'.repeat(256);
+    const suffix = '-suffix'.repeat(256);
+    expect(decodeShellAnsiCQuote({ text: `${prefix}\\n${suffix}` })).toBe(`${prefix}\n${suffix}`);
+  });
 });

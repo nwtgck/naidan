@@ -4,6 +4,8 @@ import type {
   ModelSupportInvestigationRepository,
 } from '@/features/transformers-js/model-support-investigation/types';
 import {
+  MODEL_CACHE_PROVENANCE_MAXIMUM_FILE_COUNT,
+  TEST_ONLY,
   verifyModelCacheProvenance,
 } from './verify-model-cache-provenance';
 
@@ -128,6 +130,18 @@ function inventory({ revision, repositoryPath, size }: {
 
 function rangedFetch({ bytes }: { bytes: Uint8Array }): typeof fetch {
   return vi.fn<typeof fetch>(async (_input, init) => {
+    if (init?.method === 'HEAD') {
+      return new Response(null, {
+        status: 200,
+        headers: {
+          'Accept-Ranges': 'bytes',
+          'Content-Length': String(bytes.byteLength),
+          'Content-Type': 'application/octet-stream',
+          ETag: '"sample-etag"',
+          'Last-Modified': 'Sun, 30 Aug 2026 00:00:00 GMT',
+        },
+      });
+    }
     const range = new Headers(init?.headers).get('Range');
     const match = /^bytes=(\d+)-(\d+)$/.exec(range ?? '');
     if (match === null) throw new Error(`Unexpected range: ${range}`);
@@ -166,13 +180,101 @@ describe('verifyModelCacheProvenance', () => {
       confidence: 'bounded-samples-matched',
       files: [{ status: 'bounded-samples-matched', cacheRevision: revision }],
     });
+    expect(result.files[0]?.transport).toMatchObject({
+      status: 'observed',
+      attempts: [{
+        method: 'HEAD',
+        status: 'observed',
+        responseStatus: 200,
+        contentLength: String(bytes.byteLength),
+        contentType: 'application/octet-stream',
+        acceptRanges: 'bytes',
+        etag: '"sample-etag"',
+        corsVisibility: 'readable',
+      }],
+    });
     expect(result.files[0]?.ranges).toHaveLength(3);
     expect(result.files[0]?.ranges.every(sample => sample.localSha256 === sample.remoteSha256)).toBe(true);
-    expect(repositoryFetch).toHaveBeenCalledTimes(3);
+    expect(repositoryFetch).toHaveBeenCalledTimes(4);
     expect(repositoryFetch).toHaveBeenCalledWith(
       `https://huggingface.co/org/model/resolve/${revision}/onnx/model_q4.onnx`,
       expect.objectContaining({ credentials: 'omit', cache: 'no-store' }),
     );
+  });
+
+
+  it('falls back from unsupported HEAD to a one-byte Range transport probe without retaining the body', async () => {
+    const bytes = Uint8Array.from({ length: 100 }, (_, index) => index);
+    let transportBodyCancelled = false;
+    const repositoryFetch = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 405 });
+      const range = new Headers(init?.headers).get('Range');
+      if (range === 'bytes=0-0') {
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(bytes.slice(0, 1));
+          },
+          cancel() {
+            transportBodyCancelled = true;
+          },
+        }), {
+          status: 206,
+          headers: {
+            'Accept-Ranges': 'bytes',
+            'Content-Length': '1',
+            'Content-Range': `bytes 0-0/${bytes.byteLength}`,
+            'Content-Type': 'application/octet-stream',
+            ETag: '"range-etag"',
+          },
+        });
+      }
+      const match = /^bytes=(\d+)-(\d+)$/.exec(range ?? '');
+      if (match === null) throw new Error(`Unexpected range: ${range}`);
+      const start = Number(match[1]);
+      const end = Number(match[2]);
+      const body = bytes.slice(start, end + 1);
+      return new Response(body, {
+        status: 206,
+        headers: {
+          'Content-Length': String(body.byteLength),
+          'Content-Range': `bytes ${start}-${end}/${bytes.byteLength}`,
+        },
+      });
+    });
+
+    const result = await verifyModelCacheProvenance({
+      inventory: inventory({ revision, repositoryPath, size: bytes.byteLength }),
+      repository: repository({ revision, repositoryPath, size: bytes.byteLength }),
+      storageRoot: storageRoot({ revision, repositoryPath, bytes }),
+      repositoryFetch,
+      rangeBytes: 32 * 1024,
+      maximumFileCount: 3,
+    });
+
+    expect(transportBodyCancelled).toBe(true);
+    expect(result.files[0]?.transport).toMatchObject({
+      status: 'observed',
+      attempts: [
+        { method: 'HEAD', status: 'unsupported', responseStatus: 405 },
+        {
+          method: 'range-0-0',
+          status: 'observed',
+          responseStatus: 206,
+          contentLength: '1',
+          contentRange: `bytes 0-0/${bytes.byteLength}`,
+          acceptRanges: 'bytes',
+          etag: '"range-etag"',
+        },
+      ],
+    });
+    expect(result).toMatchObject({ status: 'bounded-samples-matched' });
+  });
+
+  it('sanitizes query and hash data from transport URLs and keeps the default file cap bounded', () => {
+    expect(TEST_ONLY.sanitizedTransportUrl({
+      value: 'https://cdn.example/model.onnx?token=secret#fragment',
+    })).toBe('https://cdn.example/model.onnx');
+    expect(MODEL_CACHE_PROVENANCE_MAXIMUM_FILE_COUNT).toBe(3);
   });
 
   it('records a bounded mismatch without claiming whole-file provenance', async () => {
@@ -218,17 +320,20 @@ describe('verifyModelCacheProvenance', () => {
   it('cancels a 206 response that exceeds the exact bounded sample length', async () => {
     const bytes = Uint8Array.from({ length: 100 }, (_, index) => index);
     let cancelled = false;
-    const repositoryFetch = vi.fn<typeof fetch>().mockResolvedValue(new Response(new ReadableStream({
-      start(controller) {
-        controller.enqueue(new Uint8Array(101));
-      },
-      cancel() {
-        cancelled = true;
-      },
-    }), {
-      status: 206,
-      headers: { 'Content-Range': 'bytes 0-99/100' },
-    }));
+    const repositoryFetch = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === 'HEAD') return new Response(null, { status: 200 });
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(101));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }), {
+        status: 206,
+        headers: { 'Content-Range': 'bytes 0-99/100' },
+      });
+    });
 
     const result = await verifyModelCacheProvenance({
       inventory: inventory({ revision, repositoryPath, size: bytes.byteLength }),

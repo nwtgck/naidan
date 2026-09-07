@@ -10,7 +10,7 @@ import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/comman
 import { resolvePath } from '@/features/wesh/path';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshFileHandle,
 } from '@/features/wesh/types';
@@ -331,12 +331,7 @@ function findShufPreHelpSemanticIssue({
   return result.ok ? undefined : { kind: 'input-range', message: result.message };
 }
 
-export const shufCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'shuf',
-    description: 'Randomly shuffle lines',
-    usage: 'shuf [OPTION]... [FILE]',
-  },
+export const shufCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: context.args,

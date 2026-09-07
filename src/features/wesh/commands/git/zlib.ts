@@ -15,8 +15,8 @@ async function collectStream({ stream }: { stream: ReadableStream<Uint8Array> })
   return concatBytes({ chunks });
 }
 
-async function transformZlib({ bytes, mode }: {
-  bytes: Uint8Array,
+async function transformZlib({ chunks, mode }: {
+  chunks: readonly Uint8Array[],
   mode: 'compress' | 'decompress',
 }): Promise<Uint8Array> {
   const transform = (() => {
@@ -32,11 +32,13 @@ async function transformZlib({ bytes, mode }: {
     }
   })();
   const writer = transform.writable.getWriter();
-  const ownedBytes: Uint8Array<ArrayBuffer> = new Uint8Array(bytes.byteLength);
-  ownedBytes.set(bytes);
   const writePromise = (async () => {
     try {
-      await writer.write(ownedBytes);
+      for (const chunk of chunks) {
+        const ownedBytes: Uint8Array<ArrayBuffer> = new Uint8Array(chunk.byteLength);
+        ownedBytes.set(chunk);
+        await writer.write(ownedBytes);
+      }
       await writer.close();
     } finally {
       writer.releaseLock();
@@ -47,12 +49,16 @@ async function transformZlib({ bytes, mode }: {
   return output;
 }
 
+export async function deflateZlibChunks({ chunks }: { chunks: readonly Uint8Array[] }): Promise<Uint8Array> {
+  return transformZlib({ chunks, mode: 'compress' });
+}
+
 export async function deflateZlib({ bytes }: { bytes: Uint8Array }): Promise<Uint8Array> {
-  return transformZlib({ bytes, mode: 'compress' });
+  return deflateZlibChunks({ chunks: [bytes] });
 }
 
 export async function inflateZlib({ bytes }: { bytes: Uint8Array }): Promise<Uint8Array> {
-  return transformZlib({ bytes, mode: 'decompress' });
+  return transformZlib({ chunks: [bytes], mode: 'decompress' });
 }
 
 export const TEST_ONLY = {

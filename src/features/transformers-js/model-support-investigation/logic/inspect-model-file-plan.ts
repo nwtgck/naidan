@@ -12,6 +12,7 @@ import type {
   ModelSupportInvestigationRepository,
   ModelSupportInvestigationRepositoryFile,
 } from "@/features/transformers-js/model-support-investigation/types";
+import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
 
 const CANDIDATES = [
   { candidateId: "webgpu-q4f16", device: "webgpu", dtype: "q4f16" },
@@ -28,10 +29,6 @@ export type ModelSupportInvestigationGetModelFiles = ({ modelId, device, dtype }
   device: ModelSupportInvestigationCandidateDevice,
   dtype: ModelSupportInvestigationCandidateDtype,
 }) => Promise<string[]>;
-
-function message({ error }: { error: unknown }): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function fileKind({ path }: { path: string }): ModelSupportInvestigationPlannedFile["kind"] {
   if (path === "config.json") return "config";
@@ -185,7 +182,7 @@ function failedCandidate({ candidateId, device, dtype, error }: {
   dtype: ModelSupportInvestigationCandidateDtype,
   error: unknown,
 }): ModelSupportInvestigationCandidateFilePlan {
-  const registryError = message({ error });
+  const registryError = serializeInvestigationError({ error });
   return {
     candidateId,
     device,
@@ -203,7 +200,7 @@ function failedCandidate({ candidateId, device, dtype, error }: {
     cacheObservedRequiredFileCount: 0,
     cacheCompleteMarkerRequiredFileCount: 0,
     eligibility: "registry-failed",
-    ineligibleReasons: [`ModelRegistry.get_model_files failed: ${registryError}`],
+    ineligibleReasons: [`ModelRegistry.get_model_files failed: ${registryError.name}: ${registryError.message}`],
   };
 }
 

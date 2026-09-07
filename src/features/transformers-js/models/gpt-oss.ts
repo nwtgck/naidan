@@ -15,6 +15,32 @@ interface GenerationResult {
   past_key_values: unknown,
 }
 
+type GptOssInputPreparedObservation = {
+  fullConversationInputs: Record<string, unknown>,
+  cacheDecision: {
+    status: 'reused' | 'not-reused',
+    reason: string,
+  },
+};
+
+type GptOssInputPreparedObserver = ({ fullConversationInputs, cacheDecision }: GptOssInputPreparedObservation) => void;
+
+function emitGptOssInputPrepared({
+  onInputPrepared,
+  prepare,
+}: {
+  onInputPrepared: GptOssInputPreparedObserver | undefined,
+  prepare: () => GptOssInputPreparedObservation,
+}): void {
+  if (onInputPrepared === undefined) return;
+  try {
+    onInputPrepared(prepare());
+  } catch {
+    // Investigation instrumentation is diagnostic-only. Never change the
+    // Production generation path because observation or reconstruction failed.
+  }
+}
+
 export async function generateGptOss({
   model,
   tokenizer,
@@ -25,6 +51,7 @@ export async function generateGptOss({
   tools,
   pastKeyValues,
   stoppingCriteria,
+  onInputPrepared,
   generateWithModel,
 }: {
   model: PreTrainedModel,
@@ -39,6 +66,7 @@ export async function generateGptOss({
     reset(): void,
     interrupt(): void,
   },
+  onInputPrepared: GptOssInputPreparedObserver | undefined,
   generateWithModel: ({ model, inputs, pastKeyValues, params, streamer, stoppingCriteria }: {
     model: PreTrainedModel,
     inputs: Record<string, unknown>,
@@ -52,19 +80,31 @@ export async function generateGptOss({
   }) => Promise<GenerationResult>,
 }): Promise<unknown> {
   const isContinuation = isGptOssToolContinuationRequest({ messages });
+  const hasPastKeyValues = pastKeyValues !== null && pastKeyValues !== undefined;
 
   let inputs: Record<string, unknown>;
   let effectivePastKeyValues = pastKeyValues;
-  if (isContinuation && pastKeyValues !== null) {
+  if (isContinuation && hasPastKeyValues) {
     inputs = buildGptOssToolResultTokens({ messages, tokenizer });
+    emitGptOssInputPrepared({
+      onInputPrepared,
+      prepare: () => ({
+        fullConversationInputs: buildGptOssFullConversationInputs({ messages, tools, tokenizer }),
+        cacheDecision: { status: 'reused', reason: 'gpt-oss-tool-continuation' },
+      }),
+    });
   } else {
     effectivePastKeyValues = null;
-    const formattedMessages = buildGptOssPromptMessages({ messages, tools });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    inputs = tokenizer.apply_chat_template(formattedMessages as any, {
-      add_generation_prompt: true,
-      return_dict: true,
-    }) as Record<string, unknown>;
+    inputs = buildGptOssFullConversationInputs({ messages, tools, tokenizer });
+    emitGptOssInputPrepared({
+      onInputPrepared,
+      prepare: () => ({
+        fullConversationInputs: inputs,
+        cacheDecision: isContinuation
+          ? { status: 'not-reused', reason: 'gpt-oss-past-key-values-unavailable' }
+          : { status: 'not-reused', reason: 'gpt-oss-not-tool-continuation' },
+      }),
+    });
   }
 
   let currentChannel = '';
@@ -210,6 +250,23 @@ function formatGptOssToolDefinitions({ tools }: { tools: WorkerToolDefinition[] 
     return `// ${tool.function.description}\ntype ${tool.function.name} = (_: ${parameterType}) => any;`;
   }).join('\n\n');
   return `namespace functions {\n${functions}\n\n} // namespace functions`;
+}
+
+function buildGptOssFullConversationInputs({
+  messages,
+  tools,
+  tokenizer,
+}: {
+  messages: ChatMessage[],
+  tools: WorkerToolDefinition[] | undefined,
+  tokenizer: PreTrainedTokenizer,
+}): Record<string, unknown> {
+  const formattedMessages = buildGptOssPromptMessages({ messages, tools });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return tokenizer.apply_chat_template(formattedMessages as any, {
+    add_generation_prompt: true,
+    return_dict: true,
+  }) as Record<string, unknown>;
 }
 
 function buildGptOssToolResultTokens({

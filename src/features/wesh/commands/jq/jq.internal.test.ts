@@ -614,7 +614,7 @@ describe('jq internal value safety and path updates', () => {
     expect(compileFallback({ maximumRepetitions: 64 })).toBe(overBudget);
   });
 
-  it('bounds dynamic linear runtime-marker capture-history replay', () => {
+  describe('dynamic linear runtime-marker capture-history replay', () => {
     const hasLinearRuntimeFallback = ({
       pattern,
       flags = '',
@@ -629,84 +629,6 @@ describe('jq internal value safety and path updates', () => {
 
     const oneMarkerPattern = String.raw`(?<unit>(a)\2)(?:\g<unit>|b)*`;
     const twoMarkerPattern = String.raw`(?<unit>(a)\2(c)\3)(?:\g<unit>|b)*`;
-    expect(hasLinearRuntimeFallback({ pattern: oneMarkerPattern })).toBe(true);
-    expect(hasLinearRuntimeFallback({ pattern: twoMarkerPattern })).toBe(true);
-    const oneMarkerCompiled = compileJqRegularExpression({
-      pattern: oneMarkerPattern,
-      flags: '',
-    });
-    expect(oneMarkerCompiled.ok).toBe(true);
-    if (!oneMarkerCompiled.ok) return;
-    const oneMarkerFallback =
-      oneMarkerCompiled.compileBoundedLinearRuntimeCaptureHistoryFallback;
-    expect(oneMarkerFallback).toBeDefined();
-    if (oneMarkerFallback === undefined) return;
-    expect(oneMarkerFallback({ maximumRepetitions: 771 }).ok).toBe(true);
-    expect(oneMarkerFallback({ maximumRepetitions: 1203 }).ok).toBe(true);
-    const oneMarkerBoundary = oneMarkerFallback({ maximumRepetitions: 2048 });
-    expect(oneMarkerBoundary.ok).toBe(true);
-    if (oneMarkerBoundary.ok) {
-      expect(oneMarkerBoundary.create({ global: false }).source.length).toBeLessThanOrEqual(
-        40 * 1024,
-      );
-    }
-    const twoMarkerCompiled = compileJqRegularExpression({
-      pattern: twoMarkerPattern,
-      flags: '',
-    });
-    expect(twoMarkerCompiled.ok).toBe(true);
-    if (!twoMarkerCompiled.ok) return;
-    const twoMarkerFallback =
-      twoMarkerCompiled.compileBoundedLinearRuntimeCaptureHistoryFallback;
-    expect(twoMarkerFallback).toBeDefined();
-    if (twoMarkerFallback === undefined) return;
-    expect(twoMarkerFallback({ maximumRepetitions: 512 }).ok).toBe(true);
-    const twoMarkerBoundary = twoMarkerFallback({ maximumRepetitions: 1200 });
-    expect(twoMarkerBoundary.ok).toBe(true);
-    if (twoMarkerBoundary.ok) {
-      expect(twoMarkerBoundary.create({ global: false }).source.length).toBeLessThanOrEqual(
-        32 * 1024,
-      );
-    }
-    expect(twoMarkerFallback({ maximumRepetitions: 1400 })).toEqual({
-      ok: false,
-      message: 'dynamic capture-history fallback exceeds the source budget',
-    });
-    expect(hasLinearRuntimeFallback({
-      pattern: String.raw`(?<unit>(a)\2)(?:\g<unit>|b)*(?:(c)|d)*`,
-    })).toBe(false);
-    expect(hasLinearRuntimeFallback({
-      pattern: String.raw`(?<unit>(a)\2)(?:\g<unit>|\y)*`,
-    })).toBe(false);
-
-    expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
-      input: 'a'.repeat(64),
-      longest: false,
-    })).toBeUndefined();
-    expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
-      input: 'a'.repeat(65),
-      longest: false,
-    })).toBe(65);
-    expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
-      input: 'a'.repeat(24),
-      longest: true,
-    })).toBeUndefined();
-    expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
-      input: 'a'.repeat(25),
-      longest: true,
-    })).toBe(25);
-    expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
-      input: 'a'.repeat(513),
-      longest: false,
-    })).toBe(513);
-    expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
-      input: 'a'.repeat(2048),
-      longest: false,
-    })).toBe(2048);
-    expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
-      input: 'a'.repeat(2049),
-      longest: false,
-    })).toBeUndefined();
 
     const collectFirst = ({
       pattern,
@@ -727,67 +649,158 @@ describe('jq internal value safety and path updates', () => {
       })[0];
     };
 
-    const oneMarkerMatch = collectFirst({
-      pattern: oneMarkerPattern,
-      flags: '',
-      input: `${'aa'.repeat(256)}b`,
-    });
-    expect(oneMarkerMatch?.captures.map(({ start, end, text }) => ({
-      start,
-      end,
-      text,
-    }))).toEqual([
-      { start: 510, end: 512, text: 'aa' },
-      { start: 510, end: 511, text: 'a' },
-    ]);
-
-    const twoMarkerMatch = collectFirst({
-      pattern: twoMarkerPattern,
-      flags: 'l',
-      input: `${'aacc'.repeat(256)}b`,
-    });
-    expect(twoMarkerMatch?.captures.map(({ start, end, text }) => ({
-      start,
-      end,
-      text,
-    }))).toEqual([
-      { start: 1020, end: 1024, text: 'aacc' },
-      { start: 1020, end: 1021, text: 'a' },
-      { start: 1022, end: 1023, text: 'c' },
-    ]);
-
-    const overRepetitionMatch = collectFirst({
-      pattern: oneMarkerPattern,
-      flags: '',
-      input: `aa${'b'.repeat(700)}`,
-    });
-    expect(overRepetitionMatch).toMatchObject({
-      start: 0,
-      end: 702,
-    });
-    expect(overRepetitionMatch?.captures[0]).toMatchObject({
-      start: 0,
-      end: 2,
-      text: 'aa',
+    it('selects only supported linear runtime fallbacks', () => {
+      expect(hasLinearRuntimeFallback({ pattern: oneMarkerPattern })).toBe(true);
+      expect(hasLinearRuntimeFallback({ pattern: twoMarkerPattern })).toBe(true);
+      expect(hasLinearRuntimeFallback({
+        pattern: String.raw`(?<unit>(a)\2)(?:\g<unit>|b)*(?:(c)|d)*`,
+      })).toBe(false);
+      expect(hasLinearRuntimeFallback({
+        pattern: String.raw`(?<unit>(a)\2)(?:\g<unit>|\y)*`,
+      })).toBe(false);
     });
 
-    const overPartialWindowInput = `aa${`baa`.repeat(256)}b`;
-    for (const flags of ['', 'l']) {
-      const match = collectFirst({
+    it('bounds one-marker fallback source generation', () => {
+      const compiled = compileJqRegularExpression({
         pattern: oneMarkerPattern,
-        flags,
-        input: overPartialWindowInput,
+        flags: '',
       });
-      expect(match).toMatchObject({
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      const fallback = compiled.compileBoundedLinearRuntimeCaptureHistoryFallback;
+      expect(fallback).toBeDefined();
+      if (fallback === undefined) return;
+      expect(fallback({ maximumRepetitions: 771 }).ok).toBe(true);
+      expect(fallback({ maximumRepetitions: 1203 }).ok).toBe(true);
+      const boundary = fallback({ maximumRepetitions: 2048 });
+      expect(boundary.ok).toBe(true);
+      if (boundary.ok) {
+        expect(boundary.create({ global: false }).source.length).toBeLessThanOrEqual(
+          40 * 1024,
+        );
+      }
+    });
+
+    it('bounds two-marker fallback source generation', () => {
+      const compiled = compileJqRegularExpression({
+        pattern: twoMarkerPattern,
+        flags: '',
+      });
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      const fallback = compiled.compileBoundedLinearRuntimeCaptureHistoryFallback;
+      expect(fallback).toBeDefined();
+      if (fallback === undefined) return;
+      expect(fallback({ maximumRepetitions: 512 }).ok).toBe(true);
+      const boundary = fallback({ maximumRepetitions: 1200 });
+      expect(boundary.ok).toBe(true);
+      if (boundary.ok) {
+        expect(boundary.create({ global: false }).source.length).toBeLessThanOrEqual(
+          32 * 1024,
+        );
+      }
+      expect(fallback({ maximumRepetitions: 1400 })).toEqual({
+        ok: false,
+        message: 'dynamic capture-history fallback exceeds the source budget',
+      });
+    });
+
+    it('bounds runtime-selected maximum repetitions', () => {
+      expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
+        input: 'a'.repeat(64),
+        longest: false,
+      })).toBeUndefined();
+      expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
+        input: 'a'.repeat(65),
+        longest: false,
+      })).toBe(65);
+      expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
+        input: 'a'.repeat(24),
+        longest: true,
+      })).toBeUndefined();
+      expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
+        input: 'a'.repeat(25),
+        longest: true,
+      })).toBe(25);
+      expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
+        input: 'a'.repeat(513),
+        longest: false,
+      })).toBe(513);
+      expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
+        input: 'a'.repeat(2048),
+        longest: false,
+      })).toBe(2048);
+      expect(jqRegexp.boundedLinearRuntimeCaptureHistoryMaximumRepetitions({
+        input: 'a'.repeat(2049),
+        longest: false,
+      })).toBeUndefined();
+    });
+
+    it('replays one- and two-marker capture history', () => {
+      const oneMarkerMatch = collectFirst({
+        pattern: oneMarkerPattern,
+        flags: '',
+        input: `${'aa'.repeat(256)}b`,
+      });
+      expect(oneMarkerMatch?.captures.map(({ start, end, text }) => ({
+        start,
+        end,
+        text,
+      }))).toEqual([
+        { start: 510, end: 512, text: 'aa' },
+        { start: 510, end: 511, text: 'a' },
+      ]);
+
+      const twoMarkerMatch = collectFirst({
+        pattern: twoMarkerPattern,
+        flags: 'l',
+        input: `${'aacc'.repeat(256)}b`,
+      });
+      expect(twoMarkerMatch?.captures.map(({ start, end, text }) => ({
+        start,
+        end,
+        text,
+      }))).toEqual([
+        { start: 1020, end: 1024, text: 'aacc' },
+        { start: 1020, end: 1021, text: 'a' },
+        { start: 1022, end: 1023, text: 'c' },
+      ]);
+    });
+
+    it('replays capture history beyond the bounded compilation windows', () => {
+      const overRepetitionMatch = collectFirst({
+        pattern: oneMarkerPattern,
+        flags: '',
+        input: `aa${'b'.repeat(700)}`,
+      });
+      expect(overRepetitionMatch).toMatchObject({
         start: 0,
-        end: 771,
+        end: 702,
       });
-      expect(match?.captures[0]).toMatchObject({
-        start: 768,
-        end: 770,
+      expect(overRepetitionMatch?.captures[0]).toMatchObject({
+        start: 0,
+        end: 2,
         text: 'aa',
       });
-    }
+
+      const overPartialWindowInput = `aa${`baa`.repeat(256)}b`;
+      for (const flags of ['', 'l']) {
+        const match = collectFirst({
+          pattern: oneMarkerPattern,
+          flags,
+          input: overPartialWindowInput,
+        });
+        expect(match).toMatchObject({
+          start: 0,
+          end: 771,
+        });
+        expect(match?.captures[0]).toMatchObject({
+          start: 768,
+          end: 770,
+          text: 'aa',
+        });
+      }
+    });
   });
 
   it('admits only uniform seven-code-point inputs through the wider bounded window', () => {

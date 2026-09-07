@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { Wesh } from "@/features/wesh/index";
+import { gitCommandDefinition } from '@/features/wesh/commands/git/definition';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import {
   MockFileSystemDirectoryHandle,
   type MockFileSystemFileHandle,
@@ -64,19 +66,23 @@ async function createFixtureWesh({ stagedSecond = false }: { stagedSecond?: bool
   return wesh;
 }
 
+beforeAll(async () => {
+  await gitCommandDefinition.load();
+});
+
 describe("wesh git gitlink diff", () => {
   it("diffs gitlinks without requiring the referenced submodule commits in the superproject object database", async () => {
     const wesh = await createFixtureWesh();
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 cd /repo
 git diff --no-color HEAD~1 HEAD
 printf '%s\n' STAT
 git diff --stat HEAD~1 HEAD
 printf '%s\n' NAME
-git diff --name-status HEAD~1 HEAD`,
+git diff --name-status HEAD~1 HEAD` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -104,9 +110,9 @@ M\tsub
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 cd /repo
-git diff --cached --no-color`,
+git diff --cached --no-color` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -131,7 +137,7 @@ index 1111111..2222222 160000
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 cd /repo
 git reset --hard HEAD >/dev/null
 test -d sub
@@ -142,7 +148,7 @@ git add .
 git add sub
 git status --short
 git diff --cached --name-status
-printf ok`,
+printf ok` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -159,10 +165,10 @@ printf ok`,
     const setupStdout = createTestWriteCaptureHandle();
     const setupStderr = createTestWriteCaptureHandle();
     const setup = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 cd /repo
 git reset --hard HEAD >/dev/null
-git init -q sub`,
+git init -q sub` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: setupStdout.handle,
       stderr: setupStderr.handle,
@@ -173,9 +179,9 @@ git init -q sub`,
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script: `\
+      source: createTextShellSource({ text: `\
 cd /repo
-git status --short`,
+git status --short` }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,

@@ -11,7 +11,7 @@ import { resolveGitReflogIdentity, resolveGitTimestamp } from '@/features/wesh/c
 import type { GitReflogEntry } from '@/features/wesh/commands/git/reflog';
 import { readReflog } from '@/features/wesh/commands/git/reflog';
 import { mergeThreeTrees } from '@/features/wesh/commands/git/merge-tree';
-import { compareGitPaths } from '@/features/wesh/commands/git/path-order';
+import { sortByGitUtf8StringKey } from '@/features/wesh/commands/git/utf8-order';
 import { branchNameFromHead, deleteRef, readHead, readRef, updateRef } from '@/features/wesh/commands/git/refs';
 import type { GitRepository } from '@/features/wesh/commands/git/repository';
 import { joinPath } from '@/features/wesh/commands/git/repository';
@@ -38,12 +38,15 @@ function entriesEquivalent({ left, right }: {
   right: readonly GitIndexEntry[],
 }): boolean {
   if (left.length !== right.length) return false;
-  const normalize = ({ entries }: { entries: readonly GitIndexEntry[] }) => [...entries]
-    .map(entry => `${entry.path}\0${entry.mode}\0${entry.objectId}\0${entry.stage}`)
-    .sort();
-  const a = normalize({ entries: left });
-  const b = normalize({ entries: right });
-  return a.every((value, index) => value === b[index]);
+  const rightByPath = new Map(right.map(entry => [entry.path, entry]));
+  if (rightByPath.size !== right.length) return false;
+  return left.every(entry => {
+    const other = rightByPath.get(entry.path);
+    return other !== undefined
+      && entry.mode === other.mode
+      && entry.objectId === other.objectId
+      && entry.stage === other.stage;
+  });
 }
 
 function branchDescription({ branchName }: { branchName: string | undefined }): string {
@@ -282,7 +285,10 @@ async function mergeStashTrees({ files, repository, baseEntries, oursEntries, th
   if (textMerge.conflicts.length > 0) {
     throw new Error(`stash apply conflict in ${textMerge.conflicts[0]!.path}`);
   }
-  return [...treeMerge.entries, ...textMerge.entries].sort((left, right) => compareGitPaths({ left: left.path, right: right.path }));
+  return sortByGitUtf8StringKey({
+    values: [...treeMerge.entries, ...textMerge.entries],
+    key: ({ value }) => value.path,
+  });
 }
 
 function defaultAppliedIndex({ currentEntries, baseEntries, stashIndexEntries }: {
@@ -301,7 +307,7 @@ function defaultAppliedIndex({ currentEntries, baseEntries, stashIndexEntries }:
     }
     current.set(path, { ...stashedEntry, stage: 0 });
   }
-  return [...current.values()].sort((left, right) => compareGitPaths({ left: left.path, right: right.path }));
+  return sortByGitUtf8StringKey({ values: current.values(), key: ({ value }) => value.path });
 }
 
 async function assertUntrackedCanMaterialize({ files, repository, entries }: {

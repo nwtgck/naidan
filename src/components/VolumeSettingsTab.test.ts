@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, flushPromises } from '@vue/test-utils';
 import VolumeSettingsTab from './VolumeSettingsTab.vue';
 import { storageService } from '@/00-storage/service';
 import type { Volume, Mount } from '@/01-models/types';
 import { toVolumeId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 // --- Mocks ---
 

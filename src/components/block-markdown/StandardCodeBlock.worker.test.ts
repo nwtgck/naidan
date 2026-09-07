@@ -1,9 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import StandardCodeBlock from './StandardCodeBlock.vue';
 import { createHighlightWorker } from '@/features/highlight/worker/impl';
 import type { HighlightRequest, HighlightResponse } from '@/features/highlight/worker/types';
 import type { SharedHighlightWorkerClientLease } from '@/features/highlight/worker/client-shared';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const {
   highlightMock,

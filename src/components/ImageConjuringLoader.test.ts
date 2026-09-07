@@ -1,10 +1,10 @@
-import { beforeAll, describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 describe('ImageConjuringLoader', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 

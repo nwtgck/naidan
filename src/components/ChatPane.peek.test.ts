@@ -1,5 +1,6 @@
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
@@ -9,6 +10,10 @@ import type { MessageNode, Chat } from '@/01-models/types';
 
 import { setupScrollToMock } from '@/utils/test-utils';
 import { toChatId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 // Mock dependencies
 const mockCurrentChat = ref<Chat | null>(null);

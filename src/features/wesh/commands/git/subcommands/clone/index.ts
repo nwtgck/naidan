@@ -196,20 +196,22 @@ export async function runClone({ context, args }: {
         targetRefName: `refs/remotes/origin/${sourceDefaultBranch}`,
       });
     }
-    await setLocalConfigValue({ files: context.files, repository: destinationRepository, key: 'remote.origin.url', value: sourcePath });
+    await setLocalConfigValue({ files: context.files, repository: destinationRepository, key: 'remote.origin.url', value: sourcePath, valuePattern: undefined });
     await setLocalConfigValue({
       files: context.files,
       repository: destinationRepository,
       key: 'remote.origin.fetch',
       value: '+refs/heads/*:refs/remotes/origin/*',
+      valuePattern: undefined,
     });
     if (checkoutBranch !== undefined) {
-      await setLocalConfigValue({ files: context.files, repository: destinationRepository, key: `branch.${checkoutBranch}.remote`, value: 'origin' });
+      await setLocalConfigValue({ files: context.files, repository: destinationRepository, key: `branch.${checkoutBranch}.remote`, value: 'origin', valuePattern: undefined });
       await setLocalConfigValue({
         files: context.files,
         repository: destinationRepository,
         key: `branch.${checkoutBranch}.merge`,
         value: `refs/heads/${checkoutBranch}`,
+        valuePattern: undefined,
       });
     }
     if (checkoutObjectId === undefined) {

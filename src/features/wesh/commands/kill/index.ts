@@ -7,7 +7,7 @@ import {
   linuxSignalByNumber,
   parseLinuxSignal,
 } from '@/features/wesh/commands/_shared/linux-signals';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 
 type KillParseResult =
   | { kind: 'list', values: string[] }
@@ -104,12 +104,7 @@ function formatListedSignal({ value }: { value: string }): string | undefined {
   return linuxSignalByName({ name: signalName })?.number.toString();
 }
 
-export const killCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'kill',
-    description: 'List signals or signal a Wesh process or process group',
-    usage: 'kill -l [SIGNAL ...] | kill [-s SIGNAL | -SIGNAL] PID ...',
-  },
+export const killCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     if (isStandaloneCommandHelpRequest({ args: context.args, acceptedForms: [['--help']] })) {
       await writeCommandHelp({ context, command: 'kill' });

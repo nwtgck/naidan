@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -25,7 +26,7 @@ describe('wesh mkdir', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -172,6 +173,16 @@ echo $?`,
     expect(dashMode.stderr.text).toBe('');
     expect(chainedMode.result.exitCode).toBe(0);
     expect(chainedMode.stderr.text).toBe('');
+  });
+
+  it('keeps unsupported --version in the GNU abbreviation namespace', async () => {
+    const ambiguous = await execute({ script: 'mkdir --v' });
+
+    expect(ambiguous.stdout.text).toBe('');
+    expect(ambiguous.stderr.text).toContain("option '--v' is ambiguous");
+    expect(ambiguous.stderr.text).toContain("'--verbose'");
+    expect(ambiguous.stderr.text).toContain("'--version'");
+    expect(ambiguous.result.exitCode).toBe(1);
   });
 
 });

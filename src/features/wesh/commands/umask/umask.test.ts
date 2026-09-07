@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { TEST_ONLY as UMASK_TEST_ONLY } from './index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { Wesh } from '@/features/wesh/index';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
@@ -45,7 +46,7 @@ describe('wesh umask', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,

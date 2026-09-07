@@ -1,7 +1,7 @@
 import { stopStandardOptionParsingAtFirstPositional } from '@/features/wesh/commands/_shared/argv';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshShellOption,
 } from '@/features/wesh/types';
@@ -106,12 +106,7 @@ async function writeInvalidOptionName({
   });
 }
 
-export const shoptCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'shopt',
-    description: 'Set and unset shell options',
-    usage: 'shopt [-opqsu] [optname ...]',
-  },
+export const shoptCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: stopStandardOptionParsingAtFirstPositional({ args: context.args, spec: shoptArgvSpec }),

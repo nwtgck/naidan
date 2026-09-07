@@ -16,12 +16,27 @@ export function evaluateCandidateRequiredFileCoverage({
     .map(file => file.path)
     .sort((a, b) => a.localeCompare(b));
   const completePaths: string[] = [];
+  const sizeMismatchPaths: string[] = [];
   const incompletePaths: string[] = [];
   const missingPaths: string[] = [];
   for (const path of expectedPaths) {
+    const planned = candidate.files.find(file => file.path === path);
+    const repositorySize = planned?.repositorySize;
     const matches = inventory.files.filter(file => file.repositoryPath === path);
-    if (matches.some(file => file.size > 0 && file.hasCompletionMarker)) {
+    const completeMatch = matches.some(file => (
+      file.size > 0
+      && file.hasCompletionMarker
+      && (repositorySize === undefined || file.size === repositorySize)
+    ));
+    if (completeMatch) {
       completePaths.push(path);
+    } else if (matches.some(file => (
+      file.size > 0
+      && file.hasCompletionMarker
+      && repositorySize !== undefined
+      && file.size !== repositorySize
+    ))) {
+      sizeMismatchPaths.push(path);
     } else if (matches.length > 0) {
       incompletePaths.push(path);
     } else {
@@ -31,6 +46,7 @@ export function evaluateCandidateRequiredFileCoverage({
   return {
     expectedPaths,
     completePaths,
+    sizeMismatchPaths,
     incompletePaths,
     missingPaths,
     revisionProvenance: "unknown",

@@ -4,15 +4,29 @@ import type {
   ModelSupportInvestigationEvent,
   ModelSupportInvestigationModelDeclarations,
   ModelSupportInvestigationModelFilePlan,
+  ModelSupportInvestigationPersistenceRoundTrip,
   ModelSupportInvestigationRepository,
   ModelSupportInvestigationRun,
   ModelSupportInvestigationStep,
   ModelSupportInvestigationStepId,
   ModelSupportInvestigationTemplateBehavior,
 } from '@/features/transformers-js/model-support-investigation/types';
+import { serializeInvestigationError } from '@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error';
 
-function message({ error }: { error: unknown }): string {
-  return error instanceof Error ? error.message : String(error);
+
+function recordStepError({
+  run,
+  stepId,
+  error,
+}: {
+  run: ModelSupportInvestigationRun,
+  stepId: ModelSupportInvestigationStepId,
+  error: unknown,
+}) {
+  const serialized = serializeInvestigationError({ error });
+  run.stepErrors ??= {};
+  run.stepErrors[stepId] = [...(run.stepErrors[stepId] ?? []), serialized];
+  return serialized;
 }
 
 function updateStep({
@@ -34,6 +48,7 @@ function updateStep({
 
 export async function runPartialModelSupportInvestigation({
   runRuntimePreflight,
+  inspectPersistenceRoundTrip,
   inspectRepository,
   inspectCache,
   verifyCacheProvenance,
@@ -41,9 +56,11 @@ export async function runPartialModelSupportInvestigation({
   inspectTemplateBehavior,
   inspectModelFilePlan,
   onEvent,
+  onRunUpdate = () => undefined,
   now,
 }: {
   runRuntimePreflight: () => Promise<ModelSupportInvestigationRun>,
+  inspectPersistenceRoundTrip: () => Promise<ModelSupportInvestigationPersistenceRoundTrip>,
   inspectRepository: () => Promise<ModelSupportInvestigationRepository>,
   inspectCache: () => Promise<ModelSupportInvestigationCacheInventory>,
   verifyCacheProvenance: ({ repository, cache }: {
@@ -62,6 +79,7 @@ export async function runPartialModelSupportInvestigation({
     cache: ModelSupportInvestigationCacheInventory | undefined,
   }) => Promise<ModelSupportInvestigationModelFilePlan>,
   onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,
+  onRunUpdate?: ({ run }: { run: ModelSupportInvestigationRun }) => void,
   now: () => string,
 }): Promise<ModelSupportInvestigationRun> {
   const runtimeRun = await runRuntimePreflight();
@@ -74,27 +92,43 @@ export async function runPartialModelSupportInvestigation({
     templateBehavior: undefined,
     modelFilePlan: undefined,
     loadAttempts: [],
-    productionLane: { status: "not-run", observation: undefined, error: undefined },
+    productionLane: { status: "not-run", observation: undefined, partialObservation: undefined, error: undefined },
     laneComparison: undefined,
+    stepErrors: structuredClone(runtimeRun.stepErrors ?? {}),
   };
-  switch (runtimeRun.status) {
-  case 'failed':
-    return run;
-  case 'passed':
-    break;
-  default: {
-    const exhaustiveStatus: never = runtimeRun.status;
-    return exhaustiveStatus;
+  try {
+    run.persistenceRoundTrip = await inspectPersistenceRoundTrip();
+  } catch (error) {
+    run.persistenceRoundTrip = {
+      status: 'failed',
+      fixtureId: 'tool-call-history-v1',
+      method: 'chat-content-dto-json-roundtrip-v1',
+      error: serializeInvestigationError({ error }),
+    };
   }
-  }
+  onRunUpdate({ run: structuredClone(run) });
 
-  const errors: string[] = [];
+  const errors: string[] = (() => {
+    switch (runtimeRun.status) {
+    case 'failed':
+      return [runtimeRun.error ?? runtimeRun.currentOperation];
+    case 'passed':
+      return [];
+    default: {
+      const exhaustiveStatus: never = runtimeRun.status;
+      return exhaustiveStatus;
+    }
+    }
+  })();
   const emit = ({ stepId, status, detail }: {
     stepId: ModelSupportInvestigationStepId,
     status: ModelSupportInvestigationStep['status'],
     detail: string,
   }): void => {
     run.steps = updateStep({ steps: run.steps, stepId, status, detail });
+    run.currentOperation = detail;
+    run.completedAt = now();
+    onRunUpdate({ run: structuredClone(run) });
     onEvent({ event: { stepId, status, detail } });
   };
 
@@ -107,7 +141,7 @@ export async function runPartialModelSupportInvestigation({
       detail: `Resolved ${run.repository.resolvedRevision} with ${run.repository.fileCount} repository files`,
     });
   } catch (error) {
-    const detail = message({ error });
+    const detail = recordStepError({ run, stepId: 'repository-information', error }).message;
     errors.push(detail);
     emit({ stepId: 'repository-information', status: 'failed', detail });
   }
@@ -115,6 +149,7 @@ export async function runPartialModelSupportInvestigation({
   emit({ stepId: 'existing-model-data', status: 'running', detail: 'Inspecting existing OPFS model files and completion markers' });
   try {
     run.cache = await inspectCache();
+    onRunUpdate({ run: structuredClone(run) });
     let detail = run.cache.exists
       ? `Found ${run.cache.fileCount} files (${run.cache.totalBytes} bytes), ${run.cache.incompleteFileCount} incomplete`
       : 'No existing OPFS model directory was found';
@@ -124,7 +159,7 @@ export async function runPartialModelSupportInvestigation({
         run.cache.provenance = await verifyCacheProvenance({ repository: run.repository, cache: run.cache });
         detail = `${detail}; bounded cache provenance: ${run.cache.provenance.status}`;
       } catch (error) {
-        const provenanceError = message({ error });
+        const provenanceError = recordStepError({ run, stepId: 'existing-model-data', error }).message;
         errors.push(provenanceError);
         detail = `${detail}; bounded cache provenance failed: ${provenanceError}`;
         status = 'failed';
@@ -132,7 +167,7 @@ export async function runPartialModelSupportInvestigation({
     }
     emit({ stepId: 'existing-model-data', status, detail });
   } catch (error) {
-    const detail = message({ error });
+    const detail = recordStepError({ run, stepId: 'existing-model-data', error }).message;
     errors.push(detail);
     emit({ stepId: 'existing-model-data', status: 'failed', detail });
   }
@@ -169,10 +204,12 @@ export async function runPartialModelSupportInvestigation({
       emit({
         stepId: 'model-declarations',
         status: 'passed',
-        detail: `${modelType}: ${supported.length} public Auto classes support this model type`,
+        detail: run.declarations.fileFailures.length === 0
+          ? `${modelType}: ${supported.length} public Auto classes support this model type`
+          : `${modelType}: ${supported.length} public Auto classes support this model type; ${run.declarations.fileFailures.length} optional declaration files failed and were preserved as evidence`,
       });
     } catch (error) {
-      const detail = message({ error });
+      const detail = recordStepError({ run, stepId: 'model-declarations', error }).message;
       errors.push(detail);
       emit({ stepId: 'model-declarations', status: 'failed', detail });
     }
@@ -203,7 +240,7 @@ export async function runPartialModelSupportInvestigation({
           detail: `${eligible} of ${run.modelFilePlan.candidates.length} fixed candidates have all required repository files; ${failed} Registry failures`,
         });
       } catch (error) {
-        const detail = message({ error });
+        const detail = recordStepError({ run, stepId: 'model-file-plan', error }).message;
         errors.push(detail);
         emit({ stepId: 'model-file-plan', status: 'failed', detail });
       }
@@ -224,7 +261,7 @@ export async function runPartialModelSupportInvestigation({
         detail: `${run.templateBehavior.tokenizerClass}: ${passed} template cases rendered, ${failed} recorded as unsupported or failed`,
       });
     } catch (error) {
-      const detail = message({ error });
+      const detail = recordStepError({ run, stepId: 'template-behavior', error }).message;
       errors.push(detail);
       emit({ stepId: 'template-behavior', status: 'failed', detail });
     }

@@ -2702,7 +2702,7 @@ describe('ChatPane Header Delete Action', () => {
 });
 
 describe('ChatPane Export Functionality', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 

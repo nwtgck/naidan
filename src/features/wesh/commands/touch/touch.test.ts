@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -54,7 +55,7 @@ describe('wesh touch', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -293,6 +294,7 @@ printf 'status=%s exists=%s\n' "$?" "$(test -e ./-; echo $?)"`,
       '\t1 day\n',
       'NEXT DAY',
       '2024-01-02',
+      '2024-01-01 00:00:00 UTC + 1 day',
     ];
     for (const value of validValues) {
       const result = await execute({

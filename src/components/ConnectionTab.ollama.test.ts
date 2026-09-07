@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { flushPromises, mount } from '@vue/test-utils';
 import { EMPTY_LM_PARAMETERS, type EndpointType, type Settings } from '@/01-models/types';
 import ConnectionTab from './ConnectionTab.vue';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const { mockFetchModels } = vi.hoisted(() => ({
   mockFetchModels: vi.fn(),

@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
+import type { WeshCommandImplementation, WeshCommandResult, WeshCommandContext } from '@/features/wesh/types';
 import {
   parseStandardArgv,
   type ArgvOptionOccurrence,
@@ -161,12 +161,7 @@ const headArgvSpec: StandardArgvParserSpec = {
   ],
 };
 
-export const headCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'head',
-    description: 'Output the first part of files',
-    usage: 'head [OPTION]... [FILE]...',
-  },
+export const headCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const textOutput = context.text();
     const parsed = parseStandardArgv({

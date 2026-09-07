@@ -1,4 +1,3 @@
-import { isAsciiHexDigit, isAsciiOctalDigit } from './ascii';
 import { encodeShellTextToBytes, shellByteValueToText } from './byte-text';
 
 const SIMPLE_ESCAPES: Readonly<Record<string, string>> = {
@@ -55,31 +54,92 @@ function decodeUnicodeEscape({ value }: { value: number }): string {
   if (value <= 0x10ffff && !(value >= 0xd800 && value <= 0xdfff)) {
     return String.fromCodePoint(value);
   }
-  return encodeLegacyUtf8Bytes({ value })
-    .map((byte) => shellByteValueToText({ byte }))
-    .join('');
+
+  let result = '';
+  for (const byte of encodeLegacyUtf8Bytes({ value })) {
+    result += shellByteValueToText({ byte });
+  }
+  return result;
+}
+
+function asciiHexDigitValue({ value }: { value: string | undefined }): number | undefined {
+  if (value === undefined) return undefined;
+  const code = value.charCodeAt(0);
+  if (code >= 0x30 && code <= 0x39) return code - 0x30;
+  if (code >= 0x41 && code <= 0x46) return code - 0x41 + 10;
+  if (code >= 0x61 && code <= 0x66) return code - 0x61 + 10;
+  return undefined;
+}
+
+function asciiOctalDigitValue({ value }: { value: string | undefined }): number | undefined {
+  if (value === undefined) return undefined;
+  const code = value.charCodeAt(0);
+  return code >= 0x30 && code <= 0x37 ? code - 0x30 : undefined;
+}
+
+function readEscapeInteger({
+  text,
+  startIndex,
+  maximumDigits,
+  base,
+}: {
+  text: string,
+  startIndex: number,
+  maximumDigits: number,
+  base: 8 | 16,
+}): {
+  value: number,
+  digits: number,
+  nextIndex: number,
+} {
+  let value = 0;
+  let digits = 0;
+  let nextIndex = startIndex;
+  while (digits < maximumDigits) {
+    const digit = base === 16
+      ? asciiHexDigitValue({ value: text[nextIndex] })
+      : asciiOctalDigitValue({ value: text[nextIndex] });
+    if (digit === undefined) break;
+    value = value * base + digit;
+    digits += 1;
+    nextIndex += 1;
+  }
+  return { value, digits, nextIndex };
 }
 
 export function decodeShellAnsiCQuote({ text }: { text: string }): string {
-  let result = '';
+  const output: string[] = [];
+  let literalStart = 0;
+  let index = 0;
 
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-    if (character !== '\\') {
-      result += character ?? '';
+  const appendLiteralRun = ({ endIndex }: { endIndex: number }): void => {
+    if (literalStart < endIndex) {
+      output.push(text.slice(literalStart, endIndex));
+    }
+  };
+
+  const finishAtNul = (): string => output.join('');
+
+  while (index < text.length) {
+    if (text[index] !== '\\') {
+      index += 1;
       continue;
     }
 
+    appendLiteralRun({ endIndex: index });
     const escaped = text[index + 1];
     if (escaped === undefined) {
-      result += '\\';
+      output.push('\\');
+      index += 1;
+      literalStart = index;
       continue;
     }
 
     const simple = SIMPLE_ESCAPES[escaped];
     if (simple !== undefined) {
-      result += simple;
-      index += 1;
+      output.push(simple);
+      index += 2;
+      literalStart = index;
       continue;
     }
 
@@ -87,8 +147,9 @@ export function decodeShellAnsiCQuote({ text }: { text: string }): string {
       const controlStart = index + 2;
       const control = text[controlStart];
       if (control === undefined) {
-        result += '\\c';
-        index += 1;
+        output.push('\\c');
+        index += 2;
+        literalStart = index;
         continue;
       }
 
@@ -111,31 +172,37 @@ export function decodeShellAnsiCQuote({ text }: { text: string }): string {
         throw new Error('Missing Bash control escape operand byte');
       }
       const controlValue = firstByte === 0x3f ? 0x7f : firstByte & 0x1f;
-      if (controlValue === 0) return result;
-      result += shellByteValueToText({ byte: controlValue });
-      for (const byte of operandBytes.subarray(1)) {
-        result += shellByteValueToText({ byte });
+      if (controlValue === 0) return finishAtNul();
+      output.push(shellByteValueToText({ byte: controlValue }));
+      for (let byteIndex = 1; byteIndex < operandBytes.length; byteIndex += 1) {
+        const byte = operandBytes[byteIndex];
+        if (byte === undefined) {
+          throw new Error(`Missing Bash control escape operand byte at offset ${byteIndex}`);
+        }
+        output.push(shellByteValueToText({ byte }));
       }
-      index = controlStart + controlCharacters - 1;
+      index = controlStart + controlCharacters;
+      literalStart = index;
       continue;
     }
 
     if (escaped === 'x') {
-      let digits = '';
-      let cursor = index + 2;
-      while (digits.length < 2 && isAsciiHexDigit({ value: text[cursor] })) {
-        digits += text[cursor]!;
-        cursor += 1;
-      }
-      if (digits.length === 0) {
-        result += '\\x';
-        index += 1;
+      const parsed = readEscapeInteger({
+        text,
+        startIndex: index + 2,
+        maximumDigits: 2,
+        base: 16,
+      });
+      if (parsed.digits === 0) {
+        output.push('\\x');
+        index += 2;
+        literalStart = index;
         continue;
       }
-      const byte = Number.parseInt(digits, 16);
-      if (byte === 0) return result;
-      result += shellByteValueToText({ byte });
-      index = cursor - 1;
+      if (parsed.value === 0) return finishAtNul();
+      output.push(shellByteValueToText({ byte: parsed.value }));
+      index = parsed.nextIndex;
+      literalStart = index;
       continue;
     }
 
@@ -150,48 +217,47 @@ export function decodeShellAnsiCQuote({ text }: { text: string }): string {
         }
         }
       })();
-      let digits = '';
-      let cursor = index + 2;
-      while (digits.length < maximumDigits && isAsciiHexDigit({ value: text[cursor] })) {
-        digits += text[cursor]!;
-        cursor += 1;
-      }
-      if (digits.length === 0) {
-        result += `\\${escaped}`;
-        index += 1;
+      const parsed = readEscapeInteger({
+        text,
+        startIndex: index + 2,
+        maximumDigits,
+        base: 16,
+      });
+      if (parsed.digits === 0) {
+        output.push(`\\${escaped}`);
+        index += 2;
+        literalStart = index;
         continue;
       }
-      const value = Number.parseInt(digits, 16);
-      if (value === 0) return result;
-      result += decodeUnicodeEscape({ value });
-      index = cursor - 1;
+      if (parsed.value === 0) return finishAtNul();
+      output.push(decodeUnicodeEscape({ value: parsed.value }));
+      index = parsed.nextIndex;
+      literalStart = index;
       continue;
     }
 
-    if (isAsciiOctalDigit({ value: escaped })) {
-      let digits = escaped;
-      let cursor = index + 2;
-      while (digits.length < 3 && isAsciiOctalDigit({ value: text[cursor] })) {
-        digits += text[cursor]!;
-        cursor += 1;
-      }
-      const byte = Number.parseInt(digits, 8) & 0xff;
-      if (byte === 0) return result;
-      result += shellByteValueToText({ byte });
-      index = cursor - 1;
+    if (asciiOctalDigitValue({ value: escaped }) !== undefined) {
+      const parsed = readEscapeInteger({
+        text,
+        startIndex: index + 1,
+        maximumDigits: 3,
+        base: 8,
+      });
+      const byte = parsed.value & 0xff;
+      if (byte === 0) return finishAtNul();
+      output.push(shellByteValueToText({ byte }));
+      index = parsed.nextIndex;
+      literalStart = index;
       continue;
     }
 
-    if (escaped === '\n') {
-      result += '\\' + '\n';
-      index += 1;
-      continue;
-    }
-    result += `\\${escaped}`;
-    index += 1;
+    output.push(text.slice(index, index + 2));
+    index += 2;
+    literalStart = index;
   }
 
-  return result;
+  appendLiteralRun({ endIndex: text.length });
+  return output.join('');
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

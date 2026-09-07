@@ -1,11 +1,57 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { TEST_ONLY as FOLD_TEST_ONLY } from './index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromBytes,
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/features/wesh/utils/test-stream';
+
+describe('wesh fold streaming', () => {
+  it.each([
+    { widthMode: 'columns' as const, breakAtSpaces: false, input: 'a'.repeat(32 * 1024) },
+    { widthMode: 'bytes' as const, breakAtSpaces: false, input: 'a'.repeat(32 * 1024) },
+    { widthMode: 'columns' as const, breakAtSpaces: true, input: 'word '.repeat(7_000) },
+    { widthMode: 'bytes' as const, breakAtSpaces: true, input: 'word '.repeat(7_000) },
+  ])('emits folded output before EOF in $widthMode mode with spaces=$breakAtSpaces', async ({
+    widthMode,
+    breakAtSpaces,
+    input,
+  }) => {
+    let releaseInput!: () => void;
+    const inputReleased = new Promise<void>(resolve => {
+      releaseInput = resolve;
+    });
+    let waitingForMoreInput!: () => void;
+    const requestedMoreInput = new Promise<void>(resolve => {
+      waitingForMoreInput = resolve;
+    });
+    const stdout = createTestWriteCaptureHandle();
+    const bytes = new TextEncoder().encode(input);
+
+    async function* chunks(): AsyncIterable<Uint8Array> {
+      yield bytes;
+      waitingForMoreInput();
+      await inputReleased;
+    }
+
+    const processing = FOLD_TEST_ONLY.processFoldChunks({
+      handle: stdout.handle,
+      chunks: chunks(),
+      width: 80,
+      breakAtSpaces,
+      widthMode,
+    });
+
+    await requestedMoreInput;
+    expect(stdout.buffer.byteLength).toBeGreaterThan(0);
+    releaseInput();
+    await processing;
+    expect(stdout.buffer.byteLength).toBeGreaterThan(bytes.byteLength);
+  });
+});
 
 describe('wesh fold', () => {
   let wesh: Wesh;
@@ -52,7 +98,7 @@ describe('wesh fold', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: stdinBytes === undefined
         ? createTestReadHandleFromText({ text: stdinText ?? '' })
         : createTestReadHandleFromBytes({ bytes: stdinBytes }),
@@ -235,7 +281,19 @@ uv
 ab
 cd
 `);
-    expect(stderr.text).toContain('fold: missing.txt:');
+    expect(stderr.text).toBe('fold: missing.txt: No such file or directory\n');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('normalizes browser type-mismatch errors for intermediate file path components', async () => {
+    await writeFile({ path: 'parent', data: 'file' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'fold parent/child',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('fold: parent/child: Not a directory\n');
     expect(result.exitCode).toBe(1);
   });
 

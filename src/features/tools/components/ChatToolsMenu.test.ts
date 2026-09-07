@@ -3,6 +3,7 @@ import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import { ref, nextTick } from 'vue';
 import type { Reasoning } from '@/01-models/types';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 const mockWindowSize = {
   width: ref(1024),
@@ -15,6 +16,10 @@ vi.mock('@vueuse/core', async (importOriginal) => {
     ...actual,
     useWindowSize: vi.fn(() => mockWindowSize),
   };
+});
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
 });
 
 describe('ChatToolsMenu', () => {

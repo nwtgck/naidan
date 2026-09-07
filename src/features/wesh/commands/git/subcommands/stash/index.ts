@@ -1,7 +1,8 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
 import { readCommit } from "@/features/wesh/commands/git/commits";
-import { readEffectiveConfig } from "@/features/wesh/commands/git/config";
+import { getDiffRenamesConfigMode, readEffectiveConfig } from "@/features/wesh/commands/git/config";
 import { writeRevisionPatch, writeRevisionStat } from "@/features/wesh/commands/git/diff/revision";
 import { quoteNonAsciiFromConfig } from "@/features/wesh/commands/git/path-output";
 import { discoverRepositoryFromContext } from "@/features/wesh/commands/git/repository";
@@ -10,7 +11,55 @@ import { resolveContentConfigForContext } from "@/features/wesh/commands/git/con
 import { collectStatus } from "@/features/wesh/commands/git/status";
 import { printLongStatus } from "@/features/wesh/commands/git/status-output";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { analyzeArgvLongForm, analyzeArgvShortForm, defineArgvCatalog } from '@/features/wesh/argv-v2';
+
+type StashPushShortSemantic = 'include-untracked' | 'message';
+type StashApplySemantic = 'loud' | 'quiet' | 'restore-index' | 'skip-index';
+
+const STASH_PUSH_SHORT_ARGV_CATALOG = defineArgvCatalog<StashPushShortSemantic>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    { semantic: 'include-untracked', forms: [{ kind: 'short', name: 'u', value: { kind: 'none' } }] },
+    { semantic: 'message', forms: [{ kind: 'short', name: 'm', value: { kind: 'required-attached-or-following', missingValueName: 'message' } }] },
+  ],
+});
+
+const STASH_SHOW_SHORT_ARGV_CATALOG = defineArgvCatalog<'patch'>({
+  nonExecutableLongOptions: [],
+  definitions: [{ semantic: 'patch', forms: [{ kind: 'short', name: 'p', value: { kind: 'none' } }] }],
+});
+
+const STASH_APPLY_AMBIGUOUS_LONG_OPTION_ORDER = ['--no-quiet', '--no-index'] as const;
+
+function orderStashApplyAmbiguousLongOptions({ candidateOptions }: {
+  candidateOptions: readonly string[],
+}): readonly string[] {
+  const candidates = new Set(candidateOptions);
+  return [
+    ...STASH_APPLY_AMBIGUOUS_LONG_OPTION_ORDER.filter(candidate => candidates.delete(candidate)),
+    ...candidateOptions.filter(candidate => candidates.has(candidate)),
+  ];
+}
+
+function stashApplyUsage({ subcommand }: { subcommand: 'apply' | 'pop' }): string {
+  return `usage: git stash ${subcommand} [--index] [-q | --quiet] [<stash>]\n\n    -q, --[no-]quiet      be quiet, only report errors\n    --[no-]index          attempt to recreate the index\n\n`;
+}
+
+const STASH_APPLY_ARGV_CATALOG = defineArgvCatalog<StashApplySemantic>({
+  nonExecutableLongOptions: [],
+  definitions: [
+    {
+      semantic: 'quiet',
+      forms: [
+        { kind: 'short', name: 'q', value: { kind: 'none' } },
+        { kind: 'long', name: 'quiet', value: { kind: 'none' } },
+      ],
+    },
+    { semantic: 'loud', forms: [{ kind: 'long', name: 'no-quiet', value: { kind: 'none' } }] },
+    { semantic: 'restore-index', forms: [{ kind: 'long', name: 'index', value: { kind: 'none' } }] },
+    { semantic: 'skip-index', forms: [{ kind: 'long', name: 'no-index', value: { kind: 'none' } }] },
+  ],
+});
 
 export async function runStash({ context, args }: {
     context: WeshCommandContext;
@@ -19,9 +68,7 @@ export async function runStash({ context, args }: {
   const subcommand = args[0] === undefined || args[0].startsWith('-') ? 'push' : args[0];
   await assertSupportedRepositoryContentPolicy({ context, cleanMutation: subcommand === 'push' });
   const rawRest = subcommand === 'push' && (args[0] === undefined || args[0].startsWith('-')) ? args : args.slice(1);
-  const rest = subcommand === 'push'
-    ? expandGitShortOptions({ args: rawRest, flagOptions: ['u'], valueOptions: ['m'] })
-    : rawRest;
+  const rest = rawRest;
   const repository = await discoverRepositoryFromContext({ context });
   switch (subcommand) {
   case 'push': {
@@ -39,9 +86,68 @@ export async function runStash({ context, args }: {
         pathOperands.push(arg);
         continue;
       }
-      if (arg === '-u' || arg === '--include-untracked') {
+      if (arg.startsWith('-') && !arg.startsWith('--') && arg.length > 1) {
+        let bodyOffset = 1;
+        while (bodyOffset < arg.length) {
+          const analysis = analyzeArgvShortForm({ token: arg, bodyOffset, prefix: '-', catalog: STASH_PUSH_SHORT_ARGV_CATALOG });
+          switch (analysis.kind) {
+          case 'unknown':
+            throw new GitUsageError({ message: `unknown option: ${arg}` });
+          case 'matched':
+            break;
+          default: {
+            const _ex: never = analysis;
+            throw new Error(`Unhandled stash push short-option analysis: ${JSON.stringify(_ex)}`);
+          }
+          }
+          switch (analysis.semantic) {
+          case 'include-untracked':
+            switch (analysis.value.kind) {
+            case 'none':
+              includeUntracked = true;
+              break;
+            case 'inline':
+            case 'following-required':
+            case 'following-optional':
+              throw new Error(`Stash -u unexpectedly claimed a value: ${analysis.value.kind}`);
+            default: {
+              const _ex: never = analysis.value;
+              throw new Error(`Unhandled stash -u value: ${JSON.stringify(_ex)}`);
+            }
+            }
+            break;
+          case 'message':
+            switch (analysis.value.kind) {
+            case 'inline':
+              message = analysis.value.rawValue;
+              break;
+            case 'following-required': {
+              const value = rest[index + 1];
+              if (value === undefined)
+                throw new GitUsageError({ message: `option '${analysis.option}' requires a value` });
+              message = value;
+              index += 1;
+              break;
+            }
+            case 'none':
+            case 'following-optional':
+              throw new Error(`Stash -m produced invalid value claim: ${analysis.value.kind}`);
+            default: {
+              const _ex: never = analysis.value;
+              throw new Error(`Unhandled stash -m value: ${JSON.stringify(_ex)}`);
+            }
+            }
+            break;
+          default: {
+            const _ex: never = analysis.semantic;
+            throw new Error(`Unhandled stash push short semantic: ${_ex}`);
+          }
+          }
+          bodyOffset = analysis.nextBodyOffset;
+        }
+      } else if (arg === '--include-untracked') {
         includeUntracked = true;
-      } else if (arg === '-m' || arg === '--message') {
+      } else if (arg === '--message') {
         const value = rest[index + 1];
         if (value === undefined)
           throw new GitUsageError({ message: `option '${arg}' requires a value` });
@@ -82,21 +188,26 @@ export async function runStash({ context, args }: {
   }
   case 'drop': {
     const operands = rest.filter(arg => arg !== '--');
-    if (operands.length > 1 || rest.filter(arg => arg === '--').length > 1)
-      throw new Error('Too many revisions specified');
+    if (operands.length > 1 || rest.filter(arg => arg === '--').length > 1) {
+      await context.text().error({ text: `Too many revisions specified: ${operands.map(operand => `'${operand}'`).join(' ')}\n` });
+      return { exitCode: 1 };
+    }
     const index = parseStashIndex({ expression: operands[0] });
     const dropped = await dropStash({ files: context.files, repository, index });
     await context.text().print({ text: `Dropped stash@{${index}} (${dropped.objectId})\n` });
     return { exitCode: 0 };
   }
   case 'clear':
-    if (rest.length > 1 || (rest.length === 1 && rest[0] !== '--'))
-      throw new Error('stash clear does not take arguments');
+    if (rest.length > 1 || (rest.length === 1 && rest[0] !== '--')) {
+      await context.text().error({ text: 'error: git stash clear with arguments is unimplemented\n' });
+      return { exitCode: 1 };
+    }
     await clearStashes({ files: context.files, repository });
     return { exitCode: 0 };
   case 'apply':
   case 'pop': {
     let restoreIndex = false;
+    let quiet = false;
     let parsingOptions = true;
     const operands: string[] = [];
     for (const arg of rest) {
@@ -104,15 +215,120 @@ export async function runStash({ context, args }: {
         parsingOptions = false;
         continue;
       }
-      if (parsingOptions && arg === '--index')
-        restoreIndex = true;
-      else if (parsingOptions && arg.startsWith('-'))
-        throw new GitUsageError({ message: `unknown option: ${arg}` });
-      else
+      if (parsingOptions && arg.startsWith('--')) {
+        const analysis = analyzeArgvLongForm({
+          token: arg,
+          catalog: STASH_APPLY_ARGV_CATALOG,
+          longNameMatch: 'unique-prefix',
+        });
+        switch (analysis.kind) {
+        case 'unknown': {
+          const optionName = arg.slice(2).split('=', 1)[0] ?? '';
+          await context.text().error({ text: `error: unknown option \`${optionName}'\n${stashApplyUsage({ subcommand })}` });
+          return { exitCode: 129 };
+        }
+        case 'ambiguous': {
+          const candidateOptions = orderStashApplyAmbiguousLongOptions({ candidateOptions: analysis.candidateOptions });
+          await context.text().error({
+            text: `error: ${formatGitAmbiguousLongOption({
+              option: analysis.option,
+              candidateOptions,
+            })}\n`,
+          });
+          await context.text().print({ text: stashApplyUsage({ subcommand }) });
+          return { exitCode: 129 };
+        }
+        case 'matched':
+          break;
+        default: {
+          const _ex: never = analysis;
+          throw new Error(`Unhandled stash apply long-option analysis: ${JSON.stringify(_ex)}`);
+        }
+        }
+        switch (analysis.value.kind) {
+        case 'none':
+          break;
+        case 'inline':
+        case 'following-required':
+          throw new Error(`Stash apply no-value option unexpectedly claimed a value: ${analysis.value.kind}`);
+        case 'unexpected-inline': {
+          const equalsIndex = arg.indexOf('=');
+          const optionName = arg.slice(2, equalsIndex < 0 ? undefined : equalsIndex);
+          await context.text().error({ text: `error: option \`${optionName}' takes no value\n` });
+          return { exitCode: 129 };
+        }
+        default: {
+          const _ex: never = analysis.value;
+          throw new Error(`Unhandled stash apply long-option value: ${JSON.stringify(_ex)}`);
+        }
+        }
+        switch (analysis.semantic) {
+        case 'quiet':
+          quiet = true;
+          break;
+        case 'loud':
+          quiet = false;
+          break;
+        case 'restore-index':
+          restoreIndex = true;
+          break;
+        case 'skip-index':
+          restoreIndex = false;
+          break;
+        default: {
+          const _ex: never = analysis.semantic;
+          throw new Error(`Unhandled stash apply long-option semantic: ${_ex}`);
+        }
+        }
+      } else if (parsingOptions && arg.startsWith('-') && arg.length > 1) {
+        let bodyOffset = 1;
+        while (bodyOffset < arg.length) {
+          const analysis = analyzeArgvShortForm({ token: arg, bodyOffset, prefix: '-', catalog: STASH_APPLY_ARGV_CATALOG });
+          switch (analysis.kind) {
+          case 'unknown':
+            await context.text().error({ text: `error: unknown switch \`${analysis.option.slice(1)}'\n${stashApplyUsage({ subcommand })}` });
+            return { exitCode: 129 };
+          case 'matched':
+            break;
+          default: {
+            const _ex: never = analysis;
+            throw new Error(`Unhandled stash apply short-option analysis: ${JSON.stringify(_ex)}`);
+          }
+          }
+          switch (analysis.value.kind) {
+          case 'none':
+            break;
+          case 'inline':
+          case 'following-required':
+          case 'following-optional':
+            throw new Error(`Stash apply -q unexpectedly claimed a value: ${analysis.value.kind}`);
+          default: {
+            const _ex: never = analysis.value;
+            throw new Error(`Unhandled stash apply short-option value: ${JSON.stringify(_ex)}`);
+          }
+          }
+          switch (analysis.semantic) {
+          case 'quiet':
+            quiet = true;
+            break;
+          case 'loud':
+          case 'restore-index':
+          case 'skip-index':
+            throw new Error(`Unexpected stash apply short semantic: ${analysis.semantic}`);
+          default: {
+            const _ex: never = analysis.semantic;
+            throw new Error(`Unhandled stash apply short semantic: ${_ex}`);
+          }
+          }
+          bodyOffset = analysis.nextBodyOffset;
+        }
+      } else
         operands.push(arg);
     }
-    if (operands.length > 1)
-      throw new Error('Too many revisions specified');
+    if (operands.length > 1) {
+      await context.text().error({ text: `Too many revisions specified: ${operands.map(operand => `'${operand}'`).join(' ')}\n` });
+      return { exitCode: 1 };
+    }
     const stashIndex = parseStashIndex({ expression: operands[0] });
     const applied = await applyStash({
       files: context.files,
@@ -121,13 +337,17 @@ export async function runStash({ context, args }: {
       restoreIndex,
       contentConfig: await resolveContentConfigForContext({ context, repository }),
     });
-    await printLongStatus({ context, status: await collectStatus({ context }) });
+    if (!quiet) {
+      await printLongStatus({ context, status: await collectStatus({ context }) });
+    }
     switch (subcommand) {
     case 'apply':
       break;
     case 'pop':
       await dropStash({ files: context.files, repository, index: stashIndex });
-      await context.text().print({ text: `Dropped refs/stash@{${stashIndex}} (${applied.objectId})\n` });
+      if (!quiet) {
+        await context.text().print({ text: `Dropped refs/stash@{${stashIndex}} (${applied.objectId})\n` });
+      }
       break;
     default: {
       const _ex: never = subcommand;
@@ -137,18 +357,49 @@ export async function runStash({ context, args }: {
     return { exitCode: 0 };
   }
   case 'show': {
-    const showArgs = expandGitShortOptions({ args: rest, flagOptions: ['p'], valueOptions: [] });
     let expression: string | undefined;
     let showStat = false;
     let showPatch = true;
     let patchExplicitlyRequested = false;
     let parsingOptions = true;
-    for (const arg of showArgs) {
+    for (const arg of rest) {
       if (parsingOptions && arg === '--') {
         parsingOptions = false;
         continue;
       }
-      if (parsingOptions && (arg === '-p' || arg === '--patch')) {
+      if (parsingOptions && arg.startsWith('-') && !arg.startsWith('--') && arg.length > 1) {
+        let bodyOffset = 1;
+        while (bodyOffset < arg.length) {
+          const analysis = analyzeArgvShortForm({ token: arg, bodyOffset, prefix: '-', catalog: STASH_SHOW_SHORT_ARGV_CATALOG });
+          switch (analysis.kind) {
+          case 'unknown':
+            throw new GitUsageError({ message: `unknown option: ${arg}` });
+          case 'matched':
+            break;
+          default: {
+            const _ex: never = analysis;
+            throw new Error(`Unhandled stash show short-option analysis: ${JSON.stringify(_ex)}`);
+          }
+          }
+          switch (analysis.value.kind) {
+          case 'none':
+            showPatch = true;
+            patchExplicitlyRequested = true;
+            break;
+          case 'inline':
+          case 'following-required':
+          case 'following-optional':
+            throw new Error(`Stash show -p unexpectedly claimed a value: ${analysis.value.kind}`);
+          default: {
+            const _ex: never = analysis.value;
+            throw new Error(`Unhandled stash show -p value: ${JSON.stringify(_ex)}`);
+          }
+          }
+          bodyOffset = analysis.nextBodyOffset;
+        }
+        continue;
+      }
+      if (parsingOptions && arg === '--patch') {
         showPatch = true;
         patchExplicitlyRequested = true;
         continue;
@@ -174,11 +425,12 @@ export async function runStash({ context, args }: {
       throw new Error('stash commit has invalid parents');
     const stashShowConfig = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
     const stashShowQuoteNonAscii = quoteNonAsciiFromConfig({ config: stashShowConfig });
+    const detectRenames = getDiffRenamesConfigMode({ config: stashShowConfig }) !== 'disabled';
     if (showStat) {
-      await writeRevisionStat({ context, repository, leftRevision: baseObjectId, rightRevision: stash.objectId, pathOperands: [], quoteNonAscii: stashShowQuoteNonAscii });
+      await writeRevisionStat({ context, repository, leftRevision: baseObjectId, rightRevision: stash.objectId, pathOperands: [], quoteNonAscii: stashShowQuoteNonAscii, detectRenames });
     }
     if (showPatch) {
-      await writeRevisionPatch({ context, repository, leftRevision: baseObjectId, rightRevision: stash.objectId, pathOperands: [], quoteNonAscii: stashShowQuoteNonAscii });
+      await writeRevisionPatch({ context, repository, leftRevision: baseObjectId, rightRevision: stash.objectId, pathOperands: [], quoteNonAscii: stashShowQuoteNonAscii, detectRenames });
     }
     return { exitCode: 0 };
   }

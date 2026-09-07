@@ -6,9 +6,17 @@ import type {
   ModelSupportInvestigationLoadAttemptStage,
   ModelSupportInvestigationWorkerClient,
 } from "@/features/transformers-js/model-support-investigation/types";
-import type { ITransformersJsWorker } from "@/features/transformers-js/types";
+import type {
+  ITransformersJsWorker,
+  TransformersJsProductionInvestigationCandidate,
+  TransformersJsProductionInvestigationCandidateLoadAttempt,
+  TransformersJsProductionInvestigationObservation,
+  TransformersJsProductionInvestigationPartialObservation,
+  TransformersJsProductionInvestigationScenario,
+} from "@/features/transformers-js/types";
 import { runModelLoadInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-model-load-investigation";
 import { runProductionLaneComparison } from "@/features/transformers-js/model-support-investigation/logic/run-production-lane-comparison";
+import { fromPlanningWorkerRun } from "@/features/transformers-js/model-support-investigation/logic/planning-worker-run";
 import {
   CandidateAttemptTimeoutError,
   DEFAULT_CANDIDATE_ATTEMPT_TIMEOUT_MS,
@@ -22,6 +30,7 @@ import {
 } from "@/features/transformers-js/model-support-investigation/logic/production-lane-timeout";
 import { createModelLoadProgressTracker } from "@/features/transformers-js/model-support-investigation/logic/model-load-progress";
 import { createCacheRevisionAliases } from "@/features/transformers-js/model-support-investigation/logic/create-cache-revision-aliases";
+import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
 import {
   DEFAULT_PLANNING_TIMEOUT_MS,
   type ModelSupportInvestigationPlanningStage,
@@ -156,21 +165,33 @@ export function createModelSupportInvestigationWorkerClient({
         const planningHandle = createWorkerHandle();
         let planningStage: ModelSupportInvestigationPlanningStage = "worker-start";
         let planningTimedOut = false;
+        let planningAcceptingCallbacks = true;
         let partialRun;
         try {
           const operation = planningHandle.remote.runPartialInvestigation(
             modelId,
             workerProxy({ value: ({ event }) => {
+              if (!planningAcceptingCallbacks) return;
               planningStage = event.stepId;
               publishEvent({ event });
             } }),
+            workerProxy({ value: ({ run }) => {
+              if (!planningAcceptingCallbacks) return;
+              checkpoint = replaceInvestigationCheckpointRun({
+                checkpoint,
+                run: fromPlanningWorkerRun({ run }),
+                now,
+              });
+              publishCheckpoint();
+            } }),
           );
-          partialRun = await withPlanningTimeout({
+          const planningRun = await withPlanningTimeout({
             operation,
             timeoutMs: planningTimeoutMs,
             timeoutError: () => new PlanningTimeoutError({ stage: planningStage, timeoutMs: planningTimeoutMs }),
             onTimeout: () => {
               planningTimedOut = true;
+              planningAcceptingCallbacks = false;
               terminateWorkerHandle({ handle: planningHandle });
               publishEvent({
                 event: {
@@ -200,7 +221,10 @@ export function createModelSupportInvestigationWorkerClient({
               });
             },
           });
+          partialRun = fromPlanningWorkerRun({ run: planningRun });
+          planningAcceptingCallbacks = false;
         } finally {
+          planningAcceptingCallbacks = false;
           if (!planningTimedOut) await releaseWorkerHandle({ handle: planningHandle });
         }
         checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: partialRun, now });
@@ -208,7 +232,7 @@ export function createModelSupportInvestigationWorkerClient({
 
         const loadRun = await runModelLoadInvestigation({
           partialRun,
-          runAttempt: async ({ candidate }) => {
+          runAttempt: async ({ candidate, onAttemptCheckpoint }) => {
             const { repository, declarations, templateBehavior } = partialRun;
             if (repository === undefined || declarations === undefined) {
               throw new Error("Candidate attempt prerequisites are unavailable");
@@ -221,6 +245,7 @@ export function createModelSupportInvestigationWorkerClient({
             const attemptEvents: ModelSupportInvestigationLoadAttemptEvent[] = [];
             let lastStage: ModelSupportInvestigationLoadAttemptStage = "worker-start";
             let timedOut = false;
+            let attemptAcceptingCallbacks = true;
             try {
               const operation = attemptHandle.remote.runCandidateAttempt(
                 repository,
@@ -228,13 +253,21 @@ export function createModelSupportInvestigationWorkerClient({
                 templateBehavior,
                 cacheRevisionAliases,
                 candidate,
-                workerProxy({ value: publishEvent }),
                 workerProxy({ value: ({ event }) => {
+                  if (!attemptAcceptingCallbacks) return;
+                  publishEvent({ event });
+                } }),
+                workerProxy({ value: ({ event }) => {
+                  if (!attemptAcceptingCallbacks) return;
                   lastStage = event.stage;
                   attemptEvents.push(event);
                 } }),
+                workerProxy({ value: ({ attempt }) => {
+                  if (!attemptAcceptingCallbacks) return;
+                  onAttemptCheckpoint({ attempt });
+                } }),
               );
-              return await withCandidateAttemptTimeout({
+              const result = await withCandidateAttemptTimeout({
                 operation,
                 timeoutMs: candidateAttemptTimeoutMs,
                 timeoutError: () => new CandidateAttemptTimeoutError({
@@ -244,6 +277,7 @@ export function createModelSupportInvestigationWorkerClient({
                 }),
                 onTimeout: () => {
                   timedOut = true;
+                  attemptAcceptingCallbacks = false;
                   terminateWorkerHandle({ handle: attemptHandle });
                   publishEvent({
                     event: {
@@ -254,11 +288,18 @@ export function createModelSupportInvestigationWorkerClient({
                   });
                 },
               });
+              attemptAcceptingCallbacks = false;
+              return result;
             } finally {
+              attemptAcceptingCallbacks = false;
               if (!timedOut) await releaseWorkerHandle({ handle: attemptHandle });
             }
           },
           onEvent: publishEvent,
+          onRunUpdate: ({ run }) => {
+            checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run, now });
+            publishCheckpoint();
+          },
           now,
           createAttemptId: () => crypto.randomUUID(),
         });
@@ -267,69 +308,180 @@ export function createModelSupportInvestigationWorkerClient({
 
         const completedRun = await runProductionLaneComparison({
           run: loadRun,
-          runProductionScenario: async ({ scenario }) => {
+          runProductionScenario: async ({ scenario, onObservationCheckpoint }) => {
             if (disposed) throw new Error("Model Support Investigation client is disposed");
-            const productionHandle = createProductionWorkerHandle();
-            let lastStage: ModelSupportInvestigationProductionLaneStage = "worker-start";
-            let timedOut = false;
-            const modelLoadProgress = createModelLoadProgressTracker({
-              candidateId: `production-${scenario.candidate.device}-${scenario.candidate.dtype}`,
+            const accumulatedLoadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[] = [];
+            let lastCandidateError: unknown;
+
+            const sameCandidate = ({
+              left,
+              right,
+            }: {
+              left: TransformersJsProductionInvestigationCandidate,
+              right: TransformersJsProductionInvestigationCandidate,
+            }): boolean => left.device === right.device && left.dtype === right.dtype;
+
+            const mergeLoadAttempts = ({
+              candidateAttempts,
+            }: {
+              candidateAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[] | undefined,
+            }): TransformersJsProductionInvestigationCandidateLoadAttempt[] => [
+              ...accumulatedLoadAttempts,
+              ...(candidateAttempts ?? []),
+            ];
+
+            const mergePartialObservation = ({
+              observation,
+            }: {
+              observation: TransformersJsProductionInvestigationPartialObservation,
+            }): TransformersJsProductionInvestigationPartialObservation => ({
+              ...structuredClone(observation),
+              loadAttempts: mergeLoadAttempts({ candidateAttempts: observation.loadAttempts }),
             });
-            try {
-              const operation = productionHandle.remote.runModelSupportInvestigationScenario(
-                scenario,
-                workerProxy({ value: ({ info }) => {
-                  lastStage = productionLaneStageFromStatus({ status: info.status, currentStage: lastStage });
-                  if (info.status === "progress" || info.status === "progress_total" || info.status === "initiate" || info.status === "download" || info.status === "done" || info.status === "ready") {
-                    const progress = modelLoadProgress.observe({
-                      info,
-                      at: now(),
-                      nowMs: performance.now(),
-                    });
-                    if (progress === undefined) return;
+
+            const mergeObservation = ({
+              observation,
+            }: {
+              observation: TransformersJsProductionInvestigationObservation,
+            }): TransformersJsProductionInvestigationObservation => ({
+              ...structuredClone(observation),
+              loadAttempts: mergeLoadAttempts({ candidateAttempts: observation.loadAttempts }),
+            });
+
+            for (const candidate of scenario.candidates) {
+              const productionHandle = createProductionWorkerHandle();
+              const stageState: { lastStage: ModelSupportInvestigationProductionLaneStage } = {
+                lastStage: "worker-start",
+              };
+              let timedOut = false;
+              let productionAcceptingCallbacks = true;
+              let latestCandidateObservation: TransformersJsProductionInvestigationPartialObservation | undefined;
+              const modelLoadProgress = createModelLoadProgressTracker({
+                candidateId: `production-${candidate.device}-${candidate.dtype}`,
+              });
+              const candidateScenario: TransformersJsProductionInvestigationScenario = {
+                ...scenario,
+                candidates: [candidate],
+              };
+              try {
+                const operation = productionHandle.remote.runModelSupportInvestigationScenario(
+                  candidateScenario,
+                  workerProxy({ value: ({ info }) => {
+                    if (!productionAcceptingCallbacks) return;
+                    stageState.lastStage = productionLaneStageFromStatus({ status: info.status, currentStage: stageState.lastStage });
+                    if (info.status === "progress" || info.status === "progress_total" || info.status === "initiate" || info.status === "download" || info.status === "done" || info.status === "ready") {
+                      const progress = modelLoadProgress.observe({
+                        info,
+                        at: now(),
+                        nowMs: performance.now(),
+                      });
+                      if (progress === undefined) return;
+                      publishEvent({
+                        event: {
+                          stepId: "lane-comparison",
+                          status: "running",
+                          detail: `Production Lane ${candidate.device}/${candidate.dtype} model-load`,
+                          progress,
+                        },
+                      });
+                      return;
+                    }
                     publishEvent({
                       event: {
                         stepId: "lane-comparison",
                         status: "running",
-                        detail: "Production Lane model-load",
-                        progress,
+                        detail: `Production Lane ${candidate.device}/${candidate.dtype} ${stageState.lastStage}`,
                       },
                     });
-                    return;
-                  }
-                  publishEvent({
-                    event: {
-                      stepId: "lane-comparison",
-                      status: "running",
-                      detail: `Production Lane ${lastStage}`,
-                    },
-                  });
-                } }),
-              );
-              return await withProductionLaneTimeout({
-                operation,
-                timeoutMs: productionLaneTimeoutMs,
-                timeoutError: () => new ProductionLaneTimeoutError({
-                  stage: lastStage,
+                  } }),
+                  workerProxy({ value: ({ observation }) => {
+                    if (!productionAcceptingCallbacks) return;
+                    latestCandidateObservation = structuredClone(observation);
+                    onObservationCheckpoint({ observation: mergePartialObservation({ observation }) });
+                  } }),
+                );
+                const result = await withProductionLaneTimeout({
+                  operation,
                   timeoutMs: productionLaneTimeoutMs,
-                }),
-                onTimeout: () => {
-                  timedOut = true;
-                  terminateProductionWorkerHandle({ handle: productionHandle });
-                  publishEvent({
-                    event: {
-                      stepId: "lane-comparison",
-                      status: "running",
-                      detail: `Production Lane timed out at ${lastStage}`,
+                  timeoutError: () => new ProductionLaneTimeoutError({
+                    stage: stageState.lastStage,
+                    timeoutMs: productionLaneTimeoutMs,
+                  }),
+                  onTimeout: () => {
+                    timedOut = true;
+                    productionAcceptingCallbacks = false;
+                    terminateProductionWorkerHandle({ handle: productionHandle });
+                    publishEvent({
+                      event: {
+                        stepId: "lane-comparison",
+                        status: "running",
+                        detail: `Production Lane ${candidate.device}/${candidate.dtype} timed out at ${stageState.lastStage}`,
+                      },
+                    });
+                  },
+                });
+                productionAcceptingCallbacks = false;
+                return mergeObservation({ observation: result });
+              } catch (error) {
+                lastCandidateError = error;
+                const candidateAttempts = latestCandidateObservation?.loadAttempts ?? [];
+                const candidatePassedLoad = candidateAttempts.some(attempt =>
+                  sameCandidate({ left: attempt.candidate, right: candidate }) && attempt.status === "passed"
+                );
+                const candidateFailedLoad = candidateAttempts.some(attempt =>
+                  sameCandidate({ left: attempt.candidate, right: candidate }) && attempt.status === "failed"
+                );
+                if (candidatePassedLoad || (!candidateFailedLoad && stageState.lastStage !== "model-load")) {
+                  throw error;
+                }
+
+                if (candidateFailedLoad) {
+                  accumulatedLoadAttempts.push(...candidateAttempts);
+                } else {
+                  const timeoutAttempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
+                    candidate: structuredClone(candidate),
+                    status: "failed",
+                    error: serializeInvestigationError({ error }),
+                  };
+                  accumulatedLoadAttempts.push(timeoutAttempt);
+                  onObservationCheckpoint({
+                    observation: {
+                      modelId: scenario.modelId,
+                      resolvedRevision: scenario.resolvedRevision,
+                      candidate: undefined,
+                      loadAttempts: structuredClone(accumulatedLoadAttempts),
+                      route: undefined,
+                      isEncoderDecoder: undefined,
+                      firstTurn: undefined,
+                      continuity: undefined,
+                      toolResultContinuation: undefined,
+                      reasoning: undefined,
+                      multimodal: undefined,
                     },
                   });
-                },
-              });
-            } finally {
-              if (!timedOut) await releaseProductionWorkerHandle({ handle: productionHandle });
+                }
+                publishEvent({
+                  event: {
+                    stepId: "lane-comparison",
+                    status: "running",
+                    detail: `Production Lane ${candidate.device}/${candidate.dtype} load failed; retrying the next candidate in a fresh Worker`,
+                  },
+                });
+              } finally {
+                productionAcceptingCallbacks = false;
+                if (!timedOut) await releaseProductionWorkerHandle({ handle: productionHandle });
+              }
             }
+
+            throw lastCandidateError instanceof Error
+              ? lastCandidateError
+              : new Error("No Production Lane candidate succeeded");
           },
           onEvent: publishEvent,
+          onRunUpdate: ({ run }) => {
+            checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run, now });
+            publishCheckpoint();
+          },
           now,
         });
         checkpoint = completeInvestigationCheckpoint({ checkpoint, run: completedRun, now });

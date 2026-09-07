@@ -15,6 +15,44 @@ export interface GitPackIndex {
   packChecksum: string,
 }
 
+function packIndexLowerBound({ entries, objectId }: {
+  entries: readonly GitPackIndexEntry[],
+  objectId: string,
+}): number {
+  let low = 0;
+  let high = entries.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (entries[middle]!.objectId < objectId) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+export function findPackIndexEntry({ packIndex, objectId }: {
+  packIndex: GitPackIndex,
+  objectId: string,
+}): GitPackIndexEntry | undefined {
+  const index = packIndexLowerBound({ entries: packIndex.entries, objectId });
+  const entry = packIndex.entries[index];
+  return entry?.objectId === objectId ? entry : undefined;
+}
+
+export function findPackIndexObjectIdsByPrefix({ packIndex, prefix, limit }: {
+  packIndex: GitPackIndex,
+  prefix: string,
+  limit: number,
+}): string[] {
+  const matches: string[] = [];
+  const start = packIndexLowerBound({ entries: packIndex.entries, objectId: prefix });
+  for (let index = start; index < packIndex.entries.length && matches.length < limit; index += 1) {
+    const objectId = packIndex.entries[index]!.objectId;
+    if (!objectId.startsWith(prefix)) break;
+    matches.push(objectId);
+  }
+  return matches;
+}
+
 function readUint32({ bytes, offset }: { bytes: Uint8Array, offset: number }): number {
   if (offset + 4 > bytes.byteLength) throw new Error('truncated pack index');
   return ((bytes[offset]! << 24)

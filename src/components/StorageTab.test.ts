@@ -1,4 +1,4 @@
-import { beforeAll, describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick, reactive } from 'vue';
 import StorageTab from './StorageTab.vue';
@@ -133,7 +133,7 @@ const globalMocks = {
 };
 
 describe('StorageTab.vue Tests', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 

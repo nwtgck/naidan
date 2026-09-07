@@ -1,5 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
+import { HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST } from "./runtime-asset-manifest";
 import {
   configureHostedTransformersRuntime,
   createHostedTransformersRuntimeFetch,
@@ -17,9 +18,17 @@ describe("configureHostedTransformersRuntime", () => {
       vendor: "Google Inc.",
     })).toEqual({
       baseUrl: "https://naidan.example/app/transformers/",
-      mjsUrl: "https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify.mjs",
-      wasmUrl: "https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify.wasm",
-      physicalWasmUrl: "https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify.wasm.gz",
+      mjsUrl: "https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify-5959c6733039.mjs",
+      wasmUrl: "https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify-e0c0c6d3e73d.wasm",
+      physicalWasmUrl: "https://naidan.example/app/transformers/ort-wasm-simd-threaded.asyncify-f06c09f2db45.wasm.gz",
+      manifestUrl: `https://naidan.example/app/transformers/runtime-assets-${HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST.buildId}.json`,
+      manifestBuildId: HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST.buildId,
+      mjsSha256: "5959c6733039619c9af710d8e1bae8d6e84402787990637be987c2b1bd6c5fa9",
+      wasmSha256: "e0c0c6d3e73d43b8a249972f8358f845b08cc16fec3c80efafdf8bed40366786",
+      physicalWasmSha256: "f06c09f2db4563e1a585ce4527e88a0cc35541d33f336e91547c8caf458a26b4",
+      mjsByteLength: 47_389,
+      wasmByteLength: 23_567_050,
+      physicalWasmByteLength: 5_699_349,
       wasmTransport: "gzip-worker-decompression",
       variant: "asyncify",
     });
@@ -36,6 +45,14 @@ describe("configureHostedTransformersRuntime", () => {
       mjsUrl: "http://localhost:15173/transformers/ort-wasm-simd-threaded.asyncify.mjs",
       wasmUrl: "http://localhost:15173/transformers/ort-wasm-simd-threaded.asyncify.wasm",
       physicalWasmUrl: "http://localhost:15173/transformers/ort-wasm-simd-threaded.asyncify.wasm",
+      manifestUrl: undefined,
+      manifestBuildId: HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST.buildId,
+      mjsSha256: "5959c6733039619c9af710d8e1bae8d6e84402787990637be987c2b1bd6c5fa9",
+      wasmSha256: "e0c0c6d3e73d43b8a249972f8358f845b08cc16fec3c80efafdf8bed40366786",
+      physicalWasmSha256: "e0c0c6d3e73d43b8a249972f8358f845b08cc16fec3c80efafdf8bed40366786",
+      mjsByteLength: 47_389,
+      wasmByteLength: 23_567_050,
+      physicalWasmByteLength: 23_567_050,
       wasmTransport: "raw",
       variant: "asyncify",
     });
@@ -49,8 +66,9 @@ describe("configureHostedTransformersRuntime", () => {
       vendor: "Apple Computer, Inc.",
     });
     expect(assets.variant).toBe("standard");
-    expect(assets.mjsUrl.endsWith("ort-wasm-simd-threaded.mjs")).toBe(true);
-    expect(assets.wasmUrl.endsWith("ort-wasm-simd-threaded.wasm")).toBe(true);
+    expect(assets.mjsUrl.endsWith("ort-wasm-simd-threaded-5f2cd9145548.mjs")).toBe(true);
+    expect(assets.wasmUrl.endsWith("ort-wasm-simd-threaded-f4f290847a4d.wasm")).toBe(true);
+    expect(assets.physicalWasmUrl.endsWith("ort-wasm-simd-threaded-454e43e733b9.wasm.gz")).toBe(true);
   });
 
   it("uses the user agent when Worker navigator vendor is unavailable", () => {

@@ -4,6 +4,7 @@ import { ref } from 'vue';
 import PWAManager from './PWAManager.vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // 1. Mock the virtual module
 vi.mock('virtual:pwa-register/vue', () => ({
@@ -21,6 +22,10 @@ vi.mock('../composables/usePWAUpdate', () => ({
 vi.mock('../composables/useGlobalEvents', () => ({
   useGlobalEvents: vi.fn(),
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('PWAManager', () => {
   const offlineReady = ref(false);

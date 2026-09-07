@@ -17,7 +17,7 @@ function provenance(): ModelSupportInvestigationCacheProvenance {
     method: "bounded-range-sha256-v1",
     resolvedRevision: repository.resolvedRevision,
     rangeBytes: 32 * 1024,
-    maximumFileCount: 64,
+    maximumFileCount: 3,
     status: "partial",
     confidence: "incomplete",
     reason: "fixture",

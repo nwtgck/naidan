@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -49,7 +50,7 @@ describe('wesh realpath', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -113,7 +114,7 @@ describe('wesh realpath', () => {
     expect(allowMissingComponents.stderr.text).toBe('');
     expect(allowMissingComponents.result.exitCode).toBe(0);
     expect(requireExisting.stdout.text).toBe('');
-    expect(requireExisting.stderr.text).toContain('realpath: dir/missing.txt:');
+    expect(requireExisting.stderr.text).toBe('realpath: dir/missing.txt: No such file or directory\n');
     expect(requireExisting.result.exitCode).toBe(1);
   });
 

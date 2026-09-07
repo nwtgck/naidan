@@ -1,9 +1,14 @@
 import { generateId } from '@/01-models/id';
 import type { MessageId } from '@/01-models/ids';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import MessageThinking from './MessageThinking.vue';
 import type { MessageNode } from '@/01-models/types';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('MessageThinking Design', () => {
   const createMessageWithThinking = (content: string): MessageNode => ({

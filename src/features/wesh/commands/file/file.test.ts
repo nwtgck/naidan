@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -51,7 +52,7 @@ describe('wesh file', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: stdin }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -65,14 +66,18 @@ describe('wesh file', () => {
     const missing = await execute({ script: 'file' });
 
     expect(help.stdout.text).toContain('Determine file type');
-    expect(help.stdout.text).toContain('usage: file [-b] [-F SEPARATOR] [-i] [-L] [--brief] [--mime] [--mime-type] [--mime-encoding] [--help] FILE...');
+    expect(help.stdout.text).toContain(
+      'usage: file [-bE] [-F SEPARATOR] [-i] [-h|-L] [--brief] [--mime] [--mime-type] [--mime-encoding] [--help] FILE...',
+    );
     expect(help.stdout.text).toContain('--brief');
     expect(help.stdout.text).toContain('--mime');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
 
     expect(missing.stderr.text).toContain('file: missing file operand');
-    expect(missing.stderr.text).toContain('usage: file [-b] [-F SEPARATOR] [-i] [-L] [--brief] [--mime] [--mime-type] [--mime-encoding] [--help] FILE...');
+    expect(missing.stderr.text).toContain(
+      'usage: file [-bE] [-F SEPARATOR] [-i] [-h|-L] [--brief] [--mime] [--mime-type] [--mime-encoding] [--help] FILE...',
+    );
     expect(missing.result.exitCode).toBe(1);
   });
 
@@ -151,6 +156,21 @@ ASCII text
     expect(result.stdout.text).toBe('/link.txt: ASCII text\n');
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
+  });
+
+  it('accepts -h and --no-dereference as explicit default symlink handling', async () => {
+    await writeFile({ path: '/target.txt', data: 'hello\n' });
+    await wesh.vfs.symlink({ path: '/link.txt', targetPath: '/target.txt' });
+
+    const short = await execute({ script: 'file -h /link.txt' });
+    const long = await execute({ script: 'file --no-dereference /link.txt' });
+
+    expect(short.stdout.text).toBe('/link.txt: symbolic link to /target.txt\n');
+    expect(long.stdout.text).toBe('/link.txt: symbolic link to /target.txt\n');
+    expect(short.stderr.text).toBe('');
+    expect(long.stderr.text).toBe('');
+    expect(short.result.exitCode).toBe(0);
+    expect(long.result.exitCode).toBe(0);
   });
 
   it('classifies empty, JSON, shell script, and UTF-8 text files', async () => {
@@ -290,6 +310,54 @@ application/javascript
     expect(mimeTypes.result.exitCode).toBe(0);
   });
 
+  it('preserves generic shebang script metadata for unsupported interpreters and env syntax', async () => {
+    const fixtures = [
+      ['deno', `\
+#!/usr/bin/deno
+console.log("ok")
+`],
+      ['env-deno', `\
+#!/usr/bin/env deno
+console.log("ok")
+`],
+      ['env-split', `\
+#!/usr/bin/env -S python3 -O
+print("ok")
+`],
+      ['env-assignment', `\
+#!/usr/bin/env PYTHONUTF8=1 python3
+print("ok")
+`],
+    ] as const;
+    for (const [name, data] of fixtures) {
+      await writeFile({ path: `/${name}`, data });
+    }
+
+    const descriptions = await execute({
+      script: `file -b ${fixtures.map(([name]) => `/${name}`).join(' ')}`,
+    });
+    const mimeTypes = await execute({
+      script: `file -b --mime-type ${fixtures.map(([name]) => `/${name}`).join(' ')}`,
+    });
+
+    expect(descriptions.stdout.text).toBe(`\
+a /usr/bin/deno script, ASCII text executable
+a deno script, ASCII text executable
+a -S python3 -O script, ASCII text executable
+a PYTHONUTF8=1 python3 script, ASCII text executable
+`);
+    expect(mimeTypes.stdout.text).toBe(`\
+text/plain
+text/plain
+text/plain
+text/plain
+`);
+    expect(descriptions.stderr.text).toBe('');
+    expect(mimeTypes.stderr.text).toBe('');
+    expect(descriptions.result.exitCode).toBe(0);
+    expect(mimeTypes.result.exitCode).toBe(0);
+  });
+
   it('classifies ASCII controls, line terminators, and single-byte text encodings', async () => {
     const fixtures = [
       ['escape', Uint8Array.from([0x1B, 0x5B, 0x33, 0x31, 0x6D, 0x72, 0x65, 0x64, 0x1B, 0x5B, 0x30, 0x6D, 0x0A])],
@@ -336,6 +404,42 @@ text/plain; charset=us-ascii
     expect(mime.stderr.text).toBe('');
     expect(descriptions.result.exitCode).toBe(0);
     expect(mime.result.exitCode).toBe(0);
+  });
+
+  it('ignores an EOF-final bare CR when classifying line terminators', async () => {
+    await writeFile({ path: '/trailing-cr', data: Uint8Array.from([0x61, 0x0D]) });
+    await writeFile({ path: '/internal-cr', data: Uint8Array.from([0x61, 0x0D, 0x62]) });
+
+    const result = await execute({ script: 'file -b /trailing-cr /internal-cr' });
+
+    expect(result.stdout.text).toBe(`\
+ASCII text, with no line terminators
+ASCII text, with CR line terminators
+`);
+    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('adds computed text qualifiers to structured documents and executable scripts', async () => {
+    await writeFile({ path: '/no-eol.html', data: '<html><body>x</body></html>' });
+    await writeFile({ path: '/crlf.xml', data: `\
+<?xml version="1.0"?>\r
+<root/>` });
+    await writeFile({ path: '/escape.svg', data: '<svg>\u001B</svg>\n' });
+    await writeFile({ path: '/cr-script.sh', data: '#!/bin/sh\recho ok\r' });
+
+    const result = await execute({
+      script: 'file -b /no-eol.html /crlf.xml /escape.svg /cr-script.sh',
+    });
+
+    expect(result.stdout.text).toBe(`\
+HTML document, ASCII text, with no line terminators
+XML 1.0 document, ASCII text, with CRLF line terminators
+SVG Scalable Vector Graphics image, ASCII text, with escape sequences
+POSIX shell script, ASCII text executable, with CR line terminators
+`);
+    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(0);
   });
 
   it('requires XML and SVG markers at the beginning after an optional BOM', async () => {
@@ -508,6 +612,37 @@ printf 'alpha
 `);
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
+  });
+
+  it('preserves filesystem error reasons in normal output', async () => {
+    await writeFile({ path: '/parent', data: 'plain\n' });
+    await wesh.vfs.symlink({ path: '/loop-a', targetPath: '/loop-b' });
+    await wesh.vfs.symlink({ path: '/loop-b', targetPath: '/loop-a' });
+
+    const result = await execute({ script: 'file /parent/child /missing/child -L /loop-a' });
+
+    expect(result.stdout.text).toContain("/parent/child:  cannot open `/parent/child' (Not a directory)\n");
+    expect(result.stdout.text).toContain("/missing/child: cannot open `/missing/child' (No such file or directory)\n");
+    expect(result.stdout.text).toContain("/loop-a:        cannot open `/loop-a' (Too many levels of symbolic links)\n");
+    expect(result.stderr.text).toBe('');
+    expect(result.result.exitCode).toBe(0);
+  });
+
+  it('supports -E filesystem-error status mode while continuing other operands', async () => {
+    await writeFile({ path: '/exists', data: 'plain\n' });
+
+    const mixed = await execute({ script: 'file -E /exists /missing' });
+    const brief = await execute({ script: 'file -b -E /missing' });
+
+    expect(mixed.stdout.text).toBe(`\
+/exists:  ASCII text
+/missing: ERROR: cannot stat \`/missing' (No such file or directory)
+`);
+    expect(mixed.stderr.text).toBe('');
+    expect(mixed.result.exitCode).toBe(1);
+    expect(brief.stdout.text).toBe("ERROR: cannot stat `/missing' (No such file or directory)\n");
+    expect(brief.stderr.text).toBe('');
+    expect(brief.result.exitCode).toBe(1);
   });
 
   it('reports an XML version only for the exact declaration prefix', async () => {

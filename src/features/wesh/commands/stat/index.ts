@@ -1,11 +1,11 @@
-import { parseStandardArgv, type ArgvOptionOccurrence, type StandardArgvParserSpec } from '@/features/wesh/argv';
-import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
+import { defineArgvCatalog, defineArgvHelpPresentation, parseStandardArgv, type ArgvOptionDefinition, type StandardArgvAction, type StandardArgvOccurrence, type StandardArgvPolicy, HELP_EARLY_EXIT_OPTIONS, stopArgvAtFirstEarlyExit, formatArgvOptionHelp, formatArgvUsageSummary } from '@/features/wesh/argv-v2';
 import { resolveCharacterLocaleMode } from '@/features/wesh/commands/_shared/locale';
-import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
+import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage-output';
 import { resolvePath } from '@/features/wesh/path';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshFileHandle,
 } from '@/features/wesh/types';
@@ -33,47 +33,52 @@ hard-link counts, owner names, access/change times, mount points, and filesystem
 status are intentionally unavailable rather than fabricated.
 `;
 
-const statArgvSpec: StandardArgvParserSpec = {
-  options: [
-    {
-      kind: 'flag',
-      short: 'L',
-      long: 'dereference',
-      effects: [{ key: 'dereference', value: true }],
-      help: { summary: 'follow symbolic links' },
-    },
-    {
-      kind: 'value',
-      short: 'c',
-      long: 'format',
-      key: 'format',
-      valueName: 'FORMAT',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'use FORMAT and append a newline for each file', valueName: 'FORMAT' },
-    },
-    {
-      kind: 'value',
-      short: undefined,
-      long: 'printf',
-      key: 'printfFormat',
-      valueName: 'FORMAT',
-      allowAttachedValue: true,
-      parseValue: undefined,
-      help: { summary: 'use FORMAT, interpret escapes, and do not append a newline', valueName: 'FORMAT' },
-    },
-    {
-      kind: 'flag',
-      short: undefined,
-      long: 'help',
-      effects: [{ key: 'help', value: true }],
-      help: { summary: 'display this help and exit', category: 'common' },
-    },
+type StatDeferredOption = 'format' | 'printf';
+
+const statDereferenceOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'dereference', value: true }] },
+  forms: [
+    { kind: 'short', name: 'L', value: { kind: 'none' } },
+    { kind: 'long', name: 'dereference', value: { kind: 'none' } },
   ],
-  allowShortFlagBundles: true,
-  stopAtDoubleDash: true,
-  treatSingleDashAsPositional: true,
-  specialTokenParsers: [],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<StatDeferredOption>>;
+const statFormatOption = {
+  semantic: { kind: 'deferred', tag: 'format' },
+  forms: [
+    { kind: 'short', name: 'c', value: { kind: 'required-attached-or-following', missingValueName: 'FORMAT' } },
+    { kind: 'long', name: 'format', value: { kind: 'required', missingValueName: 'FORMAT' } },
+  ],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<StatDeferredOption>>;
+const statPrintfOption = {
+  semantic: { kind: 'deferred', tag: 'printf' },
+  forms: [{ kind: 'long', name: 'printf', value: { kind: 'required', missingValueName: 'FORMAT' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<StatDeferredOption>>;
+const statHelpOption = {
+  semantic: { kind: 'effects', effects: [{ key: 'help', value: true }] },
+  forms: [{ kind: 'long', name: 'help', value: { kind: 'none' } }],
+} as const satisfies ArgvOptionDefinition<StandardArgvAction<StatDeferredOption>>;
+const statArgvCatalog = defineArgvCatalog<StandardArgvAction<StatDeferredOption>>({
+  nonExecutableLongOptions: [
+    'cached',
+    'file-system',
+    'terse',
+    'version',
+  ],
+  definitions: [statDereferenceOption, statFormatOption, statPrintfOption, statHelpOption],
+});
+const statArgvHelp = defineArgvHelpPresentation({
+  catalog: statArgvCatalog,
+  rows: [
+    { forms: statDereferenceOption.forms, summary: 'follow symbolic links' },
+    { forms: statFormatOption.forms, summary: 'use FORMAT and append a newline for each file', valueName: 'FORMAT' },
+    { forms: statPrintfOption.forms, summary: 'use FORMAT, interpret escapes, and do not append a newline', valueName: 'FORMAT' },
+    { forms: statHelpOption.forms, summary: 'display this help and exit', category: 'common' },
+  ],
+});
+const statArgvPolicy: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
 };
 
 const textEncoder = new TextEncoder();
@@ -88,15 +93,37 @@ type SelectedOutputMode =
 function selectOutputMode({
   occurrences,
 }: {
-  occurrences: ArgvOptionOccurrence[],
+  occurrences: readonly StandardArgvOccurrence<Extract<StandardArgvAction<StatDeferredOption>, { kind: 'deferred' }>>[],
 }): SelectedOutputMode {
-  for (let index = occurrences.length - 1; index >= 0; index--) {
-    const occurrence = occurrences[index]!;
-    if (occurrence.kind !== 'value' || typeof occurrence.value !== 'string') continue;
-    if (occurrence.key === 'format') return { kind: 'format', format: occurrence.value };
-    if (occurrence.key === 'printfFormat') return { kind: 'printf', format: occurrence.value };
+  let outputMode: SelectedOutputMode = { kind: 'default' };
+  for (const occurrence of occurrences) {
+    const format = (() => {
+      switch (occurrence.value.kind) {
+      case 'inline':
+      case 'next-argv':
+        return occurrence.value.rawValue;
+      case 'none':
+        throw new Error('stat output-format option is missing its required value');
+      default: {
+        const _ex: never = occurrence.value;
+        throw new Error(`Unhandled stat option value: ${JSON.stringify(_ex)}`);
+      }
+      }
+    })();
+    switch (occurrence.semantic.tag) {
+    case 'format':
+      outputMode = { kind: 'format', format };
+      break;
+    case 'printf':
+      outputMode = { kind: 'printf', format };
+      break;
+    default: {
+      const _ex: never = occurrence.semantic.tag;
+      throw new Error(`Unhandled stat output option: ${_ex}`);
+    }
+    }
   }
-  return { kind: 'default' };
+  return outputMode;
 }
 
 function compileSelectedFormat({
@@ -274,20 +301,17 @@ async function writeOutputChunks({
   await flush();
 }
 
-export const statCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'stat',
-    description: 'Display file status from the Wesh virtual filesystem',
-    usage: 'stat [-L] [-c FORMAT | --printf FORMAT] FILE...',
-  },
+export const statCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
-      args: stopStandardArgvAtFirstEarlyExit({
+      args: stopArgvAtFirstEarlyExit({
         args: context.args,
-        spec: statArgvSpec,
-        earlyExitOptions: STANDARD_HELP_EARLY_EXIT_OPTIONS,
+        catalog: statArgvCatalog,
+        policy: statArgvPolicy,
+        earlyExitOptions: HELP_EARLY_EXIT_OPTIONS,
       }),
-      spec: statArgvSpec,
+      catalog: statArgvCatalog,
+      policy: statArgvPolicy,
     });
     const diagnostic = parsed.diagnostics[0];
     const text = context.text();
@@ -297,7 +321,7 @@ export const statCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'stat',
         message: `stat: ${diagnostic.message}`,
-        argvSpec: statArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: statArgvHelp }),
       });
       return { exitCode: 1 };
     }
@@ -306,7 +330,7 @@ export const statCommandDefinition: WeshCommandDefinition = {
       await writeCommandHelp({
         context,
         command: 'stat',
-        argvSpec: statArgvSpec,
+        optionLines: formatArgvOptionHelp({ presentation: statArgvHelp }),
       });
       await text.print({ text: statHelpDetails });
       return { exitCode: 0 };
@@ -317,12 +341,12 @@ export const statCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'stat',
         message: 'stat: missing operand',
-        argvSpec: statArgvSpec,
+        usageSummary: formatArgvUsageSummary({ presentation: statArgvHelp }),
       });
       return { exitCode: 1 };
     }
 
-    const outputMode = selectOutputMode({ occurrences: parsed.occurrences });
+    const outputMode = selectOutputMode({ occurrences: parsed.deferred });
     const compiled = compileSelectedFormat({ outputMode });
     if (!compiled.ok) {
       await text.error({ text: `${compiled.message}\n` });
@@ -341,7 +365,8 @@ export const statCommandDefinition: WeshCommandDefinition = {
           format: compiled.format,
         });
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = getPathErrorReason({ error })
+          ?? (error instanceof Error ? error.message : String(error));
         await text.error({
           text: `stat: cannot stat ${quoteStatName({
             value: operand,

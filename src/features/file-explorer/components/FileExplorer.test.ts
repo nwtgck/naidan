@@ -1,5 +1,6 @@
 import { defineComponent, h, reactive, Suspense } from 'vue';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, flushPromises } from '@vue/test-utils';
 import FileExplorer from './FileExplorer.vue';
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
@@ -413,6 +414,10 @@ function dispatchTouchPointerEvent({
   });
   target.dispatchEvent(event);
 }
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('FileExplorer.vue', () => {
   let root: MockExplorerDirectory;
@@ -1055,6 +1060,28 @@ describe('FileExplorer.vue', () => {
 
     expect(wrapper.text()).toContain('col-file.txt');
     expect(wrapper.text()).toContain('col-dir');
+  });
+
+  it('column view keeps scroll ownership axis-specific', async () => {
+    root.addFile('col-file.txt');
+    const wrapper = tracked(mountExplorer(root, { initialViewMode: 'column' }));
+    await flushPromises();
+
+    const horizontalScroll = wrapper.get('[data-testid="file-explorer-column-scroll"]');
+    expect(horizontalScroll.classes()).toContain('overflow-x-auto');
+    expect(horizontalScroll.classes()).toContain('overflow-y-hidden');
+    expect(horizontalScroll.classes()).toContain('overscroll-x-contain');
+    expect(horizontalScroll.classes()).not.toContain('overscroll-contain');
+
+    const panes = wrapper.findAll('[data-testid="file-explorer-column-pane"]');
+    expect(panes.length).toBeGreaterThan(0);
+    for (const pane of panes) {
+      // Vertical containment must not block horizontal scroll chaining to the parent scroller.
+      expect(pane.classes()).toContain('overflow-x-hidden');
+      expect(pane.classes()).toContain('overflow-y-auto');
+      expect(pane.classes()).toContain('overscroll-y-contain');
+      expect(pane.classes()).not.toContain('overscroll-contain');
+    }
   });
 
   // ---- Refresh ----

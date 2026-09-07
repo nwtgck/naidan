@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { backgroundWorkCoordinator, type ForegroundWorkLease } from '@/logic/background-work-coordinator';
 import { releaseWorkerRemote, workerCapability, workerProxy } from '@/utils/worker-transport';
 
 import { runWithFileSystemHandleCloneFallback } from '@/utils/file-system-handle-transport';
@@ -15,6 +16,7 @@ import {
   weshWorkerShellStateSchema,
   weshWorkerCommandEntrySchema,
   weshWorkerListDirectoryRequestSchema,
+  weshWorkerPreloadCommandResponseSchema,
   weshWorkerDirectoryEntrySchema,
   type IWeshWorker,
   type WeshWorkerClient,
@@ -215,6 +217,9 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     }
     const replacement = (async () => {
       executionTracker.forceCompleteRuntime({ runtime: activeRuntime });
+      for (const executionId of foregroundExecutionLeases.keys()) {
+        releaseForegroundExecutionLease({ executionId, executionRuntime: activeRuntime });
+      }
       try {
         if (runtime === activeRuntime && !disposeStarted) {
           const replacementRuntime = await createCompatibleRuntime();
@@ -222,6 +227,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
             await destroyRuntime({ runtime: replacementRuntime });
           } else {
             runtime = replacementRuntime;
+            refreshBackgroundPreloadRegistration();
           }
         }
       } catch (replacementError: unknown) {
@@ -246,31 +252,107 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     return replacement;
   };
 
+  const foregroundExecutionLeases = new Map<string, {
+    runtime: typeof runtime,
+    lease: ForegroundWorkLease,
+  }>();
+  const releaseForegroundExecutionLease = ({ executionId, executionRuntime }: {
+    executionId: string,
+    executionRuntime: typeof runtime,
+  }): void => {
+    const entry = foregroundExecutionLeases.get(executionId);
+    if (entry?.runtime !== executionRuntime) {
+      return;
+    }
+    entry.lease.dispose();
+    foregroundExecutionLeases.delete(executionId);
+  };
+  const releaseAllForegroundExecutionLeases = (): void => {
+    for (const { lease } of foregroundExecutionLeases.values()) {
+      lease.dispose();
+    }
+    foregroundExecutionLeases.clear();
+  };
+  const registerBackgroundPreload = () => backgroundWorkCoordinator.register({
+    runStep: async () => {
+      const activeRuntime = runtime;
+      let response: ReturnType<typeof weshWorkerPreloadCommandResponseSchema.parse>;
+      try {
+        response = weshWorkerPreloadCommandResponseSchema.parse(
+          await activeRuntime.remote.preloadNextCommand(),
+        );
+      } catch (error: unknown) {
+        if (runtime !== activeRuntime) {
+          return { status: 'continue' };
+        }
+        throw error;
+      }
+      switch (response.status) {
+      case 'busy':
+      case 'advanced':
+        return { status: 'continue' };
+      case 'done':
+        return { status: 'done' };
+      default: {
+        const _ex: never = response.status;
+        throw new Error(`Unhandled Wesh preload status: ${String(_ex)}`);
+      }
+      }
+    },
+  });
+  let backgroundPreloadRegistration = registerBackgroundPreload();
+  const refreshBackgroundPreloadRegistration = (): void => {
+    backgroundPreloadRegistration.dispose();
+    backgroundPreloadRegistration = registerBackgroundPreload();
+  };
+
   return registerWeshWorkerClient({ client: {
     async startExecution({ request, onEvent }: {
       request: WeshWorkerExecuteRequest,
       onEvent?: WeshWorkerExecutionEventCallback,
     }) {
-      const executionRuntime = runtime;
-      const response = await executionRuntime.remote.startExecution(
-        request,
-        onEvent ? workerProxy({
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback signatures are remote boundaries.
-          value: async (event: WeshWorkerRemoteExecutionEvent) => {
-            await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) });
-          },
-        }) : undefined,
-      );
-      const validated = weshWorkerStartExecutionResponseSchema.parse(response);
-      return weshWorkerStartExecutionResponseSchema.parse({
-        executionId: executionTracker.registerExecution({
-          runtime: executionRuntime,
+      const foregroundLease = backgroundWorkCoordinator.beginForegroundWork();
+      const activeRuntime = runtime;
+      try {
+        const response = await activeRuntime.remote.startExecution(
+          request,
+          onEvent ? workerProxy({
+            // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback signatures are remote boundaries.
+            value: async (event: WeshWorkerRemoteExecutionEvent) => {
+              await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) });
+            },
+          }) : undefined,
+        );
+        const validated = weshWorkerStartExecutionResponseSchema.parse(response);
+        const executionId = executionTracker.registerExecution({
+          runtime: activeRuntime,
           remoteExecutionId: validated.executionId,
-        }),
-      });
+        });
+        if (runtime !== activeRuntime || disposeStarted || runtimeReplacementPromises.has(activeRuntime)) {
+          executionTracker.forceCompleteRuntime({ runtime: activeRuntime });
+          foregroundLease.dispose();
+        } else {
+          foregroundExecutionLeases.set(executionId, {
+            runtime: activeRuntime,
+            lease: foregroundLease,
+          });
+        }
+        return weshWorkerStartExecutionResponseSchema.parse({ executionId });
+      } catch (error: unknown) {
+        foregroundLease.dispose();
+        throw error;
+      }
     },
     async awaitExecution({ request }) {
-      return executionTracker.awaitExecution({ executionId: request.executionId });
+      const activeRuntime = executionTracker.getRuntime({ executionId: request.executionId });
+      try {
+        return await executionTracker.awaitExecution({ executionId: request.executionId });
+      } finally {
+        releaseForegroundExecutionLease({
+          executionId: request.executionId,
+          executionRuntime: activeRuntime,
+        });
+      }
     },
     async interruptExecution({ request }) {
       return executionTracker.interruptExecution({ executionId: request.executionId });
@@ -292,6 +374,10 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       ]);
 
       if (stopped) {
+        releaseForegroundExecutionLease({
+          executionId: request.executionId,
+          executionRuntime: activeRuntime,
+        });
         return true;
       }
 
@@ -302,21 +388,37 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       return true;
     },
     async disposeExecution({ request }) {
-      await executionTracker.disposeExecution({ executionId: request.executionId });
+      const activeRuntime = executionTracker.getRuntime({ executionId: request.executionId });
+      try {
+        await executionTracker.disposeExecution({ executionId: request.executionId });
+      } finally {
+        releaseForegroundExecutionLease({
+          executionId: request.executionId,
+          executionRuntime: activeRuntime,
+        });
+      }
     },
     async execute({ request }: { request: WeshWorkerExecuteRequest }) {
-      const executionRuntime = runtime;
-      const response = weshWorkerStartExecutionResponseSchema.parse(
-        await executionRuntime.remote.startExecution(request, undefined),
-      );
-      const executionId = executionTracker.registerExecution({
-        runtime: executionRuntime,
-        remoteExecutionId: response.executionId,
-      });
+      const foregroundLease = backgroundWorkCoordinator.beginForegroundWork();
       try {
-        return await executionTracker.awaitExecution({ executionId });
+        const executionRuntime = runtime;
+        const response = weshWorkerStartExecutionResponseSchema.parse(
+          await executionRuntime.remote.startExecution(request, undefined),
+        );
+        const executionId = executionTracker.registerExecution({
+          runtime: executionRuntime,
+          remoteExecutionId: response.executionId,
+        });
+        if (runtime !== executionRuntime || disposeStarted || runtimeReplacementPromises.has(executionRuntime)) {
+          executionTracker.forceCompleteRuntime({ runtime: executionRuntime });
+        }
+        try {
+          return await executionTracker.awaitExecution({ executionId });
+        } finally {
+          await executionTracker.disposeExecution({ executionId });
+        }
       } finally {
-        await executionTracker.disposeExecution({ executionId });
+        foregroundLease.dispose();
       }
     },
     async getShellState() {
@@ -337,6 +439,8 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     },
     async dispose() {
       disposeStarted = true;
+      backgroundPreloadRegistration.dispose();
+      releaseAllForegroundExecutionLeases();
       executionTracker.forceCompleteAll();
       const errors: unknown[] = [];
       const replacementResults = await Promise.allSettled([...pendingRuntimeReplacements]);

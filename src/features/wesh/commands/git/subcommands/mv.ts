@@ -1,3 +1,5 @@
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { normalizePath } from '@/features/wesh/path';
 import type { WeshCommandContext, WeshCommandResult } from '@/features/wesh/types';
@@ -6,6 +8,28 @@ import { pathExists } from '@/features/wesh/commands/git/files';
 import { readIndex, writeIndex } from '@/features/wesh/commands/git/index-file';
 import { joinPath, relativeToWorktree, discoverRepositoryFromContext } from '@/features/wesh/commands/git/repository';
 import { readEffectiveConfig } from '@/features/wesh/commands/git/config';
+
+const MV_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<never>>({
+  nonExecutableLongOptions: [
+    'dry-run', 'no-dry-run', 'force', 'no-force', 'sparse', 'no-sparse',
+  ],
+  definitions: [{
+    semantic: { kind: 'effects', effects: [{ key: 'verbose', value: true }] },
+    forms: [
+      { kind: 'short', name: 'v', value: { kind: 'none' } },
+      { kind: 'long', name: 'verbose', value: { kind: 'none' } },
+    ],
+  }, {
+    semantic: { kind: 'effects', effects: [{ key: 'verbose', value: false }] },
+    forms: [{ kind: 'long', name: 'no-verbose', value: { kind: 'none' } }],
+  }],
+});
+
+const MV_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'continue',
+  occurrenceRetention: 'none',
+};
 
 interface DirectoryMovePlan {
   directories: readonly { sourcePath: string, destinationPath: string }[],
@@ -136,16 +160,31 @@ export async function runMv({ context, args }: {
     cwd: context.cwd,
     env: context.env,
   });
-  let parsingOptions = true;
-  const operands: string[] = [];
-  for (const arg of args) {
-    if (parsingOptions && arg === '--') {
-      parsingOptions = false;
-      continue;
+  const parsed = parseStandardArgv({ args, catalog: MV_ARGV_CATALOG, policy: MV_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    switch (diagnostic.kind) {
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'missing_option_value':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unsupported mv argument: ${args[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled mv argv diagnostic: ${JSON.stringify(_ex)}`);
     }
-    if (parsingOptions && arg.startsWith('-')) throw new GitUsageError({ message: `unsupported mv argument: ${arg}` });
-    operands.push(arg);
+    }
   }
+  const operands = parsed.positionals;
+  const verbose = parsed.optionValues.verbose === true;
   if (operands.length !== 2) throw new GitUsageError({ message: 'usage: git mv [--] <source> <destination>', prefix: 'none' });
 
   const sourceAbsolutePath = normalizePath({ cwd: context.cwd, path: operands[0]! });
@@ -213,6 +252,8 @@ export async function runMv({ context, args }: {
       return entry;
     }),
   });
+  if (verbose)
+    await context.text().print({ text: `Renaming ${sourcePath} to ${destinationPath}\n` });
   return { exitCode: 0 };
 }
 

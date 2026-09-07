@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { computed, h } from 'vue';
 import ToolCallGroupItem from './ToolCallGroupItem.vue';
@@ -22,6 +23,10 @@ vi.mock('lucide-vue-next', async (importOriginal) => {
 });
 
 import { vi } from 'vitest';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 vi.mock('@/00-storage/service', () => ({
   storageService: { getFile: vi.fn() },

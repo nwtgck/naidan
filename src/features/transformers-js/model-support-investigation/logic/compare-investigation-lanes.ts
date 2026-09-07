@@ -1,4 +1,7 @@
-import type { TransformersJsProductionInvestigationObservation } from "@/features/transformers-js/types";
+import type {
+  TransformersJsProductionInvestigationObservation,
+  TransformersJsProductionInvestigationTurnObservation,
+} from "@/features/transformers-js/types";
 import type {
   ModelSupportInvestigationLaneComparison,
   ModelSupportInvestigationLoadAttempt,
@@ -15,13 +18,14 @@ function firstMismatchIndex({ left, right }: {
   return left.length === right.length ? undefined : commonLength;
 }
 
-export function compareInvestigationLanes({ referenceAttempt, productionObservation }: {
+export function compareInvestigationLanes({ referenceAttempt, productionTurn, productionRoute }: {
   referenceAttempt: ModelSupportInvestigationLoadAttempt,
-  productionObservation: TransformersJsProductionInvestigationObservation,
+  productionTurn: TransformersJsProductionInvestigationTurnObservation,
+  productionRoute: TransformersJsProductionInvestigationObservation["route"],
 }): ModelSupportInvestigationLaneComparison {
   const mismatchIndex = firstMismatchIndex({
     left: referenceAttempt.inputTokenIds,
-    right: productionObservation.inputTokenIds,
+    right: productionTurn.inputTokenIds,
   });
   return {
     scenarioCaseId: "user-generation",
@@ -29,10 +33,10 @@ export function compareInvestigationLanes({ referenceAttempt, productionObservat
     exactInputMatch: mismatchIndex === undefined,
     firstInputMismatchIndex: mismatchIndex,
     referenceInputTokenIds: [...referenceAttempt.inputTokenIds],
-    productionInputTokenIds: [...productionObservation.inputTokenIds],
+    productionInputTokenIds: [...productionTurn.inputTokenIds],
     referenceGeneratedTokenIds: [...referenceAttempt.generatedTokenIds],
-    productionGeneratedTokenIds: [...productionObservation.generatedTokenIds],
-    productionRoute: { ...productionObservation.route },
+    productionGeneratedTokenIds: [...productionTurn.generatedTokenIds],
+    productionRoute: { ...productionRoute },
   };
 }
 

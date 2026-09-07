@@ -1,4 +1,5 @@
 import { Wesh } from '@/features/wesh';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import { createReadHandleFromStream } from '@/features/wesh/utils/stream';
 import {
@@ -88,7 +89,7 @@ export async function createSha256sumTestHarness(): Promise<Sha256sumTestHarness
         }),
       });
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,

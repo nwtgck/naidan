@@ -2,6 +2,7 @@ import type { MessageId } from '@/01-models/ids';
 import { toChatId } from '@/01-models/ids';
 import { ref, nextTick, computed } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
@@ -13,6 +14,10 @@ import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import { setupScrollToMock } from '@/utils/test-utils';
 
 
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 vi.mock('@/composables/useAppPresentation', () => ({
   isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled',

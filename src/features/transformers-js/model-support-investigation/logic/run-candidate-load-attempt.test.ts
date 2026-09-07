@@ -77,8 +77,9 @@ describe("runCandidateLoadAttempt", () => {
           decoderStartTokenId: undefined,
         },
       }),
-      buildInput: async ({ inputIds }) => ({
-        input: { inputIds },
+      buildInput: async ({ inputIds, strategy }) => ({
+        input: { inputIds, strategy },
+        inputTokenIds: [...inputIds],
         tensors: [{ name: "input_ids", dtype: "int64", dims: [1, inputIds.length], location: "cpu" }],
       }),
       generateMinimumToken: async ({ input }) => ({
@@ -88,6 +89,7 @@ describe("runCandidateLoadAttempt", () => {
         inputIds: input.inputIds,
       }),
       generateNaturalBaseline: async () => ({
+        status: "observed",
         forced: false,
         maxNewTokens: 16,
         doSample: false,
@@ -111,10 +113,16 @@ describe("runCandidateLoadAttempt", () => {
       generatedTokenIds: [42],
       generatedText: "answer",
       naturalGeneration: {
+        status: "observed",
         generatedTokenIds: [43, 44],
         termination: "ended-before-limit",
       },
       modelType: "llama",
+      selectedInputStrategy: "chat-template-tensor-dict",
+      inputStrategyAttempts: [{
+        strategy: "chat-template-tensor-dict",
+        status: "passed",
+      }],
     });
     expect(disposeModel).toHaveBeenCalledWith({ model });
     expect(result.events.map(event => [event.stage, event.status])).toEqual([
@@ -279,7 +287,7 @@ describe("runCandidateLoadAttempt", () => {
       status: "failed",
       failureStage: "input-build",
       loadedModel: { modelType: "llama" },
-      error: { name: "TemplateInputUnavailableError" },
+      error: { name: "ReferenceInputStrategiesExhaustedError" },
     });
     expect(disposeModel).toHaveBeenCalledWith({ model });
     expect(result.events.map(event => [event.stage, event.status])).toEqual([
@@ -287,9 +295,312 @@ describe("runCandidateLoadAttempt", () => {
       ["auto-class-selection", "passed"],
       ["model-load", "running"],
       ["model-load", "passed"],
+      ["input-build", "running"],
+      ["input-build", "failed"],
+      ["input-build", "running"],
+      ["input-build", "failed"],
+      ["input-build", "running"],
       ["input-build", "failed"],
       ["dispose", "running"],
       ["dispose", "passed"],
     ]);
   });
+
+  it("falls back to deterministic plain-text tokenizer input when chat-template inputs are unavailable", async () => {
+    const model = { id: "model" };
+    const generateMinimumToken = vi.fn(async () => ({ generatedTokenIds: [42], generatedText: "answer", modelType: "llama" }));
+    const result = await runCandidateLoadAttempt({
+      repository,
+      declarations,
+      templateBehavior: undefined,
+      candidate,
+      autoClass: "AutoModelForCausalLM",
+      loadModel: async () => model,
+      observeLoadedModel: () => ({
+        modelType: "llama",
+        isEncoderDecoder: false,
+        sessions: [],
+        sessionFileCorrelations: [],
+        effectiveMinimumGenerationConfig: {
+          maxNewTokens: 1,
+          doSample: false,
+          bosTokenId: 1,
+          eosTokenId: 2,
+          padTokenId: 0,
+          decoderStartTokenId: undefined,
+        },
+      }),
+      buildInput: async ({ strategy }) => {
+        if (strategy !== "fixed-plain-text-tokenizer-tensor-dict") {
+          throw new Error(`Unavailable input strategy: ${strategy}`);
+        }
+        return {
+          input: { strategy },
+          inputTokenIds: [11, 12],
+          tensors: [{ name: "input_ids", dtype: "int64", dims: [1, 2], location: "cpu" }],
+          inputText: "Hello",
+        };
+      },
+      generateMinimumToken,
+      generateNaturalBaseline: async () => ({
+        status: "observed",
+        forced: false,
+        maxNewTokens: 16,
+        doSample: false,
+        generatedTokenIds: [43],
+        generatedText: "natural",
+        termination: "ended-before-limit",
+      }),
+      generateToolProtocolProbe: vi.fn(),
+      disposeInput: vi.fn(async () => undefined),
+      disposeModel: vi.fn(async () => undefined),
+      onAttemptEvent: vi.fn(),
+      now: now(),
+      createAttemptId: () => "attempt-plain-text-fallback",
+    });
+
+    expect(result).toMatchObject({
+      status: "passed",
+      selectedInputStrategy: "fixed-plain-text-tokenizer-tensor-dict",
+      inputTokenIds: [11, 12],
+      inputStrategyAttempts: [
+        { strategy: "chat-template-tensor-dict", status: "failed", failureStage: "input-build" },
+        { strategy: "observed-token-ids-transformers-tensor", status: "failed", failureStage: "input-build" },
+        {
+          strategy: "fixed-plain-text-tokenizer-tensor-dict",
+          status: "passed",
+          failureStage: undefined,
+          inputText: "Hello",
+        },
+      ],
+    });
+    expect(generateMinimumToken).toHaveBeenCalledOnce();
+  });
+
+  it("records a failed input strategy and continues with the next deterministic strategy", async () => {
+    const model = { id: "model" };
+    const disposeInput = vi.fn(async () => undefined);
+    const generateMinimumToken = vi.fn(async ({ input }: { input: { strategy: string } }) => {
+      if (input.strategy === "chat-template-tensor-dict") {
+        throw new TypeError("first adapter rejected the model input shape");
+      }
+      return { generatedTokenIds: [42], generatedText: "answer", modelType: "llama" };
+    });
+    const result = await runCandidateLoadAttempt({
+      repository,
+      declarations,
+      templateBehavior,
+      candidate,
+      autoClass: "AutoModelForCausalLM",
+      loadModel: async () => model,
+      observeLoadedModel: () => ({
+        modelType: "llama",
+        isEncoderDecoder: false,
+        sessions: [],
+        sessionFileCorrelations: [],
+        effectiveMinimumGenerationConfig: {
+          maxNewTokens: 1,
+          doSample: false,
+          bosTokenId: 1,
+          eosTokenId: 2,
+          padTokenId: 0,
+          decoderStartTokenId: undefined,
+        },
+      }),
+      buildInput: async ({ inputIds, strategy }) => ({
+        input: { strategy },
+        inputTokenIds: [...inputIds],
+        tensors: [{ name: "input_ids", dtype: "int64", dims: [1, inputIds.length], location: "cpu" }],
+      }),
+      generateMinimumToken,
+      generateNaturalBaseline: async () => ({
+        status: "observed",
+        forced: false,
+        maxNewTokens: 16,
+        doSample: false,
+        generatedTokenIds: [43],
+        generatedText: "natural",
+        termination: "ended-before-limit",
+      }),
+      generateToolProtocolProbe: vi.fn(),
+      disposeInput,
+      disposeModel: vi.fn(async () => undefined),
+      onAttemptEvent: vi.fn(),
+      now: now(),
+      createAttemptId: () => "attempt-fallback",
+    });
+
+    expect(result).toMatchObject({
+      status: "passed",
+      selectedInputStrategy: "observed-token-ids-transformers-tensor",
+      inputStrategyAttempts: [{
+        strategy: "chat-template-tensor-dict",
+        status: "failed",
+        failureStage: "first-generation",
+        error: { name: "TypeError" },
+      }, {
+        strategy: "observed-token-ids-transformers-tensor",
+        status: "passed",
+        failureStage: undefined,
+      }],
+    });
+    expect(generateMinimumToken).toHaveBeenCalledTimes(2);
+    expect(disposeInput).toHaveBeenCalledTimes(2);
+  });
+  it("aborts input-strategy fallback when a failed strategy input cannot be disposed", async () => {
+    const model = { id: "model" };
+    const firstInput = { strategy: "chat-template-tensor-dict" };
+    const secondInput = { strategy: "observed-token-ids-transformers-tensor" };
+    const disposeInput = vi.fn(async ({ input }: { input: { strategy: string } }) => {
+      if (input === firstInput) throw new Error("input cleanup failed");
+    });
+    const generateMinimumToken = vi.fn(async ({ input }: { input: { strategy: string } }) => {
+      if (input === firstInput) throw new TypeError("first adapter rejected the model input shape");
+      return { generatedTokenIds: [42], generatedText: "answer", modelType: "llama" };
+    });
+    const result = await runCandidateLoadAttempt({
+      repository,
+      declarations,
+      templateBehavior,
+      candidate,
+      autoClass: "AutoModelForCausalLM",
+      loadModel: async () => model,
+      observeLoadedModel: () => ({
+        modelType: "llama",
+        isEncoderDecoder: false,
+        sessions: [],
+        sessionFileCorrelations: [],
+        effectiveMinimumGenerationConfig: {
+          maxNewTokens: 1,
+          doSample: false,
+          bosTokenId: 1,
+          eosTokenId: 2,
+          padTokenId: 0,
+          decoderStartTokenId: undefined,
+        },
+      }),
+      buildInput: async ({ inputIds, strategy }) => ({
+        input: strategy === "chat-template-tensor-dict" ? firstInput : secondInput,
+        inputTokenIds: [...inputIds],
+        tensors: [{ name: "input_ids", dtype: "int64", dims: [1, inputIds.length], location: "cpu" }],
+      }),
+      generateMinimumToken,
+      generateNaturalBaseline: vi.fn(),
+      generateToolProtocolProbe: vi.fn(),
+      disposeInput,
+      disposeModel: vi.fn(async () => undefined),
+      onAttemptEvent: vi.fn(),
+      now: now(),
+      createAttemptId: () => "attempt-cleanup-failure",
+    });
+
+    expect(result).toMatchObject({
+      status: "failed",
+      failureStage: "dispose",
+      error: { name: "Error", message: "input cleanup failed" },
+      inputStrategyAttempts: [{
+        strategy: "chat-template-tensor-dict",
+        status: "failed",
+        failureStage: "first-generation",
+      }],
+    });
+    expect(generateMinimumToken).toHaveBeenCalledTimes(1);
+    expect(disposeInput).toHaveBeenCalledTimes(2);
+  });
+
+  it("continues the independent tool probe when the natural baseline fails", async () => {
+    const model = { id: "model" };
+    const generateToolProtocolProbe = vi.fn(async ({ inputTokenIds, forcedTokenIds }: { inputTokenIds: number[], forcedTokenIds: number[] }) => ({
+      status: "observed" as const,
+      forced: true as const,
+      source: "chat-template-render" as const,
+      generationCaseId: "tools-generation" as const,
+      assistantToolCallCaseId: "assistant-tool-call-history" as const,
+      toolResultContinuationCaseId: "tool-result-continuation" as const,
+      inputTokenIds,
+      forcedTokenIds,
+      generatedTokenIds: [...forcedTokenIds],
+      generatedText: "tool",
+      exactMatch: true,
+      firstMismatchIndex: undefined,
+      termination: "complete-forced-sequence" as const,
+      parserObservation: {
+        status: "observed" as const,
+        strategy: "standard" as const,
+        parserKind: "standard-tool-call-stream-parser" as const,
+        inputMode: "production-text-streamer-reconstruction" as const,
+        inputChunks: ["tool"],
+        visibleText: "tool",
+        callBoundaryCount: undefined,
+        toolCalls: [],
+        recognized: false,
+      },
+    }));
+    const result = await runCandidateLoadAttempt({
+      repository,
+      declarations,
+      templateBehavior: {
+        ...templateBehavior,
+        toolTemplateProvenance: {
+          status: "observed",
+          source: "chat-template-render",
+          generationCaseId: "tools-generation",
+          assistantToolCallCaseId: "assistant-tool-call-history",
+          toolResultContinuationCaseId: "tool-result-continuation",
+          generationInputIds: [1, 2, 3],
+          assistantToolCallInputIds: [1, 2, 3, 7],
+          toolResultContinuationInputIds: [1, 2, 3, 7],
+          generationPromptPrefixMatch: true,
+          firstMismatchIndex: undefined,
+          assistantToolCallSuffixTokenIds: [7],
+        },
+      },
+      candidate,
+      autoClass: "AutoModelForCausalLM",
+      loadModel: async () => model,
+      observeLoadedModel: () => ({
+        modelType: "llama",
+        isEncoderDecoder: false,
+        sessions: [],
+        sessionFileCorrelations: [],
+        effectiveMinimumGenerationConfig: {
+          maxNewTokens: 1,
+          doSample: false,
+          bosTokenId: 1,
+          eosTokenId: 2,
+          padTokenId: 0,
+          decoderStartTokenId: undefined,
+        },
+      }),
+      buildInput: async ({ inputIds, strategy }) => ({
+        input: { strategy },
+        inputTokenIds: [...inputIds],
+        tensors: [{ name: "input_ids", dtype: "int64", dims: [1, inputIds.length], location: "cpu" }],
+      }),
+      generateMinimumToken: async () => ({ generatedTokenIds: [42], generatedText: "answer", modelType: "llama" }),
+      generateNaturalBaseline: async () => {
+        throw new Error("natural generation failed");
+      },
+      generateToolProtocolProbe,
+      disposeInput: vi.fn(async () => undefined),
+      disposeModel: vi.fn(async () => undefined),
+      onAttemptEvent: vi.fn(),
+      now: now(),
+      createAttemptId: () => "attempt-natural-failure",
+    });
+
+    expect(result.status).toBe("passed");
+    expect(result.naturalGeneration).toMatchObject({
+      status: "failed",
+      error: { name: "Error", message: "natural generation failed" },
+    });
+    expect(result.toolProtocolProbe).toMatchObject({ status: "observed", exactMatch: true });
+    expect(generateToolProtocolProbe).toHaveBeenCalledTimes(1);
+    expect(result.events.map(event => [event.stage, event.status])).toEqual(expect.arrayContaining([
+      ["natural-generation", "failed"],
+      ["tool-protocol-probe", "running"],
+      ["tool-protocol-probe", "passed"],
+    ]));
+  });
+
 });

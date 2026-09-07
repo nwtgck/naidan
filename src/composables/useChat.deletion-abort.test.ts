@@ -1,5 +1,6 @@
 import { idToRaw, toChatId } from '@/01-models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useChat } from './useChat';
 import { storageService } from '@/00-storage/service';
 
@@ -41,6 +42,10 @@ vi.mock('./useToast', () => ({
     removeToast: vi.fn(),
   }),
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('useChat Delete Undo Logic', () => {
   const chatStore = useChat();

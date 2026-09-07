@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ensureStrings, lazyStrings } from '@/strings';
-import { ref, computed } from 'vue';
-import { BugIcon, XIcon, MessageSquareIcon, NetworkIcon, FileCodeIcon, HighlighterIcon, ZapOffIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, CornerUpRightIcon } from 'lucide-vue-next';
+import { ref, computed, watch } from 'vue';
+import { BugIcon, XIcon, MessageSquareIcon, NetworkIcon, FileCodeIcon, HighlighterIcon, ZapOffIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, CornerUpRightIcon, CopyIcon, CheckIcon } from 'lucide-vue-next';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
 import { storageService } from '@/00-storage/service';
 import { useRouter } from 'vue-router';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import type { BinaryObject, MessageNode } from '@/01-models/types';
+import type { BinaryObject, MessageBranch, MessageNode } from '@/01-models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { allowedHtml, jsonToHighlightedHtml } from '@/logic/security/allowedHtml';
 import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/features/fake-lm';
@@ -37,6 +37,9 @@ const isHighlightEnabled = ref(true);
 const isContentCollapsed = ref(false);
 const selectedNode = ref<Readonly<MessageNode> | null>(null);
 const isTreeMapCollapsed = ref(false);
+const rawJsonScope = ref<'full-chat' | 'current-thread'>('full-chat');
+const rawJsonCopied = ref(false);
+let rawJsonCopyRequestId = 0;
 
 const activeIds = computed(() => new Set(props.activeMessages.map(m => m.id)));
 const canEnableFakeLmForChat = computed(() => fakeLmDebugModeAvailability.value === 'available');
@@ -178,26 +181,114 @@ function handleClose() {
   emit('close');
 }
 
+function buildCurrentThreadRoot({ messages }: { messages: ReadonlyArray<MessageNode> }): MessageBranch {
+  let items: MessageNode[] = [];
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message === undefined) {
+      continue;
+    }
+
+    items = [{
+      ...message,
+      replies: {
+        ...message.replies,
+        items,
+      },
+    }];
+  }
+
+  return { items };
+}
+
+const rawJsonText = computed(() => {
+  const scope = rawJsonScope.value;
+  switch (scope) {
+  case 'full-chat':
+    return JSON.stringify(props.chat, null, 2) ?? '';
+  case 'current-thread': {
+    if (props.chat === null || props.chat === undefined) {
+      return JSON.stringify(props.chat, null, 2) ?? '';
+    }
+
+    return JSON.stringify({
+      ...props.chat,
+      root: buildCurrentThreadRoot({ messages: props.activeMessages }),
+    }, null, 2) ?? '';
+  }
+  default: {
+    const _ex: never = scope;
+    throw new Error(`Unhandled raw JSON scope: ${_ex}`);
+  }
+  }
+});
+
+watch(
+  () => {
+    const m = mode.value;
+    switch (m) {
+    case 'active':
+    case 'tree':
+      return null;
+    case 'raw':
+      return rawJsonText.value;
+    default: {
+      const _ex: never = m;
+      throw new Error(`Unhandled mode: ${_ex}`);
+    }
+    }
+  },
+  () => {
+    rawJsonCopyRequestId += 1;
+    rawJsonCopied.value = false;
+  },
+);
+
 const rawJsonOutput = computed(() => {
   const m = mode.value;
   switch (m) {
   case 'active':
   case 'tree':
     return allowedHtml``;
-  case 'raw': {
-    const json = JSON.stringify(props.chat, null, 2);
+  case 'raw':
     return jsonToHighlightedHtml({
-      json,
+      json: rawJsonText.value,
       highlight: isHighlightEnabled.value,
       keyStyle: 'raw',
     });
-  }
   default: {
     const _ex: never = m;
     throw new Error(`Unhandled mode: ${_ex}`);
   }
   }
 });
+
+async function handleCopyRawJson(): Promise<void> {
+  const json = rawJsonText.value;
+  const requestId = rawJsonCopyRequestId + 1;
+  rawJsonCopyRequestId = requestId;
+  rawJsonCopied.value = false;
+
+  try {
+    await navigator.clipboard.writeText(json);
+    if (requestId !== rawJsonCopyRequestId) {
+      return;
+    }
+
+    rawJsonCopied.value = true;
+    setTimeout(() => {
+      if (requestId === rawJsonCopyRequestId) {
+        rawJsonCopied.value = false;
+      }
+    }, 2000);
+  } catch (error) {
+    if (requestId === rawJsonCopyRequestId) {
+      rawJsonCopied.value = false;
+    }
+    console.error('Failed to copy Chat Inspector JSON:', error);
+  }
+}
 
 
 defineExpose({
@@ -236,9 +327,10 @@ defineExpose({
             <!-- Mode Switcher -->
             <div tw-class="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 shadow-inner">
               <button
-                v-for="m in ([{id: 'active', icon: MessageSquareIcon, label: lazyStrings.ChatDebugInspector__active()}, {id: 'tree', icon: NetworkIcon, label: lazyStrings.ChatDebugInspector__tree()}, {id: 'raw', icon: FileCodeIcon, label: lazyStrings.ChatDebugInspector__full_json()}] as const)"
+                v-for="m in ([{id: 'active', icon: MessageSquareIcon, label: lazyStrings.ChatDebugInspector__active()}, {id: 'tree', icon: NetworkIcon, label: lazyStrings.ChatDebugInspector__tree()}, {id: 'raw', icon: FileCodeIcon, label: lazyStrings.ChatDebugInspector__json()}] as const)"
                 :key="m.id"
                 @click="mode = m.id"
+                :data-testid="`chat-inspector-mode-${m.id}`"
                 :tw-class="['px-4 py-1.5 rounded-lg transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider', mode === m.id ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200']"
               >
                 <component :is="m.icon" tw-class="w-3 h-3" />
@@ -374,12 +466,45 @@ defineExpose({
             </div>
           </div>
 
-          <!-- Tab 3: Full JSON -->
-          <div v-else-if="mode === 'raw'" tw-class="flex-1 p-6 overflow-hidden">
+          <!-- Tab 3: JSON -->
+          <div v-else-if="mode === 'raw'" tw-class="flex-1 p-6 overflow-hidden flex flex-col gap-3">
+            <div tw-class="shrink-0 flex items-center justify-between gap-3">
+              <div tw-class="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 shadow-inner" data-testid="raw-json-scope-selector">
+                <button
+                  @click="rawJsonScope = 'full-chat'"
+                  :aria-pressed="rawJsonScope === 'full-chat'"
+                  :tw-class="['px-3 py-1.5 rounded-lg transition-all font-black uppercase text-[9px] tracking-wider', rawJsonScope === 'full-chat' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200']"
+                  data-testid="raw-json-scope-full-chat"
+                >
+                  {{ lazyStrings.ChatDebugInspector__full_json() }}
+                </button>
+                <button
+                  @click="rawJsonScope = 'current-thread'"
+                  :aria-pressed="rawJsonScope === 'current-thread'"
+                  :tw-class="['px-3 py-1.5 rounded-lg transition-all font-black uppercase text-[9px] tracking-wider', rawJsonScope === 'current-thread' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-500' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200']"
+                  data-testid="raw-json-scope-current-thread"
+                >
+                  {{ lazyStrings.ChatDebugInspector__current_thread() }}
+                </button>
+              </div>
+
+              <button
+                @click="handleCopyRawJson"
+                tw-class="px-3 py-2 rounded-xl border border-indigo-500/20 bg-indigo-500/10 text-indigo-500 transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider hover:scale-105 active:scale-95"
+                :title="lazyStrings.ChatDebugInspector__copy_json()"
+                data-testid="copy-raw-json"
+              >
+                <CheckIcon v-if="rawJsonCopied" tw-class="w-4 h-4" />
+                <CopyIcon v-else tw-class="w-4 h-4" />
+                <span>{{ lazyStrings.ChatDebugInspector__copy_json() }}</span>
+              </button>
+            </div>
+
             <AllowedHtmlView
               as="pre"
               :html="rawJsonOutput"
-              class="thin-scrollbar" tw-class="bg-gray-50/50 dark:bg-black/40 p-6 rounded-2xl border border-gray-100 dark:border-white/5 text-[11px] overflow-auto h-full text-gray-700 dark:text-gray-300 leading-relaxed font-mono"
+              class="thin-scrollbar" tw-class="bg-gray-50/50 dark:bg-black/40 p-6 rounded-2xl border border-gray-100 dark:border-white/5 text-[11px] overflow-auto flex-1 min-h-0 text-gray-700 dark:text-gray-300 leading-relaxed font-mono"
+              data-testid="raw-json-output"
             />
           </div>
 

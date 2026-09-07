@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromBytes,
@@ -57,7 +58,7 @@ describe('wesh diff', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: stdinBytes === undefined
         ? createTestReadHandleFromText({ text: stdinText ?? '' })
         : createTestReadHandleFromBytes({ bytes: stdinBytes }),
@@ -1367,6 +1368,92 @@ delta
       });
       expect(execution.stderr.text).toBe('');
       expect(execution.result.exitCode).toBe(1);
+    }
+  });
+
+  it('matches GNU duplicate-heavy edit boundaries from the retained compatibility corpus', async () => {
+    const cases = [
+      {
+        args: '',
+        left: `\
+ALPHA
+alpha
+`,
+        right: `\
+alpha
+alpha
+`,
+        expected: `\
+1c1
+< ALPHA
+---
+> alpha
+`,
+      },
+      {
+        args: '-U0 --label LEFT --label RIGHT',
+        left: `\
+ALPHA
+alpha
+`,
+        right: `\
+alpha
+alpha
+`,
+        expected: `\
+--- LEFT
++++ RIGHT
+@@ -1 +1 @@
+-ALPHA
++alpha
+`,
+      },
+      {
+        args: '-i',
+        left: `\
+A
+a
+`,
+        right: 'a\n',
+        expected: `\
+1d0
+< A
+`,
+      },
+      {
+        args: '-w',
+        left: 'x y\nx\ty\nx y\n',
+        right: `\
+x   y
+x y
+`,
+        expected: '2d1\n< x\ty\n',
+      },
+      {
+        args: '-y -W 48',
+        left: 'x y\nx y\nx\ty\n',
+        right: `\
+x   y
+x   y
+x y
+`,
+        expected: '\t\t      >\tx   y\n\t\t      >\tx   y\nx y\t\t\tx y\nx y\t\t      <\nx\ty\t      <\n',
+      },
+    ] as const;
+
+    for (const [index, testCase] of cases.entries()) {
+      const leftPath = `boundary-left-${index}`;
+      const rightPath = `boundary-right-${index}`;
+      await writeFile({ path: leftPath, data: testCase.left });
+      await writeFile({ path: rightPath, data: testCase.right });
+
+      const execution = await execute({
+        script: `diff ${testCase.args} ${leftPath} ${rightPath}`,
+      });
+
+      expect(execution.result.exitCode).toBe(1);
+      expect(execution.stderr.text).toBe('');
+      expect(execution.stdout.text).toBe(testCase.expected);
     }
   });
 

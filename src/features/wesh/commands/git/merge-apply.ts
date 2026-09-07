@@ -6,7 +6,7 @@ import type { GitIndexEntry } from './index-file';
 import { writeIndex } from './index-file';
 import { materializePreparedMergeConflicts } from './merge-conflict';
 import type { GitPreparedMergeConflict } from './merge-conflict';
-import { compareGitPaths } from './path-order';
+import { sortByGitUtf8StringKey } from './utf8-order';
 import type { GitRepository } from './repository';
 
 function entryByPath({ entries }: { entries: readonly GitIndexEntry[] }): Map<string, GitIndexEntry> {
@@ -36,14 +36,17 @@ export async function applyMergedIndexWithConflicts({
     const ours = headByPath.get(conflict.path);
     if (ours !== undefined) checkoutTargetEntries.push(ours);
   }
-  checkoutTargetEntries.sort((left, right) => compareGitPaths({ left: left.path, right: right.path }));
+  const sortedCheckoutTargetEntries = sortByGitUtf8StringKey({
+    values: checkoutTargetEntries,
+    key: ({ value }) => value.path,
+  });
 
   const plan = await planCheckoutTree({
     files,
     repository,
     currentHeadEntries,
     currentIndexEntries,
-    targetEntries: checkoutTargetEntries,
+    targetEntries: sortedCheckoutTargetEntries,
     contentConfig,
   });
   if (plan.conflicts.length > 0) return { checkoutConflicts: plan.conflicts };

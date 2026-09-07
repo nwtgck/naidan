@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref, nextTick } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatModels } from '@/composables/chat/useChatModels';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 // --- Mocks ---
 const {

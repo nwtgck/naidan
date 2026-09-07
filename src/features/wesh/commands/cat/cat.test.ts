@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -40,7 +41,7 @@ describe('wesh cat', () => {
     const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: stdinText ?? '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -118,7 +119,20 @@ file line
     });
 
     expect(stdout.text).toBe('present\n');
-    expect(stderr.text).toContain('cat: missing.txt:');
+    expect(stderr.text).toBe('cat: missing.txt: No such file or directory\n');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('normalizes browser type-mismatch errors for intermediate file path components', async () => {
+    await writeFile({ name: 'parent', data: 'file' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cat parent/child',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('cat: parent/child: Not a directory\n');
     expect(result.exitCode).toBe(1);
   });
 
@@ -388,7 +402,7 @@ beta
     expect(squeezeBlank.stdout.text).toBe('\u0001\t\n\n');
 
     const compat = await execute({
-      script: 'cat --u long-individual.txt',
+      script: 'cat -u long-individual.txt',
       stdinText: undefined,
     });
     expect(compat.stdout.text).toBe('\u0001\t\n\n');
@@ -467,4 +481,18 @@ beta
     expect(stderr.text).toContain('--help');
     expect(result.exitCode).toBe(1);
   });
+  it('accepts GNU long-name abbreviations without preserving synthetic long aliases', async () => {
+    const abbreviated = await execute({
+      script: "printf 'a\\n' | cat --show-a",
+      stdinText: undefined,
+    });
+    const synthetic = await execute({ script: 'cat --u', stdinText: undefined });
+
+    expect(abbreviated.stdout.text).toBe('a$\n');
+    expect(abbreviated.stderr.text).toBe('');
+    expect(abbreviated.result.exitCode).toBe(0);
+    expect(synthetic.stderr.text).toContain("unrecognized option '--u'");
+    expect(synthetic.result.exitCode).toBe(1);
+  });
+
 });

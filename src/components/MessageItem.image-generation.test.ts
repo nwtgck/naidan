@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
@@ -73,6 +74,10 @@ import MessageItem from './MessageItem.vue';
 import ImageDownloadButton from './ImageDownloadButton.vue';
 import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 import { storageService } from '@/00-storage/service';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('MessageItem Image Generation', () => {
   const createMessage = (content: string) => ({

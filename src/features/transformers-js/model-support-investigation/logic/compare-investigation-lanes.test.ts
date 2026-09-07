@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { compareInvestigationLanes } from "@/features/transformers-js/model-support-investigation/logic/compare-investigation-lanes";
 import type { ModelSupportInvestigationLoadAttempt } from "@/features/transformers-js/model-support-investigation/types";
-import type { TransformersJsProductionInvestigationObservation } from "@/features/transformers-js/types";
+import type {
+  TransformersJsProductionInvestigationObservation,
+  TransformersJsProductionInvestigationTurnObservation,
+} from "@/features/transformers-js/types";
 
 const referenceAttempt = {
   attemptId: "attempt-1",
@@ -9,20 +12,21 @@ const referenceAttempt = {
   generatedTokenIds: [4],
 } as ModelSupportInvestigationLoadAttempt;
 
-const productionObservation = {
+const productionTurn = {
   inputTokenIds: [1, 2, 3],
   generatedTokenIds: [5],
-  route: {
-    autoClass: "AutoModelForCausalLM",
-    processor: "tokenizer",
-    strategy: "standard",
-    modelType: "example",
-  },
-} as TransformersJsProductionInvestigationObservation;
+} as TransformersJsProductionInvestigationTurnObservation;
+
+const productionRoute = {
+  autoClass: "AutoModelForCausalLM",
+  processor: "tokenizer",
+  strategy: "standard",
+  modelType: "example",
+} as TransformersJsProductionInvestigationObservation["route"];
 
 describe("compareInvestigationLanes", () => {
   it("reports exact input identity", () => {
-    expect(compareInvestigationLanes({ referenceAttempt, productionObservation })).toMatchObject({
+    expect(compareInvestigationLanes({ referenceAttempt, productionTurn, productionRoute })).toMatchObject({
       exactInputMatch: true,
       firstInputMismatchIndex: undefined,
       referenceGeneratedTokenIds: [4],
@@ -33,7 +37,8 @@ describe("compareInvestigationLanes", () => {
   it("reports the first token mismatch", () => {
     expect(compareInvestigationLanes({
       referenceAttempt,
-      productionObservation: { ...productionObservation, inputTokenIds: [1, 9, 3] },
+      productionTurn: { ...productionTurn, inputTokenIds: [1, 9, 3] },
+      productionRoute,
     })).toMatchObject({
       exactInputMatch: false,
       firstInputMismatchIndex: 1,
@@ -43,7 +48,8 @@ describe("compareInvestigationLanes", () => {
   it("reports the shared length when one token sequence is a strict prefix", () => {
     expect(compareInvestigationLanes({
       referenceAttempt,
-      productionObservation: { ...productionObservation, inputTokenIds: [1, 2] },
+      productionTurn: { ...productionTurn, inputTokenIds: [1, 2] },
+      productionRoute,
     })).toMatchObject({
       exactInputMatch: false,
       firstInputMismatchIndex: 2,

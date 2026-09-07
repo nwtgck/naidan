@@ -1,6 +1,7 @@
 import { stripLeadingCLocaleWhitespace } from '@/features/wesh/commands/_shared/numeric-whitespace';
+import { getPathErrorReason } from '@/features/wesh/commands/_shared/path-errors';
 import type {
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshCommandContext,
   WeshEntryRef,
@@ -1862,12 +1863,7 @@ async function classifyGrepInputStream({
   }
 }
 
-export const grepCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: "grep",
-    description: "Search for patterns in files",
-    usage: "grep [OPTION]... PATTERNS [FILE]...",
-  },
+export const grepCommandImplementation: WeshCommandImplementation = {
   fn: async ({
     context,
   }: {
@@ -2887,7 +2883,8 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       if (noMessages) {
         return;
       }
-      const message = error instanceof Error ? error.message : String(error);
+      const message = getPathErrorReason({ error })
+        ?? (error instanceof Error ? error.message : String(error));
       await text.error({ text: `grep: ${displayName}: ${message}\n` });
     };
 

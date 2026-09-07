@@ -10,6 +10,7 @@ import {
   investigationJsonObjectSchema,
   parseInvestigationJson,
 } from "@/features/transformers-js/model-support-investigation/logic/json-value-schema";
+import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
 
 const MAX_DECLARATION_BYTES = 2 * 1024 * 1024;
 const DECLARATION_PATHS = [
@@ -74,28 +75,39 @@ async function fetchJsonDeclaration({
     throw new Error(`Hugging Face declaration ${path} exceeds the ${MAX_DECLARATION_BYTES}-byte limit`);
   }
 
+  const responseUrl = response.url || url;
+  const contentType = response.headers.get("content-type") ?? undefined;
+  if (contentType?.toLowerCase().includes("text/html") === true) {
+    throw new Error(`Hugging Face declaration ${path} resolved to HTML instead of JSON: ${responseUrl}`);
+  }
+
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength > MAX_DECLARATION_BYTES) {
     throw new Error(`Hugging Face declaration ${path} exceeds the ${MAX_DECLARATION_BYTES}-byte limit`);
+  }
+  const text = new TextDecoder().decode(bytes);
+  const trimmed = text.trimStart().toLowerCase();
+  if (trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html")) {
+    throw new Error(`Hugging Face declaration ${path} returned HTML-like content instead of JSON: ${responseUrl}`);
   }
 
   let value: ModelSupportInvestigationJsonValue;
   try {
     value = parseInvestigationJson({
-      value: JSON.parse(new TextDecoder().decode(bytes)),
+      value: JSON.parse(text),
       label: `Hugging Face declaration ${path}`,
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Hugging Face declaration ${path} is not valid JSON: ${detail}`);
+    throw new Error(`Hugging Face declaration ${path} is not valid JSON at ${responseUrl}: ${detail}`, { cause: error });
   }
 
   return {
     path,
     url,
-    responseUrl: response.url || url,
+    responseUrl,
     byteLength: bytes.byteLength,
-    contentType: response.headers.get("content-type") ?? undefined,
+    contentType,
     value,
   };
 }
@@ -139,13 +151,26 @@ export async function inspectModelDeclarations({
     throw new Error("Hugging Face repository manifest does not contain config.json");
   }
 
-  const paths = DECLARATION_PATHS.filter(path => repositoryPaths.has(path));
-  const files = [];
-  for (const path of paths) {
-    files.push(await fetchJsonDeclaration({ repository, path, repositoryFetch }));
+  const configFile = await fetchJsonDeclaration({
+    repository,
+    path: "config.json",
+    repositoryFetch,
+  });
+  const files = [configFile];
+  const fileFailures: ModelSupportInvestigationModelDeclarations["fileFailures"] = [];
+  const optionalPaths = DECLARATION_PATHS.filter(path => path !== "config.json" && repositoryPaths.has(path));
+  for (const path of optionalPaths) {
+    try {
+      files.push(await fetchJsonDeclaration({ repository, path, repositoryFetch }));
+    } catch (error) {
+      fileFailures.push({
+        path,
+        url: resolvedFileUrl({ repository, path }),
+        error: serializeInvestigationError({ error }),
+      });
+    }
   }
 
-  const configFile = files.find(file => file.path === "config.json");
   const config = optionalJsonObject({ value: configFile?.value });
   if (config === undefined) {
     throw new Error("Hugging Face config.json is not a JSON object");
@@ -160,6 +185,7 @@ export async function inspectModelDeclarations({
     normalizedModelId: repository.normalizedModelId,
     resolvedRevision: repository.resolvedRevision,
     files,
+    fileFailures,
     config,
     modelType,
     architectures,

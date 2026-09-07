@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -96,7 +97,7 @@ describe('wesh split', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: createTestReadHandleFromText({ text: stdinText ?? '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -131,6 +132,37 @@ c
     expect(result.exitCode).toBe(0);
   });
 
+
+  it('resolves output prefixes relative to the current working directory', async () => {
+    await writeFile({
+      path: 'work/input.txt',
+      data: `\
+one
+two
+`,
+    });
+    await writeFile({
+      path: 'work/bytes.bin',
+      data: new Uint8Array([0, 1, 2, 3]),
+    });
+    await wesh.vfs.mkdir({ path: '/work/tmp-parts', recursive: true });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+cd work &&
+split -l 1 input.txt chunk- &&
+split -b 2 bytes.bin tmp-parts/part-
+`,
+    });
+
+    expect(await readFile({ path: 'work/chunk-aa' })).toBe('one\n');
+    expect(await readFile({ path: 'work/chunk-ab' })).toBe('two\n');
+    expect(await readFileBytes({ path: 'work/tmp-parts/part-aa' })).toEqual([0, 1]);
+    expect(await readFileBytes({ path: 'work/tmp-parts/part-ab' })).toEqual([2, 3]);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 
   it('accepts leading C-locale whitespace in numeric options', async () => {
     const { result, stdout, stderr } = await execute({

@@ -2,7 +2,7 @@ import type { GitWorktreeContentConfig } from './config';
 import type { GitFiles } from './files';
 import type { GitIndexEntry } from './index-file';
 import { writeIndex } from './index-file';
-import { compareGitPaths } from './path-order';
+import { sortByGitUtf8StringKey } from './utf8-order';
 import type { GitRepository } from './repository';
 import { replaceTrackedWorktree } from './worktree';
 
@@ -16,7 +16,7 @@ function representativeTrackedEntries({ entries }: {
       byPath.set(entry.path, { ...entry, stage: 0 });
     }
   }
-  return [...byPath.values()].sort((left, right) => compareGitPaths({ left: left.path, right: right.path }));
+  return sortByGitUtf8StringKey({ values: byPath.values(), key: ({ value }) => value.path });
 }
 
 export async function forceReplaceIndexAndWorktree({ files, repository, currentIndexEntries, targetEntries, contentConfig }: {

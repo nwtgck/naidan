@@ -1,10 +1,15 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import ConversationOutlineOverlay from './ConversationOutlineOverlay.vue';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import type { MessageNode } from '@/01-models/types';
 import { toMessageId, toChatId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 vi.mock('./MessageItem.vue', () => ({
   default: {

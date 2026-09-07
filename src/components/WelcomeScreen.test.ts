@@ -3,6 +3,11 @@ import { mount } from '@vue/test-utils';
 import WelcomeScreen from './WelcomeScreen.vue';
 import { useSettings } from '@/composables/useSettings';
 import type { Settings } from '@/01-models/types';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('WelcomeScreen.vue', () => {
   const { TEST_ONLY } = useSettings();

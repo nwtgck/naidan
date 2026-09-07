@@ -40,7 +40,10 @@ export function mergeThreeTrees({ baseEntries, oursEntries, theirsEntries }: {
   const theirs = entryMap({ entries: theirsEntries });
   const result: GitIndexEntry[] = [];
   const conflicts: GitTreeMergeConflict[] = [];
-  const paths = sortGitPaths({ paths: new Set([...base.keys(), ...ours.keys(), ...theirs.keys()]) });
+  const pathSet = new Set(base.keys());
+  for (const path of ours.keys()) pathSet.add(path);
+  for (const path of theirs.keys()) pathSet.add(path);
+  const paths = sortGitPaths({ paths: pathSet });
   for (const path of paths) {
     const baseEntry = base.get(path);
     const oursEntry = ours.get(path);

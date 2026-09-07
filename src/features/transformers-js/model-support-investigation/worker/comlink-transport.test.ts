@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationEvent,
+  ModelSupportInvestigationLoadAttemptCheckpoint,
   ModelSupportInvestigationLoadAttemptEvent,
 } from "@/features/transformers-js/model-support-investigation/types";
 import type {
@@ -37,9 +38,38 @@ describe("Transformers.js Comlink transport contracts", () => {
       detail: "candidate model load",
       at: "2026-08-07T00:00:00.000Z",
     };
+
+    const attemptCheckpoint: ModelSupportInvestigationLoadAttemptCheckpoint = {
+      attemptId: "attempt-1",
+      candidateId: "webgpu-q4",
+      device: "webgpu",
+      dtype: "q4",
+      autoClass: "AutoModelForCausalLM",
+      resolvedRevision: "a".repeat(40),
+      startedAt: "2026-08-07T00:00:00.000Z",
+      checkpointedAt: "2026-08-07T00:00:01.000Z",
+      status: "running",
+      currentStage: "model-load",
+      events: [attemptEvent],
+      inputStrategyAttempts: [],
+      activeInputStrategy: undefined,
+      selectedInputStrategy: undefined,
+      inputTokenCount: undefined,
+      inputTokenIds: [],
+      inputTensors: [],
+      loadedModel: undefined,
+      generatedTokenIds: [],
+      generatedText: undefined,
+      naturalGeneration: undefined,
+      toolProtocolProbe: undefined,
+      modelType: "llama",
+      error: undefined,
+    };
+
     const exposedWorker: IModelSupportInvestigationWorker = {
-      async runPartialInvestigation(modelId, onEvent) {
+      async runPartialInvestigation(modelId, onEvent, onRunCheckpoint) {
         onEvent({ event: planningEvent });
+        onRunCheckpoint({ run: { modelId } as never });
         return { modelId } as never;
       },
       async runCandidateAttempt(
@@ -50,21 +80,26 @@ describe("Transformers.js Comlink transport contracts", () => {
         _candidate,
         onEvent,
         onAttemptEvent,
+        onAttemptCheckpoint,
       ) {
         onEvent({ event: planningEvent });
         onAttemptEvent({ event: attemptEvent });
+        onAttemptCheckpoint({ attempt: attemptCheckpoint });
         return { status: "passed" } as never;
       },
     };
     Comlink.expose(exposedWorker, ports.port1 as unknown as Comlink.Endpoint);
     const remote = Comlink.wrap<IModelSupportInvestigationWorker>(ports.port2 as unknown as Comlink.Endpoint);
     const onEvent = vi.fn();
+    const onRunCheckpoint = vi.fn();
     const onAttemptEvent = vi.fn();
+    const onAttemptCheckpoint = vi.fn();
 
     try {
       const planningResult = await remote.runPartialInvestigation(
         "org/model",
         Comlink.proxy(onEvent),
+        Comlink.proxy(onRunCheckpoint),
       );
       await remote.runCandidateAttempt(
         {} as never,
@@ -74,15 +109,20 @@ describe("Transformers.js Comlink transport contracts", () => {
         {} as never,
         Comlink.proxy(onEvent),
         Comlink.proxy(onAttemptEvent),
+        Comlink.proxy(onAttemptCheckpoint),
       );
 
       expect(planningResult).toEqual({ modelId: "org/model" });
       await vi.waitFor(() => {
         expect(onEvent).toHaveBeenCalledTimes(2);
+        expect(onRunCheckpoint).toHaveBeenCalledTimes(1);
         expect(onAttemptEvent).toHaveBeenCalledTimes(1);
+        expect(onAttemptCheckpoint).toHaveBeenCalledTimes(1);
       });
       expect(onEvent).toHaveBeenCalledWith({ event: planningEvent });
+      expect(onRunCheckpoint).toHaveBeenCalledWith({ run: { modelId: "org/model" } });
       expect(onAttemptEvent).toHaveBeenCalledWith({ event: attemptEvent });
+      expect(onAttemptCheckpoint).toHaveBeenCalledWith({ attempt: attemptCheckpoint });
     } finally {
       await releaseRemote({ remote, ports });
     }
@@ -105,6 +145,7 @@ describe("Transformers.js Comlink transport contracts", () => {
       const result = await remote.runModelSupportInvestigationScenario(
         { modelId: "org/model" } as never,
         Comlink.proxy(progressCallback),
+        Comlink.proxy(vi.fn()),
       );
 
       expect(result).toEqual({ modelId: "org/model" });

@@ -85,3 +85,24 @@ describe('double-quoted parameter operands', () => {
     ]);
   });
 });
+
+describe('shell word literal runs', () => {
+  it('keeps long unquoted literal runs intact around a command substitution', () => {
+    const prefix = 'a'.repeat(4096);
+    const raw = `${prefix}$(printf '%s' x)tail`;
+
+    expect(parseShellWordParts({ raw })).toEqual([
+      { text: raw, quoted: false, expandVariables: true },
+    ]);
+  });
+
+  it('preserves expansion metadata around long double-quoted operand runs and escapes', () => {
+    const prefix = 'b'.repeat(4096);
+
+    expect(parseDoubleQuotedParameterOperandParts({ raw: `${prefix}\\$tail` })).toEqual([
+      { text: prefix, quoted: true, expandVariables: true },
+      { text: '$', quoted: true, expandVariables: false },
+      { text: 'tail', quoted: true, expandVariables: true },
+    ]);
+  });
+});

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { flushPromises } from '@vue/test-utils';
 import { useChat, type AddToastOptions } from './useChat';
 import { storageService } from '@/00-storage/service';
@@ -93,6 +94,10 @@ vi.mock('../features/lm/ollama', () => {
       };
     },
   };
+});
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
 });
 
 describe('useChat Composable Logic', () => {

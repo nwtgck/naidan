@@ -1,5 +1,5 @@
 import { mount, flushPromises } from '@vue/test-utils';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ImportExportModal from './ImportExportModal.vue';
@@ -54,7 +54,7 @@ async function exportNow({ wrapper }: { wrapper: ReturnType<typeof mountModal> }
 }
 
 describe('ImportExportModal.vue', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 

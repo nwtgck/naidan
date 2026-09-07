@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromBytes,
@@ -58,7 +59,7 @@ describe('wesh nl', () => {
       : createTestReadHandleFromBytes({ bytes: stdinBytes });
 
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -154,7 +155,19 @@ present
     expect(stdout.text).toBe(`\
      1\tpresent
 `);
-    expect(stderr.text).toContain('nl: missing.txt:');
+    expect(stderr.text).toBe('nl: missing.txt: No such file or directory\n');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('normalizes browser type-mismatch errors for intermediate file path components', async () => {
+    await writeFile({ path: 'parent', data: 'file' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'nl parent/child',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('nl: parent/child: Not a directory\n');
     expect(result.exitCode).toBe(1);
   });
 

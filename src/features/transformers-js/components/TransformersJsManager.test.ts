@@ -1,4 +1,4 @@
-import { beforeAll, describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import TransformersJsManager from './TransformersJsManager.vue';
@@ -80,7 +80,7 @@ vi.mock('lucide-vue-next', () => ({
 }));
 
 describe('TransformersJsManager.vue', () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
   });
 

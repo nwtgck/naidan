@@ -1,8 +1,10 @@
 <script setup lang="ts">
 /**
- * PrintView is a generic top-level container for print-only content.
- * It is hidden during normal operation. When window.print() is called,
- * its global CSS (@media print) hides the rest of the app and shows this container.
+ * PrintView is a generic print-only container.
+ *
+ * The rendered layer is teleported to <body> so print visibility does not depend on
+ * the internal DOM topology of #app. It stays owned by the lazy post-startup
+ * auxiliary UI while being rendered outside the normal application tree.
  */
 
 
@@ -16,12 +18,22 @@ defineExpose({
 </script>
 
 <template>
-  <!-- Added theme background classes directly to the layer to ensure color inheritance -->
-  <div class="naidan-print-view-layer" tw-class="bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
-    <div class="print-container">
-      <slot></slot>
+  <Teleport to="body">
+    <!--
+      Keep the layer hidden inline as well as through component CSS. This prevents a
+      screen-mode flash while the async component/style chunk is being activated;
+      the print-media !important rule below deliberately overrides it for printing.
+    -->
+    <div
+      class="naidan-print-view-layer"
+      style="display: none"
+      tw-class="bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100"
+    >
+      <div class="print-container">
+        <slot></slot>
+      </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <style>
@@ -29,12 +41,15 @@ defineExpose({
   GLOBAL PRINT STYLES
 */
 @media print {
-  /* 1. Hide the entire main app UI (siblings of PrintView in MainApp.vue) */
-  #app > div:not(.naidan-print-view-layer) {
+  /*
+    PrintView is a direct child of body via Teleport. Hide every other application
+    or overlay root so printing is independent of #app's internal DOM topology.
+  */
+  body > *:not(.naidan-print-view-layer) {
     display: none !important;
   }
 
-  /* 2. Prepare html/body for full-page background printing */
+  /* Prepare html/body for full-page background printing */
   html, body {
     height: auto !important;
     overflow: visible !important;
@@ -44,8 +59,8 @@ defineExpose({
     background-color: transparent !important;
   }
 
-  /* 3. Reveal the PrintView layer and force it to fill the paper */
-  .naidan-print-view-layer {
+  /* Reveal the teleported PrintView layer and force it to fill the paper */
+  body > .naidan-print-view-layer {
     display: block !important;
     position: absolute;
     top: 0;
@@ -62,7 +77,7 @@ defineExpose({
     color-adjust: exact !important;
   }
 
-  /* 4. Force background for all elements within the print layer (bubbles, code, etc) */
+  /* Force background for all elements within the print layer (bubbles, code, etc) */
   .naidan-print-view-layer * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
@@ -85,7 +100,7 @@ defineExpose({
 </style>
 
 <style scoped>
-/* Hidden by default in screen mode */
+/* Hidden by default in screen mode. The inline style is an additional no-flash guard. */
 .naidan-print-view-layer {
   display: none;
 }

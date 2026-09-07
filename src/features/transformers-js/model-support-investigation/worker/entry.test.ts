@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   expose: vi.fn(),
   modelFromPretrained: vi.fn(),
   tokenizerFromPretrained: vi.fn(),
+  tokenizerCall: vi.fn(),
   tokenizerDecode: vi.fn(),
   modelGenerate: vi.fn(),
   modelDispose: vi.fn(),
@@ -30,6 +31,23 @@ vi.mock("@/features/transformers-js/runtime/configure-hosted-runtime", () => ({
 }));
 
 vi.mock("@huggingface/transformers", () => {
+  class Tensor {
+    readonly type: string;
+    readonly data: BigInt64Array | Float32Array;
+    readonly dims: number[];
+    readonly location = "cpu";
+    dispose = vi.fn();
+
+    constructor(type: string, data: BigInt64Array | Float32Array, dims: number[]) {
+      this.type = type;
+      this.data = data;
+      this.dims = dims;
+    }
+
+    tolist(): Array<Array<number | bigint>> {
+      return [Array.from(this.data as Iterable<number | bigint>)];
+    }
+  }
   class LogitsProcessor {
     _call(): never {
       throw new Error("Not implemented");
@@ -99,11 +117,36 @@ vi.mock("@huggingface/transformers", () => {
     AutoModelForSeq2SeqLM: modelClass,
     AutoModelForSpeechSeq2Seq: modelClass,
     AutoModelForVision2Seq: modelClass,
-    AutoTokenizer: { from_pretrained: mocks.tokenizerFromPretrained },
+    AutoTokenizer: {
+      from_pretrained: async (...args: unknown[]) => {
+        const base = await mocks.tokenizerFromPretrained(...args) as Record<string, unknown>;
+        const tokenizer = (text: string, options: unknown) => {
+          mocks.tokenizerCall(text, options);
+          const ids = [5n, 6n];
+          return {
+            input_ids: new Tensor("int64", BigInt64Array.from(ids), [1, ids.length]),
+            attention_mask: new Tensor("int64", BigInt64Array.from(ids, () => 1n), [1, ids.length]),
+          };
+        };
+        return Object.assign(tokenizer, base, {
+          apply_chat_template: (_messages: unknown, options: unknown) => {
+            const hasTools = typeof options === "object"
+              && options !== null
+              && Reflect.get(options, "tools") !== undefined;
+            const ids = hasTools ? [7n, 8n] : [1n, 2n];
+            return {
+              input_ids: new Tensor("int64", BigInt64Array.from(ids), [1, ids.length]),
+              attention_mask: new Tensor("int64", BigInt64Array.from(ids, () => 1n), [1, ids.length]),
+            };
+          },
+        });
+      },
+    },
     LogitsProcessor,
     LogitsProcessorList,
     ModelRegistry: { get_model_files: vi.fn() },
     PretrainedConfig,
+    Tensor,
     TextStreamer,
     env: {
       backends: { onnx: { wasm: {} } },
@@ -213,6 +256,7 @@ describe("model-support-investigation worker", () => {
       getDirectoryHandle: vi.fn().mockRejectedValue(notFoundError),
     } as never);
     const onEvent = vi.fn();
+    const onAttemptCheckpoint = vi.fn();
     const result = await exposedWorker().runCandidateAttempt(
       {
         normalizedModelId: "org/model",
@@ -231,6 +275,9 @@ describe("model-support-investigation worker", () => {
       {
         cases: [{
           caseId: "user-generation",
+          messages: [{ role: "user", content: "Template probe user message." }],
+          tools: undefined,
+          addGenerationPrompt: true,
           status: "passed",
           inputIds: [1, 2],
         }],
@@ -246,6 +293,7 @@ describe("model-support-investigation worker", () => {
       } as never,
       onEvent,
       vi.fn(),
+      onAttemptCheckpoint,
     );
 
     expect(mocks.configValues).toEqual([{ model_type: "llama" }]);
@@ -264,6 +312,15 @@ describe("model-support-investigation worker", () => {
       input_ids: expect.objectContaining({ dims: [1, 2] }),
       attention_mask: expect.objectContaining({ dims: [1, 2] }),
     }));
+    const firstGenerationInputIds = Reflect.get(mocks.modelGenerate.mock.calls[0]?.[0] ?? {}, "input_ids");
+    expect(firstGenerationInputIds).toHaveProperty("tolist", expect.any(Function));
+    expect(firstGenerationInputIds.tolist()).toEqual([[1n, 2n]]);
+    expect(onAttemptCheckpoint).toHaveBeenCalledWith({
+      attempt: expect.objectContaining({
+        status: "running",
+        loadedModel: expect.objectContaining({ modelType: "llama" }),
+      }),
+    });
     expect(mocks.modelGenerate).toHaveBeenNthCalledWith(2, expect.objectContaining({
       max_new_tokens: 16,
       do_sample: false,
@@ -303,6 +360,7 @@ describe("model-support-investigation worker", () => {
       requiredFileCoverage: {
         expectedPaths: ["onnx/model.onnx"],
         completePaths: [],
+        sizeMismatchPaths: [],
         incompletePaths: [],
         missingPaths: ["onnx/model.onnx"],
         revisionProvenance: "unknown",
@@ -320,6 +378,61 @@ describe("model-support-investigation worker", () => {
         stepId: "loading-investigation",
         status: "running",
       }),
+    });
+  });
+
+  it("uses the fixed plain-text tokenizer fallback when chat-template evidence is unavailable", async () => {
+    const notFoundError = new Error("Not found");
+    notFoundError.name = "NotFoundError";
+    vi.mocked(navigator.storage.getDirectory).mockResolvedValue({
+      getDirectoryHandle: vi.fn().mockRejectedValue(notFoundError),
+    } as never);
+
+    const result = await exposedWorker().runCandidateAttempt(
+      {
+        normalizedModelId: "org/model",
+        resolvedRevision: "a".repeat(40),
+        pipelineTag: "text-generation",
+      } as never,
+      {
+        config: { model_type: "llama" },
+        modelType: "llama",
+        classCapabilities: [{
+          autoClass: "AutoModelForCausalLM",
+          supports: true,
+          notEvaluatedReason: undefined,
+        }],
+      } as never,
+      undefined,
+      [],
+      {
+        candidateId: "webgpu-q4",
+        device: "webgpu",
+        dtype: "q4",
+        eligibility: "eligible",
+        ineligibleReasons: [],
+        files: [{ path: "onnx/model.onnx", kind: "core-onnx", requirement: "required" }],
+      } as never,
+      vi.fn(),
+      vi.fn(),
+      vi.fn(),
+    );
+
+    expect(mocks.tokenizerCall).toHaveBeenCalledWith("Hello", { return_tensor: true });
+    expect(mocks.modelGenerate).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      input_ids: expect.objectContaining({ dims: [1, 2], tolist: expect.any(Function) }),
+      max_new_tokens: 1,
+      do_sample: false,
+    }));
+    expect(result).toMatchObject({
+      status: "passed",
+      selectedInputStrategy: "fixed-plain-text-tokenizer-tensor-dict",
+      inputTokenIds: [5, 6],
+      inputStrategyAttempts: [
+        { strategy: "chat-template-tensor-dict", status: "failed", failureStage: "input-build" },
+        { strategy: "observed-token-ids-transformers-tensor", status: "failed", failureStage: "input-build" },
+        { strategy: "fixed-plain-text-tokenizer-tensor-dict", status: "passed", inputText: "Hello" },
+      ],
     });
   });
 
@@ -347,8 +460,18 @@ describe("model-support-investigation worker", () => {
       {
         cases: [{
           caseId: "user-generation",
+          messages: [{ role: "user", content: "Template probe user message." }],
+          tools: undefined,
+          addGenerationPrompt: true,
           status: "passed",
           inputIds: [1, 2],
+        }, {
+          caseId: "tools-generation",
+          messages: [{ role: "user", content: "Use the weather tool for Tokyo." }],
+          tools: [{ type: "function" }],
+          addGenerationPrompt: true,
+          status: "passed",
+          inputIds: [7, 8],
         }],
         toolTemplateProvenance: {
           status: "observed",
@@ -373,6 +496,7 @@ describe("model-support-investigation worker", () => {
         ineligibleReasons: [],
         files: [{ path: "onnx/model.onnx", kind: "core-onnx", requirement: "required" }],
       } as never,
+      vi.fn(),
       vi.fn(),
       vi.fn(),
     );

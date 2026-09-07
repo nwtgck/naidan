@@ -1,10 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import { h, defineComponent } from 'vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import type { ChatFlowItem, SequenceStats } from '@/composables/useChatDisplayFlow';
 import type { MessageNode } from '@/01-models/types';
 import { toMessageId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 // Cursor stub used in place of <GeneratingIndicator> to test slot rendering.
 const CursorStub = defineComponent({

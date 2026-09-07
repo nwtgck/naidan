@@ -1,12 +1,7 @@
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/features/wesh/types';
+import type { WeshCommandContext, WeshCommandImplementation, WeshCommandResult } from '@/features/wesh/types';
 import { isStandaloneCommandHelpRequest, writeCommandHelp } from '@/features/wesh/commands/_shared/usage';
 
-export const unaliasCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'unalias',
-    description: 'Remove shell aliases',
-    usage: 'unalias [-a] name [name ...]',
-  },
+export const unaliasCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     if (isStandaloneCommandHelpRequest({
       args: context.args,

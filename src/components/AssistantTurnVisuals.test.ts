@@ -1,5 +1,6 @@
 import { toChatId } from '@/01-models/ids';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount as baseMount } from '@vue/test-utils';
 import { h } from 'vue';
 import MessageItem from './MessageItem.vue';
@@ -36,6 +37,10 @@ vi.mock('lucide-vue-next', async (importOriginal) => {
     EyeIcon: { render: () => h('span', { 'data-testid': 'icon-eye' }) },
     EyeOffIcon: { render: () => h('span', { 'data-testid': 'icon-eye-off' }) },
   };
+});
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
 });
 
 describe('Assistant Turn Visual Logic', () => {

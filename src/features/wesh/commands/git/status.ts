@@ -1,12 +1,12 @@
 import type { WeshCommandContext } from "@/features/wesh/types";
 import { loadWorktreeAttributes } from "./attributes";
 import { readCommit } from "./commits";
-import { getConfigValue, readEffectiveConfig } from "./config";
+import { getConfigValue, readEffectiveConfig, resolveWorktreeContentConfig } from "./config";
 import { pathExists } from "./files";
 import { quoteNonAsciiFromConfig } from "./path-output";
 import { sortGitPaths } from "./path-order";
 import { findExactRenames } from "./renames";
-import { collectCommitHistory } from "./history";
+import { countCommitDivergence } from "./history";
 import { loadIgnoreMatcher } from "./ignore";
 import type { GitIndexEntry } from "./index-file";
 import { readIndex } from "./index-file";
@@ -15,7 +15,6 @@ import { assertRepositoryHasUsableWorktree, discoverRepository, joinPath, discov
 import type { GitRepository } from "./repository";
 import { readTreeRecursively } from "./tree";
 import { hashWorktreeEntry, listWorktreeEntries, worktreeAbsolutePath } from "./worktree";
-import { resolveContentConfigForContext } from "./content-config";
 
 export interface GitStatusEntry {
     path: string;
@@ -42,23 +41,25 @@ function regularFileModeFromIndex({ entry }: {
     return undefined;
   }
 }
-async function readHeadTreeMap({ context, repository }: {
+async function readHeadTreeMap({ context, repository, headObjectId }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
+    headObjectId: string | undefined;
 }): Promise<Map<string, {
     objectId: string;
     mode: number;
 }>> {
-  const head = await readHead({ files: context.files, repository });
-  if (head.objectId === undefined)
+  if (headObjectId === undefined)
     return new Map();
-  const commit = await readCommit({ files: context.files, repository, objectId: head.objectId });
+  const commit = await readCommit({ files: context.files, repository, objectId: headObjectId });
   const entries = await readTreeRecursively({
     files: context.files,
     repository,
     treeObjectId: commit.treeObjectId,
   });
-  return new Map(entries.map(entry => [entry.path, { objectId: entry.objectId, mode: entry.mode }]));
+  const byPath = new Map<string, { objectId: string, mode: number }>();
+  for (const entry of entries) byPath.set(entry.path, { objectId: entry.objectId, mode: entry.mode });
+  return byPath;
 }
 export async function collectStatus({ context }: {
     context: WeshCommandContext;
@@ -77,28 +78,48 @@ export async function collectStatus({ context }: {
   const repository = await discoverRepositoryFromContext({ context });
   assertRepositoryHasUsableWorktree({ context, repository });
   const head = await readHead({ files: context.files, repository });
-  const headTree = await readHeadTreeMap({ context, repository });
+  const headTree = await readHeadTreeMap({ context, repository, headObjectId: head.objectId });
   const indexEntries = await readIndex({ files: context.files, repository });
-  const index = new Map(indexEntries.filter(entry => entry.stage === 0).map(entry => [entry.path, entry]));
+  const index = new Map<string, GitIndexEntry>();
   const unmergedByPath = new Map<string, GitIndexEntry[]>();
   for (const entry of indexEntries) {
-    if (entry.stage === 0)
+    if (entry.stage === 0) {
+      index.set(entry.path, entry);
       continue;
+    }
     const entries = unmergedByPath.get(entry.path) ?? [];
     entries.push(entry);
     unmergedByPath.set(entry.path, entries);
   }
   const ignoreMatcher = await loadIgnoreMatcher({ files: context.files, repository });
+  const config = await readEffectiveConfig({
+    files: context.files,
+    repository,
+    homePath: context.env.get('HOME') ?? '/',
+    cwd: context.cwd,
+    env: context.env,
+  });
   const attributes = await loadWorktreeAttributes({
     files: context.files,
     repository,
-    contentConfig: await resolveContentConfigForContext({ context, repository }),
+    contentConfig: resolveWorktreeContentConfig({ config }),
   });
-  const gitlinkPaths = new Set([...index.values()].filter(entry => entry.mode === 0o160000).map(entry => entry.path));
-  const isInsideGitlink = ({ path }: {
-        path: string;
-    }): boolean => ([...gitlinkPaths].some(gitlinkPath => path.startsWith(`${gitlinkPath}/`)));
-  const worktreePaths = new Set((await listWorktreeEntries({ files: context.files, repository })).filter(path => !isInsideGitlink({ path })));
+  const gitlinkPaths = new Set<string>();
+  for (const entry of index.values()) {
+    if (entry.mode === 0o160000) gitlinkPaths.add(entry.path);
+  }
+  const isInsideGitlink = ({ path }: { path: string }): boolean => {
+    let separator = path.indexOf('/');
+    while (separator >= 0) {
+      if (gitlinkPaths.has(path.slice(0, separator))) return true;
+      separator = path.indexOf('/', separator + 1);
+    }
+    return false;
+  };
+  const worktreePaths = new Set<string>();
+  for (const path of await listWorktreeEntries({ files: context.files, repository })) {
+    if (!isInsideGitlink({ path })) worktreePaths.add(path);
+  }
   for (const gitlinkPath of gitlinkPaths) {
     const absolutePath = worktreeAbsolutePath({ repository, path: gitlinkPath });
     if (!await pathExists({ files: context.files, path: absolutePath }))
@@ -122,7 +143,11 @@ export async function collectStatus({ context }: {
     }
     }
   }
-  const paths = new Set([...headTree.keys(), ...index.keys(), ...unmergedByPath.keys(), ...worktreePaths]);
+  const paths = new Set<string>();
+  for (const collection of [headTree, index, unmergedByPath]) {
+    for (const path of collection.keys()) paths.add(path);
+  }
+  for (const path of worktreePaths) paths.add(path);
   const statusEntries: GitStatusEntry[] = [];
   for (const path of sortGitPaths({ paths })) {
     const headEntry = headTree.get(path);
@@ -293,15 +318,19 @@ export async function collectStatus({ context }: {
       });
     }
   }
-  const statusEntriesByPath = new Map(statusEntries.map(entry => [entry.path, entry]));
-  const exactRenames = findExactRenames({
-    deleted: statusEntries.flatMap(entry => (entry.indexStatus === 'D' && entry.headObjectId !== undefined && entry.headMode !== undefined
-      ? [{ path: entry.path, objectId: entry.headObjectId, mode: entry.headMode }]
-      : [])),
-    added: statusEntries.flatMap(entry => (entry.indexStatus === 'A' && entry.indexObjectId !== undefined && entry.indexMode !== undefined
-      ? [{ path: entry.path, objectId: entry.indexObjectId, mode: entry.indexMode }]
-      : [])),
-  });
+  const statusEntriesByPath = new Map<string, GitStatusEntry>();
+  const deletedRenameCandidates: Array<{ path: string, objectId: string, mode: number }> = [];
+  const addedRenameCandidates: Array<{ path: string, objectId: string, mode: number }> = [];
+  for (const entry of statusEntries) {
+    statusEntriesByPath.set(entry.path, entry);
+    if (entry.indexStatus === 'D' && entry.headObjectId !== undefined && entry.headMode !== undefined) {
+      deletedRenameCandidates.push({ path: entry.path, objectId: entry.headObjectId, mode: entry.headMode });
+    }
+    if (entry.indexStatus === 'A' && entry.indexObjectId !== undefined && entry.indexMode !== undefined) {
+      addedRenameCandidates.push({ path: entry.path, objectId: entry.indexObjectId, mode: entry.indexMode });
+    }
+  }
+  const exactRenames = findExactRenames({ deleted: deletedRenameCandidates, added: addedRenameCandidates });
   for (const rename of exactRenames) {
     const source = statusEntriesByPath.get(rename.sourcePath)!;
     const destination = statusEntriesByPath.get(rename.destinationPath)!;
@@ -310,7 +339,6 @@ export async function collectStatus({ context }: {
     destination.renameSourcePath = source.path;
   }
   const branchName = branchNameFromHead({ head });
-  const config = await readEffectiveConfig({ files: context.files, repository, homePath: context.env.get('HOME') ?? '/', cwd: context.cwd, env: context.env });
   let upstreamName: string | undefined;
   let upstreamObjectId: string | undefined;
   let ahead: number | undefined;
@@ -326,18 +354,14 @@ export async function collectStatus({ context }: {
       upstreamName = remoteName === '.' ? upstreamBranchName : `${remoteName}/${upstreamBranchName}`;
       upstreamObjectId = await readRef({ files: context.files, repository, refName: upstreamRefName });
       if (head.objectId !== undefined && upstreamObjectId !== undefined) {
-        ahead = (await collectCommitHistory({
+        const divergence = await countCommitDivergence({
           files: context.files,
           repository,
-          includeObjectIds: [head.objectId],
-          excludeObjectIds: [upstreamObjectId],
-        })).length;
-        behind = (await collectCommitHistory({
-          files: context.files,
-          repository,
-          includeObjectIds: [upstreamObjectId],
-          excludeObjectIds: [head.objectId],
-        })).length;
+          leftObjectId: head.objectId,
+          rightObjectId: upstreamObjectId,
+        });
+        ahead = divergence.leftOnly;
+        behind = divergence.rightOnly;
       }
     }
   }

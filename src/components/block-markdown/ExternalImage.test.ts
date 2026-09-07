@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import ExternalImage from './ExternalImage.vue';
 import { useExternalResourceSettings } from '@/composables/useExternalResourceSettings';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('ExternalImage.vue', () => {
   const { TEST_ONLY: { __testOnlyReset } } = useExternalResourceSettings();

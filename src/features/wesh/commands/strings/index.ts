@@ -5,7 +5,7 @@ import { findFirstStandardSemanticIssue, standardSemanticIssuePrecedesDiagnostic
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshFileHandle,
 } from '@/features/wesh/types';
@@ -324,12 +324,7 @@ function findStringsPreHelpSemanticIssue({
   return undefined;
 }
 
-export const stringsCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'strings',
-    description: 'Print the printable strings in files',
-    usage: 'strings [OPTION]... [FILE]...',
-  },
+export const stringsCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsedArgs = stopStandardArgvAtFirstEarlyExit({
       args: context.args,

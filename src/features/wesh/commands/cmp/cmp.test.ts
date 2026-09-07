@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/features/wesh/index';
+import { createTextShellSource } from '@/features/wesh/shell/source';
 import type { WeshFileHandle } from '@/features/wesh/types';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
 import {
@@ -42,7 +43,7 @@ describe('wesh cmp', () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      script,
+      source: createTextShellSource({ text: script }),
       stdin: stdinHandle ?? createTestReadHandleFromBytes({
         bytes: stdinBytes ?? new Uint8Array(),
       }),

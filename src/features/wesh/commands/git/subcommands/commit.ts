@@ -1,3 +1,4 @@
+import { formatGitAmbiguousLongOption } from '@/features/wesh/commands/git/argv-diagnostics';
 import { GitUsageError } from '@/features/wesh/commands/git/errors';
 import { normalizePath } from "@/features/wesh/path";
 import type { WeshCommandContext, WeshCommandResult } from "@/features/wesh/types";
@@ -14,56 +15,137 @@ import { stageWorktreePaths } from "@/features/wesh/commands/git/stage";
 import { resolveContentConfigForContext } from "@/features/wesh/commands/git/content-config";
 import { appendMessageParagraph, cleanupMessage, firstLine } from "@/features/wesh/commands/git/commit-message";
 import { assertSupportedRepositoryContentPolicy } from "@/features/wesh/commands/git/content-policy";
-import { expandGitShortOptions } from "@/features/wesh/commands/git/short-options";
+import { defineArgvCatalog, parseStandardArgv, type StandardArgvAction, type StandardArgvPolicy } from '@/features/wesh/argv-v2';
+
+type CommitDeferredSemantic = 'message' | 'file';
+
+const COMMIT_ARGV_CATALOG = defineArgvCatalog<StandardArgvAction<CommitDeferredSemantic>>({
+  nonExecutableLongOptions: [
+    'quiet', 'no-quiet', 'verbose', 'no-verbose',
+    'no-file', 'author', 'no-author', 'date', 'no-date', 'no-message',
+    'reedit-message', 'no-reedit-message', 'reuse-message', 'no-reuse-message',
+    'fixup', 'no-fixup', 'squash', 'no-squash', 'reset-author', 'no-reset-author',
+    'trailer', 'signoff', 'no-signoff', 'template', 'no-template', 'edit',
+    'cleanup', 'no-cleanup', 'status', 'no-status', 'gpg-sign', 'no-gpg-sign',
+    'no-all', 'include', 'no-include', 'interactive', 'no-interactive', 'patch', 'no-patch',
+    'only', 'no-only', 'no-verify', 'verify', 'dry-run', 'no-dry-run', 'short', 'no-short',
+    'branch', 'no-branch', 'ahead-behind', 'no-ahead-behind', 'porcelain', 'no-porcelain',
+    'long', 'no-long', 'null', 'no-null', 'no-amend', 'no-post-rewrite', 'post-rewrite',
+    'untracked-files', 'no-untracked-files', 'pathspec-from-file', 'no-pathspec-from-file',
+    'pathspec-file-nul', 'no-pathspec-file-nul', 'allow-empty-message',
+  ],
+  definitions: [
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'all', value: true }] },
+      forms: [
+        { kind: 'short', name: 'a', value: { kind: 'none' } },
+        { kind: 'long', name: 'all', value: { kind: 'none' } },
+      ],
+    },
+    {
+      semantic: { kind: 'deferred', tag: 'message' },
+      forms: [
+        { kind: 'short', name: 'm', value: { kind: 'required-attached-or-following', missingValueName: 'message' } },
+        { kind: 'long', name: 'message', value: { kind: 'required', missingValueName: 'message' } },
+      ],
+    },
+    {
+      semantic: { kind: 'deferred', tag: 'file' },
+      forms: [
+        { kind: 'short', name: 'F', value: { kind: 'required-attached-or-following', missingValueName: 'file' } },
+        { kind: 'long', name: 'file', value: { kind: 'required', missingValueName: 'file' } },
+      ],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'amend', value: true }] },
+      forms: [{ kind: 'long', name: 'amend', value: { kind: 'none' } }],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'noEdit', value: true }] },
+      forms: [{ kind: 'long', name: 'no-edit', value: { kind: 'none' } }],
+    },
+    {
+      semantic: { kind: 'effects', effects: [{ key: 'allowEmpty', value: true }] },
+      forms: [{ kind: 'long', name: 'allow-empty', value: { kind: 'none' } }],
+    },
+  ],
+});
+
+const COMMIT_ARGV_POLICY: StandardArgvPolicy = {
+  longNameMatch: 'unique-prefix',
+  optionBoundary: 'first-positional',
+  occurrenceRetention: 'none',
+};
+
 
 export async function runCommit({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];
 }): Promise<WeshCommandResult> {
-  const normalizedArgs = expandGitShortOptions({ args, flagOptions: ['a'], valueOptions: ['m', 'F'] });
-  if (normalizedArgs.includes('-a') || normalizedArgs.includes('--all')) await assertSupportedRepositoryContentPolicy({ context, cleanMutation: true });
-  let message: string | undefined;
-  let messageFile: string | undefined;
-  let allowEmpty = false;
-  let all = false;
-  let amend = false;
-  let noEdit = false;
-  for (let index = 0; index < normalizedArgs.length; index += 1) {
-    const arg = normalizedArgs[index]!;
-    if (arg === '--') {
-      if (index !== normalizedArgs.length - 1)
-        throw new Error('commit pathspecs are not supported yet');
-      break;
+  const separatorIndex = args.indexOf('--');
+  if (separatorIndex >= 0 && separatorIndex !== args.length - 1)
+    throw new Error('commit pathspecs are not supported yet');
+  const parsedArgs = separatorIndex < 0 ? args : args.slice(0, separatorIndex);
+  const parsed = parseStandardArgv({ args: parsedArgs, catalog: COMMIT_ARGV_CATALOG, policy: COMMIT_ARGV_POLICY });
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic !== undefined) {
+    switch (diagnostic.kind) {
+    case 'missing_option_value':
+      throw new GitUsageError({ message: `option '${diagnostic.option}' requires a value` });
+    case 'ambiguous_long_option':
+      throw new GitUsageError({
+        message: formatGitAmbiguousLongOption({
+          option: diagnostic.option,
+          candidateOptions: diagnostic.candidateOptions,
+        }),
+      });
+    case 'unknown_short_option':
+    case 'unknown_long_option':
+    case 'unexpected_option_value':
+    case 'invalid_option_value':
+      throw new GitUsageError({ message: `unknown option: ${parsedArgs[diagnostic.argvIndex] ?? diagnostic.option}` });
+    default: {
+      const _ex: never = diagnostic;
+      throw new Error(`Unhandled commit argv diagnostic: ${JSON.stringify(_ex)}`);
     }
-    if (arg === '-m' || arg === '--message') {
-      const value = normalizedArgs[index + 1];
-      if (value === undefined)
-        throw new GitUsageError({ message: `option '${arg}' requires a value` });
-      message = appendMessageParagraph({ current: message, value });
-      index += 1;
-    } else if (arg.startsWith('--message=')) {
-      const value = arg.slice('--message='.length);
-      message = appendMessageParagraph({ current: message, value });
-    } else if (arg === '-F' || arg === '--file') {
-      const value = normalizedArgs[index + 1];
-      if (value === undefined)
-        throw new GitUsageError({ message: `option '${arg}' requires a value` });
-      messageFile = value;
-      index += 1;
-    } else if (arg.startsWith('--file=')) {
-      messageFile = arg.slice('--file='.length);
-    } else if (arg === '-a' || arg === '--all') {
-      all = true;
-    } else if (arg === '--amend') {
-      amend = true;
-    } else if (arg === '--no-edit') {
-      noEdit = true;
-    } else if (arg === '--allow-empty') {
-      allowEmpty = true;
-    } else {
-      throw new GitUsageError({ message: `unknown option: ${arg}` });
     }
   }
+  if (parsed.positionals.length > 0)
+    throw new GitUsageError({ message: `unknown option: ${parsed.positionals[0]}` });
+  let message: string | undefined;
+  let messageFile: string | undefined;
+  for (const occurrence of parsed.deferred) {
+    const value = (() => {
+      switch (occurrence.value.kind) {
+      case 'inline':
+      case 'next-argv':
+        return occurrence.value.rawValue;
+      case 'none':
+        throw new Error(`Commit ${occurrence.semantic.tag} option did not claim a value`);
+      default: {
+        const _ex: never = occurrence.value;
+        throw new Error(`Unhandled commit deferred value: ${JSON.stringify(_ex)}`);
+      }
+      }
+    })();
+    switch (occurrence.semantic.tag) {
+    case 'message':
+      message = appendMessageParagraph({ current: message, value });
+      break;
+    case 'file':
+      messageFile = value;
+      break;
+    default: {
+      const _ex: never = occurrence.semantic.tag;
+      throw new Error(`Unhandled commit deferred semantic: ${_ex}`);
+    }
+    }
+  }
+  const all = parsed.optionValues.all === true;
+  const amend = parsed.optionValues.amend === true;
+  const noEdit = parsed.optionValues.noEdit === true;
+  const allowEmpty = parsed.optionValues.allowEmpty === true;
+  if (all) await assertSupportedRepositoryContentPolicy({ context, cleanMutation: true });
   if (message !== undefined && messageFile !== undefined)
     throw new Error('options -m and -F cannot be used together');
   const repository = await discoverRepositoryFromContext({ context });

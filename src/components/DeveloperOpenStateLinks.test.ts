@@ -22,6 +22,10 @@ vi.mock('lucide-vue-next', () => ({
   Loader2Icon: { template: '<span>Loader2</span>' },
 }));
 
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
+
 describe('DeveloperOpenStateLinks', () => {
   const addToast = vi.fn();
   const openSpy = vi.fn();

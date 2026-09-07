@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount } from '@vue/test-utils';
 import RecentChatsModal from './RecentChatsModal.vue';
 import { computed, ref, nextTick } from 'vue';
@@ -7,6 +8,10 @@ import { setupScrollToMock } from '@/utils/test-utils';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { toChatId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 // --- Mocks ---
 

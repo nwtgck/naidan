@@ -7,6 +7,7 @@ import type {
   ModelSupportInvestigationToolTemplateProvenance,
 } from '@/features/transformers-js/model-support-investigation/types';
 import { parseInvestigationJson } from '@/features/transformers-js/model-support-investigation/logic/json-value-schema';
+import { serializeInvestigationError } from '@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error';
 
 type LoadedTokenizer = Awaited<ReturnType<typeof import('@huggingface/transformers').AutoTokenizer.from_pretrained>>;
 export type ModelSupportInvestigationTemplateTokenizer = Pick<
@@ -114,10 +115,6 @@ const FIXTURES: Array<{
   },
 ];
 
-function errorMessage({ error }: { error: unknown }): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function normalizeInputIds({ value }: { value: unknown }): number[] {
   if (!Array.isArray(value)) {
     throw new Error('apply_chat_template did not return an input ID array');
@@ -153,7 +150,7 @@ function failedCase({
     renderedText,
     inputIds: undefined,
     failureStage,
-    error: errorMessage({ error }),
+    error: serializeInvestigationError({ error }),
   };
 }
 

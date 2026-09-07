@@ -10,21 +10,26 @@ import {
   AutoTokenizer,
   ModelRegistry,
   PretrainedConfig,
+  Tensor as TransformersTensor,
   TextStreamer,
   type PreTrainedTokenizer,
   type ProgressCallback as TransformersProgressCallback,
   env,
 } from "@huggingface/transformers";
-import { InferenceSession, Tensor } from "onnxruntime-web";
+import { InferenceSession, Tensor as OrtTensor } from "onnxruntime-web";
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationGenerationAutoClassName,
+  ModelSupportInvestigationInputTensorMetadata,
   ModelSupportInvestigationJsonValue,
+  ModelSupportInvestigationTemplateCase,
+  ModelSupportInvestigationTextInputStrategy,
 } from "@/features/transformers-js/model-support-investigation/types";
 import { exposeWorkerRemote, type WorkerServerApi } from "@/utils/worker-transport";
 import { parseInvestigationJson } from "@/features/transformers-js/model-support-investigation/logic/json-value-schema";
 import { runRuntimeIntegrityPreflight } from "@/features/transformers-js/model-support-investigation/logic/run-runtime-integrity-preflight";
 import { runPartialModelSupportInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-partial-model-support-investigation";
+import { toPlanningWorkerRun } from "@/features/transformers-js/model-support-investigation/logic/planning-worker-run";
 import { inspectHuggingFaceRepository } from "@/features/transformers-js/model-support-investigation/logic/inspect-hugging-face-repository";
 import { inspectModelCache } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-cache";
 import {
@@ -36,6 +41,7 @@ import { evaluateCandidateRequiredFileCoverage } from "@/features/transformers-j
 import { inspectModelDeclarations } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-declarations";
 import { inspectTemplateBehavior } from "@/features/transformers-js/model-support-investigation/logic/inspect-template-behavior";
 import { inspectModelFilePlan } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-file-plan";
+import { inspectChatPersistenceRoundTrip } from "@/features/transformers-js/model-support-investigation/logic/inspect-chat-persistence-roundtrip";
 import { inspectRuntimeEnvironment } from "@/features/transformers-js/model-support-investigation/logic/inspect-runtime-environment";
 import { correlateSessionFiles } from "@/features/transformers-js/model-support-investigation/logic/correlate-session-files";
 import { runCandidateLoadAttempt } from "@/features/transformers-js/model-support-investigation/logic/run-candidate-load-attempt";
@@ -44,6 +50,7 @@ import { createForcedTokenSequenceLogitsProcessorList } from "@/features/transfo
 import { compareForcedTokenSequence } from "@/features/transformers-js/model-support-investigation/logic/plan-tool-protocol-probe";
 import { selectGenerationAutoClass } from "@/features/transformers-js/model-support-investigation/logic/select-generation-auto-class";
 import { serializeInvestigationError } from "@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error";
+import { MODEL_SUPPORT_INVESTIGATION_REFERENCE_PLAIN_TEXT } from "@/features/transformers-js/model-support-investigation/fixtures/reference-plain-text";
 import { observeProductionToolParser } from "@/features/transformers-js/model-support-investigation/worker/observe-production-tool-parser";
 import { observeToolResultTemplateRoundTrip } from "@/features/transformers-js/model-support-investigation/worker/observe-tool-result-template-roundtrip";
 import { selectGenerationStrategy } from "@/features/transformers-js/generation-strategies";
@@ -89,6 +96,139 @@ type CandidateModel =
   | Awaited<ReturnType<typeof AutoModelForImageTextToText.from_pretrained>>
   | Awaited<ReturnType<typeof AutoModelForAudioTextToText.from_pretrained>>
   | Awaited<ReturnType<typeof AutoModelForSpeechSeq2Seq.from_pretrained>>;
+
+type CandidateTextInput = {
+  tokenizer: PreTrainedTokenizer,
+  modelInputs: Record<string, TransformersTensor>,
+  inputTokenIds: number[],
+  inputText?: string,
+};
+
+function tensorMetadata({ name, tensor }: {
+  name: string,
+  tensor: TransformersTensor,
+}): ModelSupportInvestigationInputTensorMetadata {
+  return {
+    name,
+    dtype: tensor.type,
+    dims: [...tensor.dims],
+    location: tensor.location,
+  };
+}
+
+function tokenIdsFromTensor({ tensor }: { tensor: TransformersTensor }): number[] {
+  if (tensor.dims.length !== 2 || tensor.dims[0] !== 1) {
+    throw new Error(`Expected a single-batch input_ids Tensor, got [${tensor.dims.join(",")}]`);
+  }
+  return Array.from(tensor.data as ArrayLike<number | bigint>, value => Number(value));
+}
+
+function tensorInputsFromUnknown({ value }: { value: unknown }): Record<string, TransformersTensor> {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Tokenizer did not return a model input dictionary");
+  }
+  const result: Record<string, TransformersTensor> = {};
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") continue;
+    const tensor = Reflect.get(value, key);
+    if (tensor instanceof TransformersTensor) result[key] = tensor;
+  }
+  if (result.input_ids === undefined) {
+    throw new Error("Tokenizer model input dictionary did not contain a Transformers.js input_ids Tensor");
+  }
+  return result;
+}
+
+function buildObservedTokenIdInput({ tokenizer, inputIds }: {
+  tokenizer: PreTrainedTokenizer,
+  inputIds: number[],
+}): CandidateTextInput {
+  if (inputIds.length === 0) {
+    throw new Error("The deterministic user-generation template case did not produce input token IDs");
+  }
+  const inputIdsTensor = new TransformersTensor(
+    "int64",
+    BigInt64Array.from(inputIds, value => BigInt(value)),
+    [1, inputIds.length],
+  );
+  const attentionMask = new TransformersTensor(
+    "int64",
+    BigInt64Array.from(inputIds, () => 1n),
+    [1, inputIds.length],
+  );
+  return {
+    tokenizer,
+    modelInputs: { input_ids: inputIdsTensor, attention_mask: attentionMask },
+    inputTokenIds: [...inputIds],
+  };
+}
+
+function buildFixedPlainTextInput({ tokenizer }: {
+  tokenizer: PreTrainedTokenizer,
+}): CandidateTextInput & { inputText: string } {
+  const value = tokenizer(MODEL_SUPPORT_INVESTIGATION_REFERENCE_PLAIN_TEXT, { return_tensor: true });
+  const modelInputs = tensorInputsFromUnknown({ value });
+  return {
+    tokenizer,
+    modelInputs,
+    inputTokenIds: tokenIdsFromTensor({ tensor: modelInputs.input_ids! }),
+    inputText: MODEL_SUPPORT_INVESTIGATION_REFERENCE_PLAIN_TEXT,
+  };
+}
+
+function buildChatTemplateInput({ tokenizer, templateCase }: {
+  tokenizer: PreTrainedTokenizer,
+  templateCase: ModelSupportInvestigationTemplateCase | undefined,
+}): CandidateTextInput {
+  if (templateCase === undefined) {
+    throw new Error("The deterministic user-generation template case is unavailable");
+  }
+  const value = tokenizer.apply_chat_template(
+    templateCase.messages as Parameters<PreTrainedTokenizer["apply_chat_template"]>[0],
+    {
+      add_generation_prompt: templateCase.addGenerationPrompt,
+      ...(templateCase.tools === undefined ? {} : { tools: templateCase.tools }),
+      tokenize: true,
+      return_tensor: true,
+      return_dict: true,
+    },
+  );
+  const modelInputs = tensorInputsFromUnknown({ value });
+  return {
+    tokenizer,
+    modelInputs,
+    inputTokenIds: tokenIdsFromTensor({ tensor: modelInputs.input_ids! }),
+  };
+}
+
+function buildCandidateTextInput({ tokenizer, strategy, templateCase, observedInputIds }: {
+  tokenizer: PreTrainedTokenizer,
+  strategy: ModelSupportInvestigationTextInputStrategy,
+  templateCase: ModelSupportInvestigationTemplateCase | undefined,
+  observedInputIds: number[],
+}): CandidateTextInput {
+  switch (strategy) {
+  case "chat-template-tensor-dict":
+    return buildChatTemplateInput({ tokenizer, templateCase });
+  case "observed-token-ids-transformers-tensor":
+    return buildObservedTokenIdInput({ tokenizer, inputIds: observedInputIds });
+  case "fixed-plain-text-tokenizer-tensor-dict":
+    return buildFixedPlainTextInput({ tokenizer });
+  default: {
+    const _ex: never = strategy;
+    return _ex;
+  }
+  }
+}
+
+function disposeCandidateTextInput({ input }: { input: CandidateTextInput }): void {
+  const disposed = new Set<TransformersTensor>();
+  for (const tensor of Object.values(input.modelInputs)) {
+    if (disposed.has(tensor)) continue;
+    disposed.add(tensor);
+    tensor.dispose();
+  }
+}
 
 async function loadCandidateModel({
   autoClass,
@@ -212,8 +352,9 @@ function reconstructProductionTextStreamerChunks({
 
 const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback must be a top-level remote argument to remain transferable.
-  async runPartialInvestigation(modelId, onEvent) {
-    return runPartialModelSupportInvestigation({
+  async runPartialInvestigation(modelId, onEvent, onRunCheckpoint) {
+    const run = await runPartialModelSupportInvestigation({
+      inspectPersistenceRoundTrip: () => inspectChatPersistenceRoundTrip(),
       runRuntimePreflight: () => runRuntimeIntegrityPreflight({
         modelId,
         assets,
@@ -228,7 +369,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           });
           try {
             const outputs = await session.run({
-              x: new Tensor("float32", Float32Array.from([7]), [1]),
+              x: new OrtTensor("float32", Float32Array.from([7]), [1]),
             });
             const output = outputs.y;
             if (output === undefined || output.data.length !== 1) {
@@ -238,10 +379,12 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
               fixtureId: RUNTIME_CONTROL_FIXTURE_ID,
               fixtureSha256: RUNTIME_CONTROL_FIXTURE_SHA256,
               executionProvider: "wasm",
+              status: "passed",
               inputName: "x",
               outputName: "y",
               inputValue: 7,
               outputValue: Number(output.data[0]),
+              error: undefined,
             };
           } finally {
             await session.release();
@@ -267,7 +410,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           });
           try {
             const outputs = await session.run({
-              x: new Tensor("float32", Float32Array.from([7]), [1]),
+              x: new OrtTensor("float32", Float32Array.from([7]), [1]),
             });
             const output = outputs.y;
             if (output === undefined || output.data.length !== 1) {
@@ -296,7 +439,15 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           navigatorValue: navigator,
           crossOriginIsolatedValue: globalThis.crossOriginIsolated === true,
         }),
+        inspectWasmConfiguration: () => {
+          const wasm = env.backends.onnx.wasm;
+          return {
+            numThreads: typeof wasm?.numThreads === "number" ? wasm.numThreads : undefined,
+            proxy: typeof wasm?.proxy === "boolean" ? wasm.proxy : undefined,
+          };
+        },
         onEvent,
+        onRunUpdate: ({ run }) => onRunCheckpoint({ run }),
         createRunId: () => crypto.randomUUID(),
         now: () => new Date().toISOString(),
       }),
@@ -350,15 +501,24 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         });
       },
       onEvent,
+      onRunUpdate: ({ run: updatedRun }) => onRunCheckpoint({ run: toPlanningWorkerRun({ run: updatedRun }) }),
       now: () => new Date().toISOString(),
     });
+    return toPlanningWorkerRun({ run });
   },
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level remote arguments to remain transferable.
-  async runCandidateAttempt(repository, declarations, templateBehavior, cacheRevisionAliases, candidate, onEvent, onAttemptEvent) {
+  async runCandidateAttempt(repository, declarations, templateBehavior, cacheRevisionAliases, candidate, onEvent, onAttemptEvent, onAttemptCheckpoint) {
     env.customCache = createOpfsModelCache({ revisionAliases: cacheRevisionAliases });
     const config = new PretrainedConfig(declarations.config);
     const autoClass = selectGenerationAutoClass({ repository, declarations });
     const modelLoadProgress = createModelLoadProgressTracker({ candidateId: candidate.candidateId });
+    let candidateTokenizer: PreTrainedTokenizer | undefined;
+    const loadCandidateTokenizer = async (): Promise<PreTrainedTokenizer> => {
+      candidateTokenizer ??= await AutoTokenizer.from_pretrained(repository.normalizedModelId, {
+        revision: repository.resolvedRevision,
+      });
+      return candidateTokenizer;
+    };
     const attempt = await runCandidateLoadAttempt({
       repository,
       declarations,
@@ -404,41 +564,29 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           }),
         };
       },
-      buildInput: async ({ inputIds }) => {
-        const tokenizer = await AutoTokenizer.from_pretrained(repository.normalizedModelId, {
-          revision: repository.resolvedRevision,
+      buildInput: async ({ inputIds, strategy }) => {
+        const tokenizer = await loadCandidateTokenizer();
+        const input = buildCandidateTextInput({
+          tokenizer,
+          strategy,
+          templateCase: templateBehavior?.cases.find(item => item.caseId === "user-generation"),
+          observedInputIds: inputIds,
         });
-        const inputIdTensor = new Tensor("int64", BigInt64Array.from(inputIds, value => BigInt(value)), [1, inputIds.length]);
-        const attentionMaskTensor = new Tensor("int64", BigInt64Array.from(inputIds, () => 1n), [1, inputIds.length]);
         return {
-          input: {
-            tokenizer,
-            inputIds: inputIdTensor,
-            attentionMask: attentionMaskTensor,
-          },
-          tensors: [{
-            name: "input_ids",
-            dtype: inputIdTensor.type,
-            dims: [...inputIdTensor.dims],
-            location: inputIdTensor.location,
-          }, {
-            name: "attention_mask",
-            dtype: attentionMaskTensor.type,
-            dims: [...attentionMaskTensor.dims],
-            location: attentionMaskTensor.location,
-          }],
+          input,
+          inputTokenIds: [...input.inputTokenIds],
+          tensors: Object.entries(input.modelInputs).map(([name, tensor]) => tensorMetadata({ name, tensor })),
+          ...(input.inputText === undefined ? {} : { inputText: input.inputText }),
         };
       },
       generateMinimumToken: async ({ model, input }) => {
         const output = await model.generate({
-          input_ids: input.inputIds,
-          attention_mask: input.attentionMask,
+          ...input.modelInputs,
           max_new_tokens: 1,
           do_sample: false,
         });
         const sequence = generatedSequence({ output });
-        const inputTokenCount = input.inputIds.dims.at(-1);
-        if (inputTokenCount === undefined) throw new Error("Input tensor is missing its token dimension");
+        const inputTokenCount = input.inputTokenIds.length;
         const generatedTokenIds = model.config.is_encoder_decoder
           ? sequence
           : sequence.slice(inputTokenCount);
@@ -450,18 +598,17 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
       },
       generateNaturalBaseline: async ({ model, input }) => {
         const output = await model.generate({
-          input_ids: input.inputIds,
-          attention_mask: input.attentionMask,
+          ...input.modelInputs,
           max_new_tokens: 16,
           do_sample: false,
         });
         const sequence = generatedSequence({ output });
-        const inputTokenCount = input.inputIds.dims.at(-1);
-        if (inputTokenCount === undefined) throw new Error("Input tensor is missing its token dimension");
+        const inputTokenCount = input.inputTokenIds.length;
         const generatedTokenIds = model.config.is_encoder_decoder
           ? sequence
           : sequence.slice(inputTokenCount);
         return {
+          status: "observed",
           forced: false,
           maxNewTokens: 16,
           doSample: false,
@@ -470,33 +617,26 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           termination: generatedTokenIds.length >= 16 ? "limit-reached" : "ended-before-limit",
         };
       },
-      generateToolProtocolProbe: async ({ model, inputTokenIds, forcedTokenIds }) => {
-        const tokenizer = await AutoTokenizer.from_pretrained(repository.normalizedModelId, {
-          revision: repository.resolvedRevision,
+      generateToolProtocolProbe: async ({ model, inputTokenIds, forcedTokenIds, inputStrategy }) => {
+        const tokenizer = await loadCandidateTokenizer();
+        const probeInput = buildCandidateTextInput({
+          tokenizer,
+          strategy: inputStrategy,
+          templateCase: templateBehavior?.cases.find(item => item.caseId === "tools-generation"),
+          observedInputIds: inputTokenIds,
         });
-        const inputIds = new Tensor(
-          "int64",
-          BigInt64Array.from(inputTokenIds, value => BigInt(value)),
-          [1, inputTokenIds.length],
-        );
-        const attentionMask = new Tensor(
-          "int64",
-          BigInt64Array.from(inputTokenIds, () => 1n),
-          [1, inputTokenIds.length],
-        );
         try {
           const output = await model.generate({
-            input_ids: inputIds,
-            attention_mask: attentionMask,
+            ...probeInput.modelInputs,
             max_new_tokens: forcedTokenIds.length,
             do_sample: false,
             logits_processor: createForcedTokenSequenceLogitsProcessorList({
-              promptLength: inputTokenIds.length,
+              promptLength: probeInput.inputTokenIds.length,
               forcedTokenIds,
             }),
           });
           const sequence = generatedSequence({ output });
-          const generatedTokenIds = sequence.slice(inputTokenIds.length);
+          const generatedTokenIds = sequence.slice(probeInput.inputTokenIds.length);
           const comparison = compareForcedTokenSequence({
             expected: forcedTokenIds,
             actual: generatedTokenIds,
@@ -514,7 +654,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
             case "qwen3_5":
               inputChunks = reconstructProductionTextStreamerChunks({
                 tokenizer,
-                inputTokenIds,
+                inputTokenIds: probeInput.inputTokenIds,
                 generatedTokenIds,
                 skipSpecialTokens: true,
               });
@@ -522,7 +662,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
             case "gpt-oss":
               inputChunks = reconstructProductionTextStreamerChunks({
                 tokenizer,
-                inputTokenIds,
+                inputTokenIds: probeInput.inputTokenIds,
                 generatedTokenIds,
                 skipSpecialTokens: false,
               });
@@ -557,7 +697,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
             generationCaseId: "tools-generation",
             assistantToolCallCaseId: "assistant-tool-call-history",
             toolResultContinuationCaseId: "tool-result-continuation",
-            inputTokenIds: [...inputTokenIds],
+            inputTokenIds: [...probeInput.inputTokenIds],
             forcedTokenIds: [...forcedTokenIds],
             generatedTokenIds,
             generatedText: tokenizer.decode(generatedTokenIds, { skip_special_tokens: false }),
@@ -570,13 +710,11 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
             toolResultTemplateRoundTrip,
           };
         } finally {
-          inputIds.dispose();
-          attentionMask.dispose();
+          disposeCandidateTextInput({ input: probeInput });
         }
       },
       disposeInput: async ({ input }) => {
-        input.inputIds.dispose();
-        input.attentionMask.dispose();
+        disposeCandidateTextInput({ input });
       },
       disposeModel: async ({ model }) => {
         await model.dispose();
@@ -590,6 +728,9 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
             detail: event.detail,
           },
         });
+      },
+      onAttemptUpdate: ({ attempt: checkpoint }) => {
+        onAttemptCheckpoint({ attempt: checkpoint });
       },
       now: () => new Date().toISOString(),
       createAttemptId: () => crypto.randomUUID(),

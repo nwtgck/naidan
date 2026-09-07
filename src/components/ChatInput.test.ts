@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
 import { computed, nextTick, ref } from 'vue';
 import { toVolumeId, toChatId } from '@/01-models/ids';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const { mockRouter, mockScheduleUnusedEmptyVolumeCleanup, mockRemoveMount } = vi.hoisted(() => ({
   mockRouter: {

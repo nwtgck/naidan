@@ -2,7 +2,7 @@ import { parseStandardArgv, type StandardArgvParserSpec } from '@/features/wesh/
 import { STANDARD_HELP_EARLY_EXIT_OPTIONS, stopStandardArgvAtFirstEarlyExit } from '@/features/wesh/commands/_shared/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/features/wesh/commands/_shared/usage';
 import { resolveInternalTemporaryDirectory } from '@/features/wesh/commands/_shared/temporary-directory';
-import { isPathNotFoundError } from '@/features/wesh/commands/_shared/path-errors';
+import { isPathNotFoundError, isPathTypeMismatchError } from '@/features/wesh/commands/_shared/path-errors';
 import { decodeWeshZipEntryName } from '@/features/wesh/commands/_shared/zip-entry-name';
 import {
   createWebZipCompressionCodec,
@@ -19,7 +19,7 @@ import {
 } from '@/features/wesh/zip-stream';
 import type {
   WeshCommandContext,
-  WeshCommandDefinition,
+  WeshCommandImplementation,
   WeshCommandResult,
   WeshEntryRef,
   WeshFileHandle,
@@ -31,6 +31,10 @@ import { openFileReadStream, openHandleReadStream } from '@/features/wesh/utils/
 const zipArgvSpec: StandardArgvParserSpec = {
   options: [
     { kind: 'flag', short: 'r', long: 'recurse-paths', effects: [{ key: 'recursive', value: true }], help: { summary: 'travel the directory structure recursively', category: 'common' } },
+    { kind: 'flag', short: 'u', long: 'update', effects: [{ key: 'selectionMode', value: 'update' }], help: { summary: 'update existing entries and add new files when newer', category: 'common' } },
+    { kind: 'flag', short: 'f', long: 'freshen', effects: [{ key: 'selectionMode', value: 'freshen' }], help: { summary: 'freshen existing entries only when source files are newer', category: 'common' } },
+    { kind: 'flag', short: 'd', long: 'delete', effects: [{ key: 'deleteMode', value: true }], help: { summary: 'remove matching entries from an existing archive', category: 'common' } },
+    { kind: 'flag', short: 'm', long: 'move', effects: [{ key: 'moveMode', value: true }], help: { summary: 'move files into the archive by deleting sources after success', category: 'common' } },
     { kind: 'flag', short: 'j', long: 'junk-paths', effects: [{ key: 'junkPaths', value: true }], help: { summary: 'store just the name of a saved file, without path information', category: 'common' } },
     { kind: 'flag', short: 'q', long: 'quiet', effects: [{ key: 'quiet', value: true }], help: { summary: 'quiet operation', category: 'common' } },
     { kind: 'flag', short: '0', long: undefined, effects: [{ key: 'compressionMode', value: 'store' }], help: { summary: 'store only', category: 'common' } },
@@ -66,6 +70,48 @@ interface PendingZipEntry {
   readonly archivePath: string,
   readonly type: WeshFileType,
   readonly entryRef: WeshEntryRef | undefined,
+}
+
+type ZipSelectionMode = 'replace' | 'update' | 'freshen';
+
+function shouldReplaceExistingEntry({
+  selectionMode,
+  sourceModifiedAt,
+  archiveModifiedAt,
+}: {
+  selectionMode: ZipSelectionMode,
+  sourceModifiedAt: Date,
+  archiveModifiedAt: Date,
+}): boolean {
+  switch (selectionMode) {
+  case 'replace':
+    return true;
+  case 'update':
+  case 'freshen':
+    return sourceModifiedAt.getTime() > archiveModifiedAt.getTime();
+  default: {
+    const _ex: never = selectionMode;
+    throw new Error(`Unhandled zip selection mode: ${_ex}`);
+  }
+  }
+}
+
+function shouldAddNewEntry({
+  selectionMode,
+}: {
+  selectionMode: ZipSelectionMode,
+}): boolean {
+  switch (selectionMode) {
+  case 'replace':
+  case 'update':
+    return true;
+  case 'freshen':
+    return false;
+  default: {
+    const _ex: never = selectionMode;
+    throw new Error(`Unhandled zip selection mode: ${_ex}`);
+  }
+  }
 }
 
 type SplitZipArgsResult =
@@ -122,6 +168,10 @@ function addDefaultZipExtension({ path }: { path: string }): string {
 
 const ZIP_SHORT_FLAG_OPTIONS_BEFORE_EXCLUDE = new Set([
   'r',
+  'u',
+  'f',
+  'd',
+  'm',
   'j',
   'q',
   '0',
@@ -135,6 +185,25 @@ const ZIP_SHORT_FLAG_OPTIONS_BEFORE_EXCLUDE = new Set([
   '8',
   '9',
 ]);
+
+function isZipSymlinkCycleError({
+  error,
+}: {
+  error: unknown,
+}): boolean {
+  return error instanceof Error
+    && error.message.startsWith('Too many levels of symbolic links:');
+}
+
+function isUnmatchedZipInputError({
+  error,
+}: {
+  error: unknown,
+}): boolean {
+  return isPathNotFoundError({ error })
+    || isPathTypeMismatchError({ error })
+    || isZipSymlinkCycleError({ error });
+}
 
 function splitZipExcludeStarter({
   token,
@@ -485,6 +554,68 @@ async function removePathIfPresent({
   }
 }
 
+function isPathAtOrBelow({
+  path,
+  root,
+}: {
+  path: string,
+  root: string,
+}): boolean {
+  const normalizedRoot = root.endsWith('/') && root !== '/'
+    ? root.slice(0, -1)
+    : root;
+  return path === normalizedRoot
+    || (normalizedRoot === '/' ? path.startsWith('/') : path.startsWith(`${normalizedRoot}/`));
+}
+
+function pathDepth({ path }: { path: string }): number {
+  return path.split('/').filter(Boolean).length;
+}
+
+async function removeMovedSources({
+  context,
+  paths,
+}: {
+  context: WeshCommandContext,
+  paths: ReadonlySet<string>,
+}): Promise<void> {
+  const orderedPaths = [...paths].sort((left, right) => {
+    const depthDifference = pathDepth({ path: right }) - pathDepth({ path: left });
+    if (depthDifference !== 0) {
+      return depthDifference;
+    }
+    return right.localeCompare(left);
+  });
+
+  for (const path of orderedPaths) {
+    try {
+      const entry = await context.files.resolveEntry({
+        path,
+        finalSymlinkTreatment: 'no-follow',
+      });
+      switch (entry.type) {
+      case 'directory':
+        await context.files.rmdir({ path: entry.fullPath });
+        break;
+      case 'file':
+      case 'fifo':
+      case 'chardev':
+      case 'symlink':
+        await context.files.unlink({ path: entry.fullPath });
+        break;
+      default: {
+        const _ex: never = entry;
+        throw new Error(`Unhandled moved source type: ${String(_ex)}`);
+      }
+      }
+    } catch {
+      // Info-ZIP move mode treats source cleanup as best-effort after the
+      // archive transaction has succeeded. A source that cannot be removed
+      // must be preserved rather than turning archive success into data loss.
+    }
+  }
+}
+
 async function pathExists({
   context,
   path,
@@ -503,6 +634,7 @@ async function pathExists({
 interface ZipArchiveStorage {
   readonly exists: boolean,
   readonly path: string,
+  readonly isRegularFile: boolean,
 }
 
 async function resolveZipArchiveStorage({
@@ -520,7 +652,7 @@ async function resolveZipArchiveStorage({
     });
   } catch (error: unknown) {
     if (isPathNotFoundError({ error })) {
-      return { exists: false, path };
+      return { exists: false, path, isRegularFile: false };
     }
     throw error;
   }
@@ -528,24 +660,27 @@ async function resolveZipArchiveStorage({
   switch (archiveEntry.type) {
   case 'symlink':
     try {
+      const target = await context.files.resolveEntry({
+        path,
+        finalSymlinkTreatment: 'follow',
+      });
       return {
         exists: true,
-        path: (await context.files.resolveEntry({
-          path,
-          finalSymlinkTreatment: 'follow',
-        })).fullPath,
+        path: target.fullPath,
+        isRegularFile: target.type === 'file',
       };
     } catch (error: unknown) {
       if (isPathNotFoundError({ error })) {
-        return { exists: false, path: archiveEntry.fullPath };
+        return { exists: false, path: archiveEntry.fullPath, isRegularFile: false };
       }
       throw error;
     }
   case 'file':
+    return { exists: true, path: archiveEntry.fullPath, isRegularFile: true };
   case 'directory':
   case 'fifo':
   case 'chardev':
-    return { exists: true, path: archiveEntry.fullPath };
+    return { exists: true, path: archiveEntry.fullPath, isRegularFile: false };
   default: {
     const _ex: never = archiveEntry;
     throw new Error(`Unhandled archive entry type: ${String(((_ex satisfies never) as { readonly type: string }).type)}`);
@@ -625,6 +760,7 @@ async function addPendingEntry({
   compression,
   quiet,
   diagnosticsToStderr,
+  modifiedAt,
 }: {
   context: WeshCommandContext,
   writer: StreamingZipWriter,
@@ -632,18 +768,19 @@ async function addPendingEntry({
   compression: ZipCompression,
   quiet: boolean,
   diagnosticsToStderr: boolean,
+  modifiedAt?: Date,
 }): Promise<boolean> {
   switch (entry.type) {
   case 'directory':
     await writer.addDirectory({
       name: entry.archivePath,
-      modifiedAt: await getEntryModifiedAt({ context, entry }),
+      modifiedAt: modifiedAt ?? await getEntryModifiedAt({ context, entry }),
     });
     return false;
   case 'file':
     await writer.addFile({
       name: entry.archivePath,
-      modifiedAt: await getEntryModifiedAt({ context, entry }),
+      modifiedAt: modifiedAt ?? await getEntryModifiedAt({ context, entry }),
       compression,
       stream: await openEntryStream({ context, entry }),
     });
@@ -722,12 +859,7 @@ async function disposeCentralDirectoryStoreSafely({
   }
 }
 
-export const zipCommandDefinition: WeshCommandDefinition = {
-  meta: {
-    name: 'zip',
-    description: 'Package and compress files into ZIP archives',
-    usage: 'zip [-rjq0-9] zipfile file...',
-  },
+export const zipCommandImplementation: WeshCommandImplementation = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const splitArgs = splitZipArgs({ args: context.args });
     if (!splitArgs.ok) {
@@ -777,6 +909,12 @@ export const zipCommandDefinition: WeshCommandDefinition = {
     const archiveStorage = writeArchiveToStdout
       ? undefined
       : await resolveZipArchiveStorage({ context, path: archivePath });
+    if (archiveStorage?.exists === true && !archiveStorage.isRegularFile) {
+      await context.text().print({
+        text: `\nzip error: Zip file structure invalid (${archiveOperand})\n`,
+      });
+      return { exitCode: 3 };
+    }
     const archiveStoragePath = archiveStorage?.path ?? archivePath;
     const archiveTemporaryPath = writeArchiveToStdout
       ? undefined
@@ -785,16 +923,29 @@ export const zipCommandDefinition: WeshCommandDefinition = {
       ? undefined
       : `${archiveTemporaryPath}.original`;
     const archiveAlreadyExists = archiveStorage?.exists === true;
+    const quiet = parsed.optionValues.quiet === true;
+    const selectionMode = (parsed.optionValues.selectionMode as ZipSelectionMode | undefined) ?? 'replace';
+    const deleteMode = parsed.optionValues.deleteMode === true;
+    const moveMode = parsed.optionValues.moveMode === true;
+    if ((selectionMode === 'freshen' || deleteMode) && !archiveAlreadyExists) {
+      if (!quiet) {
+        await context.text().print({ text: `	zip warning: ${archiveOperand} not found or empty
+` });
+      }
+      return { exitCode: 12 };
+    }
     const temporaryDirectory = await resolveInternalTemporaryDirectory({ context });
     const centralDirectoryPath = `${temporaryDirectory}/wesh-zip-central-${createTemporarySuffix()}`;
     const excludeMatchers = splitArgs.excludePatterns.map(pattern => globToRegExp({ pattern }));
+    const deleteMatchers = deleteMode
+      ? parsed.positionals.slice(1).map(pattern => globToRegExp({ pattern }))
+      : [];
     const inputOperands: ZipInputOperand[] = parsed.positionals.slice(1).map(displayPath => ({
       path: displayPath === '-' ? '-' : resolvePath({ cwd: context.cwd, path: displayPath }),
       displayPath,
     }));
     const recursive = parsed.optionValues.recursive === true;
     const junkPaths = parsed.optionValues.junkPaths === true;
-    const quiet = parsed.optionValues.quiet === true;
     const compression: ZipCompression = parsed.optionValues.compressionMode === 'store'
       ? 'store'
       : 'deflate';
@@ -802,10 +953,21 @@ export const zipCommandDefinition: WeshCommandDefinition = {
     let outputHandle: WeshFileHandle | undefined;
     let centralDirectoryHandle: WeshFileHandle | undefined;
     let centralDirectoryStore: ZipCentralDirectoryStore | undefined;
-    let matchedInput = false;
+    let matchedInput = deleteMode;
     let hadError = false;
     let archiveInstalled = false;
     const inputEntryKeyByArchivePath = new Map<string, string>();
+    const moveSourcePathByArchivePath = new Map<string, string>();
+    const moveDeletionPaths = new Set<string>();
+    const scheduleMoveDeletion = ({ entry }: { entry: PendingZipEntry }): void => {
+      if (!moveMode) {
+        return;
+      }
+      const sourcePath = moveSourcePathByArchivePath.get(entry.archivePath);
+      if (sourcePath !== undefined) {
+        moveDeletionPaths.add(sourcePath);
+      }
+    };
     const internalSourcePaths = new Set([
       archivePath,
       archiveStoragePath,
@@ -848,7 +1010,7 @@ export const zipCommandDefinition: WeshCommandDefinition = {
         compressionCodec: createWebZipCompressionCodec(),
       });
 
-      for (const operand of inputOperands) {
+      for (const operand of deleteMode ? [] : inputOperands) {
         try {
           for await (const entry of iterateZipEntriesForOperand({
             context,
@@ -862,6 +1024,37 @@ export const zipCommandDefinition: WeshCommandDefinition = {
               || internalSourcePaths.has(entry.sourcePath)
               || (entry.entryRef !== undefined && internalSourcePaths.has(entry.entryRef.fullPath))
             ) {
+              continue;
+            }
+            const ignoredSpecialWarning = (() => {
+              const displayPath = entry.sourcePath === operand.path
+                ? operand.displayPath
+                : entry.sourcePath;
+              switch (entry.type) {
+              case 'fifo':
+                return `	zip warning: ignoring FIFO (Named Pipe) - use -FI to read: ${displayPath}
+`;
+              case 'chardev':
+                return `	zip warning: ignoring special file: ${displayPath}
+`;
+              case 'directory':
+              case 'file':
+              case 'symlink':
+                return undefined;
+              default: {
+                const _ex: never = entry.type;
+                throw new Error(`Unhandled file type: ${String(_ex)}`);
+              }
+              }
+            })();
+            if (ignoredSpecialWarning !== undefined) {
+              if (!quiet) {
+                await writeZipDiagnostic({
+                  context,
+                  text: ignoredSpecialWarning,
+                  toStderr: writeArchiveToStdout,
+                });
+              }
               continue;
             }
             const inputEntryKey = `${entry.sourcePath}\0${entry.type}`;
@@ -878,6 +1071,13 @@ export const zipCommandDefinition: WeshCommandDefinition = {
               return { exitCode: 16 };
             }
             inputEntryKeyByArchivePath.set(entry.archivePath, inputEntryKey);
+            if (
+              moveMode
+              && operand.path !== '-'
+              && isPathAtOrBelow({ path: entry.sourcePath, root: operand.path })
+            ) {
+              moveSourcePathByArchivePath.set(entry.archivePath, entry.sourcePath);
+            }
             matchedInput = true;
             if (pendingUpdateEntries !== undefined) {
               switch (entry.type) {
@@ -905,19 +1105,23 @@ export const zipCommandDefinition: WeshCommandDefinition = {
             } else if (pendingNewEntries !== undefined) {
               pendingNewEntries.push(entry);
             } else {
-              hadError = await addPendingEntry({
+              const entryHadError = await addPendingEntry({
                 context,
                 writer,
                 entry,
                 compression,
                 quiet,
                 diagnosticsToStderr: writeArchiveToStdout,
-              }) || hadError;
+              });
+              hadError = entryHadError || hadError;
+              if (!entryHadError) {
+                scheduleMoveDeletion({ entry });
+              }
             }
           }
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
-          if (message.includes('NotFoundError')) {
+          if (isUnmatchedZipInputError({ error })) {
             if (!quiet) {
               await writeZipDiagnostic({
                 context,
@@ -947,26 +1151,23 @@ export const zipCommandDefinition: WeshCommandDefinition = {
 
       if (pendingNewEntries !== undefined) {
         for (const entry of pendingNewEntries) {
-          hadError = await addPendingEntry({
+          const entryHadError = await addPendingEntry({
             context,
             writer,
             entry,
             compression,
             quiet,
             diagnosticsToStderr: writeArchiveToStdout,
-          }) || hadError;
+          });
+          hadError = entryHadError || hadError;
+          if (!entryHadError) {
+            scheduleMoveDeletion({ entry });
+          }
         }
       }
 
       if (pendingUpdateEntries !== undefined) {
-        const replacementByName = new Map<string, PendingZipEntry>();
-        const replacementOrder: string[] = [];
-        for (const entry of pendingUpdateEntries) {
-          if (!replacementByName.has(entry.archivePath)) {
-            replacementOrder.push(entry.archivePath);
-          }
-          replacementByName.set(entry.archivePath, entry);
-        }
+        let selectedMutation = false;
         const archiveHandle = await context.files.open({
           path: archiveStoragePath,
           flags: {
@@ -982,38 +1183,83 @@ export const zipCommandDefinition: WeshCommandDefinition = {
           decodeEntryName: decodeWeshZipEntryName,
         });
         try {
-          for await (const existingEntry of reader.entries()) {
-            const replacement = replacementByName.get(existingEntry.name);
-            if (replacement === undefined) {
+          if (deleteMode) {
+            for await (const existingEntry of reader.entries()) {
+              if (deleteMatchers.some(matcher => matcher.test(existingEntry.name))) {
+                selectedMutation = true;
+                continue;
+              }
               await addExistingEntry({ writer, reader, entry: existingEntry });
-              continue;
             }
-            hadError = await addPendingEntry({
-              context,
-              writer,
-              entry: replacement,
-              compression,
-              quiet,
-              diagnosticsToStderr: writeArchiveToStdout,
-            }) || hadError;
-            replacementByName.delete(existingEntry.name);
-          }
-          for (const name of replacementOrder) {
-            const entry = replacementByName.get(name);
-            if (entry === undefined) {
-              continue;
+          } else {
+            const replacementByName = new Map<string, PendingZipEntry>();
+            const replacementOrder: string[] = [];
+            for (const entry of pendingUpdateEntries) {
+              if (!replacementByName.has(entry.archivePath)) {
+                replacementOrder.push(entry.archivePath);
+              }
+              replacementByName.set(entry.archivePath, entry);
             }
-            hadError = await addPendingEntry({
-              context,
-              writer,
-              entry,
-              compression,
-              quiet,
-              diagnosticsToStderr: writeArchiveToStdout,
-            }) || hadError;
+            for await (const existingEntry of reader.entries()) {
+              const replacement = replacementByName.get(existingEntry.name);
+              if (replacement === undefined) {
+                await addExistingEntry({ writer, reader, entry: existingEntry });
+                continue;
+              }
+              const sourceModifiedAt = await getEntryModifiedAt({ context, entry: replacement });
+              if (shouldReplaceExistingEntry({
+                selectionMode,
+                sourceModifiedAt,
+                archiveModifiedAt: existingEntry.modifiedAt,
+              })) {
+                const entryHadError = await addPendingEntry({
+                  context,
+                  writer,
+                  entry: replacement,
+                  compression,
+                  quiet,
+                  diagnosticsToStderr: writeArchiveToStdout,
+                  modifiedAt: sourceModifiedAt,
+                });
+                hadError = entryHadError || hadError;
+                if (!entryHadError) {
+                  scheduleMoveDeletion({ entry: replacement });
+                }
+                selectedMutation = true;
+              } else {
+                await addExistingEntry({ writer, reader, entry: existingEntry });
+                scheduleMoveDeletion({ entry: replacement });
+              }
+              replacementByName.delete(existingEntry.name);
+            }
+            for (const name of replacementOrder) {
+              const entry = replacementByName.get(name);
+              if (entry === undefined || !shouldAddNewEntry({ selectionMode })) {
+                continue;
+              }
+              const entryHadError = await addPendingEntry({
+                context,
+                writer,
+                entry,
+                compression,
+                quiet,
+                diagnosticsToStderr: writeArchiveToStdout,
+              });
+              hadError = entryHadError || hadError;
+              if (!entryHadError) {
+                scheduleMoveDeletion({ entry });
+              }
+              selectedMutation = true;
+            }
           }
         } finally {
           await reader.close();
+        }
+        if ((deleteMode || selectionMode !== 'replace') && !selectedMutation) {
+          if (moveMode && moveDeletionPaths.size > 0) {
+            await removeMovedSources({ context, paths: moveDeletionPaths });
+          }
+          return { exitCode: hadError ? 1 : 12 };
         }
       }
 
@@ -1028,6 +1274,9 @@ export const zipCommandDefinition: WeshCommandDefinition = {
 
       if (writeArchiveToStdout) {
         archiveInstalled = true;
+        if (moveMode && moveDeletionPaths.size > 0) {
+          await removeMovedSources({ context, paths: moveDeletionPaths });
+        }
         return { exitCode: hadError ? 1 : 0 };
       }
       if (archiveTemporaryPath === undefined || archiveRecoveryPath === undefined) {
@@ -1068,6 +1317,9 @@ export const zipCommandDefinition: WeshCommandDefinition = {
       if (originalMoved) {
         await removePathIfPresent({ context, path: archiveRecoveryPath });
       }
+      if (moveMode && moveDeletionPaths.size > 0) {
+        await removeMovedSources({ context, paths: moveDeletionPaths });
+      }
       return { exitCode: hadError ? 1 : 0 };
     } finally {
       await disposeCentralDirectoryStoreSafely({ store: centralDirectoryStore });
@@ -1084,6 +1336,9 @@ export const zipCommandDefinition: WeshCommandDefinition = {
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
+  isUnmatchedZipInputError,
+  shouldAddNewEntry,
+  shouldReplaceExistingEntry,
   splitZipArgs,
   splitZipExcludeStarter,
 };

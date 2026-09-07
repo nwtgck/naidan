@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 import { storageService } from '@/00-storage/service';
@@ -104,6 +105,10 @@ vi.mock('./useConfirm', () => ({
     showConfirm: vi.fn().mockResolvedValue(true),
   }),
 }));
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 describe('useChat - Attachment & Migration Logic', () => {
   let settings: any;

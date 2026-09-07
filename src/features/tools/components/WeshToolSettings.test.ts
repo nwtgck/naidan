@@ -1,10 +1,15 @@
 import type { ChatId } from '@/01-models/ids';
 import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { mount, flushPromises } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import WeshToolSettings from './WeshToolSettings.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+
+beforeEach(async () => {
+  await ensureAllStringsForTest({ locale: 'en' });
+});
 
 const mockIsFeatureEnabled = vi.fn();
 vi.mock('@/composables/useFeatureFlags', () => ({

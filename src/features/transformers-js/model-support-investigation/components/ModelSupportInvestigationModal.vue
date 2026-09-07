@@ -248,14 +248,23 @@ const modelFilePlanSummary = computed(() => {
   });
 });
 const productionLaneRouteSummary = computed(() => {
-  const observation = run.value?.productionLane.observation;
-  if (observation === undefined) return undefined;
+  const observation = run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation;
+  const route = observation?.route;
+  if (route === undefined) return undefined;
   return lazyStrings.ModelSupportInvestigationModal__lane_route_summary({
-    autoClass: observation.route.autoClass,
-    processor: observation.route.processor,
-    strategy: observation.route.strategy,
-    modelType: observation.route.modelType,
+    autoClass: route.autoClass,
+    processor: route.processor,
+    strategy: route.strategy,
+    modelType: route.modelType,
   });
+});
+const productionLoadAttemptsSummary = computed(() => {
+  const observation = run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation;
+  const attempts = observation?.loadAttempts ?? [];
+  if (attempts.length === 0) return undefined;
+  return attempts
+    .map(attempt => `${attempt.candidate.device}/${attempt.candidate.dtype}: ${attempt.status}${attempt.error === undefined ? '' : ` (${attempt.error.name}: ${attempt.error.message})`}`)
+    .join(' → ');
 });
 const productionLaneComparisonSummary = computed(() => {
   const currentRun = run.value;
@@ -275,8 +284,36 @@ const productionLaneComparisonSummary = computed(() => {
       mismatchIndex: comparison.firstInputMismatchIndex,
     });
 });
+const persistenceRoundTripSummary = computed(() => {
+  const persistence = run.value?.persistenceRoundTrip;
+  if (persistence === undefined) return undefined;
+  switch (persistence.status) {
+  case 'observed':
+    return lazyStrings.ModelSupportInvestigationModal__persistence_roundtrip_summary({
+      status: persistence.status,
+      exactModelVisibleMatch: persistence.exactModelVisibleMatch,
+      serializedByteLength: persistence.serializedByteLength,
+      firstMismatchIndex: persistence.firstMismatchIndex,
+      errorName: undefined,
+      errorMessage: undefined,
+    });
+  case 'failed':
+    return lazyStrings.ModelSupportInvestigationModal__persistence_roundtrip_summary({
+      status: persistence.status,
+      exactModelVisibleMatch: undefined,
+      serializedByteLength: undefined,
+      firstMismatchIndex: undefined,
+      errorName: persistence.error.name,
+      errorMessage: persistence.error.message,
+    });
+  default: {
+    const _ex: never = persistence;
+    return _ex;
+  }
+  }
+});
 const productionContinuitySummary = computed(() => {
-  const continuity = run.value?.productionLane.observation?.continuity;
+  const continuity = (run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation)?.continuity;
   if (continuity === undefined) return undefined;
   switch (continuity.status) {
   case "failed":
@@ -284,14 +321,21 @@ const productionContinuitySummary = computed(() => {
       name: continuity.error.name,
       message: continuity.error.message,
     });
+  case "not-run":
+    return undefined;
   case "passed": {
     const prefix = continuity.prefixComparison;
     return lazyStrings.ModelSupportInvestigationModal__lane_continuity_summary({
       cacheProvided: continuity.secondTurn.pastKeyValuesProvided,
+      cacheDecisionStatus: continuity.secondTurn.cacheDecision.status,
+      cacheDecisionReason: continuity.secondTurn.cacheDecision.reason,
       mode: prefix.mode,
+      comparisonInputSource: prefix.comparisonInputSource,
       exactPrefixMatch: prefix.exactPrefixMatch,
       firstMismatchIndex: prefix.firstMismatchIndex,
       secondInputTokenCount: prefix.secondInputTokenIds.length,
+      mismatchExpectedText: prefix.firstMismatchContext?.expectedText,
+      mismatchActualText: prefix.firstMismatchContext?.actualText,
     });
   }
   default: {
@@ -301,14 +345,14 @@ const productionContinuitySummary = computed(() => {
   }
 });
 const productionToolResultContinuationSummary = computed(() => {
-  const observation = run.value?.productionLane.observation?.toolResultContinuation;
+  const observation = (run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation)?.toolResultContinuation;
   if (observation === undefined) return undefined;
   switch (observation.status) {
   case "not-run":
     return undefined;
   case "failed":
     return lazyStrings.ModelSupportInvestigationModal__tool_result_production_continuation_failed({
-      strategy: observation.strategy,
+      strategy: observation.strategy ?? "strategy-unresolved",
       name: observation.error.name,
       message: observation.error.message,
     });
@@ -316,8 +360,12 @@ const productionToolResultContinuationSummary = computed(() => {
     return lazyStrings.ModelSupportInvestigationModal__tool_result_production_continuation_passed({
       strategy: observation.strategy,
       generatedTokenCount: observation.turn.generatedTokenIds.length,
+      comparisonInputSource: observation.comparisonInputSource ?? 'actual-model-input',
       inputMatch: observation.inputTokenExactMatch ? "matched" : "mismatched",
       firstMismatchIndex: observation.firstInputMismatchIndex,
+      cacheDecisionStatus: observation.turn.cacheDecision?.status ?? 'unavailable',
+      cacheDecisionReason: observation.turn.cacheDecision?.reason ?? 'not observed',
+      cacheProvided: observation.turn.pastKeyValuesProvided === true,
     });
   default: {
     const _ex: never = observation;
@@ -326,7 +374,7 @@ const productionToolResultContinuationSummary = computed(() => {
   }
 });
 const productionMultimodalSummary = computed(() => {
-  const observation = run.value?.productionLane.observation?.multimodal;
+  const observation = (run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation)?.multimodal;
   if (observation === undefined) return undefined;
   switch (observation.status) {
   case "observed":
@@ -357,7 +405,7 @@ const productionMultimodalSummary = computed(() => {
   }
 });
 const productionReasoningSummary = computed(() => {
-  const observation = run.value?.productionLane.observation?.reasoning;
+  const observation = (run.value?.productionLane.observation ?? run.value?.productionLane.partialObservation)?.reasoning;
   if (observation === undefined) return undefined;
   switch (observation.status) {
   case "observed":
@@ -404,18 +452,24 @@ const supportBoundarySummary = computed(() => lazyStrings.ModelSupportInvestigat
   count: supportBoundaryAssessments.value.length,
   boundaries: [...new Set(supportBoundaryAssessments.value.map(item => item.boundary))].join(", "),
 }));
+const runtimeAssetsView = computed(() => run.value?.runtimeAssets ?? run.value?.runtimeAssetsPartial);
 const runtimeEnvironmentSummary = computed(() => {
-  const environment = run.value?.runtimeAssets?.environment;
+  const environment = runtimeAssetsView.value?.environment;
   if (environment === undefined) return undefined;
   const adapter = environment.webGpu.adapterInfo.description
     ?? environment.webGpu.adapterInfo.device
     ?? environment.webGpu.adapterInfo.architecture
     ?? environment.webGpu.adapterInfo.vendor;
+  const threading = runtimeAssetsView.value?.threading;
   return lazyStrings.ModelSupportInvestigationModal__runtime_environment_summary({
     webGpuAvailability: environment.webGpu.availability,
     crossOriginIsolated: environment.crossOriginIsolated,
     hardwareConcurrency: environment.hardwareConcurrency,
     adapter,
+    requestedThreads: threading?.requestedThreads,
+    effectiveThreads: threading?.effectiveThreads,
+    proxy: threading?.proxy,
+    pthreadLifecycle: threading?.childWorkerLifecycle,
   });
 });
 const cacheSummary = computed(() => {
@@ -890,38 +944,38 @@ defineExpose({
             </div>
           </div>
 
-          <div v-if="run?.runtimeAssets" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div v-if="runtimeAssetsView" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             <dl tw-class="text-[10px] divide-y divide-gray-100 dark:divide-gray-800">
               <div tw-class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 p-3">
                 <dt tw-class="font-bold text-gray-400 uppercase">{{ lazyStrings.ModelSupportInvestigationModal__runtime_variant() }}</dt>
-                <dd tw-class="font-mono text-gray-700 dark:text-gray-200">{{ run.runtimeAssets.variant }}</dd>
+                <dd tw-class="font-mono text-gray-700 dark:text-gray-200">{{ runtimeAssetsView.variant }}</dd>
               </div>
               <div tw-class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 p-3">
                 <dt tw-class="font-bold text-gray-400 uppercase">{{ lazyStrings.ModelSupportInvestigationModal__runtime_mjs() }}</dt>
-                <dd tw-class="font-mono text-gray-700 dark:text-gray-200 break-all">{{ run.runtimeAssets.mjsUrl }}</dd>
+                <dd tw-class="font-mono text-gray-700 dark:text-gray-200 break-all">{{ runtimeAssetsView.mjsUrl }}</dd>
               </div>
               <div tw-class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 p-3">
                 <dt tw-class="font-bold text-gray-400 uppercase">{{ lazyStrings.ModelSupportInvestigationModal__runtime_wasm() }}</dt>
-                <dd tw-class="font-mono text-gray-700 dark:text-gray-200 break-all">{{ run.runtimeAssets.wasmUrl }}</dd>
+                <dd tw-class="font-mono text-gray-700 dark:text-gray-200 break-all">{{ runtimeAssetsView.wasmUrl }}</dd>
               </div>
               <div tw-class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 p-3">
                 <dt tw-class="font-bold text-gray-400 uppercase">{{ lazyStrings.ModelSupportInvestigationModal__runtime_bytes() }}</dt>
-                <dd tw-class="font-mono text-gray-700 dark:text-gray-200">{{ run.runtimeAssets.wasmByteLength }}</dd>
+                <dd tw-class="font-mono text-gray-700 dark:text-gray-200">{{ runtimeAssetsView.wasmByteLength ?? lazyStrings.ModelSupportInvestigationModal__runtime_no_output() }}</dd>
               </div>
               <div tw-class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 p-3" data-testid="model-support-runtime-environment">
                 <dt tw-class="font-bold text-gray-400 uppercase">{{ lazyStrings.ModelSupportInvestigationModal__runtime_environment() }}</dt>
                 <dd tw-class="font-mono text-gray-700 dark:text-gray-200 break-all">{{ runtimeEnvironmentSummary }}</dd>
               </div>
-              <div tw-class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 p-3">
+              <div v-if="runtimeAssetsView.control" tw-class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 p-3" data-testid="model-support-wasm-control">
                 <dt tw-class="font-bold text-gray-400 uppercase">{{ lazyStrings.ModelSupportInvestigationModal__runtime_control() }}</dt>
-                <dd tw-class="font-mono text-gray-700 dark:text-gray-200">
-                  {{ run.runtimeAssets.control.fixtureId }}: {{ run.runtimeAssets.control.inputValue }} → {{ run.runtimeAssets.control.outputValue }}
+                <dd tw-class="font-mono text-gray-700 dark:text-gray-200 break-all">
+                  {{ runtimeAssetsView.control?.status }} · {{ runtimeAssetsView.control?.outputValue ?? runtimeAssetsView.control?.error ?? lazyStrings.ModelSupportInvestigationModal__runtime_no_output() }}
                 </dd>
               </div>
-              <div tw-class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 p-3" data-testid="model-support-webgpu-control">
+              <div v-if="runtimeAssetsView.webGpuControl" tw-class="grid grid-cols-[100px_minmax(0,1fr)] gap-3 p-3" data-testid="model-support-webgpu-control">
                 <dt tw-class="font-bold text-gray-400 uppercase">{{ lazyStrings.ModelSupportInvestigationModal__runtime_control_webgpu() }}</dt>
                 <dd tw-class="font-mono text-gray-700 dark:text-gray-200 break-all">
-                  {{ run.runtimeAssets.webGpuControl.status }} · {{ run.runtimeAssets.webGpuControl.outputValue ?? run.runtimeAssets.webGpuControl.error ?? lazyStrings.ModelSupportInvestigationModal__runtime_no_output() }}
+                  {{ runtimeAssetsView.webGpuControl?.status }} · {{ runtimeAssetsView.webGpuControl?.outputValue ?? runtimeAssetsView.webGpuControl?.error ?? lazyStrings.ModelSupportInvestigationModal__runtime_no_output() }}
                 </dd>
               </div>
             </dl>
@@ -980,7 +1034,7 @@ defineExpose({
                   {{ attempt.candidateId }} · {{ statusLabel({ status: attempt.status }) }} · {{ attempt.autoClass ?? 'no-generative-auto-class' }}
                 </p>
                 <p tw-class="font-mono text-[10px] text-gray-500 dark:text-gray-400 break-all">
-                  {{ attempt.failureStage ?? 'minimum-generation' }} · minimum={{ attempt.generatedTokenIds.join(',') || 'none' }} · natural={{ attempt.naturalGeneration?.generatedTokenIds.length ?? 'not-run' }} · {{ attempt.naturalGeneration?.termination ?? 'not-run' }}
+                  {{ attempt.failureStage ?? 'minimum-generation' }} · minimum={{ attempt.generatedTokenIds.join(',') || 'none' }} · natural={{ attempt.naturalGeneration?.status === 'observed' ? attempt.naturalGeneration.generatedTokenIds.length : (attempt.naturalGeneration?.status ?? 'not-run') }} · {{ attempt.naturalGeneration?.status === 'observed' ? attempt.naturalGeneration.termination : (attempt.naturalGeneration?.status ?? 'not-run') }}
                 </p>
                 <p
                   v-if="toolProtocolProbeSummary({ attempt })"
@@ -997,12 +1051,21 @@ defineExpose({
           </div>
 
           <div
+            v-if="persistenceRoundTripSummary"
+            tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3"
+            data-testid="model-support-persistence-roundtrip"
+          >
+            <p tw-class="text-xs text-gray-600 dark:text-gray-300 break-all">{{ persistenceRoundTripSummary }}</p>
+          </div>
+
+          <div
             v-if="run && run.productionLane.status !== 'not-run'"
             tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-1"
             data-testid="model-support-lane-comparison"
           >
             <p tw-class="text-[10px] font-bold uppercase text-gray-400">{{ lazyStrings.ModelSupportInvestigationModal__lane_comparison() }}</p>
             <p v-if="productionLaneRouteSummary" tw-class="font-mono text-[10px] text-gray-700 dark:text-gray-200 break-all">{{ productionLaneRouteSummary }}</p>
+            <p v-if="productionLoadAttemptsSummary" tw-class="font-mono text-[10px] text-gray-600 dark:text-gray-300 break-all" data-testid="model-support-production-load-attempts">{{ productionLoadAttemptsSummary }}</p>
             <p v-if="productionLaneComparisonSummary" tw-class="text-xs text-gray-600 dark:text-gray-300 break-all">{{ productionLaneComparisonSummary }}</p>
             <p v-if="productionContinuitySummary" tw-class="text-xs text-gray-600 dark:text-gray-300 break-all" data-testid="model-support-production-continuity">{{ productionContinuitySummary }}</p>
             <p v-if="productionToolResultContinuationSummary" tw-class="text-xs text-gray-600 dark:text-gray-300 break-all" data-testid="model-support-production-tool-result-continuation">{{ productionToolResultContinuationSummary }}</p>
