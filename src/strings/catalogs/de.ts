@@ -56,12 +56,15 @@ import { ChatDebugInspector__active } from '@/strings/messages/ChatDebugInspecto
 import { ChatDebugInspector__chat_inspector } from '@/strings/messages/ChatDebugInspector__chat_inspector/de';
 import { ChatDebugInspector__collapse_tree } from '@/strings/messages/ChatDebugInspector__collapse_tree/de';
 import { ChatDebugInspector__context_path } from '@/strings/messages/ChatDebugInspector__context_path/de';
+import { ChatDebugInspector__copy_json } from '@/strings/messages/ChatDebugInspector__copy_json/de';
+import { ChatDebugInspector__current_thread } from '@/strings/messages/ChatDebugInspector__current_thread/de';
 import { ChatDebugInspector__data_explorer } from '@/strings/messages/ChatDebugInspector__data_explorer/de';
 import { ChatDebugInspector__expand_tree } from '@/strings/messages/ChatDebugInspector__expand_tree/de';
 import { ChatDebugInspector__failed_to_parse_image_metadata_during_preview_collection } from '@/strings/messages/ChatDebugInspector__failed_to_parse_image_metadata_during_preview_collection/de';
 import { ChatDebugInspector__fake_lm } from '@/strings/messages/ChatDebugInspector__fake_lm/de';
 import { ChatDebugInspector__fake_lm_is_only_available_in_hosted_builds } from '@/strings/messages/ChatDebugInspector__fake_lm_is_only_available_in_hosted_builds/de';
 import { ChatDebugInspector__full_json } from '@/strings/messages/ChatDebugInspector__full_json/de';
+import { ChatDebugInspector__json } from '@/strings/messages/ChatDebugInspector__json/de';
 import { ChatDebugInspector__on } from '@/strings/messages/ChatDebugInspector__on/de';
 import { ChatDebugInspector__open_at_this_message } from '@/strings/messages/ChatDebugInspector__open_at_this_message/de';
 import { ChatDebugInspector__select_a_node_to_inspect } from '@/strings/messages/ChatDebugInspector__select_a_node_to_inspect/de';
@@ -1688,12 +1691,15 @@ export const catalog = {
   ChatDebugInspector__chat_inspector,
   ChatDebugInspector__collapse_tree,
   ChatDebugInspector__context_path,
+  ChatDebugInspector__copy_json,
+  ChatDebugInspector__current_thread,
   ChatDebugInspector__data_explorer,
   ChatDebugInspector__expand_tree,
   ChatDebugInspector__failed_to_parse_image_metadata_during_preview_collection,
   ChatDebugInspector__fake_lm,
   ChatDebugInspector__fake_lm_is_only_available_in_hosted_builds,
   ChatDebugInspector__full_json,
+  ChatDebugInspector__json,
   ChatDebugInspector__on,
   ChatDebugInspector__open_at_this_message,
   ChatDebugInspector__select_a_node_to_inspect,
