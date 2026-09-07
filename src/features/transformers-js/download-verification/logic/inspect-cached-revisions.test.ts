@@ -143,7 +143,7 @@ describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
     })).toEqual([]);
   });
 
-  it('uses legacy main first and then immutable SHAs by newest file timestamp when offline', async () => {
+  it('prefers immutable SHAs by newest file timestamp over legacy main when offline', async () => {
     const older = '1'.repeat(40);
     const newer = '2'.repeat(40);
     const partialNewest = '3'.repeat(40);
@@ -158,9 +158,9 @@ describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
     });
 
     expect(planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision: undefined })).toEqual([
-      { revision: 'main', loaderRevisionOption: undefined, source: 'legacy-main' },
       { revision: newer, loaderRevisionOption: newer, source: 'offline-immutable-fallback' },
       { revision: older, loaderRevisionOption: older, source: 'offline-immutable-fallback' },
+      { revision: 'main', loaderRevisionOption: undefined, source: 'legacy-main' },
     ]);
   });
 });

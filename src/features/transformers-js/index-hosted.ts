@@ -327,16 +327,13 @@ async function selectDownloadedModelLoadRevision({ modelId }: { modelId: string 
     return undefined;
   }
 
-  let resolvedRevision: string | undefined;
-  const hasImmutableRevision = inventory.revisions.some(revision => revision.kind === 'immutable-sha');
-  if (hasImmutableRevision) {
-    try {
-      resolvedRevision = (await resolvePublicHuggingFaceRevision({ modelId })).resolvedRevision;
-    } catch (error) {
-      console.warn('[transformersJsService] Could not resolve the current Hugging Face revision while loading downloaded artifacts; using cache inventory only.', error);
-    }
-  }
-  const candidates = planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision });
+  // Loading is deliberately offline-only. The exact repository revision is
+  // resolved by Explicit Download; a later Load must select solely from OPFS
+  // and remain usable when Hugging Face is unavailable or `main` has advanced.
+  const candidates = planDownloadVerificationCachedRevisionLoadCandidates({
+    inventory,
+    resolvedRevision: undefined,
+  });
   return candidates[0]?.loaderRevisionOption;
 }
 

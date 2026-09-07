@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   release: vi.fn(),
   wrap: vi.fn(),
   terminate: vi.fn(),
+  workerConstructor: vi.fn(),
 }));
 
 vi.mock('@/utils/worker-transport', async importOriginal => ({
@@ -13,6 +14,10 @@ vi.mock('@/utils/worker-transport', async importOriginal => ({
 }));
 
 class MockWorker {
+  constructor(url: URL, options: WorkerOptions) {
+    mocks.workerConstructor(url, options);
+  }
+
   terminate = mocks.terminate;
 }
 
@@ -33,6 +38,16 @@ describe('Transformers.js Worker client cleanup', () => {
 
     expect(mocks.release).toHaveBeenCalledOnce();
     expect(mocks.terminate).toHaveBeenCalledOnce();
+  });
+
+  it('starts through the offline bootstrap instead of evaluating the runtime entry directly', async () => {
+    const { createTransformersJsWorkerClient } = await import('./client-hosted');
+    createTransformersJsWorkerClient();
+
+    expect(mocks.workerConstructor).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: expect.stringMatching(/\/worker\/bootstrap\.ts$/u) }),
+      { type: 'module' },
+    );
   });
 
   it('still terminates when remote release throws synchronously', async () => {

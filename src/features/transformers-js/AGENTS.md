@@ -76,6 +76,11 @@ inside `from_pretrained()`.
 
 ## Required regression coverage
 
+- `.test.ts` files under this directory must not access the external internet;
+  localhost and loopback fixture servers that emulate Hugging Face are allowed;
+- an incomplete fixture or network interceptor must fail the test instead of
+  silently falling through to the real Hugging Face service;
+
 Changes to Transformers.js Download, Load, cache, revision, or Worker code must
 verify that:
 

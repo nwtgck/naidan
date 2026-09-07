@@ -13,6 +13,12 @@ const nativeFetch = globalThis.fetch.bind(globalThis);
 // Hoisted spies for the module-level InterruptableStoppingCriteria singleton
 const mockInterruptFn = vi.hoisted(() => vi.fn());
 const mockResetFn = vi.hoisted(() => vi.fn());
+const mockPlanDownloadedModelCandidates = vi.hoisted(() => vi.fn());
+
+vi.mock('@/features/transformers-js/runtime/plan-downloaded-model-candidates', async importOriginal => ({
+  ...await importOriginal<typeof import('@/features/transformers-js/runtime/plan-downloaded-model-candidates')>(),
+  planDownloadedModelCandidates: mockPlanDownloadedModelCandidates,
+}));
 
 // Mock @huggingface/transformers
 vi.mock('@huggingface/transformers', () => ({
@@ -44,6 +50,8 @@ vi.mock('@huggingface/transformers', () => ({
       `onnx/model_${options.dtype}.onnx_data`,
       'generation_config.json',
     ]),
+    get_tokenizer_files: vi.fn(async () => ['tokenizer.json', 'tokenizer_config.json']),
+    get_processor_files: vi.fn(async () => ['preprocessor_config.json']),
   },
   InterruptableStoppingCriteria: class {
     reset = mockResetFn;
@@ -163,8 +171,13 @@ function rewriteHuggingFaceFetchToFixtureServer({ baseUrl }: { baseUrl: string }
   return async (input, init) => {
     const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const parsed = new URL(rawUrl);
-    if (parsed.hostname !== 'huggingface.co') return await nativeFetch(input, init);
-    return await nativeFetch(`${baseUrl}${parsed.pathname}${parsed.search}`, init);
+    if (parsed.hostname === 'huggingface.co') {
+      return await nativeFetch(`${baseUrl}${parsed.pathname}${parsed.search}`, init);
+    }
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1') {
+      return await nativeFetch(input, init);
+    }
+    throw new Error(`Test fixture blocked unexpected external request: ${parsed.origin}`);
   };
 }
 
@@ -175,6 +188,16 @@ describe('transformers-js.worker', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    mockPlanDownloadedModelCandidates.mockImplementation(async ({ candidates }: {
+      candidates: Array<{ device: string; dtype: string }>;
+    }) => candidates.map(candidate => ({
+      candidate,
+      requiredModelPaths: [`onnx/model_${candidate.dtype}.onnx`],
+      missingModelPaths: [],
+      requiredRuntimePaths: ['tokenizer_config.json', 'tokenizer.json'],
+      missingRuntimePaths: [],
+      complete: true,
+    })));
 
     originalFetchMock = vi.fn();
     vi.stubGlobal('fetch', originalFetchMock);
@@ -197,7 +220,8 @@ describe('transformers-js.worker', () => {
       vendor: 'Google Inc.',
     });
 
-    const { AutoModelForCausalLM, AutoModelForImageTextToText } = await import('@huggingface/transformers');
+    const { AutoConfig, AutoModelForCausalLM, AutoModelForImageTextToText } = await import('@huggingface/transformers');
+    (AutoConfig.from_pretrained as any).mockResolvedValue({});
     (AutoModelForCausalLM.supports as any).mockImplementation((modelType: string) => modelType !== 'gemma4');
     (AutoModelForImageTextToText.supports as any).mockImplementation((modelType: string) => modelType === 'gemma4');
   });
@@ -291,6 +315,30 @@ describe('transformers-js.worker', () => {
     }));
   });
 
+  it('fails before tokenizer or model initialization when no local candidate is complete', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    mockPlanDownloadedModelCandidates.mockResolvedValueOnce([{
+      candidate: { device: 'webgpu', dtype: 'q4f16' },
+      requiredModelPaths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'],
+      missingModelPaths: ['onnx/model_q4f16.onnx_data'],
+      requiredRuntimePaths: ['tokenizer_config.json', 'tokenizer.json'],
+      missingRuntimePaths: [],
+      complete: false,
+    }]);
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    await expect(workerObj.verifyDownloadedModelCandidate(
+      'org/repo',
+      '0123456789abcdef0123456789abcdef01234567',
+      { device: 'webgpu', dtype: 'q4f16' },
+      vi.fn(),
+    )).rejects.toThrow('offline Load will not download or repair files');
+    expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+    expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+  });
+
   it('verifies exactly one downloaded Production candidate without falling through to another candidate', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
@@ -364,6 +412,46 @@ describe('transformers-js.worker', () => {
       local_files_only: true,
       revision,
     }));
+  });
+
+  it('uses the revision-aware read-only cache while verifying an immutable downloaded revision', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    const revision = '0123456789abcdef0123456789abcdef01234567';
+    mockRoot.getDirectoryHandle.mockImplementation(async (name: string) => {
+      if (name === 'models') return createMockDir({
+        'huggingface.co': createMockDir({
+          org: createMockDir({
+            repo: createMockDir({
+              resolve: createMockDir({
+                [revision]: createMockDir({
+                  'tokenizer_config.json': createMockFile(100),
+                  '.tokenizer_config.json.complete': createMockFile(0),
+                }),
+              }),
+            }),
+          }),
+        }),
+      });
+      throw new DOMException('Missing', 'NotFoundError');
+    });
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async () => {
+      const metadata = await (env.customCache as Cache).match(
+        'https://huggingface.co/org/repo/resolve/main/tokenizer_config.json',
+      );
+      if (metadata === undefined) throw new Error('revisionless tokenizer metadata was not resolved from the exact revision');
+      return { dispose: vi.fn(), config: { model_type: 'example' } };
+    });
+    (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
+
+    await expect(workerObj.verifyDownloadedModelRevision(
+      'org/repo',
+      revision,
+      vi.fn(),
+    )).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
   });
 
 
@@ -1295,7 +1383,7 @@ describe('transformers-js.worker', () => {
   it('prepareModelRuntimeArtifacts should use the exact revision and shared Production processor routing', async () => {
     const comlink = await import('comlink');
     const { AutoConfig, AutoProcessor, AutoTokenizer, ModelRegistry, env } = await import('@huggingface/transformers');
-    await import('./entry');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const revision = '0123456789abcdef0123456789abcdef01234567';
     const defaultCache = env.customCache;
@@ -1303,7 +1391,7 @@ describe('transformers-js.worker', () => {
     (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string }) => {
       expect(env.allowLocalModels).toBe(false);
       expect(env.allowRemoteModels).toBe(true);
-      expect(env.customCache).not.toBe(defaultCache);
+      expect(env.customCache).toBe(defaultCache);
       expect(options.revision).toBe(revision);
       return { model_type: 'qwen3_5_text' };
     });
@@ -1326,15 +1414,15 @@ describe('transformers-js.worker', () => {
       local_files_only: false,
     }));
     expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
-    expect(env.allowLocalModels).toBe(true);
-    expect(env.allowRemoteModels).toBe(false);
+    expect(env.allowLocalModels).toBe(false);
+    expect(env.allowRemoteModels).toBe(true);
     expect(env.customCache).toBe(defaultCache);
   });
 
   it('prepareModelRuntimeArtifacts should block model artifacts before network fetch', async () => {
     const comlink = await import('comlink');
     const { AutoConfig, env } = await import('@huggingface/transformers');
-    await import('./entry');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const revision = '0123456789abcdef0123456789abcdef01234567';
 
@@ -1352,15 +1440,15 @@ describe('transformers-js.worker', () => {
   });
 
   it('runtime artifact preparation fetch enforces its byte limit even without Content-Length', async () => {
-    const module = await import('./entry');
-    const guardedFetch = module.TEST_ONLY.createRuntimeArtifactPreparationFetch({
-      baseFetch: vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(new Uint8Array(4));
-          controller.enqueue(new Uint8Array(5));
-          controller.close();
-        },
-      }))),
+    originalFetchMock.mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(4));
+        controller.enqueue(new Uint8Array(5));
+        controller.close();
+      },
+    })));
+    const module = await import('@/features/transformers-js/download-verification/download-worker/entry');
+    const guardedFetch = module.TEST_ONLY.createRuntimeArtifactFetch({
       maximumByteLength: 8,
     });
 
@@ -1371,7 +1459,7 @@ describe('transformers-js.worker', () => {
   it('prepareModelRuntimeArtifacts should reject a non-immutable revision before loading anything', async () => {
     const comlink = await import('comlink');
     const { AutoConfig, AutoProcessor, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     await expect(workerObj.prepareModelRuntimeArtifacts('org/repo', 'main', vi.fn()))
@@ -1410,7 +1498,7 @@ describe('transformers-js.worker', () => {
 
       const comlink = await import('comlink');
       const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
-      await import('./entry');
+      await import('@/features/transformers-js/download-verification/download-worker/entry');
       const workerObj = (comlink.expose as any).mock.calls[0][0];
       const revision = repository.resolvedRevision;
       const fileUrl = ({ path }: { path: string }) => (
@@ -1420,8 +1508,12 @@ describe('transformers-js.worker', () => {
       const configUrl = fileUrl({ path: configFile!.path });
       const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
 
-      (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string }) => {
+      (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
         expect(options.revision).toBe(revision);
+        if (options.local_files_only === true) {
+          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
+          return { model_type: 'llama' };
+        }
         const response = await (env.fetch as typeof fetch)(configUrl);
         expect(response.ok).toBe(true);
         await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
@@ -1469,34 +1561,28 @@ describe('transformers-js.worker', () => {
       expect(cachedModel).toBeDefined();
       expect((await cachedModel!.arrayBuffer()).byteLength).toBe(8192);
 
-      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
-        expect(options.revision).toBe(revision);
-        expect(options.local_files_only).toBe(true);
+      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async (_modelId: string, options: {
+        revision?: string;
+        local_files_only?: boolean;
+      }) => {
+        expect(options).toMatchObject({ revision, local_files_only: true });
         const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl);
         expect(cached).toBeDefined();
         expect((await cached!.arrayBuffer()).byteLength).toBe(8192);
-        return {
-          dispose: vi.fn(),
-          config: { model_type: 'llama', is_encoder_decoder: false },
-        };
+        return { dispose: vi.fn(), config: { model_type: 'llama', is_encoder_decoder: false } };
       });
 
       const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
-      const acceptance = await workerObj.verifyDownloadedModelCandidate(
+      await import('./entry');
+      const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
+      const acceptance = await productionWorkerObj.verifyDownloadedModelCandidate(
         repository.modelId,
         revision,
         { device: 'webgpu', dtype: 'q4f16' },
         vi.fn(),
       );
-
       expect(acceptance).toEqual({ device: 'webgpu', dtype: 'q4f16' });
       expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
-      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledWith(repository.modelId, expect.objectContaining({
-        revision,
-        device: 'webgpu',
-        dtype: 'q4f16',
-        local_files_only: true,
-      }));
     } finally {
       await server.close();
     }
@@ -1545,7 +1631,7 @@ describe('transformers-js.worker', () => {
 
       const comlink = await import('comlink');
       const { AutoConfig, AutoTokenizer, env } = await import('@huggingface/transformers');
-      await import('./entry');
+      await import('@/features/transformers-js/download-verification/download-worker/entry');
       const workerObj = (comlink.expose as any).mock.calls[0][0];
       const revision = repository.resolvedRevision;
       const fileUrl = ({ path }: { path: string }) => (
@@ -1636,7 +1722,7 @@ describe('transformers-js.worker', () => {
 
       const comlink = await import('comlink');
       const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
-      await import('./entry');
+      await import('@/features/transformers-js/download-verification/download-worker/entry');
       const workerObj = (comlink.expose as any).mock.calls[0][0];
       const revision = repository.resolvedRevision;
       const fileUrl = ({ path }: { path: string }) => (
@@ -1646,7 +1732,11 @@ describe('transformers-js.worker', () => {
       const configUrl = fileUrl({ path: configFile!.path });
       const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
 
-      (AutoConfig.from_pretrained as any).mockImplementation(async () => {
+      (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
+        if (options.local_files_only === true) {
+          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
+          return { model_type: 'llama' };
+        }
         const response = await (env.fetch as typeof fetch)(configUrl);
         await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
         return { model_type: 'llama' };
@@ -1684,25 +1774,21 @@ describe('transformers-js.worker', () => {
         files: [{ status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 }],
       });
 
-      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
-        expect(options.revision).toBe(revision);
-        expect(options.local_files_only).toBe(true);
-        const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl);
-        expect(cached).toBeDefined();
-        return {
-          dispose: vi.fn(),
-          config: { model_type: 'llama', is_encoder_decoder: false },
-        };
+      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async () => {
+        expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl)).toBeDefined();
+        return { dispose: vi.fn(), config: { model_type: 'llama', is_encoder_decoder: false } };
       });
-
       const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
-      await expect(workerObj.verifyDownloadedModelCandidate(
+      await import('./entry');
+      const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
+      await expect(productionWorkerObj.verifyDownloadedModelCandidate(
         repository.modelId,
         revision,
         { device: 'webgpu', dtype: 'q4f16' },
         vi.fn(),
       )).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
       expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
+
     } finally {
       await Promise.all([runtimeServer.close(), failedModelServer.close(), resumedModelServer.close()]);
     }
@@ -1764,7 +1850,7 @@ describe('transformers-js.worker', () => {
 
       const comlink = await import('comlink');
       const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
-      await import('./entry');
+      await import('@/features/transformers-js/download-verification/download-worker/entry');
       const workerObj = (comlink.expose as any).mock.calls[0][0];
       const revision = repository.resolvedRevision;
       const fileUrl = ({ path }: { path: string }) => (
@@ -1774,7 +1860,11 @@ describe('transformers-js.worker', () => {
       const configUrl = fileUrl({ path: configFile!.path });
       const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
 
-      (AutoConfig.from_pretrained as any).mockImplementation(async () => {
+      (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
+        if (options.local_files_only === true) {
+          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
+          return { model_type: 'lfm2' };
+        }
         const response = await (env.fetch as typeof fetch)(configUrl);
         await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
         return { model_type: 'lfm2' };
@@ -1824,26 +1914,23 @@ describe('transformers-js.worker', () => {
       });
       expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeResume + 1);
 
-      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
-        expect(options.revision).toBe(revision);
-        expect(options.local_files_only).toBe(true);
+      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async () => {
         for (const url of modelUrls) {
           expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url)).toBeDefined();
         }
-        return {
-          dispose: vi.fn(),
-          config: { model_type: 'lfm2', is_encoder_decoder: false },
-        };
+        return { dispose: vi.fn(), config: { model_type: 'lfm2', is_encoder_decoder: false } };
       });
-
       const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
-      await expect(workerObj.verifyDownloadedModelCandidate(
+      await import('./entry');
+      const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
+      await expect(productionWorkerObj.verifyDownloadedModelCandidate(
         repository.modelId,
         revision,
         { device: 'webgpu', dtype: 'q4f16' },
         vi.fn(),
       )).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
       expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
+
     } finally {
       await Promise.all([runtimeServer.close(), modelServer.close(), failedShardServer.close()]);
     }
@@ -1870,7 +1957,7 @@ describe('transformers-js.worker', () => {
       } as any;
 
       const comlink = await import('comlink');
-      await import('./entry');
+      await import('@/features/transformers-js/download-verification/download-worker/entry');
       const workerObj = (comlink.expose as any).mock.calls[0][0];
       const revision = repository.resolvedRevision;
       const fileUrl = ({ path }: { path: string }) => (
@@ -1912,96 +1999,82 @@ describe('transformers-js.worker', () => {
     }
   });
 
-  it('downloadModel should normalize various Hugging Face URL formats', async () => {
+  it('normalizes supported Hugging Face model URL forms at the dedicated Download Worker boundary', async () => {
     const comlink = await import('comlink');
-    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    const { AutoConfig, AutoTokenizer } = await import('@huggingface/transformers');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
-
+    const revision = '0123456789abcdef0123456789abcdef01234567';
+    (AutoConfig.from_pretrained as any).mockResolvedValue({ model_type: 'llama' });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
-    const testCases = [
-      { input: 'hf.co/org/repo', expected: 'org/repo' },
-      { input: 'https://huggingface.co/org/repo', expected: 'org/repo' },
-      { input: 'user/my-model', expected: 'user/my-model' },
-      { input: 'org/repo', expected: 'org/repo' },
-    ];
+    await workerObj.prepareModelRuntimeArtifacts('hf.co/org/repo', revision, vi.fn());
+    await workerObj.prepareModelRuntimeArtifacts('https://huggingface.co/org/repo', revision, vi.fn());
 
-    for (const { input, expected } of testCases) {
-      await workerObj.downloadModel(input, () => { });
-      expect(AutoTokenizer.from_pretrained).toHaveBeenCalledWith(expected, expect.anything());
-    }
-    expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+    expect(AutoConfig.from_pretrained).toHaveBeenNthCalledWith(1, 'org/repo', expect.objectContaining({ revision }));
+    expect(AutoConfig.from_pretrained).toHaveBeenNthCalledWith(2, 'org/repo', expect.objectContaining({ revision }));
   });
 
-  it('downloadModel should temporarily allow remote access only for the explicit download operation', async () => {
+  it('keeps remote access and the write-capable cache confined to the dedicated Download Worker', async () => {
     const comlink = await import('comlink');
-    const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
-    await import('./entry');
+    const { AutoConfig, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
-    const defaultCache = env.customCache;
-
-    (AutoTokenizer.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
+    const revision = '0123456789abcdef0123456789abcdef01234567';
+    (AutoConfig.from_pretrained as any).mockImplementation(async () => {
       expect(env.allowLocalModels).toBe(false);
       expect(env.allowRemoteModels).toBe(true);
-      expect(env.customCache).not.toBe(defaultCache);
-      expect(options.local_files_only).toBe(false);
-      await (env.customCache as { put: (request: string | Request, response: Response) => Promise<void> }).put(
-        'https://huggingface.co/mlx-community/Qwen3.5-2B-4bit/resolve/main/tokenizer.json',
+      await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(
+        `https://huggingface.co/org/repo/resolve/${revision}/config.json`,
         new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
       );
-      return {};
+      return { model_type: 'llama' };
     });
+    (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
-    await workerObj.downloadModel('mlx-community/Qwen3.5-2B-4bit', () => { });
-
-    expect(env.allowLocalModels).toBe(true);
-    expect(env.allowRemoteModels).toBe(false);
-    expect(env.customCache).toBe(defaultCache);
-    expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+    await workerObj.prepareModelRuntimeArtifacts('org/repo', revision, vi.fn());
+    expect(env.allowRemoteModels).toBe(true);
   });
 
-  it('restores the default read-only environment after explicit download fails', async () => {
+  it('restores the Download Worker metadata-fetch guard after preparation fails', async () => {
     const comlink = await import('comlink');
-    const { AutoTokenizer, env } = await import('@huggingface/transformers');
-    await import('./entry');
+    const { AutoConfig, env } = await import('@huggingface/transformers');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const defaultFetch = env.fetch;
-    const defaultCache = env.customCache;
-
-    (AutoTokenizer.from_pretrained as any).mockRejectedValueOnce(new Error('download failed'));
-
-    await expect(workerObj.downloadModel('org/repo', vi.fn())).rejects.toThrow('download failed');
-
-    expect(env.allowLocalModels).toBe(true);
-    expect(env.allowRemoteModels).toBe(false);
-    expect(env.fetch).toBe(defaultFetch);
-    expect(env.customCache).toBe(defaultCache);
-    await expect((env.customCache as { put: (request: string | Request, response: Response) => Promise<void> }).put(
-      'https://huggingface.co/org/repo/resolve/main/model.onnx',
-      new Response('bytes'),
-    )).rejects.toThrow('Read-only OPFS model cache MUST NOT be written during model loading');
-  });
-
-  it('downloadModel should keep local model lookup enabled for user models', async () => {
-    const comlink = await import('comlink');
-    const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
-    await import('./entry');
-    const workerObj = (comlink.expose as any).mock.calls[0][0];
-
-    (AutoTokenizer.from_pretrained as any).mockImplementation(async () => {
-      expect(env.allowLocalModels).toBe(true);
-      return {};
+    let guardedFetch: typeof fetch | undefined;
+    (AutoConfig.from_pretrained as any).mockImplementationOnce(async () => {
+      guardedFetch = env.fetch as typeof fetch;
+      throw new Error('download preparation failed');
     });
 
-    await workerObj.downloadModel('user/my-local-model', () => { });
-    expect(env.allowLocalModels).toBe(true);
-    expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+    await expect(workerObj.prepareModelRuntimeArtifacts(
+      'org/repo',
+      '0123456789abcdef0123456789abcdef01234567',
+      vi.fn(),
+    )).rejects.toThrow('download preparation failed');
+    expect(guardedFetch).not.toBe(defaultFetch);
+    expect(env.fetch).toBe(defaultFetch);
+  });
+
+  it('does not route local user models through the public Hub Download Worker', async () => {
+    const comlink = await import('comlink');
+    const { AutoConfig, AutoTokenizer } = await import('@huggingface/transformers');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    await expect(workerObj.prepareModelRuntimeArtifacts(
+      'user/my-local-model',
+      '0123456789abcdef0123456789abcdef01234567',
+      vi.fn(),
+    )).rejects.toThrow('only supports public Hugging Face models');
+    expect(AutoConfig.from_pretrained).not.toHaveBeenCalled();
+    expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
   });
 
   it('prefetchUrls should stream files to OPFS and report progress', async () => {
     const comlink = await import('comlink');
-    await import('./entry');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     const mockResponse = new Response(new Uint8Array([10, 20, 30, 40]), {
@@ -2041,7 +2114,7 @@ describe('transformers-js.worker', () => {
 
   it('prefetchUrls rejects an HTTP 200 HTML fallback instead of committing it as a model artifact', async () => {
     const comlink = await import('comlink');
-    await import('./entry');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     originalFetchMock.mockResolvedValue(new Response('<!DOCTYPE html><html></html>', {
@@ -2089,7 +2162,7 @@ describe('transformers-js.worker', () => {
 
       const comlink = await import('comlink');
       const { env } = await import('@huggingface/transformers');
-      await import('./entry');
+      await import('@/features/transformers-js/download-verification/download-worker/entry');
       const workerObj = (comlink.expose as any).mock.calls[0][0];
       const encodedPath = file!.path.split('/').map(part => encodeURIComponent(part)).join('/');
       const url = `https://huggingface.co/${repository.modelId}/resolve/${repository.resolvedRevision}/${encodedPath}`;
@@ -2143,7 +2216,7 @@ describe('transformers-js.worker', () => {
 
       const comlink = await import('comlink');
       const { env } = await import('@huggingface/transformers');
-      await import('./entry');
+      await import('@/features/transformers-js/download-verification/download-worker/entry');
       const workerObj = (comlink.expose as any).mock.calls[0][0];
       const encodedPath = file!.path.split('/').map(part => encodeURIComponent(part)).join('/');
       const url = `https://huggingface.co/${repository.modelId}/resolve/${repository.resolvedRevision}/${encodedPath}`;
@@ -2169,7 +2242,7 @@ describe('transformers-js.worker', () => {
 
   it('prefetchUrls should report partial failures without exposing signed query parameters', async () => {
     const comlink = await import('comlink');
-    await import('./entry');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     originalFetchMock
@@ -2220,7 +2293,7 @@ describe('transformers-js.worker', () => {
 
   it('prefetchUrls sanitizes signed URLs from failure error messages, stacks, and causes', async () => {
     const comlink = await import('comlink');
-    await import('./entry');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const signedUrl = 'https://huggingface.co/org/repo/model.onnx?token=secret&X-Amz-Signature=also-secret';
     originalFetchMock.mockRejectedValue(new TypeError(`fetch failed for ${signedUrl}`, {

@@ -9,7 +9,6 @@ import type {
   TransformersJsProgressCallback,
   TransformersJsChunkCallback,
   TransformersJsToolCallsCallback,
-  TransformersJsPrefetchResult,
 } from '@/features/transformers-js/types';
 
 function createUnavailableEnvironmentError(): Error {
@@ -19,12 +18,6 @@ function createUnavailableEnvironmentError(): Error {
 export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
   if (typeof Worker === 'undefined') {
     return {
-      async downloadModel({ modelId: _modelId, progressCallback: _progressCallback }) {
-        throw createUnavailableEnvironmentError();
-      },
-      async prefetchUrls({ urls: _urls, progressCallback: _progressCallback }) {
-        throw createUnavailableEnvironmentError();
-      },
       async loadDownloadedModel({ modelId: _modelId, revision: _revision, progressCallback: _progressCallback }) {
         throw createUnavailableEnvironmentError();
       },
@@ -46,26 +39,12 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
   }
 
   const worker = new Worker(
-    new URL('./entry.ts', import.meta.url),
+    new URL('./bootstrap.ts', import.meta.url),
     { type: 'module' },
   );
 
   const remote = wrapWorkerRemote<ITransformersJsWorker>({ endpoint: worker });
   return {
-    async downloadModel({ modelId, progressCallback }: {
-      modelId: string,
-      progressCallback: TransformersJsProgressCallback,
-    }): Promise<void> {
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-      return remote.downloadModel(modelId, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
-    },
-    async prefetchUrls({ urls, progressCallback }: {
-      urls: string[],
-      progressCallback: TransformersJsProgressCallback,
-    }): Promise<TransformersJsPrefetchResult> {
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-      return remote.prefetchUrls(urls, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
-    },
     async loadDownloadedModel({ modelId, revision, progressCallback }: {
       modelId: string,
       revision?: string,

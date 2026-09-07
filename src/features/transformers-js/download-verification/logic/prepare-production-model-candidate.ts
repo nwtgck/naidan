@@ -3,7 +3,7 @@ import { awaitWithAbort } from '@/features/transformers-js/download-verification
 import { sanitizeDiagnosticText } from '@/features/transformers-js/download-verification/logic/run-browser-download-verification';
 import type { DownloadVerificationCandidatePreparationObservation } from '@/features/transformers-js/download-verification/types';
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
-import { createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
+import { createTransformersJsDownloadWorkerClient } from '@/features/transformers-js/download-verification/download-worker/client-hosted';
 import type {
   TransformersJsPrefetchFileResult,
   TransformersJsProductionInvestigationCandidate,
@@ -129,7 +129,7 @@ export async function prepareProductionModelCandidate({
     };
   }
 
-  const client = createTransformersJsWorkerClient();
+  const client = createTransformersJsDownloadWorkerClient();
   try {
     // Held-fetch observation is primary evidence of what Transformers.js actually
     // requests, but some composite loaders issue later model requests only after

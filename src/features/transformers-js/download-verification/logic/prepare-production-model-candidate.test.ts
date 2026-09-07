@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareProductionModelCandidate } from '@/features/transformers-js/download-verification/logic/prepare-production-model-candidate';
 import { observeProductionModelArtifactCandidateRequests } from '@/features/transformers-js/download-verification/logic/observe-production-model-artifact-requests';
-import { createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
+import { createTransformersJsDownloadWorkerClient } from '@/features/transformers-js/download-verification/download-worker/client-hosted';
 import type {
   DownloadVerificationModelArtifactRequestObservation,
 } from '@/features/transformers-js/download-verification/types';
@@ -14,8 +14,8 @@ import type {
 vi.mock('@/features/transformers-js/download-verification/logic/observe-production-model-artifact-requests', () => ({
   observeProductionModelArtifactCandidateRequests: vi.fn(),
 }));
-vi.mock('@/features/transformers-js/worker/client', () => ({
-  createTransformersJsWorkerClient: vi.fn(),
+vi.mock('@/features/transformers-js/download-verification/download-worker/client-hosted', () => ({
+  createTransformersJsDownloadWorkerClient: vi.fn(),
 }));
 
 const MODEL_ID = 'org/model';
@@ -93,10 +93,10 @@ describe('prepareProductionModelCandidate', () => {
     const prefetchUrls = vi.fn(async ({ urls }: { urls: string[] }) => result({
       files: urls.map(url => successfulFile({ path: new URL(url).pathname.split(`/resolve/${REVISION}/`)[1]! })),
     }));
-    vi.mocked(createTransformersJsWorkerClient).mockReturnValue({
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({
       prefetchUrls,
       dispose,
-    } as unknown as ReturnType<typeof createTransformersJsWorkerClient>);
+    } as unknown as ReturnType<typeof createTransformersJsDownloadWorkerClient>);
 
     await expect(prepareProductionModelCandidate({
       modelId: MODEL_ID,
@@ -119,10 +119,10 @@ describe('prepareProductionModelCandidate', () => {
     const prefetchUrls = vi.fn(async ({ urls }: { urls: string[] }) => result({
       files: urls.map(url => successfulFile({ path: new URL(url).pathname.split(`/resolve/${REVISION}/`)[1]! })),
     }));
-    vi.mocked(createTransformersJsWorkerClient).mockReturnValue({
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({
       prefetchUrls,
       dispose,
-    } as unknown as ReturnType<typeof createTransformersJsWorkerClient>);
+    } as unknown as ReturnType<typeof createTransformersJsDownloadWorkerClient>);
 
     await expect(prepareProductionModelCandidate({
       modelId: MODEL_ID,
@@ -153,7 +153,7 @@ describe('prepareProductionModelCandidate', () => {
 
   it('classifies a missing required repository artifact as candidate unavailability', async () => {
     const dispose = vi.fn(async () => {});
-    vi.mocked(createTransformersJsWorkerClient).mockReturnValue({
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({
       prefetchUrls: vi.fn(async () => result({
         files: [
           successfulFile({ path: 'onnx/model_q4f16.onnx' }),
@@ -161,7 +161,7 @@ describe('prepareProductionModelCandidate', () => {
         ],
       })),
       dispose,
-    } as unknown as ReturnType<typeof createTransformersJsWorkerClient>);
+    } as unknown as ReturnType<typeof createTransformersJsDownloadWorkerClient>);
 
     const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE });
 
@@ -179,7 +179,7 @@ describe('prepareProductionModelCandidate', () => {
 
   it('does not turn network or server failures into candidate unavailability', async () => {
     const dispose = vi.fn(async () => {});
-    vi.mocked(createTransformersJsWorkerClient).mockReturnValue({
+    vi.mocked(createTransformersJsDownloadWorkerClient).mockReturnValue({
       prefetchUrls: vi.fn(async () => result({
         files: [failedFile({
           path: 'onnx/model_q4f16.onnx',
@@ -188,7 +188,7 @@ describe('prepareProductionModelCandidate', () => {
         })],
       })),
       dispose,
-    } as unknown as ReturnType<typeof createTransformersJsWorkerClient>);
+    } as unknown as ReturnType<typeof createTransformersJsDownloadWorkerClient>);
 
     const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE });
 
@@ -225,7 +225,7 @@ describe('prepareProductionModelCandidate', () => {
       error: { name: 'ModelArtifactRequestIdentityMismatch' },
       prefetch: undefined,
     });
-    expect(createTransformersJsWorkerClient).not.toHaveBeenCalled();
+    expect(createTransformersJsDownloadWorkerClient).not.toHaveBeenCalled();
   });
 
   it('stops before prefetch when the actual-loader request observation fails', async () => {
@@ -244,6 +244,6 @@ describe('prepareProductionModelCandidate', () => {
       error: { name: 'ObserverError', message: 'could not observe requests' },
       prefetch: undefined,
     });
-    expect(createTransformersJsWorkerClient).not.toHaveBeenCalled();
+    expect(createTransformersJsDownloadWorkerClient).not.toHaveBeenCalled();
   });
 });

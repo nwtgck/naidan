@@ -203,16 +203,16 @@ export function planDownloadVerificationCachedRevisionLoadCandidates({
     .filter(revision => revision.kind === 'immutable-sha')
     .sort((left, right) => right.lastModified - left.lastModified || left.revision.localeCompare(right.revision));
   return [
-    ...(main === undefined ? [] : [{
-      revision: main.revision,
-      loaderRevisionOption: undefined,
-      source: 'legacy-main' as const,
-    }]),
     ...immutable.map(revision => ({
       revision: revision.revision,
       loaderRevisionOption: revision.revision,
       source: 'offline-immutable-fallback' as const,
     })),
+    ...(main === undefined ? [] : [{
+      revision: main.revision,
+      loaderRevisionOption: undefined,
+      source: 'legacy-main' as const,
+    }]),
   ];
 }
 

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   release: vi.fn(),
   wrap: vi.fn(),
   terminate: vi.fn(),
+  workerUrls: [] as URL[],
 }));
 
 vi.mock('@/utils/worker-transport', async importOriginal => ({
@@ -13,6 +14,10 @@ vi.mock('@/utils/worker-transport', async importOriginal => ({
 }));
 
 class MockWorker {
+  constructor(url: URL) {
+    mocks.workerUrls.push(url);
+  }
+
   terminate = mocks.terminate;
 }
 
@@ -21,6 +26,7 @@ vi.stubGlobal('Worker', MockWorker);
 describe('Download Verification dedicated Worker clients', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.workerUrls.length = 0;
     mocks.wrap.mockReturnValue({});
     mocks.release.mockReturnValue(new Promise<never>(() => undefined));
   });
@@ -35,11 +41,15 @@ describe('Download Verification dedicated Worker clients', () => {
     const { createDownloadVerificationCandidateAcceptanceWorkerClient } = await import(
       './candidate-acceptance-worker/client-hosted'
     );
+    const { createTransformersJsDownloadWorkerClient } = await import(
+      './download-worker/client-hosted'
+    );
 
     const clients = [
       createDownloadVerificationModelArtifactRequestWorkerClient(),
       createDownloadVerificationRuntimeArtifactPreparationWorkerClient(),
       createDownloadVerificationCandidateAcceptanceWorkerClient(),
+      createTransformersJsDownloadWorkerClient(),
     ];
 
     for (const client of clients) {
@@ -47,7 +57,13 @@ describe('Download Verification dedicated Worker clients', () => {
       await expect(client.dispose()).resolves.toBeUndefined();
     }
 
-    expect(mocks.release).toHaveBeenCalledTimes(3);
-    expect(mocks.terminate).toHaveBeenCalledTimes(3);
+    expect(mocks.release).toHaveBeenCalledTimes(4);
+    expect(mocks.terminate).toHaveBeenCalledTimes(4);
+    expect(mocks.workerUrls.map(url => url.pathname)).toEqual([
+      expect.stringMatching(/\/model-artifact-request-worker\/entry\.ts$/u),
+      expect.stringMatching(/\/download-worker\/entry\.ts$/u),
+      expect.stringMatching(/\/worker\/bootstrap\.ts$/u),
+      expect.stringMatching(/\/download-worker\/entry\.ts$/u),
+    ]);
   });
 });

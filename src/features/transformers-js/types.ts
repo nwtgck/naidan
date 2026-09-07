@@ -512,11 +512,23 @@ export interface TransformersJsProductionInvestigationObservation {
 
 // We define the interface here so that the service can use it
 // without importing the entire worker file.
-export interface ITransformersJsWorker {
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  downloadModel(modelId: string, progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<void>,
+export interface ITransformersJsDownloadWorker {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   prefetchUrls(urls: string[], progressCallback: WorkerProxy<(x: ProgressInfo) => void>): Promise<TransformersJsPrefetchResult>,
+  /**
+   * Explicit Download only: lets Transformers.js prepare config/tokenizer/processor
+   * files for one immutable public Hub revision. Model/weight fetches are blocked.
+   */
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink remote boundaries use positional top-level arguments.
+  prepareModelRuntimeArtifacts(
+    modelId: string,
+    revision: string,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is proxied across the Comlink boundary.
+    progressCallback: WorkerProxy<(x: ProgressInfo) => void>,
+  ): Promise<TransformersJsRuntimeArtifactPreparationResult>,
+}
+
+export interface ITransformersJsWorker {
   /**
    * Loads a model that has already been fully downloaded.
    *
@@ -549,17 +561,6 @@ export interface ITransformersJsWorker {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is proxied across the Comlink boundary.
     progressCallback: WorkerProxy<(x: ProgressInfo) => void>,
   ): Promise<ModelLoadResult>,
-  /**
-   * Download Verification only: lets Transformers.js prepare config/tokenizer/processor
-   * files for one immutable public Hub revision. Model/weight fetches are blocked.
-   */
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink remote boundaries use positional top-level arguments.
-  prepareModelRuntimeArtifacts(
-    modelId: string,
-    revision: string,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is proxied across the Comlink boundary.
-    progressCallback: WorkerProxy<(x: ProgressInfo) => void>,
-  ): Promise<TransformersJsRuntimeArtifactPreparationResult>,
   unloadModel(): Promise<void>,
   interrupt(): Promise<void>,
   resetCache(): Promise<void>,
@@ -582,14 +583,6 @@ export interface ITransformersJsWorker {
 }
 
 export interface TransformersJsWorkerClient {
-  downloadModel({ modelId, progressCallback }: {
-    modelId: string,
-    progressCallback: TransformersJsProgressCallback,
-  }): Promise<void>,
-  prefetchUrls({ urls, progressCallback }: {
-    urls: string[],
-    progressCallback: TransformersJsProgressCallback,
-  }): Promise<TransformersJsPrefetchResult>,
   /**
    * Loads a model that has already been fully downloaded. This MUST NOT start,
    * resume, repair, or otherwise perform any model download.

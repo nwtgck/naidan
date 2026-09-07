@@ -331,9 +331,9 @@ export function createModelSupportInvestigationWorkerClient({
   const createProductionWorkerHandle = (): ProductionWorkerHandle => {
     if (userInterruptionRequested) throw new ModelSupportInvestigationUserInterruptedError();
     if (disposed) throw new Error("Model Support Investigation client is disposed");
-    // Production Lane intentionally runs the real Production worker entry so the
-    // observed loader body remains identical to ordinary model loading.
-    const worker = new Worker(new URL("../../worker/entry.ts", import.meta.url), { type: "module" });
+    // Production Lane intentionally uses the ordinary Production bootstrap so
+    // both its offline network boundary and loader body remain identical.
+    const worker = new Worker(new URL("../../worker/bootstrap.ts", import.meta.url), { type: "module" });
     activeProductionWorkers.add(worker);
     return {
       worker,

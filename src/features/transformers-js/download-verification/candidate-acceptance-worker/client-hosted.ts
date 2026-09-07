@@ -38,7 +38,7 @@ export function createDownloadVerificationCandidateAcceptanceWorkerClient(): Dow
   }
 
   const worker = new Worker(
-    new URL('../../worker/entry.ts', import.meta.url),
+    new URL('../../worker/bootstrap.ts', import.meta.url),
     { type: 'module' },
   );
   const remote = wrapWorkerRemote<ITransformersJsWorker>({ endpoint: worker });

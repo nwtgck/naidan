@@ -3,42 +3,36 @@ import { disposeDedicatedWorkerBestEffort } from '@/features/transformers-js/dow
 import type {
   ITransformersJsDownloadWorker,
   ProgressInfo,
+  TransformersJsPrefetchResult,
   TransformersJsProgressCallback,
-  TransformersJsRuntimeArtifactPreparationResult,
 } from '@/features/transformers-js/types';
 
-export interface DownloadVerificationRuntimeArtifactPreparationWorkerClient {
-  prepareModelRuntimeArtifacts({ modelId, revision, progressCallback }: {
-    modelId: string;
-    revision: string;
+export interface TransformersJsDownloadWorkerClient {
+  prefetchUrls({ urls, progressCallback }: {
+    urls: string[];
     progressCallback: TransformersJsProgressCallback;
-  }): Promise<TransformersJsRuntimeArtifactPreparationResult>;
+  }): Promise<TransformersJsPrefetchResult>;
   dispose(): Promise<void>;
 }
 
-export function createDownloadVerificationRuntimeArtifactPreparationWorkerClient(): DownloadVerificationRuntimeArtifactPreparationWorkerClient {
+export function createTransformersJsDownloadWorkerClient(): TransformersJsDownloadWorkerClient {
   if (typeof Worker === 'undefined') {
     return {
-      async prepareModelRuntimeArtifacts() {
-        throw new Error('Download Verification runtime artifact preparation requires a browser Worker');
+      async prefetchUrls() {
+        throw new Error('Transformers.js Download Worker requires a browser Worker');
       },
       async dispose() {
       },
     };
   }
 
-  const worker = new Worker(
-    new URL('../download-worker/entry.ts', import.meta.url),
-    { type: 'module' },
-  );
+  const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module' });
   const remote = wrapWorkerRemote<ITransformersJsDownloadWorker>({ endpoint: worker });
   let disposed = false;
-
   return {
-    async prepareModelRuntimeArtifacts({ modelId, revision, progressCallback }) {
-      return await remote.prepareModelRuntimeArtifacts(
-        modelId,
-        revision,
+    async prefetchUrls({ urls, progressCallback }) {
+      return await remote.prefetchUrls(
+        urls,
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
         workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }),
       );

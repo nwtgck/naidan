@@ -25,23 +25,18 @@ import type {
   TransformersJsProductionInvestigationCandidateLoadAttempt,
   TransformersJsProductionInvestigationCandidateLoadError,
   TransformersJsModelLoadProgressObservation,
-  TransformersJsProductionInvestigationDevice,
   TransformersJsProductionInvestigationError,
   TransformersJsOpaqueStructureSummary,
   TransformersJsProductionInvestigationInputTensorMetadata,
   TransformersJsProductionInvestigationObservation,
   TransformersJsProductionInvestigationPartialObservation,
   TransformersJsProductionInvestigationProcessor,
-  TransformersJsRuntimeArtifactPreparationResult,
   TransformersJsProductionInvestigationReasoningObservation,
   TransformersJsProductionInvestigationReasoningEffortObservation,
   TransformersJsProductionInvestigationStrategy,
   TransformersJsProductionInvestigationStageStatus,
   TransformersJsProductionInvestigationTurnObservation,
   TransformersJsProgressCallback,
-  TransformersJsPrefetchFailureStage,
-  TransformersJsPrefetchFileResult,
-  TransformersJsPrefetchResult,
 } from '@/features/transformers-js/types';
 import {
   isGemma4Model,
@@ -59,14 +54,14 @@ import {
   type GenerationStrategyObservationSink,
   type WorkerGenerationRuntimeState,
 } from '@/features/transformers-js/generation-strategies';
-import { urlToPath, writeToOpfsWithStaging } from '@/features/transformers-js/utils';
-import {
-  configureHostedTransformersRuntime,
-  isHuggingFaceModelArtifactUrl,
-} from '@/features/transformers-js/runtime/configure-hosted-runtime';
+import { configureHostedTransformersRuntime } from '@/features/transformers-js/runtime/configure-hosted-runtime';
 import { createHostedTransformersModelFetch } from '@/features/transformers-js/runtime/model-fetch';
 import { createDownloadedModelReadOnlyCache } from '@/features/transformers-js/runtime/downloaded-model-cache';
 import { createOpfsModelCache } from '@/features/transformers-js/runtime/opfs-model-cache';
+import {
+  downloadedModelCandidatePlanError,
+  planDownloadedModelCandidates,
+} from '@/features/transformers-js/runtime/plan-downloaded-model-candidates';
 import { promiseAllKeyed } from '@/utils/promise';
 
 /**
@@ -125,151 +120,10 @@ env.useBrowserCache = false;
 // Reduce log verbosity for performance
 env.backends.onnx.logLevel = 'error';
 
-function sanitizePrefetchUrl({ url }: { url: string }): string {
-  try {
-    const parsed = new URL(url);
-    parsed.search = '';
-    parsed.hash = '';
-    return parsed.toString();
-  } catch {
-    return url.split(/[?#]/u, 1)[0] ?? url;
-  }
-}
-
-function fileNameFromUrl({ url }: { url: string }): string | undefined {
-  try {
-    const pathParts = new URL(url).pathname.split('/');
-    return pathParts.at(-1) || undefined;
-  } catch {
-    return url.split(/[?#]/u, 1)[0]?.split('/').at(-1) || undefined;
-  }
-}
-
-function parseExpectedByteLength({ response }: { response: Response }): number | undefined {
-  const rawValue = response.headers.get('content-length');
-  if (rawValue === null) return undefined;
-  const value = Number(rawValue);
-  return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-}
-
-function sanitizePrefetchDiagnosticText({ value }: { value: string }): string {
-  return value.replace(/https?:\/\/[^\s"'<>]+/giu, rawUrl => sanitizePrefetchUrl({ url: rawUrl }));
-}
-
-function serializePrefetchErrorCause({ error }: { error: unknown }): TransformersJsProductionInvestigationError['cause'] {
-  if (!(error instanceof Error)) return undefined;
-  return {
-    name: error.name,
-    message: sanitizePrefetchDiagnosticText({ value: error.message }),
-    stack: error.stack === undefined ? undefined : sanitizePrefetchDiagnosticText({ value: error.stack }),
-    thrownType: error.constructor.name || 'Error',
-  };
-}
-
-function serializePrefetchError({ error }: { error: unknown }): TransformersJsProductionInvestigationError {
-  if (error instanceof Error) {
-    const cause = 'cause' in error ? serializePrefetchErrorCause({ error: error.cause }) : undefined;
-    return {
-      name: error.name,
-      message: sanitizePrefetchDiagnosticText({ value: error.message }),
-      stack: error.stack === undefined ? undefined : sanitizePrefetchDiagnosticText({ value: error.stack }),
-      thrownType: error.constructor.name || 'Error',
-      cause,
-      causeChain: cause === undefined ? undefined : [cause],
-    };
-  }
-  return {
-    name: 'NonErrorThrownValue',
-    message: sanitizePrefetchDiagnosticText({ value: typeof error === 'string' ? error : 'A non-Error value was thrown' }),
-    thrownType: error === null ? 'null' : typeof error,
-  };
-}
-
-function createPrefetchFailure({
-  url,
-  path,
-  failureStage,
-  httpStatus,
-  error,
-}: {
-  url: string,
-  path: string | undefined,
-  failureStage: TransformersJsPrefetchFailureStage,
-  httpStatus?: number,
-  error: unknown,
-}): Extract<TransformersJsPrefetchFileResult, { status: 'failed' }> {
-  return {
-    status: 'failed',
-    url,
-    path,
-    failureStage,
-    httpStatus,
-    error: serializePrefetchError({ error }),
-  };
-}
-
-function isNotFoundError({ error }: { error: unknown }): boolean {
-  return error instanceof Error && error.name === 'NotFoundError';
-}
-
-async function removeOpfsEntryIfPresent({ directory, name }: {
-  directory: FileSystemDirectoryHandle,
-  name: string,
-}): Promise<void> {
-  try {
-    await directory.removeEntry(name);
-  } catch (error) {
-    if (isNotFoundError({ error })) return;
-    throw error;
-  }
-}
-
-async function getCompletedOpfsByteLength({ path }: { path: string }): Promise<number | undefined> {
-  const pathParts = path.split('/');
-  const fileName = pathParts.pop();
-  if (!fileName) return undefined;
-
-  const root = await navigator.storage.getDirectory();
-  let currentDir = root;
-  for (const part of pathParts) {
-    if (!part) continue;
-    try {
-      currentDir = await currentDir.getDirectoryHandle(part, { create: false });
-    } catch (error) {
-      if (isNotFoundError({ error })) return undefined;
-      throw error;
-    }
-  }
-
-  const markerName = `.${fileName}.complete`;
-  try {
-    await currentDir.getFileHandle(markerName, { create: false });
-  } catch (error) {
-    if (isNotFoundError({ error })) return undefined;
-    throw error;
-  }
-
-  let file: File;
-  try {
-    const fileHandle = await currentDir.getFileHandle(fileName, { create: false });
-    file = await fileHandle.getFile();
-  } catch (error) {
-    if (!isNotFoundError({ error })) throw error;
-    await removeOpfsEntryIfPresent({ directory: currentDir, name: markerName });
-    return undefined;
-  }
-
-  if (file.size > 0) return file.size;
-  await removeOpfsEntryIfPresent({ directory: currentDir, name: markerName });
-  await removeOpfsEntryIfPresent({ directory: currentDir, name: fileName });
-  return undefined;
-}
-
 const downloadedModelCache = createOpfsModelCache({ mutationPolicy: 'read-only' });
-const downloadModelCache = createOpfsModelCache({ mutationPolicy: 'read-write' });
 
-// Keep the worker's default model cache read-only. Explicit download operations
-// temporarily opt into the write-capable cache; loading/generation never do.
+// Keep the worker's model cache read-only. This Worker has no download mode or
+// write-capable cache; explicit online work belongs to the Download Worker.
 env.useCustomCache = true;
 env.customCache = downloadedModelCache;
 env.fetch = interceptedFetch;
@@ -290,28 +144,6 @@ const generationRuntimeState: WorkerGenerationRuntimeState = {
   qwen3_5ConversationState: undefined,
 };
 const stoppingCriteria = new InterruptableStoppingCriteria();
-
-async function withDownloadModelAccessMode<T>({
-  isLocal,
-  run,
-}: {
-  isLocal: boolean,
-  run: () => Promise<T>,
-}): Promise<T> {
-  const previousAllowLocalModels = env.allowLocalModels;
-  const previousAllowRemoteModels = env.allowRemoteModels;
-  const previousCustomCache = env.customCache;
-  env.allowLocalModels = isLocal;
-  env.allowRemoteModels = !isLocal;
-  env.customCache = downloadModelCache;
-  try {
-    return await run();
-  } finally {
-    env.allowLocalModels = previousAllowLocalModels;
-    env.allowRemoteModels = previousAllowRemoteModels;
-    env.customCache = previousCustomCache;
-  }
-}
 
 /**
  * Runs the memory/session loading phase for a model that is already downloaded.
@@ -433,14 +265,15 @@ async function loadDownloadedProductionModelCandidate({
 
 async function loadDownloadedProductionTokenizerOrProcessor({
   cleanModelId,
+  modelType,
   revision,
   progressCallback,
 }: {
   cleanModelId: string,
+  modelType: string | undefined,
   revision: string | undefined,
   progressCallback: TransformersProgressCallback,
 }): Promise<TransformersJsProductionInvestigationProcessor> {
-  if (model === null) throw new Error('Production model is not loaded');
   const sharedOptions = {
     progress_callback: progressCallback,
     local_files_only: true,
@@ -448,7 +281,7 @@ async function loadDownloadedProductionTokenizerOrProcessor({
   };
   const runtimeArtifactLoader = selectTransformersJsProductionRuntimeArtifactLoader({
     modelId: cleanModelId,
-    modelType: (model as ModelInternals).config?.model_type,
+    modelType,
   });
   switch (runtimeArtifactLoader) {
   case 'gemma4-processor':
@@ -472,133 +305,6 @@ async function loadDownloadedProductionTokenizerOrProcessor({
 }
 
 
-const MAX_RUNTIME_ARTIFACT_PREPARATION_FILE_BYTES = 64 * 1024 * 1024;
-
-function requestUrl({ input }: { input: RequestInfo | URL }): string {
-  if (typeof input === 'string') return input;
-  if (input instanceof URL) return input.href;
-  return input.url;
-}
-
-function createRuntimeArtifactPreparationFetch({
-  baseFetch,
-  maximumByteLength = MAX_RUNTIME_ARTIFACT_PREPARATION_FILE_BYTES,
-}: {
-  baseFetch: typeof fetch,
-  maximumByteLength?: number,
-}): typeof fetch {
-  return async (input, init) => {
-    const url = requestUrl({ input });
-    if (isHuggingFaceModelArtifactUrl({ url })) {
-      throw new Error(
-        `Runtime artifact preparation MUST NOT fetch model artifacts: ${sanitizePrefetchUrl({ url })}`,
-      );
-    }
-
-    const response = await baseFetch(input, {
-      ...init,
-      credentials: 'omit',
-      referrerPolicy: 'no-referrer',
-    });
-    const expectedByteLength = parseExpectedByteLength({ response });
-    if (expectedByteLength !== undefined && expectedByteLength > maximumByteLength) {
-      await response.body?.cancel();
-      throw new Error(
-        `Runtime artifact preparation refused an unexpectedly large non-model artifact (${expectedByteLength} bytes): ${sanitizePrefetchUrl({ url })}`,
-      );
-    }
-    if (response.body === null) return response;
-
-    let receivedByteLength = 0;
-    const guardedBody = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        receivedByteLength += chunk.byteLength;
-        if (receivedByteLength > maximumByteLength) {
-          controller.error(new Error(
-            `Runtime artifact preparation exceeded the non-model artifact byte limit (${maximumByteLength} bytes): ${sanitizePrefetchUrl({ url })}`,
-          ));
-          return;
-        }
-        controller.enqueue(chunk);
-      },
-    }));
-    return new Response(guardedBody, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
-  };
-}
-
-async function prepareProductionRuntimeArtifacts({
-  modelId,
-  revision,
-  progressCallback,
-}: {
-  modelId: string,
-  revision: string,
-  progressCallback: TransformersProgressCallback,
-}): Promise<TransformersJsRuntimeArtifactPreparationResult> {
-  const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
-  if (cleanModelId.startsWith('user/')) {
-    throw new Error('Runtime artifact preparation only supports public Hugging Face models');
-  }
-  if (!/^[0-9a-f]{40}$/iu.test(revision)) {
-    throw new Error(`Runtime artifact preparation requires an exact 40-character Hugging Face revision SHA: ${revision}`);
-  }
-
-  const guardedFetch = createRuntimeArtifactPreparationFetch({ baseFetch: interceptedFetch });
-  return await withDownloadModelAccessMode({
-    isLocal: false,
-    run: async () => {
-      const previousFetch = env.fetch;
-      env.fetch = guardedFetch;
-      try {
-        const sharedOptions = {
-          revision,
-          progress_callback: progressCallback,
-          local_files_only: false,
-        };
-        const config = await AutoConfig.from_pretrained(cleanModelId, sharedOptions);
-        const modelType = typeof config.model_type === 'string' ? config.model_type : undefined;
-        const requiredModelPathsByCandidate = Object.fromEntries(await Promise.all(
-          TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES.map(async candidate => {
-            const paths = await ModelRegistry.get_model_files(cleanModelId, {
-              config,
-              device: candidate.device,
-              dtype: candidate.dtype,
-            });
-            const requiredModelPaths = [...new Set(paths.filter(path => (
-              path.endsWith('.onnx') || /\.onnx_data(?:_\d+)?$/u.test(path)
-            )))].sort((a, b) => a.localeCompare(b));
-            return [`${candidate.device}/${candidate.dtype}`, requiredModelPaths] as const;
-          }),
-        ));
-        const processor = selectTransformersJsProductionRuntimeArtifactLoader({
-          modelId: cleanModelId,
-          modelType,
-        });
-        switch (processor) {
-        case 'gemma4-processor':
-        case 'qwen3_5-processor':
-          await AutoProcessor.from_pretrained(cleanModelId, sharedOptions);
-          break;
-        case 'tokenizer':
-          await AutoTokenizer.from_pretrained(cleanModelId, sharedOptions);
-          break;
-        default: {
-          const _ex: never = processor;
-          throw new Error(`Unhandled Production runtime artifact loader: ${_ex}`);
-        }
-        }
-        return { processor, modelType, requiredModelPathsByCandidate };
-      } finally {
-        env.fetch = previousFetch;
-      }
-    },
-  });
-}
-
 async function loadProductionRuntime({
   modelId,
   revision,
@@ -606,7 +312,7 @@ async function loadProductionRuntime({
   progressCallback,
   runtimePreparationProgressCallback = progressCallback,
   serializeError,
-  modelCache = downloadedModelCache,
+  modelCache,
   cacheOnlyFetch = downloadedModelCacheOnlyFetch,
   onCandidateStart = () => undefined,
   onCandidateAttempt = () => undefined,
@@ -637,10 +343,57 @@ async function loadProductionRuntime({
     modelCache: runtimeModelCache,
     cacheOnlyFetch,
     run: async () => {
+      const config = await AutoConfig.from_pretrained(cleanModelId, {
+        local_files_only: true,
+        progress_callback: info => runtimePreparationProgressCallback({ info }),
+        ...(revision === undefined ? {} : { revision }),
+      });
+      const modelType = typeof config.model_type === 'string' ? config.model_type : undefined;
+      const runtimeArtifactLoader = selectTransformersJsProductionRuntimeArtifactLoader({
+        modelId: cleanModelId,
+        modelType,
+      });
+      const candidatePlan = await planDownloadedModelCandidates({
+        modelId: cleanModelId,
+        revision,
+        candidates,
+        modelCache: runtimeModelCache,
+        getModelFiles: async ({ candidate }) => await ModelRegistry.get_model_files(cleanModelId, {
+          config,
+          device: candidate.device,
+          dtype: candidate.dtype,
+        }),
+        getRuntimeFiles: async () => {
+          const tokenizerPaths = await ModelRegistry.get_tokenizer_files(cleanModelId);
+          switch (runtimeArtifactLoader) {
+          case 'tokenizer':
+            return tokenizerPaths;
+          case 'gemma4-processor':
+          case 'qwen3_5-processor':
+            return [...tokenizerPaths, ...await ModelRegistry.get_processor_files(cleanModelId)];
+          default: {
+            const _ex: never = runtimeArtifactLoader;
+            throw new Error(`Unhandled Production runtime artifact loader: ${_ex}`);
+          }
+          }
+        },
+        workerLocationUrl: self.location.href,
+      });
+      const completeCandidates = candidatePlan
+        .filter(entry => entry.complete)
+        .map(entry => entry.candidate);
+      if (completeCandidates.length === 0) {
+        throw downloadedModelCandidatePlanError({
+          modelId: cleanModelId,
+          revision,
+          entries: candidatePlan,
+        });
+      }
+
       let selectedCandidate: ProductionLoadCandidate | undefined;
       let lastError: unknown;
       const loadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[] = [];
-      for (const candidate of candidates) {
+      for (const candidate of completeCandidates) {
         onCandidateStart({ candidate });
         const startedAt = performance.now();
         debugLog({
@@ -718,6 +471,7 @@ async function loadProductionRuntime({
       const runtimePreparationStartedAt = performance.now();
       const processor = await loadDownloadedProductionTokenizerOrProcessor({
         cleanModelId,
+        modelType,
         revision,
         progressCallback: info => runtimePreparationProgressCallback({ info }),
       });
@@ -960,178 +714,6 @@ async function runObservedProductionTurn({
 // ---------------------------------------------------------------------------
 
 const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  async downloadModel(modelId: string, progressCallback: (x: ProgressInfo) => void) {
-    console.log('[transformersJsWorker] Starting downloadModel:', modelId);
-    let cleanModelId = modelId;
-    if (cleanModelId.startsWith('hf.co/')) cleanModelId = cleanModelId.substring(6);
-    else if (cleanModelId.startsWith('https://huggingface.co/')) cleanModelId = cleanModelId.substring(23);
-
-    const isLocal = cleanModelId.startsWith('user/');
-
-    await withDownloadModelAccessMode({
-      isLocal,
-      run: async () => {
-        // Downloading should only warm the cache. Session creation during download
-        // can poison the active runtime if ORT rejects a model/operator combination.
-        await AutoTokenizer.from_pretrained(cleanModelId, {
-          progress_callback: progressCallback,
-          local_files_only: isLocal,
-        });
-      },
-    });
-    console.log('[transformersJsWorker] Download complete.');
-  },
-
-  /**
-   * Directly downloads model files to OPFS via streaming fetch, bypassing
-   * transformers.js's internal loader to prevent Out-of-Memory (OOM) errors
-   * for large assets. This is called after the scanner has identified
-   * all necessary URLs.
-   */
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
-  async prefetchUrls(urls: string[], progressCallback: (x: ProgressInfo) => void): Promise<TransformersJsPrefetchResult> {
-    console.log(`[transformersJsWorker] Starting prefetch of ${urls.length} URLs.`);
-    const files: TransformersJsPrefetchFileResult[] = [];
-
-    for (const originalUrl of urls) {
-      const url = sanitizePrefetchUrl({ url: originalUrl });
-      const path = urlToPath({ url: originalUrl });
-      if (!path) {
-        files.push(createPrefetchFailure({
-          url,
-          path: undefined,
-          failureStage: 'resolve-path',
-          error: new Error('The model URL could not be mapped to an OPFS path'),
-        }));
-        continue;
-      }
-
-      let cachedByteLength: number | undefined;
-      try {
-        cachedByteLength = await getCompletedOpfsByteLength({ path });
-      } catch (error) {
-        files.push(createPrefetchFailure({
-          url,
-          path,
-          failureStage: 'cache-check',
-          error,
-        }));
-        continue;
-      }
-      if (cachedByteLength !== undefined) {
-        console.debug(`[transformersJsWorker] Already cached: ${path}`);
-        files.push({
-          status: 'cached',
-          url,
-          path,
-          byteLength: cachedByteLength,
-          expectedByteLength: undefined,
-        });
-        continue;
-      }
-
-      console.log(`[transformersJsWorker] Prefetching: ${url}`);
-      let response: Response;
-      try {
-        response = await interceptedFetch(originalUrl);
-      } catch (error) {
-        files.push(createPrefetchFailure({ url, path, failureStage: 'fetch', error }));
-        continue;
-      }
-      if (!response.ok) {
-        files.push(createPrefetchFailure({
-          url,
-          path,
-          failureStage: 'response-status',
-          httpStatus: response.status,
-          error: new Error(`HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`),
-        }));
-        continue;
-      }
-      if (response.body === null) {
-        files.push(createPrefetchFailure({
-          url,
-          path,
-          failureStage: 'fetch',
-          httpStatus: response.status,
-          error: new Error('The model response did not include a readable body'),
-        }));
-        continue;
-      }
-
-      const expectedByteLength = parseExpectedByteLength({ response });
-      let loaded = 0;
-      const transformStream = new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          loaded += chunk.byteLength;
-          progressCallback({
-            status: 'progress',
-            file: fileNameFromUrl({ url: originalUrl }),
-            loaded,
-            total: expectedByteLength,
-          });
-          controller.enqueue(chunk);
-        },
-      });
-      const progressResponse = new Response(response.body.pipeThrough(transformStream), {
-        headers: response.headers,
-      });
-
-      let writtenByteLength: number;
-      try {
-        ({ byteLength: writtenByteLength } = await writeToOpfsWithStaging({ path, response: progressResponse }));
-      } catch (error) {
-        files.push(createPrefetchFailure({
-          url,
-          path,
-          failureStage: 'write',
-          httpStatus: response.status,
-          error,
-        }));
-        continue;
-      }
-
-      try {
-        const verifiedByteLength = await getCompletedOpfsByteLength({ path });
-        if (verifiedByteLength === undefined || verifiedByteLength !== writtenByteLength) {
-          throw new Error(`Final OPFS verification failed for ${path}`);
-        }
-        if (expectedByteLength !== undefined && verifiedByteLength !== expectedByteLength) {
-          throw new Error(`Final OPFS byte length mismatch for ${path}: expected ${expectedByteLength}, received ${verifiedByteLength}`);
-        }
-        files.push({
-          status: 'downloaded',
-          url,
-          path,
-          byteLength: verifiedByteLength,
-          expectedByteLength,
-        });
-        console.log(`[transformersJsWorker] Prefetched and saved: ${path}`);
-      } catch (error) {
-        files.push(createPrefetchFailure({
-          url,
-          path,
-          failureStage: 'verification',
-          httpStatus: response.status,
-          error,
-        }));
-      }
-    }
-
-    const cachedCount = files.filter(file => file.status === 'cached').length;
-    const downloadedCount = files.filter(file => file.status === 'downloaded').length;
-    const failedCount = files.filter(file => file.status === 'failed').length;
-    return {
-      requestedCount: urls.length,
-      cachedCount,
-      downloadedCount,
-      failedCount,
-      complete: files.length === urls.length && failedCount === 0,
-      files,
-    };
-  },
-
   /**
    * Loads an already-downloaded model into memory/runtime sessions.
    *
@@ -1146,89 +728,23 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
     activeModelId = modelId;
     generationRuntimeState.activeModelId = modelId;
 
-    const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
-    const autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId });
-    let loadedDevice: TransformersJsProductionInvestigationDevice = 'wasm';
-    let loadedDtype: TransformersJsProductionInvestigationCandidate['dtype'] | undefined;
-
     try {
-      assertGemma4RuntimeSupport({ modelId: cleanModelId });
-
-      await withDownloadedModelAccessMode({
-        modelCache: createDownloadedModelReadOnlyCache({ modelId: cleanModelId, revision }),
-        run: async () => {
-          const tryLoad = async ({ candidate }: { candidate: ProductionLoadCandidate }): Promise<PreTrainedModel> => {
-            const startedAt = performance.now();
-            debugLog({
-              event: 'worker tryLoad start',
-              details: {
-                activeModelId: cleanModelId,
-                device: candidate.device,
-                dtype: candidate.dtype,
-              },
-            });
-            try {
-              const loadedModel = await loadDownloadedProductionModelCandidate({
-                cleanModelId,
-                autoClass,
-                candidate,
-                revision,
-                progressCallback,
-              });
-              loadedDevice = candidate.device;
-              loadedDtype = candidate.dtype;
-              debugLog({
-                event: 'worker tryLoad success',
-                details: {
-                  activeModelId: cleanModelId,
-                  device: candidate.device,
-                  dtype: candidate.dtype,
-                  elapsedMs: Math.round(performance.now() - startedAt),
-                },
-              });
-              return loadedModel;
-            } catch (error) {
-              debugLog({
-                event: 'worker tryLoad failure',
-                details: {
-                  activeModelId: cleanModelId,
-                  device: candidate.device,
-                  dtype: candidate.dtype,
-                  elapsedMs: Math.round(performance.now() - startedAt),
-                  error: error instanceof Error ? error.message : String(error),
-                },
-              });
-              if (typeof error === 'number') throw new Error(`Numeric error ${error}`);
-              throw error;
-            }
+      const route = await loadProductionRuntime({
+        modelId,
+        revision,
+        candidates: [...TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES],
+        progressCallback: ({ info }) => progressCallback(info),
+        serializeError: ({ error }) => {
+          const normalized = error instanceof Error ? error : new Error(String(error));
+          return {
+            name: normalized.name,
+            message: normalized.message,
+            stack: normalized.stack,
           };
-
-          let lastCandidateError: unknown;
-          for (const candidate of TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES) {
-            try {
-              model = await tryLoad({ candidate });
-              break;
-            } catch (error) {
-              lastCandidateError = error;
-              console.warn(`[transformersJsWorker] ${candidate.device}/${candidate.dtype} failed:`, error);
-            }
-          }
-          if (model === null) {
-            throw lastCandidateError instanceof Error
-              ? lastCandidateError
-              : new Error('No production load candidate succeeded');
-          }
-          console.log('[transformersJsWorker] Model loaded successfully.');
-
-          await loadDownloadedProductionTokenizerOrProcessor({
-            cleanModelId,
-            revision,
-            progressCallback,
-          });
         },
       });
-
-      return { device: loadedDevice, dtype: loadedDtype };
+      console.log('[transformersJsWorker] Model loaded successfully.');
+      return { device: route.candidate.device, dtype: route.candidate.dtype };
     } catch (error) {
       const errorMessage = typeof error === 'number'
         ? `Low-level engine error (code ${error}). This usually means memory allocation failed or the model format is incompatible.`
@@ -1236,20 +752,6 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       console.error('[transformersJsWorker] Detailed load error:', error, errorMessage);
       throw new Error(errorMessage);
     }
-  },
-
-  /**
-   * Download Verification runtime-artifact preparation primitive. This lets
-   * Transformers.js itself resolve config/tokenizer/processor files for one
-   * immutable Hub revision while blocking all model/weight fetches.
-   */
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink remote boundaries use positional top-level arguments.
-  async prepareModelRuntimeArtifacts(modelId, revision, progressCallback) {
-    return await prepareProductionRuntimeArtifacts({
-      modelId,
-      revision,
-      progressCallback,
-    });
   },
 
   /**
@@ -2137,5 +1639,4 @@ export type { ITransformersJsWorker as TransformersJsWorker };
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {
-  createRuntimeArtifactPreparationFetch,
 };

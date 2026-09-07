@@ -101,11 +101,11 @@ describe('user-facing Transformers.js download cutover', () => {
     });
   });
 
-  it('selects the current exact cached revision after a fresh module load', async () => {
+  it('selects an exact cached revision after a fresh module load without contacting Hugging Face', async () => {
     mocks.planCachedRevisions.mockReturnValue([{
       revision: SHA,
       loaderRevisionOption: SHA,
-      source: 'current-resolved-revision',
+      source: 'offline-immutable-fallback',
     }]);
     const { transformersJsService } = await import('./index-hosted');
 
@@ -115,9 +115,9 @@ describe('user-facing Transformers.js download cutover', () => {
       modelId: 'org/model',
       storageRoot: expect.any(Object),
     });
-    expect(mocks.resolveRevision).toHaveBeenCalledWith({ modelId: 'org/model' });
+    expect(mocks.resolveRevision).not.toHaveBeenCalled();
     expect(mocks.planCachedRevisions).toHaveBeenCalledWith(expect.objectContaining({
-      resolvedRevision: SHA,
+      resolvedRevision: undefined,
     }));
     expect(mocks.workerLoadDownloadedModel).toHaveBeenCalledWith({
       modelId: 'org/model',
