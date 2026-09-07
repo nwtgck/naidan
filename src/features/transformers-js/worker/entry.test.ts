@@ -37,6 +37,14 @@ vi.mock('@huggingface/transformers', () => ({
   RawImage: {
     read: vi.fn(),
   },
+  ModelRegistry: {
+    get_model_files: vi.fn(async (_modelId: string, options: { device: string; dtype: string }) => [
+      'config.json',
+      `onnx/model_${options.dtype}.onnx`,
+      `onnx/model_${options.dtype}.onnx_data`,
+      'generation_config.json',
+    ]),
+  },
   InterruptableStoppingCriteria: class {
     reset = mockResetFn;
     interrupt = mockInterruptFn;
@@ -1286,7 +1294,7 @@ describe('transformers-js.worker', () => {
 
   it('prepareModelRuntimeArtifacts should use the exact revision and shared Production processor routing', async () => {
     const comlink = await import('comlink');
-    const { AutoConfig, AutoProcessor, AutoTokenizer, env } = await import('@huggingface/transformers');
+    const { AutoConfig, AutoProcessor, AutoTokenizer, ModelRegistry, env } = await import('@huggingface/transformers');
     await import('./entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const revision = '0123456789abcdef0123456789abcdef01234567';
@@ -1303,7 +1311,16 @@ describe('transformers-js.worker', () => {
 
     const result = await workerObj.prepareModelRuntimeArtifacts('Qwen/Qwen3.5-2B-ONNX', revision, vi.fn());
 
-    expect(result).toEqual({ processor: 'qwen3_5-processor', modelType: 'qwen3_5_text' });
+    expect(result).toEqual({
+      processor: 'qwen3_5-processor',
+      modelType: 'qwen3_5_text',
+      requiredModelPathsByCandidate: {
+        'webgpu/q4f16': ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'],
+        'webgpu/q4': ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'],
+        'wasm/q4': ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'],
+      },
+    });
+    expect(ModelRegistry.get_model_files).toHaveBeenCalledTimes(3);
     expect(AutoProcessor.from_pretrained).toHaveBeenCalledWith('Qwen/Qwen3.5-2B-ONNX', expect.objectContaining({
       revision,
       local_files_only: false,
@@ -1427,7 +1444,15 @@ describe('transformers-js.worker', () => {
       });
 
       const runtimeArtifacts = await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
-      expect(runtimeArtifacts).toEqual({ processor: 'tokenizer', modelType: 'llama' });
+      expect(runtimeArtifacts).toEqual({
+        processor: 'tokenizer',
+        modelType: 'llama',
+        requiredModelPathsByCandidate: {
+          'webgpu/q4f16': ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'],
+          'webgpu/q4': ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'],
+          'wasm/q4': ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'],
+        },
+      });
       expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
       expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
 

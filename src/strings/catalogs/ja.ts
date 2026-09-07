@@ -1,26 +1,5 @@
 // SHARED__ keys intentionally couple every call site to one product-wide copy decision.
 // Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
-import { DeveloperTab__inspect_transformers_js_downloads_without_downloading_full_model_files } from '@/strings/messages/DeveloperTab__inspect_transformers_js_downloads_without_downloading_full_model_files/ja';
-import { DeveloperTab__open_download_verification } from '@/strings/messages/DeveloperTab__open_download_verification/ja';
-import { DeveloperTab__transformers_js_download_verification } from '@/strings/messages/DeveloperTab__transformers_js_download_verification/ja';
-import { DownloadVerificationModal__close } from '@/strings/messages/DownloadVerificationModal__close/ja';
-import { DownloadVerificationModal__disabled } from '@/strings/messages/DownloadVerificationModal__disabled/ja';
-import { DownloadVerificationModal__download_verification } from '@/strings/messages/DownloadVerificationModal__download_verification/ja';
-import { DownloadVerificationModal__download_evidence } from '@/strings/messages/DownloadVerificationModal__download_evidence/ja';
-import { DownloadVerificationModal__evidence } from '@/strings/messages/DownloadVerificationModal__evidence/ja';
-import { DownloadVerificationModal__probe_only_evidence_description } from '@/strings/messages/DownloadVerificationModal__probe_only_evidence_description/ja';
-import { DownloadVerificationModal__full_model_download } from '@/strings/messages/DownloadVerificationModal__full_model_download/ja';
-import { DownloadVerificationModal__large_model_files_are_never_downloaded_in_full } from '@/strings/messages/DownloadVerificationModal__large_model_files_are_never_downloaded_in_full/ja';
-import { DownloadVerificationModal__model_id_or_hugging_face_url } from '@/strings/messages/DownloadVerificationModal__model_id_or_hugging_face_url/ja';
-import { DownloadVerificationModal__network_payload_consumed } from '@/strings/messages/DownloadVerificationModal__network_payload_consumed/ja';
-import { DownloadVerificationModal__no_model_artifacts_were_probed } from '@/strings/messages/DownloadVerificationModal__no_model_artifacts_were_probed/ja';
-import { DownloadVerificationModal__probe_byte_budget } from '@/strings/messages/DownloadVerificationModal__probe_byte_budget/ja';
-import { DownloadVerificationModal__production_model_artifact_requests } from '@/strings/messages/DownloadVerificationModal__production_model_artifact_requests/ja';
-import { DownloadVerificationModal__public_models_only_credentials_are_omitted_and_probe_data_is_not_saved_to_the_model_cache } from '@/strings/messages/DownloadVerificationModal__public_models_only_credentials_are_omitted_and_probe_data_is_not_saved_to_the_model_cache/ja';
-import { DownloadVerificationModal__repository_files } from '@/strings/messages/DownloadVerificationModal__repository_files/ja';
-import { DownloadVerificationModal__run_verification } from '@/strings/messages/DownloadVerificationModal__run_verification/ja';
-import { DownloadVerificationModal__transport_probes } from '@/strings/messages/DownloadVerificationModal__transport_probes/ja';
-import { DownloadVerificationModal__verification_failed } from '@/strings/messages/DownloadVerificationModal__verification_failed/ja';
 import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/ja';
 import { SHARED__assistant } from '@/strings/messages/SHARED__assistant/ja';
 import { SHARED__browser_provided } from '@/strings/messages/SHARED__browser_provided/ja';
@@ -1137,6 +1116,7 @@ import { TransformersJsLoadingIndicator__loading_model_weights_into_browser_memo
 import { TransformersJsLoadingIndicator__model } from '@/strings/messages/TransformersJsLoadingIndicator__model/ja';
 import { TransformersJsLoadingIndicator__on_device_execution } from '@/strings/messages/TransformersJsLoadingIndicator__on_device_execution/ja';
 import { TransformersJsLoadingIndicator__transformers_js_error } from '@/strings/messages/TransformersJsLoadingIndicator__transformers_js_error/ja';
+import { ModelSupportInvestigationModal__download_verification } from '@/strings/messages/ModelSupportInvestigationModal__download_verification/ja';
 import { ModelSupportInvestigationModal__blocked } from '@/strings/messages/ModelSupportInvestigationModal__blocked/ja';
 import { ModelSupportInvestigationModal__skipped } from '@/strings/messages/ModelSupportInvestigationModal__skipped/ja';
 import { ModelSupportInvestigationModal__candidate_eligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_eligible/ja';
@@ -1231,10 +1211,7 @@ import { ModelSupportInvestigationModal__continuity_and_kv_cache } from '@/strin
 import { ModelSupportInvestigationModal__capability_probes } from '@/strings/messages/ModelSupportInvestigationModal__capability_probes/ja';
 import { ModelSupportInvestigationModal__required_by_selected_scope } from '@/strings/messages/ModelSupportInvestigationModal__required_by_selected_scope/ja';
 import { ModelSupportInvestigationModal__setup } from '@/strings/messages/ModelSupportInvestigationModal__setup/ja';
-import { ModelSupportInvestigationModal__review } from '@/strings/messages/ModelSupportInvestigationModal__review/ja';
 import { ModelSupportInvestigationModal__running_and_results } from '@/strings/messages/ModelSupportInvestigationModal__running_and_results/ja';
-import { ModelSupportInvestigationModal__next } from '@/strings/messages/ModelSupportInvestigationModal__next/ja';
-import { ModelSupportInvestigationModal__back } from '@/strings/messages/ModelSupportInvestigationModal__back/ja';
 import { ModelSupportInvestigationModal__models_are_investigated_sequentially } from '@/strings/messages/ModelSupportInvestigationModal__models_are_investigated_sequentially/ja';
 import { ModelSupportInvestigationModal__add_models_placeholder } from '@/strings/messages/ModelSupportInvestigationModal__add_models_placeholder/ja';
 import { TransformersJsManager__investigate } from '@/strings/messages/TransformersJsManager__investigate/ja';
@@ -1688,27 +1665,6 @@ import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__we
 import type { Strings } from './en';
 
 export const catalog = {
-  DeveloperTab__inspect_transformers_js_downloads_without_downloading_full_model_files,
-  DeveloperTab__open_download_verification,
-  DeveloperTab__transformers_js_download_verification,
-  DownloadVerificationModal__close,
-  DownloadVerificationModal__disabled,
-  DownloadVerificationModal__download_verification,
-  DownloadVerificationModal__download_evidence,
-  DownloadVerificationModal__evidence,
-  DownloadVerificationModal__probe_only_evidence_description,
-  DownloadVerificationModal__full_model_download,
-  DownloadVerificationModal__large_model_files_are_never_downloaded_in_full,
-  DownloadVerificationModal__model_id_or_hugging_face_url,
-  DownloadVerificationModal__network_payload_consumed,
-  DownloadVerificationModal__no_model_artifacts_were_probed,
-  DownloadVerificationModal__probe_byte_budget,
-  DownloadVerificationModal__production_model_artifact_requests,
-  DownloadVerificationModal__public_models_only_credentials_are_omitted_and_probe_data_is_not_saved_to_the_model_cache,
-  DownloadVerificationModal__repository_files,
-  DownloadVerificationModal__run_verification,
-  DownloadVerificationModal__transport_probes,
-  DownloadVerificationModal__verification_failed,
   SHARED__all_chats,
   SHARED__assistant,
   SHARED__browser_provided,
@@ -2825,6 +2781,7 @@ export const catalog = {
   TransformersJsLoadingIndicator__model,
   TransformersJsLoadingIndicator__on_device_execution,
   TransformersJsLoadingIndicator__transformers_js_error,
+  ModelSupportInvestigationModal__download_verification,
   ModelSupportInvestigationModal__blocked,
   ModelSupportInvestigationModal__skipped,
   ModelSupportInvestigationModal__candidate_eligible,
@@ -2919,10 +2876,7 @@ export const catalog = {
   ModelSupportInvestigationModal__capability_probes,
   ModelSupportInvestigationModal__required_by_selected_scope,
   ModelSupportInvestigationModal__setup,
-  ModelSupportInvestigationModal__review,
   ModelSupportInvestigationModal__running_and_results,
-  ModelSupportInvestigationModal__next,
-  ModelSupportInvestigationModal__back,
   ModelSupportInvestigationModal__models_are_investigated_sequentially,
   ModelSupportInvestigationModal__add_models_placeholder,
   TransformersJsManager__investigate,

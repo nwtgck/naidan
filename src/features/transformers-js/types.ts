@@ -192,6 +192,7 @@ export type TransformersJsProductionInvestigationProcessor =
 export interface TransformersJsRuntimeArtifactPreparationResult {
   processor: TransformersJsProductionInvestigationProcessor,
   modelType: string | undefined,
+  requiredModelPathsByCandidate: Record<string, string[]>,
 }
 export type TransformersJsProductionInvestigationStrategy =
   | 'standard'

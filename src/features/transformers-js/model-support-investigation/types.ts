@@ -1017,6 +1017,21 @@ export interface ModelSupportInvestigationRecovery {
   } | undefined,
 }
 
+export type ModelSupportInvestigationBatchTargetStatus =
+  | "pending"
+  | "running"
+  | "passed"
+  | "failed"
+  | "interrupted";
+
+export interface ModelSupportInvestigationBatchEvidenceItem {
+  target: string,
+  status: ModelSupportInvestigationBatchTargetStatus,
+  run: ModelSupportInvestigationRun | undefined,
+  recovery: ModelSupportInvestigationRecovery | undefined,
+  error: string | undefined,
+}
+
 export interface ModelSupportInvestigationCheckpoint {
   run: ModelSupportInvestigationRun,
   recovery: ModelSupportInvestigationRecovery,

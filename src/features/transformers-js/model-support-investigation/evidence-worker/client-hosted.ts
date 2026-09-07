@@ -4,6 +4,7 @@ import type {
   ModelSupportInvestigationEvidenceWorkerClient,
 } from "@/features/transformers-js/model-support-investigation/evidence-worker/types";
 import { createModelSupportInvestigationEvidenceWorkerRequest } from "@/features/transformers-js/model-support-investigation/evidence-worker/request";
+import { createModelSupportInvestigationBatchEvidenceWorkerRequest } from "@/features/transformers-js/model-support-investigation/evidence-worker/batch-request";
 import { createDownloadVerificationEvidenceWorkerRequest } from "@/features/transformers-js/model-support-investigation/evidence-worker/download-verification-request";
 
 export const DEFAULT_EVIDENCE_EXPORT_TIMEOUT_MS = 60 * 1000;
@@ -94,6 +95,17 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
       return await runExportOperation({
         operation: remote.createPartialEvidence({
           request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }),
+        }),
+      });
+    },
+    async createBatchEvidence({ batchId, items }) {
+      if (disposed || workerTerminated) {
+        throw new Error("Model Support Investigation Evidence Worker client is disposed");
+      }
+
+      return await runExportOperation({
+        operation: remote.createBatchEvidence({
+          request: createModelSupportInvestigationBatchEvidenceWorkerRequest({ batchId, items }),
         }),
       });
     },

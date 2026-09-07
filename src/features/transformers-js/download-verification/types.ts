@@ -121,6 +121,7 @@ export type DownloadVerificationRuntimeArtifactPreparationObservation =
       status: 'prepared';
       processor: import('@/features/transformers-js/types').TransformersJsProductionInvestigationProcessor;
       modelType: string | undefined;
+      requiredModelPathsByCandidate: Record<string, string[]>;
       observationMethod: 'transformers-runtime-artifact-preparation';
       error: undefined;
     }

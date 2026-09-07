@@ -19,6 +19,7 @@ describe('prepareProductionRuntimeArtifacts', () => {
       prepareModelRuntimeArtifacts: vi.fn(async () => ({
         processor: 'qwen3_5-processor' as const,
         modelType: 'qwen3_5_text',
+        requiredModelPathsByCandidate: { 'webgpu/q4f16': ['onnx/model_q4f16.onnx'] },
       })),
       dispose,
     });
@@ -32,6 +33,7 @@ describe('prepareProductionRuntimeArtifacts', () => {
       status: 'prepared',
       processor: 'qwen3_5-processor' as const,
       modelType: 'qwen3_5_text',
+      requiredModelPathsByCandidate: { 'webgpu/q4f16': ['onnx/model_q4f16.onnx'] },
       observationMethod: 'transformers-runtime-artifact-preparation',
       error: undefined,
     });
@@ -45,6 +47,7 @@ describe('prepareProductionRuntimeArtifacts', () => {
       prepareModelRuntimeArtifacts: vi.fn(async () => ({
         processor: 'qwen3_5-processor' as const,
         modelType: 'qwen3_5_text',
+        requiredModelPathsByCandidate: { 'webgpu/q4f16': ['onnx/model_q4f16.onnx'] },
       })),
       dispose: vi.fn(async () => {
         throw new Error('remote release failed');

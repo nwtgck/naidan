@@ -1,5 +1,7 @@
 import JSZip from "jszip";
+import { z } from "zod";
 import type {
+  ModelSupportInvestigationBatchEvidenceItem,
   ModelSupportInvestigationLoadAttemptError,
   ModelSupportInvestigationProgressObservation,
   ModelSupportInvestigationRecovery,
@@ -295,10 +297,10 @@ function toolProtocolProbeErrorRecords({ run }: { run: ModelSupportInvestigation
   });
 }
 
-export async function createPartialModelSupportEvidence({ run, recovery }: {
+async function createPartialModelSupportEvidenceZip({ run, recovery }: {
   run: ModelSupportInvestigationRun,
   recovery: ModelSupportInvestigationRecovery | undefined,
-}): Promise<{ blob: Blob, fileName: string }> {
+}): Promise<{ zip: JSZip, fileName: string }> {
   const zip = new JSZip();
   const readiness = evaluateEvidenceReadiness({ run });
   const supportBoundaries = assessSupportBoundaries({ run });
@@ -671,11 +673,202 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
   }, undefined, 2)}
 `);
 
+  return {
+    zip,
+    fileName: `model-support-investigation-${safeFilePart({ value: run.modelId })}-${run.runId}.zip`,
+  };
+}
+
+export async function createPartialModelSupportEvidence({ run, recovery }: {
+  run: ModelSupportInvestigationRun,
+  recovery: ModelSupportInvestigationRecovery | undefined,
+}): Promise<{ blob: Blob, fileName: string }> {
+  const { zip, fileName } = await createPartialModelSupportEvidenceZip({ run, recovery });
   const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
   await verifyGeneratedEvidenceArchive({ blob });
+  return { blob, fileName };
+}
+
+async function addZipFiles({ source, destination, prefix }: {
+  source: JSZip,
+  destination: JSZip,
+  prefix: string,
+}): Promise<void> {
+  for (const [path, file] of Object.entries(source.files).sort(([left], [right]) => left.localeCompare(right))) {
+    if (file.dir) continue;
+    destination.file(`${prefix}${path}`, await file.async("uint8array"));
+  }
+}
+
+async function createManifestFiles({ zip }: { zip: JSZip }): Promise<Array<{
+  path: string,
+  byteLength: number,
+  sha256: string,
+}>> {
+  return await Promise.all(Object.entries(zip.files)
+    .filter(([path, file]) => path !== "manifest.json" && !file.dir)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(async ([path, file]) => {
+      const bytes = await file.async("uint8array");
+      return { path, byteLength: bytes.byteLength, sha256: await sha256Hex({ bytes }) };
+    }));
+}
+
+const batchEvidenceTargetSchema = z.object({
+  index: z.number().int().positive(),
+  target: z.string().min(1),
+  status: z.enum(["pending", "running", "passed", "failed", "interrupted"]),
+  runId: z.string().min(1).optional(),
+  error: z.string().optional(),
+  evidencePath: z.string().min(1).optional(),
+}).strict();
+
+const batchEvidenceIndexSchema = z.object({
+  schemaVersion: z.literal(1),
+  batchId: z.string().min(1),
+  generatedAt: z.string().min(1),
+  targetCount: z.number().int().positive(),
+  packagedModelCount: z.number().int().nonnegative(),
+  targets: z.array(batchEvidenceTargetSchema).min(1),
+}).strict();
+
+const batchEvidenceManifestSchema = z.object({
+  schemaVersion: z.literal(1),
+  batchId: z.string().min(1),
+  generatedAt: z.string().min(1),
+  files: z.array(z.object({
+    path: z.string().min(1),
+    byteLength: z.number().int().nonnegative(),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  }).strict()),
+}).strict();
+
+const packagedRunIdentitySchema = z.object({
+  modelId: z.string().min(1),
+  runId: z.string().min(1),
+}).passthrough();
+
+export async function createBatchModelSupportEvidence({
+  batchId,
+  items,
+}: {
+  batchId: string,
+  items: readonly ModelSupportInvestigationBatchEvidenceItem[],
+}): Promise<{ blob: Blob, fileName: string }> {
+  if (batchId.length === 0) throw new Error("Model Support Investigation batch Evidence requires a batch ID");
+  if (items.length === 0) throw new Error("Model Support Investigation batch Evidence requires at least one target");
+
+  const zip = new JSZip();
+  const generatedAt = new Date().toISOString();
+  const targets: Array<{
+    index: number,
+    target: string,
+    status: ModelSupportInvestigationBatchEvidenceItem["status"],
+    runId: string | undefined,
+    error: string | undefined,
+    evidencePath: string | undefined,
+  }> = [];
+
+  for (const [index, item] of items.entries()) {
+    const directory = `models/${String(index + 1).padStart(3, "0")}-${safeFilePart({ value: item.target })}/`;
+    if (item.run !== undefined) {
+      const { zip: modelZip } = await createPartialModelSupportEvidenceZip({
+        run: item.run,
+        recovery: item.recovery,
+      });
+      await addZipFiles({ source: modelZip, destination: zip, prefix: directory });
+    }
+    targets.push({
+      index: index + 1,
+      target: item.target,
+      status: item.status,
+      runId: item.run?.runId,
+      error: item.error,
+      evidencePath: item.run === undefined ? undefined : directory,
+    });
+  }
+
+  zip.file("SUMMARY.md", `# Model Support Investigation batch Evidence\n\n- Batch ID: ${batchId}\n- Generated at: ${generatedAt}\n- Requested targets: ${items.length}\n- Packaged model dossiers: ${targets.filter(target => target.evidencePath !== undefined).length}\n\nEach requested target is indexed in batch.json. Targets with a captured run have a complete single-model Evidence package under models/.\n`);
+  zip.file("batch.json", `${JSON.stringify({
+    schemaVersion: 1,
+    batchId,
+    generatedAt,
+    targetCount: items.length,
+    packagedModelCount: targets.filter(target => target.evidencePath !== undefined).length,
+    targets,
+  }, undefined, 2)}\n`);
+
+  const manifestFiles = await createManifestFiles({ zip });
+  zip.file("manifest.json", `${JSON.stringify({
+    schemaVersion: 1,
+    batchId,
+    generatedAt,
+    files: manifestFiles,
+  }, undefined, 2)}\n`);
+
+  const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+  const verificationZip = await JSZip.loadAsync(blob);
+  const batchFile = verificationZip.file("batch.json");
+  if (batchFile === null) throw new Error("Batch Evidence archive is missing batch.json");
+  const parsedBatch = batchEvidenceIndexSchema.parse(JSON.parse(await batchFile.async("text")) as unknown);
+  const expectedPackagedModelCount = items.filter(item => item.run !== undefined).length;
+  if (
+    parsedBatch.batchId !== batchId
+    || parsedBatch.targetCount !== items.length
+    || parsedBatch.packagedModelCount !== expectedPackagedModelCount
+    || parsedBatch.targets.length !== items.length
+  ) {
+    throw new Error("Batch Evidence archive target index is incomplete");
+  }
+  for (const [index, item] of items.entries()) {
+    const indexed = parsedBatch.targets[index];
+    if (
+      indexed?.index !== index + 1
+      || indexed.target !== item.target
+      || indexed.status !== item.status
+      || indexed.error !== item.error
+    ) {
+      throw new Error(`Batch Evidence target mismatch at index ${index + 1}`);
+    }
+    if (item.run !== undefined) {
+      if (indexed.runId !== item.run.runId || typeof indexed.evidencePath !== "string") {
+        throw new Error(`Batch Evidence is missing a dossier path for target: ${item.target}`);
+      }
+      const runFile = verificationZip.file(`${indexed.evidencePath}run.json`);
+      if (runFile === null) throw new Error(`Batch Evidence is missing run.json for target: ${item.target}`);
+      const packagedRun = packagedRunIdentitySchema.parse(JSON.parse(await runFile.async("text")) as unknown);
+      if (packagedRun.modelId !== item.run.modelId || packagedRun.runId !== item.run.runId) {
+        throw new Error(`Batch Evidence run identity mismatch for target: ${item.target}`);
+      }
+    } else if (indexed.runId !== undefined || indexed.evidencePath !== undefined) {
+      throw new Error(`Batch Evidence unexpectedly packaged a dossier for target: ${item.target}`);
+    }
+  }
+
+  const verificationManifestFile = verificationZip.file("manifest.json");
+  if (verificationManifestFile === null) throw new Error("Batch Evidence archive is missing manifest.json");
+  const verificationManifest = batchEvidenceManifestSchema.parse(JSON.parse(await verificationManifestFile.async("text")) as unknown);
+  if (verificationManifest.batchId !== batchId) throw new Error("Batch Evidence archive manifest batch ID does not match");
+  const archivePaths = Object.entries(verificationZip.files)
+    .filter(([path, file]) => path !== "manifest.json" && !file.dir)
+    .map(([path]) => path)
+    .sort((left, right) => left.localeCompare(right));
+  const manifestPaths = verificationManifest.files.map(entry => entry.path).sort((left, right) => left.localeCompare(right));
+  if (manifestPaths.length !== archivePaths.length || manifestPaths.some((path, index) => path !== archivePaths[index])) {
+    throw new Error("Batch Evidence archive manifest paths do not match archive files");
+  }
+  for (const entry of verificationManifest.files) {
+    const file = verificationZip.file(entry.path);
+    if (file === null) throw new Error(`Batch Evidence archive is missing manifest path: ${entry.path}`);
+    const bytes = await file.async("uint8array");
+    if (bytes.byteLength !== entry.byteLength || await sha256Hex({ bytes }) !== entry.sha256) {
+      throw new Error(`Batch Evidence archive integrity mismatch: ${entry.path}`);
+    }
+  }
+
   return {
     blob,
-    fileName: `model-support-investigation-${safeFilePart({ value: run.modelId })}-${run.runId}.zip`,
+    fileName: `model-support-investigation-batch-${safeFilePart({ value: batchId })}.zip`,
   };
 }
 

@@ -43,12 +43,13 @@ vi.mock('@/composables/useRecentChats', () => ({
   }),
 }));
 
-vi.mock('@/features/transformers-js/download-verification', () => ({
-  isDownloadVerificationAvailable: true,
-  loadDownloadVerificationModal: async () => ({
-    name: 'DownloadVerificationModal',
+vi.mock('@/features/transformers-js/model-support-investigation', () => ({
+  isModelSupportInvestigationAvailable: true,
+  loadModelSupportInvestigationModal: async () => ({
+    name: 'ModelSupportInvestigationModal',
+    props: ['modelId'],
     emits: ['close'],
-    template: '<div data-testid="download-verification-modal-stub"><button data-testid="download-verification-close-stub" @click="$emit(\'close\')">close</button></div>',
+    template: '<div data-testid="model-support-investigation-modal-stub" :data-model-id="modelId"><button data-testid="model-support-investigation-close-stub" @click="$emit(\'close\')">close</button></div>',
   }),
 }));
 
@@ -58,8 +59,8 @@ vi.mock('@/components/SettingsModal.vue', () => ({
   default: {
     name: 'SettingsModal',
     props: ['isOpen'],
-    emits: ['close', 'openDownloadVerification'],
-    template: '<div v-if="isOpen" data-testid="settings-modal"><button data-testid="settings-open-download-verification-stub" @click="$emit(\'openDownloadVerification\')">open</button></div>',
+    emits: ['close', 'openModelSupportInvestigation'],
+    template: '<div v-if="isOpen" data-testid="settings-modal"><button data-testid="settings-open-model-support-investigation-stub" @click="$emit(\'openModelSupportInvestigation\', \'\')">open</button></div>',
   },
 }));
 vi.mock('@/features/wesh-terminal/components/DebugWeshTerminalModal.vue', () => ({
@@ -132,7 +133,7 @@ describe('AppAuxiliaryUi', () => {
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);
   });
 
-  it('hands download verification off to the app-level host without destroying settings state', async () => {
+  it('hands model support investigation off to the app-level host without destroying settings state', async () => {
     route.query = { settings: 'developer' };
     route.fullPath = '/?settings=developer';
     const wrapper = mount(AppAuxiliaryUi, { attachTo: document.body });
@@ -141,24 +142,25 @@ describe('AppAuxiliaryUi', () => {
     const settingsHost = wrapper.get('[data-testid="settings-modal-host"]');
     expect(settingsHost.element.getAttribute('style') ?? '').not.toContain('display: none');
 
-    const opener = wrapper.get('[data-testid="settings-open-download-verification-stub"]').element as HTMLElement;
+    const opener = wrapper.get('[data-testid="settings-open-model-support-investigation-stub"]').element as HTMLElement;
     opener.focus();
     expect(document.activeElement).toBe(opener);
-    await wrapper.get('[data-testid="settings-open-download-verification-stub"]').trigger('click');
+    await wrapper.get('[data-testid="settings-open-model-support-investigation-stub"]').trigger('click');
     await flushPromises();
 
     expect(wrapper.get('[data-testid="settings-modal-host"]').element.getAttribute('style')).toContain('display: none');
-    expect(wrapper.find('[data-testid="download-verification-modal-stub"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="model-support-investigation-modal-stub"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="model-support-investigation-modal-stub"]').attributes('data-model-id')).toBe('');
     expect(route.query).toEqual({ settings: 'developer' });
 
     document.body.tabIndex = -1;
     document.body.focus();
     expect(document.activeElement).toBe(document.body);
-    await wrapper.get('[data-testid="download-verification-close-stub"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-close-stub"]').trigger('click');
     await flushPromises();
 
     expect(wrapper.get('[data-testid="settings-modal-host"]').element.getAttribute('style') ?? '').not.toContain('display: none');
-    expect(wrapper.find('[data-testid="download-verification-modal-stub"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="model-support-investigation-modal-stub"]').exists()).toBe(false);
     expect(route.query).toEqual({ settings: 'developer' });
     expect(document.activeElement).toBe(opener);
     wrapper.unmount();

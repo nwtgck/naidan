@@ -28,6 +28,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     const archive = { blob: new Blob(["zip"]), fileName: "evidence.zip" };
     const remote: IModelSupportInvestigationEvidenceWorker = {
       createPartialEvidence: vi.fn(async () => archive),
+      createBatchEvidence: vi.fn(async () => ({ blob: new Blob(["zip"]), fileName: "batch.zip" })),
       createDownloadVerificationEvidence: vi.fn(async () => archive),
     };
     mocks.wrap.mockReturnValue(remote);
@@ -51,10 +52,49 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     expect(mocks.terminate).toHaveBeenCalledTimes(1);
   });
 
+  it("serializes batch Evidence with every requested target through the dedicated Worker", async () => {
+    const archive = { blob: new Blob(["zip"]), fileName: "batch-evidence.zip" };
+    const remote: IModelSupportInvestigationEvidenceWorker = {
+      createPartialEvidence: vi.fn(async () => archive),
+      createBatchEvidence: vi.fn(async () => archive),
+      createDownloadVerificationEvidence: vi.fn(async () => archive),
+    };
+    mocks.wrap.mockReturnValue(remote);
+    mocks.release.mockResolvedValue(undefined);
+
+    const { createModelSupportInvestigationEvidenceWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationEvidenceWorkerClient();
+    const run = {
+      runId: "run-a",
+      modelId: "org/model-a",
+    } as NonNullable<Parameters<typeof client.createBatchEvidence>[0]["items"][number]["run"]>;
+    const items = [{
+      target: "org/model-a",
+      status: "passed" as const,
+      run,
+      recovery: undefined,
+      error: undefined,
+    }] satisfies Parameters<typeof client.createBatchEvidence>[0]["items"];
+
+    await expect(client.createBatchEvidence({ batchId: "batch-1", items })).resolves.toBe(archive);
+    const request = vi.mocked(remote.createBatchEvidence).mock.calls[0]?.[0].request;
+    expect(JSON.parse(await request!.text())).toEqual({
+      schemaVersion: 1,
+      batchId: "batch-1",
+      items: [{
+        target: "org/model-a",
+        status: "passed",
+        run: { runId: "run-a", modelId: "org/model-a" },
+      }],
+    });
+    await client.dispose();
+  });
+
   it("serializes Download Verification evidence through the same dedicated Worker", async () => {
     const archive = { blob: new Blob(["zip"]), fileName: "download-evidence.zip" };
     const remote: IModelSupportInvestigationEvidenceWorker = {
       createPartialEvidence: vi.fn(async () => archive),
+      createBatchEvidence: vi.fn(async () => ({ blob: new Blob(["zip"]), fileName: "batch.zip" })),
       createDownloadVerificationEvidence: vi.fn(async () => archive),
     };
     mocks.wrap.mockReturnValue(remote);
@@ -75,6 +115,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     vi.useFakeTimers();
     const remote: IModelSupportInvestigationEvidenceWorker = {
       createPartialEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
+      createBatchEvidence: vi.fn(async () => ({ blob: new Blob(["zip"]), fileName: "batch.zip" })),
       createDownloadVerificationEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
     };
     mocks.wrap.mockReturnValue(remote);
@@ -105,6 +146,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
       createPartialEvidence: vi.fn(async () => {
         throw new Error("worker export failed");
       }),
+      createBatchEvidence: vi.fn(async () => ({ blob: new Blob(["zip"]), fileName: "batch.zip" })),
       createDownloadVerificationEvidence: vi.fn(async () => {
         throw new Error("worker export failed");
       }),
@@ -126,6 +168,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     vi.useFakeTimers();
     const remote: IModelSupportInvestigationEvidenceWorker = {
       createPartialEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
+      createBatchEvidence: vi.fn(async () => ({ blob: new Blob(["zip"]), fileName: "batch.zip" })),
       createDownloadVerificationEvidence: vi.fn((): Promise<never> => new Promise<never>(() => undefined)),
     };
     mocks.wrap.mockReturnValue(remote);
@@ -151,6 +194,7 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
     const archive = { blob: new Blob(["zip"]), fileName: "evidence.zip" };
     const remote: IModelSupportInvestigationEvidenceWorker = {
       createPartialEvidence: vi.fn(async () => archive),
+      createBatchEvidence: vi.fn(async () => ({ blob: new Blob(["zip"]), fileName: "batch.zip" })),
       createDownloadVerificationEvidence: vi.fn(async () => archive),
     };
     mocks.wrap.mockReturnValue(remote);

@@ -1,4 +1,5 @@
 import type {
+  ModelSupportInvestigationBatchEvidenceItem,
   ModelSupportInvestigationRecovery,
   ModelSupportInvestigationRun,
 } from "@/features/transformers-js/model-support-investigation/types";
@@ -16,6 +17,9 @@ export interface IModelSupportInvestigationEvidenceWorker {
   createPartialEvidence({ request }: {
     request: Blob,
   }): Promise<ModelSupportInvestigationEvidenceArchive>,
+  createBatchEvidence({ request }: {
+    request: Blob,
+  }): Promise<ModelSupportInvestigationEvidenceArchive>,
   createDownloadVerificationEvidence({ request }: {
     request: Blob,
   }): Promise<DownloadVerificationEvidenceArchive>,
@@ -25,6 +29,10 @@ export interface ModelSupportInvestigationEvidenceWorkerClient {
   createPartialEvidence({ run, recovery }: {
     run: ModelSupportInvestigationRun,
     recovery: ModelSupportInvestigationRecovery | undefined,
+  }): Promise<ModelSupportInvestigationEvidenceArchive>,
+  createBatchEvidence({ batchId, items }: {
+    batchId: string,
+    items: readonly ModelSupportInvestigationBatchEvidenceItem[],
   }): Promise<ModelSupportInvestigationEvidenceArchive>,
   createDownloadVerificationEvidence({ evidence }: {
     evidence: DownloadVerificationEvidenceInput,

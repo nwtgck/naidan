@@ -134,7 +134,7 @@ export async function prepareProductionModelCandidate({
     // Held-fetch observation is primary evidence of what Transformers.js actually
     // requests, but some composite loaders issue later model requests only after
     // earlier requests resolve. Therefore that observation can be a staged prefix,
-    // not a complete download manifest. When MSI has a repository-confirmed
+    // not a complete download manifest. When runtime artifact preparation has a
     // ModelRegistry plan, explicitly download the union so a later cache-only load
     // never has to discover a missing multi-GB artifact. This is download
     // preparation only; model-load investigation remains strictly cache-only.

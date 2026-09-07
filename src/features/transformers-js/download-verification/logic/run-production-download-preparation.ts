@@ -65,7 +65,8 @@ export async function runProductionDownloadPreparation({
       candidate,
       progressCallback,
       signal,
-      requiredModelPaths: requiredModelPathsByCandidate?.[candidateKey({ candidate })],
+      requiredModelPaths: requiredModelPathsByCandidate?.[candidateKey({ candidate })]
+        ?? runtimeArtifacts.requiredModelPathsByCandidate[candidateKey({ candidate })],
     }),
     acceptCandidate: async ({ candidate }) => await acceptDownloadedProductionCandidate({
       modelId,

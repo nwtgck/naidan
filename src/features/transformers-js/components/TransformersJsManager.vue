@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { ensureStrings, lazyStrings } from '@/strings';
-import { ref, computed, defineAsyncComponent, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { transformersJsService } from '@/features/transformers-js';
 import type { ProgressInfo } from '@/features/transformers-js/types';
-import {
-  isModelSupportInvestigationAvailable,
-  loadModelSupportInvestigationModal,
-} from '@/features/transformers-js/model-support-investigation';
+import { isModelSupportInvestigationAvailable } from '@/features/transformers-js/model-support-investigation';
 import {
   Loader2Icon, CheckCircle2Icon, AlertCircleIcon, DownloadIcon, FolderOpenIcon, RefreshCcwIcon, Trash2Icon,
   ChevronDownIcon, PlusIcon, HardDriveDownloadIcon, XIcon, BrainCircuitIcon, PowerOffIcon, ExternalLinkIcon, SearchIcon, FileCodeIcon, RotateCcwIcon,
@@ -20,12 +17,9 @@ import { computedAsync } from '@vueuse/core';
 const { addToast } = useToast();
 const { showConfirm } = useConfirm();
 
-const ModelSupportInvestigationModal = isModelSupportInvestigationAvailable
-  ? defineAsyncComponent(loadModelSupportInvestigationModal)
-  : undefined;
-
 const emit = defineEmits<{
   (e: 'modelLoaded', modelId: string): void,
+  (e: 'openModelSupportInvestigation', modelId: string): void,
 }>();
 
 const status = ref(transformersJsService.getState().status);
@@ -71,7 +65,6 @@ const containerRef = ref<HTMLElement | null>(null);
 const isImporting = ref(false);
 const importProgress = ref(0);
 const lastDownloadError = ref<string | null>(null);
-const investigationModelId = ref<string | undefined>(undefined);
 
 let unsubscribe: (() => void) | null = null;
 let unsubscribeList: (() => void) | null = null;
@@ -131,11 +124,7 @@ const selectModelId = ({ id }: { id: string }) => {
 
 const openModelSupportInvestigation = ({ modelId }: { modelId: string }): void => {
   if (!isModelSupportInvestigationAvailable) return;
-  investigationModelId.value = modelId;
-};
-
-const closeModelSupportInvestigation = (): void => {
-  investigationModelId.value = undefined;
+  emit('openModelSupportInvestigation', modelId);
 };
 
 const handleClickOutside = ({ event }: { event: MouseEvent }) => {
@@ -672,7 +661,7 @@ defineExpose({
                     {{ lazyStrings.TransformersJsManager__incomplete() }}
                   </span>
                   <button
-                    v-if="ModelSupportInvestigationModal !== undefined && !model.isLocal"
+                    v-if="isModelSupportInvestigationAvailable && !model.isLocal"
                     type="button"
                     tw-class="px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 rounded-lg text-[10px] font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
                     :data-testid="`model-support-investigate-${model.id}`"
@@ -707,11 +696,6 @@ defineExpose({
       </section>
     </div>
 
-    <ModelSupportInvestigationModal
-      v-if="ModelSupportInvestigationModal !== undefined && investigationModelId !== undefined"
-      :model-id="investigationModelId"
-      @close="closeModelSupportInvestigation"
-    />
   </div>
 </template>
 

@@ -47,7 +47,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void,
-  (e: 'openDownloadVerification'): void,
+  (e: 'openModelSupportInvestigation', modelId: string): void,
 }>();
 
 const { settings, availableModels: rawAvailableModels, isFetchingModels } = useSettings();
@@ -350,7 +350,7 @@ defineExpose({
 
               <!-- Transformers.js Tab -->
               <div v-if="activeTab === 'transformers_js'" tw-class="max-w-4xl mx-auto">
-                <TransformersJsManager />
+                <TransformersJsManager @open-model-support-investigation="emit('openModelSupportInvestigation', $event)" />
               </div>
 
               <!-- Recipes Tab -->
@@ -378,7 +378,7 @@ defineExpose({
               <DeveloperTab
                 v-if="activeTab === 'developer'"
                 :storage-type="form.storageType"
-                @open-download-verification="emit('openDownloadVerification')"
+                @open-model-support-investigation="emit('openModelSupportInvestigation', $event)"
               />
 
               <!-- About Tab -->

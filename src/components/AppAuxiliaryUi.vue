@@ -6,7 +6,7 @@ import { useGlobalSearch } from '@/features/global-search/composables/useGlobalS
 import { useLayout } from '@/composables/useLayout';
 import { usePrint } from '@/composables/usePrint';
 import { useRecentChats } from '@/composables/useRecentChats';
-import { isDownloadVerificationAvailable, loadDownloadVerificationModal } from '@/features/transformers-js/download-verification';
+import { isModelSupportInvestigationAvailable, loadModelSupportInvestigationModal } from '@/features/transformers-js/model-support-investigation';
 
 const PrintView = defineAsyncComponent(() => import('@/components/PrintView.vue'));
 const ChatPrintContent = defineAsyncComponent(() => import('@/components/ChatPrintContent.vue'));
@@ -15,8 +15,8 @@ const DebugWeshTerminalModal = defineAsyncComponent(() => import('@/features/wes
 const GlobalSearchModal = defineAsyncComponent(() => import('@/features/global-search/components/GlobalSearchModal.vue'));
 const RecentChatsModal = defineAsyncComponent(() => import('@/components/RecentChatsModal.vue'));
 const FileExplorerModal = defineAsyncComponent(() => import('@/features/file-explorer/components/FileExplorerModal.vue'));
-const DownloadVerificationModal = isDownloadVerificationAvailable
-  ? defineAsyncComponent(loadDownloadVerificationModal)
+const ModelSupportInvestigationModal = isModelSupportInvestigationAvailable
+  ? defineAsyncComponent(loadModelSupportInvestigationModal)
   : undefined;
 const PWAManager = __BUILD_MODE_IS_HOSTED__
   ? defineAsyncComponent(() => import('@/components/PWAManager.vue'))
@@ -30,8 +30,8 @@ const { isSearchOpen } = useGlobalSearch();
 const { isRecentOpen } = useRecentChats();
 const { activePrintMode } = usePrint();
 const isSettingsOpen = computed(() => route.path.startsWith('/settings') || !!route.query.settings);
-const isDownloadVerificationOpen = ref(false);
-let downloadVerificationOpener: HTMLElement | undefined;
+const modelSupportInvestigationModelId = ref<string | undefined>(undefined);
+let modelSupportInvestigationOpener: HTMLElement | undefined;
 const lastNonSettingsLocation = ref(route.path.startsWith('/settings')
   ? '/'
   : route.fullPath);
@@ -42,18 +42,18 @@ watch(() => route.fullPath, (fullPath) => {
   }
 });
 
-function openDownloadVerification(): void {
-  if (DownloadVerificationModal === undefined) return;
-  downloadVerificationOpener = document.activeElement instanceof HTMLElement
+function openModelSupportInvestigation({ modelId }: { modelId: string }): void {
+  if (ModelSupportInvestigationModal === undefined) return;
+  modelSupportInvestigationOpener = document.activeElement instanceof HTMLElement
     ? document.activeElement
     : undefined;
-  isDownloadVerificationOpen.value = true;
+  modelSupportInvestigationModelId.value = modelId;
 }
 
-function closeDownloadVerification(): void {
-  isDownloadVerificationOpen.value = false;
-  const opener = downloadVerificationOpener;
-  downloadVerificationOpener = undefined;
+function closeModelSupportInvestigation(): void {
+  modelSupportInvestigationModelId.value = undefined;
+  const opener = modelSupportInvestigationOpener;
+  modelSupportInvestigationOpener = undefined;
   void nextTick(() => opener?.focus());
 }
 
@@ -74,8 +74,8 @@ defineExpose({
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
       closeSettings,
-      openDownloadVerification,
-      closeDownloadVerification,
+      openModelSupportInvestigation,
+      closeModelSupportInvestigation,
     },
   }) || {})
 });
@@ -84,19 +84,20 @@ defineExpose({
 <template>
   <div
     v-if="isSettingsOpen"
-    v-show="!isDownloadVerificationOpen"
+    v-show="modelSupportInvestigationModelId === undefined"
     data-testid="settings-modal-host"
   >
     <SettingsModal
       :is-open="true"
       @close="closeSettings"
-      @open-download-verification="openDownloadVerification"
+      @open-model-support-investigation="openModelSupportInvestigation({ modelId: $event })"
     />
   </div>
 
-  <DownloadVerificationModal
-    v-if="DownloadVerificationModal !== undefined && isDownloadVerificationOpen"
-    @close="closeDownloadVerification"
+  <ModelSupportInvestigationModal
+    v-if="ModelSupportInvestigationModal !== undefined && modelSupportInvestigationModelId !== undefined"
+    :model-id="modelSupportInvestigationModelId"
+    @close="closeModelSupportInvestigation"
   />
 
   <DebugWeshTerminalModal

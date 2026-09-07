@@ -4,6 +4,7 @@ import { prepareProductionRuntimeArtifacts } from '@/features/transformers-js/do
 import { prepareProductionModelCandidate } from '@/features/transformers-js/download-verification/logic/prepare-production-model-candidate';
 import { acceptDownloadedProductionCandidate } from '@/features/transformers-js/download-verification/logic/accept-downloaded-production-candidate';
 import type { TransformersJsPrefetchResult } from '@/features/transformers-js/types';
+import qwen4bRepository from '@/features/transformers-js/download-verification/fixtures/repositories/qwen3-5-4b.json';
 
 vi.mock('@/features/transformers-js/download-verification/logic/prepare-production-runtime-artifacts', () => ({
   prepareProductionRuntimeArtifacts: vi.fn(),
@@ -37,6 +38,11 @@ beforeEach(() => {
     status: 'prepared',
     processor: 'tokenizer',
     modelType: 'llama',
+    requiredModelPathsByCandidate: {
+      'webgpu/q4f16': [],
+      'webgpu/q4': [],
+      'wasm/q4': [],
+    },
     observationMethod: 'transformers-runtime-artifact-preparation',
     error: undefined,
   });
@@ -124,6 +130,11 @@ describe('runProductionDownloadPreparation', () => {
       status: 'prepared',
       processor: 'tokenizer',
       modelType: 'lfm2',
+      requiredModelPathsByCandidate: {
+        'webgpu/q4f16': [],
+        'webgpu/q4': [],
+        'wasm/q4': [],
+      },
       observationMethod: 'transformers-runtime-artifact-preparation',
       error: undefined,
     });
@@ -163,6 +174,51 @@ describe('runProductionDownloadPreparation', () => {
     }));
   });
 
+  it('uses the runtime ModelRegistry plan so Qwen3.5-4B staged requests include every required q4f16 model artifact', async () => {
+    const requiredModelPaths = qwen4bRepository.files
+      .map(file => file.path)
+      .filter(path => /_q4f16\.onnx(?:_data(?:_\d+)?)?$/u.test(path))
+      .sort((a, b) => a.localeCompare(b));
+    expect(requiredModelPaths).toHaveLength(7);
+
+    vi.mocked(prepareProductionRuntimeArtifacts).mockResolvedValue({
+      modelId: qwen4bRepository.modelId,
+      revision: qwen4bRepository.resolvedRevision,
+      status: 'prepared',
+      processor: 'qwen3_5-processor',
+      modelType: 'qwen3_5',
+      observationMethod: 'transformers-runtime-artifact-preparation',
+      requiredModelPathsByCandidate: {
+        'webgpu/q4f16': requiredModelPaths,
+      },
+      error: undefined,
+    } as Awaited<ReturnType<typeof prepareProductionRuntimeArtifacts>>);
+    vi.mocked(acceptDownloadedProductionCandidate).mockResolvedValue({
+      modelId: qwen4bRepository.modelId,
+      resolvedRevision: qwen4bRepository.resolvedRevision,
+      loaderRevisionOption: qwen4bRepository.resolvedRevision,
+      candidate: { device: 'webgpu', dtype: 'q4f16' },
+      status: 'accepted',
+      observationMethod: 'production-cache-only-runtime-preparation',
+      error: undefined,
+    });
+
+    const result = await runProductionDownloadPreparation({
+      modelId: qwen4bRepository.modelId,
+      revision: qwen4bRepository.resolvedRevision,
+      candidateOrder: [{ device: 'webgpu', dtype: 'q4f16' }],
+    });
+
+    expect(result.status).toBe('accepted');
+    expect(prepareProductionModelCandidate).toHaveBeenCalledWith(expect.objectContaining({
+      modelId: qwen4bRepository.modelId,
+      revision: qwen4bRepository.resolvedRevision,
+      candidate: { device: 'webgpu', dtype: 'q4f16' },
+      requiredModelPaths,
+    }));
+    expect(acceptDownloadedProductionCandidate).toHaveBeenCalledTimes(1);
+  });
+
   it('injects repository-confirmed staged model paths into candidate download preparation', async () => {
     vi.mocked(acceptDownloadedProductionCandidate).mockImplementation(async ({ candidate }) => ({
       modelId: MODEL_ID,
@@ -196,6 +252,53 @@ describe('runProductionDownloadPreparation', () => {
         'onnx/vision_encoder_q4f16.onnx',
         'onnx/vision_encoder_q4f16.onnx_data',
       ],
+    }));
+  });
+
+  it('uses runtime ModelRegistry paths for candidates that are not explicitly overridden', async () => {
+    vi.mocked(prepareProductionRuntimeArtifacts).mockResolvedValue({
+      modelId: MODEL_ID,
+      revision: REVISION,
+      status: 'prepared',
+      processor: 'tokenizer',
+      modelType: 'llama',
+      requiredModelPathsByCandidate: {
+        'webgpu/q4f16': ['onnx/runtime-q4f16.onnx'],
+        'webgpu/q4': ['onnx/runtime-q4.onnx'],
+        'wasm/q4': ['onnx/runtime-q4.onnx'],
+      },
+      observationMethod: 'transformers-runtime-artifact-preparation',
+      error: undefined,
+    });
+    vi.mocked(acceptDownloadedProductionCandidate).mockImplementation(async ({ candidate }) => ({
+      modelId: MODEL_ID,
+      resolvedRevision: REVISION,
+      loaderRevisionOption: REVISION,
+      candidate,
+      status: candidate.dtype === 'q4f16' ? 'rejected' : 'accepted',
+      observationMethod: 'production-cache-only-runtime-preparation',
+      error: candidate.dtype === 'q4f16' ? { name: 'RuntimeError', message: 'q4f16 rejected' } : undefined,
+    }));
+
+    await runProductionDownloadPreparation({
+      modelId: MODEL_ID,
+      revision: REVISION,
+      candidateOrder: [
+        { device: 'webgpu', dtype: 'q4f16' },
+        { device: 'webgpu', dtype: 'q4' },
+      ],
+      requiredModelPathsByCandidate: {
+        'webgpu/q4f16': ['onnx/override-q4f16.onnx'],
+      },
+    });
+
+    expect(prepareProductionModelCandidate).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      candidate: { device: 'webgpu', dtype: 'q4f16' },
+      requiredModelPaths: ['onnx/override-q4f16.onnx'],
+    }));
+    expect(prepareProductionModelCandidate).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      candidate: { device: 'webgpu', dtype: 'q4' },
+      requiredModelPaths: ['onnx/runtime-q4.onnx'],
     }));
   });
 

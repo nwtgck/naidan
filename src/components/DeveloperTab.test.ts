@@ -20,8 +20,8 @@ vi.mock('../composables/useSampleChat', () => ({
 }));
 
 
-vi.mock('@/features/transformers-js/download-verification', () => ({
-  isDownloadVerificationAvailable: true,
+vi.mock('@/features/transformers-js/model-support-investigation', () => ({
+  isModelSupportInvestigationAvailable: true,
 }));
 
 vi.mock('vue-router', () => ({
@@ -82,13 +82,13 @@ describe('DeveloperTab', () => {
   });
 
 
-  it('requests the app-level download verification host from the developer tab', async () => {
+  it('requests the app-level model support investigation host with an empty target', async () => {
     const wrapper = mountDeveloperTab();
 
-    await wrapper.find('[data-testid="open-download-verification-button"]').trigger('click');
+    await wrapper.find('[data-testid="open-model-support-investigation-button"]').trigger('click');
 
-    expect(wrapper.emitted('openDownloadVerification')).toHaveLength(1);
-    expect(wrapper.find('[data-testid="download-verification-modal-stub"]').exists()).toBe(false);
+    expect(wrapper.emitted('openModelSupportInvestigation')).toEqual([['']]);
+    expect(wrapper.find('[data-testid="model-support-investigation-stub"]').exists()).toBe(false);
   });
 
   it('creates a long sample chat when the long sample button is clicked', async () => {

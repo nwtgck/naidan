@@ -756,7 +756,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(connectionTab.props('availableModels')).toEqual(['model-1', 'model-2', 'model-10']);
   });
 
-  it('forwards the app-level download verification request from the developer tab', async () => {
+  it('forwards the app-level model support investigation request from the developer tab', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
     await vi.dynamicImportSettled();
@@ -765,9 +765,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
     await vi.dynamicImportSettled();
 
-    await wrapper.find('[data-testid="open-download-verification-button"]').trigger('click');
+    await wrapper.find('[data-testid="open-model-support-investigation-button"]').trigger('click');
 
-    expect(wrapper.emitted('openDownloadVerification')).toHaveLength(1);
+    expect(wrapper.emitted('openModelSupportInvestigation')).toEqual([['']]);
   });
 
   it('triggers developer data deletion after confirmation', async () => {

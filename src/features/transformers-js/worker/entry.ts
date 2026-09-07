@@ -6,6 +6,7 @@ import {
   AutoModelForCausalLM,
   AutoModelForImageTextToText,
   InterruptableStoppingCriteria,
+  ModelRegistry,
   env,
   type PreTrainedModel,
   type PreTrainedTokenizer,
@@ -31,6 +32,7 @@ import type {
   TransformersJsProductionInvestigationObservation,
   TransformersJsProductionInvestigationPartialObservation,
   TransformersJsProductionInvestigationProcessor,
+  TransformersJsRuntimeArtifactPreparationResult,
   TransformersJsProductionInvestigationReasoningObservation,
   TransformersJsProductionInvestigationReasoningEffortObservation,
   TransformersJsProductionInvestigationStrategy,
@@ -535,10 +537,7 @@ async function prepareProductionRuntimeArtifacts({
   modelId: string,
   revision: string,
   progressCallback: TransformersProgressCallback,
-}): Promise<{
-  processor: TransformersJsProductionInvestigationProcessor,
-  modelType: string | undefined,
-}> {
+}): Promise<TransformersJsRuntimeArtifactPreparationResult> {
   const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
   if (cleanModelId.startsWith('user/')) {
     throw new Error('Runtime artifact preparation only supports public Hugging Face models');
@@ -559,8 +558,21 @@ async function prepareProductionRuntimeArtifacts({
           progress_callback: progressCallback,
           local_files_only: false,
         };
-        const config = await AutoConfig.from_pretrained(cleanModelId, sharedOptions) as { model_type?: string };
-        const modelType = config.model_type;
+        const config = await AutoConfig.from_pretrained(cleanModelId, sharedOptions);
+        const modelType = typeof config.model_type === 'string' ? config.model_type : undefined;
+        const requiredModelPathsByCandidate = Object.fromEntries(await Promise.all(
+          TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES.map(async candidate => {
+            const paths = await ModelRegistry.get_model_files(cleanModelId, {
+              config,
+              device: candidate.device,
+              dtype: candidate.dtype,
+            });
+            const requiredModelPaths = [...new Set(paths.filter(path => (
+              path.endsWith('.onnx') || /\.onnx_data(?:_\d+)?$/u.test(path)
+            )))].sort((a, b) => a.localeCompare(b));
+            return [`${candidate.device}/${candidate.dtype}`, requiredModelPaths] as const;
+          }),
+        ));
         const processor = selectTransformersJsProductionRuntimeArtifactLoader({
           modelId: cleanModelId,
           modelType,
@@ -578,7 +590,7 @@ async function prepareProductionRuntimeArtifacts({
           throw new Error(`Unhandled Production runtime artifact loader: ${_ex}`);
         }
         }
-        return { processor, modelType };
+        return { processor, modelType, requiredModelPathsByCandidate };
       } finally {
         env.fetch = previousFetch;
       }

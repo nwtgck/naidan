@@ -14,10 +14,6 @@ vi.mock('../../../utils/opfs-detection', () => ({
 
 vi.mock('@/features/transformers-js/model-support-investigation', () => ({
   isModelSupportInvestigationAvailable: true,
-  loadModelSupportInvestigationModal: async () => ({
-    props: ['modelId'],
-    template: '<div data-testid="model-support-investigation-stub" :data-model-id="modelId" />',
-  }),
 }));
 
 vi.mock('@vueuse/core', async () => {
@@ -165,7 +161,7 @@ describe('TransformersJsManager.vue', () => {
     expect(investigateButton.text()).toBe('Investigate');
   });
 
-  it('opens model support investigation with the selected cached model prefilled', async () => {
+  it('requests model support investigation with the selected cached model prefilled', async () => {
     (transformersJsService.listCachedModels as any).mockResolvedValue([
       { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
@@ -176,8 +172,8 @@ describe('TransformersJsManager.vue', () => {
     await wrapper.get('[data-testid="model-support-investigate-hf.co/org/model1"]').trigger('click');
     await flushPromises();
 
-    const modal = wrapper.get('[data-testid="model-support-investigation-stub"]');
-    expect(modal.attributes('data-model-id')).toBe('hf.co/org/model1');
+    expect(wrapper.emitted('openModelSupportInvestigation')).toEqual([['hf.co/org/model1']]);
+    expect(wrapper.find('[data-testid="model-support-investigation-stub"]').exists()).toBe(false);
   });
 
   it('shows Gemma 4 in the preset model list', async () => {

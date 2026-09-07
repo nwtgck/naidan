@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createPartialEvidence: vi.fn(),
+  createBatchEvidence: vi.fn(),
   createDownloadVerificationEvidence: vi.fn(),
 }));
 
 vi.mock("@/features/transformers-js/model-support-investigation/logic/create-partial-evidence", () => ({
   createPartialModelSupportEvidence: mocks.createPartialEvidence,
+  createBatchModelSupportEvidence: mocks.createBatchEvidence,
 }));
 
 vi.mock("@/features/transformers-js/download-verification/evidence/create-download-verification-evidence", () => ({
@@ -44,6 +46,31 @@ describe("createModelSupportInvestigationEvidenceWorker", () => {
 
     await expect(worker.createDownloadVerificationEvidence({ request })).resolves.toBe(archive);
     expect(mocks.createDownloadVerificationEvidence).toHaveBeenCalledWith({ evidence });
+  });
+
+  it("builds one batch archive containing every requested target", async () => {
+    const archive = { blob: new Blob(["zip"]), fileName: "batch-evidence.zip" };
+    mocks.createBatchEvidence.mockResolvedValue(archive);
+    const { createModelSupportInvestigationEvidenceWorker } = await import("./impl");
+    const worker = createModelSupportInvestigationEvidenceWorker();
+    const items = [{
+      target: "org/model-a",
+      status: "passed",
+      run: { runId: "run-a", modelId: "org/model-a" },
+    }];
+    const request = new Blob([JSON.stringify({ schemaVersion: 1, batchId: "batch-1", items })], { type: "application/json" });
+
+    await expect(worker.createBatchEvidence({ request })).resolves.toBe(archive);
+    expect(mocks.createBatchEvidence).toHaveBeenCalledWith({
+      batchId: "batch-1",
+      items: [{
+        target: "org/model-a",
+        status: "passed",
+        run: { runId: "run-a", modelId: "org/model-a" },
+        recovery: undefined,
+        error: undefined,
+      }],
+    });
   });
 
 });

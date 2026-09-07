@@ -38,6 +38,7 @@ export async function prepareProductionRuntimeArtifacts({ modelId, revision, pro
       status: 'prepared',
       processor: result.processor,
       modelType: result.modelType,
+      requiredModelPathsByCandidate: result.requiredModelPathsByCandidate,
       observationMethod: 'transformers-runtime-artifact-preparation',
       error: undefined,
     };

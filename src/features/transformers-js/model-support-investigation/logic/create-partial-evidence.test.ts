@@ -5,7 +5,10 @@ import type {
   ModelSupportInvestigationRun,
   ModelSupportInvestigationRuntimeAssetIdentity,
 } from "@/features/transformers-js/model-support-investigation/types";
-import { createPartialModelSupportEvidence } from "./create-partial-evidence";
+import {
+  createBatchModelSupportEvidence,
+  createPartialModelSupportEvidence,
+} from "./create-partial-evidence";
 
 function runtimeAssetIdentity(): ModelSupportInvestigationRuntimeAssetIdentity {
   return {
@@ -390,6 +393,59 @@ describe("createPartialModelSupportEvidence", () => {
       ]),
     ];
     for (const path of referencedPaths) expect(archive.file(path), path).not.toBeNull();
+
+    const secondRun = structuredClone(run);
+    secondRun.runId = "run-2";
+    secondRun.modelId = "org/second";
+    const batchEvidence = await createBatchModelSupportEvidence({
+      batchId: "batch-1",
+      items: [
+        {
+          target: run.modelId,
+          status: "passed",
+          run,
+          recovery: undefined,
+          error: undefined,
+        },
+        {
+          target: secondRun.modelId,
+          status: "passed",
+          run: secondRun,
+          recovery: undefined,
+          error: undefined,
+        },
+        {
+          target: "org/pending",
+          status: "pending",
+          run: undefined,
+          recovery: undefined,
+          error: undefined,
+        },
+      ],
+    });
+    const batchArchive = await JSZip.loadAsync(await batchEvidence.blob.arrayBuffer());
+    const batchIndex = JSON.parse(await batchArchive.file("batch.json")!.async("text")) as {
+      targetCount: number,
+      packagedModelCount: number,
+      targets: Array<{ target: string, evidencePath?: string }>,
+    };
+    expect(batchEvidence.fileName).toBe("model-support-investigation-batch-batch-1.zip");
+    expect(batchIndex.targetCount).toBe(3);
+    expect(batchIndex.packagedModelCount).toBe(2);
+    expect(batchIndex.targets.map(target => target.target)).toEqual([
+      run.modelId,
+      secondRun.modelId,
+      "org/pending",
+    ]);
+    for (const target of batchIndex.targets.slice(0, 2)) {
+      expect(target.evidencePath).toEqual(expect.any(String));
+      expect(batchArchive.file(`${target.evidencePath}run.json`)).not.toBeNull();
+      expect(batchArchive.file(`${target.evidencePath}manifest.json`)).not.toBeNull();
+      expect(batchArchive.file(`${target.evidencePath}PACKAGE.md`)).not.toBeNull();
+    }
+    expect(batchIndex.targets[2]?.evidencePath).toBeUndefined();
+    expect(batchArchive.file("manifest.json")).not.toBeNull();
+
     const failedWasmRun = structuredClone(run);
     failedWasmRun.status = "failed";
     failedWasmRun.error = "Wasm session failed";
@@ -1494,6 +1550,43 @@ SyntaxError: Unexpected token '<'
     }));
     const assessment = JSON.parse(await archive.file("package-assessment.json")!.async("text"));
     expect(assessment.status).not.toBe("invalid");
+  });
+
+  it("exports the complete requested model index even when no target produced a run", async () => {
+    const targets = [
+      "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+      "HuggingFaceTB/SmolLM2-135M-Instruct",
+      "LiquidAI/LFM2.5-2.6B-ONNX",
+      "LiquidAI/LFM2.5-230M-ONNX",
+      "LiquidAI/LFM2.5-350M-ONNX",
+      "onnx-community/gemma-4-E2B-it-ONNX",
+      "onnx-community/gpt-oss-20b-ONNX",
+      "onnx-community/Qwen3.5-2B-ONNX",
+      "onnx-community/Qwen3.5-4B-ONNX",
+    ];
+    const evidence = await createBatchModelSupportEvidence({
+      batchId: "batch-no-runs",
+      items: targets.map(target => ({
+        target,
+        status: "pending" as const,
+        run: undefined,
+        recovery: undefined,
+        error: undefined,
+      })),
+    });
+
+    const archive = await JSZip.loadAsync(await evidence.blob.arrayBuffer());
+    const batchIndex = JSON.parse(await archive.file("batch.json")!.async("text")) as {
+      targetCount: number,
+      packagedModelCount: number,
+      targets: Array<{ target: string, status: string, evidencePath?: string }>,
+    };
+    expect(batchIndex.targetCount).toBe(9);
+    expect(batchIndex.packagedModelCount).toBe(0);
+    expect(batchIndex.targets.map(target => target.target)).toEqual(targets);
+    expect(batchIndex.targets.every(target => target.status === "pending")).toBe(true);
+    expect(batchIndex.targets.every(target => target.evidencePath === undefined)).toBe(true);
+    expect(archive.file("manifest.json")).not.toBeNull();
   });
 
 });

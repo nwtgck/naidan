@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 interface RepositoryFixtureFile {
   path: string;
@@ -82,6 +83,7 @@ describe('Download Verification repository fixtures', () => {
       'lfm2-5-2-6b',
       'lfm2-5-230m',
       'qwen3-5-2b',
+      'qwen3-5-4b',
       'smollm2-135m-instruct',
     ]);
 
@@ -123,6 +125,103 @@ describe('Download Verification repository fixtures', () => {
     expect(observation.sessionNames).toEqual(['decoder_model_merged', 'embed_tokens']);
     expect(observation.sessionNames).not.toContain('vision_encoder');
     expect(observation.source.kind).toBe('historical-model-support-investigation-production-observation');
+  });
+
+  it('captures the Qwen3.5-4B multi-component q4f16 and q4 artifact inventory from real MSI evidence', () => {
+    const qwen4b = requireFixture({ fixtures: repositories, name: 'qwen3-5-4b' });
+    expect(qwen4b.resolvedRevision).toBe('74d8caba2117fd5f41d655e9cc27eda1338662b3');
+
+    const paths = qwen4b.files.map(file => file.path);
+    for (const dtype of ['q4f16', 'q4']) {
+      expect(paths).toEqual(expect.arrayContaining([
+        `onnx/decoder_model_merged_${dtype}.onnx`,
+        `onnx/decoder_model_merged_${dtype}.onnx_data`,
+        `onnx/decoder_model_merged_${dtype}.onnx_data_1`,
+        `onnx/embed_tokens_${dtype}.onnx`,
+        `onnx/embed_tokens_${dtype}.onnx_data`,
+        `onnx/vision_encoder_${dtype}.onnx`,
+        `onnx/vision_encoder_${dtype}.onnx_data`,
+      ]));
+    }
+  });
+
+  it('keeps actual Transformers.js ModelRegistry candidate requirements aligned with pinned repository JSON', async () => {
+    const moduleUrl = pathToFileURL(resolve(
+      process.cwd(),
+      'node_modules/@huggingface/transformers/dist/transformers.web.js',
+    )).href;
+    const transformers = await import(/* @vite-ignore */ moduleUrl) as unknown as {
+      ModelRegistry: {
+        get_model_files: (modelId: string, options: {
+          config: Record<string, unknown>;
+          device: 'webgpu' | 'wasm';
+          dtype: 'q4f16' | 'q4';
+        }) => Promise<string[]>;
+      };
+    };
+
+    const candidateModelPaths = async ({
+      fixture,
+      device,
+      dtype,
+    }: {
+      fixture: RepositoryFixture;
+      device: 'webgpu' | 'wasm';
+      dtype: 'q4f16' | 'q4';
+    }): Promise<string[]> => {
+      const paths = await transformers.ModelRegistry.get_model_files(fixture.modelId, {
+        config: {
+          model_type: fixture.modelType,
+          architectures: fixture.architectures,
+          'transformers.js_config': fixture.transformersJsConfig,
+        },
+        device,
+        dtype,
+      });
+      return paths
+        .filter(path => path.endsWith('.onnx') || /\.onnx_data(?:_\d+)?$/u.test(path))
+        .sort((left, right) => left.localeCompare(right));
+    };
+
+    const qwen4b = requireFixture({ fixtures: repositories, name: 'qwen3-5-4b' });
+    const qwenRepositoryPaths = new Set(qwen4b.files.map(file => file.path));
+    for (const candidate of [
+      { device: 'webgpu', dtype: 'q4f16' },
+      { device: 'webgpu', dtype: 'q4' },
+      { device: 'wasm', dtype: 'q4' },
+    ] as const) {
+      const requiredPaths = await candidateModelPaths({ fixture: qwen4b, ...candidate });
+      expect(requiredPaths).toHaveLength(7);
+      expect(requiredPaths.filter(path => !qwenRepositoryPaths.has(path))).toEqual([]);
+      expect(requiredPaths).toEqual(expect.arrayContaining([
+        `onnx/decoder_model_merged_${candidate.dtype}.onnx`,
+        `onnx/embed_tokens_${candidate.dtype}.onnx`,
+        `onnx/vision_encoder_${candidate.dtype}.onnx`,
+      ]));
+    }
+
+    const lfm230 = requireFixture({ fixtures: repositories, name: 'lfm2-5-230m' });
+    const lfmRepositoryPaths = new Set(lfm230.files.map(file => file.path));
+    const unavailableQ4f16Paths = await candidateModelPaths({
+      fixture: lfm230,
+      device: 'webgpu',
+      dtype: 'q4f16',
+    });
+    expect(unavailableQ4f16Paths.filter(path => !lfmRepositoryPaths.has(path))).toEqual([
+      'onnx/model_q4f16.onnx',
+      'onnx/model_q4f16.onnx_data',
+    ]);
+
+    const availableQ4Paths = await candidateModelPaths({
+      fixture: lfm230,
+      device: 'webgpu',
+      dtype: 'q4',
+    });
+    expect(availableQ4Paths).toEqual([
+      'onnx/model_q4.onnx',
+      'onnx/model_q4.onnx_data',
+    ]);
+    expect(availableQ4Paths.filter(path => !lfmRepositoryPaths.has(path))).toEqual([]);
   });
 
   it('keeps historical Production observations separate from current routing expectations', () => {
