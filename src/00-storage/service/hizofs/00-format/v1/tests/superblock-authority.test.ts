@@ -131,7 +131,18 @@ describe('HizoFS V1 Superblock authority', () => {
       current: selected.opened,
       intendedLogicalState: intended,
     })).toBe('not_published');
-    expect(superblockMutationPublicationFailureOutcome({ phase: 'first_authority_verified' }))
-      .toBe('committed_redundancy_degraded');
+  });
+
+  it.each([
+    { outcome: 'not_published', phase: 'prepared' },
+    { outcome: 'outcome_resolution_required', phase: 'first_write_started' },
+    { outcome: 'committed_redundancy_degraded', phase: 'first_authority_verified' },
+  ] as const)('classifies mutation failure at $phase as $outcome', ({ outcome, phase }) => {
+    expect(superblockMutationPublicationFailureOutcome({ phase })).toBe(outcome);
+  });
+
+  it('does not classify converged mutation publication as a failure', () => {
+    expect(() => superblockMutationPublicationFailureOutcome({ phase: 'second_copy_converged' }))
+      .toThrow('converged publication cannot fail');
   });
 });
