@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertSegmentId, copyBinaryId, parseCredentialSlotId, parseFileSystemId, parseMutationId, parsePublicationId, parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
+import { assertSegmentId, parseCredentialSlotId, parseFileSystemId, parseMutationId, parsePublicationId, parseSegmentId } from '@/00-storage/service/hizofs/00-format/v1/identifiers';
 import {
   assertSegmentPathBinding,
   HIZOFS_SUPERBLOCK_FILES,
@@ -28,8 +28,12 @@ describe('HizoFS V1 identifier and path contracts', () => {
     source[0] = 255;
     expect(segment[0]).toBe(1);
     expect(() => assertSegmentId({ id: segment })).not.toThrow();
-    expect(copyBinaryId({ id: parseMutationId({ bytes: segment }) })).toEqual(segment);
-    expect(copyBinaryId({ id: parsePublicationId({ bytes: segment }) })).toEqual(segment);
+    const mutation = parseMutationId({ bytes: segment });
+    const publication = parsePublicationId({ bytes: segment });
+    expect(mutation).toEqual(segment);
+    expect(publication).toEqual(segment);
+    expect(mutation.buffer).not.toBe(segment.buffer);
+    expect(publication.buffer).not.toBe(segment.buffer);
     expect(() => parseSegmentId({ bytes: new Uint8Array(15) })).toThrow('16 bytes');
     expect(() => parseSegmentId({ bytes: new Uint8Array(16) })).toThrow('all-zero');
   });

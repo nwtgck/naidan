@@ -260,6 +260,102 @@ describe("runtime-bound HizoFS application session port", () => {
     expect(runtimeState.calls.filter(value => value === "read-operation")).toHaveLength(6);
     await port.close();
     await expect(port.stat({ path: [] })).rejects.toMatchObject({ code: "session_closed" });
+    await expect(readable.read({ length: 2n, offset: 1n, signal: undefined }))
+      .rejects.toMatchObject({ code: "session_closed" });
+    await readable.close();
+  });
+
+  it("preserves file sizes and read offsets beyond Number precision", async () => {
+    const runtimeState = runtime();
+    const fileSize = 9_007_199_254_741_003n;
+    const offset = 9_007_199_254_740_993n;
+    const source = new Uint8Array([7, 9]);
+    const readFile = vi.fn<ReadOnlyNamespace["readFile"]>(async () => source);
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutationPort().port,
+      namespace: {
+        ...namespace(),
+        readFile,
+        stat: async () => ({
+          createdAt: createTimestampMilliseconds({ value: 11n }),
+          fileSize: createFileOffset({ value: fileSize }),
+          inodeNumber: createInodeNumber({ value: 2n }),
+          inodeRevision: createInodeRevision({ value: 1n }),
+          kind: "file",
+          modifiedAt: createTimestampMilliseconds({ value: 13n }),
+        }),
+      },
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+
+    await expect(port.stat({ path: ["large"] })).resolves.toEqual({
+      createdAt: 11n,
+      kind: "file",
+      modifiedAt: 13n,
+      size: fileSize,
+    });
+    const path = ["large"];
+    const readable = await port.openReadable({ path });
+    path[0] = "changed";
+    expect(readable.size).toBe(fileSize);
+    const bytes = await readable.read({ length: 2n, offset, signal: undefined });
+    expect(readFile).toHaveBeenCalledExactlyOnceWith({ length: 2n, offset, pathComponents: ["large"] });
+    expect(bytes).toEqual(source);
+    expect(bytes).not.toBe(source);
+    expect(runtimeState.calls.filter(value => value === "read-operation")).toHaveLength(3);
+    await readable.close();
+    await port.close();
+  });
+
+  it("uses zero for directory size and preserves absent timestamps", async () => {
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutationPort().port,
+      namespace: {
+        ...namespace(),
+        stat: async () => ({
+          createdAt: null,
+          inodeNumber: createInodeNumber({ value: 1n }),
+          inodeRevision: createInodeRevision({ value: 1n }),
+          kind: "directory",
+          modifiedAt: null,
+        }),
+      },
+      runtimeSession: runtime().session,
+      sync: async () => undefined,
+    } });
+
+    await expect(port.stat({ path: [] })).resolves.toEqual({
+      createdAt: undefined,
+      kind: "directory",
+      modifiedAt: undefined,
+      size: 0n,
+    });
+    await port.close();
+  });
+
+  it("reports symlink size as exact UTF-8 target bytes", async () => {
+    const runtimeState = runtime();
+    const target = "\u00e9/path";
+    const port = createRuntimeBoundHizoFSApplicationSessionPort({ composition: {
+      mutationPort: mutationPort().port,
+      namespace: {
+        ...namespace(),
+        readlink: async () => target,
+      },
+      runtimeSession: runtimeState.session,
+      sync: async () => undefined,
+    } });
+
+    await expect(port.stat({ path: ["link"] })).resolves.toEqual({
+      createdAt: 10n,
+      kind: "symlink",
+      modifiedAt: 20n,
+      size: 7n,
+    });
+    await expect(port.readlink({ path: ["link"] })).resolves.toBe(target);
+    expect(runtimeState.calls.filter(value => value === "read-operation")).toHaveLength(2);
+    await port.close();
   });
 
 
@@ -636,7 +732,7 @@ describe("runtime-bound HizoFS application session port", () => {
   });
 
   it("rejects same-session writer operations while a prepared writable owns the writer", async () => {
-    const { port, runtimeState } = createPort();
+    const { mutations, port, runtimeState } = createPort();
     const writable = await port.openWritable({ keepExistingData: true, path: ["file"] });
 
     await expect(port.createDirectory({ name: "blocked", path: [] })).rejects.toMatchObject({
@@ -645,6 +741,23 @@ describe("runtime-bound HizoFS application session port", () => {
     await expect(port.openWritable({ keepExistingData: true, path: ["other"] })).rejects.toMatchObject({
       code: "operation_in_progress",
     });
+    await expect(port.moveEntry({
+      destinationPath: [],
+      name: "file",
+      newName: "renamed",
+      path: [],
+      replace: false,
+    })).rejects.toMatchObject({ code: "operation_in_progress" });
+    await expect(port.removeEntry({ name: "file", path: [], recursive: false }))
+      .rejects.toMatchObject({ code: "operation_in_progress" });
+    await expect(port.cloneFile({
+      destinationPath: [],
+      name: "other",
+      newName: "file",
+      path: [],
+      replace: true,
+    })).rejects.toMatchObject({ code: "operation_in_progress" });
+    expect(mutations.calls.map(([name]) => name)).toEqual(["open-writable"]);
     expect(runtimeState.calls).toEqual(["acquire-writer"]);
 
     await writable.abort({ reason: "release same-session writer" });

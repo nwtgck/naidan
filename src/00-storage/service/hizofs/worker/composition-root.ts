@@ -274,7 +274,6 @@ export type AuthenticatedApplicationReadSessionResources = Readonly<{
 
 const WORKER_MOUNT_GRANT_POLICY: HizoFSRuntimePolicy = Object.freeze({
   lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-  maxDirectoryIteratorEntries: 4_096,
   maxHeldLockNames: 1_024,
   maxMaintenanceRootRegistrations: 1_024,
   maxReaderPins: 256,
@@ -5950,7 +5949,6 @@ const BROWSER_BENCHMARK_RUNTIME_POLICY: HizoFSRuntimePolicy = Object.freeze({
     ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
     publicationModeRequest: "automatic",
   }),
-  maxDirectoryIteratorEntries: 16_384,
   maxHeldLockNames: 4_096,
   maxMaintenanceRootRegistrations: 4_096,
   maxReaderPins: 512,

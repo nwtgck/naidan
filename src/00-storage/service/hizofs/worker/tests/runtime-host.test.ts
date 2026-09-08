@@ -30,7 +30,6 @@ function host({
     crossRealmLockPort,
     policy: {
       lazyDurability,
-      maxDirectoryIteratorEntries: 32,
       maxHeldLockNames: 64,
       maxMaintenanceRootRegistrations: 64,
       maxReaderPins: 16,
@@ -239,6 +238,10 @@ describe("HizoFS worker runtime host", () => {
       .toHaveLength(1);
 
     const createRecoveredResources = vi.fn(() => minimalApplicationResources());
+    await expect(value.disposeIfIdleAndSafe()).resolves.toEqual({
+      blocker: "working_candidate_not_empty",
+      status: "retained",
+    });
     const recoveredSession = await value.openApplicationSession({
       captureAuthority: async () => ({ revision: 2 }),
       createApplicationSessionResources: createRecoveredResources,
@@ -249,9 +252,14 @@ describe("HizoFS worker runtime host", () => {
 
     expect(createRecoveredResources).toHaveBeenCalledOnce();
     expect(value.workingCandidatePublicationState()).toBe("empty");
+    await expect(value.disposeIfIdleAndSafe()).resolves.toEqual({
+      blocker: "session_attached",
+      status: "retained",
+    });
     await recoveredSession.close();
     expect((await crossRealmLockPort.queryHeldLockNames()).filter(name => name.includes("/runtime-owner/")))
       .toEqual([]);
+    await expect(value.disposeIfIdleAndSafe()).resolves.toEqual({ status: "disposed" });
   });
 
   it("retains outcome-unknown ownership when authenticated durable authority conflicts", async () => {
@@ -301,6 +309,18 @@ describe("HizoFS worker runtime host", () => {
       verifyCapturedAuthority: async () => ({ durableIdentity: identities.durable }),
     });
     await recoveredSession.close();
+    expect(value.workingCandidatePublicationState()).toBe("empty");
+    expect((await crossRealmLockPort.queryHeldLockNames()).filter(name => name.includes("/runtime-owner/")))
+      .toEqual([]);
+    const nextHost = host({ crossRealmLockPort });
+    const nextSession = await nextHost.openSession({
+      captureAuthority: async () => ({ revision: 4 }),
+      createSessionResources: () => ({ releaseResources: async () => undefined }),
+      recheckAuthority: async () => undefined,
+      runtimeOwnerPolicy: "reject_if_busy",
+      verifyCapturedAuthority: async () => "verified",
+    });
+    await nextSession.close();
   });
 
   it("delegates management clean-head barrier acquisition to the container runtime", async () => {
@@ -345,7 +365,6 @@ describe("HizoFS worker runtime host", () => {
       },
       policy: {
         lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-        maxDirectoryIteratorEntries: 32,
         maxHeldLockNames: 64,
         maxMaintenanceRootRegistrations: 64,
         maxReaderPins: 16,
@@ -363,42 +382,6 @@ describe("HizoFS worker runtime host", () => {
     });
     await session.close();
   });
-
-  it("returns a narrow read API whose close drains the runtime session", async () => {
-    const releaseResources = vi.fn(async () => undefined);
-    const value = host();
-    const api = await value.openReadApi({
-      captureAuthority: async () => ({ revision: 1 }),
-      createReadSessionResources: () => ({
-        namespace: {
-          readFile: async () => new Uint8Array([9]),
-          readlink: async () => "target",
-          stat: async () => ({
-            createdAt: null,
-            fileSize: 9_007_199_254_740_993n as never,
-            inodeNumber: 1n as never,
-            inodeRevision: 1n as never,
-            kind: "file",
-            modifiedAt: null,
-          }),
-        },
-        releaseResources,
-        syncDurability: "demonstrated",
-      }),
-      recheckAuthority: async () => undefined,
-      verifyCapturedAuthority: async () => "verified",
-    });
-    await expect(api.stat({ pathComponents: ["large"] })).resolves.toMatchObject({
-      kind: "file",
-      size: 9_007_199_254_740_993n,
-    });
-    await api.close();
-    expect(releaseResources).toHaveBeenCalledOnce();
-    await expect(api.readFile({ pathComponents: ["large"] })).rejects.toMatchObject({
-      code: "capability_closed",
-    });
-  });
-
 
   it("opens a Naidan application session over the runtime authority handshake", async () => {
     const releaseResources = vi.fn(async () => undefined);
@@ -503,6 +486,7 @@ describe("HizoFS worker runtime host", () => {
     expect(recheckAuthority).toHaveBeenCalledTimes(2);
     await session.close();
     expect(releaseResources).toHaveBeenCalledOnce();
+    await expect(session.root.stat()).rejects.toThrow("HizoFS application session is closed");
   });
 
   it("pins one immutable generation for a read snapshot and releases it on snapshot close", async () => {

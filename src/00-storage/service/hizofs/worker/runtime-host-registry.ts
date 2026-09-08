@@ -41,7 +41,6 @@ function runtimePolicyIdentity({ policy }: { policy: HizoFSRuntimePolicy }): str
     policy.lazyDurability.maximumMutationAdmissionWaiters,
     policy.lazyDurability.maximumSyncWaiters,
     policy.lazyDurability.maximumUnpublishedPhysicalBytes,
-    policy.maxDirectoryIteratorEntries,
     policy.maxHeldLockNames,
     policy.maxMaintenanceRootRegistrations,
     policy.maxReaderPins,

@@ -332,9 +332,7 @@ describe("HizoFS V1 exact format anchors", () => {
       dataSegmentFileMaximumBytes, dataSegmentFooterMaximumBytes, fileDataPlaintextBytes, fileSystemIdCharacters,
       filenameUtf8Bytes, footerPlaintextIndexBytes, framesPerSegment, inlineDirectoryEncodedBytes, inlineFileBytes,
       metadataFooterPlaintextIndexBytes, metadataFramesPerSegment, metadataPlaintextBytes, metadataSegmentDataBytes,
-      metadataSegmentFileMaximumBytes, metadataSegmentFooterMaximumBytes,
-      naidanExpandedPathComponents: _naidanExpandedPathComponents, naidanExpandedPathUtf8Bytes: _naidanExpandedPathUtf8Bytes,
-      naidanSymlinkFollows: _naidanSymlinkFollows, passphraseUtf8Bytes,
+      metadataSegmentFileMaximumBytes, metadataSegmentFooterMaximumBytes, passphraseUtf8Bytes,
       randomIdentityGenerationAttempts: _randomIdentityGenerationAttempts, segmentFooterMaximumBytes, symlinkTargetUtf8Bytes,
       timestampMillisecondsMaximum, timestampMillisecondsMinimum, treeLevel, unlockEnvelopeJsonBytes,
       ...unhandledLimits

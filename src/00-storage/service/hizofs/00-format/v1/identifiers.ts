@@ -71,10 +71,6 @@ export function parseSegmentIdLowercaseHex({ value }: { value: string }): Segmen
   return parseSegmentId({ bytes: decodeLowercaseHex({ expectedBytes: RANDOM_ID_BYTES, value }) });
 }
 
-export function copyBinaryId({ id }: { id: SegmentId | MutationId | PublicationId }): Uint8Array {
-  return Uint8Array.from(id);
-}
-
 // Export internal state and logic used only for testing here. Do not reference these in production logic.
 // ESLint-required for TypeScript modules.
 export const TEST_ONLY = {

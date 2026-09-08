@@ -91,7 +91,6 @@ function runtime({
         ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
         maximumAcceptedMutationsPerDirtyEpoch,
       },
-      maxDirectoryIteratorEntries: 32,
       maxHeldLockNames: 64,
       maxMaintenanceRootRegistrations: 64,
       maxReaderPins: 16,
@@ -2289,16 +2288,17 @@ describe("container runtime cross-realm owner lifetime", () => {
       commitSequence: createCommitSequence({ value: 9n }),
       mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(3) }),
     });
-    await expect(value.resolveWorkingCandidateOutcomeUnknown({
+    expect(() => value.resolveWorkingCandidateOutcomeUnknownAgainstDurableAuthority({
       observedDurableIdentity: conflictingDurableIdentity,
-    })).rejects.toMatchObject({ code: "outcome_resolution_conflict" });
+    })).toThrowError(expect.objectContaining({ code: "outcome_resolution_conflict" }));
     expect(value.workingCandidatePublicationState()).toBe("outcome_unknown");
     expect((await port.queryHeldLockNames()).filter(name => name.includes("/runtime-owner/"))).toHaveLength(1);
 
-    await expect(value.resolveWorkingCandidateOutcomeUnknown({
+    expect(value.resolveWorkingCandidateOutcomeUnknownAgainstDurableAuthority({
       observedDurableIdentity: identities.durable,
-    })).resolves.toBe("confirmed_not_published");
+    })).toBe("confirmed_not_published");
     expect(value.workingCandidatePublicationState()).toBe("empty");
+    await expect(value.disposeIfIdleAndSafe()).resolves.toEqual({ status: "disposed" });
     expect((await port.queryHeldLockNames()).filter(name => name.includes("/runtime-owner/"))).toHaveLength(0);
 
     const nextRuntime = runtime({ crossRealmLockPort: port });
@@ -2353,9 +2353,9 @@ describe("container runtime cross-realm owner lifetime", () => {
       blocker: "working_candidate_not_empty",
       status: "retained",
     });
-    await expect(value.resolveWorkingCandidateOutcomeUnknown({
+    expect(value.resolveWorkingCandidateOutcomeUnknownAgainstDurableAuthority({
       observedDurableIdentity: identities.durable,
-    })).resolves.toBe("confirmed_not_published");
+    })).toBe("confirmed_not_published");
     await expect(value.disposeIfIdleAndSafe()).resolves.toEqual({ status: "disposed" });
   });
 

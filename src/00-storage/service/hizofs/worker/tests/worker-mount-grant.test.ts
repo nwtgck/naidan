@@ -72,7 +72,6 @@ function ownerRuntimeHost(): HizoFSWorkerRuntimeHost {
     crossRealmLockPort: new InMemoryCrossRealmLockPort(),
     policy: {
       lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-      maxDirectoryIteratorEntries: 256,
       maxHeldLockNames: 64,
       maxMaintenanceRootRegistrations: 64,
       maxReaderPins: 16,
@@ -222,7 +221,6 @@ describe("HizoFS Worker mount grants", () => {
         crossRealmLockPort,
         policy: {
           lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-          maxDirectoryIteratorEntries: 256,
           maxHeldLockNames: 64,
           maxMaintenanceRootRegistrations: 64,
           maxReaderPins: 16,
@@ -264,7 +262,6 @@ describe("HizoFS Worker mount grants", () => {
         crossRealmLockPort,
         policy: {
           lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-          maxDirectoryIteratorEntries: 256,
           maxHeldLockNames: 64,
           maxMaintenanceRootRegistrations: 64,
           maxReaderPins: 16,

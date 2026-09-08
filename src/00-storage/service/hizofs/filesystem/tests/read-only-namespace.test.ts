@@ -4,6 +4,7 @@ import {
   createHomeRecordReference,
   createInodeNumber,
   createInodeRevision,
+  createSubvolumeId,
   createTimestampMilliseconds,
   createUInt64,
   HIZOFS_V1_FORMAT_CONSTANTS,
@@ -536,9 +537,28 @@ describe("read-only HizoFS namespace", () => {
     await expect(namespace.readlink({ pathComponents: ["inline.txt"] })).rejects.toMatchObject({ code: "not_symlink" });
   });
 
-  it("rejects persisted inode-kind mismatches and nested Subvolume crossings", async () => {
+  it("rejects traversal through a non-directory inode", async () => {
     const { namespace } = fixture();
     await expect(namespace.stat({ pathComponents: ["link", "child"] })).rejects.toMatchObject({ code: "not_directory" });
+  });
+
+  it("rejects nested Subvolume targets instead of resolving them in the ordinary Inode Table", async () => {
+    const { directoryPages, namespace, resolver } = fixture();
+    directoryPages.set(directoryRoot, {
+      entries: [
+        { inodeKind: "file", inodeNumber: createInodeNumber({ value: 5n }), name: "huge.bin", targetType: "inode" },
+        { name: "mounted", subvolumeId: createSubvolumeId({ value: 8n }), targetType: "subvolume" },
+      ],
+      level: 0,
+      type: "leaf",
+    });
+
+    await expect(resolver.resolveInode({ pathComponents: ["tree", "mounted"] }))
+      .rejects.toMatchObject({ code: "subvolume_boundary" });
+    await expect(resolver.resolveDirectoryWithAncestors({ pathComponents: ["tree", "mounted"] }))
+      .rejects.toMatchObject({ code: "subvolume_boundary" });
+    await expect(namespace.stat({ pathComponents: ["tree", "mounted", "file"] }))
+      .rejects.toMatchObject({ code: "subvolume_boundary" });
   });
 
   it("validates the complete immutable inode graph before returning a point lookup", async () => {

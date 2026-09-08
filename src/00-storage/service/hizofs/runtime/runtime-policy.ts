@@ -18,7 +18,6 @@ export type HizoFSLazyDurabilityPolicy = Readonly<{
 
 export type HizoFSRuntimePolicy = Readonly<{
   lazyDurability: HizoFSLazyDurabilityPolicy;
-  maxDirectoryIteratorEntries: number;
   maxHeldLockNames: number;
   maxMaintenanceRootRegistrations: number;
   maxReaderPins: number;
@@ -89,17 +88,15 @@ export function resolvePublicationModeApplied({
 /**
  * Runtime tuning is deliberately explicit and never persisted. Validating all
  * bounds at composition time prevents a typo from silently disabling memory
- * limits in a later iterator, pin, Segment, lock, or lazy-publication path.
+ * limits in a later pin, Segment, lock, or lazy-publication path.
  */
 export function createRuntimePolicy({
   lazyDurability,
-  maxDirectoryIteratorEntries,
   maxHeldLockNames,
   maxMaintenanceRootRegistrations,
   maxReaderPins,
   maxSegmentReferences,
 }: HizoFSRuntimePolicy): HizoFSRuntimePolicy {
-  validateLimit({ name: "maxDirectoryIteratorEntries", value: maxDirectoryIteratorEntries });
   validateLimit({ name: "maxHeldLockNames", value: maxHeldLockNames });
   validateLimit({ name: "maxMaintenanceRootRegistrations", value: maxMaintenanceRootRegistrations });
   validateLimit({ name: "maxReaderPins", value: maxReaderPins });
@@ -131,7 +128,6 @@ export function createRuntimePolicy({
   validatePublicationModeRequest({ value: lazyDurability.publicationModeRequest });
   return Object.freeze({
     lazyDurability: Object.freeze({ ...lazyDurability }),
-    maxDirectoryIteratorEntries,
     maxHeldLockNames,
     maxMaintenanceRootRegistrations,
     maxReaderPins,

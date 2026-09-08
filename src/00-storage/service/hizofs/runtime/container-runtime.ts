@@ -2241,16 +2241,6 @@ export class ContainerRuntime {
     }
   }
 
-  async resolveWorkingCandidateOutcomeUnknown({ observedDurableIdentity }: {
-    observedDurableIdentity: DurableGenerationIdentity;
-  }): Promise<WorkingCandidateOutcomeUnknownResolution> {
-    const resolution = this.resolveWorkingCandidateOutcomeUnknownAgainstDurableAuthority({
-      observedDurableIdentity,
-    });
-    await this.runtimeOwner.releaseIfIdleAndSafe();
-    return resolution;
-  }
-
   async beginCleanHeadMaintenanceRootCapture(): Promise<ContainerRuntimeMaintenanceRootCapture> {
     const managementBarrier = this.openManagementCleanHeadBarrier({});
     let capture: ContainerRuntimeMaintenanceRootCapture | undefined;
