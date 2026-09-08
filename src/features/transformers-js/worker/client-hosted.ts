@@ -1,7 +1,7 @@
-import { releaseWorkerRemote, workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
+import { workerProxy } from '@/utils/worker-transport';
+import { createProductionWorkerSession } from './production-worker-session';
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import type {
-  ITransformersJsWorker,
   TransformersJsWorkerClient,
   WorkerToolDefinition,
   ProgressInfo,
@@ -43,24 +43,29 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
     { type: 'module' },
   );
 
-  const remote = wrapWorkerRemote<ITransformersJsWorker>({ endpoint: worker });
+  const session = createProductionWorkerSession({ worker, startupTimeoutMs: undefined });
   return {
     async loadDownloadedModel({ modelId, revision, progressCallback }: {
       modelId: string,
       revision?: string,
       progressCallback: TransformersJsProgressCallback,
     }): Promise<ModelLoadResult> {
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-      return remote.loadDownloadedModel(modelId, revision, workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }));
+      return session.run({ operation: ({ remote }) => remote.loadDownloadedModel(
+        modelId, revision,
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
+        workerProxy({ value: (info: ProgressInfo) => {
+          if (session.isActive()) return progressCallback({ info });
+        } }),
+      ) });
     },
     async unloadModel(): Promise<void> {
-      return remote.unloadModel();
+      return session.run({ operation: ({ remote }) => remote.unloadModel() });
     },
     async interrupt(): Promise<void> {
-      return remote.interrupt();
+      return session.run({ operation: ({ remote }) => remote.interrupt() });
     },
     async resetCache(): Promise<void> {
-      return remote.resetCache();
+      return session.run({ operation: ({ remote }) => remote.resetCache() });
     },
     async generateText({ messages, onChunk, onToolCalls, params, tools }: {
       messages: ChatMessage[],
@@ -69,25 +74,22 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
       params?: LmParameters,
       tools?: WorkerToolDefinition[],
     }): Promise<void> {
-      return remote.generateText(
+      return session.run({ operation: ({ remote }) => remote.generateText(
         messages,
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-        workerProxy({ value: (chunk: string) => onChunk({ chunk }) }),
+        workerProxy({ value: (chunk: string) => {
+          if (session.isActive()) return onChunk({ chunk });
+        } }),
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback is a positional remote boundary.
-        workerProxy({ value: (toolCalls: ToolCall[]) => onToolCalls({ toolCalls }) }),
+        workerProxy({ value: (toolCalls: ToolCall[]) => {
+          if (session.isActive()) return onToolCalls({ toolCalls });
+        } }),
         params,
         tools,
-      );
+      ) });
     },
     async dispose(): Promise<void> {
-      try {
-        const release = releaseWorkerRemote({ remote });
-        void Promise.resolve(release).catch(() => undefined);
-      } catch {
-        // Remote release is advisory. Worker termination is the terminal cleanup and
-        // must not wait for a Comlink release that can hang after an interrupted load.
-      }
-      worker.terminate();
+      session.dispose();
     },
   };
 }

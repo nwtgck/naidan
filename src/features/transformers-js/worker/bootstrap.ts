@@ -1,4 +1,5 @@
 import { createDownloadedModelWorkerFetch } from '@/features/transformers-js/runtime/offline-worker-fetch';
+import { startProductionWorkerRuntime } from './production-worker-startup';
 
 // This bootstrap intentionally does not import Transformers.js. Install the
 // fixed offline network capability first, then evaluate the runtime entry so
@@ -12,7 +13,10 @@ self.fetch = createDownloadedModelWorkerFetch({
   vendor: navigator.vendor,
 });
 
-void import('./entry').catch(error => {
+void startProductionWorkerRuntime({
+  loadEntry: () => import('./entry'),
+  postMessage: ({ message }) => self.postMessage(message),
+}).catch(error => {
   // Surface entry evaluation failures as Worker errors instead of leaving an
   // unhandled rejection that callers can only observe as a hung RPC.
   setTimeout(() => {

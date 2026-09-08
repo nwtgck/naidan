@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PRODUCTION_WORKER_READY } from './production-worker-startup';
 
 const mocks = vi.hoisted(() => ({
   release: vi.fn(),
@@ -13,9 +14,12 @@ vi.mock('@/utils/worker-transport', async importOriginal => ({
   wrapWorkerRemote: mocks.wrap,
 }));
 
-class MockWorker {
+class MockWorker extends EventTarget {
+  static latest: MockWorker;
   constructor(url: URL, options: WorkerOptions) {
+    super();
     mocks.workerConstructor(url, options);
+    MockWorker.latest = this;
   }
 
   terminate = mocks.terminate;
@@ -33,6 +37,7 @@ describe('Transformers.js Worker client cleanup', () => {
     mocks.release.mockReturnValue(new Promise<never>(() => undefined));
     const { createTransformersJsWorkerClient } = await import('./client-hosted');
     const client = createTransformersJsWorkerClient();
+    MockWorker.latest.dispatchEvent(new MessageEvent('message', { data: PRODUCTION_WORKER_READY }));
 
     await expect(client.dispose()).resolves.toBeUndefined();
 
@@ -42,12 +47,13 @@ describe('Transformers.js Worker client cleanup', () => {
 
   it('starts through the offline bootstrap instead of evaluating the runtime entry directly', async () => {
     const { createTransformersJsWorkerClient } = await import('./client-hosted');
-    createTransformersJsWorkerClient();
+    const client = createTransformersJsWorkerClient();
 
     expect(mocks.workerConstructor).toHaveBeenCalledWith(
       expect.objectContaining({ pathname: expect.stringMatching(/\/worker\/bootstrap\.ts$/u) }),
       { type: 'module' },
     );
+    await client.dispose();
   });
 
   it('still terminates when remote release throws synchronously', async () => {
@@ -56,6 +62,7 @@ describe('Transformers.js Worker client cleanup', () => {
     });
     const { createTransformersJsWorkerClient } = await import('./client-hosted');
     const client = createTransformersJsWorkerClient();
+    MockWorker.latest.dispatchEvent(new MessageEvent('message', { data: PRODUCTION_WORKER_READY }));
 
     await expect(client.dispose()).resolves.toBeUndefined();
 

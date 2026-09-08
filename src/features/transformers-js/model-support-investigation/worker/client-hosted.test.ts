@@ -21,7 +21,8 @@ const mocks = vi.hoisted(() => ({
   releaseProxy: Symbol("releaseProxy"),
   proxy: vi.fn((value: unknown) => value),
   wrap: vi.fn(),
-  workerInstances: [] as Array<{ terminate: ReturnType<typeof vi.fn> }>,
+  workerInstances: [] as Array<{ terminate: ReturnType<typeof vi.fn>, dispatchEvent: EventTarget['dispatchEvent'] }>,
+  productionAutoReady: true,
   runProductionScenario: vi.fn(),
   completeRuntimeEvidence: vi.fn(),
 }));
@@ -37,11 +38,17 @@ vi.mock("@/features/transformers-js/download-verification/logic/complete-downloa
 }));
 
 
-class MockWorker {
+class MockWorker extends EventTarget {
   terminate = vi.fn();
 
-  constructor() {
+  constructor(url: URL) {
+    super();
     mocks.workerInstances.push(this);
+    if (url.pathname.endsWith('/worker/bootstrap.ts') && mocks.productionAutoReady) {
+      queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', {
+        data: { channel: 'naidan-production-worker-startup', version: 1, status: 'ready' },
+      })));
+    }
   }
 }
 
@@ -357,7 +364,9 @@ describe("createModelSupportInvestigationWorkerClient", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mocks.wrap.mockReset();
     mocks.workerInstances.length = 0;
+    mocks.productionAutoReady = true;
     vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "coordinator-attempt") });
     mocks.runProductionScenario.mockResolvedValue({
       modelId: "org/model",
@@ -1311,6 +1320,54 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     expect(onCheckpoint).toHaveBeenCalledTimes(checkpointCount);
     expect(onCheckpoint.mock.calls.at(-1)?.[0].checkpoint.recovery.status).toBe("completed");
     await client.dispose();
+  });
+
+  it.each(['ready', 'failed', 'disposed'] as const)('waits for Production startup and handles %s before sending a scenario', async startupOutcome => {
+    mocks.productionAutoReady = false;
+    mocks.wrap
+      .mockReturnValueOnce(remote({ runPartialInvestigation: vi.fn(async () => planningRun()) }))
+      .mockReturnValueOnce(remote({ runCandidateAttempt: vi.fn(async () => attempt({ candidateId: 'webgpu-q4f16', status: 'passed' })) }))
+      .mockReturnValueOnce(productionRemote());
+    const onCheckpoint = vi.fn();
+    const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
+    const client = createModelSupportInvestigationWorkerClient();
+    const outcome = client.runPartialInvestigation({ modelId: 'org/model', configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint })
+      .then(run => ({ run, error: undefined }), error => ({ run: undefined, error }));
+    try {
+      await vi.waitFor(() => expect(mocks.workerInstances).toHaveLength(3));
+      expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+      const worker = mocks.workerInstances[2]!;
+      switch (startupOutcome) {
+      case 'ready':
+        worker.dispatchEvent(new MessageEvent('message', { data: { channel: 'naidan-production-worker-startup', version: 1, status: 'ready' } }));
+        expect((await outcome).run?.productionLane.status).toBe('passed');
+        expect(mocks.runProductionScenario).toHaveBeenCalledOnce();
+        break;
+      case 'failed':
+        worker.dispatchEvent(new MessageEvent('message', { data: { channel: 'naidan-production-worker-startup', version: 1, status: 'failed', message: 'Fixture entry evaluation failed' } }));
+        expect((await outcome).run?.productionLane).toMatchObject({ status: 'failed', error: { message: expect.stringContaining('Fixture entry evaluation failed') } });
+        expect(onCheckpoint.mock.calls.at(-1)?.[0].checkpoint.run.productionLane.status).toBe('failed');
+        expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+        break;
+      case 'disposed':
+        await client.dispose();
+        expect((await outcome).error).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
+        expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+        break;
+      default: {
+        const exhaustive: never = startupOutcome;
+        throw new Error(`Unhandled startup outcome: ${exhaustive}`);
+      }
+      }
+      const checkpointCount = onCheckpoint.mock.calls.length;
+      worker.dispatchEvent(new MessageEvent('message', { data: { channel: 'naidan-production-worker-startup', version: 1, status: 'ready' } }));
+      await Promise.resolve();
+      expect(onCheckpoint).toHaveBeenCalledTimes(checkpointCount);
+      expect(worker.terminate).toHaveBeenCalledOnce();
+    } finally {
+      await client.dispose();
+      await outcome;
+    }
   });
 
   it("does not misclassify a Production worker-start timeout as a candidate load failure", async () => {

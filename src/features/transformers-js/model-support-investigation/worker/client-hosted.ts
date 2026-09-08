@@ -1,4 +1,5 @@
 import { releaseWorkerRemote, workerProxy, wrapWorkerRemote, type WorkerRemote } from "@/utils/worker-transport";
+import { createProductionWorkerSession } from '@/features/transformers-js/worker/production-worker-session';
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationCheckpoint,
@@ -9,7 +10,6 @@ import type {
   ModelSupportInvestigationWorkerClient,
 } from "@/features/transformers-js/model-support-investigation/types";
 import type {
-  ITransformersJsWorker,
   TransformersJsModelLoadProgressObservation,
   TransformersJsProductionInvestigationCandidate,
   TransformersJsProductionInvestigationCandidateLoadAttempt,
@@ -62,8 +62,7 @@ interface InvestigationWorkerHandle {
 }
 
 interface ProductionWorkerHandle {
-  worker: Worker,
-  remote: WorkerRemote<ITransformersJsWorker>,
+  session: ReturnType<typeof createProductionWorkerSession>,
 }
 
 function productionLaneStageFromStatus({
@@ -292,7 +291,7 @@ export function createModelSupportInvestigationWorkerClient({
   cacheAcceptanceTimeoutMs?: number,
 } = {}): ModelSupportInvestigationWorkerClient {
   const activeWorkers = new Set<Worker>();
-  const activeProductionWorkers = new Set<Worker>();
+  const activeProductionSessions = new Set<ProductionWorkerHandle['session']>();
   let disposed = false;
   let userInterruptionRequested = false;
   let activeInterrupt: (() => void) | undefined;
@@ -301,8 +300,8 @@ export function createModelSupportInvestigationWorkerClient({
   const terminateAllWorkers = (): void => {
     for (const worker of activeWorkers) worker.terminate();
     activeWorkers.clear();
-    for (const worker of activeProductionWorkers) worker.terminate();
-    activeProductionWorkers.clear();
+    for (const session of activeProductionSessions) session.dispose();
+    activeProductionSessions.clear();
   };
 
   const createWorkerHandle = (): InvestigationWorkerHandle => {
@@ -345,34 +344,14 @@ export function createModelSupportInvestigationWorkerClient({
     // Production Lane intentionally uses the ordinary Production bootstrap so
     // both its offline network boundary and loader body remain identical.
     const worker = new Worker(new URL("../../worker/bootstrap.ts", import.meta.url), { type: "module" });
-    activeProductionWorkers.add(worker);
-    return {
-      worker,
-      remote: wrapWorkerRemote<ITransformersJsWorker>({ endpoint: worker }),
-    };
+    const session = createProductionWorkerSession({ worker, startupTimeoutMs: undefined });
+    activeProductionSessions.add(session);
+    return { session };
   };
 
   const terminateProductionWorkerHandle = ({ handle }: { handle: ProductionWorkerHandle }): void => {
-    handle.worker.terminate();
-    activeProductionWorkers.delete(handle.worker);
-  };
-
-  const releaseProductionWorkerHandle = async ({ handle }: { handle: ProductionWorkerHandle }): Promise<void> => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([
-        releaseWorkerRemote({ remote: handle.remote }),
-        new Promise<void>(resolve => {
-          timer = setTimeout(resolve, 250);
-        }),
-      ]);
-    } catch {
-      // Production Evidence has already settled. Cleanup transport failure must not turn a
-      // successful Production Lane observation into a failed investigation.
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-      terminateProductionWorkerHandle({ handle });
-    }
+    handle.session.dispose();
+    activeProductionSessions.delete(handle.session);
   };
 
   return {
@@ -899,10 +878,10 @@ export function createModelSupportInvestigationWorkerClient({
                 onObservationCheckpoint({ observation: interruptedCandidateObservation() });
               };
               try {
-                const operation = productionHandle.remote.runModelSupportInvestigationScenario(
+                const operation = productionHandle.session.run({ operation: ({ remote }) => remote.runModelSupportInvestigationScenario(
                   candidateScenario,
                   workerProxy({ value: ({ event }) => {
-                    if (!productionAcceptingCallbacks) return;
+                    if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) return;
                     switch (event.kind) {
                     case "model-load":
                       latestCandidateLoadProgress = structuredClone(event.progress);
@@ -938,11 +917,11 @@ export function createModelSupportInvestigationWorkerClient({
                     }
                   } }),
                   workerProxy({ value: ({ observation }) => {
-                    if (!productionAcceptingCallbacks) return;
+                    if (!productionAcceptingCallbacks || !productionHandle.session.isActive()) return;
                     latestCandidateObservation = structuredClone(observation);
                     onObservationCheckpoint({ observation: mergePartialObservation({ observation }) });
                   } }),
-                );
+                ) });
                 const result = await awaitInterruptible({ operation: withProductionLaneTimeout({
                   operation,
                   timeoutMs: productionLaneTimeoutMs,
@@ -965,7 +944,12 @@ export function createModelSupportInvestigationWorkerClient({
                 }) });
                 productionAcceptingCallbacks = false;
                 return mergeObservation({ observation: result });
-              } catch (error) {
+              } catch (cause) {
+                // The session rejects outstanding calls when terminated. Keep
+                // the coordinator's deadline as the cause of that termination.
+                const error = timedOut
+                  ? new ProductionLaneTimeoutError({ stage: stageState.lastStage, timeoutMs: productionLaneTimeoutMs })
+                  : cause;
                 if (userInterruptionRequested || isModelSupportInvestigationUserInterruptedError({ error })) {
                   throw userInterruptionError;
                 }
@@ -1021,7 +1005,7 @@ export function createModelSupportInvestigationWorkerClient({
               } finally {
                 productionAcceptingCallbacks = false;
                 flushActiveProductionInterruptionEvidence = undefined;
-                if (!timedOut && !userInterruptionRequested) await releaseProductionWorkerHandle({ handle: productionHandle });
+                if (!timedOut && !userInterruptionRequested) terminateProductionWorkerHandle({ handle: productionHandle });
               }
             }
 

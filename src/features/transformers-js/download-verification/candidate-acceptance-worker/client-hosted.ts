@@ -1,7 +1,6 @@
-import { workerProxy, wrapWorkerRemote } from '@/utils/worker-transport';
-import { disposeDedicatedWorkerBestEffort } from '@/features/transformers-js/download-verification/dedicated-worker-cleanup';
+import { workerProxy } from '@/utils/worker-transport';
+import { createProductionWorkerSession } from '@/features/transformers-js/worker/production-worker-session';
 import type {
-  ITransformersJsWorker,
   ModelLoadResult,
   ProgressInfo,
   TransformersJsProductionInvestigationCandidate,
@@ -41,31 +40,32 @@ export function createDownloadVerificationCandidateAcceptanceWorkerClient(): Dow
     new URL('../../worker/bootstrap.ts', import.meta.url),
     { type: 'module' },
   );
-  const remote = wrapWorkerRemote<ITransformersJsWorker>({ endpoint: worker });
-  let disposed = false;
+  const session = createProductionWorkerSession({ worker, startupTimeoutMs: undefined });
 
   return {
     async verifyDownloadedModelCandidate({ modelId, loadRevision, candidate, progressCallback }) {
-      return await remote.verifyDownloadedModelCandidate(
+      return await session.run({ operation: ({ remote }) => remote.verifyDownloadedModelCandidate(
         modelId,
         loadRevision,
         candidate,
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
-        workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }),
-      );
+        workerProxy({ value: (info: ProgressInfo) => {
+          if (session.isActive()) return progressCallback({ info });
+        } }),
+      ) });
     },
     async verifyDownloadedModelRevision({ modelId, loadRevision, progressCallback }) {
-      return await remote.verifyDownloadedModelRevision(
+      return await session.run({ operation: ({ remote }) => remote.verifyDownloadedModelRevision(
         modelId,
         loadRevision,
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
-        workerProxy({ value: (info: ProgressInfo) => progressCallback({ info }) }),
-      );
+        workerProxy({ value: (info: ProgressInfo) => {
+          if (session.isActive()) return progressCallback({ info });
+        } }),
+      ) });
     },
     async dispose() {
-      if (disposed) return;
-      disposed = true;
-      disposeDedicatedWorkerBestEffort({ remote, worker });
+      session.dispose();
     },
   };
 }

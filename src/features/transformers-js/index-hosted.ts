@@ -1,5 +1,6 @@
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import { createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
+import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
 import { inspectDownloadVerificationCachedRevisions, planDownloadVerificationCachedRevisionLoadCandidates } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
 import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
 import { resolvePublicHuggingFaceRevision } from '@/features/transformers-js/download-verification/logic/resolve-public-hugging-face-revision';
@@ -810,7 +811,7 @@ export const transformersJsService = {
       const errorMsg = e instanceof Error ? e.message : String(e);
 
       // If the error is fatal, the worker is likely dead/poisoned and needs to be restarted
-      if (isFatalError({ msg: errorMsg })) {
+      if (e instanceof ProductionWorkerLifecycleError || isFatalError({ msg: errorMsg })) {
         console.warn(`[transformersJsService] Fatal error detected. Re-initializing worker...`);
         await restartWorker();
       }
@@ -1010,7 +1011,7 @@ export const transformersJsService = {
       });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
-      if (isFatalError({ msg: errorMsg })) {
+      if (e instanceof ProductionWorkerLifecycleError || isFatalError({ msg: errorMsg })) {
         console.warn(`[transformersJsService] Fatal error detected during generation. Re-initializing worker...`);
         await restartWorker();
         activeModelId = undefined;

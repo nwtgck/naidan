@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PRODUCTION_WORKER_READY } from '@/features/transformers-js/worker/production-worker-startup';
 
 const mocks = vi.hoisted(() => ({
   release: vi.fn(),
@@ -13,9 +14,13 @@ vi.mock('@/utils/worker-transport', async importOriginal => ({
   wrapWorkerRemote: mocks.wrap,
 }));
 
-class MockWorker {
+class MockWorker extends EventTarget {
   constructor(url: URL) {
+    super();
     mocks.workerUrls.push(url);
+    if (url.pathname.endsWith('/worker/bootstrap.ts')) {
+      queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', { data: PRODUCTION_WORKER_READY })));
+    }
   }
 
   terminate = mocks.terminate;
@@ -51,6 +56,7 @@ describe('Download Verification dedicated Worker clients', () => {
       createDownloadVerificationCandidateAcceptanceWorkerClient(),
       createTransformersJsDownloadWorkerClient(),
     ];
+    await Promise.resolve(); // The startup handshake completes before idle cleanup.
 
     for (const client of clients) {
       await expect(client.dispose()).resolves.toBeUndefined();
@@ -65,5 +71,15 @@ describe('Download Verification dedicated Worker clients', () => {
       expect.stringMatching(/\/worker\/bootstrap\.ts$/u),
       expect.stringMatching(/\/download-worker\/entry\.ts$/u),
     ]);
+  });
+
+  it('does not send advisory release when the candidate Worker is disposed before ready', async () => {
+    const { createDownloadVerificationCandidateAcceptanceWorkerClient } = await import('./candidate-acceptance-worker/client-hosted');
+    const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
+    await client.dispose();
+    await client.dispose();
+    expect(mocks.wrap).not.toHaveBeenCalled();
+    expect(mocks.release).not.toHaveBeenCalled();
+    expect(mocks.terminate).toHaveBeenCalledOnce();
   });
 });

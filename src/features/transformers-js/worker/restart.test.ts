@@ -1,15 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as Comlink from 'comlink';
+import { PRODUCTION_WORKER_READY } from './production-worker-startup';
 
 // Mock Worker class
-class MockWorker {
+class MockWorker extends EventTarget {
+  static latest: MockWorker;
   terminate = vi.fn();
   postMessage = vi.fn();
-  addEventListener = vi.fn();
-  removeEventListener = vi.fn();
   static constructorCount = 0;
   constructor() {
+    super();
     MockWorker.constructorCount++;
+    MockWorker.latest = this;
+    queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', { data: PRODUCTION_WORKER_READY })));
   }
 }
 
@@ -47,6 +50,7 @@ vi.mock('comlink', () => {
     proxy: vi.fn(x => x),
     expose: vi.fn(),
     releaseProxy,
+    createEndpoint: Symbol('createEndpoint'),
   };
 });
 
@@ -171,6 +175,59 @@ describe('transformersJsService worker restart', () => {
     } catch (e) { /* Expected */ }
 
     expect(MockWorker.constructorCount).toBeGreaterThan(countAfterLoad);
+    expect(transformersJsService.getState().status).toBe('idle');
+  });
+
+  it('replaces a terminal Load Realm without retrying the model until the next explicit Load', async () => {
+    const entered = Promise.withResolvers<void>();
+    const load = vi.fn().mockImplementationOnce(() => {
+      entered.resolve();
+      return new Promise<never>(() => undefined);
+    }).mockResolvedValue({ device: 'webgpu' });
+    vi.mocked(Comlink.wrap).mockImplementation(() => ({
+      loadDownloadedModel: load,
+      [Comlink.releaseProxy]: vi.fn(),
+      [Comlink.createEndpoint]: vi.fn(),
+    }));
+    const { transformersJsService } = await import('@/features/transformers-js/index');
+    const first = transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
+    const rejected = expect(first).rejects.toMatchObject({ name: 'ProductionWorkerLifecycleError', reason: 'worker-error' });
+    await entered.promise;
+    const oldWorker = MockWorker.latest;
+    oldWorker.dispatchEvent(new ErrorEvent('error', { message: 'entry Realm crashed' }));
+    await rejected;
+    expect(oldWorker.terminate).toHaveBeenCalledOnce();
+    expect(MockWorker.constructorCount).toBe(2);
+    expect(load).toHaveBeenCalledOnce();
+
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(MockWorker.constructorCount).toBe(2);
+    expect(transformersJsService.getState().status).toBe('ready');
+  });
+
+  it('replaces a terminal generation Realm without automatically reloading or generating', async () => {
+    const entered = Promise.withResolvers<void>();
+    const load = vi.fn().mockResolvedValue({ device: 'webgpu' });
+    const generate = vi.fn(() => {
+      entered.resolve();
+      return new Promise<never>(() => undefined);
+    });
+    vi.mocked(Comlink.wrap).mockImplementation(() => ({
+      loadDownloadedModel: load, generateText: generate,
+      [Comlink.releaseProxy]: vi.fn(),
+      [Comlink.createEndpoint]: vi.fn(),
+    }));
+    const { transformersJsService } = await import('@/features/transformers-js/index');
+    await transformersJsService.loadDownloadedModel({ modelId: 'some-model' });
+    const generated = transformersJsService.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() });
+    const rejected = expect(generated).rejects.toMatchObject({ name: 'ProductionWorkerLifecycleError', reason: 'message-error' });
+    await entered.promise;
+    MockWorker.latest.dispatchEvent(new Event('messageerror'));
+    await rejected;
+    expect(MockWorker.constructorCount).toBe(2);
+    expect(load).toHaveBeenCalledOnce();
+    expect(generate).toHaveBeenCalledOnce();
     expect(transformersJsService.getState().status).toBe('idle');
   });
 });

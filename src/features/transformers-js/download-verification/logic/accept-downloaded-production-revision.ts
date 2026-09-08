@@ -4,8 +4,10 @@ import { sanitizeDiagnosticText } from '@/features/transformers-js/download-veri
 import type { DownloadVerificationRevisionAcceptanceObservation } from '@/features/transformers-js/download-verification/types';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
 import type { RuntimeAcceptanceProgressCallback } from './runtime-acceptance-progress';
+import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
 
 function revisionAcceptanceFailureStatus({ error }: { error: unknown }): 'rejected' | 'failed' {
+  if (error instanceof ProductionWorkerLifecycleError) return 'failed';
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('MUST NOT fetch model artifacts')) return 'failed';
   if (message.includes('requires a browser Worker')) return 'failed';
@@ -96,6 +98,9 @@ export async function acceptDownloadedProductionRevision({
           });
         } catch (error) {
           if (signal?.aborted === true) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+          // A terminated or uninitialized Realm cannot evaluate another dtype.
+          // Preserve the infrastructure failure instead of rejecting the model.
+          if (error instanceof ProductionWorkerLifecycleError) throw error;
           lastError = error;
           if (serializedError({ error }).name !== 'MissingDownloadedModelArtifact' && firstNonMissingError === undefined) {
             firstNonMissingError = error;

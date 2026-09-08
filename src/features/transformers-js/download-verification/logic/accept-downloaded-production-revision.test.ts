@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { acceptDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/accept-downloaded-production-revision';
+import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
 import {
   createDownloadVerificationCandidateAcceptanceWorkerClient,
   type DownloadVerificationCandidateAcceptanceWorkerClient,
@@ -26,6 +27,21 @@ function client({ verifyDownloadedModelRevision }: {
 }
 
 describe('acceptDownloadedProductionRevision', () => {
+  it('records Worker initialization failure without rejecting model compatibility or trying another candidate', async () => {
+    const worker = client({ verifyDownloadedModelRevision: vi.fn() });
+    vi.mocked(worker.verifyDownloadedModelCandidate).mockRejectedValue(new ProductionWorkerLifecycleError({
+      reason: 'initialization-failed', message: 'Fixture Worker failed before model loading',
+    }));
+    vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
+    const result = await acceptDownloadedProductionRevision({
+      modelId: 'org/model', repositoryResolvedRevision: REVISION, cacheRevision: REVISION, loadRevision: REVISION,
+      candidates: [{ device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }],
+    });
+    expect(result).toMatchObject({ status: 'failed', error: { name: 'ProductionWorkerLifecycleError' } });
+    expect(worker.verifyDownloadedModelCandidate).toHaveBeenCalledOnce();
+    expect(worker.dispose).toHaveBeenCalledOnce();
+  });
+
   it('verifies an exact revision through the full Production candidate fallback sequence', async () => {
     const worker = client({ verifyDownloadedModelRevision: vi.fn(async () => ({ device: 'webgpu' as const, dtype: 'q4' as const })) });
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
