@@ -32,9 +32,7 @@ import type { ContainerCoordinationScope } from "@/00-storage/service/hizofs/run
 import type { CrossRealmLockPort } from "@/00-storage/service/hizofs/runtime/cross-realm-lock-coordinator";
 import type { HizoFSRuntimeOwnerOpenPolicy } from "@/00-storage/service/hizofs/runtime/runtime-owner-coordinator";
 import type {
-  HizoFSLazyPublicationRolloutGateReceipt,
   HizoFSRuntimePolicy,
-  HizoFSWritableDurabilityProfile,
 } from "@/00-storage/service/hizofs/runtime/runtime-policy";
 import type { DurableGenerationIdentity } from "@/00-storage/service/hizofs/runtime/application-generation-identity";
 import type { AuthenticatedDurableApplicationGenerationAuthority } from "@/00-storage/service/hizofs/runtime/authenticated-application-generation";
@@ -69,10 +67,8 @@ function mutationSuccessConditionFromPublicationMode({ mode }: {
   mode: ReturnType<ContainerRuntimeAuthenticatedApplicationGeneration["publicationModeApplied"]>;
 }): HizoFSApplicationMutationSuccessCondition {
   switch (mode) {
-  case "immediate_publication_requested":
-  case "immediate_publication_unqualified": return "durable_publication";
-  case "lazy_publication_development":
-  case "lazy_publication_strict": return "working_candidate_acceptance";
+  case "immediate_publication": return "durable_publication";
+  case "lazy_publication": return "working_candidate_acceptance";
   default: return mode satisfies never;
   }
 }
@@ -266,16 +262,13 @@ export class HizoFSWorkerRuntimeHostError extends Error {
 export class HizoFSWorkerRuntimeHost {
   private runtime: ContainerRuntime;
 
-  constructor({ crossRealmLockPort, lazyPublicationRollout, policy, scope }: {
+  constructor({ crossRealmLockPort, policy, scope }: {
     crossRealmLockPort: CrossRealmLockPort;
-    /** Trusted composition seam. The browser factory intentionally does not expose it. */
-    lazyPublicationRollout?: HizoFSLazyPublicationRolloutGateReceipt;
     policy: HizoFSRuntimePolicy;
     scope: ContainerCoordinationScope;
   }) {
     this.runtime = new ContainerRuntime({
       crossRealmLockPort,
-      ...(lazyPublicationRollout === undefined ? {} : { lazyPublicationRollout }),
       limits: policy,
       scope,
     });
@@ -365,7 +358,6 @@ export class HizoFSWorkerRuntimeHost {
     createApplicationSessionResources,
     observeAuthenticatedDurableAuthority,
     observeAuthenticatedDurableIdentity,
-    observeWritableDurabilityProfile,
     recheckAuthority,
     registerRuntimeSession,
     runtimeOwnerPolicy = "wait",
@@ -403,9 +395,6 @@ export class HizoFSWorkerRuntimeHost {
     observeAuthenticatedDurableIdentity?: ({ verified }: {
       verified: Verified;
     }) => DurableGenerationIdentity;
-    observeWritableDurabilityProfile?: ({ verified }: {
-      verified: Verified;
-    }) => HizoFSWritableDurabilityProfile;
     recheckAuthority: ({ captured }: { captured: Captured }) => Promise<void>;
     registerRuntimeSession?: ({ runtimeSession }: {
       runtimeSession: HizoFSApplicationRuntimeSession;
@@ -462,9 +451,6 @@ export class HizoFSWorkerRuntimeHost {
           ? undefined
           : this.runtime.attachAuthenticatedApplicationGeneration({
             durableAuthority: observedDurableAuthority,
-            ...(observeWritableDurabilityProfile === undefined
-              ? {}
-              : { writableProfile: observeWritableDurabilityProfile({ verified }) }),
           });
         let candidateAdmissionsOpen = true;
         const openWorkingCandidateAdmission = <Candidate extends object>({

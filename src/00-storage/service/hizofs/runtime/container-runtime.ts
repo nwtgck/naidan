@@ -45,13 +45,10 @@ import {
   type RuntimeWriterLease,
 } from "@/00-storage/service/hizofs/runtime/runtime-coordination-registry";
 import {
-  CURRENT_HIZOFS_LAZY_PUBLICATION_ROLLOUT_GATE,
   createRuntimePolicy,
   resolvePublicationModeApplied,
-  type HizoFSLazyPublicationRolloutGateReceipt,
   type HizoFSPublicationModeApplied,
   type HizoFSRuntimePolicy,
-  type HizoFSWritableDurabilityProfile,
 } from "@/00-storage/service/hizofs/runtime/runtime-policy";
 import {
   RuntimeOwnerCoordinator,
@@ -249,7 +246,6 @@ export type ContainerRuntimeLazyDurabilityDiagnostics = Readonly<{
   managementBarrierActive: boolean;
   mutationAdmissionActive: boolean;
   appliedPublicationMode: HizoFSPublicationModeApplied;
-  lazyPublicationRollout: HizoFSLazyPublicationRolloutGateReceipt;
   requestedPublicationMode: HizoFSRuntimePolicy["lazyDurability"]["publicationModeRequest"];
   stagedCommitMaterializationHeadroomBytes: number;
   syncWaiters: number;
@@ -894,7 +890,6 @@ export class ContainerRuntime {
   private sessionOpenCount = 0;
   private activeSegments: ActiveSegmentRegistry;
   private appliedPublicationMode: HizoFSPublicationModeApplied;
-  private lazyPublicationRollout: HizoFSLazyPublicationRolloutGateReceipt;
   private authenticatedApplicationGeneration: AuthenticatedWorkingApplicationGenerationDescriptor | undefined;
   private crossRealm: CrossRealmLockCoordinator;
   private limits: HizoFSRuntimePolicy;
@@ -906,20 +901,15 @@ export class ContainerRuntime {
   private workingCandidates: WorkingCandidateCoordinator;
   private workingGenerations: WorkingGenerationCoordinator | undefined;
 
-  constructor({ backgroundFlushTimerPort, crossRealmLockPort, lazyPublicationRollout, limits, scope }: {
+  constructor({ backgroundFlushTimerPort, crossRealmLockPort, limits, scope }: {
     backgroundFlushTimerPort?: HizoFSBackgroundFlushTimerPort;
     crossRealmLockPort: CrossRealmLockPort;
-    lazyPublicationRollout?: HizoFSLazyPublicationRolloutGateReceipt;
     limits: HizoFSRuntimePolicy;
     scope: ContainerCoordinationScope;
   }) {
     const validatedPolicy = createRuntimePolicy(limits);
-    this.lazyPublicationRollout = lazyPublicationRollout
-      ?? CURRENT_HIZOFS_LAZY_PUBLICATION_ROLLOUT_GATE;
     this.appliedPublicationMode = resolvePublicationModeApplied({
-      lazyPublicationRollout: this.lazyPublicationRollout,
       publicationModeRequest: validatedPolicy.lazyDurability.publicationModeRequest,
-      writableProfile: "development-unverified",
     });
     this.activeSegments = new ActiveSegmentRegistry({
       maxReferencesPerContainer: validatedPolicy.maxSegmentReferences,
@@ -982,7 +972,6 @@ export class ContainerRuntime {
       durableGeneration: generation?.durableGeneration.generationNumber.toString(10) ?? null,
       flushState: generation?.flushState ?? "idle",
       managementBarrierActive: generation?.managementBarrierActive ?? false,
-      lazyPublicationRollout: this.lazyPublicationRollout,
       mutationAdmissionActive: (generation?.dirtyResources.pendingAdmissionCount ?? 0) !== 0,
       appliedPublicationMode: this.appliedPublicationMode,
       requestedPublicationMode: this.limits.lazyDurability.publicationModeRequest,
@@ -1030,19 +1019,11 @@ export class ContainerRuntime {
 
   attachAuthenticatedApplicationGeneration({
     durableAuthority,
-    writableProfile = "development-unverified",
   }: {
     durableAuthority: AuthenticatedDurableApplicationGenerationAuthority;
-    writableProfile?: HizoFSWritableDurabilityProfile;
   }): ContainerRuntimeAuthenticatedApplicationGeneration {
-    const appliedPublicationMode = resolvePublicationModeApplied({
-      lazyPublicationRollout: this.lazyPublicationRollout,
-      publicationModeRequest: this.limits.lazyDurability.publicationModeRequest,
-      writableProfile,
-    });
     const current = this.authenticatedApplicationGeneration;
     if (current === undefined) {
-      this.appliedPublicationMode = appliedPublicationMode;
       const initial = createAuthenticatedApplicationGenerationDescriptor({
         commit: durableAuthority.commit,
         commitReference: durableAuthority.commitReference,
@@ -1063,8 +1044,6 @@ export class ContainerRuntime {
       right: durableAuthority.identity,
     })) {
       throw new TypeError("authenticated durable authority conflicts with the runtime generation authority");
-    } else if (this.appliedPublicationMode !== appliedPublicationMode) {
-      throw new TypeError("applied publication mode conflicts with the runtime publication mode receipt");
     }
 
     return Object.freeze({

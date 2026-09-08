@@ -3976,8 +3976,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
       });
       const publicationMode = authenticatedGeneration.publicationModeApplied();
       switch (publicationMode) {
-      case "immediate_publication_requested":
-      case "immediate_publication_unqualified": {
+      case "immediate_publication": {
         const runtimeAdmission = openRuntimeMutationAdmission({ base });
         const candidateSlot = createInstalledWorkingCandidateSlot({
           base,
@@ -4067,8 +4066,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         }
         return;
       }
-      case "lazy_publication_development":
-      case "lazy_publication_strict": {
+      case "lazy_publication": {
         let admission: ContainerRuntimeAcceptedMutationAdmission;
         let admittedBaseDescriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
         try {
@@ -4930,8 +4928,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
         }
 
         switch (publicationMode) {
-        case "immediate_publication_requested":
-        case "immediate_publication_unqualified": {
+        case "immediate_publication": {
           let commitPayload: FileSystemCommitPayload;
           try {
             commitPayload = await prepareCommitPayload({ candidateBaseCommit: base.commit });
@@ -5042,8 +5039,7 @@ export function createAuthenticatedApplicationReadWriteSessionResources({
           }
           return;
         }
-        case "lazy_publication_development":
-        case "lazy_publication_strict": {
+        case "lazy_publication": {
           let admission: ContainerRuntimeAcceptedMutationAdmission;
           let admittedBaseDescriptor: AuthenticatedWorkingApplicationGenerationDescriptor;
           try {
@@ -5655,7 +5651,6 @@ export async function openAuthenticatedReadWriteApplicationSession<Captured>({
         superblock: verified.opened.superblock,
       })
     ),
-    observeWritableDurabilityProfile: ({ verified }) => verified.writableProfile,
     recheckAuthority,
     ...(registerRuntimeSession === undefined ? {} : { registerRuntimeSession }),
     rootName,

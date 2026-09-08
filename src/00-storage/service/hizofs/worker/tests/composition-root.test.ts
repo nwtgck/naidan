@@ -124,9 +124,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-  evaluateLazyPublicationRolloutGate,
   type HizoFSLazyDurabilityPolicy,
-  type HizoFSLazyPublicationRolloutGateReceipt,
 } from "@/00-storage/service/hizofs/runtime/runtime-policy";
 const DEFAULT_EXPLICIT_BULK_TEST_LIMITS = Object.freeze({
   candidate: Object.freeze({ maxEntries: 100_000, maxInlineFileBytesTotal: 16 * 1024 * 1024 }),
@@ -292,15 +290,12 @@ function testBrowserLockManager(): LockManager {
 function runtimeHost({
   crossRealmLockPort = new InMemoryCrossRealmLockPort(),
   lazyDurability = DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-  lazyPublicationRollout,
 }: {
   crossRealmLockPort?: CrossRealmLockPort;
   lazyDurability?: HizoFSLazyDurabilityPolicy;
-  lazyPublicationRollout?: HizoFSLazyPublicationRolloutGateReceipt;
 } = {}): HizoFSWorkerRuntimeHost {
   return new HizoFSWorkerRuntimeHost({
     crossRealmLockPort,
-    ...(lazyPublicationRollout === undefined ? {} : { lazyPublicationRollout }),
     policy: {
       lazyDurability,
       maxDirectoryIteratorEntries: 32,
@@ -3024,19 +3019,6 @@ describe("HizoFS worker composition root", () => {
         ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
         maximumDirtyAgeMilliseconds: 60_000,
       },
-      lazyPublicationRollout: evaluateLazyPublicationRolloutGate({
-        evidence: {
-          accepted_only_success_timing: true,
-          active_head_maintenance_clean_head: false,
-          bounded_dirty_resources: true,
-          fault_campaign: false,
-          generation_target_sync: true,
-          production_background_publication: true,
-          provider_graceful_shutdown: true,
-          single_runtime_write_authority: true,
-          transition_and_credential_clean_head: true,
-        },
-      }),
     });
     let nextTimestamp = 1_700_000_000_000n;
     const session = await openAuthenticatedReadWriteApplicationSession({
@@ -3211,19 +3193,6 @@ describe("HizoFS worker composition root", () => {
         ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
         maximumDirtyAgeMilliseconds: 60_000,
       },
-      lazyPublicationRollout: evaluateLazyPublicationRolloutGate({
-        evidence: {
-          accepted_only_success_timing: true,
-          active_head_maintenance_clean_head: true,
-          bounded_dirty_resources: true,
-          fault_campaign: false,
-          generation_target_sync: true,
-          production_background_publication: true,
-          provider_graceful_shutdown: true,
-          single_runtime_write_authority: true,
-          transition_and_credential_clean_head: true,
-        },
-      }),
     });
     const session = await openAuthenticatedReadWriteApplicationSession({
       captureAuthority: async () => ({ revision: 1 }),

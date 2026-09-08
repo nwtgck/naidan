@@ -538,7 +538,6 @@ describe("container runtime", () => {
     const value = runtime({ backgroundFlushTimerPort: port });
     const authority = value.attachAuthenticatedApplicationGeneration({
       durableAuthority: authenticatedGenerationFixture(),
-      writableProfile: "release-qualified",
     });
     const base = authority.capture();
     const working = unpublishedSuccessorDescriptor({ base, mutationByte: 27, offset: 32_832n });
@@ -561,21 +560,13 @@ describe("container runtime", () => {
 
     expect(value.lazyDurabilityDiagnostics()).toMatchObject({
       acceptedGeneration: "1",
-      appliedPublicationMode: "lazy_publication_development",
+      appliedPublicationMode: "lazy_publication",
       candidatePublicationState: "installed",
       dirtyMetadataBytes: 123,
       dirtyMutationCount: 1,
       durableGeneration: "0",
       flushState: "idle",
       mutationAdmissionActive: false,
-      lazyPublicationRollout: {
-        developmentActivationQualified: true,
-        missingDevelopmentActivationGates: [],
-        missingReleaseQualificationGates: [
-          "fault_campaign",
-        ],
-        releaseQualified: false,
-      },
       requestedPublicationMode: "automatic",
       syncWaiters: 0,
       unpublishedPhysicalBytes: 456,

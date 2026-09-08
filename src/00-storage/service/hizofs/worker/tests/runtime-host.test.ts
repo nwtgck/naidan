@@ -16,22 +16,20 @@ import { createTestingHomeRecordReference } from "@/00-storage/service/hizofs/ru
 import { createTestingAuthenticatedDurableApplicationGenerationAuthority } from "@/00-storage/service/hizofs/runtime/testing/authenticated-application-generation-fixture";
 import {
   DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
-  evaluateLazyPublicationRolloutGate,
-  type HizoFSLazyPublicationRolloutGateReceipt,
+  type HizoFSLazyDurabilityPolicy,
 } from "@/00-storage/service/hizofs/runtime/runtime-policy";
 
 function host({
   crossRealmLockPort = new InMemoryCrossRealmLockPort(),
-  lazyPublicationRollout,
+  lazyDurability = DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
 }: {
   crossRealmLockPort?: CrossRealmLockPort;
-  lazyPublicationRollout?: HizoFSLazyPublicationRolloutGateReceipt;
+  lazyDurability?: HizoFSLazyDurabilityPolicy;
 } = {}) {
   return new HizoFSWorkerRuntimeHost({
     crossRealmLockPort,
-    ...(lazyPublicationRollout === undefined ? {} : { lazyPublicationRollout }),
     policy: {
-      lazyDurability: DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+      lazyDurability,
       maxDirectoryIteratorEntries: 32,
       maxHeldLockNames: 64,
       maxMaintenanceRootRegistrations: 64,
@@ -730,10 +728,13 @@ describe("HizoFS worker runtime host", () => {
     lease.release();
   });
 
-  it("rejects sync for an application profile without demonstrated durability", async () => {
+  it.each(["automatic", "immediate"] as const)("rejects sync without demonstrated durability in %s mode", async (publicationModeRequest) => {
     const releaseResources = vi.fn(async () => undefined);
     const recheckAuthority = vi.fn(async () => undefined);
-    const value = host();
+    const durableAuthority = createTestingAuthenticatedDurableApplicationGenerationAuthority();
+    const value = host({
+      lazyDurability: { ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY, publicationModeRequest },
+    });
     const session = await value.openApplicationSession({
       captureAuthority: async () => ({ revision: 1 }),
       createApplicationSessionResources: () => ({
@@ -754,9 +755,10 @@ describe("HizoFS worker runtime host", () => {
         releaseResources,
         syncDurability: "not-demonstrated",
       }),
+      observeAuthenticatedDurableAuthority: ({ verified }) => verified.durableAuthority,
       recheckAuthority,
       rootName: "application-root",
-      verifyCapturedAuthority: async () => "verified",
+      verifyCapturedAuthority: async () => ({ durableAuthority }),
     });
 
     await expect(session.sync()).rejects.toMatchObject({
@@ -878,17 +880,6 @@ describe("HizoFS worker runtime host", () => {
     expect(releaseResources).toHaveBeenCalledOnce();
   });
   it("exercises accepted-only success through the real worker application boundary", async () => {
-    const developmentRollout = evaluateLazyPublicationRolloutGate({ evidence: {
-      accepted_only_success_timing: true,
-      active_head_maintenance_clean_head: false,
-      bounded_dirty_resources: true,
-      fault_campaign: false,
-      generation_target_sync: true,
-      production_background_publication: true,
-      provider_graceful_shutdown: true,
-      single_runtime_write_authority: true,
-      transition_and_credential_clean_head: true,
-    } });
     const durableAuthority = createTestingAuthenticatedDurableApplicationGenerationAuthority();
     let appliedMode: string | undefined;
     const mutationPort = {
@@ -896,7 +887,7 @@ describe("HizoFS worker runtime host", () => {
         authority.markCandidateAccepted();
       },
     } as HizoFSApplicationMutationPort;
-    const value = host({ lazyPublicationRollout: developmentRollout });
+    const value = host();
     const session = await value.openApplicationSession({
       captureAuthority: async () => ({ revision: 1 }),
       createApplicationSessionResources: ({ authenticatedGeneration }) => {
@@ -911,7 +902,7 @@ describe("HizoFS worker runtime host", () => {
       verifyCapturedAuthority: async () => ({ durableAuthority }),
     });
 
-    expect(appliedMode).toBe("lazy_publication_development");
+    expect(appliedMode).toBe("lazy_publication");
     await expect(session.root.createSymlink({ name: "accepted", target: "target" })).resolves.toMatchObject({
       kind: "symlink",
       name: "accepted",
@@ -919,25 +910,19 @@ describe("HizoFS worker runtime host", () => {
     await session.close();
   });
 
-  it("keeps an explicitly unqualified receipt on durable-publication success", async () => {
-    const unqualifiedRollout = evaluateLazyPublicationRolloutGate({ evidence: {
-      accepted_only_success_timing: false,
-      active_head_maintenance_clean_head: false,
-      bounded_dirty_resources: true,
-      fault_campaign: false,
-      generation_target_sync: true,
-      production_background_publication: false,
-      provider_graceful_shutdown: true,
-      single_runtime_write_authority: true,
-      transition_and_credential_clean_head: true,
-    } });
+  it("requires durable publication for explicitly immediate mutations", async () => {
     const durableAuthority = createTestingAuthenticatedDurableApplicationGenerationAuthority();
     const mutationPort = {
       async createSymlink({ authority }: Parameters<HizoFSApplicationMutationPort["createSymlink"]>[0]) {
         authority.markCandidateAccepted();
       },
     } as HizoFSApplicationMutationPort;
-    const session = await host({ lazyPublicationRollout: unqualifiedRollout }).openApplicationSession({
+    const session = await host({
+      lazyDurability: {
+        ...DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY,
+        publicationModeRequest: "immediate",
+      },
+    }).openApplicationSession({
       captureAuthority: async () => ({ revision: 1 }),
       createApplicationSessionResources: () => ({
         ...minimalApplicationResources(),
@@ -953,18 +938,12 @@ describe("HizoFS worker runtime host", () => {
     await session.close();
   });
 
-  it("maps development and strict lazy receipts to accepted-only success", () => {
+  it("maps publication timing to the required mutation success condition", () => {
     expect(TEST_ONLY.mutationSuccessConditionFromPublicationMode({
-      mode: "immediate_publication_requested",
+      mode: "immediate_publication",
     })).toBe("durable_publication");
     expect(TEST_ONLY.mutationSuccessConditionFromPublicationMode({
-      mode: "immediate_publication_unqualified",
-    })).toBe("durable_publication");
-    expect(TEST_ONLY.mutationSuccessConditionFromPublicationMode({
-      mode: "lazy_publication_development",
-    })).toBe("working_candidate_acceptance");
-    expect(TEST_ONLY.mutationSuccessConditionFromPublicationMode({
-      mode: "lazy_publication_strict",
+      mode: "lazy_publication",
     })).toBe("working_candidate_acceptance");
   });
 
