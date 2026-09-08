@@ -19,7 +19,7 @@ service/
 
 Do not assume every persisted schema belongs in the shared `00-dto/` directory.
 
-A self-contained portable subsystem may own a nested `00-format/` when its complete released-data compatibility contract must stay together as one high-sensitivity review boundary. The approved owners for this migration are:
+A self-contained portable subsystem may own a nested `00-format/` when its complete released-data compatibility contract must stay together as one high-sensitivity review boundary. The approved owners are:
 
 ```text
 service/hizofs/00-format/
@@ -56,4 +56,4 @@ Code outside `src/00-storage/**` must use `src/00-storage/service/**`.
 
 Shared `00-dto`, mapper internals, and nested `00-format` owners are persistence internals. Do not expose them as convenient application APIs.
 
-Persistence errors can cause data loss. Prefer explicit validation, backward compatibility, auditable conversions, and mechanically enforced migration inventories over convenience abstractions.
+Persistence errors can cause data loss. Prefer explicit validation, backward compatibility, and auditable conversions over convenience abstractions.
