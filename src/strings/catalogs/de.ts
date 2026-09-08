@@ -1646,8 +1646,6 @@ import { opfsEncryption__change_passphrase } from '@/strings/messages/opfsEncryp
 import { opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery } from '@/strings/messages/opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery/de';
 import { opfsEncryption__confirm_new_passphrase } from '@/strings/messages/opfsEncryption__confirm_new_passphrase/de';
 import { opfsEncryption__confirm_passphrase } from '@/strings/messages/opfsEncryption__confirm_passphrase/de';
-import { opfsEncryption__copied } from '@/strings/messages/opfsEncryption__copied/de';
-import { opfsEncryption__copy } from '@/strings/messages/opfsEncryption__copy/de';
 import { opfsEncryption__copying_and_verifying_complete_opfs_storage } from '@/strings/messages/opfsEncryption__copying_and_verifying_complete_opfs_storage/de';
 import { opfsEncryption__could_not_read_encryption_control_state } from '@/strings/messages/opfsEncryption__could_not_read_encryption_control_state/de';
 import { opfsEncryption__decrypt_storage } from '@/strings/messages/opfsEncryption__decrypt_storage/de';
@@ -1683,7 +1681,6 @@ import { opfsEncryption__resolve_interrupted_opfs_decryption } from '@/strings/m
 import { opfsEncryption__resolve_interrupted_opfs_encryption } from '@/strings/messages/opfsEncryption__resolve_interrupted_opfs_encryption/de';
 import { opfsEncryption__resolve_interrupted_opfs_reencryption } from '@/strings/messages/opfsEncryption__resolve_interrupted_opfs_reencryption/de';
 import { opfsEncryption__retry_after_recovery } from '@/strings/messages/opfsEncryption__retry_after_recovery/de';
-import { opfsEncryption__save_file } from '@/strings/messages/opfsEncryption__save_file/de';
 import { opfsEncryption__select_opfs_as_active_storage_to_enable_encryption } from '@/strings/messages/opfsEncryption__select_opfs_as_active_storage_to_enable_encryption/de';
 import { opfsEncryption__show_passphrase } from '@/strings/messages/opfsEncryption__show_passphrase/de';
 import { opfsEncryption__source_remains_until_verified } from '@/strings/messages/opfsEncryption__source_remains_until_verified/de';
@@ -3370,8 +3367,6 @@ export const catalog = {
   opfsEncryption__changing_raw_opfs_during_transition_can_prevent_recovery,
   opfsEncryption__confirm_new_passphrase,
   opfsEncryption__confirm_passphrase,
-  opfsEncryption__copied,
-  opfsEncryption__copy,
   opfsEncryption__copying_and_verifying_complete_opfs_storage,
   opfsEncryption__could_not_read_encryption_control_state,
   opfsEncryption__decrypt_storage,
@@ -3407,7 +3402,6 @@ export const catalog = {
   opfsEncryption__resolve_interrupted_opfs_encryption,
   opfsEncryption__resolve_interrupted_opfs_reencryption,
   opfsEncryption__retry_after_recovery,
-  opfsEncryption__save_file,
   opfsEncryption__select_opfs_as_active_storage_to_enable_encryption,
   opfsEncryption__show_passphrase,
   opfsEncryption__source_remains_until_verified,
