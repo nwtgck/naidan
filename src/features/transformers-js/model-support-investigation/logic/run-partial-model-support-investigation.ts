@@ -229,7 +229,10 @@ export async function runPartialModelSupportInvestigation({
         status: 'passed',
         detail: `Resolved ${run.repository.resolvedRevision} with ${run.repository.fileCount} repository files`,
       });
-      if (!executionPlan.modelLoad && collectReplayMetadata !== undefined) {
+      // Collection belongs to Repository / Download, not to the absence of
+      // Model Load. Full must preserve the same replay inputs before attempting
+      // any expensive runtime work that may fail or be interrupted.
+      if (collectReplayMetadata !== undefined) {
         await collectReplayMetadata({ run, onSummary: ({ summary }) => {
           run.replayMetadata = summary;
           onRunUpdate({ run: structuredClone(run) });
@@ -323,7 +326,7 @@ export async function runPartialModelSupportInvestigation({
   onRunUpdate({ run: structuredClone(run) });
 
   // Replay collection also records an unverified/missing offline identity without remote fallback.
-  if (executionPlan.repositoryDownload && !executionPlan.modelLoad && run.replayMetadata === undefined && collectReplayMetadata !== undefined) {
+  if (executionPlan.repositoryDownload && run.replayMetadata === undefined && collectReplayMetadata !== undefined) {
     await collectReplayMetadata({ run, onSummary: ({ summary }) => {
       run.replayMetadata = summary;
       onRunUpdate({ run: structuredClone(run) });

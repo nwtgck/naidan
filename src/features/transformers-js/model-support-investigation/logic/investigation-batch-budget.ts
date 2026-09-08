@@ -37,18 +37,9 @@ export function settledReplayMetadataBytes({ summary, recovery }: {
   // A file-level timeout can finish the collector while its last read is still
   // in flight. Its late chunk is deliberately discarded, not counted as zero.
   if (summary.files.some(file => file.status === 'timeout')) return undefined;
-  switch (recovery.status) {
-  case 'completed': break;
-  case 'running':
-  case 'interrupted': return undefined;
-  default: {
-    const _ex: never = recovery.status;
-    throw new Error(`Unhandled recovery status: ${_ex}`);
-  }
-  }
-  // Model/planning failure is independent of metadata accounting. Refund a
-  // finished collection even when a later investigation step failed, but never
-  // infer zero transfer from a lost or interrupted checkpoint.
+  // The collector publishes a terminal summary only after its bounded reads
+  // settle. A later Full runtime timeout cannot make that accounting unknown
+  // again. Lost checkpoints / collecting summaries still keep the reservation.
   switch (summary.status) {
   case 'complete':
   case 'partial': return summary.receivedBytes;

@@ -1131,11 +1131,12 @@ import { ModelSupportInvestigationModal__checking_same_origin_runtime_assets } f
 import { ModelSupportInvestigationModal__close } from '@/strings/messages/ModelSupportInvestigationModal__close/ko';
 import { ModelSupportInvestigationModal__current_operation } from '@/strings/messages/ModelSupportInvestigationModal__current_operation/ko';
 import { ModelSupportInvestigationModal__declaration_files_summary } from '@/strings/messages/ModelSupportInvestigationModal__declaration_files_summary/ko';
-import { ModelSupportInvestigationModal__download_partial_evidence } from '@/strings/messages/ModelSupportInvestigationModal__download_partial_evidence/ko';
+import { ModelSupportInvestigationModal__download_evidence_zip } from '@/strings/messages/ModelSupportInvestigationModal__download_evidence_zip/ko';
 import { ModelSupportInvestigationModal__evidence_export } from '@/strings/messages/ModelSupportInvestigationModal__evidence_export/ko';
 import { ModelSupportInvestigationModal__environment_evidence_disclosure } from '@/strings/messages/ModelSupportInvestigationModal__environment_evidence_disclosure/ko';
 import { ModelSupportInvestigationModal__evidence_readiness } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness/ko';
 import { ModelSupportInvestigationModal__evidence_readiness_summary } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness_summary/ko';
+import { ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status } from '@/strings/messages/ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status/ko';
 import { ModelSupportInvestigationModal__existing_model_data } from '@/strings/messages/ModelSupportInvestigationModal__existing_model_data/ko';
 import { ModelSupportInvestigationModal__failed } from '@/strings/messages/ModelSupportInvestigationModal__failed/ko';
 import { ModelSupportInvestigationModal__findings } from '@/strings/messages/ModelSupportInvestigationModal__findings/ko';
@@ -1187,7 +1188,7 @@ import { ModelSupportInvestigationModal__tool_protocol_probe_summary } from '@/s
 import { ModelSupportInvestigationModal__tool_result_production_continuation_failed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_failed/ko';
 import { ModelSupportInvestigationModal__tool_result_production_continuation_passed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_passed/ko';
 import { ModelSupportInvestigationModal__tool_template_provenance_summary } from '@/strings/messages/ModelSupportInvestigationModal__tool_template_provenance_summary/ko';
-import { ModelSupportInvestigationModal__this_is_partial_evidence } from '@/strings/messages/ModelSupportInvestigationModal__this_is_partial_evidence/ko';
+import { ModelSupportInvestigationModal__selected_scope_execution_summary } from '@/strings/messages/ModelSupportInvestigationModal__selected_scope_execution_summary/ko';
 import { ModelSupportInvestigationModal__start_investigation } from '@/strings/messages/ModelSupportInvestigationModal__start_investigation/ko';
 import { ModelSupportInvestigationModal__ready_to_start } from '@/strings/messages/ModelSupportInvestigationModal__ready_to_start/ko';
 import { ModelSupportInvestigationModal__targets } from '@/strings/messages/ModelSupportInvestigationModal__targets/ko';
@@ -2797,11 +2798,12 @@ export const catalog = {
   ModelSupportInvestigationModal__close,
   ModelSupportInvestigationModal__current_operation,
   ModelSupportInvestigationModal__declaration_files_summary,
-  ModelSupportInvestigationModal__download_partial_evidence,
+  ModelSupportInvestigationModal__download_evidence_zip,
   ModelSupportInvestigationModal__evidence_export,
   ModelSupportInvestigationModal__environment_evidence_disclosure,
   ModelSupportInvestigationModal__evidence_readiness,
   ModelSupportInvestigationModal__evidence_readiness_summary,
+  ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status,
   ModelSupportInvestigationModal__existing_model_data,
   ModelSupportInvestigationModal__failed,
   ModelSupportInvestigationModal__findings,
@@ -2853,7 +2855,7 @@ export const catalog = {
   ModelSupportInvestigationModal__tool_result_production_continuation_failed,
   ModelSupportInvestigationModal__tool_result_production_continuation_passed,
   ModelSupportInvestigationModal__tool_template_provenance_summary,
-  ModelSupportInvestigationModal__this_is_partial_evidence,
+  ModelSupportInvestigationModal__selected_scope_execution_summary,
   ModelSupportInvestigationModal__start_investigation,
   ModelSupportInvestigationModal__ready_to_start,
   ModelSupportInvestigationModal__targets,

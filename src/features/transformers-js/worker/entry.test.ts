@@ -352,14 +352,22 @@ describe('transformers-js.worker', () => {
     });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
+    const progressCallback = vi.fn();
     const result = await workerObj.verifyDownloadedModelCandidate(
       'org/repo',
       revision,
       { device: 'webgpu', dtype: 'q4' },
-      vi.fn(),
+      progressCallback,
     );
 
     expect(result).toEqual({ device: 'webgpu', dtype: 'q4' });
+    expect(progressCallback.mock.calls.map(([info]) => info.status)).toEqual([
+      'cache-acceptance-config',
+      'cache-acceptance-candidate-plan',
+      'cache-acceptance-model-session',
+      'cache-acceptance-tokenizer-processor',
+      'cache-acceptance-ready',
+    ]);
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledWith('org/repo', expect.objectContaining({
       device: 'webgpu',

@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status = ({ notApplicableCount }: { notApplicableCount: number }): string => `A cobertura das evidências não é o estado de execução. Áreas fora do escopo: ${notApplicableCount} (não pendentes).`;

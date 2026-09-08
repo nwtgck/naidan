@@ -3,6 +3,7 @@ import { awaitWithAbort } from '@/features/transformers-js/download-verification
 import { sanitizeDiagnosticText } from '@/features/transformers-js/download-verification/logic/run-browser-download-verification';
 import type { DownloadVerificationRevisionAcceptanceObservation } from '@/features/transformers-js/download-verification/types';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
+import type { RuntimeAcceptanceProgressCallback } from './runtime-acceptance-progress';
 
 function revisionAcceptanceFailureStatus({ error }: { error: unknown }): 'rejected' | 'failed' {
   const message = error instanceof Error ? error.message : String(error);
@@ -43,6 +44,7 @@ export async function acceptDownloadedProductionRevision({
   loadRevision,
   candidates,
   signal,
+  onProgress,
 }: {
   modelId: string;
   repositoryResolvedRevision: string | undefined;
@@ -50,6 +52,7 @@ export async function acceptDownloadedProductionRevision({
   loadRevision?: string;
   candidates?: readonly TransformersJsProductionInvestigationCandidate[];
   signal?: AbortSignal;
+  onProgress?: RuntimeAcceptanceProgressCallback;
 }): Promise<DownloadVerificationRevisionAcceptanceObservation> {
   if (loadRevision === undefined && cacheRevision !== 'main') {
     throw new Error(`A revision-less Production load can only target the legacy main cache, not ${cacheRevision}`);
@@ -58,6 +61,10 @@ export async function acceptDownloadedProductionRevision({
     throw new Error(`The Production loader revision ${loadRevision} does not match the cache revision ${cacheRevision}`);
   }
   signal?.throwIfAborted();
+  const reportProgress: RuntimeAcceptanceProgressCallback = ({ progress }) => {
+    if (!signal?.aborted) onProgress?.({ progress });
+  };
+  reportProgress({ progress: { phase: 'revision-acceptance', revision: cacheRevision, candidate: undefined, info: undefined } });
   const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
   try {
     const result = await (async () => {
@@ -66,7 +73,7 @@ export async function acceptDownloadedProductionRevision({
           operation: client.verifyDownloadedModelRevision({
             modelId,
             loadRevision,
-            progressCallback: () => undefined,
+            progressCallback: ({ info }) => reportProgress({ progress: { phase: 'runtime', revision: cacheRevision, candidate: undefined, info } }),
           }),
           signal,
         });
@@ -76,13 +83,14 @@ export async function acceptDownloadedProductionRevision({
       let firstNonMissingError: unknown;
       for (const candidate of candidates) {
         signal?.throwIfAborted();
+        reportProgress({ progress: { phase: 'candidate-acceptance', revision: cacheRevision, candidate, info: undefined } });
         try {
           return await awaitWithAbort({
             operation: client.verifyDownloadedModelCandidate({
               modelId,
               loadRevision,
               candidate,
-              progressCallback: () => undefined,
+              progressCallback: ({ info }) => reportProgress({ progress: { phase: 'runtime', revision: cacheRevision, candidate, info } }),
             }),
             signal,
           });

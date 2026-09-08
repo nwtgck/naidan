@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status = ({ notApplicableCount }: { notApplicableCount: number }): string => `Evidence coverage is not execution status. Out-of-scope domains: ${notApplicableCount} (not pending).`;

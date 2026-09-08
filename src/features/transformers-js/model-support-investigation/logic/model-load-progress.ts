@@ -145,6 +145,12 @@ export function createModelLoadProgressTracker({ candidateId }: {
       }
       case "done":
       case "ready":
+      case 'cache-acceptance-config':
+      case 'cache-acceptance-candidate-plan':
+      case 'cache-acceptance-model-session':
+      case 'cache-acceptance-tokenizer-processor':
+      case 'cache-acceptance-ready':
+        // These are actual loader boundary transitions, not timer heartbeats.
         forwarded = true;
         if (info.file !== undefined) currentFile = info.file;
         break;

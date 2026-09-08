@@ -316,6 +316,7 @@ async function loadProductionRuntime({
   cacheOnlyFetch = downloadedModelCacheOnlyFetch,
   onCandidateStart = () => undefined,
   onCandidateAttempt = () => undefined,
+  onRuntimePhase,
 }: {
   modelId: string,
   revision: string | undefined,
@@ -329,6 +330,9 @@ async function loadProductionRuntime({
   onCandidateAttempt?: ({ attempt }: {
     attempt: TransformersJsProductionInvestigationCandidateLoadAttempt,
   }) => TransformersJsProductionInvestigationCandidateLoadAttempt | void,
+  onRuntimePhase?: ({ phase }: {
+    phase: 'config' | 'candidate-plan' | 'model-session' | 'tokenizer-processor' | 'ready',
+  }) => void,
 }): Promise<ProductionLoadRoute> {
   const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
   const autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId });
@@ -343,6 +347,7 @@ async function loadProductionRuntime({
     modelCache: runtimeModelCache,
     cacheOnlyFetch,
     run: async () => {
+      onRuntimePhase?.({ phase: 'config' });
       const config = await AutoConfig.from_pretrained(cleanModelId, {
         local_files_only: true,
         progress_callback: info => runtimePreparationProgressCallback({ info }),
@@ -353,6 +358,7 @@ async function loadProductionRuntime({
         modelId: cleanModelId,
         modelType,
       });
+      onRuntimePhase?.({ phase: 'candidate-plan' });
       const candidatePlan = await planDownloadedModelCandidates({
         modelId: cleanModelId,
         revision,
@@ -395,6 +401,9 @@ async function loadProductionRuntime({
       const loadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[] = [];
       for (const candidate of completeCandidates) {
         onCandidateStart({ candidate });
+        // This boundary includes cache reads and session creation. File progress
+        // alone cannot distinguish those operations or prove that either ended.
+        onRuntimePhase?.({ phase: 'model-session' });
         const startedAt = performance.now();
         debugLog({
           event: 'worker tryLoad start',
@@ -469,6 +478,7 @@ async function loadProductionRuntime({
       }
 
       const runtimePreparationStartedAt = performance.now();
+      onRuntimePhase?.({ phase: 'tokenizer-processor' });
       const processor = await loadDownloadedProductionTokenizerOrProcessor({
         cleanModelId,
         modelType,
@@ -476,6 +486,7 @@ async function loadProductionRuntime({
         progressCallback: info => runtimePreparationProgressCallback({ info }),
       });
       const runtimePreparationDurationMs = Math.max(0, performance.now() - runtimePreparationStartedAt);
+      onRuntimePhase?.({ phase: 'ready' });
 
       return {
         cleanModelId,
@@ -770,6 +781,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       revision,
       candidates: [candidate],
       progressCallback: ({ info }) => progressCallback(info),
+      onRuntimePhase: ({ phase }) => progressCallback({ status: `cache-acceptance-${phase}` }),
       serializeError: ({ error }) => {
         const normalized = error instanceof Error ? error : new Error(String(error));
         return {
@@ -800,6 +812,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         revision,
         candidates: [...TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES],
         progressCallback: ({ info }) => progressCallback(info),
+        onRuntimePhase: ({ phase }) => progressCallback({ status: `cache-acceptance-${phase}` }),
         serializeError: ({ error }) => {
           const normalized = error instanceof Error ? error : new Error(String(error));
           return {

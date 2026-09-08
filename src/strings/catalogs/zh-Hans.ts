@@ -1131,11 +1131,12 @@ import { ModelSupportInvestigationModal__checking_same_origin_runtime_assets } f
 import { ModelSupportInvestigationModal__close } from '@/strings/messages/ModelSupportInvestigationModal__close/zh-Hans';
 import { ModelSupportInvestigationModal__current_operation } from '@/strings/messages/ModelSupportInvestigationModal__current_operation/zh-Hans';
 import { ModelSupportInvestigationModal__declaration_files_summary } from '@/strings/messages/ModelSupportInvestigationModal__declaration_files_summary/zh-Hans';
-import { ModelSupportInvestigationModal__download_partial_evidence } from '@/strings/messages/ModelSupportInvestigationModal__download_partial_evidence/zh-Hans';
+import { ModelSupportInvestigationModal__download_evidence_zip } from '@/strings/messages/ModelSupportInvestigationModal__download_evidence_zip/zh-Hans';
 import { ModelSupportInvestigationModal__evidence_export } from '@/strings/messages/ModelSupportInvestigationModal__evidence_export/zh-Hans';
 import { ModelSupportInvestigationModal__environment_evidence_disclosure } from '@/strings/messages/ModelSupportInvestigationModal__environment_evidence_disclosure/zh-Hans';
 import { ModelSupportInvestigationModal__evidence_readiness } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness/zh-Hans';
 import { ModelSupportInvestigationModal__evidence_readiness_summary } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness_summary/zh-Hans';
+import { ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status } from '@/strings/messages/ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status/zh-Hans';
 import { ModelSupportInvestigationModal__existing_model_data } from '@/strings/messages/ModelSupportInvestigationModal__existing_model_data/zh-Hans';
 import { ModelSupportInvestigationModal__failed } from '@/strings/messages/ModelSupportInvestigationModal__failed/zh-Hans';
 import { ModelSupportInvestigationModal__findings } from '@/strings/messages/ModelSupportInvestigationModal__findings/zh-Hans';
@@ -1187,7 +1188,7 @@ import { ModelSupportInvestigationModal__tool_protocol_probe_summary } from '@/s
 import { ModelSupportInvestigationModal__tool_result_production_continuation_failed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_failed/zh-Hans';
 import { ModelSupportInvestigationModal__tool_result_production_continuation_passed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_passed/zh-Hans';
 import { ModelSupportInvestigationModal__tool_template_provenance_summary } from '@/strings/messages/ModelSupportInvestigationModal__tool_template_provenance_summary/zh-Hans';
-import { ModelSupportInvestigationModal__this_is_partial_evidence } from '@/strings/messages/ModelSupportInvestigationModal__this_is_partial_evidence/zh-Hans';
+import { ModelSupportInvestigationModal__selected_scope_execution_summary } from '@/strings/messages/ModelSupportInvestigationModal__selected_scope_execution_summary/zh-Hans';
 import { ModelSupportInvestigationModal__start_investigation } from '@/strings/messages/ModelSupportInvestigationModal__start_investigation/zh-Hans';
 import { ModelSupportInvestigationModal__ready_to_start } from '@/strings/messages/ModelSupportInvestigationModal__ready_to_start/zh-Hans';
 import { ModelSupportInvestigationModal__targets } from '@/strings/messages/ModelSupportInvestigationModal__targets/zh-Hans';
@@ -2797,11 +2798,12 @@ export const catalog = {
   ModelSupportInvestigationModal__close,
   ModelSupportInvestigationModal__current_operation,
   ModelSupportInvestigationModal__declaration_files_summary,
-  ModelSupportInvestigationModal__download_partial_evidence,
+  ModelSupportInvestigationModal__download_evidence_zip,
   ModelSupportInvestigationModal__evidence_export,
   ModelSupportInvestigationModal__environment_evidence_disclosure,
   ModelSupportInvestigationModal__evidence_readiness,
   ModelSupportInvestigationModal__evidence_readiness_summary,
+  ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status,
   ModelSupportInvestigationModal__existing_model_data,
   ModelSupportInvestigationModal__failed,
   ModelSupportInvestigationModal__findings,
@@ -2853,7 +2855,7 @@ export const catalog = {
   ModelSupportInvestigationModal__tool_result_production_continuation_failed,
   ModelSupportInvestigationModal__tool_result_production_continuation_passed,
   ModelSupportInvestigationModal__tool_template_provenance_summary,
-  ModelSupportInvestigationModal__this_is_partial_evidence,
+  ModelSupportInvestigationModal__selected_scope_execution_summary,
   ModelSupportInvestigationModal__start_investigation,
   ModelSupportInvestigationModal__ready_to_start,
   ModelSupportInvestigationModal__targets,

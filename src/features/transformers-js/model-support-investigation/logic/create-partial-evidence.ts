@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { investigationExecutionSummary } from './investigation-execution-summary';
 import { addReplayMetadataToZip } from '@/features/transformers-js/model-support-investigation/logic/replay-metadata-export';
 import { REPLAY_METADATA_BATCH_BYTES, type InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
 import { z } from "zod";
@@ -307,11 +308,12 @@ async function createPartialModelSupportEvidenceZip({ run, recovery, replayMetad
   const zip = new JSZip();
   await addReplayMetadataToZip({ zip, summary: run.replayMetadata, sidecars: replayMetadata });
   const readiness = evaluateEvidenceReadiness({ run });
+  const execution = investigationExecutionSummary({ run, recovery });
   const supportBoundaries = assessSupportBoundaries({ run });
   const loadingSummary = run.activeLoadAttempt !== undefined
     ? `${run.loadAttempts.length} completed real-model load ${run.loadAttempts.length === 1 ? "attempt was" : "attempts were"} recorded; ${run.activeLoadAttempt.candidateId} is checkpointed while ${run.activeLoadAttempt.currentStage} is still running.`
     : run.loadAttempts.length === 0
-      ? "Model loading and generation stages marked not-run were not investigated by this build."
+      ? "No real-model load attempts were recorded. Consult the selected scope and step results to distinguish unselected stages from interrupted or failed stages."
       : `${run.loadAttempts.length} real-model load ${run.loadAttempts.length === 1 ? "attempt was" : "attempts were"} recorded.`;
   const productionSummary = (() => {
     switch (run.productionLane.status) {
@@ -400,15 +402,17 @@ async function createPartialModelSupportEvidenceZip({ run, recovery, replayMetad
 # Model Support Investigation Evidence
 
 - Scope: ${run.scope}
-- Status: ${run.status}
+- Execution: ${execution.state}
+- Completed execution result: ${execution.result ?? 'not-recorded'}
+- Latest boundary result (not execution completion): ${run.status}
 - Model: ${run.modelId}
 - Run ID: ${run.runId}
 - External network policy: ${run.requestedConfiguration?.externalNetworkPolicy ?? "not-recorded"}
 - Requested investigation scope: ${run.requestedConfiguration === undefined ? "not-recorded" : JSON.stringify(run.requestedConfiguration.scope)}
 - Effective execution plan: ${run.executionPlan === undefined ? "not-recorded" : JSON.stringify(run.executionPlan)}
 - Started: ${run.startedAt}
-- Completed: ${run.completedAt}
-- Evidence readiness: ${readiness.overall}
+- Completed execution: ${execution.completedAt ?? 'not-recorded'}
+- Evidence readiness (coverage, not execution status): ${readiness.overall}
 - Recovery status: ${recovery?.status ?? "not-recorded"}
 - Recovery journal: ${recovery === undefined
     ? "not-recorded"
@@ -419,9 +423,10 @@ async function createPartialModelSupportEvidenceZip({ run, recovery, replayMetad
 - Production runtime-load total: ${productionRuntimeLoadDurationMs === undefined ? "not-recorded" : `${Math.round(productionRuntimeLoadDurationMs)}ms`}
 - Production tokenizer/processor preparation: ${productionRuntimePreparationDurationMs === undefined ? "not-recorded" : `${Math.round(productionRuntimePreparationDurationMs)}ms`}
 
-This is a partial evidence package. ${loadingSummary} ${productionSummary} Repository or cache artifacts are included only when their steps completed.
+Evidence coverage and execution completion are independent. Unselected scopes are not pending work. Read execution.json for coordinator completion, and READINESS.md for the limits of the evidence. Legacy run.json status/completedAt describe the latest partial boundary. ${loadingSummary} ${productionSummary} Repository or cache artifacts are included only when their steps completed.
 `;
   zip.file("SUMMARY.md", summary);
+  zip.file('execution.json', `${JSON.stringify(execution, undefined, 2)}\n`);
   zip.file("READINESS.md", renderEvidenceReadinessMarkdown({ report: readiness }));
   zip.file("readiness.json", `${JSON.stringify(readiness, undefined, 2)}\n`);
   zip.file("questions.json", `${JSON.stringify(readiness.domains.flatMap(domainReadiness => (

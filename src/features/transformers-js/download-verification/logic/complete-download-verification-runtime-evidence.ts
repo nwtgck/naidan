@@ -2,6 +2,8 @@ import type { DownloadVerificationEvidenceInput, DownloadVerificationRuntimeComp
 import { inspectDownloadVerificationCachedRevisions } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
 import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
+import { awaitWithAbort } from './await-with-abort';
+import type { RuntimeAcceptanceProgressCallback } from './runtime-acceptance-progress';
 
 function serializedError({ error }: { error: unknown }): { name: string; message: string } {
   if (error instanceof Error) return { name: error.name, message: error.message };
@@ -12,17 +14,20 @@ async function inspectCacheAfter({
   modelId,
   storageRoot,
   inspectCachedRevisions,
+  signal,
 }: {
   modelId: string;
   storageRoot: FileSystemDirectoryHandle;
   inspectCachedRevisions: typeof inspectDownloadVerificationCachedRevisions;
+  signal: AbortSignal | undefined;
 }): Promise<Pick<DownloadVerificationRuntimeCompletionEvidence, 'cacheAfter' | 'cacheInspectionError'>> {
   try {
     return {
-      cacheAfter: await inspectCachedRevisions({ modelId, storageRoot }),
+      cacheAfter: await awaitWithAbort({ operation: inspectCachedRevisions({ modelId, storageRoot }), signal }),
       cacheInspectionError: undefined,
     };
   } catch (error) {
+    signal?.throwIfAborted();
     return {
       cacheAfter: undefined,
       cacheInspectionError: error instanceof Error ? error.message : String(error),
@@ -45,6 +50,7 @@ export async function completeDownloadVerificationRuntimeEvidence({
   inspectCachedRevisions = inspectDownloadVerificationCachedRevisions,
   allowLegacyMainReuse = true,
   reusableCandidateOrderByRevision,
+  onProgress,
 }: {
   evidence: DownloadVerificationEvidenceInput;
   signal?: AbortSignal;
@@ -53,11 +59,16 @@ export async function completeDownloadVerificationRuntimeEvidence({
   inspectCachedRevisions?: typeof inspectDownloadVerificationCachedRevisions;
   allowLegacyMainReuse?: boolean;
   reusableCandidateOrderByRevision?: Readonly<Record<string, readonly TransformersJsProductionInvestigationCandidate[]>>;
+  onProgress?: RuntimeAcceptanceProgressCallback;
 }): Promise<DownloadVerificationEvidenceInput> {
   signal?.throwIfAborted();
-  const resolvedStorageRoot = storageRoot ?? await navigator.storage.getDirectory();
+  const resolvedStorageRoot = storageRoot ?? await awaitWithAbort({ operation: navigator.storage.getDirectory(), signal });
+  signal?.throwIfAborted();
   const modelId = evidence.run.normalizedModelId;
   const repositoryResolvedRevision = evidence.run.resolvedRevision;
+  const reportProgress: RuntimeAcceptanceProgressCallback = ({ progress }) => {
+    if (!signal?.aborted) onProgress?.({ progress });
+  };
 
   let runtimeCompletion: DownloadVerificationRuntimeCompletionEvidence;
   try {
@@ -71,6 +82,8 @@ export async function completeDownloadVerificationRuntimeEvidence({
       modelId,
       resolvedRevision: repositoryResolvedRevision,
       storageRoot: resolvedStorageRoot,
+      signal,
+      onProgress: reportProgress,
       ...(reusableCandidateOrderByRevision === undefined ? {} : { candidateOrderByRevision: reusableCandidateOrderByRevision }),
     });
     signal?.throwIfAborted();
@@ -80,7 +93,8 @@ export async function completeDownloadVerificationRuntimeEvidence({
         ? 'exact-resolved-revision' as const
         : 'legacy-main-unverified' as const;
       if (revisionIdentity === 'exact-resolved-revision' || allowLegacyMainReuse) {
-        const cacheObservation = await inspectCacheAfter({ modelId, storageRoot: resolvedStorageRoot, inspectCachedRevisions });
+        reportProgress({ progress: { phase: 'cache-after', revision: reuse.loadRevision, candidate: undefined, info: undefined } });
+        const cacheObservation = await inspectCacheAfter({ modelId, storageRoot: resolvedStorageRoot, inspectCachedRevisions, signal });
         runtimeCompletion = {
           schemaVersion: 1,
           status: 'accepted',
@@ -105,7 +119,8 @@ export async function completeDownloadVerificationRuntimeEvidence({
       }
     }
 
-    const cacheObservation = await inspectCacheAfter({ modelId, storageRoot: resolvedStorageRoot, inspectCachedRevisions });
+    reportProgress({ progress: { phase: 'cache-after', revision: repositoryResolvedRevision, candidate: undefined, info: undefined } });
+    const cacheObservation = await inspectCacheAfter({ modelId, storageRoot: resolvedStorageRoot, inspectCachedRevisions, signal });
     runtimeCompletion = {
       schemaVersion: 1,
       status: 'exhausted',
@@ -121,7 +136,8 @@ export async function completeDownloadVerificationRuntimeEvidence({
     };
   } catch (error) {
     signal?.throwIfAborted();
-    const cacheObservation = await inspectCacheAfter({ modelId, storageRoot: resolvedStorageRoot, inspectCachedRevisions });
+    reportProgress({ progress: { phase: 'cache-after', revision: repositoryResolvedRevision, candidate: undefined, info: undefined } });
+    const cacheObservation = await inspectCacheAfter({ modelId, storageRoot: resolvedStorageRoot, inspectCachedRevisions, signal });
     runtimeCompletion = {
       schemaVersion: 1,
       status: 'failed',

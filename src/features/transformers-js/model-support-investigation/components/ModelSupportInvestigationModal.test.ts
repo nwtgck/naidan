@@ -4,6 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { toToolCallId } from '@/01-models/ids';
 import ModelSupportInvestigationModal from './ModelSupportInvestigationModal.vue';
+import { configurationForPreset } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 import { TEST_ONLY as sessionTestOnly } from '@/features/transformers-js/model-support-investigation/logic/investigation-session';
 import { createInitialInvestigationCheckpoint } from '@/features/transformers-js/model-support-investigation/logic/investigation-recovery';
 import type { ModelSupportInvestigationRun, ModelSupportInvestigationWorkerClient } from '@/features/transformers-js/model-support-investigation/types';
@@ -627,18 +628,19 @@ org/second
   });
 
   it.each([
-    { outcome: 'passed', timeout: false, interrupted: false, expectedMiB: [48, 48, 48, 48, 48] },
-    { outcome: 'failed', timeout: false, interrupted: false, expectedMiB: [48, 48, 48, 48, 48] },
-    { outcome: 'failed', timeout: true, interrupted: false, expectedMiB: [48, 48, 48, 16, 0] },
-    { outcome: 'failed', timeout: false, interrupted: true, expectedMiB: [48, 48, 48, 16, 0] },
-  ] as const)('settles metadata bytes for $outcome with file timeout=$timeout and interruption=$interrupted', async ({ outcome, timeout, interrupted, expectedMiB }) => {
+    { outcome: 'passed', timeout: false, interrupted: false, collecting: false, expectedMiB: [48, 48, 48, 48, 48] },
+    { outcome: 'failed', timeout: false, interrupted: false, collecting: false, expectedMiB: [48, 48, 48, 48, 48] },
+    { outcome: 'failed', timeout: true, interrupted: false, collecting: false, expectedMiB: [48, 48, 48, 16, 0] },
+    { outcome: 'failed', timeout: false, interrupted: true, collecting: false, expectedMiB: [48, 48, 48, 48, 48] },
+    { outcome: 'failed', timeout: false, interrupted: true, collecting: true, expectedMiB: [48, 48, 48, 16, 0] },
+  ] as const)('settles metadata bytes for $outcome with file timeout=$timeout, interruption=$interrupted, collecting=$collecting', async ({ outcome, timeout, interrupted, collecting, expectedMiB }) => {
     workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint, replayMetadataBudgetBytes }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
       const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: `run-${modelId}`, now: () => completedRun.startedAt });
       const received = Math.min(100, replayMetadataBudgetBytes ?? 0);
       const result: ModelSupportInvestigationRun = {
         ...structuredClone(completedRun), modelId, status: outcome,
         replayMetadata: {
-          schemaVersion: 1, modelId, revision: 'a'.repeat(40), status: 'partial',
+          schemaVersion: 1, modelId, revision: 'a'.repeat(40), status: collecting ? 'collecting' : 'partial',
           receivedBytes: received, retainedBytes: 0, budgetBytes: replayMetadataBudgetBytes ?? 0,
           files: [{ path: 'config.json', source: 'remote-exact', byteLength: received, status: timeout ? 'timeout' : 'invalid-content' }],
         },
@@ -647,7 +649,7 @@ org/second
         run: result,
         recovery: { ...checkpoint.recovery, status: interrupted ? 'interrupted' : 'completed' },
       } });
-      if (interrupted) throw new Error('Worker ended before all reads settled');
+      if (interrupted) throw new Error(collecting ? 'Worker lost during collection' : 'Full cache acceptance timed out after metadata collection');
       return result;
     });
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
@@ -658,10 +660,29 @@ org/three
 org/four
 org/five
 `);
-    await wrapper.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    await wrapper.get(`[data-testid="model-support-preset-${interrupted ? 'full' : 'download-focused'}"]`).trigger('click');
     await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
     expect(workerMocks.runPartialInvestigation.mock.calls.map(call => call[0].replayMetadataBudgetBytes)).toEqual(expectedMiB.map(value => value * 1024 * 1024));
+    wrapper.unmount();
+  });
+
+  it.each(['completed', 'interrupted'] as const)('shows %s execution independently from partial evidence coverage', async status => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint }) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: 'execution-display', now: () => completedRun.startedAt });
+      const result = { ...structuredClone(completedRun), requestedConfiguration: configurationForPreset({ preset: 'download-focused' }), executionPlan: { repositoryDownload: true, modelLoad: false, generation: false, continuity: false, capabilityProbes: false } };
+      onCheckpoint?.({ checkpoint: { run: result, recovery: { ...checkpoint.recovery, status } } });
+      return result;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-support-execution-summary"]').text()).toContain(
+      status === 'completed' ? 'Selected-scope investigation finished' : 'Investigation stopped before completion',
+    );
+    expect(wrapper.get('[data-testid="model-support-evidence-coverage-explanation"]').text()).toContain('not pending');
+    expect(wrapper.get('[data-testid="model-support-investigation-download"]').text()).toBe('Download Evidence ZIP');
+    expect(wrapper.text()).not.toContain('later investigation stages are not run yet');
     wrapper.unmount();
   });
 
@@ -1614,9 +1635,10 @@ org/second
 
     expect(evidenceMocks.createPartialEvidence).toHaveBeenCalledTimes(1);
     const exported = evidenceMocks.createPartialEvidence.mock.calls[0]?.[0];
-    expect(exported.run.currentOperation).not.toBe('webgpu-q4f16: model-load');
+    expect(exported.run.currentOperation).toBe('webgpu-q4f16: model-load');
     expect(exported.run.steps.find((step: { id: string }) => step.id === 'evidence-export')).toMatchObject({ status: 'passed' });
     expect(exported.recovery).toMatchObject({ status: 'running', checkpointSequence: 4 });
+    expect(wrapper.get('[data-testid="model-support-execution-summary"]').text()).toContain('investigation is running');
 
     resolveInvestigation(completedRun);
     await flushPromises();

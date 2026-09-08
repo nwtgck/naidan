@@ -12,7 +12,7 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe('download investigation batch budget', () => {
-  it('settles completed metadata independently of model failure, without refunding lost or interrupted work', () => {
+  it('settles finished collection independently of later runtime interruption, without refunding unknown reads', () => {
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'failed-model', now: () => '2026-09-08T00:00:00.000Z' });
     expect(checkpoint.run.status).toBe('failed');
     const summary: InvestigationReplayMetadataSummary = {
@@ -23,7 +23,8 @@ describe('download investigation batch budget', () => {
       expect(settledReplayMetadataBytes({ summary: { ...summary, status }, recovery: { ...checkpoint.recovery, status: 'completed' } })).toBe(100);
     }
     for (const status of ['running', 'interrupted'] as const) {
-      expect(settledReplayMetadataBytes({ summary, recovery: { ...checkpoint.recovery, status } })).toBeUndefined();
+      expect(settledReplayMetadataBytes({ summary, recovery: { ...checkpoint.recovery, status } })).toBe(100);
+      expect(settledReplayMetadataBytes({ summary: { ...summary, status: 'collecting' }, recovery: { ...checkpoint.recovery, status } })).toBeUndefined();
     }
     expect(settledReplayMetadataBytes({ summary: { ...summary, status: 'collecting' }, recovery: { ...checkpoint.recovery, status: 'completed' } })).toBeUndefined();
     expect(settledReplayMetadataBytes({ summary: undefined, recovery: checkpoint.recovery })).toBeUndefined();

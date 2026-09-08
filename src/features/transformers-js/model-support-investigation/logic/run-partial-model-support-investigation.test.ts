@@ -95,7 +95,7 @@ function downloadEvidence({ repository, runId = 'run-1' }: {
 
 describe('runPartialModelSupportInvestigation', () => {
 
-  it.each([false, true])('connects replay collection only to the short scope and preserves it after later planning failure (modelLoad=%s)', async modelLoad => {
+  it.each([false, true])('collects the same replay evidence in short and Full scopes and preserves it after later planning failure (modelLoad=%s)', async modelLoad => {
     const repository = {
       requestedModelId: 'org/model', normalizedModelId: 'org/model', requestedRevision: 'main' as const,
       resolvedRevision: 'a'.repeat(40), apiUrl: 'https://huggingface.co/api/models/org/model', responseUrl: 'https://huggingface.co/api/models/org/model',
@@ -121,11 +121,9 @@ describe('runPartialModelSupportInvestigation', () => {
       collectReplayMetadata: replay, onEvent: vi.fn(), onRunUpdate: ({ run }) => checkpoints.push(run), now: () => '2026-09-08T00:00:00.000Z',
     });
     expect(result.status).toBe('failed');
-    expect(replay).toHaveBeenCalledTimes(modelLoad ? 0 : 1);
-    if (!modelLoad) {
-      expect(result.replayMetadata?.retainedBytes).toBe(2);
-      expect(checkpoints.some(run => run.replayMetadata?.status === 'collecting')).toBe(true);
-    }
+    expect(replay).toHaveBeenCalledTimes(1);
+    expect(result.replayMetadata?.retainedBytes).toBe(2);
+    expect(checkpoints.some(run => run.replayMetadata?.status === 'collecting')).toBe(true);
   });
 
   it('collects resolved declarations and public Auto class evidence after repository and cache inspection', async () => {

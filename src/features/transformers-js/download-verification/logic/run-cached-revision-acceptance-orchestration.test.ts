@@ -153,7 +153,7 @@ describe('runCachedRevisionAcceptanceOrchestration', () => {
     expect(acceptRevision).toHaveBeenCalledTimes(1);
   });
 
-  it('uses legacy main and then immutable revisions deterministically when offline', async () => {
+  it.each([CURRENT, 'main'])('prefers immutable revisions before legacy main when offline, accepting %s', async acceptedRevision => {
     const cached = inventory([
       revision({ revision: 'main', kind: 'legacy-main', lastModified: 5 }),
       revision({ revision: STALE, kind: 'immutable-sha', lastModified: 10 }),
@@ -163,8 +163,8 @@ describe('runCachedRevisionAcceptanceOrchestration', () => {
       observation({
         candidate,
         repositoryResolvedRevision: undefined,
-        status: candidate.revision === CURRENT ? 'accepted' : 'rejected',
-        message: candidate.revision === CURRENT ? undefined : 'runtime rejected',
+        status: candidate.revision === acceptedRevision ? 'accepted' : 'rejected',
+        message: candidate.revision === acceptedRevision ? undefined : 'runtime rejected',
       })
     ));
 
@@ -175,8 +175,10 @@ describe('runCachedRevisionAcceptanceOrchestration', () => {
     });
 
     expect(result.status).toBe('accepted');
-    expect(result.selectedRevision?.revision).toBe(CURRENT);
-    expect(result.attempts.map(attempt => attempt.candidate.revision)).toEqual(['main', CURRENT]);
+    expect(result.selectedRevision?.revision).toBe(acceptedRevision);
+    expect(result.attempts.map(attempt => attempt.candidate.revision)).toEqual(
+      acceptedRevision === CURRENT ? [CURRENT] : [CURRENT, STALE, 'main'],
+    );
   });
 
   it('returns unavailable when no committed revision candidate is eligible', async () => {

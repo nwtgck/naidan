@@ -6,6 +6,7 @@ import {
 } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
 import type { DownloadVerificationRevisionAcceptanceObservation } from '@/features/transformers-js/download-verification/types';
 import type { TransformersJsProductionInvestigationCandidate } from '@/features/transformers-js/types';
+import type { RuntimeAcceptanceProgressCallback } from './runtime-acceptance-progress';
 
 export interface DownloadVerificationCachedRevisionAcceptanceAttempt {
   candidate: DownloadVerificationCachedRevisionLoadCandidate;
@@ -177,11 +178,13 @@ export async function acceptReusableDownloadedProductionRevisionsForDownload({
   resolvedRevision,
   candidateOrderByRevision,
   signal,
+  onProgress,
 }: {
   inventory: DownloadVerificationCachedRevisionInventory;
   resolvedRevision: string;
   candidateOrderByRevision?: Readonly<Record<string, readonly TransformersJsProductionInvestigationCandidate[]>>;
   signal?: AbortSignal;
+  onProgress?: RuntimeAcceptanceProgressCallback;
 }): Promise<DownloadVerificationCachedRevisionAcceptanceResult> {
   return await runCachedRevisionAcceptanceOrchestration({
     inventory,
@@ -195,6 +198,7 @@ export async function acceptReusableDownloadedProductionRevisionsForDownload({
       loadRevision: candidate.loaderRevisionOption,
       ...(candidateOrder === undefined ? {} : { candidates: candidateOrder }),
       signal,
+      onProgress,
     }),
     // Explicit Download is allowed to repair the current exact revision. A
     // missing artifact in one cached revision must not prevent a later, fully

@@ -19,6 +19,8 @@ import type {
 } from "@/features/transformers-js/types";
 import { runModelLoadInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-model-load-investigation";
 import { completeDownloadVerificationRuntimeEvidence } from "@/features/transformers-js/download-verification/logic/complete-download-verification-runtime-evidence";
+import { DEFAULT_CACHE_ACCEPTANCE_TIMEOUT_MS, withCacheAcceptanceDeadline } from '@/features/transformers-js/model-support-investigation/logic/cache-acceptance-deadline';
+import { createModelLoadProgressTracker } from '@/features/transformers-js/model-support-investigation/logic/model-load-progress';
 import { selectDownloadRuntimeCandidates } from "@/features/transformers-js/model-support-investigation/logic/select-download-runtime-candidates";
 import type { DownloadVerificationRuntimeCompletionEvidence } from "@/features/transformers-js/download-verification/evidence/types";
 import { runProductionLaneComparison } from "@/features/transformers-js/model-support-investigation/logic/run-production-lane-comparison";
@@ -282,10 +284,12 @@ export function createModelSupportInvestigationWorkerClient({
   planningTimeoutMs = DEFAULT_PLANNING_TIMEOUT_MS,
   candidateAttemptTimeoutMs = DEFAULT_CANDIDATE_ATTEMPT_TIMEOUT_MS,
   productionLaneTimeoutMs = DEFAULT_PRODUCTION_LANE_TIMEOUT_MS,
+  cacheAcceptanceTimeoutMs = DEFAULT_CACHE_ACCEPTANCE_TIMEOUT_MS,
 }: {
   planningTimeoutMs?: number,
   candidateAttemptTimeoutMs?: number,
   productionLaneTimeoutMs?: number,
+  cacheAcceptanceTimeoutMs?: number,
 } = {}): ModelSupportInvestigationWorkerClient {
   const activeWorkers = new Set<Worker>();
   const activeProductionWorkers = new Set<Worker>();
@@ -426,7 +430,7 @@ export function createModelSupportInvestigationWorkerClient({
         let planningStage: ModelSupportInvestigationPlanningStage = "worker-start";
         let planningTimedOut = false;
         let planningAcceptingCallbacks = true;
-        let partialRun;
+        let partialRun: ModelSupportInvestigationRun;
         try {
           const operation = planningHandle.remote.runPartialInvestigation(
             {
@@ -498,11 +502,25 @@ export function createModelSupportInvestigationWorkerClient({
         publishCheckpoint();
 
         if (partialRun.downloadEvidence !== undefined && executionPlan.modelLoad) {
+          const evidenceBeforeAcceptance = partialRun.downloadEvidence;
           const runtimeCandidateSelection = partialRun.modelFilePlan === undefined
             ? undefined
             : selectDownloadRuntimeCandidates({ modelFilePlan: partialRun.modelFilePlan });
           const runtimeAbortController = new AbortController();
           activeRuntimeAbortController = runtimeAbortController;
+          let acceptingRuntimeProgress = true;
+          let progressKey: string | undefined;
+          let progressTracker: ReturnType<typeof createModelLoadProgressTracker> | undefined;
+          const acceptanceDeadline = new Date(Date.now() + cacheAcceptanceTimeoutMs).toISOString();
+          let acceptancePhase = 'cache-inventory';
+          let progressDetail = '';
+          const flushAcceptanceProgress = (): void => {
+            const sample = progressTracker?.flush();
+            if (sample !== undefined) publishEvent({ event: {
+              stepId: 'download-evidence', status: 'running', detail: progressDetail, progress: sample,
+            } });
+          };
+          flushActiveProductionInterruptionEvidence = flushAcceptanceProgress;
           publishEvent({
             event: {
               stepId: "download-evidence",
@@ -512,12 +530,54 @@ export function createModelSupportInvestigationWorkerClient({
           });
           try {
             const completedEvidence = await awaitInterruptible({
-              operation: completeDownloadVerificationRuntimeEvidence({
-                evidence: partialRun.downloadEvidence,
-                signal: runtimeAbortController.signal,
-                allowLegacyMainReuse: !legacyMainHasBoundedMismatch({ provenance: partialRun.cache?.provenance }),
-                ...(runtimeCandidateSelection === undefined ? {} : {
-                  reusableCandidateOrderByRevision: runtimeCandidateSelection.reusableCandidateOrderByRevision,
+              operation: withCacheAcceptanceDeadline({
+                controller: runtimeAbortController,
+                timeoutMs: cacheAcceptanceTimeoutMs,
+                start: () => completeDownloadVerificationRuntimeEvidence({
+                  evidence: evidenceBeforeAcceptance,
+                  signal: runtimeAbortController.signal,
+                  onProgress: ({ progress }) => {
+                    if (!acceptingRuntimeProgress || runtimeAbortController.signal.aborted) return;
+                    const candidateId = progress.candidate === undefined
+                      ? 'candidate-selection'
+                      : `${progress.candidate.device}-${progress.candidate.dtype}`;
+                    const key = `${progress.revision ?? 'unselected'}:${candidateId}`;
+                    if (key !== progressKey) {
+                      flushAcceptanceProgress();
+                      progressTracker = createModelLoadProgressTracker({ candidateId });
+                      progressKey = key;
+                    }
+                    switch (progress.phase) {
+                    case 'cache-inventory':
+                    case 'revision-acceptance':
+                    case 'candidate-acceptance':
+                    case 'cache-after':
+                      acceptancePhase = progress.phase;
+                      break;
+                    case 'runtime':
+                      if (progress.info?.status.startsWith('cache-acceptance-')) acceptancePhase = progress.info.status;
+                      break;
+                    default: {
+                      const exhaustive: never = progress.phase;
+                      throw new Error(`Unhandled acceptance phase: ${exhaustive}`);
+                    }
+                    }
+                    progressDetail = `Production cache acceptance: ${acceptancePhase}; revision=${progress.revision ?? 'unselected'}; candidate=${candidateId}; deadline=${acceptanceDeadline}`;
+                    const sample = progressTracker?.observe({
+                      info: progress.info ?? { status: progress.phase },
+                      at: now(), nowMs: performance.now(),
+                    });
+                    if (sample === undefined) return;
+                    publishEvent({ event: {
+                      stepId: 'download-evidence', status: 'running',
+                      detail: progressDetail,
+                      progress: sample,
+                    } });
+                  },
+                  allowLegacyMainReuse: !legacyMainHasBoundedMismatch({ provenance: partialRun.cache?.provenance }),
+                  ...(runtimeCandidateSelection === undefined ? {} : {
+                    reusableCandidateOrderByRevision: runtimeCandidateSelection.reusableCandidateOrderByRevision,
+                  }),
                 }),
               }),
             });
@@ -546,6 +606,9 @@ export function createModelSupportInvestigationWorkerClient({
             checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: partialRun, now });
             publishCheckpoint();
           } finally {
+            flushAcceptanceProgress();
+            if (flushActiveProductionInterruptionEvidence === flushAcceptanceProgress) flushActiveProductionInterruptionEvidence = undefined;
+            acceptingRuntimeProgress = false;
             if (activeRuntimeAbortController === runtimeAbortController) activeRuntimeAbortController = undefined;
           }
         }
@@ -581,6 +644,7 @@ export function createModelSupportInvestigationWorkerClient({
         const runtimeCompletionAccepted = runtimeCompletionOutcome({ completion: runtimeCompletion }).accepted;
         if (executionPlan.generation && runtimeCompletionAccepted && runtimeCompletion !== undefined && partialRun.runtimeTarget !== undefined) {
           const templateHandle = createWorkerHandle();
+          let templateTimedOut = false;
           try {
             publishEvent({
               event: {
@@ -589,10 +653,20 @@ export function createModelSupportInvestigationWorkerClient({
                 detail: `Loading tokenizer cache-only from ${runtimeCompletion.loaderRevisionOption ?? 'main'} after runtime completion`,
               },
             });
-            const templateBehavior = await awaitInterruptible({
-              operation: templateHandle.remote.inspectDownloadedTemplateBehavior({
-                runtimeTarget: partialRun.runtimeTarget,
+            const templateBehavior = await withPlanningTimeout({
+              // Keep interruption inside the deadline so a user stop/dispose
+              // settles this wrapper and clears its timer immediately too.
+              operation: awaitInterruptible({
+                operation: templateHandle.remote.inspectDownloadedTemplateBehavior({
+                  runtimeTarget: partialRun.runtimeTarget,
+                }),
               }),
+              timeoutMs: planningTimeoutMs,
+              timeoutError: () => new PlanningTimeoutError({ stage: 'template-behavior', timeoutMs: planningTimeoutMs }),
+              onTimeout: () => {
+                templateTimedOut = true;
+                terminateWorkerHandle({ handle: templateHandle });
+              },
             });
             partialRun.templateBehavior = templateBehavior;
             const passed = templateBehavior.cases.filter(item => item.status === 'passed').length;
@@ -625,8 +699,11 @@ export function createModelSupportInvestigationWorkerClient({
             partialRun.completedAt = now();
             checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: partialRun, now });
             publishCheckpoint();
+            // An unresponsive template Worker must end this target rather than
+            // start more runtime work with stale template observations.
+            if (templateTimedOut) throw error;
           } finally {
-            if (!userInterruptionRequested) await releaseWorkerHandle({ handle: templateHandle });
+            if (!templateTimedOut && !userInterruptionRequested) await releaseWorkerHandle({ handle: templateHandle });
           }
         }
 
@@ -985,8 +1062,16 @@ export function createModelSupportInvestigationWorkerClient({
       activeInterrupt?.();
     },
     async dispose(): Promise<void> {
+      if (disposed) return;
       disposed = true;
-      terminateAllWorkers();
+      try {
+        // Acceptance Workers are owned by the revision-acceptance client, not
+        // either local Worker set. Reuse the interruption boundary to abort
+        // that owner, freeze callbacks and settle the outstanding run as well.
+        activeInterrupt?.();
+      } finally {
+        terminateAllWorkers();
+      }
     },
   };
 }

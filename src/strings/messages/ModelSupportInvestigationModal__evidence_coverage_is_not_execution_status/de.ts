@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status = ({ notApplicableCount }: { notApplicableCount: number }): string => `Nachweisabdeckung ist nicht der Ausführungsstatus. Bereiche außerhalb des Umfangs: ${notApplicableCount} (nicht ausstehend).`;

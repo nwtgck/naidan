@@ -42,6 +42,7 @@ import {
 } from "@/features/transformers-js/model-support-investigation/logic/investigation-config";
 import { runInvestigationTargetsSequentially, type ModelSupportInvestigationTargetExecution } from "@/features/transformers-js/model-support-investigation/logic/run-investigation-targets-sequentially";
 import { evaluateEvidenceReadiness } from "@/features/transformers-js/model-support-investigation/logic/evaluate-evidence-readiness";
+import { investigationExecutionSummary } from '@/features/transformers-js/model-support-investigation/logic/investigation-execution-summary';
 import { assessSupportBoundaries } from "@/features/transformers-js/model-support-investigation/logic/assess-support-boundaries";
 import {
   DOWNLOAD_INVESTIGATION_COLLECTION_BUDGET_MS,
@@ -543,6 +544,9 @@ const productionReasoningSummary = computed(() => {
 const evidenceReadiness = computed(() => run.value === undefined
   ? undefined
   : evaluateEvidenceReadiness({ run: run.value }));
+const executionSummary = computed(() => run.value === undefined
+  ? undefined
+  : investigationExecutionSummary({ run: run.value, recovery: recovery.value }));
 const evidenceReadinessSummary = computed(() => {
   const report = evidenceReadiness.value;
   if (report === undefined) return undefined;
@@ -634,7 +638,8 @@ function withEvidenceExportStep({
 }): ModelSupportInvestigationRun {
   return {
     ...sourceRun,
-    currentOperation: detail,
+    // Export is a snapshot operation, not a new runtime boundary. Preserve the
+    // phase that was active when the snapshot was captured.
     steps: sourceRun.steps.map(step => {
       switch (step.id) {
       case "evidence-export":
@@ -1142,17 +1147,14 @@ async function startInvestigation(): Promise<void> {
         // Reserve before starting. On a lost Worker/checkpoint, keep the full
         // reservation charged rather than inventing a zero-byte transfer.
         remainingMetadataBytes -= replayMetadataBudgetBytes;
-        const completed = await runSingleTarget({
-          target,
-          configuration,
-          timeoutMs,
-          replayMetadataBudgetBytes,
-        });
-        const actualBytes = settledReplayMetadataBytes({ summary: completed.replayMetadata, recovery: recoveryByTarget.get(target) });
-        if (actualBytes !== undefined) {
-          remainingMetadataBytes = Math.max(0, remainingMetadataBytes + replayMetadataBudgetBytes - actualBytes);
+        try {
+          return await runSingleTarget({ target, configuration, timeoutMs, replayMetadataBudgetBytes });
+        } finally {
+          const actualBytes = settledReplayMetadataBytes({ summary: runByTarget.get(target)?.replayMetadata, recovery: recoveryByTarget.get(target) });
+          if (actualBytes !== undefined) {
+            remainingMetadataBytes = Math.max(0, remainingMetadataBytes + replayMetadataBudgetBytes - actualBytes);
+          }
         }
-        return completed;
       },
       onUpdate: ({ executions: nextExecutions }) => {
         targetExecutions.value = [...nextExecutions];
@@ -1436,8 +1438,8 @@ defineExpose({
             </h2>
           </div>
           <p v-if="selectedTarget" tw-class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ selectedTarget }}</p>
-          <p tw-class="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold uppercase tracking-wide">
-            {{ lazyStrings.ModelSupportInvestigationModal__this_is_partial_evidence() }}
+          <p v-if="executionSummary" tw-class="text-xs text-gray-600 dark:text-gray-400 mt-1" data-testid="model-support-execution-summary">
+            {{ lazyStrings.ModelSupportInvestigationModal__selected_scope_execution_summary({ state: executionSummary.state }) }}
           </p>
           <p tw-class="text-[10px] text-gray-500 dark:text-gray-400 mt-1 max-w-3xl">
             {{ lazyStrings.ModelSupportInvestigationModal__environment_evidence_disclosure() }}
@@ -1919,6 +1921,7 @@ defineExpose({
           </div>
 
           <div v-if="evidenceReadiness" tw-class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-1" data-testid="model-support-evidence-readiness">
+            <p tw-class="text-xs text-gray-500" data-testid="model-support-evidence-coverage-explanation">{{ lazyStrings.ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status({ notApplicableCount: evidenceReadiness.domains.filter(item => item.status === 'not-applicable').length }) }}</p>
             <p tw-class="text-[10px] font-bold uppercase text-gray-400">{{ lazyStrings.ModelSupportInvestigationModal__evidence_readiness() }}</p>
             <p tw-class="text-xs text-gray-700 dark:text-gray-200">{{ evidenceReadinessSummary }}</p>
           </div>
@@ -1983,7 +1986,7 @@ defineExpose({
         >
           <Loader2Icon v-if="evidenceExporting" tw-class="w-4 h-4 animate-spin" />
           <DownloadIcon v-else tw-class="w-4 h-4" />
-          {{ lazyStrings.ModelSupportInvestigationModal__download_partial_evidence() }}
+          {{ lazyStrings.ModelSupportInvestigationModal__download_evidence_zip() }}
         </button>
         <button
           type="button"

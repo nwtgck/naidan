@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { configurationForPreset, createDefaultInvestigationConfiguration } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
+import type { RuntimeAcceptanceProgressCallback } from '@/features/transformers-js/download-verification/logic/runtime-acceptance-progress';
+import { runInvestigationTargetsSequentially } from '@/features/transformers-js/model-support-investigation/logic/run-investigation-targets-sequentially';
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationLoadAttempt,
@@ -1418,13 +1420,14 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient();
-    void client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
+    const outcome = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() }).catch(error => error);
     await vi.waitFor(() => {
       expect(mocks.runProductionScenario).toHaveBeenCalledTimes(1);
     });
 
     await client.dispose();
 
+    expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
     expect(mocks.workerInstances[2]?.terminate).toHaveBeenCalledTimes(1);
     expect(production[mocks.releaseProxy]).not.toHaveBeenCalled();
   });
@@ -1746,6 +1749,63 @@ describe("createModelSupportInvestigationWorkerClient", () => {
   });
 
 
+  it('terminates a non-settling accepted-cache template worker before continuing to the next target', async () => {
+    const exactRevision = 'b'.repeat(40);
+    const planning = partialRunWithProbeDownloadEvidence({ exactRevision });
+    mocks.completeRuntimeEvidence.mockResolvedValue({
+      ...planning.downloadEvidence, mode: 'runtime-complete',
+      runtimeCompletion: {
+        schemaVersion: 1, status: 'accepted', source: 'existing-cache',
+        repositoryResolvedRevision: exactRevision, cacheRevision: exactRevision,
+        loaderRevisionOption: exactRevision, selectedCandidate: { device: 'webgpu', dtype: 'q4' },
+        cacheReuse: undefined, preparation: undefined, cacheAfter: undefined,
+        cacheInspectionError: undefined, error: undefined,
+      },
+    });
+    const pending = Promise.withResolvers<NonNullable<ModelSupportInvestigationRun['templateBehavior']>>();
+    const templateRemote = remote({ inspectDownloadedTemplateBehavior: vi.fn(() => pending.promise) });
+    mocks.wrap.mockReturnValueOnce(remote({ runPartialInvestigation: vi.fn(async () => planning) })).mockReturnValueOnce(templateRemote);
+    const onCheckpoint = vi.fn();
+    const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
+    const client = createModelSupportInvestigationWorkerClient({ planningTimeoutMs: 50 });
+    const visited: string[] = [];
+    const flow = runInvestigationTargetsSequentially({
+      targets: ['org/model', 'org/next'], shouldInterrupt: () => false,
+      takeSkipRequest: () => false, onUpdate: () => undefined,
+      runTarget: async ({ target }) => {
+        visited.push(target);
+        if (target === 'org/model') return client.runPartialInvestigation({ modelId: target, configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint });
+        expect(mocks.workerInstances[1]?.terminate).toHaveBeenCalledOnce();
+        return { ...partialRun(), modelId: target };
+      },
+    });
+    try {
+      await vi.waitFor(() => expect(templateRemote.inspectDownloadedTemplateBehavior).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(mocks.workerInstances[1]?.terminate).toHaveBeenCalledOnce());
+      const executions = await flow;
+      expect(visited).toEqual(['org/model', 'org/next']);
+      expect(executions.map(item => item.status)).toEqual(['failed', 'passed']);
+      expect(executions[0]?.error).toContain('template-behavior');
+      expect(onCheckpoint).toHaveBeenLastCalledWith({ checkpoint: expect.objectContaining({
+        recovery: expect.objectContaining({ status: 'interrupted' }),
+        run: expect.objectContaining({ steps: expect.arrayContaining([expect.objectContaining({ id: 'template-behavior', status: 'failed' })]) }),
+      }) });
+      const checkpoints = onCheckpoint.mock.calls.length;
+      pending.resolve(planning.templateBehavior!);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(onCheckpoint).toHaveBeenCalledTimes(checkpoints);
+      expect(mocks.wrap).toHaveBeenCalledTimes(2);
+      expect(templateRemote[mocks.releaseProxy]).not.toHaveBeenCalled();
+      expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+    } finally {
+      await client.interrupt();
+      pending.resolve(planning.templateBehavior!);
+      await flow;
+      await client.dispose();
+    }
+  });
+
   it("hands one runtime-complete exact revision and selected candidate through template, Reference, and Production lanes", async () => {
     const exactRevision = "b".repeat(40);
     const planning = partialRunWithProbeDownloadEvidence({ exactRevision });
@@ -2009,6 +2069,97 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     expect(result.error).toBeUndefined();
     expect(mocks.runProductionScenario).not.toHaveBeenCalled();
     expect(mocks.wrap).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds cache acceptance separately from later model-load budgets and retains a timeout checkpoint", async () => {
+    const planning = partialRunWithProbeDownloadEvidence({ exactRevision: "d".repeat(40) });
+    const sidecars = [{ path: 'config.json', blob: new Blob(['{}']) }];
+    mocks.wrap.mockReturnValueOnce(remote({ runPartialInvestigation: vi.fn(async (_request, _event, checkpoint) => {
+      checkpoint({ run: planning, replayMetadata: sidecars });
+      return planning;
+    }) }));
+    let runtimeSignal: AbortSignal | undefined;
+    let lateProgress: RuntimeAcceptanceProgressCallback | undefined;
+    mocks.completeRuntimeEvidence.mockImplementation(({ signal, onProgress }: { signal?: AbortSignal; onProgress?: RuntimeAcceptanceProgressCallback }) => {
+      runtimeSignal = signal;
+      lateProgress = onProgress;
+      const identity = { phase: 'runtime' as const, revision: 'd'.repeat(40), candidate: { device: 'webgpu' as const, dtype: 'q4' as const } };
+      onProgress?.({ progress: { ...identity, info: { status: 'cache-acceptance-model-session' } } });
+      // This raw byte event is deliberately throttled. A terminal checkpoint
+      // must flush it rather than report the earlier zero-byte stage event.
+      onProgress?.({ progress: { ...identity, info: { status: 'progress', file: 'model_q4.onnx', loaded: 42, total: 100 } } });
+      return new Promise(() => undefined);
+    });
+    const onCheckpoint = vi.fn();
+    const onEvent = vi.fn();
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient({ cacheAcceptanceTimeoutMs: 25 });
+    const result = await client.runPartialInvestigation({
+      modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent, onCheckpoint,
+    }).catch(error => error);
+    expect(result).toMatchObject({ name: 'CacheAcceptanceTimeoutError' });
+    expect(runtimeSignal?.aborted).toBe(true);
+    expect(runtimeSignal?.reason).toBe(result);
+    expect(onCheckpoint).toHaveBeenLastCalledWith({ checkpoint: expect.objectContaining({
+      recovery: expect.objectContaining({ status: 'interrupted' }),
+      run: expect.objectContaining({ downloadEvidence: planning.downloadEvidence }),
+      replayMetadata: sidecars,
+    }) });
+    const finalCheckpoint = onCheckpoint.mock.calls.at(-1)![0].checkpoint;
+    const event = onEvent.mock.calls.at(-1)![0].event;
+    expect(event).toMatchObject({
+      detail: expect.stringContaining('cache-acceptance-model-session'),
+      progress: { candidateId: 'webgpu-q4', currentFile: 'model_q4.onnx', fileLoaded: 42, fileTotal: 100, lastForwardProgressAt: expect.any(String) },
+    });
+    expect(finalCheckpoint.recovery.events.at(-1)).toMatchObject(event);
+    const deliveredEvents = onEvent.mock.calls.length;
+    const deliveredCheckpoints = onCheckpoint.mock.calls.length;
+    lateProgress?.({ progress: { phase: 'runtime', revision: undefined, candidate: undefined, info: { status: 'ready' } } });
+    expect(onEvent).toHaveBeenCalledTimes(deliveredEvents);
+    expect(onCheckpoint).toHaveBeenCalledTimes(deliveredCheckpoints);
+    expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+  });
+
+  it('disposes cache acceptance through its abort owner and rejects late callbacks without a prior interrupt', async () => {
+    const planning = partialRunWithProbeDownloadEvidence({ exactRevision: 'd'.repeat(40) });
+    const sidecars = [{ path: 'config.json', blob: new Blob(['{}']) }];
+    mocks.wrap.mockReturnValueOnce(remote({ runPartialInvestigation: vi.fn(async (_request, _event, checkpoint) => {
+      checkpoint({ run: planning, replayMetadata: sidecars });
+      return planning;
+    }) }));
+    let runtimeSignal: AbortSignal | undefined;
+    let lateProgress: RuntimeAcceptanceProgressCallback | undefined;
+    mocks.completeRuntimeEvidence.mockImplementation(({ signal, onProgress }: { signal?: AbortSignal; onProgress?: RuntimeAcceptanceProgressCallback }) => {
+      runtimeSignal = signal;
+      lateProgress = onProgress;
+      onProgress?.({ progress: { phase: 'runtime', revision: 'd'.repeat(40), candidate: undefined, info: { status: 'cache-acceptance-model-session' } } });
+      return new Promise(() => undefined);
+    });
+    const onEvent = vi.fn();
+    const onCheckpoint = vi.fn();
+    const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
+    const client = createModelSupportInvestigationWorkerClient();
+    const outcome = client.runPartialInvestigation({ modelId: 'org/model', configuration: createDefaultInvestigationConfiguration(), onEvent, onCheckpoint }).catch(error => error);
+    try {
+      await vi.waitFor(() => expect(mocks.completeRuntimeEvidence).toHaveBeenCalledOnce());
+      await client.dispose();
+      expect(runtimeSignal?.aborted).toBe(true);
+      expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
+      expect(onCheckpoint).toHaveBeenLastCalledWith({ checkpoint: expect.objectContaining({
+        recovery: expect.objectContaining({ status: 'interrupted' }), replayMetadata: sidecars,
+      }) });
+      const events = onEvent.mock.calls.length;
+      const checkpoints = onCheckpoint.mock.calls.length;
+      lateProgress?.({ progress: { phase: 'runtime', revision: 'd'.repeat(40), candidate: undefined, info: { status: 'ready' } } });
+      await client.dispose();
+      expect(onEvent).toHaveBeenCalledTimes(events);
+      expect(onCheckpoint).toHaveBeenCalledTimes(checkpoints);
+      expect(mocks.runProductionScenario).not.toHaveBeenCalled();
+    } finally {
+      // Also close the pre-fix failing test's deliberately held operation.
+      await client.interrupt();
+      await outcome;
+    }
   });
 
   it("aborts runtime-complete preparation and freezes an interrupted checkpoint when stopped", async () => {
