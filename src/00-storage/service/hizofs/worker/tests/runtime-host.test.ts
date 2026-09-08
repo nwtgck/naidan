@@ -581,6 +581,83 @@ describe("HizoFS worker runtime host", () => {
     await afterSnapshotClose.released;
   });
 
+  it.each(["exhaustion", "early_return", "owner_close"] as const)("releases the directory iterator snapshot on %s", async completion => {
+    const crossRealmLockPort = new InMemoryCrossRealmLockPort();
+    const releaseResources = vi.fn(async () => undefined);
+    const value = host({ crossRealmLockPort });
+    type NamespaceInodeNumber = Awaited<ReturnType<HizoFSApplicationSessionNamespace["stat"]>>["inodeNumber"];
+    const listAfterBounded = vi.fn<NonNullable<HizoFSApplicationSessionNamespace["listAfterBounded"]>>(async () => ({
+      entries: [
+        { inodeKind: "file", inodeNumber: 2n as NamespaceInodeNumber, name: "first", targetType: "inode" },
+        { inodeKind: "file", inodeNumber: 3n as NamespaceInodeNumber, name: "second", targetType: "inode" },
+      ],
+      truncated: false,
+    }));
+    const createReadSnapshotResources = vi.fn(() => ({
+      commitReference: createTestingHomeRecordReference(),
+      mutationPort: {} as HizoFSApplicationMutationPort,
+      namespace: { ...minimalApplicationResources().namespace, listAfterBounded },
+    }));
+    const session = await value.openApplicationSession({
+      captureAuthority: async () => ({ revision: 1 }),
+      createApplicationSessionResources: () => ({
+        ...minimalApplicationResources({ releaseResources }),
+        createReadSnapshotResources,
+      }),
+      recheckAuthority: async () => undefined,
+      verifyCapturedAuthority: async () => "verified",
+    });
+    const iterator = session.root.entries()[Symbol.asyncIterator]();
+    if (iterator.return === undefined) throw new Error("directory iterator must support early return");
+
+    expect(createReadSnapshotResources).not.toHaveBeenCalled();
+    await expect(iterator.next()).resolves.toMatchObject({ done: false, value: ["first", { kind: "file" }] });
+    expect(createReadSnapshotResources).toHaveBeenCalledOnce();
+    expect(listAfterBounded).toHaveBeenCalledOnce();
+    const whileIterating = await value.beginMaintenanceRootCapture();
+    expect(whileIterating.readerPinnedRoots).toHaveLength(1);
+    whileIterating.release();
+    await whileIterating.released;
+    expect((await crossRealmLockPort.queryHeldLockNames()).some(name => name.includes("/reader-pin/"))).toBe(true);
+
+    switch (completion) {
+    case "exhaustion":
+      await expect(iterator.next()).resolves.toMatchObject({ done: false, value: ["second", { kind: "file" }] });
+      await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
+      await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
+      expect(releaseResources).not.toHaveBeenCalled();
+      break;
+    case "early_return":
+      await iterator.return();
+      await iterator.return();
+      await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
+      expect(releaseResources).not.toHaveBeenCalled();
+      await expect(session.root.stat()).resolves.toMatchObject({ size: 0 });
+      break;
+    case "owner_close":
+      await session.close();
+      expect(releaseResources).toHaveBeenCalledOnce();
+      break;
+    default: completion satisfies never;
+    }
+
+    expect(listAfterBounded).toHaveBeenCalledOnce();
+    const afterIteration = await value.beginMaintenanceRootCapture();
+    expect(afterIteration.readerPinnedRoots).toEqual([]);
+    afterIteration.release();
+    await afterIteration.released;
+    expect((await crossRealmLockPort.queryHeldLockNames()).some(name => name.includes("/reader-pin/"))).toBe(false);
+    if (completion === "owner_close") {
+      await expect(iterator.next()).rejects.toThrow("closed");
+      await expect(session.root.stat()).rejects.toThrow("closed");
+      await iterator.return();
+      expect(listAfterBounded).toHaveBeenCalledOnce();
+    }
+    await session.close();
+    await session.close();
+    expect(releaseResources).toHaveBeenCalledOnce();
+  });
+
   it("keeps maintenance behind read-snapshot capture until the captured generation is pinned", async () => {
     const value = host();
     const captureStarted = Promise.withResolvers<void>();
