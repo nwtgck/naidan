@@ -49,13 +49,6 @@ export class SessionLifecycle {
     return this.stateValue;
   }
 
-  assertCapabilityOpen(): void {
-    this.assertOpen({
-      code: "capability_closed",
-      message: "session capability is closing or closed",
-    });
-  }
-
   private assertOpen({ code, message }: {
     code: SessionLifecycleErrorCode;
     message: string;

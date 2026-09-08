@@ -6,11 +6,6 @@ export type HizoFSPublicationModeApplied =
   | "immediate_publication"
   | "lazy_publication";
 
-export type HizoFSWritableDurabilityProfile =
-  | "development-unverified"
-  | "release-qualified";
-
-
 export type HizoFSLazyDurabilityPolicy = Readonly<{
   maximumAcceptedMutationsPerDirtyEpoch: number;
   maximumDirtyAgeMilliseconds: number;
