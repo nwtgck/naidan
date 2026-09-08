@@ -245,7 +245,7 @@ describe('HizoFS external boundary lint config integration', () => {
     const test = await lintText({
       code: `fetch('http://localhost');`,
       eslint,
-      filePath: 'src/00-storage/service/hizofs/tests/private-provenance.test.ts',
+      filePath: 'src/00-storage/service/hizofs/01-crypto/tests/crypto-primitives.test.ts',
     });
     const unrelated = await lintText({
       code: `fetch('/allowed-outside-hizofs');`,
@@ -262,7 +262,7 @@ describe('HizoFS external boundary lint config integration', () => {
     const test = await lintText({
       code: `import { spawn } from 'node:child_process';`,
       eslint,
-      filePath: 'src/00-storage/service/hizofs/tests/private-provenance.test.ts',
+      filePath: 'src/00-storage/service/hizofs/01-crypto/tests/crypto-primitives.test.ts',
     });
     const testingHelper = await lintText({
       code: `import { execFile } from 'node:child_process';`,
