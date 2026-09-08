@@ -15,8 +15,6 @@ The exact-anchor suite also deliberately distinguishes compatibility bounds from
 
 The frozen fixture corpus is historical input, not a snapshot that should be regenerated whenever the current writer changes. A new legal V1 representation may be added as another historical fixture; existing fixtures should not be rewritten merely to follow writer implementation changes. `fixtures/manifest.json` registers every historical fixture and its reviewed file hash so accidental fixture replacement is visible immediately.
 
-`v1-format-test-matrix.ts` is the audit ledger for this test owner. It classifies each major area as covered, blocked by the current public composition surface, still remaining, or intentionally unfrozen, and its companion test requires every evidence path to exist. The ledger is test-planning authority only: adding a row never turns an implementation detail into a V1 persisted-format contract.
-
 Current coverage includes:
 - positive historical fixtures are required to declare `real_hizofs_writer` provenance so hand-authored data cannot silently enter the compatibility corpus;
   This is a reviewed freeze-time provenance attestation, not a regeneration contract: normal tests must not recreate these fixtures with the current writer or require current writer physical bytes to remain identical.
