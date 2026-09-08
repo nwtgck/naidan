@@ -1648,7 +1648,6 @@ import { opfsEncryption__confirm_new_passphrase } from '@/strings/messages/opfsE
 import { opfsEncryption__confirm_passphrase } from '@/strings/messages/opfsEncryption__confirm_passphrase/pt-BR';
 import { opfsEncryption__copied } from '@/strings/messages/opfsEncryption__copied/pt-BR';
 import { opfsEncryption__copy } from '@/strings/messages/opfsEncryption__copy/pt-BR';
-import { opfsEncryption__copy_source } from '@/strings/messages/opfsEncryption__copy_source/pt-BR';
 import { opfsEncryption__copying_and_verifying_complete_opfs_storage } from '@/strings/messages/opfsEncryption__copying_and_verifying_complete_opfs_storage/pt-BR';
 import { opfsEncryption__could_not_read_encryption_control_state } from '@/strings/messages/opfsEncryption__could_not_read_encryption_control_state/pt-BR';
 import { opfsEncryption__decrypt_storage } from '@/strings/messages/opfsEncryption__decrypt_storage/pt-BR';
@@ -1666,7 +1665,6 @@ import { opfsEncryption__experimental_format_may_change_incompatibly } from '@/s
 import { opfsEncryption__hide_passphrase } from '@/strings/messages/opfsEncryption__hide_passphrase/pt-BR';
 import { opfsEncryption__interrupted_encryption_operation } from '@/strings/messages/opfsEncryption__interrupted_encryption_operation/pt-BR';
 import { opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase } from '@/strings/messages/opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase/pt-BR';
-import { opfsEncryption__loading_recovery_source } from '@/strings/messages/opfsEncryption__loading_recovery_source/pt-BR';
 import { opfsEncryption__new_passphrase } from '@/strings/messages/opfsEncryption__new_passphrase/pt-BR';
 import { opfsEncryption__only_passphrase_keyslot_is_replaced } from '@/strings/messages/opfsEncryption__only_passphrase_keyslot_is_replaced/pt-BR';
 import { opfsEncryption__open_raw_opfs_explorer } from '@/strings/messages/opfsEncryption__open_raw_opfs_explorer/pt-BR';
@@ -1681,13 +1679,11 @@ import { opfsEncryption__re_encrypt } from '@/strings/messages/opfsEncryption__r
 import { opfsEncryption__re_encrypt_opfs_storage } from '@/strings/messages/opfsEncryption__re_encrypt_opfs_storage/pt-BR';
 import { opfsEncryption__re_encrypt_storage } from '@/strings/messages/opfsEncryption__re_encrypt_storage/pt-BR';
 import { opfsEncryption__re_encrypt_storage_explanation } from '@/strings/messages/opfsEncryption__re_encrypt_storage_explanation/pt-BR';
-import { opfsEncryption__recovery_source } from '@/strings/messages/opfsEncryption__recovery_source/pt-BR';
 import { opfsEncryption__resolve_interrupted_opfs_decryption } from '@/strings/messages/opfsEncryption__resolve_interrupted_opfs_decryption/pt-BR';
 import { opfsEncryption__resolve_interrupted_opfs_encryption } from '@/strings/messages/opfsEncryption__resolve_interrupted_opfs_encryption/pt-BR';
 import { opfsEncryption__resolve_interrupted_opfs_reencryption } from '@/strings/messages/opfsEncryption__resolve_interrupted_opfs_reencryption/pt-BR';
 import { opfsEncryption__retry_after_recovery } from '@/strings/messages/opfsEncryption__retry_after_recovery/pt-BR';
 import { opfsEncryption__save_file } from '@/strings/messages/opfsEncryption__save_file/pt-BR';
-import { opfsEncryption__save_source } from '@/strings/messages/opfsEncryption__save_source/pt-BR';
 import { opfsEncryption__select_opfs_as_active_storage_to_enable_encryption } from '@/strings/messages/opfsEncryption__select_opfs_as_active_storage_to_enable_encryption/pt-BR';
 import { opfsEncryption__show_passphrase } from '@/strings/messages/opfsEncryption__show_passphrase/pt-BR';
 import { opfsEncryption__source_remains_until_verified } from '@/strings/messages/opfsEncryption__source_remains_until_verified/pt-BR';
@@ -3376,7 +3372,6 @@ export const catalog = {
   opfsEncryption__confirm_passphrase,
   opfsEncryption__copied,
   opfsEncryption__copy,
-  opfsEncryption__copy_source,
   opfsEncryption__copying_and_verifying_complete_opfs_storage,
   opfsEncryption__could_not_read_encryption_control_state,
   opfsEncryption__decrypt_storage,
@@ -3394,7 +3389,6 @@ export const catalog = {
   opfsEncryption__hide_passphrase,
   opfsEncryption__interrupted_encryption_operation,
   opfsEncryption__leading_or_trailing_whitespace_is_part_of_passphrase,
-  opfsEncryption__loading_recovery_source,
   opfsEncryption__new_passphrase,
   opfsEncryption__only_passphrase_keyslot_is_replaced,
   opfsEncryption__open_raw_opfs_explorer,
@@ -3409,13 +3403,11 @@ export const catalog = {
   opfsEncryption__re_encrypt_opfs_storage,
   opfsEncryption__re_encrypt_storage,
   opfsEncryption__re_encrypt_storage_explanation,
-  opfsEncryption__recovery_source,
   opfsEncryption__resolve_interrupted_opfs_decryption,
   opfsEncryption__resolve_interrupted_opfs_encryption,
   opfsEncryption__resolve_interrupted_opfs_reencryption,
   opfsEncryption__retry_after_recovery,
   opfsEncryption__save_file,
-  opfsEncryption__save_source,
   opfsEncryption__select_opfs_as_active_storage_to_enable_encryption,
   opfsEncryption__show_passphrase,
   opfsEncryption__source_remains_until_verified,
