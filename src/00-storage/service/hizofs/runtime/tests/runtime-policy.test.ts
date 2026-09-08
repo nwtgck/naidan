@@ -26,7 +26,6 @@ describe("HizoFS runtime policy", () => {
       maximumAcceptedMutationsPerDirtyEpoch: 512,
       maximumDirtyAgeMilliseconds: 2_000,
       maximumDirtyMetadataBytes: 32 * 1_024 * 1_024,
-      maximumMutationAdmissionWaiters: 128,
       maximumSyncWaiters: 128,
       maximumUnpublishedPhysicalBytes: 64 * 1_024 * 1_024,
       publicationModeRequest: "automatic",

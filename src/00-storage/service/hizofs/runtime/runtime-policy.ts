@@ -10,7 +10,6 @@ export type HizoFSLazyDurabilityPolicy = Readonly<{
   maximumAcceptedMutationsPerDirtyEpoch: number;
   maximumDirtyAgeMilliseconds: number;
   maximumDirtyMetadataBytes: number;
-  maximumMutationAdmissionWaiters: number;
   maximumSyncWaiters: number;
   maximumUnpublishedPhysicalBytes: number;
   publicationModeRequest: HizoFSPublicationModeRequest;
@@ -28,7 +27,6 @@ export const DEFAULT_HIZOFS_LAZY_DURABILITY_POLICY: HizoFSLazyDurabilityPolicy =
   maximumAcceptedMutationsPerDirtyEpoch: 512,
   maximumDirtyAgeMilliseconds: 2_000,
   maximumDirtyMetadataBytes: 32 * 1_024 * 1_024,
-  maximumMutationAdmissionWaiters: 128,
   maximumSyncWaiters: 128,
   maximumUnpublishedPhysicalBytes: 64 * 1_024 * 1_024,
   publicationModeRequest: "automatic",
@@ -112,10 +110,6 @@ export function createRuntimePolicy({
   validateLimit({
     name: "lazyDurability.maximumDirtyMetadataBytes",
     value: lazyDurability.maximumDirtyMetadataBytes,
-  });
-  validateLimit({
-    name: "lazyDurability.maximumMutationAdmissionWaiters",
-    value: lazyDurability.maximumMutationAdmissionWaiters,
   });
   validateLimit({
     name: "lazyDurability.maximumSyncWaiters",
