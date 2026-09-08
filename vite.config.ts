@@ -477,6 +477,8 @@ export default defineConfig(({ mode }) => {
         ...configDefaults.exclude,
         'src/test-tmp/**',
         'src/lint-rule-tmp/**',
+        // External raw Evidence ZIP lane: run with metadata-raw-zip-replay.config.ts and NAIDAN_REPLAY_ZIP.
+        'src/features/transformers-js/model-support-investigation/logic/fixtures/raw-metadata-replay/**',
       ],
       setupFiles: ['./src/test-setup.ts'],
     },
