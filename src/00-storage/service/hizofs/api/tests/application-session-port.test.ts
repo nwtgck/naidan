@@ -697,6 +697,24 @@ describe("runtime-bound HizoFS application session port", () => {
     await expect(writable.abort({ reason: "late" })).rejects.toMatchObject({ code: "session_closed" });
   });
 
+  it("makes prepared writable abort terminal without publishing", async () => {
+    const { mutations, port, runtimeState } = createPort();
+    const writable = await port.openWritable({ keepExistingData: true, path: ["file"] });
+
+    await writable.abort({ reason: "discard prepared mutation" });
+    await expect(writable.commit()).rejects.toMatchObject({ code: "session_closed" });
+    await expect(writable.truncate({ size: 0n })).rejects.toMatchObject({ code: "session_closed" });
+    await expect(writable.write({
+      data: captureFileWriteBytes({ bytes: Uint8Array.of(7) }),
+      position: 0n,
+    })).rejects.toMatchObject({ code: "session_closed" });
+
+    expect(mutations.calls.map(([name]) => name)).toEqual(["open-writable", "abort"]);
+    expect(runtimeState.calls).toEqual(["acquire-writer", "close-writer"]);
+    await port.close();
+    expect(runtimeState.calls).toEqual(["acquire-writer", "close-writer", "close-session"]);
+  });
+
   it("rejects previously acquired I/O handles after the operation gate closes while allowing release", async () => {
     const runtimeState = runtime();
     const mutations = mutationPort();
