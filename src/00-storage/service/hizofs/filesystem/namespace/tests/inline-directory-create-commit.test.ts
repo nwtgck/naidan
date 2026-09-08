@@ -15,7 +15,7 @@ import {
   type InodeLeafEntry,
   type InodeNumber,
 } from "@/00-storage/service/hizofs/00-format";
-import { prepareInlineDirectoryCreateCommit } from "@/00-storage/service/hizofs/filesystem/namespace/inline-directory-create-commit";
+import { prepareOrdinaryEntryCreateCommit } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-commit";
 import type { RootInodeTablePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
 import type { ImmutableBTreePage } from "@/00-storage/service/hizofs/indexes/immutable-btree-reader";
 import { describe, expect, it } from "vitest";
@@ -75,19 +75,26 @@ function fixture() {
   };
 }
 
-describe("prepareInlineDirectoryCreateCommit", () => {
+describe("prepareOrdinaryEntryCreateCommit with an inline directory", () => {
   it("prepares the canonical Inode Table root and advances the inode allocator", async () => {
     const { baseCommit, pageStore, parent } = fixture();
-    const result = await prepareInlineDirectoryCreateCommit({
+    const result = await prepareOrdinaryEntryCreateCommit({
       baseCommit,
+      directoryPageStore: {
+        readPage: async () => {
+          throw new Error("inline creation must not read Directory pages");
+        },
+        writePage: async () => {
+          throw new Error("inline creation must not write Directory pages");
+        },
+      },
+      inodeTablePageStore: pageStore,
       maximumKnownInodeNumber: parent.inodeNumber,
       mutationId: parseMutationId({ bytes: new Uint8Array(16).fill(7) }),
       operationTimestamp: createTimestampMilliseconds({ value: 1_700_000_000_000n }),
-      pageStore,
       parent,
       request: { type: "file" },
       target: {
-        destinationExists: false,
         entryName: "file",
         parentAccess: "read_write",
         parentDirectoryInodeNumber: parent.inodeNumber,

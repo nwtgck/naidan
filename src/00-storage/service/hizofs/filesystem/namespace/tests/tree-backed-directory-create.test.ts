@@ -24,7 +24,7 @@ import {
   type DirectoryPagePort,
 } from "@/00-storage/service/hizofs/filesystem/mutation/directory-page-tree";
 import type { RootInodeTablePageStore } from "@/00-storage/service/hizofs/filesystem/mutation/root-inode-table-mutation";
-import { prepareTreeBackedDirectoryCreateCommit } from "@/00-storage/service/hizofs/filesystem/namespace/tree-backed-directory-create-commit";
+import { prepareOrdinaryEntryCreateCommit } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-commit";
 import {
   prepareTreeBackedDirectoryCreateMutation,
   TreeBackedDirectoryCreateMutationError,
@@ -300,7 +300,7 @@ describe("tree-backed directory creation", () => {
 
   it("prepares a new Commit root and advances the inode allocator", async () => {
     const { baseCommit, directoryPageStore, inodePageStore, parent } = fixture();
-    const result = await prepareTreeBackedDirectoryCreateCommit({
+    const result = await prepareOrdinaryEntryCreateCommit({
       baseCommit,
       directoryPageStore,
       inodeTablePageStore: inodePageStore,
@@ -310,7 +310,6 @@ describe("tree-backed directory creation", () => {
       parent,
       request: { type: "file" },
       target: {
-        destinationExists: false,
         entryName: "file",
         parentAccess: "read_write",
         parentDirectoryInodeNumber: parent.inodeNumber,
