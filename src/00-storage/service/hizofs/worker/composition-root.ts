@@ -167,7 +167,6 @@ import {
 import { ReadOnlyNamespaceError } from "@/00-storage/service/hizofs/filesystem/read-only-namespace";
 import type {
   OrdinaryEntryCreateRequest,
-  OrdinaryEntryCreateTarget,
   OrdinaryEntryCreateTargetDescriptor,
 } from "@/00-storage/service/hizofs/filesystem/namespace/ordinary-entry-create-plan";
 import {
@@ -1287,10 +1286,6 @@ export function createAuthenticatedApplicationReadSessionResources({
   };
 }
 
-export type PublishedOrdinaryEntryCreate = PreparedOrdinaryEntryCreateCommit & Readonly<{
-  publication: PublishedPreparedMutationCommit;
-}>;
-
 function bytesEqual({ left, right }: { left: Uint8Array; right: Uint8Array }): boolean {
   return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
 }
@@ -2018,16 +2013,6 @@ function assertAuthenticatedMetadataMutationPreparationAllowed({
   assertPublicationAllowed();
 }
 
-export type PublishedExplicitBulkCommit = Readonly<{
-  commitPayload: FileSystemCommitPayload;
-  publication: PublishedPreparedMutationCommit;
-}>;
-
-type MutationCandidatePreparedObserver = ({ candidate, commitPayload }: {
-  candidate: PreparedMutationCommitCandidate;
-  commitPayload: FileSystemCommitPayload;
-}) => PreparedMutationCommitCandidate;
-
 type AuthenticatedMetadataMutationPreparationMode =
   | "build"
   | "update";
@@ -2411,121 +2396,6 @@ async function prepareAuthenticatedOrdinaryEntryRemoval({
       target,
     }),
   });
-}
-
-
-/**
- * Joins one already validated private explicit-bulk candidate to authenticated
- * metadata writes and one converged Commit publication. Target freshness and
- * owner lifecycle remain caller obligations; this boundary owns only the
- * secret-bearing page and authority composition.
- */
-export async function publishAuthenticatedExplicitBulkCommit({
-  assertPublicationAllowed,
-  authority,
-  baseCommit,
-  baseSuperblock,
-  candidate,
-  directoryImportLimits,
-  indexDiagnostics,
-  mutationId,
-  onCandidatePrepared,
-}: Readonly<{
-  assertPublicationAllowed: () => void;
-  authority: AuthenticatedMetadataMutationAuthority;
-  baseCommit: FileSystemCommitPayload;
-  baseSuperblock: OpenedSuperblockCopies;
-  candidate: SealedExplicitBulkCandidate;
-  directoryImportLimits: StreamingDirectoryImportLimits;
-  indexDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
-  mutationId: MutationId;
-  onCandidatePrepared: MutationCandidatePreparedObserver | undefined;
-}>): Promise<PublishedExplicitBulkCommit> {
-  try {
-    const { commitPayload } = await prepareAuthenticatedExplicitBulkCommit({
-      assertPublicationAllowed,
-      authority,
-      baseCommit,
-      baseSuperblock,
-      candidate,
-      directoryImportLimits,
-      indexDiagnostics,
-      mutationId,
-    });
-    const publication = await publishPreparedMutationCommit({
-      assertPublicationAllowed,
-      base: baseSuperblock,
-      commitPayload,
-      onCandidatePrepared: onCandidatePrepared === undefined
-        ? undefined
-        : ({ candidate: preparedCandidate }) => onCandidatePrepared({
-          candidate: preparedCandidate,
-          commitPayload,
-        }),
-      publicationPort: authority,
-    });
-    return { commitPayload, publication };
-  } catch (cause: unknown) {
-    authority.abandon();
-    throw cause;
-  }
-}
-
-export async function publishAuthenticatedOrdinaryEntryCreate({
-  assertPublicationAllowed,
-  authority,
-  indexDiagnostics,
-  baseCommit,
-  baseSuperblock,
-  maximumKnownInodeNumber,
-  mutationId,
-  onCandidatePrepared,
-  operationTimestamp,
-  parent,
-  request,
-  target,
-}: Readonly<{
-  assertPublicationAllowed: () => void;
-  authority: AuthenticatedMetadataMutationAuthority;
-  indexDiagnostics: ImmutableBTreeDiagnosticsPort | undefined;
-  baseCommit: FileSystemCommitPayload;
-  baseSuperblock: OpenedSuperblockCopies;
-  maximumKnownInodeNumber: InodeNumber | undefined;
-  mutationId: MutationId;
-  onCandidatePrepared: MutationCandidatePreparedObserver | undefined;
-  operationTimestamp: TimestampMilliseconds;
-  parent: DirectoryInodeEntry;
-  request: OrdinaryEntryCreateRequest;
-  target: OrdinaryEntryCreateTarget;
-}>): Promise<PublishedOrdinaryEntryCreate> {
-  try {
-    const prepared = await prepareAuthenticatedOrdinaryEntryCreate({
-      assertPublicationAllowed,
-      authority,
-      baseCommit,
-      baseSuperblock,
-      indexDiagnostics,
-      maximumKnownInodeNumber,
-      mutationId,
-      operationTimestamp,
-      parent,
-      request,
-      target,
-    });
-    const publication = await publishPreparedMutationCommit({
-      assertPublicationAllowed,
-      base: baseSuperblock,
-      commitPayload: prepared.commitPayload,
-      onCandidatePrepared: onCandidatePrepared === undefined
-        ? undefined
-        : ({ candidate }) => onCandidatePrepared({ candidate, commitPayload: prepared.commitPayload }),
-      publicationPort: authority,
-    });
-    return { ...prepared, publication };
-  } catch (cause: unknown) {
-    authority.abandon();
-    throw cause;
-  }
 }
 
 type AuthenticatedWritableApplicationGeneration =
