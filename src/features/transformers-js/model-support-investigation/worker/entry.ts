@@ -31,7 +31,9 @@ import { parseInvestigationJson } from "@/features/transformers-js/model-support
 import { runRuntimeIntegrityPreflight } from "@/features/transformers-js/model-support-investigation/logic/run-runtime-integrity-preflight";
 import { runPartialModelSupportInvestigation } from "@/features/transformers-js/model-support-investigation/logic/run-partial-model-support-investigation";
 import { toPlanningWorkerRun } from "@/features/transformers-js/model-support-investigation/logic/planning-worker-run";
-import { inspectHuggingFaceRepository } from "@/features/transformers-js/model-support-investigation/logic/inspect-hugging-face-repository";
+import { classifyReplayMetadataAccess, collectReplayMetadata, REPLAY_METADATA_TARGET_BYTES, type InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
+import { readReplayMetadataLocal } from '@/features/transformers-js/model-support-investigation/logic/read-replay-metadata-local';
+import { inspectHuggingFaceRepository, normalizeHuggingFaceModelId } from "@/features/transformers-js/model-support-investigation/logic/inspect-hugging-face-repository";
 import { inspectModelCache } from "@/features/transformers-js/model-support-investigation/logic/inspect-model-cache";
 import {
   MODEL_CACHE_PROVENANCE_MAXIMUM_FILE_COUNT,
@@ -385,8 +387,9 @@ function reconstructProductionTextStreamerChunks({
 const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback must be a top-level remote argument to remain transferable.
   async runPartialInvestigation(request, onEvent, onRunCheckpoint) {
-    const { modelId, externalNetworkPolicy, executionPlan, ...unhandledRequest } = request;
+    const { modelId, externalNetworkPolicy, executionPlan, replayMetadataBudgetBytes, ...unhandledRequest } = request;
     unhandledRequest satisfies Record<PropertyKey, never>;
+    let replayMetadata: InvestigationReplayMetadataSidecar[] | undefined;
     const investigationFetch = createModelSupportInvestigationNetworkFetch({
       runtimeFetch,
       applicationOrigin: self.location.origin,
@@ -522,6 +525,53 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           })),
         },
       }),
+      collectReplayMetadata: async ({ run, onSummary }) => {
+        const target = run.runtimeTarget;
+        const repository = run.repository;
+        const revision = (() => {
+          if (target === undefined) return undefined;
+          switch (target.revisionIdentity) {
+          case 'exact-resolved-revision':
+          case 'local-immutable-revision':
+            return target.evidenceRevision;
+          case 'legacy-main-unverified':
+            return undefined;
+          default: {
+            const _ex: never = target.revisionIdentity;
+            return _ex;
+          }
+          }
+        })();
+        const normalizedModelId = target?.normalizedModelId ?? normalizeHuggingFaceModelId({ modelId });
+        const modelAccess = classifyReplayMetadataAccess({ metadata: repository?.metadata });
+        await collectReplayMetadata({
+          modelId: normalizedModelId,
+          revision,
+          files: repository?.files,
+          budgetBytes: replayMetadataBudgetBytes ?? REPLAY_METADATA_TARGET_BYTES,
+          fileTimeoutMs: 15_000,
+          modelAccess,
+          localRead: async ({ path, revision: exactRevision }) => readReplayMetadataLocal({
+            storageRoot: await navigator.storage.getDirectory(), modelId: normalizedModelId, revision: exactRevision, path,
+          }),
+          remoteFetch: (() => {
+            switch (externalNetworkPolicy) {
+            case 'allow':
+              return investigationFetch;
+            case 'deny':
+              return undefined;
+            default: {
+              const _ex: never = externalNetworkPolicy;
+              return _ex;
+            }
+            }
+          })(),
+          onSnapshot: ({ snapshot }) => {
+            replayMetadata = snapshot.sidecars;
+            onSummary({ summary: snapshot.summary });
+          },
+        });
+      },
       inspectCache: async () => inspectModelCache({
         modelId,
         storageRoot: await navigator.storage.getDirectory(),
@@ -600,7 +650,7 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         }
       },
       onEvent,
-      onRunUpdate: ({ run: updatedRun }) => onRunCheckpoint({ run: toPlanningWorkerRun({ run: updatedRun }) }),
+      onRunUpdate: ({ run: updatedRun }) => onRunCheckpoint({ run: toPlanningWorkerRun({ run: updatedRun }), replayMetadata }),
       now: () => new Date().toISOString(),
     });
     return toPlanningWorkerRun({ run });

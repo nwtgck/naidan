@@ -32,7 +32,7 @@ export function createModelSupportInvestigationBatchEvidenceWorkerRequest({
   const cloned = structuredClone({
     schemaVersion: 1 as const,
     batchId,
-    items,
+    items: items.map(({ replayMetadata: _replayMetadata, ...item }) => item),
   } satisfies ModelSupportInvestigationBatchEvidenceWorkerRequestPayload);
   return new Blob([JSON.stringify(cloned)], { type: "application/json" });
 }

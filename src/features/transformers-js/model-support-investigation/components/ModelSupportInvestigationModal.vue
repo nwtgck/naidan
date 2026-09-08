@@ -43,6 +43,22 @@ import {
 import { runInvestigationTargetsSequentially, type ModelSupportInvestigationTargetExecution } from "@/features/transformers-js/model-support-investigation/logic/run-investigation-targets-sequentially";
 import { evaluateEvidenceReadiness } from "@/features/transformers-js/model-support-investigation/logic/evaluate-evidence-readiness";
 import { assessSupportBoundaries } from "@/features/transformers-js/model-support-investigation/logic/assess-support-boundaries";
+import {
+  DOWNLOAD_INVESTIGATION_COLLECTION_BUDGET_MS,
+  DOWNLOAD_INVESTIGATION_METADATA_BUDGET_BYTES,
+  DOWNLOAD_INVESTIGATION_TARGET_METADATA_BYTES,
+  isDownloadOnlyInvestigation,
+  InvestigationTargetBudgetError,
+  targetInvestigationBudgetMs,
+  settledReplayMetadataBytes,
+  withInvestigationTargetBudget,
+} from "@/features/transformers-js/model-support-investigation/logic/investigation-batch-budget";
+import {
+  recallInvestigationSession,
+  rememberInvestigationSession,
+} from "@/features/transformers-js/model-support-investigation/logic/investigation-session";
+import { createInitialInvestigationCheckpoint, interruptInvestigationCheckpoint } from "@/features/transformers-js/model-support-investigation/logic/investigation-recovery";
+import type { InvestigationReplayMetadataSidecar } from "@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata";
 import type { TransformersJsProductionInvestigationActiveCandidateLoadAttempt } from "@/features/transformers-js/types";
 
 const props = defineProps<{
@@ -93,6 +109,9 @@ const run = shallowRef<ModelSupportInvestigationRun | undefined>(undefined);
 const recovery = ref<ModelSupportInvestigationRecovery | undefined>(undefined);
 const recoveryByTarget = new Map<string, ModelSupportInvestigationRecovery | undefined>();
 const runByTarget = new Map<string, ModelSupportInvestigationRun>();
+const replayMetadataByTarget = new Map<string, InvestigationReplayMetadataSidecar[]>();
+let componentDisposed = false;
+let batchConfiguration: ModelSupportInvestigationConfiguration | undefined;
 const started = ref(false);
 const running = ref(false);
 const stopping = ref(false);
@@ -865,11 +884,14 @@ function applyRunPresentation({
   if (progress !== undefined) latestProgress.value = progress;
 }
 
-async function runSingleTarget({ target, configuration }: {
+async function runSingleTarget({ target, configuration, timeoutMs, replayMetadataBudgetBytes }: {
   target: string,
   configuration: ModelSupportInvestigationConfiguration,
+  timeoutMs: number | undefined,
+  replayMetadataBudgetBytes: number,
 }): Promise<ModelSupportInvestigationRun> {
   const client = createModelSupportInvestigationWorkerClient();
+  let acceptingCallbacks = true;
   activeClient = client;
   selectedTarget.value = target;
   run.value = undefined;
@@ -878,25 +900,57 @@ async function runSingleTarget({ target, configuration }: {
   currentOperation.value = lazyStrings.ModelSupportInvestigationModal__checking_same_origin_runtime_assets();
   latestProgress.value = undefined;
   try {
-    const completedRun = await client.runPartialInvestigation({
-      modelId: target,
-      configuration: structuredClone(configuration),
-      onEvent: ({ event }) => updateStep({ event }),
-      onCheckpoint: ({ checkpoint }) => {
-        applyRunPresentation({
-          target,
-          sourceRun: checkpoint.run,
-          sourceRecovery: checkpoint.recovery,
-        });
+    const completedRun = await withInvestigationTargetBudget({
+      timeoutMs,
+      stop: () => {
+        // Budget expiry is not a user stop. Retain the last checkpoint and its
+        // real cause below, without accepting the client's user-stop checkpoint.
+        acceptingCallbacks = false;
+        void interruptClientBestEffort({ client });
+        void disposeClientBestEffort({ client });
       },
+      start: () => client.runPartialInvestigation({
+        modelId: target,
+        configuration: structuredClone(configuration),
+        replayMetadataBudgetBytes,
+        onEvent: ({ event }) => {
+          if (acceptingCallbacks && !componentDisposed) updateStep({ event });
+        },
+        onCheckpoint: ({ checkpoint }) => {
+          if (!acceptingCallbacks || componentDisposed) return;
+          if (checkpoint.replayMetadata !== undefined) replayMetadataByTarget.set(target, checkpoint.replayMetadata);
+          applyRunPresentation({
+            target,
+            sourceRun: checkpoint.run,
+            sourceRecovery: checkpoint.recovery,
+          });
+        },
+      }),
     });
+    if (!acceptingCallbacks || componentDisposed) return completedRun;
     applyRunPresentation({
       target,
       sourceRun: completedRun,
       sourceRecovery: recoveryByTarget.get(target),
     });
     return completedRun;
+  } catch (error) {
+    if (error instanceof InvestigationTargetBudgetError && !componentDisposed) {
+      const now = () => new Date().toISOString();
+      const initial = createInitialInvestigationCheckpoint({ modelId: target, runId: crypto.randomUUID(), now });
+      const interrupted = interruptInvestigationCheckpoint({
+        checkpoint: {
+          run: runByTarget.get(target) ?? initial.run,
+          recovery: recoveryByTarget.get(target) ?? initial.recovery,
+        },
+        error,
+        now,
+      });
+      applyRunPresentation({ target, sourceRun: interrupted.run, sourceRecovery: interrupted.recovery });
+    }
+    throw error;
   } finally {
+    acceptingCallbacks = false;
     if (activeClient === client) activeClient = undefined;
     await disposeClientBestEffort({ client });
     if (skipRequestedTarget === target) skippingCurrentTarget.value = false;
@@ -1048,6 +1102,13 @@ async function startInvestigation(): Promise<void> {
 
   const targets = [...committedTargets.value];
   const configuration = structuredClone(toRaw(investigationConfiguration.value));
+  rememberCurrentSession();
+  batchConfiguration = configuration;
+  const collectionDeadline = isDownloadOnlyInvestigation({ configuration })
+    ? performance.now() + DOWNLOAD_INVESTIGATION_COLLECTION_BUDGET_MS
+    : undefined;
+  let startedTargetCount = 0;
+  let remainingMetadataBytes = DOWNLOAD_INVESTIGATION_METADATA_BUDGET_BYTES;
 
   started.value = true;
   batchRunId.value = crypto.randomUUID();
@@ -1059,6 +1120,7 @@ async function startInvestigation(): Promise<void> {
   targetExecutions.value = [];
   recoveryByTarget.clear();
   runByTarget.clear();
+  replayMetadataByTarget.clear();
   run.value = undefined;
   recovery.value = undefined;
   steps.value = initialInvestigationSteps();
@@ -1069,7 +1131,29 @@ async function startInvestigation(): Promise<void> {
   try {
     const executions = await runInvestigationTargetsSequentially({
       targets,
-      runTarget: async ({ target }) => await runSingleTarget({ target, configuration }),
+      runTarget: async ({ target }) => {
+        const remainingTargets = targets.length - startedTargetCount++;
+        const timeoutMs = collectionDeadline === undefined ? undefined : targetInvestigationBudgetMs({
+          deadlineMs: collectionDeadline,
+          nowMs: performance.now(),
+          remainingTargets,
+        });
+        const replayMetadataBudgetBytes = Math.min(DOWNLOAD_INVESTIGATION_TARGET_METADATA_BYTES, remainingMetadataBytes);
+        // Reserve before starting. On a lost Worker/checkpoint, keep the full
+        // reservation charged rather than inventing a zero-byte transfer.
+        remainingMetadataBytes -= replayMetadataBudgetBytes;
+        const completed = await runSingleTarget({
+          target,
+          configuration,
+          timeoutMs,
+          replayMetadataBudgetBytes,
+        });
+        const actualBytes = settledReplayMetadataBytes({ summary: completed.replayMetadata, recovery: recoveryByTarget.get(target) });
+        if (actualBytes !== undefined) {
+          remainingMetadataBytes = Math.max(0, remainingMetadataBytes + replayMetadataBudgetBytes - actualBytes);
+        }
+        return completed;
+      },
       onUpdate: ({ executions: nextExecutions }) => {
         targetExecutions.value = [...nextExecutions];
       },
@@ -1095,6 +1179,74 @@ async function startInvestigation(): Promise<void> {
     skippingCurrentTarget.value = false;
     skipRequestedTarget = undefined;
     await disposeActiveClient();
+    if (!componentDisposed) rememberCurrentSession();
+  }
+}
+
+function rememberCurrentSession(): void {
+  if (batchRunId.value === undefined || targetExecutions.value.length === 0) return;
+  const executions = snapshotEvidenceState({ value: targetExecutions.value });
+  const rememberedRuns = new Map(runByTarget);
+  const rememberedRecoveries = new Map(recoveryByTarget);
+  // Closing the modal terminates its Workers. A retained checkpoint must never
+  // look like a still-running or successful result when the modal is reopened.
+  for (const execution of executions) {
+    switch (execution.status) {
+    case 'running': break;
+    case 'pending':
+    case 'passed':
+    case 'failed':
+    case 'skipped':
+    case 'interrupted': continue;
+    default: {
+      const _ex: never = execution.status;
+      throw new Error(`Unhandled retained execution status: ${_ex}`);
+    }
+    }
+    const now = () => new Date().toISOString();
+    const initial = createInitialInvestigationCheckpoint({ modelId: execution.target, runId: crypto.randomUUID(), now });
+    const interrupted = interruptInvestigationCheckpoint({
+      checkpoint: {
+        run: rememberedRuns.get(execution.target) ?? initial.run,
+        recovery: rememberedRecoveries.get(execution.target) ?? initial.recovery,
+      },
+      error: new Error('Investigation stopped when its modal was closed'),
+      now,
+    });
+    execution.status = 'interrupted';
+    execution.run = interrupted.run;
+    execution.error = interrupted.run.error;
+    rememberedRuns.set(execution.target, interrupted.run);
+    rememberedRecoveries.set(execution.target, interrupted.recovery);
+  }
+  rememberInvestigationSession({ snapshot: {
+    batchId: batchRunId.value,
+    targets: targetExecutions.value.map(execution => execution.target),
+    configuration: structuredClone(batchConfiguration ?? toRaw(investigationConfiguration.value)),
+    executions,
+    runs: [...rememberedRuns.entries()],
+    recoveries: [...rememberedRecoveries.entries()].map(([target, value]) => [target, value === undefined ? undefined : toRaw(value)]),
+    replayMetadata: [...replayMetadataByTarget.entries()],
+    selectedTarget: selectedTarget.value,
+  } });
+}
+
+function restorePreviousSession(): void {
+  const snapshot = recallInvestigationSession({ seededTarget: normalizedSeededTarget });
+  if (snapshot === undefined) return;
+  batchRunId.value = snapshot.batchId;
+  committedTargets.value = snapshot.targets;
+  investigationConfiguration.value = snapshot.configuration;
+  batchConfiguration = snapshot.configuration;
+  started.value = true;
+  targetExecutions.value = snapshot.executions;
+  for (const [target, value] of snapshot.runs) runByTarget.set(target, value);
+  for (const [target, value] of snapshot.recoveries) recoveryByTarget.set(target, value);
+  for (const [target, value] of snapshot.replayMetadata) replayMetadataByTarget.set(target, value);
+  const target = normalizedSeededTarget ?? snapshot.selectedTarget ?? snapshot.runs.at(-1)?.[0];
+  const previousRun = target === undefined ? undefined : runByTarget.get(target);
+  if (target !== undefined && previousRun !== undefined) {
+    applyRunPresentation({ target, sourceRun: previousRun, sourceRecovery: recoveryByTarget.get(target) });
   }
 }
 
@@ -1140,48 +1292,58 @@ async function downloadPartialEvidence(): Promise<void> {
   if (sourceRun === undefined && executions.length === 0) return;
   evidenceExporting.value = true;
   try {
+    // Freeze run identity and matching bytes together before the first await.
+    // A later checkpoint or next model must not change an in-flight export.
+    const sourceSnapshot = sourceRun === undefined ? undefined : {
+      run: snapshotEvidenceState({ value: sourceRun }),
+      recovery: recovery.value === undefined ? undefined : snapshotEvidenceState({ value: recovery.value }),
+      replayMetadata: replayMetadataByTarget.get(selectedTarget.value ?? sourceRun.modelId)?.slice(),
+    };
+    const batchId = batchRunId.value ?? crypto.randomUUID();
+    const capturedItems: ModelSupportInvestigationBatchEvidenceItem[] = executions.map(execution => {
+      const capturedRun = execution.run ?? runByTarget.get(execution.target);
+      const capturedRecovery = recoveryByTarget.get(execution.target);
+      return {
+        target: execution.target,
+        status: execution.status,
+        run: capturedRun === undefined ? undefined : snapshotEvidenceState({ value: capturedRun }),
+        recovery: capturedRecovery === undefined ? undefined : snapshotEvidenceState({ value: capturedRecovery }),
+        error: execution.error,
+        replayMetadata: replayMetadataByTarget.get(execution.target)?.slice(),
+      };
+    });
     const passedDetail = await evidenceExportDetail({ status: "passed" });
     const evidenceClient = createModelSupportInvestigationEvidenceWorkerClient();
     const { blob, fileName } = await (async () => {
       try {
-        if (sourceRun !== undefined && executions.length <= 1) {
-          const runSnapshot = snapshotEvidenceState({ value: sourceRun });
-          const recoverySnapshot = recovery.value === undefined
-            ? undefined
-            : snapshotEvidenceState({ value: recovery.value });
+        if (sourceSnapshot !== undefined && executions.length <= 1) {
           const exportedRun = withEvidenceExportStep({
-            sourceRun: runSnapshot,
+            sourceRun: sourceSnapshot.run,
             status: "passed",
             detail: passedDetail,
           });
           return await evidenceClient.createPartialEvidence({
             run: exportedRun,
-            recovery: recoverySnapshot,
+            recovery: sourceSnapshot.recovery,
+            replayMetadata: sourceSnapshot.replayMetadata,
           });
         }
 
-        const items: ModelSupportInvestigationBatchEvidenceItem[] = executions.map(execution => {
-          const capturedRun = execution.run ?? runByTarget.get(execution.target);
-          const packagedRun = capturedRun === undefined
+        const items: ModelSupportInvestigationBatchEvidenceItem[] = capturedItems.map(item => {
+          const packagedRun = item.run === undefined
             ? undefined
             : withEvidenceExportStep({
-              sourceRun: snapshotEvidenceState({ value: capturedRun }),
+              sourceRun: item.run,
               status: "passed",
               detail: passedDetail,
             });
-          const capturedRecovery = recoveryByTarget.get(execution.target);
           return {
-            target: execution.target,
-            status: execution.status,
+            ...item,
             run: packagedRun,
-            recovery: capturedRecovery === undefined
-              ? undefined
-              : snapshotEvidenceState({ value: capturedRecovery }),
-            error: execution.error,
           };
         });
         return await evidenceClient.createBatchEvidence({
-          batchId: batchRunId.value ?? crypto.randomUUID(),
+          batchId,
           items,
         });
       } finally {
@@ -1217,6 +1379,7 @@ async function downloadPartialEvidence(): Promise<void> {
 }
 
 onMounted(async () => {
+  restorePreviousSession();
   progressClock = setInterval(() => {
     progressClockMs.value = Date.now();
   }, 1000);
@@ -1225,6 +1388,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  componentDisposed = true;
+  rememberCurrentSession();
   if (progressClock !== undefined) clearInterval(progressClock);
   interruptionRequested = true;
   skipRequestedTarget = undefined;

@@ -1,8 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Blob as NodeBlob } from 'node:buffer';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { toToolCallId } from '@/01-models/ids';
 import ModelSupportInvestigationModal from './ModelSupportInvestigationModal.vue';
+import { TEST_ONLY as sessionTestOnly } from '@/features/transformers-js/model-support-investigation/logic/investigation-session';
+import { createInitialInvestigationCheckpoint } from '@/features/transformers-js/model-support-investigation/logic/investigation-recovery';
 import type { ModelSupportInvestigationRun, ModelSupportInvestigationWorkerClient } from '@/features/transformers-js/model-support-investigation/types';
 
 const fixtureToolCallId = toToolCallId({ raw: 'call_fixture' });
@@ -451,6 +454,7 @@ describe('ModelSupportInvestigationModal', () => {
   });
 
   beforeEach(() => {
+    sessionTestOnly.clear();
     vi.clearAllMocks();
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -486,6 +490,179 @@ describe('ModelSupportInvestigationModal', () => {
       value: vi.fn(),
     });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('reopens completed results and exports retained metadata without rerunning the investigation', async () => {
+    // jsdom Blobs are not supported by Node's native structuredClone.
+    vi.stubGlobal('Blob', NodeBlob);
+    const sidecar = { path: 'tokenizer.json', blob: new Blob(['{"version":"1.0"}']) };
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId: completedRun.modelId, runId: completedRun.runId, now: () => completedRun.startedAt });
+      onCheckpoint?.({ checkpoint: { ...checkpoint, run: completedRun, replayMetadata: [sidecar] } });
+      return completedRun;
+    });
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'hf.co/org/model' } });
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'hf.co/org/model' } });
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    const exported = evidenceMocks.createPartialEvidence.mock.calls[0]?.[0];
+    expect(exported.run.runId).toBe(completedRun.runId);
+    expect(exported.replayMetadata[0].path).toBe('tokenizer.json');
+    expect(await exported.replayMetadata[0].blob.text()).toBe('{"version":"1.0"}');
+    reopened.unmount();
+  });
+
+  it('selects the requested model when reopening a retained multi-model batch', async () => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({
+      ...structuredClone(completedRun), modelId, currentOperation: `${modelId} complete`,
+    }));
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await first.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second
+`);
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-current-operation"]').text()).toBe('org/first complete');
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    reopened.unmount();
+  });
+
+  it('freezes checkpoint identity and metadata together before asynchronous export preparation', async () => {
+    vi.stubGlobal('Blob', NodeBlob);
+    let publish: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]['onCheckpoint'] | undefined;
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'before-export', now: () => completedRun.startedAt });
+    workerMocks.runPartialInvestigation.mockImplementation(({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      publish = onCheckpoint;
+      publish?.({ checkpoint: { ...checkpoint, replayMetadata: [{ path: 'config.json', blob: new Blob(['{"version":1}']) }] } });
+      return new Promise(() => undefined);
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const exporting = wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    publish?.({ checkpoint: {
+      ...checkpoint,
+      run: { ...checkpoint.run, runId: 'after-export' },
+      recovery: { ...checkpoint.recovery, checkpointSequence: 99 },
+      replayMetadata: [{ path: 'config.json', blob: new Blob(['{"version":2}']) }],
+    } });
+    await exporting;
+    await flushPromises();
+    const exported = evidenceMocks.createPartialEvidence.mock.calls[0]?.[0];
+    expect(exported.run.runId).toBe('before-export');
+    expect(exported.recovery.checkpointSequence).toBe(0);
+    expect(await exported.replayMetadata[0].blob.text()).toBe('{"version":1}');
+    wrapper.unmount();
+  });
+
+  it('retains an interrupted checkpoint on teardown without restarting it when reopened', async () => {
+    workerMocks.runPartialInvestigation.mockImplementation(({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      onCheckpoint?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'pending-run', now: () => completedRun.startedAt }) });
+      return new Promise(() => undefined);
+    });
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({
+      run: { status: 'failed', runId: 'pending-run' },
+      recovery: { status: 'interrupted', interruption: { error: { message: 'Investigation stopped when its modal was closed' } } },
+    });
+    reopened.unmount();
+  });
+
+  it('times out a hung download investigation, continues the batch, and rejects late checkpoints', async () => {
+    vi.useFakeTimers();
+    let publishLate: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]['onCheckpoint'] | undefined;
+    workerMocks.runPartialInvestigation.mockImplementation(({ modelId, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      if (modelId === 'org/first') {
+        publishLate = onCheckpoint;
+        onCheckpoint?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId, runId: 'hung-run', now: () => completedRun.startedAt }) });
+        return new Promise(() => undefined);
+      }
+      return Promise.resolve({ ...structuredClone(completedRun), modelId, runId: 'second-run' });
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/first
+org/second
+`);
+    await wrapper.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(120_000);
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    publishLate?.({ checkpoint: {
+      ...createInitialInvestigationCheckpoint({ modelId: 'org/first', runId: 'late-run', now: () => completedRun.startedAt }),
+      run: { ...structuredClone(completedRun), modelId: 'org/first', runId: 'late-run' },
+    } });
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createBatchEvidence.mock.calls[0]?.[0]).toMatchObject({ items: [
+      { target: 'org/first', status: 'failed', run: { runId: 'hung-run', status: 'failed' }, recovery: { status: 'interrupted', interruption: { error: { name: 'InvestigationTargetBudgetError' } } } },
+      { target: 'org/second', status: 'passed', run: { runId: 'second-run' } },
+    ] });
+    wrapper.unmount();
+  });
+
+  it.each([
+    { outcome: 'passed', timeout: false, interrupted: false, expectedMiB: [48, 48, 48, 48, 48] },
+    { outcome: 'failed', timeout: false, interrupted: false, expectedMiB: [48, 48, 48, 48, 48] },
+    { outcome: 'failed', timeout: true, interrupted: false, expectedMiB: [48, 48, 48, 16, 0] },
+    { outcome: 'failed', timeout: false, interrupted: true, expectedMiB: [48, 48, 48, 16, 0] },
+  ] as const)('settles metadata bytes for $outcome with file timeout=$timeout and interruption=$interrupted', async ({ outcome, timeout, interrupted, expectedMiB }) => {
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint, replayMetadataBudgetBytes }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: `run-${modelId}`, now: () => completedRun.startedAt });
+      const received = Math.min(100, replayMetadataBudgetBytes ?? 0);
+      const result: ModelSupportInvestigationRun = {
+        ...structuredClone(completedRun), modelId, status: outcome,
+        replayMetadata: {
+          schemaVersion: 1, modelId, revision: 'a'.repeat(40), status: 'partial',
+          receivedBytes: received, retainedBytes: 0, budgetBytes: replayMetadataBudgetBytes ?? 0,
+          files: [{ path: 'config.json', source: 'remote-exact', byteLength: received, status: timeout ? 'timeout' : 'invalid-content' }],
+        },
+      };
+      onCheckpoint?.({ checkpoint: {
+        run: result,
+        recovery: { ...checkpoint.recovery, status: interrupted ? 'interrupted' : 'completed' },
+      } });
+      if (interrupted) throw new Error('Worker ended before all reads settled');
+      return result;
+    });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: '' } });
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue(`\
+org/one
+org/two
+org/three
+org/four
+org/five
+`);
+    await wrapper.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation.mock.calls.map(call => call[0].replayMetadataBudgetBytes)).toEqual(expectedMiB.map(value => value * 1024 * 1024));
+    wrapper.unmount();
   });
 
   it('prefills the selected model without starting an investigation on mount', async () => {
@@ -918,6 +1095,7 @@ org/second
     expect(wrapper.get('[data-testid="model-support-stage-running-results"]').attributes('data-state')).toBe('active');
     expect(workerMocks.runPartialInvestigation).toHaveBeenCalledWith({
       modelId: 'org/model',
+      replayMetadataBudgetBytes: 48 * 1024 * 1024,
       configuration: {
         externalNetworkPolicy: 'allow',
         scope: {

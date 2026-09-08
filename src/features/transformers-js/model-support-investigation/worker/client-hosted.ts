@@ -318,12 +318,19 @@ export function createModelSupportInvestigationWorkerClient({
   };
 
   const releaseWorkerHandle = async ({ handle }: { handle: InvestigationWorkerHandle }): Promise<void> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await releaseWorkerRemote({ remote: handle.remote });
+      await Promise.race([
+        releaseWorkerRemote({ remote: handle.remote }),
+        new Promise<void>(resolve => {
+          timer = setTimeout(resolve, 250);
+        }),
+      ]);
     } catch {
       // The operation has already settled. A Comlink release failure is cleanup-only and
       // must not replace the investigation result; terminating the Worker is authoritative.
     } finally {
+      if (timer !== undefined) clearTimeout(timer);
       terminateWorkerHandle({ handle });
     }
   };
@@ -347,18 +354,25 @@ export function createModelSupportInvestigationWorkerClient({
   };
 
   const releaseProductionWorkerHandle = async ({ handle }: { handle: ProductionWorkerHandle }): Promise<void> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await releaseWorkerRemote({ remote: handle.remote });
+      await Promise.race([
+        releaseWorkerRemote({ remote: handle.remote }),
+        new Promise<void>(resolve => {
+          timer = setTimeout(resolve, 250);
+        }),
+      ]);
     } catch {
       // Production Evidence has already settled. Cleanup transport failure must not turn a
       // successful Production Lane observation into a failed investigation.
     } finally {
+      if (timer !== undefined) clearTimeout(timer);
       terminateProductionWorkerHandle({ handle });
     }
   };
 
   return {
-    async runPartialInvestigation({ modelId, configuration, onEvent, onCheckpoint }) {
+    async runPartialInvestigation({ modelId, configuration, onEvent, onCheckpoint, replayMetadataBudgetBytes }) {
       const now = (): string => new Date().toISOString();
       const userInterruptionError = new ModelSupportInvestigationUserInterruptedError();
       const interruption = Promise.withResolvers<never>();
@@ -382,10 +396,11 @@ export function createModelSupportInvestigationWorkerClient({
       });
       checkpoint = { ...checkpoint, run: withExecutionPolicy({ run: checkpoint.run }) };
       let userInterruptionCheckpointPublished = false;
+      let retainedReplayMetadata: ModelSupportInvestigationCheckpoint['replayMetadata'];
       let flushActiveProductionInterruptionEvidence: (() => void) | undefined;
       const publishCheckpoint = ({ force = false }: { force?: boolean } = {}): void => {
         if (userInterruptionRequested && !force) return;
-        onCheckpoint({ checkpoint: structuredClone(checkpoint) });
+        onCheckpoint({ checkpoint: { ...structuredClone(checkpoint), ...(retainedReplayMetadata === undefined ? {} : { replayMetadata: retainedReplayMetadata }) } });
       };
       const publishEvent = ({ event }: Parameters<typeof onEvent>[0]): void => {
         if (userInterruptionRequested) return;
@@ -418,19 +433,21 @@ export function createModelSupportInvestigationWorkerClient({
               modelId,
               externalNetworkPolicy: configuration.externalNetworkPolicy,
               executionPlan,
+              replayMetadataBudgetBytes,
             },
             workerProxy({ value: ({ event }) => {
               if (!planningAcceptingCallbacks) return;
               planningStage = event.stepId;
               publishEvent({ event });
             } }),
-            workerProxy({ value: ({ run }) => {
+            workerProxy({ value: ({ run, replayMetadata }) => {
               if (!planningAcceptingCallbacks) return;
               checkpoint = replaceInvestigationCheckpointRun({
                 checkpoint,
                 run: withExecutionPolicy({ run: fromPlanningWorkerRun({ run }) }),
                 now,
               });
+              if (replayMetadata !== undefined) retainedReplayMetadata = replayMetadata;
               publishCheckpoint();
             } }),
           );

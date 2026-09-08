@@ -15,6 +15,7 @@ import type {
 import { serializeInvestigationError } from '@/features/transformers-js/model-support-investigation/logic/serialize-investigation-error';
 import type { ModelSupportInvestigationExecutionPlan, ModelSupportInvestigationExternalNetworkPolicy } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 import { runtimeTargetFromLocalCache, runtimeTargetFromRepository, selectLocalCacheRevision } from '@/features/transformers-js/model-support-investigation/logic/runtime-target';
+import type { InvestigationReplayMetadataSummary } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
 
 
 function recordStepError({
@@ -88,6 +89,7 @@ export async function runPartialModelSupportInvestigation({
   executionPlan,
   inspectPersistenceRoundTrip,
   inspectRepository,
+  collectReplayMetadata,
   collectDownloadEvidence,
   inspectCache,
   verifyCacheProvenance,
@@ -104,6 +106,10 @@ export async function runPartialModelSupportInvestigation({
   executionPlan: ModelSupportInvestigationExecutionPlan,
   inspectPersistenceRoundTrip: () => Promise<ModelSupportInvestigationPersistenceRoundTrip>,
   inspectRepository: () => Promise<ModelSupportInvestigationRepository>,
+  collectReplayMetadata?: ({ run, onSummary }: {
+    run: ModelSupportInvestigationRun,
+    onSummary: ({ summary }: { summary: InvestigationReplayMetadataSummary }) => void,
+  }) => Promise<void>,
   collectDownloadEvidence: ({ repository, runId }: {
     repository: ModelSupportInvestigationRepository,
     runId: string,
@@ -223,6 +229,12 @@ export async function runPartialModelSupportInvestigation({
         status: 'passed',
         detail: `Resolved ${run.repository.resolvedRevision} with ${run.repository.fileCount} repository files`,
       });
+      if (!executionPlan.modelLoad && collectReplayMetadata !== undefined) {
+        await collectReplayMetadata({ run, onSummary: ({ summary }) => {
+          run.replayMetadata = summary;
+          onRunUpdate({ run: structuredClone(run) });
+        } });
+      }
     } catch (error) {
       const detail = recordStepError({ run, stepId: 'repository-information', error }).message;
       errors.push(detail);
@@ -309,6 +321,14 @@ export async function runPartialModelSupportInvestigation({
     }
   }
   onRunUpdate({ run: structuredClone(run) });
+
+  // Replay collection also records an unverified/missing offline identity without remote fallback.
+  if (executionPlan.repositoryDownload && !executionPlan.modelLoad && run.replayMetadata === undefined && collectReplayMetadata !== undefined) {
+    await collectReplayMetadata({ run, onSummary: ({ summary }) => {
+      run.replayMetadata = summary;
+      onRunUpdate({ run: structuredClone(run) });
+    } });
+  }
 
   if (run.runtimeTarget === undefined) {
     const blockedDetail = (() => {

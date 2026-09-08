@@ -1,4 +1,5 @@
 import type { ModelSupportInvestigationConfiguration, ModelSupportInvestigationExecutionPlan } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
+import type { InvestigationReplayMetadataSummary, InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
 import type {
   DownloadVerificationEvidenceInput,
   DownloadVerificationProbeEvidenceInput,
@@ -857,6 +858,7 @@ export interface ModelSupportInvestigationCacheInventory {
 }
 
 export interface ModelSupportInvestigationRun {
+  replayMetadata?: InvestigationReplayMetadataSummary,
   schemaVersion: 1,
   runId: string,
   modelId: string,
@@ -1026,6 +1028,7 @@ export type ModelSupportInvestigationBatchTargetStatus =
   | "interrupted";
 
 export interface ModelSupportInvestigationBatchEvidenceItem {
+  replayMetadata?: InvestigationReplayMetadataSidecar[],
   target: string,
   status: ModelSupportInvestigationBatchTargetStatus,
   run: ModelSupportInvestigationRun | undefined,
@@ -1034,11 +1037,13 @@ export interface ModelSupportInvestigationBatchEvidenceItem {
 }
 
 export interface ModelSupportInvestigationCheckpoint {
+  replayMetadata?: InvestigationReplayMetadataSidecar[],
   run: ModelSupportInvestigationRun,
   recovery: ModelSupportInvestigationRecovery,
 }
 
 export interface ModelSupportInvestigationPlanningRequest {
+  replayMetadataBudgetBytes?: number,
   modelId: string,
   externalNetworkPolicy: ModelSupportInvestigationConfiguration['externalNetworkPolicy'],
   executionPlan: ModelSupportInvestigationExecutionPlan,
@@ -1049,7 +1054,7 @@ export interface IModelSupportInvestigationWorker {
   runPartialInvestigation(
     request: ModelSupportInvestigationPlanningRequest,
     onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
-    onRunCheckpoint: WorkerProxy<({ run }: { run: ModelSupportInvestigationPlanningWorkerRun }) => void>,
+    onRunCheckpoint: WorkerProxy<({ run, replayMetadata }: { run: ModelSupportInvestigationPlanningWorkerRun, replayMetadata?: InvestigationReplayMetadataSidecar[] }) => void>,
   ): Promise<ModelSupportInvestigationPlanningWorkerRun>,
   inspectDownloadedTemplateBehavior({ runtimeTarget }: {
     runtimeTarget: ModelSupportInvestigationRuntimeTarget,
@@ -1068,7 +1073,8 @@ export interface IModelSupportInvestigationWorker {
 }
 
 export interface ModelSupportInvestigationWorkerClient {
-  runPartialInvestigation({ modelId, configuration, onEvent, onCheckpoint }: {
+  runPartialInvestigation({ modelId, configuration, onEvent, onCheckpoint, replayMetadataBudgetBytes }: {
+    replayMetadataBudgetBytes?: number,
     modelId: string,
     configuration: ModelSupportInvestigationConfiguration,
     onEvent: ({ event }: { event: ModelSupportInvestigationEvent }) => void,

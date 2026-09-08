@@ -4,6 +4,7 @@ import type {
   ModelSupportInvestigationRun,
 } from '@/features/transformers-js/model-support-investigation/types';
 import { runPartialModelSupportInvestigation } from './run-partial-model-support-investigation';
+import { collectReplayMetadata } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
 
 function cacheProvenance({ resolvedRevision = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }: {
   resolvedRevision?: string,
@@ -93,6 +94,39 @@ function downloadEvidence({ repository, runId = 'run-1' }: {
 
 
 describe('runPartialModelSupportInvestigation', () => {
+
+  it.each([false, true])('connects replay collection only to the short scope and preserves it after later planning failure (modelLoad=%s)', async modelLoad => {
+    const repository = {
+      requestedModelId: 'org/model', normalizedModelId: 'org/model', requestedRevision: 'main' as const,
+      resolvedRevision: 'a'.repeat(40), apiUrl: 'https://huggingface.co/api/models/org/model', responseUrl: 'https://huggingface.co/api/models/org/model',
+      fileCount: 1, files: [{ path: 'config.json', size: 2, blobId: undefined, lfsOid: undefined }],
+      pipelineTag: undefined, libraryName: undefined, metadata: {},
+    };
+    const replay = vi.fn<NonNullable<Parameters<typeof runPartialModelSupportInvestigation>[0]['collectReplayMetadata']>>(async ({ run, onSummary }) => {
+      await collectReplayMetadata({
+        modelId: repository.normalizedModelId, revision: run.repository!.resolvedRevision, files: repository.files,
+        budgetBytes: 100, fileTimeoutMs: 1000, modelAccess: 'public-request', localRead: async () => undefined, remoteFetch: async () => new Response('{}'),
+        onSnapshot: ({ snapshot }) => onSummary({ summary: snapshot.summary }),
+      });
+    });
+    const checkpoints: ModelSupportInvestigationRun[] = [];
+    const failure = vi.fn(async () => {
+      throw new Error('Deliberate later planning failure');
+    });
+    const result = await runPartialModelSupportInvestigation({
+      externalNetworkPolicy: 'allow', executionPlan: { repositoryDownload: true, modelLoad, generation: false, continuity: false, capabilityProbes: false },
+      runRuntimePreflight: async () => runtimeRun(), inspectRepository: async () => repository,
+      inspectPersistenceRoundTrip: failure, collectDownloadEvidence: failure, inspectCache: failure, verifyCacheProvenance: failure,
+      inspectDeclarations: failure, inspectTemplateBehavior: failure, inspectModelFilePlan: failure,
+      collectReplayMetadata: replay, onEvent: vi.fn(), onRunUpdate: ({ run }) => checkpoints.push(run), now: () => '2026-09-08T00:00:00.000Z',
+    });
+    expect(result.status).toBe('failed');
+    expect(replay).toHaveBeenCalledTimes(modelLoad ? 0 : 1);
+    if (!modelLoad) {
+      expect(result.replayMetadata?.retainedBytes).toBe(2);
+      expect(checkpoints.some(run => run.replayMetadata?.status === 'collecting')).toBe(true);
+    }
+  });
 
   it('collects resolved declarations and public Auto class evidence after repository and cache inspection', async () => {
     const repository = {

@@ -1,4 +1,6 @@
 import JSZip from "jszip";
+import { addReplayMetadataToZip } from '@/features/transformers-js/model-support-investigation/logic/replay-metadata-export';
+import { REPLAY_METADATA_BATCH_BYTES, type InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
 import { z } from "zod";
 import type {
   ModelSupportInvestigationBatchEvidenceItem,
@@ -297,11 +299,13 @@ function toolProtocolProbeErrorRecords({ run }: { run: ModelSupportInvestigation
   });
 }
 
-async function createPartialModelSupportEvidenceZip({ run, recovery }: {
+async function createPartialModelSupportEvidenceZip({ run, recovery, replayMetadata }: {
   run: ModelSupportInvestigationRun,
   recovery: ModelSupportInvestigationRecovery | undefined,
+  replayMetadata?: InvestigationReplayMetadataSidecar[],
 }): Promise<{ zip: JSZip, fileName: string }> {
   const zip = new JSZip();
+  await addReplayMetadataToZip({ zip, summary: run.replayMetadata, sidecars: replayMetadata });
   const readiness = evaluateEvidenceReadiness({ run });
   const supportBoundaries = assessSupportBoundaries({ run });
   const loadingSummary = run.activeLoadAttempt !== undefined
@@ -679,11 +683,12 @@ This is a partial evidence package. ${loadingSummary} ${productionSummary} Repos
   };
 }
 
-export async function createPartialModelSupportEvidence({ run, recovery }: {
+export async function createPartialModelSupportEvidence({ run, recovery, replayMetadata }: {
   run: ModelSupportInvestigationRun,
   recovery: ModelSupportInvestigationRecovery | undefined,
+  replayMetadata?: InvestigationReplayMetadataSidecar[],
 }): Promise<{ blob: Blob, fileName: string }> {
-  const { zip, fileName } = await createPartialModelSupportEvidenceZip({ run, recovery });
+  const { zip, fileName } = await createPartialModelSupportEvidenceZip({ run, recovery, replayMetadata });
   const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
   await verifyGeneratedEvidenceArchive({ blob });
   return { blob, fileName };
@@ -757,6 +762,8 @@ export async function createBatchModelSupportEvidence({
 }): Promise<{ blob: Blob, fileName: string }> {
   if (batchId.length === 0) throw new Error("Model Support Investigation batch Evidence requires a batch ID");
   if (items.length === 0) throw new Error("Model Support Investigation batch Evidence requires at least one target");
+  const replayBytes = items.reduce((total, item) => total + (item.replayMetadata ?? []).reduce((sum, sidecar) => sum + sidecar.blob.size, 0), 0);
+  if (replayBytes > REPLAY_METADATA_BATCH_BYTES) throw new Error('Replay metadata batch export exceeds its byte budget');
 
   const zip = new JSZip();
   const generatedAt = new Date().toISOString();
@@ -775,6 +782,7 @@ export async function createBatchModelSupportEvidence({
       const { zip: modelZip } = await createPartialModelSupportEvidenceZip({
         run: item.run,
         recovery: item.recovery,
+        replayMetadata: item.replayMetadata,
       });
       await addZipFiles({ source: modelZip, destination: zip, prefix: directory });
     }

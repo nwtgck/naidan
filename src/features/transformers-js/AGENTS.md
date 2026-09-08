@@ -74,6 +74,19 @@ inside `from_pretrained()`.
 - A raw Transformers.js progress status of `download` is not proof of network
   transfer. Determine the source from cache and fetch observations.
 
+## Investigation knowledge
+
+- Read [DOWNLOAD_LOAD_INVESTIGATION.md](./DOWNLOAD_LOAD_INVESTIGATION.md) before
+  changing Download planning, candidate selection, cache completeness, progress,
+  or Production Load orchestration.
+- That document records time- and version-specific investigation evidence, not
+  an authoritative specification. Do not copy its conclusions into an
+  implementation without checking the active Transformers.js bundle, current
+  Naidan route, relevant tests, and current model evidence.
+- Preserve the distinction in that document between verified facts,
+  observations, hypotheses, and proposed designs. A hypothesis must not become
+  a Production invariant merely because it was useful in an earlier incident.
+
 ## Required regression coverage
 
 - `.test.ts` files under this directory must not access the external internet;

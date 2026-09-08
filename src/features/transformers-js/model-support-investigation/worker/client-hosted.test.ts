@@ -599,6 +599,57 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     expect(mocks.workerInstances.every(instance => instance.terminate.mock.calls.length === 1)).toBe(true);
   });
 
+  it('keeps replay sidecars through completed checkpoints and bounds a hung planning release', async () => {
+    vi.useFakeTimers();
+    try {
+      const blob = new Blob(['{}']);
+      const sidecars = [{ path: 'config.json', blob }];
+      const planning = planningRun();
+      const planningRemote = remote({ runPartialInvestigation: vi.fn(async (request, _onEvent, onRunCheckpoint) => {
+        expect(request.replayMetadataBudgetBytes).toBe(123);
+        onRunCheckpoint({ run: planning, replayMetadata: sidecars });
+        return planning;
+      }) });
+      planningRemote[mocks.releaseProxy] = vi.fn(() => new Promise<void>(() => undefined));
+      mocks.wrap.mockReturnValueOnce(planningRemote);
+      const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
+      const client = createModelSupportInvestigationWorkerClient();
+      const onCheckpoint = vi.fn();
+      const pending = client.runPartialInvestigation({ modelId: 'org/model', configuration: configurationForPreset({ preset: 'download-focused' }), replayMetadataBudgetBytes: 123, onEvent: vi.fn(), onCheckpoint });
+      await vi.advanceTimersByTimeAsync(251);
+      await pending;
+      const finalCheckpoint = onCheckpoint.mock.calls.at(-1)![0].checkpoint;
+      expect(finalCheckpoint.recovery.status).toBe('completed');
+      expect(finalCheckpoint.replayMetadata).toEqual(sidecars);
+      expect(finalCheckpoint.run).not.toHaveProperty('blob');
+      expect(mocks.workerInstances[0]!.terminate).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps completed replay sidecars after interrupt and rejects late Worker checkpoints', async () => {
+    const sidecars = [{ path: 'config.json', blob: new Blob(['{}']) }];
+    let lateCheckpoint: Parameters<IModelSupportInvestigationWorker['runPartialInvestigation']>[2] | undefined;
+    const planningRemote = remote({ runPartialInvestigation: vi.fn(async (_request, _event, onRunCheckpoint) => {
+      lateCheckpoint = onRunCheckpoint;
+      onRunCheckpoint({ run: planningRun(), replayMetadata: sidecars });
+      return await new Promise<ModelSupportInvestigationPlanningWorkerRun>(() => undefined);
+    }) });
+    mocks.wrap.mockReturnValueOnce(planningRemote);
+    const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
+    const client = createModelSupportInvestigationWorkerClient();
+    const onCheckpoint = vi.fn();
+    const pending = client.runPartialInvestigation({ modelId: 'org/model', configuration: configurationForPreset({ preset: 'download-focused' }), onEvent: vi.fn(), onCheckpoint });
+    const rejected = expect(pending).rejects.toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
+    await client.interrupt();
+    await rejected;
+    const count = onCheckpoint.mock.calls.length;
+    lateCheckpoint?.({ run: planningRun(), replayMetadata: [] });
+    expect(onCheckpoint).toHaveBeenCalledTimes(count);
+    expect(onCheckpoint.mock.calls.at(-1)![0].checkpoint.replayMetadata).toEqual(sidecars);
+  });
+
   it("runs a complete local cache through Reference and Production with external network denied and no runtime download preparation", async () => {
     const planning = localPlanningRun({ complete: true });
     const planningRemote = remote({

@@ -87,7 +87,7 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
   }
 
   return {
-    async createPartialEvidence({ run, recovery }) {
+    async createPartialEvidence({ run, recovery, replayMetadata }) {
       if (disposed || workerTerminated) {
         throw new Error("Model Support Investigation Evidence Worker client is disposed");
       }
@@ -95,6 +95,7 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
       return await runExportOperation({
         operation: remote.createPartialEvidence({
           request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }),
+          replayMetadata,
         }),
       });
     },
@@ -106,6 +107,7 @@ export function createModelSupportInvestigationEvidenceWorkerClient({
       return await runExportOperation({
         operation: remote.createBatchEvidence({
           request: createModelSupportInvestigationBatchEvidenceWorkerRequest({ batchId, items }),
+          replayMetadata: items.map(item => item.replayMetadata),
         }),
       });
     },

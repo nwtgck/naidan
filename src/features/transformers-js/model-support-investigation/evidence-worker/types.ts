@@ -1,3 +1,4 @@
+import type { InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
 import type {
   ModelSupportInvestigationBatchEvidenceItem,
   ModelSupportInvestigationRecovery,
@@ -14,11 +15,13 @@ export interface ModelSupportInvestigationEvidenceArchive {
 }
 
 export interface IModelSupportInvestigationEvidenceWorker {
-  createPartialEvidence({ request }: {
+  createPartialEvidence({ request, replayMetadata }: {
     request: Blob,
+    replayMetadata?: InvestigationReplayMetadataSidecar[],
   }): Promise<ModelSupportInvestigationEvidenceArchive>,
-  createBatchEvidence({ request }: {
+  createBatchEvidence({ request, replayMetadata }: {
     request: Blob,
+    replayMetadata?: Array<InvestigationReplayMetadataSidecar[] | undefined>,
   }): Promise<ModelSupportInvestigationEvidenceArchive>,
   createDownloadVerificationEvidence({ request }: {
     request: Blob,
@@ -26,9 +29,10 @@ export interface IModelSupportInvestigationEvidenceWorker {
 }
 
 export interface ModelSupportInvestigationEvidenceWorkerClient {
-  createPartialEvidence({ run, recovery }: {
+  createPartialEvidence({ run, recovery, replayMetadata }: {
     run: ModelSupportInvestigationRun,
     recovery: ModelSupportInvestigationRecovery | undefined,
+    replayMetadata?: InvestigationReplayMetadataSidecar[],
   }): Promise<ModelSupportInvestigationEvidenceArchive>,
   createBatchEvidence({ batchId, items }: {
     batchId: string,
