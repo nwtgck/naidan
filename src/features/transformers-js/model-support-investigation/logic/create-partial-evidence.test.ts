@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { createInitialInvestigationCheckpoint } from './investigation-recovery';
 import { describe, expect, it } from "vitest";
 import type {
   ModelSupportInvestigationEvidencePackageAssessment,
@@ -44,6 +45,42 @@ function runtimeAssetIdentity(): ModelSupportInvestigationRuntimeAssetIdentity {
 }
 
 describe("createPartialModelSupportEvidence", () => {
+  it('exports a failed preparation stage separately from successful HTTP responses', async () => {
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'preparation-failure', now: () => '2026-09-09T00:00:00.000Z' });
+    const run: ModelSupportInvestigationRun = { ...checkpoint.run, freshMetadata: {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
+      status: 'failed', maximumBytes: 1024, receivedBytes: 2,
+      preparationStage: 'configuration', failureCategory: 'syntax-error',
+      requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'full', httpStatus: 200, status: 'complete', receivedBytes: 2 }],
+    } };
+    const { blob } = await createPartialModelSupportEvidence({ run, recovery: checkpoint.recovery });
+    const archive = await JSZip.loadAsync(await blob.arrayBuffer());
+    expect(JSON.parse(await archive.file('download-lane/fresh-metadata.json')!.async('string'))).toEqual(run.freshMetadata);
+    const summary = await archive.file('SUMMARY.md')!.async('string');
+    expect(summary).toContain('Fresh metadata preparation: failed');
+    expect(summary).toContain('Fresh metadata preparation stage: configuration');
+    expect(summary).toContain('Fresh metadata failure category: syntax-error');
+  });
+
+  it('exports fresh HTTP preparation separately without certifying full Download or Load', async () => {
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'fresh-metadata-export', now: () => '2026-09-09T00:00:00.000Z' });
+    const run: ModelSupportInvestigationRun = { ...checkpoint.run, freshMetadata: {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
+      status: 'prepared', maximumBytes: 1024, receivedBytes: 1,
+      preparation: { processor: 'tokenizer', resourcePlansByCandidate: { 'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] } } },
+      requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'size-probe', httpStatus: 206, contentRange: 'bytes 0-0/100', status: 'cancelled', receivedBytes: 1 }],
+    } };
+    const { blob } = await createPartialModelSupportEvidence({ run, recovery: checkpoint.recovery });
+    const archive = await JSZip.loadAsync(await blob.arrayBuffer());
+    const preparation = archive.file('download-lane/fresh-metadata.json');
+    expect(preparation).not.toBeNull();
+    expect(JSON.parse(await preparation!.async('string'))).toEqual(run.freshMetadata);
+    const summary = await archive.file('SUMMARY.md')!.async('string');
+    expect(summary).toContain('Fresh metadata preparation: prepared');
+    expect(summary).toContain('does not certify a full model download or successful Load');
+    expect(archive.file('production-lane/observation.json')).toBeNull();
+  });
+
   it("exports factual partial evidence and preserves not-run stages", async () => {
     const run: ModelSupportInvestigationRun = {
       schemaVersion: 1,

@@ -1,11 +1,10 @@
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import JSZip from 'jszip';
 import { z } from 'zod';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDownloadedModelReadOnlyCache } from '@/features/transformers-js/runtime/downloaded-model-cache';
 import { createDownloadedModelWorkerFetch } from '@/features/transformers-js/runtime/offline-worker-fetch';
 import { selectTransformersJsProductionRuntimeArtifactLoader } from '@/features/transformers-js/production-routing';
+import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 import type { OpfsModelCacheMatchObservation } from '@/features/transformers-js/runtime/opfs-model-cache';
 import { collectReplayMetadata, replayMetadataSha256, replayMetadataSummarySchema, type InvestigationReplayMetadataSnapshot } from './collect-replay-metadata';
 import { createPartialModelSupportEvidence, createBatchModelSupportEvidence } from './create-partial-evidence';
@@ -98,6 +97,7 @@ interface Runtime {
 }
 
 async function runtimeFromArchive({ archive }: { archive: Awaited<ReturnType<typeof restore>> }) {
+  const artifact = await getProductionTransformersArtifact();
   const forbiddenFetch = vi.fn<typeof fetch>(async () => {
     throw new Error('Internet access forbidden in runtime replay');
   });
@@ -138,9 +138,9 @@ async function runtimeFromArchive({ archive }: { archive: Awaited<ReturnType<typ
     },
   } as unknown as FileSystemDirectoryHandle);
   vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', storage: { getDirectory: async () => directory({ prefix: '' }) } });
-  const url = pathToFileURL(resolve(process.cwd(), 'node_modules/@huggingface/transformers/dist/transformers.web.js'));
+  const url = new URL(artifact.moduleUrl);
   url.searchParams.set('metadata-replay', crypto.randomUUID());
-  const runtime = await import(/* @vite-ignore */ url.href) as Runtime;
+  const runtime = await importProductionTransformersArtifact({ moduleUrl: url.href }) as Runtime;
   const observations: OpfsModelCacheMatchObservation[] = [];
   Object.assign(runtime.env, {
     allowLocalModels: true, allowRemoteModels: false, useBrowserCache: false,

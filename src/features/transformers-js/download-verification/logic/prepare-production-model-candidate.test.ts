@@ -21,6 +21,7 @@ vi.mock('@/features/transformers-js/download-verification/download-worker/client
 const MODEL_ID = 'org/model';
 const REVISION = '0123456789abcdef0123456789abcdef01234567';
 const CANDIDATE: TransformersJsProductionInvestigationCandidate = { device: 'webgpu', dtype: 'q4f16' };
+const REQUIRED_MODEL_PATHS = ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'];
 
 function observed(): DownloadVerificationModelArtifactRequestObservation {
   return {
@@ -88,7 +89,23 @@ beforeEach(() => {
 });
 
 describe('prepareProductionModelCandidate', () => {
-  it('prefetches only the exact URLs emitted by the actual Transformers.js loader', async () => {
+  it('refuses to turn an observation into a complete plan when no selector plan was supplied', async () => {
+    await expect(prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE }))
+      .resolves.toMatchObject({ status: 'failed', error: { name: 'MissingProductionResourcePlan' } });
+    expect(observeProductionModelArtifactCandidateRequests).not.toHaveBeenCalled();
+    expect(createTransformersJsDownloadWorkerClient).not.toHaveBeenCalled();
+  });
+
+  it('stops before transfer when the real loader asks for a resource outside the completed plan', async () => {
+    const observation = observed();
+    observation.requests.push({ path: 'onnx/unplanned_q4f16.onnx', url: `https://huggingface.co/${MODEL_ID}/resolve/${REVISION}/onnx/unplanned_q4f16.onnx` });
+    vi.mocked(observeProductionModelArtifactCandidateRequests).mockResolvedValue(observation);
+    await expect(prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS }))
+      .resolves.toMatchObject({ status: 'failed', error: { name: 'ProductionResourcePlanMismatch' } });
+    expect(createTransformersJsDownloadWorkerClient).not.toHaveBeenCalled();
+  });
+
+  it('prefetches only the exact plan URLs after the loader observation agrees', async () => {
     const dispose = vi.fn(async () => {});
     const prefetchUrls = vi.fn(async ({ urls }: { urls: string[] }) => result({
       files: urls.map(url => successfulFile({ path: new URL(url).pathname.split(`/resolve/${REVISION}/`)[1]! })),
@@ -102,6 +119,7 @@ describe('prepareProductionModelCandidate', () => {
       modelId: MODEL_ID,
       revision: REVISION,
       candidate: CANDIDATE,
+      requiredModelPaths: REQUIRED_MODEL_PATHS,
     })).resolves.toMatchObject({
       status: 'ready',
       prefetch: { requestedCount: 2, downloadedCount: 2, failedCount: 0, complete: true },
@@ -114,7 +132,7 @@ describe('prepareProductionModelCandidate', () => {
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 
-  it('adds repository-confirmed staged model files that held-fetch observation cannot reach yet', async () => {
+  it('transfers the completed selector plan even when observation exposes only a prefix', async () => {
     const dispose = vi.fn(async () => {});
     const prefetchUrls = vi.fn(async ({ urls }: { urls: string[] }) => result({
       files: urls.map(url => successfulFile({ path: new URL(url).pathname.split(`/resolve/${REVISION}/`)[1]! })),
@@ -163,7 +181,7 @@ describe('prepareProductionModelCandidate', () => {
       dispose,
     } as unknown as ReturnType<typeof createTransformersJsDownloadWorkerClient>);
 
-    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE });
+    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS });
 
     expect(preparation.status).toBe('unavailable');
     if (preparation.status === 'unavailable') {
@@ -190,7 +208,7 @@ describe('prepareProductionModelCandidate', () => {
       dispose,
     } as unknown as ReturnType<typeof createTransformersJsDownloadWorkerClient>);
 
-    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE });
+    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS });
 
     expect(preparation).toMatchObject({
       status: 'failed',
@@ -218,7 +236,7 @@ describe('prepareProductionModelCandidate', () => {
       }],
     });
 
-    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE });
+    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS });
 
     expect(preparation).toMatchObject({
       status: 'failed',
@@ -237,7 +255,7 @@ describe('prepareProductionModelCandidate', () => {
       error: { name: 'ObserverError', message: 'could not observe requests' },
     });
 
-    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE });
+    const preparation = await prepareProductionModelCandidate({ modelId: MODEL_ID, revision: REVISION, candidate: CANDIDATE, requiredModelPaths: REQUIRED_MODEL_PATHS });
 
     expect(preparation).toEqual({
       status: 'failed',

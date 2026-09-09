@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load = (): string => "Download経路のメタデータ準備を確認します。モデル全体のダウンロードやロードの成功を示すものではありません。既存キャッシュの検証結果とは別です。";

@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import * as Comlink from 'comlink';
 import { isProxy, reactive } from 'vue';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { getProductionTransformersArtifact, importProductionTransformersArtifact } from './runtime/fixtures/production-transformers-artifact';
+import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from './runtime/fixtures/production-runtime-startup-fixture';
 
 interface ActualTransformersWebModule {
   AutoModelForCausalLM: {
@@ -12,23 +12,36 @@ interface ActualTransformersWebModule {
 }
 
 async function loadActualTransformersWebModule(): Promise<ActualTransformersWebModule> {
-  const moduleUrl = pathToFileURL(resolve(
-    process.cwd(),
-    'node_modules/@huggingface/transformers/dist/transformers.web.js',
-  )).href;
-  return await import(/* @vite-ignore */ moduleUrl) as unknown as ActualTransformersWebModule;
+  const artifact = await getProductionTransformersArtifact();
+  const moduleUrl = new URL(artifact.moduleUrl);
+  moduleUrl.searchParams.set('service-support', crypto.randomUUID());
+  return await importProductionTransformersArtifact({ moduleUrl: moduleUrl.href }) as ActualTransformersWebModule;
 }
 
 // Mock Worker class
-class MockWorker {
-  terminate = vi.fn();
-  postMessage = vi.fn();
-  addEventListener = vi.fn();
-  removeEventListener = vi.fn();
-  constructor() {}
+const workers: MockWorker[] = [];
+class MockWorker extends EventTarget {
+  private active = true;
+  readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
+  terminate = vi.fn(() => {
+    this.active = false;
+  });
+  postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
+  constructor(url: URL) {
+    super();
+    workers.push(this);
+    // Startup is asynchronous: let the real session install its listeners.
+    queueMicrotask(() => {
+      if (this.active && url.pathname.endsWith('/worker/bootstrap.ts')) this.startup.start();
+    });
+  }
 }
 
 vi.stubGlobal('Worker', MockWorker);
+
+afterEach(() => {
+  for (const worker of workers.splice(0)) worker.dispatchEvent(new Event('error'));
+});
 
 // Mock Comlink
 vi.mock('comlink', () => {
@@ -100,6 +113,7 @@ describe('transformersJsService', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
 
     // Default navigator mock
     vi.stubGlobal('navigator', {

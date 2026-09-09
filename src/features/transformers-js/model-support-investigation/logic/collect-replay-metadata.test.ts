@@ -104,6 +104,22 @@ describe('bounded replay metadata collection', () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
+  it('rejects a partial resource labelled HTTP 200 before retaining raw replay bytes', async () => {
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes);
+        controller.close();
+      },
+      cancel,
+    }), { status: 200, headers: { 'Content-Length': String(bytes.byteLength), 'Content-Range': `bytes 0-${bytes.byteLength - 1}/100` } });
+    const result = await collectReplayMetadata(options({ remoteFetch: async () => response }));
+    expect(result.summary.files[0]).toMatchObject({ status: 'http-failure', httpStatus: 200 });
+    expect(result.sidecars).toEqual([]);
+    expect(result.summary.receivedBytes).toBe(0);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it('does not fetch unknown/weight paths or pretend not-listed is a runtime optional decision', async () => {
     const remoteFetch = vi.fn<typeof fetch>();
     const result = await collectReplayMetadata({ ...options({ remoteFetch }), files: [{ path: 'onnx/model.onnx', size: 2 }] });

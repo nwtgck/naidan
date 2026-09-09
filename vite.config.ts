@@ -27,6 +27,7 @@ import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
 import { createZipPackages } from './build/zip-packages';
 import { copyStandalonePackagesToHosted } from './build/hosted-standalone-packages';
 import { createHostedTransformersRuntimeAssetsPlugin } from './build/transformers-runtime-assets';
+import { createTransformersJsFixesViteConfig } from './build/transformers-js-fixes/plugin';
 import { UI_LOCALES } from './src/01-models/ui-locale';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
@@ -222,6 +223,7 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
 export default defineConfig(({ mode }) => {
   const isStandalone = mode === 'standalone';
   const isHosted = mode === 'hosted';
+  const transformersJsFixes = createTransformersJsFixesViteConfig({ projectRoot: __dirname, mode: isStandalone ? 'standalone' : 'browser' });
   const tailwindDebugOutputDirectory = isStandalone || isHosted
     ? path.resolve(__dirname, `dist/debug-tailwind-${mode}`)
     : undefined;
@@ -299,7 +301,9 @@ export default defineConfig(({ mode }) => {
         },
       ],
     },
+    ...transformersJsFixes,
     plugins: [
+      ...transformersJsFixes.plugins,
       createInitialThemeHtmlPlugin(),
       createBoundaryStringsPlugin(),
       VueRouter({
@@ -477,8 +481,6 @@ export default defineConfig(({ mode }) => {
         ...configDefaults.exclude,
         'src/test-tmp/**',
         'src/lint-rule-tmp/**',
-        // External raw Evidence ZIP lane: run with metadata-raw-zip-replay.config.ts and NAIDAN_REPLAY_ZIP.
-        'src/features/transformers-js/model-support-investigation/logic/fixtures/raw-metadata-replay/**',
       ],
       setupFiles: ['./src/test-setup.ts'],
     },

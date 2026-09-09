@@ -106,11 +106,57 @@ describe('inspectDownloadVerificationCachedRevisions', () => {
       status: 'partial',
       incompleteFileCount: 1,
       weightFileCount: 1,
+      committedWeightFileCount: 0,
     }));
   });
 });
 
 describe('planDownloadVerificationCachedRevisionLoadCandidates', () => {
+  it('keeps a partial exact revision eligible for candidate checking when another weight is committed', async () => {
+    const current = '4'.repeat(40);
+    const cached = revisionDirectory();
+    cached.entries['interrupted_q4f16.onnx'] = file({ size: 20 });
+    const inventory = await inspectDownloadVerificationCachedRevisions({
+      modelId: 'org/repo',
+      storageRoot: storageRoot({ revisions: { [current]: cached } }),
+    });
+
+    expect(inventory.revisions[0]).toMatchObject({
+      status: 'partial', weightFileCount: 2, committedWeightFileCount: 1,
+    });
+    expect(planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision: current })).toEqual([
+      { revision: current, loaderRevisionOption: current, source: 'current-resolved-revision' },
+    ]);
+  });
+
+  it('keeps the same partial immutable revision discoverable during cold offline Load', async () => {
+    const current = '5'.repeat(40);
+    const cached = revisionDirectory();
+    cached.entries['interrupted_q4f16.onnx'] = file({ size: 20 });
+    const inventory = await inspectDownloadVerificationCachedRevisions({
+      modelId: 'org/repo',
+      storageRoot: storageRoot({ revisions: { [current]: cached } }),
+    });
+
+    expect(planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision: undefined })).toEqual([
+      { revision: current, loaderRevisionOption: current, source: 'offline-immutable-fallback' },
+    ]);
+  });
+
+  it('does not make zero-byte weights or orphan markers eligible for candidate checking', async () => {
+    const zero = '6'.repeat(40);
+    const orphan = '7'.repeat(40);
+    const inventory = await inspectDownloadVerificationCachedRevisions({
+      modelId: 'org/repo',
+      storageRoot: storageRoot({ revisions: {
+        [zero]: revisionDirectory({ weightSize: 0 }),
+        [orphan]: directory({ '.model_q4.onnx.complete': file() }),
+      } }),
+    });
+
+    expect(planDownloadVerificationCachedRevisionLoadCandidates({ inventory, resolvedRevision: undefined })).toEqual([]);
+  });
+
   it('uses the exact current immutable revision first and legacy main second when current SHA is known', async () => {
     const current = 'c'.repeat(40);
     const stale = 'd'.repeat(40);

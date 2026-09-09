@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
 import { createModelArtifactRequestBarrier } from '@/features/transformers-js/download-verification/model-artifact-request-worker/request-barrier';
+import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 
 type Options = {
   config: Record<string, unknown>;
@@ -11,7 +10,7 @@ type Options = {
   device: 'webgpu';
   dtype: 'q4f16' | 'q4';
   local_files_only: true;
-  progress_callback?: () => void;
+  progress_callback?: (info: { status: string; file?: string }) => void;
 };
 interface WebModule {
   env: {
@@ -30,6 +29,7 @@ interface WebModule {
   AutoModelForImageTextToText: WebModule['AutoModelForCausalLM'];
   ModelRegistry: {
     get_model_files(id: string, options: Options): Promise<string[]>;
+    get_pipeline_files(task: string, id: string, options: Options): Promise<string[]>;
     get_file_metadata(id: string, path: string, options: { revision: string }): Promise<{ exists: boolean; fromCache: boolean }>;
   };
 }
@@ -56,15 +56,15 @@ function configFromEvidence({ name }: { name: string }): Record<string, unknown>
 }
 
 async function harness({ config, progress }: { config: Record<string, unknown>; progress: 'enabled' | 'disabled' }) {
+  const artifact = await getProductionTransformersArtifact();
   const forbiddenFetch = vi.fn<typeof fetch>(async () => {
     throw new Error('External fetch forbidden in planner test');
   });
   vi.stubGlobal('fetch', forbiddenFetch);
-  // Each test gets fresh upstream in-flight maps, like a dedicated Worker.
-  const url = pathToFileURL(resolve(process.cwd(), 'node_modules/@huggingface/transformers/dist/transformers.web.js'));
-  // require.resolve selects the CJS export; the native web bundle imports the
-  // ESM bundle in this pinned ORT package. Spy on that exact class identity.
-  const ortUrl = pathToFileURL(resolve(dirname(createRequire(url).resolve('onnxruntime-web/webgpu')), 'ort.webgpu.bundle.min.mjs')).href;
+  // Each test gets fresh runtime in-flight maps, like a dedicated Worker.
+  const url = new URL(artifact.moduleUrl);
+  // Spy on the exact ESM ORT class imported by the production artifact.
+  const ortUrl = artifact.ortWebGpuUrl;
   const ort = await import(/* @vite-ignore */ ortUrl) as {
     InferenceSession: { create(...args: unknown[]): Promise<unknown> };
   };
@@ -84,7 +84,7 @@ async function harness({ config, progress }: { config: Record<string, unknown>; 
   });
   let runtime: WebModule;
   try {
-    runtime = await import(/* @vite-ignore */ url.href) as WebModule;
+    runtime = await importProductionTransformersArtifact({ moduleUrl: url.href }) as WebModule;
   } finally {
     vi.stubGlobal('process', originalProcess);
   }
@@ -180,9 +180,45 @@ describe('actual web bundle request planner adversarial investigation', () => {
     expect(h.sessionCreate).not.toHaveBeenCalled();
     const registry = await h.runtime.ModelRegistry.get_model_files('fixture/device-config', h.options);
     expect(registry.filter(path => path.startsWith('onnx/'))).toEqual(['onnx/model_q4f16.onnx']);
+    // The task-specific public API shares the same device-override omission.
+    // Merely replacing get_model_files with get_pipeline_files is insufficient.
+    const pipeline = await h.runtime.ModelRegistry.get_pipeline_files('text-generation', 'fixture/device-config', h.options);
+    expect(pipeline.filter(path => path.startsWith('onnx/'))).toEqual(['onnx/model_q4f16.onnx']);
     h.release.resolve();
     await load;
     expect(h.sessionCreate).toHaveBeenCalledTimes(1);
+    expect(h.forbiddenFetch).not.toHaveBeenCalled();
+  });
+
+  it('the pipeline text-only filter can omit an encoder that the selected CausalLM route requests', async () => {
+    // Deliberately vary a session-selection input; this is a synthetic upstream
+    // contract counterexample, not evidence that the recorded Qwen model uses it.
+    const h = await harness({
+      config: { ...configFromEvidence({ name: 'qwen3-5-2b' }), is_encoder_decoder: true },
+      progress: 'disabled',
+    });
+    const pipeline = await h.runtime.ModelRegistry.get_pipeline_files('text-generation', 'fixture/text-encoder', h.options);
+    expect(pipeline.filter(path => path.startsWith('onnx/')).sort()).toEqual([
+      'onnx/decoder_model_merged_q4f16.onnx',
+      'onnx/decoder_model_merged_q4f16.onnx_data',
+      'onnx/embed_tokens_q4f16.onnx',
+      'onnx/embed_tokens_q4f16.onnx_data',
+    ]);
+    expect(h.bodyReads).not.toHaveBeenCalled();
+    expect(h.sessionCreate).not.toHaveBeenCalled();
+    const load = h.runtime.AutoModelForCausalLM.from_pretrained('fixture/text-encoder', h.options);
+    h.release.resolve();
+    await load;
+    expect(h.artifactPaths()).toEqual([
+      'onnx/decoder_model_merged_q4f16.onnx',
+      'onnx/decoder_model_merged_q4f16.onnx_data',
+      'onnx/embed_tokens_q4f16.onnx',
+      'onnx/embed_tokens_q4f16.onnx_data',
+      // The recorded external-data map has no encoder entry, so the synthetic
+      // encoder requires only its core. The pipeline omits even that core.
+      'onnx/encoder_model_q4f16.onnx',
+    ]);
+    expect(h.sessionCreate).toHaveBeenCalledTimes(3);
     expect(h.forbiddenFetch).not.toHaveBeenCalled();
   });
 
@@ -214,14 +250,59 @@ describe('actual web bundle request planner adversarial investigation', () => {
 
   it('held loads share upstream in-flight entries across revisions in the same module', async () => {
     const h = await harness({ config: configFromEvidence({ name: 'qwen3-5-2b' }), progress: 'disabled' });
+    const expectedPaths = [
+      'onnx/decoder_model_merged_q4f16.onnx',
+      'onnx/decoder_model_merged_q4f16.onnx_data',
+      'onnx/embed_tokens_q4f16.onnx',
+      'onnx/embed_tokens_q4f16.onnx_data',
+    ];
     const first = h.runtime.AutoModelForCausalLM.from_pretrained('fixture/revisions', h.options);
-    await vi.waitFor(() => expect(h.artifactPaths()).toHaveLength(4));
-    const before = h.requests.filter(path => path.includes('/onnx/')).length;
-    const second = h.runtime.AutoModelForCausalLM.from_pretrained('fixture/revisions', { ...h.options, revision: 'b'.repeat(40) });
+    await vi.waitFor(() => expect(h.artifactPaths()).toEqual(expectedPaths));
+    const originalMatch = h.runtime.env.customCache.match;
+    const prepassPaths: string[] = [];
+    const prepassResponses: Response[] = [];
+    const secondInitiated: string[] = [];
+    const secondEnteredModelFiles = Promise.withResolvers<void>();
+    // Enabling a public progress callback also enables Registry's metadata
+    // prepass. Serve its header-only probes separately from the held model
+    // body lookups, without pretending these extra observations do not exist.
+    // modeling_utils awaits this prepass before getModelFile can emit its first
+    // model initiate; get_file_metadata's cache-hit branch reads only headers.
+    // Keep the responses to assert that this distinction really holds.
+    h.runtime.env.customCache.match = async request => {
+      if (secondInitiated.length === 0 && request.includes('/onnx/')) {
+        prepassPaths.push(`onnx/${request.split('/onnx/')[1]}`);
+        const response = new Response(new Uint8Array([1]), { headers: { 'Content-Length': '1' } });
+        prepassResponses.push(response);
+        return response;
+      }
+      return originalMatch(request);
+    };
+    const second = h.runtime.AutoModelForCausalLM.from_pretrained('fixture/revisions', {
+      ...h.options,
+      revision: 'b'.repeat(40),
+      progress_callback: info => {
+        if (info.status !== 'initiate' || !info.file?.startsWith('onnx/')) return;
+        secondInitiated.push(info.file);
+        if (secondInitiated.length === expectedPaths.length) secondEnteredModelFiles.resolve();
+      },
+    });
+    // getModelFile emits initiate immediately before its synchronous in-flight
+    // lookup. The continuation runs after that lookup, while the first load
+    // still owns every pending entry. Releasing immediately after calling
+    // from_pretrained instead races its awaited optional-config preparation.
+    await secondEnteredModelFiles.promise;
+    expect(secondInitiated.sort()).toEqual(expectedPaths);
+    expect(prepassPaths.sort()).toEqual([
+      ...expectedPaths, 'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data',
+    ]);
+    expect(h.bodyReads).not.toHaveBeenCalled();
+    expect(h.sessionCreate).not.toHaveBeenCalled();
     h.release.resolve();
     await first;
     await second;
-    expect(h.requests.filter(path => path.includes('/onnx/'))).toHaveLength(before);
+    expect(h.requests.filter(path => path.includes('/onnx/'))).toHaveLength(4);
+    expect(prepassResponses.map(response => response.bodyUsed)).toEqual(Array<boolean>(6).fill(false));
     expect(h.sessionCreate).toHaveBeenCalledTimes(4);
     expect(h.forbiddenFetch).not.toHaveBeenCalled();
   });

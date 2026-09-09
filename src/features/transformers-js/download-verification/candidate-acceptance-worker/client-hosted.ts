@@ -1,5 +1,5 @@
 import { workerProxy } from '@/utils/worker-transport';
-import { createProductionWorkerSession } from '@/features/transformers-js/worker/production-worker-session';
+import { createProductionWorkerSession, ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
 import type {
   ModelLoadResult,
   ProgressInfo,
@@ -26,10 +26,10 @@ export function createDownloadVerificationCandidateAcceptanceWorkerClient(): Dow
   if (typeof Worker === 'undefined') {
     return {
       async verifyDownloadedModelCandidate() {
-        throw new Error('Download Verification candidate acceptance requires a browser Worker');
+        throw new ProductionWorkerLifecycleError({ reason: 'initialization-failed', message: 'Download Verification candidate acceptance requires a browser Worker' });
       },
       async verifyDownloadedModelRevision() {
-        throw new Error('Download Verification revision acceptance requires a browser Worker');
+        throw new ProductionWorkerLifecycleError({ reason: 'initialization-failed', message: 'Download Verification revision acceptance requires a browser Worker' });
       },
       async dispose() {
       },

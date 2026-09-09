@@ -216,10 +216,10 @@ describe('createDownloadVerificationEvidence runtime-complete mode', () => {
           status: 'prepared',
           processor: 'tokenizer',
           modelType: 'lfm2',
-          requiredModelPathsByCandidate: {
-            'webgpu/q4f16': ['onnx/model_q4f16.onnx'],
-            'webgpu/q4': ['onnx/model_q4.onnx'],
-            'wasm/q4': ['onnx/model_q4.onnx'],
+          resourcePlansByCandidate: {
+            'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] },
+            'webgpu/q4': { status: 'ready', paths: ['onnx/model_q4.onnx'] },
+            'wasm/q4': { status: 'ready', paths: ['onnx/model_q4.onnx'] },
           },
           observationMethod: 'transformers-runtime-artifact-preparation',
           error: undefined,

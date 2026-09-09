@@ -128,7 +128,7 @@ describe('acceptDownloadedProductionRevision', () => {
 
   it('classifies a missing required cache artifact as failed, not runtime rejected', async () => {
     const worker = client({ verifyDownloadedModelRevision: vi.fn(async () => {
-      throw new Error('loadDownloadedModel() MUST NOT fetch model artifacts; missing https://huggingface.co/org/model/resolve/main/onnx/model_q4.onnx?secret=1');
+      throw Object.assign(new Error('loadDownloadedModel() MUST NOT fetch model artifacts; missing https://huggingface.co/org/model/resolve/main/onnx/model_q4.onnx?secret=1'), { name: 'MissingDownloadedModelArtifact' });
     }) });
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
 

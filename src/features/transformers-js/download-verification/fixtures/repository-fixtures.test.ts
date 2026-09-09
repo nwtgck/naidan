@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 
 interface RepositoryFixtureFile {
   path: string;
@@ -146,11 +146,10 @@ describe('Download Verification repository fixtures', () => {
   });
 
   it('keeps actual Transformers.js ModelRegistry candidate requirements aligned with pinned repository JSON', async () => {
-    const moduleUrl = pathToFileURL(resolve(
-      process.cwd(),
-      'node_modules/@huggingface/transformers/dist/transformers.web.js',
-    )).href;
-    const transformers = await import(/* @vite-ignore */ moduleUrl) as unknown as {
+    const artifact = await getProductionTransformersArtifact();
+    const moduleUrl = new URL(artifact.moduleUrl);
+    moduleUrl.searchParams.set('repository-registry', crypto.randomUUID());
+    const transformers = await importProductionTransformersArtifact({ moduleUrl: moduleUrl.href }) as {
       ModelRegistry: {
         get_model_files: (modelId: string, options: {
           config: Record<string, unknown>;

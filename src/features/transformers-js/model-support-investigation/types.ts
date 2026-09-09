@@ -1,5 +1,6 @@
 import type { ModelSupportInvestigationConfiguration, ModelSupportInvestigationExecutionPlan } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 import type { InvestigationReplayMetadataSummary, InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
+import type { FreshMetadataRequest, FreshMetadataResult, FreshMetadataSummary } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types';
 import type {
   DownloadVerificationEvidenceInput,
   DownloadVerificationProbeEvidenceInput,
@@ -858,6 +859,7 @@ export interface ModelSupportInvestigationCacheInventory {
 }
 
 export interface ModelSupportInvestigationRun {
+  freshMetadata?: FreshMetadataSummary,
   replayMetadata?: InvestigationReplayMetadataSummary,
   schemaVersion: 1,
   runId: string,
@@ -1055,6 +1057,7 @@ export interface IModelSupportInvestigationWorker {
     request: ModelSupportInvestigationPlanningRequest,
     onEvent: WorkerProxy<({ event }: { event: ModelSupportInvestigationEvent }) => void>,
     onRunCheckpoint: WorkerProxy<({ run, replayMetadata }: { run: ModelSupportInvestigationPlanningWorkerRun, replayMetadata?: InvestigationReplayMetadataSidecar[] }) => void>,
+    collectFreshMetadata: WorkerProxy<({ request }: { request: FreshMetadataRequest }) => Promise<FreshMetadataResult>>,
   ): Promise<ModelSupportInvestigationPlanningWorkerRun>,
   inspectDownloadedTemplateBehavior({ runtimeTarget }: {
     runtimeTarget: ModelSupportInvestigationRuntimeTarget,

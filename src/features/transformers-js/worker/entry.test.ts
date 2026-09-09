@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { WorkerToolDefinition } from '@/features/transformers-js/types';
+import type { ITransformersJsWorker, WorkerToolDefinition } from '@/features/transformers-js/types';
+import type { WorkerServerApi } from '@/utils/worker-transport';
+import { MissingDownloadedModelArtifactError } from '@/features/transformers-js/runtime/plan-downloaded-model-candidates';
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -7,6 +9,41 @@ import {
   createHuggingFaceFixtureServer,
   type HuggingFaceRepositoryFixture,
 } from '@/features/transformers-js/download-verification/fixtures/hf-compatible-fixture-server';
+
+import { initializeProductionEntryFixture, installProductionRuntimeStartupPlatform, productionRuntimeModuleFixtureBytes } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
+import { resolveHostedTransformersRuntimeAssetUrls } from '@/features/transformers-js/runtime/configure-hosted-runtime';
+
+vi.mock('@/features/transformers-js/runtime/import-production-runtime-module', () => ({
+  // Native Blob imports are a browser-only platform boundary, not model I/O.
+  importProductionRuntimeModule: vi.fn(async ({ objectUrl }: { objectUrl: string }) => {
+    expect(new URL(objectUrl).protocol).toBe('blob:');
+  }),
+}));
+
+async function initializeWorkerEntry() {
+  const modelTransport = self.fetch;
+  const runtimeRequests: string[] = [];
+  const assets = resolveHostedTransformersRuntimeAssetUrls({
+    workerLocationUrl: self.location.href,
+    environment: import.meta.env.DEV ? 'development' : 'production',
+    userAgent: navigator.userAgent, vendor: navigator.vendor,
+  });
+  // Some cases replace the model/metadata transport with real loopback streams.
+  // Bootstrap's fixed MJS is a separate capability, not a request to those
+  // model servers or an unstarted localhost app server. Their complete request
+  // ledgers and disconnect behavior remain unchanged for every non-MJS input.
+  self.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url !== assets.mjsUrl) return modelTransport(input, init);
+    expect(init?.redirect).toBe('error');
+    runtimeRequests.push(url);
+    return new Response(productionRuntimeModuleFixtureBytes({ variant: assets.variant }), { headers: { 'Content-Type': 'text/javascript' } });
+  };
+  const entry = await import('./entry');
+  await initializeProductionEntryFixture({ initialize: entry.initializeProductionWorkerRuntime });
+  expect(runtimeRequests).toEqual([assets.mjsUrl]);
+  return entry;
+}
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
@@ -73,9 +110,19 @@ vi.mock('@huggingface/transformers', () => ({
   },
 }));
 
+// These orchestration tests own a synthetic two-file plan. The real bundle's
+// class/resource selection is independently covered by selector/model tests.
+vi.mock('@/features/transformers-js/runtime/production-resource-selector', () => ({
+  selectProductionModelResources: vi.fn(({ candidate }: { candidate: { dtype: string } }) => ({
+    className: 'SyntheticWorkerModel', sessions: [],
+    paths: [`onnx/model_${candidate.dtype}.onnx`, `onnx/model_${candidate.dtype}.onnx_data`],
+  })),
+}));
+
 // Mock Comlink
 vi.mock('comlink', () => ({
   expose: vi.fn(),
+  wrap: vi.fn(() => ({})),
   proxy: vi.fn(x => x),
 }));
 
@@ -191,6 +238,7 @@ describe('transformers-js.worker', () => {
     mockPlanDownloadedModelCandidates.mockImplementation(async ({ candidates }: {
       candidates: Array<{ device: string; dtype: string }>;
     }) => candidates.map(candidate => ({
+      status: 'checked',
       candidate,
       requiredModelPaths: [`onnx/model_${candidate.dtype}.onnx`],
       missingModelPaths: [],
@@ -199,11 +247,19 @@ describe('transformers-js.worker', () => {
       complete: true,
     })));
 
+    installProductionRuntimeStartupPlatform({ origin: 'http://localhost:3000' });
     originalFetchMock = vi.fn();
     vi.stubGlobal('fetch', originalFetchMock);
     global.self = {
       ...global.self,
-      fetch: originalFetchMock,
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (url === 'http://localhost:3000/transformers/ort-wasm-simd-threaded.asyncify.mjs') {
+          expect(init?.redirect).toBe('error');
+          return new Response(productionRuntimeModuleFixtureBytes({ variant: 'asyncify' }), { headers: { 'Content-Type': 'text/javascript' } });
+        }
+        return originalFetchMock(input, init);
+      },
       location: {
         origin: 'http://localhost:3000',
         href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
@@ -226,9 +282,63 @@ describe('transformers-js.worker', () => {
     (AutoModelForImageTextToText.supports as any).mockImplementation((modelType: string) => modelType === 'gemma4');
   });
 
+  it('does not expose model RPCs before explicit runtime module initialization', async () => {
+    const comlink = await import('comlink');
+    await import('./entry').then(() => undefined);
+    expect(comlink.expose).not.toHaveBeenCalled();
+  });
+
+  it('holds expose and ready until the native module import platform boundary resolves', async () => {
+    const comlink = await import('comlink');
+    const { importProductionRuntimeModule } = await import('@/features/transformers-js/runtime/import-production-runtime-module');
+    let entered!: () => void;
+    const importEntered = new Promise<void>(resolve => {
+      entered = resolve;
+    });
+    let release!: () => void;
+    const importGate = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    vi.mocked(importProductionRuntimeModule).mockImplementationOnce(async () => {
+      entered();
+      await importGate;
+    });
+    const initializing = initializeWorkerEntry();
+    await importEntered;
+    expect(comlink.expose).not.toHaveBeenCalled();
+    release();
+    await initializing;
+    expect(comlink.expose).toHaveBeenCalledOnce();
+  });
+
+  it('fails startup on native import failure and cannot initialize the same entry again', async () => {
+    const comlink = await import('comlink');
+    const { importProductionRuntimeModule } = await import('@/features/transformers-js/runtime/import-production-runtime-module');
+    const failure = new Error('Synthetic native Blob import rejection');
+    vi.mocked(importProductionRuntimeModule).mockRejectedValueOnce(failure);
+    await expect(initializeWorkerEntry()).rejects.toThrow(failure.message);
+    expect(comlink.expose).not.toHaveBeenCalled();
+    const entry = await import('./entry');
+    const requestRuntimeModule = vi.fn();
+    await expect(entry.initializeProductionWorkerRuntime({ requestRuntimeModule })).rejects.toThrow('one-shot');
+    expect(requestRuntimeModule).not.toHaveBeenCalled();
+  });
+
+  it('rejects a foreign-origin Blob acknowledgement before native import or expose', async () => {
+    const comlink = await import('comlink');
+    const { importProductionRuntimeModule } = await import('@/features/transformers-js/runtime/import-production-runtime-module');
+    const entry = await import('./entry');
+    await expect(entry.initializeProductionWorkerRuntime({ requestRuntimeModule: async () => ({
+      requestId: '00000000-0000-4000-8000-000000000001',
+      objectUrl: 'blob:https://foreign.invalid/00000000-0000-4000-8000-000000000001',
+    }) })).rejects.toThrow('origin');
+    expect(importProductionRuntimeModule).not.toHaveBeenCalled();
+    expect(comlink.expose).not.toHaveBeenCalled();
+  });
+
   it('should initialize with custom OPFS cache', async () => {
     const { env } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
 
     expect(env.useCustomCache).toBe(true);
     expect(env.customCache).toBeDefined();
@@ -236,13 +346,13 @@ describe('transformers-js.worker', () => {
     expect(env.customCache).toHaveProperty('put');
     expect(env.backends.onnx.wasm).toBeDefined();
     expect(env.backends.onnx.wasm?.wasmPaths).toEqual({
-      mjs: 'http://localhost:3000/transformers/ort-wasm-simd-threaded.asyncify.mjs',
+      mjs: expect.stringMatching(/^blob:http:\/\/localhost:3000\//u),
       wasm: 'http://localhost:3000/transformers/ort-wasm-simd-threaded.asyncify.wasm',
     });
   }, 30000);
 
   it('opfsCache.match should return undefined for non-existent file', async () => {
-    await import('./entry');
+    await initializeWorkerEntry();
     const { env } = await import('@huggingface/transformers');
     const cache = (env as any).customCache;
 
@@ -266,7 +376,7 @@ describe('transformers-js.worker', () => {
       throw new Error('Not found');
     });
 
-    await import('./entry');
+    await initializeWorkerEntry();
     const { env } = await import('@huggingface/transformers');
     const cache = (env as any).customCache;
 
@@ -277,7 +387,7 @@ describe('transformers-js.worker', () => {
   });
 
   it('keeps the worker default model cache read-only outside explicit download operations', async () => {
-    await import('./entry');
+    await initializeWorkerEntry();
     const { env } = await import('@huggingface/transformers');
     const cache = env.customCache as { put: (request: string | Request, response: Response) => Promise<void> };
 
@@ -290,7 +400,7 @@ describe('transformers-js.worker', () => {
   it('loadDownloadedModel should try tiered fallback from WebGPU to WASM', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
 
     // Get the object that was passed to Comlink.expose
     const workerObj = (comlink.expose as any).mock.calls[0][0];
@@ -315,6 +425,196 @@ describe('transformers-js.worker', () => {
     }));
   });
 
+  it('stops instead of falling back after a planned-complete candidate reaches the cache-miss boundary', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await initializeWorkerEntry();
+    const workerObj = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const revision = '0123456789abcdef0123456789abcdef01234567';
+    const missingUrl = `https://huggingface.co/org/repo/resolve/${revision}/onnx/model_q4f16.onnx`;
+    vi.mocked(AutoModelForCausalLM.from_pretrained)
+      .mockRejectedValue(new Error('Unexpected runtime fallback after local resource loss'))
+      .mockImplementationOnce(async () => {
+        // Planning above classified all candidates complete. Exercise the real
+        // cache-only fetch boundary when that premise no longer holds at load.
+        if (env.fetch === undefined) throw new Error('Missing cache-only fetch fixture');
+        await env.fetch(missingUrl);
+        throw new Error('The cache-miss boundary unexpectedly returned');
+      });
+
+    try {
+      const failure = await workerObj.loadDownloadedModel('org/repo', revision, vi.fn())
+        .then(() => undefined, (error: unknown) => error);
+      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
+      expect(failure).toBeInstanceOf(Error);
+      if (!(failure instanceof Error)) throw new Error('The required resource loss must stop Load');
+      expect(failure.message).toContain('MUST NOT fetch model artifacts');
+      expect(failure.message).toContain(missingUrl);
+      expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+      expect(originalFetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
+    }
+  });
+
+  it('classifies a shared config failure before any candidate or model is attempted', async () => {
+    const comlink = await import('comlink');
+    const { AutoConfig, AutoModelForCausalLM } = await import('@huggingface/transformers');
+    await initializeWorkerEntry();
+    const workerObj = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const cause = new Error('Config cache reader failed');
+    vi.mocked(AutoConfig.from_pretrained).mockRejectedValueOnce(cause);
+    await expect(workerObj.verifyDownloadedModelRevision('org/repo', undefined, vi.fn())).rejects.toMatchObject({
+      name: 'DownloadedModelPreparationError', phase: 'config', cause,
+    });
+    expect(mockPlanDownloadedModelCandidates).not.toHaveBeenCalled();
+    expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+  });
+
+  it('stops ordinary Load after an optional configuration origin error without trying another complete candidate', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    await initializeWorkerEntry();
+    const workerObj = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const cause = new SyntaxError('Unexpected end of JSON input');
+    const error = new Error('generation_config.json: SyntaxError: Unexpected end of JSON input', { cause });
+    error.name = 'TransformersJsOptionalConfigurationError';
+    vi.mocked(AutoModelForCausalLM.from_pretrained).mockRejectedValue(error);
+    await expect(workerObj.loadDownloadedModel('org/repo', undefined, vi.fn())).rejects.toBe(error);
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledOnce();
+    expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+    expect(originalFetchMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves a later optional configuration origin failure over an earlier ORT rejection during revision acceptance', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    await initializeWorkerEntry();
+    const workerObj = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const error = new Error('generation_config.json: SyntaxError: Unexpected end of JSON input');
+    error.name = 'TransformersJsOptionalConfigurationError';
+    vi.mocked(AutoModelForCausalLM.from_pretrained)
+      .mockRejectedValueOnce(new Error('Earlier q4f16 ORT incompatibility'))
+      .mockRejectedValueOnce(error)
+      .mockRejectedValue(new Error('A third candidate must not run'));
+    const progress = vi.fn();
+    await expect(workerObj.verifyDownloadedModelRevision('org/repo', undefined, progress)).rejects.toBe(error);
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(2);
+    expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+    expect(progress).not.toHaveBeenCalledWith({ status: 'cache-acceptance-ready' });
+    expect(originalFetchMock).not.toHaveBeenCalled();
+  });
+
+  it('classifies a shared candidate-plan I/O failure before any model is attempted', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM } = await import('@huggingface/transformers');
+    await initializeWorkerEntry();
+    const workerObj = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const cause = new DOMException('Cache inspection denied', 'NotAllowedError');
+    mockPlanDownloadedModelCandidates.mockRejectedValueOnce(cause);
+    await expect(workerObj.verifyDownloadedModelRevision('org/repo', undefined, vi.fn())).rejects.toMatchObject({
+      name: 'DownloadedModelPreparationError', phase: 'candidate-plan', cause,
+    });
+    expect(mockPlanDownloadedModelCandidates).toHaveBeenCalledOnce();
+    expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+  });
+
+  it('preserves shared tokenizer failure over an earlier model rejection and a secondary disposal error', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
+    await initializeWorkerEntry();
+    const workerObj = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const cause = new Error('Shared tokenizer metadata is invalid');
+    const dispose = vi.fn().mockRejectedValue(new Error('Secondary model disposal failure'));
+    vi.mocked(AutoModelForCausalLM.from_pretrained)
+      .mockRejectedValueOnce(new Error('Earlier q4f16 model runtime rejection'))
+      .mockResolvedValueOnce({ dispose } as unknown as Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>);
+    vi.mocked(AutoTokenizer.from_pretrained).mockRejectedValueOnce(cause);
+    const progress = vi.fn();
+    await expect(workerObj.verifyDownloadedModelRevision('org/repo', undefined, progress)).rejects.toMatchObject({
+      name: 'DownloadedModelPreparationError', phase: 'tokenizer-processor', cause,
+    });
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(2);
+    expect(AutoTokenizer.from_pretrained).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(progress).not.toHaveBeenCalledWith({ status: 'cache-acceptance-ready' });
+    await workerObj.unloadModel();
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it('disposes a success-shaped model after a swallowed required cache failure without replacing its cause', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await initializeWorkerEntry();
+    const workerObj = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const revision = '0123456789abcdef0123456789abcdef01234567';
+    const requiredUrl = `https://huggingface.co/org/repo/resolve/${revision}/onnx/model_q4f16.onnx`;
+    const dispose = vi.fn().mockRejectedValue(new Error('Secondary disposal failure'));
+    const apparentModel = { dispose } as unknown as Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>;
+    vi.mocked(AutoModelForCausalLM.from_pretrained).mockImplementation(async () => {
+      if (!env.customCache) throw new Error('Missing cache fixture');
+      await env.customCache.match(requiredUrl).catch(() => undefined);
+      return apparentModel;
+    });
+    try {
+      await expect(workerObj.loadDownloadedModel('org/repo', revision, vi.fn())).rejects.toMatchObject({
+        name: 'RequiredDownloadedModelResourceError', failure: 'missing', url: requiredUrl,
+      });
+      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
+      expect(dispose).toHaveBeenCalledTimes(1);
+      expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+      await workerObj.unloadModel();
+      expect(dispose).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
+    }
+  });
+
+  it('disposes and clears an accepted model when required cancellation fails after tokenizer preparation', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await initializeWorkerEntry();
+    const workerObj = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const revision = '0123456789abcdef0123456789abcdef01234567';
+    const requiredUrl = `https://huggingface.co/org/repo/resolve/${revision}/onnx/model_q4f16.onnx`;
+    const cancellationError = new Error('Required source cancellation failed');
+    const cancel = vi.fn(() => {
+      throw cancellationError;
+    });
+    const onnx = createMockDir({
+      '.model_q4f16.onnx.complete': createMockFile(0),
+      'model_q4f16.onnx': {
+        getFile: async () => ({ size: 1, stream: () => new ReadableStream({ cancel }, { highWaterMark: 0 }) }),
+      },
+    });
+    mockRoot.getDirectoryHandle.mockResolvedValue(createMockDir({
+      'huggingface.co': createMockDir({ org: createMockDir({ repo: createMockDir({
+        resolve: createMockDir({ [revision]: createMockDir({ onnx }) }),
+      }) }) }),
+    }));
+    const dispose = vi.fn().mockRejectedValue(new Error('Secondary model disposal failed'));
+    const apparentModel = { dispose } as unknown as Awaited<ReturnType<typeof AutoModelForCausalLM.from_pretrained>>;
+    vi.mocked(AutoModelForCausalLM.from_pretrained).mockImplementation(async () => {
+      if (!env.customCache) throw new Error('Missing cache fixture');
+      await env.customCache.match(requiredUrl);
+      return apparentModel;
+    });
+    vi.mocked(AutoTokenizer.from_pretrained).mockResolvedValue({} as Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>);
+    try {
+      await expect(workerObj.loadDownloadedModel('org/repo', revision, vi.fn())).rejects.toMatchObject({
+        name: 'RequiredDownloadedModelResourceError', failure: 'io', cause: cancellationError,
+      });
+      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
+      expect(AutoTokenizer.from_pretrained).toHaveBeenCalledTimes(1);
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(dispose).toHaveBeenCalledTimes(1);
+      await workerObj.unloadModel();
+      expect(dispose).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
+    }
+  });
+
   it('fails before tokenizer or model initialization when no local candidate is complete', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
@@ -325,8 +625,9 @@ describe('transformers-js.worker', () => {
       requiredRuntimePaths: ['tokenizer_config.json', 'tokenizer.json'],
       missingRuntimePaths: [],
       complete: false,
+      status: 'checked',
     }]);
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     await expect(workerObj.verifyDownloadedModelCandidate(
@@ -342,7 +643,7 @@ describe('transformers-js.worker', () => {
   it('verifies exactly one downloaded Production candidate without falling through to another candidate', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const revision = '0123456789abcdef0123456789abcdef01234567';
 
@@ -384,7 +685,7 @@ describe('transformers-js.worker', () => {
   it('verifies one cached revision with the normal Production candidate fallback order', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const revision = '0123456789abcdef0123456789abcdef01234567';
 
@@ -443,7 +744,7 @@ describe('transformers-js.worker', () => {
       });
       throw new DOMException('Missing', 'NotFoundError');
     });
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async () => {
@@ -466,14 +767,14 @@ describe('transformers-js.worker', () => {
   it('does not let a final missing artifact hide an earlier runtime rejection for a cached revision', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const revision = '0123456789abcdef0123456789abcdef01234567';
 
     (AutoModelForCausalLM.from_pretrained as any)
       .mockRejectedValueOnce(new Error('q4f16 runtime rejected'))
-      .mockRejectedValueOnce(new Error('loadDownloadedModel() MUST NOT fetch model artifacts; q4 missing'))
-      .mockRejectedValueOnce(new Error('loadDownloadedModel() MUST NOT fetch model artifacts; wasm q4 missing'));
+      .mockRejectedValueOnce(new MissingDownloadedModelArtifactError({ message: 'loadDownloadedModel() MUST NOT fetch model artifacts; q4 missing' }))
+      .mockRejectedValueOnce(new MissingDownloadedModelArtifactError({ message: 'loadDownloadedModel() MUST NOT fetch model artifacts; wasm q4 missing' }));
 
     await expect(workerObj.verifyDownloadedModelRevision(
       'org/repo',
@@ -484,10 +785,24 @@ describe('transformers-js.worker', () => {
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(3);
   });
 
+  it('classifies runtime failure by name even when its message quotes the missing-resource policy', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM } = await import('@huggingface/transformers');
+    await initializeWorkerEntry();
+    const workerObj = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
+    const firstMessage = 'Runtime adapter rejected; diagnostic quotes MUST NOT fetch model artifacts';
+    vi.mocked(AutoModelForCausalLM.from_pretrained)
+      .mockRejectedValueOnce(new Error(firstMessage))
+      .mockRejectedValueOnce(new MissingDownloadedModelArtifactError({ message: 'q4 is absent' }))
+      .mockRejectedValueOnce(new MissingDownloadedModelArtifactError({ message: 'wasm q4 is absent' }));
+    await expect(workerObj.verifyDownloadedModelRevision('org/repo', undefined, vi.fn())).rejects.toMatchObject({ name: 'Error', message: firstMessage });
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(3);
+  });
+
   it('does not fall through when the explicitly verified candidate is rejected', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     (AutoModelForCausalLM.from_pretrained as any).mockRejectedValue(new Error('q4f16 runtime rejected'));
@@ -510,7 +825,7 @@ describe('transformers-js.worker', () => {
   it('preserves the base public load options apart from the intentional quantized-only fallback set', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     (AutoModelForCausalLM.from_pretrained as any)
@@ -542,7 +857,7 @@ describe('transformers-js.worker', () => {
   it('keeps downloaded-model loading remote-disabled and OPFS read-only', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     let allowLocalModelsDuringLoad: boolean | undefined;
     let allowRemoteModelsDuringLoad: boolean | undefined;
@@ -565,9 +880,10 @@ describe('transformers-js.worker', () => {
     expect(env.allowRemoteModels).toBe(false);
     expect(cacheDuringLoad).toBeDefined();
     expect(fetchDuringLoad).toBeDefined();
+    // The captured candidate capability is retired once Load completes.
     await expect(fetchDuringLoad!(
       'https://huggingface.co/org/repo/resolve/main/model.onnx',
-    )).rejects.toThrow('loadDownloadedModel() MUST NOT fetch model artifacts');
+    )).rejects.toThrow('Downloaded resource operation is closed');
     await expect(cacheDuringLoad!.put(
       'https://huggingface.co/org/repo/resolve/main/model.onnx',
       new Response('remote bytes'),
@@ -577,7 +893,7 @@ describe('transformers-js.worker', () => {
   it('restores the default read-only environment after downloaded-model loading fails', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, env } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const defaultFetch = env.fetch;
     const defaultCache = env.customCache;
@@ -600,7 +916,7 @@ describe('transformers-js.worker', () => {
   it('bounds GPT-OSS split-file load progress before it crosses the Production Worker boundary', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const progressCallback = vi.fn();
     const observationCheckpointCallback = vi.fn();
@@ -668,7 +984,7 @@ describe('transformers-js.worker', () => {
   it('runs a normal-Chat-revision Production Lane scenario with an explicit candidate list', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const dispose = vi.fn();
     const decode = vi.fn()
@@ -867,7 +1183,7 @@ describe('transformers-js.worker', () => {
   it('skips Production continuity and capability probes when investigation scope disables them', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const generate = vi.fn().mockResolvedValue({
       past_key_values: { layer_0: {} },
@@ -938,7 +1254,7 @@ describe('transformers-js.worker', () => {
   it('records decoded token context around a reconstructed Production continuity prefix mismatch', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const generate = vi.fn()
       .mockResolvedValueOnce({
@@ -1002,7 +1318,7 @@ describe('transformers-js.worker', () => {
   it('falls back from Production webgpu/q4f16 to webgpu/q4 and preserves every load attempt', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const checkpoint = vi.fn();
     const dispose = vi.fn();
@@ -1080,7 +1396,7 @@ describe('transformers-js.worker', () => {
   it('checkpoints bounded telemetry for an active Production model load before the candidate settles', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const checkpoint = vi.fn();
     let rejectLoad: ((error: Error) => void) | undefined;
@@ -1140,7 +1456,7 @@ describe('transformers-js.worker', () => {
   it('separates completed model loading from tokenizer runtime preparation in Production checkpoints', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const progressCallback = vi.fn();
     const checkpoint = vi.fn();
@@ -1218,7 +1534,7 @@ describe('transformers-js.worker', () => {
   it('checkpoints every failed Production load candidate before rejecting the scenario', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const checkpoint = vi.fn();
 
@@ -1263,7 +1579,7 @@ describe('transformers-js.worker', () => {
   it('continues independent Production probes after first-turn generation fails', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const dispose = vi.fn();
     const generate = vi.fn()
@@ -1349,7 +1665,7 @@ describe('transformers-js.worker', () => {
   it('loadDownloadedModel should load the Gemma 4 processor and use its tokenizer', async () => {
     const comlink = await import('comlink');
     const { AutoModelForImageTextToText, AutoProcessor, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     (AutoModelForImageTextToText.from_pretrained as any).mockResolvedValue({
@@ -1375,7 +1691,7 @@ describe('transformers-js.worker', () => {
   it('loadDownloadedModel should fail early when the active runtime does not support gemma4', async () => {
     const comlink = await import('comlink');
     const { AutoModelForImageTextToText, AutoModelForCausalLM } = await import('@huggingface/transformers');
-    await import('./entry');
+    await initializeWorkerEntry();
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     (AutoModelForImageTextToText.supports as any).mockReturnValueOnce(false);
@@ -1390,7 +1706,8 @@ describe('transformers-js.worker', () => {
 
   it('prepareModelRuntimeArtifacts should use the exact revision and shared Production processor routing', async () => {
     const comlink = await import('comlink');
-    const { AutoConfig, AutoProcessor, AutoTokenizer, ModelRegistry, env } = await import('@huggingface/transformers');
+    const { AutoConfig, AutoProcessor, AutoTokenizer, env } = await import('@huggingface/transformers');
+    const { selectProductionModelResources } = await import('@/features/transformers-js/runtime/production-resource-selector');
     await import('@/features/transformers-js/download-verification/download-worker/entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const revision = '0123456789abcdef0123456789abcdef01234567';
@@ -1399,7 +1716,7 @@ describe('transformers-js.worker', () => {
     (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string }) => {
       expect(env.allowLocalModels).toBe(false);
       expect(env.allowRemoteModels).toBe(true);
-      expect(env.customCache).toBe(defaultCache);
+      expect(env.customCache).not.toBe(defaultCache);
       expect(options.revision).toBe(revision);
       return { model_type: 'qwen3_5_text' };
     });
@@ -1410,13 +1727,13 @@ describe('transformers-js.worker', () => {
     expect(result).toEqual({
       processor: 'qwen3_5-processor',
       modelType: 'qwen3_5_text',
-      requiredModelPathsByCandidate: {
-        'webgpu/q4f16': ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'],
-        'webgpu/q4': ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'],
-        'wasm/q4': ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'],
+      resourcePlansByCandidate: {
+        'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'] },
+        'webgpu/q4': { status: 'ready', paths: ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'] },
+        'wasm/q4': { status: 'ready', paths: ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'] },
       },
     });
-    expect(ModelRegistry.get_model_files).toHaveBeenCalledTimes(3);
+    expect(selectProductionModelResources).toHaveBeenCalledTimes(3);
     expect(AutoProcessor.from_pretrained).toHaveBeenCalledWith('Qwen/Qwen3.5-2B-ONNX', expect.objectContaining({
       revision,
       local_files_only: false,
@@ -1455,13 +1772,22 @@ describe('transformers-js.worker', () => {
         controller.close();
       },
     })));
-    const module = await import('@/features/transformers-js/download-verification/download-worker/entry');
-    const guardedFetch = module.TEST_ONLY.createRuntimeArtifactFetch({
-      maximumByteLength: 8,
+    const { createRuntimeMetadataOperation } = await import('@/features/transformers-js/download-verification/download-worker/metadata-operation');
+    const operation = createRuntimeMetadataOperation({
+      modelId: 'org/repo', revision: 'a'.repeat(40), maximumByteLength: 8,
+      downloadFetch: originalFetchMock,
+      storage: {
+        read: async () => undefined,
+        stat: async () => undefined,
+        write: async () => {
+          throw new Error('This limit test must not reach persistence');
+        },
+      },
     });
 
-    const response = await guardedFetch('https://huggingface.co/org/repo/resolve/main/tokenizer.json');
+    const response = await operation.fetch(`https://huggingface.co/org/repo/resolve/${'a'.repeat(40)}/tokenizer.json`);
     await expect(response.arrayBuffer()).rejects.toThrow('exceeded the non-model artifact byte limit (8 bytes)');
+    await expect(operation.finish()).rejects.toThrow('exceeded the non-model artifact byte limit (8 bytes)');
   });
 
   it('prepareModelRuntimeArtifacts should reject a non-immutable revision before loading anything', async () => {
@@ -1547,10 +1873,10 @@ describe('transformers-js.worker', () => {
       expect(runtimeArtifacts).toEqual({
         processor: 'tokenizer',
         modelType: 'llama',
-        requiredModelPathsByCandidate: {
-          'webgpu/q4f16': ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'],
-          'webgpu/q4': ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'],
-          'wasm/q4': ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'],
+        resourcePlansByCandidate: {
+          'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'] },
+          'webgpu/q4': { status: 'ready', paths: ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'] },
+          'wasm/q4': { status: 'ready', paths: ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'] },
         },
       });
       expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
@@ -1581,7 +1907,7 @@ describe('transformers-js.worker', () => {
       });
 
       const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
-      await import('./entry');
+      await initializeWorkerEntry();
       const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
       const acceptance = await productionWorkerObj.verifyDownloadedModelCandidate(
         repository.modelId,
@@ -1787,7 +2113,7 @@ describe('transformers-js.worker', () => {
         return { dispose: vi.fn(), config: { model_type: 'llama', is_encoder_decoder: false } };
       });
       const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
-      await import('./entry');
+      await initializeWorkerEntry();
       const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
       await expect(productionWorkerObj.verifyDownloadedModelCandidate(
         repository.modelId,
@@ -1929,7 +2255,7 @@ describe('transformers-js.worker', () => {
         return { dispose: vi.fn(), config: { model_type: 'lfm2', is_encoder_decoder: false } };
       });
       const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
-      await import('./entry');
+      await initializeWorkerEntry();
       const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
       await expect(productionWorkerObj.verifyDownloadedModelCandidate(
         repository.modelId,
@@ -2333,7 +2659,7 @@ describe('transformers-js.worker', () => {
 
   describe('Fetch Interceptor', () => {
     it('should block requests to "user/" models with 404', async () => {
-      await import('./entry');
+      await initializeWorkerEntry();
       const interceptedFetch = self.fetch;
 
       const urls = [
@@ -2351,7 +2677,7 @@ describe('transformers-js.worker', () => {
     });
 
     it('should block requests to "local/" models with 404', async () => {
-      await import('./entry');
+      await initializeWorkerEntry();
       const interceptedFetch = self.fetch;
 
       const res = await interceptedFetch('local/test/model.bin');
@@ -2361,7 +2687,7 @@ describe('transformers-js.worker', () => {
     });
 
     it('should convert HTML responses to 404 for model files (SPA fallback)', async () => {
-      await import('./entry');
+      await initializeWorkerEntry();
       const interceptedFetch = self.fetch;
 
       originalFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
@@ -2394,7 +2720,7 @@ describe('transformers-js.worker', () => {
     });
 
     it('should allow normal JSON/Binary responses', async () => {
-      await import('./entry');
+      await initializeWorkerEntry();
       const interceptedFetch = self.fetch;
 
       const mockRes = new Response('{}', { status: 200 });
@@ -2408,7 +2734,7 @@ describe('transformers-js.worker', () => {
     });
 
     it('should allow normal HTML pages (not model files)', async () => {
-      await import('./entry');
+      await initializeWorkerEntry();
       const interceptedFetch = self.fetch;
 
       const mockRes = new Response('<html>ok</html>', {
@@ -2470,7 +2796,7 @@ describe('transformers-js.worker', () => {
         apply_chat_template: mockApplyTemplate,
       });
 
-      await import('./entry');
+      await initializeWorkerEntry();
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
       await workerObj.loadDownloadedModel('standard-model', undefined, vi.fn());
@@ -2845,7 +3171,7 @@ Use shell tools.<|im_end|>
       );
       (tfMock.AutoProcessor.from_pretrained as any).mockResolvedValue(mockProcessor);
 
-      await import('./entry');
+      await initializeWorkerEntry();
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
       await workerObj.loadDownloadedModel('onnx-community/Qwen3.5-2B-ONNX', undefined, vi.fn());
@@ -3372,7 +3698,7 @@ file-a
       (tfMock.AutoModelForImageTextToText.from_pretrained as any).mockResolvedValue(mockModel);
       (tfMock.AutoProcessor.from_pretrained as any).mockResolvedValue(mockProcessor);
 
-      await import('./entry');
+      await initializeWorkerEntry();
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
       await workerObj.loadDownloadedModel('onnx-community/gemma-4-E2B-it-ONNX', undefined, vi.fn());
@@ -3551,7 +3877,7 @@ file-a
       (tfMock.AutoModelForCausalLM.from_pretrained as any).mockResolvedValue(mockModel);
       (tfMock.AutoTokenizer.from_pretrained as any).mockResolvedValue(mockCallableTokenizer);
 
-      await import('./entry');
+      await initializeWorkerEntry();
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
       await workerObj.loadDownloadedModel('my-gpt-oss-model', undefined, vi.fn());

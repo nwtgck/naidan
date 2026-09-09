@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createOpfsModelCache, TEST_ONLY } from './opfs-model-cache';
 import { writeToOpfs } from '@/features/transformers-js/utils';
 
-vi.mock('@/features/transformers-js/utils', () => ({
+vi.mock('@/features/transformers-js/utils', async importOriginal => ({
+  ...await importOriginal<typeof import('@/features/transformers-js/utils')>(),
   urlToPath: vi.fn(({ url }: { url: string }) => {
     const parsed = new URL(url);
     return parsed.hostname === 'huggingface.co' ? `models/${parsed.hostname}${parsed.pathname}` : null;
@@ -81,7 +82,25 @@ describe('createOpfsModelCache production compatibility', () => {
     vi.clearAllMocks();
   });
 
-  it('treats unexpected OPFS lookup failures as cache misses like the base worker', async () => {
+  it('rejects a partial cache put and cancels its body before invoking the writer', async () => {
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), { status: 206 });
+    await expect(createOpfsModelCache().put('https://huggingface.co/org/repo/resolve/main/config.json', response)).rejects.toThrow('206');
+    expect(writeToOpfs).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('rejects status 200 with Content-Range at the cache boundary before invoking the writer', async () => {
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), {
+      headers: { 'Content-Range': 'bytes 0-1/100' },
+    });
+    await expect(createOpfsModelCache().put('https://huggingface.co/org/repo/resolve/main/config.json', response)).rejects.toThrow('Content-Range');
+    expect(writeToOpfs).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('propagates OPFS permission failure instead of classifying it as a repairable cache miss', async () => {
     const securityError = new Error('OPFS unavailable');
     securityError.name = 'SecurityError';
     vi.stubGlobal('navigator', {
@@ -89,7 +108,32 @@ describe('createOpfsModelCache production compatibility', () => {
     });
 
     const cache = createOpfsModelCache();
-    await expect(cache.match('https://huggingface.co/org/repo/resolve/main/config.json')).resolves.toBeUndefined();
+    await expect(cache.match('https://huggingface.co/org/repo/resolve/main/config.json')).rejects.toBe(securityError);
+  });
+
+  it('does not substitute an alias when the exact revision file stat fails', async () => {
+    const revision = 'e'.repeat(40);
+    const root = opfsRoot({ resolvedRevision: revision, exactBytes: 'exact', mainBytes: 'main' });
+    let directory = root;
+    for (const name of ['models', 'huggingface.co', 'org', 'repo', 'resolve', revision, 'onnx']) {
+      directory = await directory.getDirectoryHandle(name);
+    }
+    const handle = await directory.getFileHandle('model_q4.onnx');
+    const failure = new DOMException('Fixture exact file is not readable', 'NotReadableError');
+    handle.getFile.mockRejectedValueOnce(failure);
+    const getDirectory = vi.fn().mockResolvedValue(root);
+    vi.stubGlobal('navigator', { storage: { getDirectory } });
+    const onMatchObservation = vi.fn();
+    const cache = createOpfsModelCache({
+      mutationPolicy: 'read-only',
+      revisionAliases: [{ modelId: 'org/repo', resolvedRevision: revision, sourceRevision: 'main', repositoryPaths: ['onnx/model_q4.onnx'] }],
+      onMatchObservation,
+    });
+
+    await expect(cache.match(`https://huggingface.co/org/repo/resolve/${revision}/onnx/model_q4.onnx`)).rejects.toBe(failure);
+    expect(getDirectory).toHaveBeenCalledTimes(1);
+    expect(onMatchObservation).not.toHaveBeenCalled();
+    expect(writeToOpfs).not.toHaveBeenCalled();
   });
   it('prefers an exact resolved-revision cache hit over an approved main alias', async () => {
     const resolvedRevision = 'a'.repeat(40);

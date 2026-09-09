@@ -3,6 +3,7 @@ import { awaitWithAbort } from '@/features/transformers-js/download-verification
 import { sanitizeDiagnosticText } from '@/features/transformers-js/download-verification/logic/run-browser-download-verification';
 import type { DownloadVerificationRuntimeArtifactPreparationObservation } from '@/features/transformers-js/download-verification/types';
 import type { TransformersJsProgressCallback } from '@/features/transformers-js/types';
+import { runtimeArtifactPreparationResultSchema } from '@/features/transformers-js/runtime/production-resource-plan';
 
 function serializedError({ error }: { error: unknown }): { name: string; message: string } {
   if (error instanceof Error) {
@@ -31,14 +32,14 @@ export async function prepareProductionRuntimeArtifacts({ modelId, revision, pro
       revision,
       progressCallback,
     });
-    const result = await awaitWithAbort({ operation, signal });
+    const result = runtimeArtifactPreparationResultSchema.parse(await awaitWithAbort({ operation, signal }));
     return {
       modelId,
       revision,
       status: 'prepared',
       processor: result.processor,
       modelType: result.modelType,
-      requiredModelPathsByCandidate: result.requiredModelPathsByCandidate,
+      resourcePlansByCandidate: result.resourcePlansByCandidate,
       observationMethod: 'transformers-runtime-artifact-preparation',
       error: undefined,
     };

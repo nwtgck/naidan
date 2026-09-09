@@ -1,12 +1,11 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import capturedCorpus from '@/features/transformers-js/model-support-investigation/logic/fixtures/replay-metadata-corpus.json';
 import { selectTransformersJsProductionAutoClass } from '@/features/transformers-js/production-routing';
+import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 
 const corpus = z.object({
   schemaVersion: z.literal(1),
@@ -59,14 +58,15 @@ function expectedPaths({ chunks, dtype }: { chunks: Record<string, number>, dtyp
 }
 
 async function harness({ fixture, dtype }: { fixture: Fixture, dtype: Dtype }) {
+  const artifact = await getProductionTransformersArtifact();
   const forbiddenFetch = vi.fn<typeof fetch>(async () => {
     throw new Error('External fetch forbidden in metadata model replay');
   });
   vi.stubGlobal('fetch', forbiddenFetch);
-  const url = pathToFileURL(resolve(process.cwd(), 'node_modules/@huggingface/transformers/dist/transformers.web.js'));
-  // Match the exact ESM ORT class imported by the installed web bundle. A CJS
+  const url = new URL(artifact.moduleUrl);
+  // Match the exact ESM ORT class imported by the production artifact. A CJS
   // spy or the Node TJS export would measure a different runtime.
-  const ortUrl = pathToFileURL(resolve(dirname(createRequire(url).resolve('onnxruntime-web/webgpu')), 'ort.webgpu.bundle.min.mjs')).href;
+  const ortUrl = artifact.ortWebGpuUrl;
   const ort = await import(/* @vite-ignore */ ortUrl) as { InferenceSession: { create(...args: unknown[]): Promise<unknown> } };
   const sessionRelease = vi.fn(async () => undefined);
   const sessionCreate = vi.spyOn(ort.InferenceSession, 'create').mockImplementation(async () => ({
@@ -85,7 +85,7 @@ async function harness({ fixture, dtype }: { fixture: Fixture, dtype: Dtype }) {
   vi.stubGlobal('process', { ...originalProcess, release: { ...originalProcess.release, name: 'browser-test' } });
   let runtime: WebModule;
   try {
-    runtime = await import(/* @vite-ignore */ url.href) as WebModule;
+    runtime = await importProductionTransformersArtifact({ moduleUrl: url.href }) as WebModule;
   } finally {
     vi.stubGlobal('process', originalProcess);
   }
@@ -152,7 +152,7 @@ async function harness({ fixture, dtype }: { fixture: Fixture, dtype: Dtype }) {
 }
 
 describe('captured metadata to actual installed TJS model requests', () => {
-  it('pins the source ZIP and installed web bundle whose requests are being compared', () => {
+  it('pins the source ZIP and original upstream bundle underlying the production artifact', () => {
     expect(corpus.source.zipSha256).toBe('41b6073f0a3f0351171304c75ae7954895ddb97deb548839e302cc14c61ef7b0');
     const bundle = readFileSync(resolve(process.cwd(), 'node_modules/@huggingface/transformers/dist/transformers.web.js'));
     expect(createHash('sha256').update(bundle).digest('hex')).toBe('25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff');

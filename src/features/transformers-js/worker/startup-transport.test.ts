@@ -6,8 +6,9 @@ import type { ProgressInfo } from '@/features/transformers-js/types';
 import type { ToolCall } from '@/01-models/types';
 import { createTransformersJsWorkerClient } from './client-hosted';
 import { createDownloadVerificationCandidateAcceptanceWorkerClient } from '@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted';
+import { RequiredDownloadedResourceCleanupError } from '@/features/transformers-js/runtime/required-downloaded-resource-operation';
+import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
 
-const ready = { channel: 'naidan-production-worker-startup', version: 1, status: 'ready' };
 const workers: TransportWorker[] = [];
 const clients: Array<{ dispose(): Promise<void> }> = [];
 const forbiddenFetch = vi.fn(() => {
@@ -15,6 +16,7 @@ const forbiddenFetch = vi.fn(() => {
 });
 
 beforeEach(() => {
+  installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
   forbiddenFetch.mockClear();
   vi.stubGlobal('fetch', forbiddenFetch);
 });
@@ -26,7 +28,9 @@ class TransportWorker extends EventTarget {
   // The fixture transfers only Node MessagePorts, never browser-only objects.
   // Node's transfer-list type is narrower than Comlink's DOM declaration.
   readonly endpoint = this.channel.port2 as unknown as Endpoint;
-  readonly sent: unknown[] = [];
+  readonly sent: unknown[] = []; // Comlink model RPCs, excluding startup ACKs below.
+  readonly startupMessages: unknown[] = [];
+  readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
   terminate = vi.fn(() => {
     this.channel.port1.close();
     this.channel.port2.close();
@@ -40,12 +44,16 @@ class TransportWorker extends EventTarget {
   }
 
   postMessage(message: unknown, transfer: Parameters<MessagePort['postMessage']>[1]) {
+    if (this.startup.acceptHostMessage({ message })) {
+      this.startupMessages.push(message);
+      return;
+    }
     this.sent.push(message);
     this.channel.port1.postMessage(message, transfer);
   }
 
   publishReady() {
-    this.dispatchEvent(new MessageEvent('message', { data: ready }));
+    this.startup.start();
   }
 }
 
@@ -66,6 +74,56 @@ afterEach(async () => {
 });
 
 describe('Production startup through real Comlink transport', () => {
+  it('terminates ordinary Load after a cleanup failure crosses real Comlink and blocks reuse', async () => {
+    vi.stubGlobal('Worker', TransportWorker);
+    const client = createTransformersJsWorkerClient();
+    clients.push(client);
+    const worker = currentWorker();
+    expose({
+      async loadDownloadedModel(_model: string, _revision: string, callback: Remote<(info: ProgressInfo) => void>) {
+        callback[releaseProxy]();
+        throw new RequiredDownloadedResourceCleanupError({ cause: new Error('Fixture unfinished body') });
+      },
+    }, worker.endpoint);
+    worker.publishReady();
+    await expect(client.loadDownloadedModel({
+      modelId: 'public/model', revision: 'exact', progressCallback: vi.fn(),
+    })).rejects.toMatchObject({
+      name: 'ProductionWorkerLifecycleError', reason: 'resource-cleanup-failed',
+      cause: { name: 'RequiredDownloadedResourceCleanupError' },
+    });
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    const sent = worker.sent.length;
+    await expect(client.unloadModel()).rejects.toMatchObject({ reason: 'resource-cleanup-failed' });
+    expect(worker.sent).toHaveLength(sent);
+    await client.dispose();
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
+  it('terminates cache revision acceptance after transported cleanup failure before a later candidate RPC', async () => {
+    vi.stubGlobal('Worker', TransportWorker);
+    const client = createDownloadVerificationCandidateAcceptanceWorkerClient();
+    clients.push(client);
+    const worker = currentWorker();
+    expose({
+      async verifyDownloadedModelRevision(_model: string, _revision: string, callback: Remote<(info: ProgressInfo) => void>) {
+        callback[releaseProxy]();
+        throw new RequiredDownloadedResourceCleanupError({ cause: undefined });
+      },
+    }, worker.endpoint);
+    worker.publishReady();
+    await expect(client.verifyDownloadedModelRevision({
+      modelId: 'public/model', loadRevision: 'exact', progressCallback: vi.fn(),
+    })).rejects.toMatchObject({ name: 'ProductionWorkerLifecycleError', reason: 'resource-cleanup-failed' });
+    const sent = worker.sent.length;
+    await expect(client.verifyDownloadedModelCandidate({
+      modelId: 'public/model', loadRevision: 'exact',
+      candidate: { device: 'wasm', dtype: 'q4' }, progressCallback: vi.fn(),
+    })).rejects.toMatchObject({ reason: 'resource-cleanup-failed' });
+    expect(worker.sent).toHaveLength(sent);
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
   it('sends no ordinary Load RPC until delayed expose has completed', async () => {
     vi.stubGlobal('Worker', TransportWorker);
     const client = createTransformersJsWorkerClient();

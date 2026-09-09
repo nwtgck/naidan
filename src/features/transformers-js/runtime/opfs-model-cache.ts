@@ -1,5 +1,5 @@
 import type { TransformersJsCacheRevisionAlias } from '@/features/transformers-js/types';
-import { urlToPath, writeToOpfs } from '@/features/transformers-js/utils';
+import { assertFullResourceResponse, rejectResourceResponse, urlToPath, writeToOpfs } from '@/features/transformers-js/utils';
 
 export interface OpfsModelCacheMatchObservation {
   requestedPath: string,
@@ -7,7 +7,7 @@ export interface OpfsModelCacheMatchObservation {
   bytes: number | undefined,
 }
 
-function sanitizedCacheRequestPath({ urlString }: { urlString: string }): string {
+export function sanitizedCacheRequestPath({ urlString }: { urlString: string }): string {
   try {
     const url = new URL(urlString);
     return `${url.hostname}${url.pathname}`;
@@ -98,7 +98,11 @@ async function matchOpfsPath({
         'X-Cache-Hit': 'OPFS',
       },
     });
-  } catch {
+  } catch (error) {
+    // Only absent entries are cache misses. Permission and I/O failures must
+    // not authorize another revision lookup or suggest that Download can repair
+    // the cache. Preserve the cause for the owning Load/Download operation.
+    if (!(error instanceof DOMException || error instanceof Error) || error.name !== 'NotFoundError') throw error;
     console.log(`[opfsCache] CACHE MISS: ${path}`);
     return undefined;
   }
@@ -198,16 +202,13 @@ export function createOpfsModelCache({
       const path = urlToPath({ url: urlString });
       if (!path) return;
 
-      if (response.status !== 200) {
-        console.warn(`[opfsCache] SKIPPING CACHE (status ${response.status}): ${urlString}`);
-        return;
-      }
+      await assertFullResourceResponse({ response });
 
       const contentType = response.headers.get('Content-Type') || '';
       if (contentType.includes('text/html')) {
         const msg = `[opfsCache] ERROR: Detected HTML response for model request! Possible 404 fallback from server. URL: ${urlString}`;
         console.error(msg);
-        throw new Error(msg);
+        await rejectResourceResponse({ response, error: new Error(msg) });
       }
 
       try {

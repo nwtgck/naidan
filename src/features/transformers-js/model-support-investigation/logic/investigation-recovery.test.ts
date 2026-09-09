@@ -9,6 +9,20 @@ import {
 } from "./investigation-recovery";
 
 describe("investigation recovery", () => {
+  it('preserves completed fresh preparation when a later investigation phase is interrupted', () => {
+    const now = () => '2026-09-09T00:00:00.000Z';
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'later-interruption', now });
+    checkpoint.run.freshMetadata = {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
+      status: 'prepared', maximumBytes: 1024, receivedBytes: 0, requests: [],
+      preparation: { processor: 'tokenizer', resourcePlansByCandidate: {} },
+    };
+    const stopped = interruptInvestigationCheckpoint({ checkpoint, error: new Error('Later phase stopped'), now });
+    expect(stopped.recovery.status).toBe('interrupted');
+    expect(stopped.run.freshMetadata).toEqual(checkpoint.run.freshMetadata);
+    expect(checkpoint.run.freshMetadata.status).toBe('prepared');
+  });
+
   it("records ordered parent-side events before a Worker returns a run", () => {
     const timestamps = [
       "2026-08-07T00:00:00.000Z",

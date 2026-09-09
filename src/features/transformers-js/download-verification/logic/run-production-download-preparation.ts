@@ -32,14 +32,12 @@ export async function runProductionDownloadPreparation({
   progressCallback = () => undefined,
   signal,
   candidateOrder,
-  requiredModelPathsByCandidate,
 }: {
   modelId: string;
   revision: string;
   progressCallback?: TransformersJsProgressCallback;
   signal?: AbortSignal;
   candidateOrder?: readonly TransformersJsProductionInvestigationCandidate[];
-  requiredModelPathsByCandidate?: Readonly<Record<string, readonly string[]>>;
 }): Promise<DownloadVerificationProductionDownloadPreparationRun> {
   const runtimeArtifacts = await prepareProductionRuntimeArtifacts({ modelId, revision, progressCallback, signal });
   switch (runtimeArtifacts.status) {
@@ -59,15 +57,19 @@ export async function runProductionDownloadPreparation({
   }
 
   const candidates = await runCandidateDownloadOrchestration({
-    prepareCandidate: async ({ candidate }) => await prepareProductionModelCandidate({
-      modelId,
-      revision,
-      candidate,
-      progressCallback,
-      signal,
-      requiredModelPaths: requiredModelPathsByCandidate?.[candidateKey({ candidate })]
-        ?? runtimeArtifacts.requiredModelPathsByCandidate[candidateKey({ candidate })],
-    }),
+    prepareCandidate: async ({ candidate }) => {
+      const key = candidateKey({ candidate });
+      const plan = runtimeArtifacts.resourcePlansByCandidate[key];
+      if (plan === undefined) return { status: 'failed', error: { name: 'MissingProductionResourcePlan', message: `No resource plan was returned for ${key}` }, prefetch: undefined };
+      switch (plan.status) {
+      case 'planning-failed': return { status: 'planning-failed', error: plan.error, prefetch: undefined };
+      case 'ready': return await prepareProductionModelCandidate({ modelId, revision, candidate, progressCallback, signal, requiredModelPaths: plan.paths });
+      default: {
+        const unexpected: never = plan;
+        throw new Error(`Unhandled resource plan: ${String(unexpected)}`);
+      }
+      }
+    },
     acceptCandidate: async ({ candidate }) => await acceptDownloadedProductionCandidate({
       modelId,
       resolvedRevision: revision,

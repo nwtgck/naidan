@@ -1,22 +1,34 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as Comlink from 'comlink';
-import { PRODUCTION_WORKER_READY } from './production-worker-startup';
+import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
 
 // Mock Worker class
+const workers: MockWorker[] = [];
 class MockWorker extends EventTarget {
   static latest: MockWorker;
-  terminate = vi.fn();
-  postMessage = vi.fn();
+  private active = true;
+  readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
+  terminate = vi.fn(() => {
+    this.active = false;
+  });
+  postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
   static constructorCount = 0;
   constructor() {
     super();
+    workers.push(this);
     MockWorker.constructorCount++;
     MockWorker.latest = this;
-    queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', { data: PRODUCTION_WORKER_READY })));
+    queueMicrotask(() => {
+      if (this.active) this.startup.start();
+    });
   }
 }
 
 vi.stubGlobal('Worker', MockWorker);
+
+afterEach(() => {
+  for (const worker of workers.splice(0)) worker.dispatchEvent(new Event('error'));
+});
 
 // Mock navigator.storage
 vi.stubGlobal('navigator', {
@@ -58,6 +70,7 @@ describe('transformersJsService worker restart', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
     MockWorker.constructorCount = 0;
   });
 

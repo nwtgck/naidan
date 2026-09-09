@@ -1,5 +1,8 @@
 import { releaseWorkerRemote, workerProxy, wrapWorkerRemote, type WorkerRemote } from "@/utils/worker-transport";
 import { createProductionWorkerSession } from '@/features/transformers-js/worker/production-worker-session';
+import { createFreshMetadataWorkerClient } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/client-hosted';
+import { freshMetadataRequestSchema, FRESH_METADATA_MAX_BYTES } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types';
+import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationCheckpoint,
@@ -292,12 +295,15 @@ export function createModelSupportInvestigationWorkerClient({
 } = {}): ModelSupportInvestigationWorkerClient {
   const activeWorkers = new Set<Worker>();
   const activeProductionSessions = new Set<ProductionWorkerHandle['session']>();
+  const activeMetadataClients = new Set<ReturnType<typeof createFreshMetadataWorkerClient>>();
   let disposed = false;
   let userInterruptionRequested = false;
   let activeInterrupt: (() => void) | undefined;
   let activeRuntimeAbortController: AbortController | undefined;
 
   const terminateAllWorkers = (): void => {
+    for (const client of activeMetadataClients) client.dispose();
+    activeMetadataClients.clear();
     for (const worker of activeWorkers) worker.terminate();
     activeWorkers.clear();
     for (const session of activeProductionSessions) session.dispose();
@@ -409,6 +415,7 @@ export function createModelSupportInvestigationWorkerClient({
         let planningStage: ModelSupportInvestigationPlanningStage = "worker-start";
         let planningTimedOut = false;
         let planningAcceptingCallbacks = true;
+        let freshMetadataAcquisition: 'not-started' | 'started' = 'not-started';
         let partialRun: ModelSupportInvestigationRun;
         try {
           const operation = planningHandle.remote.runPartialInvestigation(
@@ -433,6 +440,47 @@ export function createModelSupportInvestigationWorkerClient({
               if (replayMetadata !== undefined) retainedReplayMetadata = replayMetadata;
               publishCheckpoint();
             } }),
+            workerProxy({ value: async ({ request: input }) => {
+              if (!planningAcceptingCallbacks || disposed || userInterruptionRequested) throw new ModelSupportInvestigationUserInterruptedError();
+              const request = freshMetadataRequestSchema.parse(input);
+              if (configuration.externalNetworkPolicy !== 'allow' || !executionPlan.repositoryDownload
+                || request.modelId !== normalizeTransformersJsProductionModelId({ modelId })
+                || request.maximumBytes > (replayMetadataBudgetBytes ?? FRESH_METADATA_MAX_BYTES)) {
+                throw new Error('Fresh metadata request exceeds the selected investigation authority');
+              }
+              // A failed acquisition must not mint another target-sized budget.
+              // One disposable runtime owns this target's fresh attempt.
+              switch (freshMetadataAcquisition) {
+              case 'not-started': break;
+              case 'started': throw new Error('Fresh metadata acquisition already started for this target');
+              default: {
+                const _ex: never = freshMetadataAcquisition;
+                throw new Error(`Unknown fresh acquisition state: ${_ex}`);
+              }
+              }
+              freshMetadataAcquisition = 'started';
+              const client = createFreshMetadataWorkerClient();
+              activeMetadataClients.add(client);
+              const controller = new AbortController();
+              activeRuntimeAbortController = controller;
+              try {
+                return await client.run({
+                  ...request, repositoryFiles: request.repositoryFiles.map(({ path, size }) => ({ path, size })), signal: controller.signal,
+                  onObservation: ({ summary }) => {
+                    if (!planningAcceptingCallbacks || userInterruptionRequested) return;
+                    checkpoint = replaceInvestigationCheckpointRun({ checkpoint, run: { ...checkpoint.run, freshMetadata: summary }, now });
+                    const last = summary.requests.at(-1);
+                    publishEvent({ event: { stepId: 'download-evidence', status: 'running',
+                      detail: `Fresh metadata: ${summary.status}; ${last?.consumer ?? 'runtime-preparation'}; file=${last?.path ?? 'starting'}; response=${last?.httpStatus ?? 'pending'}; received=${summary.receivedBytes}/${summary.maximumBytes} bytes; preparation-stage=${summary.preparationStage ?? 'not-recorded'}; failure-category=${summary.failureCategory ?? 'not-recorded'}`,
+                    } });
+                  },
+                });
+              } finally {
+                client.dispose();
+                activeMetadataClients.delete(client);
+                if (activeRuntimeAbortController === controller) activeRuntimeAbortController = undefined;
+              }
+            } }),
           );
           const planningRun = await awaitInterruptible({ operation: withPlanningTimeout({
             operation,
@@ -441,6 +489,8 @@ export function createModelSupportInvestigationWorkerClient({
             onTimeout: () => {
               planningTimedOut = true;
               planningAcceptingCallbacks = false;
+              for (const client of activeMetadataClients) client.dispose();
+              activeMetadataClients.clear();
               terminateWorkerHandle({ handle: planningHandle });
               publishEvent({
                 event: {

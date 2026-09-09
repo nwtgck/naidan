@@ -55,13 +55,21 @@ import {
   type WorkerGenerationRuntimeState,
 } from '@/features/transformers-js/generation-strategies';
 import { configureHostedTransformersRuntime } from '@/features/transformers-js/runtime/configure-hosted-runtime';
+import { fetchProductionRuntimeModule } from '@/features/transformers-js/runtime/production-runtime-module';
+import { importProductionRuntimeModule } from '@/features/transformers-js/runtime/import-production-runtime-module';
+import type { RequestProductionRuntimeModule } from './production-worker-startup';
 import { createHostedTransformersModelFetch } from '@/features/transformers-js/runtime/model-fetch';
 import { createDownloadedModelReadOnlyCache } from '@/features/transformers-js/runtime/downloaded-model-cache';
 import { createOpfsModelCache } from '@/features/transformers-js/runtime/opfs-model-cache';
 import {
   downloadedModelCandidatePlanError,
   planDownloadedModelCandidates,
+  MISSING_DOWNLOADED_MODEL_ARTIFACT_ERROR_NAME,
 } from '@/features/transformers-js/runtime/plan-downloaded-model-candidates';
+import { selectProductionModelResources } from '@/features/transformers-js/runtime/production-resource-selector';
+import { createRequiredDownloadedResourceOperation, disposeRejectedDownloadedRuntime, RequiredDownloadedModelResourceError, RequiredDownloadedResourceCleanupError } from '@/features/transformers-js/runtime/required-downloaded-resource-operation';
+import { isTransformersJsOptionalConfigurationError } from '@/features/transformers-js/runtime/transformers-js-optional-configuration-error';
+import { DOWNLOADED_MODEL_PREPARATION_ERROR_NAME, downloadedModelPreparationError, withDownloadedModelPreparationPhase } from '@/features/transformers-js/runtime/downloaded-model-preparation-error';
 import { promiseAllKeyed } from '@/utils/promise';
 
 /**
@@ -93,7 +101,7 @@ const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 // ONNX Runtime MJS/WASM is configured before model traffic so it can never
 // silently fall back to the external default CDN.
 const originalFetch = self.fetch;
-const { runtimeFetch } = configureHostedTransformersRuntime({
+const { assets: runtimeAssets, runtimeFetch } = configureHostedTransformersRuntime({
   env,
   workerLocationUrl: self.location.href,
   environment: import.meta.env.DEV ? 'development' : 'production',
@@ -199,6 +207,18 @@ function resetGenerationContinuationState(): void {
   generationRuntimeState.qwen3_5PastKeyValues = null;
   clearQwen3_5ContinuationState();
   stoppingCriteria.reset();
+}
+
+function clearLoadedRuntimeState(): void {
+  model = null;
+  gemma4Processor = null;
+  generationRuntimeState.gemma4Processor = null;
+  qwen3_5Processor = null;
+  generationRuntimeState.qwen3_5Processor = null;
+  tokenizer = null;
+  resetGenerationContinuationState();
+  activeModelId = null;
+  generationRuntimeState.activeModelId = null;
 }
 
 function assertGemma4RuntimeSupport({ modelId }: { modelId: string }): void {
@@ -348,10 +368,13 @@ async function loadProductionRuntime({
     cacheOnlyFetch,
     run: async () => {
       onRuntimePhase?.({ phase: 'config' });
-      const config = await AutoConfig.from_pretrained(cleanModelId, {
-        local_files_only: true,
-        progress_callback: info => runtimePreparationProgressCallback({ info }),
-        ...(revision === undefined ? {} : { revision }),
+      const config = await withDownloadedModelPreparationPhase({
+        phase: 'config',
+        run: () => AutoConfig.from_pretrained(cleanModelId, {
+          local_files_only: true,
+          progress_callback: info => runtimePreparationProgressCallback({ info }),
+          ...(revision === undefined ? {} : { revision }),
+        }),
       });
       const modelType = typeof config.model_type === 'string' ? config.model_type : undefined;
       const runtimeArtifactLoader = selectTransformersJsProductionRuntimeArtifactLoader({
@@ -359,35 +382,34 @@ async function loadProductionRuntime({
         modelType,
       });
       onRuntimePhase?.({ phase: 'candidate-plan' });
-      const candidatePlan = await planDownloadedModelCandidates({
-        modelId: cleanModelId,
-        revision,
-        candidates,
-        modelCache: runtimeModelCache,
-        getModelFiles: async ({ candidate }) => await ModelRegistry.get_model_files(cleanModelId, {
-          config,
-          device: candidate.device,
-          dtype: candidate.dtype,
+      const candidatePlan = await withDownloadedModelPreparationPhase({
+        phase: 'candidate-plan',
+        run: () => planDownloadedModelCandidates({
+          modelId: cleanModelId,
+          revision,
+          candidates,
+          modelCache: runtimeModelCache,
+          getModelFiles: async ({ candidate }) => selectProductionModelResources({ autoClass, config, candidate }).paths,
+          getRuntimeFiles: async () => {
+            const tokenizerPaths = await ModelRegistry.get_tokenizer_files(cleanModelId);
+            switch (runtimeArtifactLoader) {
+            case 'tokenizer':
+              return tokenizerPaths;
+            case 'gemma4-processor':
+            case 'qwen3_5-processor':
+              return [...tokenizerPaths, ...await ModelRegistry.get_processor_files(cleanModelId)];
+            default: {
+              const _ex: never = runtimeArtifactLoader;
+              throw new Error(`Unhandled Production runtime artifact loader: ${_ex}`);
+            }
+            }
+          },
+          workerLocationUrl: self.location.href,
         }),
-        getRuntimeFiles: async () => {
-          const tokenizerPaths = await ModelRegistry.get_tokenizer_files(cleanModelId);
-          switch (runtimeArtifactLoader) {
-          case 'tokenizer':
-            return tokenizerPaths;
-          case 'gemma4-processor':
-          case 'qwen3_5-processor':
-            return [...tokenizerPaths, ...await ModelRegistry.get_processor_files(cleanModelId)];
-          default: {
-            const _ex: never = runtimeArtifactLoader;
-            throw new Error(`Unhandled Production runtime artifact loader: ${_ex}`);
-          }
-          }
-        },
-        workerLocationUrl: self.location.href,
       });
       const completeCandidates = candidatePlan
-        .filter(entry => entry.complete)
-        .map(entry => entry.candidate);
+        .filter(entry => entry.status === 'checked')
+        .filter(entry => entry.complete);
       if (completeCandidates.length === 0) {
         throw downloadedModelCandidatePlanError({
           modelId: cleanModelId,
@@ -397,9 +419,21 @@ async function loadProductionRuntime({
       }
 
       let selectedCandidate: ProductionLoadCandidate | undefined;
+      let selectedResources: ReturnType<typeof createRequiredDownloadedResourceOperation> | undefined;
       let lastError: unknown;
       const loadAttempts: TransformersJsProductionInvestigationCandidateLoadAttempt[] = [];
-      for (const candidate of completeCandidates) {
+      for (const plan of completeCandidates) {
+        const { candidate } = plan;
+        const resources = createRequiredDownloadedResourceOperation({
+          modelId: cleanModelId,
+          revision,
+          // AutoModel re-reads this required config after the initial AutoConfig
+          // and plan. Registry metadata lists do not include that second read.
+          requiredPaths: ['config.json', ...plan.requiredModelPaths, ...plan.requiredRuntimePaths],
+          workerLocationUrl: self.location.href,
+          modelCache: runtimeModelCache,
+          cacheOnlyFetch,
+        });
         onCandidateStart({ candidate });
         // This boundary includes cache reads and session creation. File progress
         // alone cannot distinguish those operations or prove that either ended.
@@ -416,15 +450,23 @@ async function loadProductionRuntime({
           },
         });
         try {
-          model = await loadDownloadedProductionModelCandidate({
-            cleanModelId,
-            autoClass,
-            candidate,
-            revision,
-            progressCallback: rawProgressCallback,
+          model = await withDownloadedModelAccessMode({
+            modelCache: resources.cache,
+            cacheOnlyFetch: resources.fetch,
+            run: () => loadDownloadedProductionModelCandidate({
+              cleanModelId,
+              autoClass,
+              candidate,
+              revision,
+              progressCallback: rawProgressCallback,
+            }),
           });
+          // Upstream tryCache and metadata prepasses may swallow our exception.
+          // A returned model is not success until this candidate's reads agree.
+          resources.assertHealthy();
           const modelLoadDurationMs = Math.max(0, performance.now() - startedAt);
           selectedCandidate = candidate;
+          selectedResources = resources;
           const rawAttempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
             candidate,
             status: 'passed',
@@ -448,6 +490,26 @@ async function loadProductionRuntime({
           break;
         } catch (error) {
           lastError = typeof error === 'number' ? new Error(`Numeric error ${error}`) : error;
+          try {
+            await resources.close();
+          } catch (cleanupError) {
+            lastError = cleanupError;
+          }
+          try {
+            resources.assertHealthy();
+          } catch (resourceError) {
+            lastError = resourceError;
+          }
+          if (model !== null) {
+            const rejectedModel = model;
+            model = null;
+            // Cleanup must not replace the original required-resource failure.
+            try {
+              await disposeRejectedDownloadedRuntime({ dispose: () => rejectedModel.dispose(), cause: lastError });
+            } catch (cleanupError) {
+              lastError = cleanupError;
+            }
+          }
           const modelLoadDurationMs = Math.max(0, performance.now() - startedAt);
           const rawAttempt: TransformersJsProductionInvestigationCandidateLoadAttempt = {
             candidate,
@@ -470,21 +532,51 @@ async function loadProductionRuntime({
               error: lastError instanceof Error ? lastError.message : String(lastError),
             },
           });
+          if (lastError instanceof RequiredDownloadedModelResourceError || lastError instanceof RequiredDownloadedResourceCleanupError
+            || isTransformersJsOptionalConfigurationError({ error: lastError })) {
+            clearLoadedRuntimeState();
+            throw lastError;
+          }
         }
       }
 
-      if (model === null || selectedCandidate === undefined) {
+      if (model === null || selectedCandidate === undefined || selectedResources === undefined) {
         throw lastError instanceof Error ? lastError : new Error('No production load candidate succeeded');
       }
 
       const runtimePreparationStartedAt = performance.now();
       onRuntimePhase?.({ phase: 'tokenizer-processor' });
-      const processor = await loadDownloadedProductionTokenizerOrProcessor({
-        cleanModelId,
-        modelType,
-        revision,
-        progressCallback: info => runtimePreparationProgressCallback({ info }),
-      });
+      let processor: Awaited<ReturnType<typeof loadDownloadedProductionTokenizerOrProcessor>>;
+      try {
+        processor = await withDownloadedModelAccessMode({
+          modelCache: selectedResources.cache,
+          cacheOnlyFetch: selectedResources.fetch,
+          run: () => loadDownloadedProductionTokenizerOrProcessor({
+            cleanModelId,
+            modelType,
+            revision,
+            progressCallback: info => runtimePreparationProgressCallback({ info }),
+          }),
+        });
+        selectedResources.assertHealthy();
+        await selectedResources.close();
+        selectedResources.assertHealthy();
+      } catch (error) {
+        // close may have already timed out; cleanup must still reach the model.
+        await selectedResources.close().catch(() => undefined);
+        const rejectedModel = model;
+        clearLoadedRuntimeState();
+        let resourceError = error;
+        try {
+          selectedResources.assertHealthy();
+        } catch (failure) {
+          resourceError = failure;
+        }
+        const preparationError = downloadedModelPreparationError({ phase: 'tokenizer-processor', cause: resourceError });
+        await disposeRejectedDownloadedRuntime({ dispose: () => rejectedModel.dispose(), cause: preparationError });
+        selectedResources.assertHealthy();
+        throw preparationError;
+      }
       const runtimePreparationDurationMs = Math.max(0, performance.now() - runtimePreparationStartedAt);
       onRuntimePhase?.({ phase: 'ready' });
 
@@ -761,6 +853,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         ? `Low-level engine error (code ${error}). This usually means memory allocation failed or the model format is incompatible.`
         : (error instanceof Error ? error.message : String(error));
       console.error('[transformersJsWorker] Detailed load error:', error, errorMessage);
+      if (error instanceof Error) throw error;
       throw new Error(errorMessage);
     }
   },
@@ -838,6 +931,9 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
       });
       return { device: route.candidate.device, dtype: route.candidate.dtype };
     } catch (error) {
+      if (error instanceof RequiredDownloadedModelResourceError || error instanceof RequiredDownloadedResourceCleanupError
+        || (error instanceof Error && error.name === DOWNLOADED_MODEL_PREPARATION_ERROR_NAME)
+        || isTransformersJsOptionalConfigurationError({ error })) throw error;
       // If no candidate ever loaded, do not let a final missing-artifact error
       // erase an earlier runtime rejection. Explicit Download may repair only a
       // genuinely incomplete cache; runtime rejection is not evidence that a
@@ -846,7 +942,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         const nonMissingFailure = attempts.find(attempt => (
           attempt.status === 'failed'
           && attempt.error !== undefined
-          && !attempt.error.message.includes('MUST NOT fetch model artifacts')
+          && attempt.error.name !== MISSING_DOWNLOADED_MODEL_ARTIFACT_ERROR_NAME
         ));
         if (nonMissingFailure?.error !== undefined) {
           const preserved = new Error(nonMissingFailure.error.message);
@@ -1526,18 +1622,11 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
   },
 
   async unloadModel() {
-    if (model) {
-      await model.dispose();
-      model = null;
+    const unloadingModel = model;
+    clearLoadedRuntimeState();
+    if (unloadingModel) {
+      await unloadingModel.dispose();
     }
-    gemma4Processor = null;
-    generationRuntimeState.gemma4Processor = null;
-    qwen3_5Processor = null;
-    generationRuntimeState.qwen3_5Processor = null;
-    tokenizer = null;
-    resetGenerationContinuationState();
-    activeModelId = null;
-    generationRuntimeState.activeModelId = null;
   },
 
   async interrupt() {
@@ -1643,10 +1732,29 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
   },
 };
 
-exposeWorkerRemote<ITransformersJsWorker>({
-  api: transformersJsWorker,
-  endpoint: undefined,
-});
+let initializationStarted = false;
+
+/** The only entry-publication path, shared by bootstrap and direct-entry replay. */
+export async function initializeProductionWorkerRuntime({ requestRuntimeModule }: {
+  requestRuntimeModule: RequestProductionRuntimeModule;
+}): Promise<{ requestId: string }> {
+  if (initializationStarted) throw new Error('Production runtime initialization is one-shot');
+  initializationStarted = true;
+  const bytes = await fetchProductionRuntimeModule({ assets: runtimeAssets, runtimeFetch });
+  const { requestId, objectUrl } = await requestRuntimeModule({ variant: runtimeAssets.variant, bytes });
+  const leasedUrl = new URL(objectUrl);
+  if (leasedUrl.protocol !== 'blob:' || leasedUrl.origin !== new URL(self.location.href).origin) {
+    throw new Error('Production runtime lease must be a same-origin Blob URL');
+  }
+  // Evaluate the pinned module, but never invoke its factory. CSP/Blob import
+  // failures are startup failures, not model incompatibility or another dtype.
+  await importProductionRuntimeModule({ objectUrl });
+  const wasm = env.backends.onnx.wasm;
+  if (!wasm) throw new Error('Production ONNX Runtime environment is unavailable');
+  wasm.wasmPaths = { mjs: objectUrl, wasm: runtimeAssets.wasmUrl };
+  exposeWorkerRemote<ITransformersJsWorker>({ api: transformersJsWorker, endpoint: undefined });
+  return { requestId };
+}
 export type { ITransformersJsWorker as TransformersJsWorker };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

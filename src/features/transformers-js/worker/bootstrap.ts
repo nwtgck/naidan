@@ -1,5 +1,5 @@
 import { createDownloadedModelWorkerFetch } from '@/features/transformers-js/runtime/offline-worker-fetch';
-import { startProductionWorkerRuntime } from './production-worker-startup';
+import { createProductionRuntimeModuleRequester, startProductionWorkerRuntime } from './production-worker-startup';
 
 // This bootstrap intentionally does not import Transformers.js. Install the
 // fixed offline network capability first, then evaluate the runtime entry so
@@ -14,7 +14,11 @@ self.fetch = createDownloadedModelWorkerFetch({
 });
 
 void startProductionWorkerRuntime({
-  loadEntry: () => import('./entry'),
+  loadEntry: async () => {
+    const { initializeProductionWorkerRuntime } = await import('./entry');
+    const { requestRuntimeModule } = createProductionRuntimeModuleRequester({ endpoint: self });
+    return await initializeProductionWorkerRuntime({ requestRuntimeModule });
+  },
   postMessage: ({ message }) => self.postMessage(message),
 }).catch(error => {
   // Surface entry evaluation failures as Worker errors instead of leaving an

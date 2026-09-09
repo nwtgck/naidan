@@ -77,6 +77,9 @@ export async function prepareProductionModelCandidate({
   requiredModelPaths?: readonly string[];
 }): Promise<DownloadVerificationCandidatePreparationObservation> {
   signal?.throwIfAborted();
+  if (!requiredModelPaths?.length) {
+    return { status: 'failed', error: { name: 'MissingProductionResourcePlan', message: 'Candidate transfer requires an explicit completed Production resource plan' }, prefetch: undefined };
+  }
   const requestObservation = await observeProductionModelArtifactCandidateRequests({
     modelId,
     revision,
@@ -129,24 +132,23 @@ export async function prepareProductionModelCandidate({
     };
   }
 
+  const plannedPaths = new Set(requiredModelPaths);
+  if (requestObservation.requests.some(request => !plannedPaths.has(request.path))) {
+    return {
+      status: 'failed',
+      error: { name: 'ProductionResourcePlanMismatch', message: 'The real loader observed a model artifact outside the completed Production resource plan' },
+      prefetch: undefined,
+    };
+  }
+
   const client = createTransformersJsDownloadWorkerClient();
   try {
-    // Held-fetch observation is primary evidence of what Transformers.js actually
-    // requests, but some composite loaders issue later model requests only after
-    // earlier requests resolve. Therefore that observation can be a staged prefix,
-    // not a complete download manifest. When runtime artifact preparation has a
-    // ModelRegistry plan, explicitly download the union so a later cache-only load
-    // never has to discover a missing multi-GB artifact. This is download
-    // preparation only; model-load investigation remains strictly cache-only.
-    const observedPaths = new Set(requestObservation.requests.map(request => request.path));
-    const urls = [
-      ...requestObservation.requests.map(request => request.url),
-      ...(requiredModelPaths ?? []).filter(path => !observedPaths.has(path)).map(path => exactRevisionModelArtifactUrl({
-        modelId: normalizedModelId,
-        revision,
-        path,
-      })),
-    ];
+    // The shared selector supplies a completed plan. Observation remains a
+    // compatibility check, never a quiet-time completeness certificate or an
+    // authority to add Registry-only artifacts to the transfer set.
+    const urls = [...plannedPaths].map(path => exactRevisionModelArtifactUrl({
+      modelId: normalizedModelId, revision, path,
+    }));
     const operation = client.prefetchUrls({
       urls,
       progressCallback,

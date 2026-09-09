@@ -41,6 +41,7 @@ function revision({
     incompleteFileCount: 0,
     zeroByteFileCount: 0,
     weightFileCount: 1,
+    committedWeightFileCount: 1,
     lastModified,
     status: 'committed-file-set',
   };

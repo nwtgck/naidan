@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationModal__replace_results_and_return_to_setup = (): string => 'Die aktuellen Ergebnisse ersetzen und zur Einrichtung zurückkehren? Modellliste und Konfiguration bleiben erhalten. Lade zuerst das Evidence-ZIP herunter, wenn du diese Ergebnisse behalten möchtest.';

@@ -243,14 +243,26 @@ function runtimePrefetchFileEvidence({ evidence }: { evidence: DownloadVerificat
 }> {
   const preparation = evidence.runtimeCompletion?.preparation;
   if (preparation?.candidates === undefined) return [];
-  return preparation.candidates.attempts.flatMap((attempt, candidateAttemptIndex) => (
-    attempt.preparation.prefetch?.files.map(file => ({
+  return preparation.candidates.attempts.flatMap((attempt, candidateAttemptIndex) => {
+    const prepared = attempt.preparation;
+    // No resource plan means no transfer: do not fabricate per-file evidence.
+    switch (prepared.status) {
+    case 'planning-failed': return [];
+    case 'ready':
+    case 'unavailable':
+    case 'failed': break;
+    default: {
+      const _ex: never = prepared;
+      throw new Error(`Unhandled candidate preparation: ${String(_ex)}`);
+    }
+    }
+    return prepared.prefetch?.files.map(file => ({
       candidateAttemptIndex,
       candidate: attempt.candidate,
-      preparationStatus: attempt.preparation.status,
+      preparationStatus: prepared.status,
       file,
-    })) ?? []
-  ));
+    })) ?? [];
+  });
 }
 
 function packageScope({ mode }: { mode: DownloadVerificationEvidenceInput['mode'] }): 'download-runtime-complete' | 'download-probe-only' {

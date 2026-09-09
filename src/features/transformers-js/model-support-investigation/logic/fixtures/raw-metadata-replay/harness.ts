@@ -1,18 +1,22 @@
 import { afterEach, beforeAll, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { selectTransformersJsProductionAutoClass, selectTransformersJsProductionRuntimeArtifactLoader } from '@/features/transformers-js/production-routing';
-import { digest, openRawZip, rawRuntime, restoreRawModel, type RawModel, type ReplayOptions, type ReplayProcessor } from './helpers';
+import { digest, rawRuntime, type RawModel, type ReplayOptions, type ReplayProcessor } from './helpers';
+import { readModelFixture } from '@/features/transformers-js/download-verification/fixtures/model-runtime-fixture';
+import { getProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 
 // Shared execution/assertion mechanics only. Model names, expected session
 // inventories, processor classes and incompatibilities live in each model test.
-let source: Awaited<ReturnType<typeof openRawZip>>;
 const active: Array<{ harness: Awaited<ReturnType<typeof rawRuntime>>, expectedUnknown: string[] }> = [];
 
 export function installRawReplay({ evidence }: { evidence: {
   modelId: string, revision: string, files: Record<string, { sha256: string, byteLength: number }>,
 } | undefined }) {
   beforeAll(async () => {
-    source = await openRawZip({ inputPath: process.env.NAIDAN_REPLAY_ZIP });
+    // Build the same production-plugin artifact as explicit suite setup, not
+    // inside the first tokenizer test's five-second execution budget. Each
+    // test still imports a fresh runtime; no model or runtime state is shared.
+    await getProductionTransformersArtifact();
     if (evidence !== undefined) {
       const archive = await archiveFor({ modelId: evidence.modelId });
       expect(archive.summary.revision).toBe(evidence.revision);
@@ -22,7 +26,7 @@ export function installRawReplay({ evidence }: { evidence: {
         expect({ sha256: digest({ bytes }), byteLength: bytes.byteLength }, path).toEqual(expected);
       }
     }
-  });
+  }, 30_000);
   afterEach(() => {
     try {
       for (const { harness: h, expectedUnknown } of active) {
@@ -37,14 +41,8 @@ export function installRawReplay({ evidence }: { evidence: {
   });
 }
 
-export function rawSource() {
-  return source;
-}
-
 export async function archiveFor({ modelId }: { modelId: string }) {
-  const target = source.batch.targets.find(item => item.target === modelId);
-  if (target === undefined) throw new Error(`Model absent from explicit raw ZIP: ${modelId}`);
-  return restoreRawModel({ zip: source.zip, prefix: target.evidencePath, modelId });
+  return readModelFixture({ modelId });
 }
 
 export async function start({ archive, bodyPaths }: { archive: RawModel, bodyPaths: string[] }) {
@@ -167,8 +165,7 @@ export async function assertRawModelSelection({ modelId, dtype, sessions, probeO
   expect(bindings).toEqual(expected.filter(path => path.includes('.onnx_data')));
   const registry = await h.runtime.ModelRegistry.get_model_files(modelId, { ...options, config: jsonBody({ archive, path: 'config.json' }) });
   expect(registry.filter(path => path.startsWith('onnx/')).sort()).toEqual(observed);
-  const target = source.batch.targets.find(item => item.target === modelId)!;
-  const repository = z.object({ resolvedRevision: z.string(), files: z.array(z.object({ path: z.string() })) }).parse(JSON.parse(await source.zip.file(`${target.evidencePath}repository/repository.json`)!.async('string')));
+  const repository = archive.repository;
   expect(repository.resolvedRevision).toBe(archive.summary.revision);
   const missing = expected.filter(path => !repository.files.some(file => file.path === path));
   expect(missing).toEqual(expectedMissing);

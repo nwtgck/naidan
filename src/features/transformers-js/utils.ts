@@ -87,33 +87,83 @@ async function removeEntryIfPresent({ directory, name }: {
 async function writeResponseBody({ fileHandle, response }: {
   fileHandle: FileSystemFileHandle,
   response: Response,
-}): Promise<void> {
+}): Promise<number> {
   if (!('createWritable' in fileHandle)) {
     throw new Error('OPFS file handle does not support createWritable');
   }
   const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
   if (response.body !== null) {
-    await response.body.pipeTo(writable);
-    return;
+    let receivedByteLength = 0;
+    await response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        receivedByteLength += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+    })).pipeTo(writable);
+    return receivedByteLength;
   }
-  await writable.write(await response.arrayBuffer());
+  const bytes = await response.arrayBuffer();
+  await writable.write(bytes);
   await writable.close();
+  return bytes.byteLength;
 }
 
-function expectedResponseByteLength({ response }: { response: Response }): number | undefined {
+/**
+ * Length checks and transfer progress must describe the bytes exposed by fetch,
+ * not the encoded HTTP payload. Native fetch can retain compression headers
+ * after decoding the body, so that Content-Length cannot verify an OPFS file.
+ */
+export function expectedDecodedResponseByteLength({ response }: { response: Response }): number | undefined {
+  const encoding = response.headers.get('content-encoding')?.trim().toLowerCase();
+  if (encoding !== undefined && encoding !== '' && encoding !== 'identity') return undefined;
   const header = response.headers.get('content-length');
-  if (header === null) return undefined;
+  if (header === null || !/^\d+$/u.test(header.trim())) return undefined;
   const value = Number(header);
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
+/** Full-file persistence never promotes a range or an unsuccessful response. */
+export function fullResourceResponseError({ response }: { response: Response }): Error | undefined {
+  if (!response.ok) return new Error(`HTTP ${response.status} ${response.statusText}`);
+  if (response.status !== 200) return new Error(`Full resource response requires HTTP 200, received HTTP ${response.status}`);
+  if (response.headers.has('Content-Range')) return new Error('Full resource response must not include Content-Range');
+  return undefined;
+}
+
+export const REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS = 1_000;
+
+/** Reject before writes; bound cleanup of unread or tee-branch response bodies. */
+export async function rejectResourceResponse({ response, error }: { response: Response, error: Error }): Promise<never> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.resolve().then(() => response.body?.cancel()).catch(() => undefined),
+      new Promise<void>(resolve => {
+        timeout = setTimeout(resolve, REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+  // The original validation error always wins. The deadline cannot certify a
+  // response as complete or prove transport termination; the caller still owns
+  // its Worker. Normal successful responses never enter this cleanup wait.
+  throw error;
+}
+
+export async function assertFullResourceResponse({ response }: { response: Response }): Promise<void> {
+  const error = fullResourceResponseError({ response });
+  if (error !== undefined) await rejectResourceResponse({ response, error });
+}
+
 /**
  * Writes a response body directly to its final OPFS path. This is the normal
- * Transformers.js custom-cache write path and intentionally preserves the
- * pre-investigation production behavior: one response stream, one final write,
- * then the completion marker.
+ * Transformers.js custom-cache write path uses one response stream and one final
+ * write. Completion is published only after the closed file passes verification;
+ * the old marker must not certify replacement bytes when verification fails.
  */
 export async function writeToOpfs({ path, response }: { path: string, response: Response }): Promise<void> {
+  await assertFullResourceResponse({ response });
   const pathParts = path.split('/');
   const fileName = pathParts.pop()!;
 
@@ -125,16 +175,22 @@ export async function writeToOpfs({ path, response }: { path: string, response: 
   }
 
   const fileHandle = await currentDir.getFileHandle(fileName, { create: true });
-  if ('createWritable' in fileHandle) {
-    const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
-    if (response.body !== null) {
-      await response.body.pipeTo(writable);
-    } else {
-      await writable.write(await response.arrayBuffer());
-      await writable.close();
-    }
-    await currentDir.getFileHandle(`.${fileName}.complete`, { create: true });
+  if (!('createWritable' in fileHandle)) {
+    throw new Error('OPFS file handle does not support createWritable');
   }
+  const markerName = `.${fileName}.complete`;
+  await removeEntryIfPresent({ directory: currentDir, name: markerName });
+  const receivedByteLength = await writeResponseBody({ fileHandle, response });
+  const file = await fileHandle.getFile();
+  const expectedByteLength = expectedDecodedResponseByteLength({ response });
+  if (file.size === 0) throw new Error(`OPFS file is empty: ${path}`);
+  if (file.size !== receivedByteLength) {
+    throw new Error(`OPFS byte length mismatch for ${path}: consumed ${receivedByteLength}, stored ${file.size}`);
+  }
+  if (expectedByteLength !== undefined && file.size !== expectedByteLength) {
+    throw new Error(`OPFS byte length mismatch for ${path}: expected ${expectedByteLength}, received ${file.size}`);
+  }
+  await currentDir.getFileHandle(markerName, { create: true });
 }
 
 /**
@@ -143,6 +199,7 @@ export async function writeToOpfs({ path, response }: { path: string, response: 
  * existing completion marker must not survive a failed repair.
  */
 export async function writeToOpfsWithStaging({ path, response }: { path: string, response: Response }): Promise<{ byteLength: number }> {
+  await assertFullResourceResponse({ response });
   const pathParts = path.split('/');
   const fileName = pathParts.pop()!;
   const markerName = `.${fileName}.complete`;
@@ -158,10 +215,13 @@ export async function writeToOpfsWithStaging({ path, response }: { path: string,
   let promotionStarted = false;
   try {
     const stagingHandle = await currentDir.getFileHandle(stagingName, { create: true });
-    await writeResponseBody({ fileHandle: stagingHandle, response });
+    const receivedByteLength = await writeResponseBody({ fileHandle: stagingHandle, response });
     const stagedFile = await stagingHandle.getFile();
-    const expectedByteLength = expectedResponseByteLength({ response });
+    const expectedByteLength = expectedDecodedResponseByteLength({ response });
     if (stagedFile.size === 0) throw new Error(`Staged OPFS file is empty: ${path}`);
+    if (stagedFile.size !== receivedByteLength) {
+      throw new Error(`Staged OPFS byte length mismatch for ${path}: consumed ${receivedByteLength}, stored ${stagedFile.size}`);
+    }
     if (expectedByteLength !== undefined && stagedFile.size !== expectedByteLength) {
       throw new Error(`Staged OPFS byte length mismatch for ${path}: expected ${expectedByteLength}, received ${stagedFile.size}`);
     }

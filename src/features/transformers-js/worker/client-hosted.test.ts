@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PRODUCTION_WORKER_READY } from './production-worker-startup';
+import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
 
 const mocks = vi.hoisted(() => ({
   release: vi.fn(),
@@ -23,12 +23,20 @@ class MockWorker extends EventTarget {
   }
 
   terminate = mocks.terminate;
+  readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
+  postMessage(message: unknown) {
+    this.startup.acceptHostMessage({ message });
+  }
+  async publishReady() {
+    this.startup.start(); await this.startup.ready;
+  }
 }
 
 vi.stubGlobal('Worker', MockWorker);
 
 describe('Transformers.js Worker client cleanup', () => {
   beforeEach(() => {
+    installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
     vi.clearAllMocks();
     mocks.wrap.mockReturnValue({});
   });
@@ -37,7 +45,7 @@ describe('Transformers.js Worker client cleanup', () => {
     mocks.release.mockReturnValue(new Promise<never>(() => undefined));
     const { createTransformersJsWorkerClient } = await import('./client-hosted');
     const client = createTransformersJsWorkerClient();
-    MockWorker.latest.dispatchEvent(new MessageEvent('message', { data: PRODUCTION_WORKER_READY }));
+    await MockWorker.latest.publishReady();
 
     await expect(client.dispose()).resolves.toBeUndefined();
 
@@ -62,7 +70,7 @@ describe('Transformers.js Worker client cleanup', () => {
     });
     const { createTransformersJsWorkerClient } = await import('./client-hosted');
     const client = createTransformersJsWorkerClient();
-    MockWorker.latest.dispatchEvent(new MessageEvent('message', { data: PRODUCTION_WORKER_READY }));
+    await MockWorker.latest.publishReady();
 
     await expect(client.dispose()).resolves.toBeUndefined();
 

@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 1,
+  "modelId": "onnx-community/gemma-4-E2B-it-ONNX",
+  "revision": "9f4bef82ea6e296bc69f8a2f5939f73af81b07a6",
+  "scope": "Selected original runtime metadata and complete ONNX path/size inventory; not a complete repository or runnable model.",
+  "resources": [
+    {
+      "path": "special_tokens_map.json",
+      "status": "repository-absent"
+    },
+    {
+      "path": "added_tokens.json",
+      "status": "repository-absent"
+    },
+    {
+      "path": "chat_template.json",
+      "status": "repository-absent"
+    },
+    {
+      "path": "config.json",
+      "status": "recorded",
+      "asset": "config.json",
+      "encoding": "identity",
+      "byteLength": 5549,
+      "sha256": "5494e6677d9e150ea20ba3101ae8a32b0f141004626f052725d8bf48991b9faa"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "status": "recorded",
+      "asset": "tokenizer_config.json",
+      "encoding": "identity",
+      "byteLength": 18807,
+      "sha256": "06afbf54e228050cba79c4a0afd83543cc89070a2d62b8337d0aa8b4cdc348c3"
+    },
+    {
+      "path": "generation_config.json",
+      "status": "recorded",
+      "asset": "generation_config.json",
+      "encoding": "identity",
+      "byteLength": 238,
+      "sha256": "e6a0b50de21a511f15ac4857b7f227f68ee60ecb1f11255d07b75e0bdc60e155"
+    },
+    {
+      "path": "processor_config.json",
+      "status": "recorded",
+      "asset": "processor_config.json",
+      "encoding": "identity",
+      "byteLength": 1689,
+      "sha256": "32bdf45d2ad4cc29a0822ddd157a182de76644f0419a6228d151495256e9813c"
+    },
+    {
+      "path": "preprocessor_config.json",
+      "status": "recorded",
+      "asset": "preprocessor_config.json",
+      "encoding": "identity",
+      "byteLength": 43,
+      "sha256": "4457c6e8a09070d7d5d1cd983fbfb67ebafe602bd98120c3543a024f5d07056b"
+    },
+    {
+      "path": "tokenizer.json",
+      "status": "recorded",
+      "asset": "tokenizer.json.gz",
+      "encoding": "gzip",
+      "byteLength": 19439251,
+      "sha256": "47bd35616c7c782aaca6ccf48c75f3461d5877170984b8836b375107d0a9f566"
+    },
+    {
+      "path": "chat_template.jinja",
+      "status": "recorded",
+      "asset": "chat_template.jinja",
+      "encoding": "identity",
+      "byteLength": 16317,
+      "sha256": "781d10940fbc44be40064b5d43a056fc486c84ceaa55538226368b57314132bf"
+    }
+  ],
+  "modelArtifacts": [
+    {
+      "path": "onnx/audio_encoder_fp16.onnx",
+      "size": 219310
+    },
+    {
+      "path": "onnx/audio_encoder_fp16.onnx_data",
+      "size": 589840640
+    },
+    {
+      "path": "onnx/audio_encoder_q4.onnx",
+      "size": 261229
+    },
+    {
+      "path": "onnx/audio_encoder_q4.onnx_data",
+      "size": 190083584
+    },
+    {
+      "path": "onnx/audio_encoder_q4f16.onnx",
+      "size": 260446
+    },
+    {
+      "path": "onnx/audio_encoder_q4f16.onnx_data",
+      "size": 171258112
+    },
+    {
+      "path": "onnx/audio_encoder_quantized.onnx",
+      "size": 265016
+    },
+    {
+      "path": "onnx/audio_encoder_quantized.onnx_data",
+      "size": 341877248
+    },
+    {
+      "path": "onnx/audio_encoder.onnx",
+      "size": 220280
+    },
+    {
+      "path": "onnx/audio_encoder.onnx_data",
+      "size": 1179042304
+    },
+    {
+      "path": "onnx/decoder_model_merged_fp16.onnx",
+      "size": 549636
+    },
+    {
+      "path": "onnx/decoder_model_merged_fp16.onnx_data",
+      "size": 2094595072
+    },
+    {
+      "path": "onnx/decoder_model_merged_fp16.onnx_data_1",
+      "size": 1860925440
+    },
+    {
+      "path": "onnx/decoder_model_merged_fp16.onnx_data_2",
+      "size": 805306368
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4.onnx",
+      "size": 647599
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4.onnx_data",
+      "size": 1864102912
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4f16.onnx",
+      "size": 673231
+    },
+    {
+      "path": "onnx/decoder_model_merged_q4f16.onnx_data",
+      "size": 1519700992
+    },
+    {
+      "path": "onnx/decoder_model_merged_quantized.onnx",
+      "size": 654818
+    },
+    {
+      "path": "onnx/decoder_model_merged_quantized.onnx_data",
+      "size": 2094681088
+    },
+    {
+      "path": "onnx/decoder_model_merged_quantized.onnx_data_1",
+      "size": 944775168
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx",
+      "size": 524763
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data",
+      "size": 2065537024
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data_1",
+      "size": 1972701184
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data_2",
+      "size": 2063852544
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data_3",
+      "size": 1809004544
+    },
+    {
+      "path": "onnx/decoder_model_merged.onnx_data_4",
+      "size": 1610612736
+    },
+    {
+      "path": "onnx/embed_tokens_fp16.onnx",
+      "size": 4713
+    },
+    {
+      "path": "onnx/embed_tokens_fp16.onnx_data",
+      "size": 805306368
+    },
+    {
+      "path": "onnx/embed_tokens_fp16.onnx_data_1",
+      "size": 4697620480
+    },
+    {
+      "path": "onnx/embed_tokens_q4.onnx",
+      "size": 5142
+    },
+    {
+      "path": "onnx/embed_tokens_q4.onnx_data",
+      "size": 1762656256
+    },
+    {
+      "path": "onnx/embed_tokens_q4f16.onnx",
+      "size": 5621
+    },
+    {
+      "path": "onnx/embed_tokens_q4f16.onnx_data",
+      "size": 1590689792
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx",
+      "size": 5174
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx_data",
+      "size": 465567744
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx_data_1",
+      "size": 2348810240
+    },
+    {
+      "path": "onnx/embed_tokens_quantized.onnx_data_2",
+      "size": 367001600
+    },
+    {
+      "path": "onnx/embed_tokens.onnx",
+      "size": 4243
+    },
+    {
+      "path": "onnx/embed_tokens.onnx_data",
+      "size": 1610612736
+    },
+    {
+      "path": "onnx/embed_tokens.onnx_data_1",
+      "size": 9395240960
+    },
+    {
+      "path": "onnx/vision_encoder_fp16.onnx",
+      "size": 150672
+    },
+    {
+      "path": "onnx/vision_encoder_fp16.onnx_data",
+      "size": 337088192
+    },
+    {
+      "path": "onnx/vision_encoder_q4.onnx",
+      "size": 200072
+    },
+    {
+      "path": "onnx/vision_encoder_q4.onnx_data",
+      "size": 112105664
+    },
+    {
+      "path": "onnx/vision_encoder_q4f16.onnx",
+      "size": 189124
+    },
+    {
+      "path": "onnx/vision_encoder_q4f16.onnx_data",
+      "size": 99189440
+    },
+    {
+      "path": "onnx/vision_encoder_quantized.onnx",
+      "size": 203173
+    },
+    {
+      "path": "onnx/vision_encoder_quantized.onnx_data",
+      "size": 198376640
+    },
+    {
+      "path": "onnx/vision_encoder.onnx",
+      "size": 161900
+    },
+    {
+      "path": "onnx/vision_encoder.onnx_data",
+      "size": 674174144
+    }
+  ]
+}

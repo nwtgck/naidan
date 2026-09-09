@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProductionWorkerSession } from './production-worker-session';
 import { PRODUCTION_WORKER_READY, startProductionWorkerRuntime } from './production-worker-startup';
+
+import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform, productionRuntimeModuleFixtureBytes } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
 
 const mocks = vi.hoisted(() => ({ wrap: vi.fn(), release: vi.fn() }));
 vi.mock('@/utils/worker-transport', () => ({
@@ -10,7 +12,11 @@ vi.mock('@/utils/worker-transport', () => ({
 
 class LifecycleWorker extends EventTarget {
   terminate = vi.fn();
-  postMessage = vi.fn();
+  readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
+  postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
+  async publishReady() {
+    this.startup.start(); await this.startup.ready;
+  }
 }
 
 const sessions: ReturnType<typeof createProductionWorkerSession>[] = [];
@@ -21,6 +27,11 @@ function fixture() {
   return { worker, session };
 }
 
+let platform: ReturnType<typeof installProductionRuntimeStartupPlatform>;
+beforeEach(() => {
+  platform = installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
+});
+
 afterEach(() => {
   for (const session of sessions.splice(0)) session.dispose();
   vi.useRealTimers();
@@ -28,6 +39,86 @@ afterEach(() => {
 });
 
 describe('Production Worker startup ownership', () => {
+  it('keeps its host-owned URL until disposal and revokes it exactly once', async () => {
+    const { worker, session } = fixture();
+    mocks.wrap.mockReturnValue({});
+    await worker.publishReady();
+    expect(platform.createObjectURL).toHaveBeenCalledOnce();
+    expect(platform.revokeObjectURL).not.toHaveBeenCalled();
+    await session.run({ operation: async () => 'model unloaded, Realm still reusable' });
+    expect(platform.blobs.size).toBe(1);
+    session.dispose(); session.dispose();
+    expect(platform.revokeObjectURL).toHaveBeenCalledExactlyOnceWith(platform.createObjectURL.mock.results[0]?.value);
+    expect(platform.blobs.size).toBe(0);
+  });
+
+  it('rejects duplicate ready and recovers the already-owned URL', async () => {
+    const { worker, session } = fixture();
+    mocks.wrap.mockReturnValue({});
+    await worker.publishReady();
+    worker.dispatchEvent(new MessageEvent('message', { data: worker.startup.readyMessage }));
+    await expect(session.run({ operation: async () => 'late' })).rejects.toMatchObject({ reason: 'invalid-startup-message' });
+    expect(platform.revokeObjectURL).toHaveBeenCalledOnce();
+  });
+
+  it('preserves ACK failure when physical termination also throws and still revokes', async () => {
+    const { worker, session } = fixture();
+    const primary = new Error('Fixture ACK post failed');
+    worker.postMessage.mockImplementation(() => {
+      throw primary;
+    });
+    worker.terminate.mockImplementation(() => {
+      throw new Error('Fixture platform terminate failed');
+    });
+    const result = expect(session.run({ operation: async () => 'unsafe' })).rejects.toMatchObject({ reason: 'initialization-failed', message: primary.message });
+    worker.startup.start();
+    await result;
+    expect(platform.revokeObjectURL).toHaveBeenCalledOnce();
+    expect(platform.blobs.size).toBe(0);
+  });
+
+  it('never creates a URL for verification completing after disposal', async () => {
+    const digest = await crypto.subtle.digest('SHA-256', productionRuntimeModuleFixtureBytes({ variant: 'asyncify' }));
+    const releaseDigest = Promise.withResolvers<ArrayBuffer>();
+    const firstEntered = Promise.withResolvers<void>();
+    const secondEntered = Promise.withResolvers<void>();
+    let calls = 0;
+    const digestSpy = vi.spyOn(crypto.subtle, 'digest').mockImplementation(() => {
+      if (++calls === 1) firstEntered.resolve(); else secondEntered.resolve();
+      return releaseDigest.promise;
+    });
+    const first = fixture();
+    const second = fixture();
+    try {
+      first.worker.startup.start();
+      await firstEntered.promise;
+      first.session.dispose();
+      mocks.wrap.mockReturnValue({});
+      second.worker.startup.start();
+      await secondEntered.promise;
+      // Both verifiers await this same Promise in registration order. The
+      // second real acknowledgement is a completion fence, not a timed sleep.
+      releaseDigest.resolve(digest);
+      await second.worker.startup.ready;
+      expect(first.worker.postMessage).not.toHaveBeenCalled();
+      expect(platform.createObjectURL).toHaveBeenCalledOnce();
+      expect(platform.blobs.size).toBe(1);
+    } finally {
+      digestSpy.mockRestore();
+    }
+  });
+
+  it('rejects ready before a verified runtime module lease exists', async () => {
+    const { worker, session } = fixture();
+    mocks.wrap.mockReturnValue({});
+    const operation = vi.fn(async () => 'unsafe early RPC');
+    const result = session.run({ operation });
+    worker.dispatchEvent(new MessageEvent('message', { data: worker.startup.readyMessage }));
+    await expect(result).rejects.toMatchObject({ reason: 'invalid-startup-message' });
+    expect(operation).not.toHaveBeenCalled();
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
   it('announces ready only after entry evaluation has exposed its API', async () => {
     const entry = Promise.withResolvers<void>();
     const postMessage = vi.fn();
@@ -35,6 +126,7 @@ describe('Production Worker startup ownership', () => {
     const startup = startProductionWorkerRuntime({
       loadEntry: async () => {
         await entry.promise; exposed = true;
+        return { requestId: '11111111-1111-4111-8111-111111111111' };
       },
       postMessage: args => {
         expect(exposed).toBe(true); postMessage(args);
@@ -43,7 +135,7 @@ describe('Production Worker startup ownership', () => {
     expect(postMessage).not.toHaveBeenCalled();
     entry.resolve();
     await startup;
-    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ message: PRODUCTION_WORKER_READY });
+    expect(postMessage).toHaveBeenCalledExactlyOnceWith({ message: { ...PRODUCTION_WORKER_READY, requestId: '11111111-1111-4111-8111-111111111111' } });
   });
 
   it('forwards an entry import failure into pending RPCs without ever announcing ready', async () => {
@@ -89,7 +181,7 @@ describe('Production Worker startup ownership', () => {
     const held = Promise.withResolvers<string>();
     const operation = vi.fn(() => held.promise);
     const result = session.run({ operation });
-    worker.dispatchEvent(new MessageEvent('message', { data: PRODUCTION_WORKER_READY }));
+    await worker.publishReady();
     await vi.advanceTimersByTimeAsync(1000);
     expect(worker.terminate).not.toHaveBeenCalled();
     held.resolve('finished');
@@ -105,7 +197,7 @@ describe('Production Worker startup ownership', () => {
     const rejected = expect(session.run({ operation })).rejects.toMatchObject({ reason: 'invalid-startup-message' });
     worker.dispatchEvent(new MessageEvent('message', { data: { id: 'rpc', value: 'ready' } }));
     expect(session.isActive()).toBe(true);
-    worker.dispatchEvent(new MessageEvent('message', { data: { ...PRODUCTION_WORKER_READY, version: 2 } }));
+    worker.dispatchEvent(new MessageEvent('message', { data: { ...PRODUCTION_WORKER_READY, version: 999 } }));
     await rejected;
     expect(operation).not.toHaveBeenCalled();
   });
@@ -113,13 +205,69 @@ describe('Production Worker startup ownership', () => {
   it('preserves normal model rejection and permits a subsequent RPC', async () => {
     const { session, worker } = fixture();
     mocks.wrap.mockReturnValue({});
-    worker.dispatchEvent(new MessageEvent('message', { data: PRODUCTION_WORKER_READY }));
+    await worker.publishReady();
     const incompatibility = new Error('unsupported graph');
     await expect(session.run({ operation: async () => {
       throw incompatibility;
     } })).rejects.toBe(incompatibility);
     await expect(session.run({ operation: async () => 'next candidate' })).resolves.toBe('next candidate');
     expect(session.isActive()).toBe(true);
+    expect(worker.terminate).not.toHaveBeenCalled();
+  });
+
+  it('retires the Realm on a transported resource cleanup failure and rejects every pending RPC', async () => {
+    const { session, worker } = fixture();
+    mocks.wrap.mockReturnValue({});
+    await worker.publishReady();
+    const held = Promise.withResolvers<string>();
+    const failure = Promise.withResolvers<string>();
+    const concurrent = session.run({ operation: async () => held.promise });
+    const failing = session.run({ operation: async () => failure.promise });
+    // The transport reconstructs name/message, not the Worker-side prototype.
+    const transported = new Error('Fixture cleanup never settled');
+    transported.name = 'RequiredDownloadedResourceCleanupError';
+    const terminal = { name: 'ProductionWorkerLifecycleError', reason: 'resource-cleanup-failed' };
+    const concurrentRejected = expect(concurrent).rejects.toMatchObject(terminal);
+    const failingRejected = expect(failing).rejects.toMatchObject(terminal);
+    const bothRejected = Promise.all([concurrentRejected, failingRejected]);
+    failure.reject(transported);
+    await bothRejected;
+    expect(session.isActive()).toBe(false);
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    expect(mocks.release).not.toHaveBeenCalled();
+    const next = vi.fn();
+    await expect(session.run({ operation: next })).rejects.toMatchObject(terminal);
+    expect(next).not.toHaveBeenCalled();
+    held.resolve('late stale result');
+    await Promise.resolve();
+    session.dispose();
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
+  it('retires the Realm when invocation synchronously reports a resource cleanup failure', async () => {
+    const { session, worker } = fixture();
+    mocks.wrap.mockReturnValue({});
+    await worker.publishReady();
+    const transported = new Error('Fixture synchronous cleanup failure');
+    transported.name = 'RequiredDownloadedResourceCleanupError';
+    await expect(session.run({ operation: () => {
+      throw transported;
+    } })).rejects.toMatchObject({ name: 'ProductionWorkerLifecycleError', reason: 'resource-cleanup-failed' });
+    expect(session.isActive()).toBe(false);
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    expect(mocks.release).not.toHaveBeenCalled();
+  });
+
+  it('does not infer a terminal cleanup failure from message wording alone', async () => {
+    const { session, worker } = fixture();
+    mocks.wrap.mockReturnValue({});
+    await worker.publishReady();
+    const ordinary = new Error('RequiredDownloadedResourceCleanupError: fixture model rejection');
+    await expect(session.run({ operation: async () => {
+      throw ordinary;
+    } })).rejects.toBe(ordinary);
+    expect(session.isActive()).toBe(true);
+    await expect(session.run({ operation: async () => 'next RPC' })).resolves.toBe('next RPC');
     expect(worker.terminate).not.toHaveBeenCalled();
   });
 

@@ -38,10 +38,10 @@ beforeEach(() => {
     status: 'prepared',
     processor: 'tokenizer',
     modelType: 'llama',
-    requiredModelPathsByCandidate: {
-      'webgpu/q4f16': [],
-      'webgpu/q4': [],
-      'wasm/q4': [],
+    resourcePlansByCandidate: {
+      'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] },
+      'webgpu/q4': { status: 'ready', paths: ['onnx/model_q4.onnx'] },
+      'wasm/q4': { status: 'ready', paths: ['onnx/model_q4.onnx'] },
     },
     observationMethod: 'transformers-runtime-artifact-preparation',
     error: undefined,
@@ -50,6 +50,45 @@ beforeEach(() => {
 });
 
 describe('runProductionDownloadPreparation', () => {
+  it('skips an unplannable candidate without transferring it and accepts the next valid plan', async () => {
+    vi.mocked(prepareProductionRuntimeArtifacts).mockResolvedValue({
+      modelId: MODEL_ID, revision: REVISION, status: 'prepared', processor: 'tokenizer', modelType: 'llama',
+      observationMethod: 'transformers-runtime-artifact-preparation', error: undefined,
+      resourcePlansByCandidate: {
+        'webgpu/q4f16': { status: 'planning-failed', error: { name: 'ProductionResourceCandidateError', message: 'Invalid q4f16 declaration' } },
+        'webgpu/q4': { status: 'ready', paths: ['onnx/model_q4.onnx'] },
+      },
+    });
+    vi.mocked(acceptDownloadedProductionCandidate).mockResolvedValue({
+      modelId: MODEL_ID, resolvedRevision: REVISION, loaderRevisionOption: REVISION,
+      candidate: { device: 'webgpu', dtype: 'q4' }, status: 'accepted',
+      observationMethod: 'production-cache-only-runtime-preparation', error: undefined,
+    });
+    const result = await runProductionDownloadPreparation({ modelId: MODEL_ID, revision: REVISION });
+    expect(result.status).toBe('accepted');
+    expect(result.candidates?.attempts[0]).toMatchObject({
+      preparation: { status: 'planning-failed', error: { name: 'ProductionResourceCandidateError' }, prefetch: undefined }, acceptance: undefined,
+    });
+    expect(prepareProductionModelCandidate).toHaveBeenCalledOnce();
+    expect(prepareProductionModelCandidate).toHaveBeenCalledWith(expect.objectContaining({ candidate: { device: 'webgpu', dtype: 'q4' }, requiredModelPaths: ['onnx/model_q4.onnx'] }));
+    expect(acceptDownloadedProductionCandidate).toHaveBeenCalledOnce();
+  });
+
+  it('does not start model transfer or acceptance when every candidate plan failed', async () => {
+    const failure = { status: 'planning-failed' as const, error: { name: 'ProductionResourceCandidateError' as const, message: 'Invalid selected declaration' } };
+    vi.mocked(prepareProductionRuntimeArtifacts).mockResolvedValue({
+      modelId: MODEL_ID, revision: REVISION, status: 'prepared', processor: 'tokenizer', modelType: 'llama',
+      observationMethod: 'transformers-runtime-artifact-preparation', error: undefined,
+      resourcePlansByCandidate: { 'webgpu/q4f16': failure, 'webgpu/q4': failure, 'wasm/q4': failure },
+    });
+    const result = await runProductionDownloadPreparation({ modelId: MODEL_ID, revision: REVISION });
+    expect(result.status).toBe('exhausted');
+    expect(result.candidates?.attempts).toHaveLength(3);
+    expect(result.candidates?.attempts.map(attempt => attempt.preparation.status)).toEqual(['planning-failed', 'planning-failed', 'planning-failed']);
+    expect(prepareProductionModelCandidate).not.toHaveBeenCalled();
+    expect(acceptDownloadedProductionCandidate).not.toHaveBeenCalled();
+  });
+
   it('prepares runtime artifacts once, then downloads and accepts candidates in Production fallback order', async () => {
     vi.mocked(acceptDownloadedProductionCandidate).mockImplementation(async ({ candidate }) => ({
       modelId: MODEL_ID,
@@ -130,10 +169,10 @@ describe('runProductionDownloadPreparation', () => {
       status: 'prepared',
       processor: 'tokenizer',
       modelType: 'lfm2',
-      requiredModelPathsByCandidate: {
-        'webgpu/q4f16': [],
-        'webgpu/q4': [],
-        'wasm/q4': [],
+      resourcePlansByCandidate: {
+        'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] },
+        'webgpu/q4': { status: 'ready', paths: ['onnx/model_q4.onnx'] },
+        'wasm/q4': { status: 'ready', paths: ['onnx/model_q4.onnx'] },
       },
       observationMethod: 'transformers-runtime-artifact-preparation',
       error: undefined,
@@ -174,12 +213,15 @@ describe('runProductionDownloadPreparation', () => {
     }));
   });
 
-  it('uses the runtime ModelRegistry plan so Qwen3.5-4B staged requests include every required q4f16 model artifact', async () => {
-    const requiredModelPaths = qwen4bRepository.files
-      .map(file => file.path)
-      .filter(path => /_q4f16\.onnx(?:_data(?:_\d+)?)?$/u.test(path))
-      .sort((a, b) => a.localeCompare(b));
-    expect(requiredModelPaths).toHaveLength(7);
+  it('passes the shared Qwen3.5-4B CausalLM plan without broadening it to repository vision files', async () => {
+    const requiredModelPaths = [
+      'onnx/decoder_model_merged_q4f16.onnx',
+      'onnx/decoder_model_merged_q4f16.onnx_data',
+      'onnx/decoder_model_merged_q4f16.onnx_data_1',
+      'onnx/embed_tokens_q4f16.onnx',
+      'onnx/embed_tokens_q4f16.onnx_data',
+    ];
+    expect(qwen4bRepository.files.some(file => file.path === 'onnx/vision_encoder_q4f16.onnx')).toBe(true);
 
     vi.mocked(prepareProductionRuntimeArtifacts).mockResolvedValue({
       modelId: qwen4bRepository.modelId,
@@ -188,8 +230,8 @@ describe('runProductionDownloadPreparation', () => {
       processor: 'qwen3_5-processor',
       modelType: 'qwen3_5',
       observationMethod: 'transformers-runtime-artifact-preparation',
-      requiredModelPathsByCandidate: {
-        'webgpu/q4f16': requiredModelPaths,
+      resourcePlansByCandidate: {
+        'webgpu/q4f16': { status: 'ready', paths: requiredModelPaths },
       },
       error: undefined,
     } as Awaited<ReturnType<typeof prepareProductionRuntimeArtifacts>>);
@@ -219,7 +261,14 @@ describe('runProductionDownloadPreparation', () => {
     expect(acceptDownloadedProductionCandidate).toHaveBeenCalledTimes(1);
   });
 
-  it('injects repository-confirmed staged model paths into candidate download preparation', async () => {
+  it('passes only the completed metadata preparation plan to candidate transfer', async () => {
+    vi.mocked(prepareProductionRuntimeArtifacts).mockResolvedValue({
+      modelId: MODEL_ID, revision: REVISION, status: 'prepared', processor: 'tokenizer', modelType: 'llama',
+      observationMethod: 'transformers-runtime-artifact-preparation', error: undefined,
+      resourcePlansByCandidate: {
+        'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'] },
+      },
+    });
     vi.mocked(acceptDownloadedProductionCandidate).mockImplementation(async ({ candidate }) => ({
       modelId: MODEL_ID,
       resolvedRevision: REVISION,
@@ -230,42 +279,30 @@ describe('runProductionDownloadPreparation', () => {
       error: undefined,
     }));
 
-    await runProductionDownloadPreparation({
+    const result = await runProductionDownloadPreparation({
       modelId: MODEL_ID,
       revision: REVISION,
       candidateOrder: [{ device: 'webgpu', dtype: 'q4f16' }],
-      requiredModelPathsByCandidate: {
-        'webgpu/q4f16': [
-          'onnx/decoder_model_merged_q4f16.onnx',
-          'onnx/decoder_model_merged_q4f16.onnx_data',
-          'onnx/vision_encoder_q4f16.onnx',
-          'onnx/vision_encoder_q4f16.onnx_data',
-        ],
-      },
     });
 
+    expect(result.status).toBe('accepted');
     expect(prepareProductionModelCandidate).toHaveBeenCalledWith(expect.objectContaining({
       candidate: { device: 'webgpu', dtype: 'q4f16' },
-      requiredModelPaths: [
-        'onnx/decoder_model_merged_q4f16.onnx',
-        'onnx/decoder_model_merged_q4f16.onnx_data',
-        'onnx/vision_encoder_q4f16.onnx',
-        'onnx/vision_encoder_q4f16.onnx_data',
-      ],
+      requiredModelPaths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'],
     }));
   });
 
-  it('uses runtime ModelRegistry paths for candidates that are not explicitly overridden', async () => {
+  it('preserves the distinct runtime resource plan of each fallback candidate', async () => {
     vi.mocked(prepareProductionRuntimeArtifacts).mockResolvedValue({
       modelId: MODEL_ID,
       revision: REVISION,
       status: 'prepared',
       processor: 'tokenizer',
       modelType: 'llama',
-      requiredModelPathsByCandidate: {
-        'webgpu/q4f16': ['onnx/runtime-q4f16.onnx'],
-        'webgpu/q4': ['onnx/runtime-q4.onnx'],
-        'wasm/q4': ['onnx/runtime-q4.onnx'],
+      resourcePlansByCandidate: {
+        'webgpu/q4f16': { status: 'ready', paths: ['onnx/runtime-q4f16.onnx'] },
+        'webgpu/q4': { status: 'ready', paths: ['onnx/runtime-q4.onnx'] },
+        'wasm/q4': { status: 'ready', paths: ['onnx/runtime-q4.onnx'] },
       },
       observationMethod: 'transformers-runtime-artifact-preparation',
       error: undefined,
@@ -287,14 +324,11 @@ describe('runProductionDownloadPreparation', () => {
         { device: 'webgpu', dtype: 'q4f16' },
         { device: 'webgpu', dtype: 'q4' },
       ],
-      requiredModelPathsByCandidate: {
-        'webgpu/q4f16': ['onnx/override-q4f16.onnx'],
-      },
     });
 
     expect(prepareProductionModelCandidate).toHaveBeenNthCalledWith(1, expect.objectContaining({
       candidate: { device: 'webgpu', dtype: 'q4f16' },
-      requiredModelPaths: ['onnx/override-q4f16.onnx'],
+      requiredModelPaths: ['onnx/runtime-q4f16.onnx'],
     }));
     expect(prepareProductionModelCandidate).toHaveBeenNthCalledWith(2, expect.objectContaining({
       candidate: { device: 'webgpu', dtype: 'q4' },

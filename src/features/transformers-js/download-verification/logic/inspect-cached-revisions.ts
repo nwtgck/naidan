@@ -12,6 +12,7 @@ export interface DownloadVerificationCachedRevision {
   incompleteFileCount: number;
   zeroByteFileCount: number;
   weightFileCount: number;
+  committedWeightFileCount: number;
   lastModified: number;
   status: 'committed-file-set' | 'partial';
 }
@@ -105,6 +106,7 @@ async function inspectRevisionDirectory({
   let incompleteFileCount = 0;
   let zeroByteFileCount = 0;
   let weightFileCount = 0;
+  let committedWeightFileCount = 0;
   let totalBytes = 0;
   let lastModified = 0;
   for (const [path, file] of files) {
@@ -117,6 +119,7 @@ async function inspectRevisionDirectory({
     if (!markers.has(markerPath)) incompleteFileCount++;
     if (file.size === 0) zeroByteFileCount++;
     if (file.isWeightFile) weightFileCount++;
+    if (file.isWeightFile && file.size > 0 && markers.has(markerPath)) committedWeightFileCount++;
     totalBytes += file.size;
     lastModified = Math.max(lastModified, file.lastModified);
   }
@@ -134,6 +137,7 @@ async function inspectRevisionDirectory({
     incompleteFileCount,
     zeroByteFileCount,
     weightFileCount,
+    committedWeightFileCount,
     lastModified,
     status: committedFileSet ? 'committed-file-set' : 'partial',
   };
@@ -178,11 +182,16 @@ export function planDownloadVerificationCachedRevisionLoadCandidates({
   inventory: DownloadVerificationCachedRevisionInventory;
   resolvedRevision: string | undefined;
 }): DownloadVerificationCachedRevisionLoadCandidate[] {
-  const committed = inventory.revisions.filter(revision => revision.status === 'committed-file-set');
-  const main = committed.find(revision => revision.kind === 'legacy-main');
+  // This inventory only selects namespaces worth checking; the Worker derives
+  // candidate completeness from its required paths and individual file markers.
+  // A partial unrelated dtype must not hide a usable candidate in the same
+  // revision or trigger fresh Download preparation. Count committed weights by
+  // stat/marker only, without reading model bodies or persisting another index.
+  const eligible = inventory.revisions.filter(revision => revision.committedWeightFileCount > 0);
+  const main = eligible.find(revision => revision.kind === 'legacy-main');
 
   if (resolvedRevision !== undefined) {
-    const current = committed.find(revision => (
+    const current = eligible.find(revision => (
       revision.kind === 'immutable-sha' && revision.revision === resolvedRevision
     ));
     return [
@@ -199,7 +208,7 @@ export function planDownloadVerificationCachedRevisionLoadCandidates({
     ];
   }
 
-  const immutable = committed
+  const immutable = eligible
     .filter(revision => revision.kind === 'immutable-sha')
     .sort((left, right) => right.lastModified - left.lastModified || left.revision.localeCompare(right.revision));
   return [

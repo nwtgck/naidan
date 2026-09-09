@@ -386,3 +386,354 @@ prove GPU memory pressure. The current telemetry may be insufficient; design
 stage/candidate reporting first rather than requiring blind repeat downloads
 or deleting a usable cache. Real browser OPFS, Worker lifecycle, and GPU behavior
 remain separate canary checks after a concrete implementation exists.
+
+## Required-resource rejection and the Vite fixes
+
+### Observed upstream failure
+
+Against the original 4.2.0 web bundle identified above, the LFM2.5-350M
+regression in
+[download-replay-lfm2.5-350m.test.ts](./download-verification/fixtures/raw-download-replay/download-replay-lfm2.5-350m.test.ts)
+completed explicit Download, then removed required q4f16 external data after
+offline planning had classified the candidate as complete. The file removal
+uses a runtime progress event, not a delay. The test expects terminal failure
+without falling back to a separately complete q4 candidate or repairing OPFS.
+
+The original runtime instead left the Load pending and reported an unhandled
+rejection. Inspection of the installed bundle identified two related defects:
+
+- `getModelDataFiles()` used an async Promise executor. Rejection from its
+  awaited `getModelFile()` did not reject the enclosing Promise.
+- `getSession()` started the core-file Promise, awaited external data, and only
+  then attached an await to the core Promise. Early core rejection could remain
+  unhandled while external data was pending or failed.
+
+A Naidan cache-error check after `from_pretrained()` cannot handle a runtime
+Promise that never settles. This is separate from file planning, revision
+aliases, optional metadata, or device compatibility.
+
+### Current bounded upstream fixes
+
+The [Transformers.js fixes integration](../../../build/transformers-js-fixes/README.md)
+preserves three original upstream source files, their license, the relevant
+web-bundle sections, and reviewed input/output hashes inside this repository.
+It transforms the browser bundle through Vite without modifying installed
+package files or adding an install hook. The Node exports remain unmodified.
+
+The transform makes external-data retrieval return its rejection chain and
+observes core and external-data promises together from the outset. It does not
+change resource selection, dtype, revision, cache authority, or permissions.
+Unknown upstream inputs or an unexpected transformed output are errors, not
+permission to apply a similar-looking edit. Recheck the source and counterexample
+when upgrading Transformers.js; remove each fix only after
+the replacement runtime passes the same failure and success regressions.
+
+The same integration config registers the transform for normal Vite modules,
+Worker builds, and dependency optimization. Its output identity participates
+in the optimizer cache key, and input/output validation runs even when a warm
+cache could bypass the transform hook. Standalone does not gain a Transformers.js
+dependency requirement from this integration.
+
+### Regression evidence and limits
+
+The nine model-specific Download/Load suites use checked-in, evidence-derived
+metadata and file inventories. Their model bodies are tiny identity-bearing
+fixtures, and ORT session creation is instrumented. They exercise actual Naidan
+Download, OPFS writer/cache logic, candidate selection, and fresh offline
+Transformers.js loading, including tokenizer/processor preparation. They do not
+establish real ONNX graph validity, GPU capacity, or generation correctness.
+
+Runtime replay imports now consume a library artifact built through the same
+production Vite plugin, without a second test-only patch. Original-source hash
+checks still refer to the unchanged upstream package; transformed and final
+artifact identities are distinct. Each operation imports a fresh runtime
+instance so pending requests or revision state cannot leak from Download or
+observation into Load.
+
+The connected Download/Load directory changed from 62 passes and the external-
+data timeout above to 63 passes, without changing the model expectations.
+Separate compatibility tests exercise late rejection ordering and actual Vite
+library, Worker, development-module, and cold/warm optimizer paths. A pass in
+these browserless tests does not replace a real-browser OPFS/Worker/GPU canary.
+
+## Connected failure classification and resource identity follow-up
+
+Further adversarial tests of the same runtime found gaps that successful
+Download/Load cases alone did not expose:
+
+- Removing Gemma 4's required `processor_config.json` after metadata preparation
+  caused candidate acceptance to reject q4f16 as if it were a runtime
+  incompatibility. The explicit Download loop then fetched all eight q4 model
+  files and failed on the same shared metadata. A normal offline Load test that
+  merely expected an exception did not cover this outer loop.
+- An OPFS permission failure during exact-revision planning was also classified
+  as runtime rejection, permitting acceptance of another cached revision.
+- AutoModel reads `config.json` again after Naidan's initial config and candidate
+  planning. Losing that file caused repeated candidate attempts; changing its
+  external-data declaration could allow an unplanned cached body to reach ORT.
+- A local upload with the same HF-shaped directory name could shadow HF
+  tokenizer metadata. A cached mutable `main` presence-probe file could also win
+  over the selected immutable revision because the earlier alias was attempted
+  only after a primary miss.
+
+The current Naidan changes separate shared config/planning/tokenizer preparation
+failures from candidate session incompatibility, retain required config in the
+candidate resource boundary, and reject unplanned ONNX body consumption before
+reading its source. Metadata-only header inspection of unselected ONNX files is
+still permitted because the upstream progress prepass uses it. An operation's
+recorded failure also prevents delivery of subsequent body reads; it does not
+physically undo an I/O operation that already started.
+
+The read-only cache now owns the selected model/revision namespace. Known
+revisionless presence probes are canonicalized before OPFS lookup, not used as
+a fallback after inspecting mutable `main`. An HF operation does not read a
+same-named local upload. Explicitly selected `user/` and `local/` models retain
+their local storage route. These are operation-local policies, not new OPFS
+manifests or changes to the general explicit Download cache.
+
+### Optional I/O and local resource identity follow-up
+
+A separate SmolLM2-1.7B case established that a valid, committed optional
+`generation_config.json` whose OPFS `getFile()` throws `NotReadableError` could
+still produce a successful offline Load. Upstream cache exception handling
+treated the read failure as absence. This differs from an ordinary optional
+MISS and from parsing invalid JSON after successfully reading its bytes.
+
+The candidate operation now retains native lookup, body-read, and cleanup
+failures for requests admitted to its selected model/revision scope, including
+optional metadata. Its read-only cache and error boundary use the same scope
+resolver. Ordinary optional absence, successful metadata-only inspection of
+unselected ONNX files, and normal cancellation remain permitted. A real I/O
+failure during that inspection is terminal: it establishes neither absence nor
+candidate incompatibility and must not authorize another dtype transfer.
+Reader acquisition/release and cancellation of responses arriving during
+closure are covered as well; cleanup must not silently discard those failures.
+
+The shared resolver also distinguishes a lookup URL from the OPFS resource key
+used for comparison. For an explicitly selected local upload, Transformers.js
+can request `/models/user/...` while Naidan's plan uses `/user/...`. The existing
+storage mapping resolves both to one file. Comparing those URLs literally
+caused the unplanned-body guard to reject a planned local model. Comparison now
+uses the admitted OPFS key without changing the lookup spelling or decoding and
+re-encoding filenames. Namespace admission still happens first: this does not
+permit an HF operation to consume a same-named local model or another revision.
+
+These regressions use the real Naidan cache and resource operation with an
+in-memory OPFS adapter. The SmolLM2 I/O case also traverses the actual runtime.
+They do not claim to reproduce physical browser storage failures.
+
+### Whole-response validation before file completion
+
+A transfer-boundary counterexample supplied HTTP 206 with two bytes and
+`Content-Range: bytes 0-1/100`. The former prefetch check accepted `response.ok`,
+and the writer compared the received bytes with the partial `Content-Length`.
+That could publish `.complete` for a fragment. A correct byte count relative to
+the response alone did not establish a complete resource.
+
+Full-file persistence now requires HTTP 200 with no `Content-Range`, before any
+write or removal of an existing completion marker. The same contract applies to
+direct cache writes and staged prefetch; stream wrapping preserves response
+status. Explicit metadata range probes remain allowed as probes, not saved full
+files. Rejected response bodies are handed to their existing operation owner or
+canceled with bounded failure cleanup; this is not a delay in successful
+downloads or proof of physical network termination. Compression-aware byte
+verification still concerns the decoded body exposed by fetch.
+
+These checks prevent observed partial-response promotion and preserve a prior
+committed file when the replacement response is rejected. They do not prove that
+a server's status, full-body length, or content is truthful, nor do they validate
+real ONNX graph contents. No new persisted OPFS metadata is introduced.
+
+### Optional-config parsing and session ordering
+
+A separate SmolLM2-1.7B regression supplies an existing but invalid
+`generation_config.json` after successful metadata preparation. The actual
+candidate loop originally received an untyped JSON parse error and downloaded
+q4 after q4f16 failed. Optional absence still succeeds and must not become a
+required-file error. The Naidan preparation-phase changes alone did not fix
+this counterexample.
+
+The original pinned upstream bundle starts optional-config parsing and session
+construction in the same `Promise.all`. Merely tagging a JSON exception is
+insufficient if an earlier session exception already causes fallback. The Vite
+fix now completes optional preparation before selecting or constructing sessions.
+It tags errors at that consumer as `TransformersJsOptionalConfigurationError`,
+retaining the file and original cause. Naidan preserves that error name across
+preparation wrapping and Worker transport and treats it as terminal, including
+when a previous candidate had a genuine ORT error. It does not classify every
+`SyntaxError` or every runtime failure as terminal.
+
+The existing SmolLM2-1.7B corrupt-JSON Download-loop regression now passes without
+changing its no-q4-transfer expectation. Additional real-runtime cases verify
+that corrupt optional metadata prevents model-body reads/session creation during
+fresh Load, while valid present optional metadata succeeds. Small transformed-
+consumer tests verify held optional reads, late rejections, error origin, and
+unchanged constructor arguments for absent or empty optional-config mappings.
+Ordinary optional absence and genuine session fallback remain separate cases.
+
+This ordering change does not add a timeout, new JSON validation, cache writes,
+or network authority. It may delay session work until optional reads settle;
+an unresponsive read still needs the owning Worker's existing lifecycle handling.
+Do not infer that a generic exception proves another multi-GB transfer will help.
+
+### Partial ORT session ownership remains unverified
+
+Source review of the pinned runtime also identifies a separate lifecycle risk:
+`constructSessions()` aggregates sessions with `Promise.all()`. If one session
+is created and another rejects, or a model constructor throws after session
+creation, Naidan's awaited model assignment has not completed. Disposing that
+model cannot recover sessions it never received. The resource-operation boundary
+owns response readers, not native ORT sessions, and ordinary Load failure does
+not always imply physical Worker termination.
+
+This is a source-derived risk, not an observed browser leak or a newly reproduced
+ORT failure. The identity-bearing synthetic session tests do not prove native
+session reclamation in these cases. The current Vite fixes do not claim to fix
+this ownership gap; investigating it needs a separate failure reproduction and
+session/Worker lifecycle contract, without weakening the offline boundary.
+
+### Fetch redirects and native module loading are different boundaries
+
+The downloaded-model Worker's fetch guard used to validate only the initial
+runtime URL. Loopback regressions demonstrated that a redirect could send a
+second request to a non-allowlisted same-origin path or another origin. The
+guard now forces `redirect: 'error'` after caller options, while preserving a
+Request's attributes and abort signal. Native-fetch tests assert that forbidden
+redirect targets receive no request. They use loopback servers, not Hugging Face.
+
+This is not proof that every browser module request passes through that guard.
+With `useWasmCache: false`, Transformers.js skips its Wasm preload/cache path.
+The previous Production configuration gave ORT a same-origin factory MJS URL
+to import directly. Native `import(url)` does not call the Worker's replaced
+global fetch. Its initial URL was build-owned, not model-supplied, but the fetch
+guard did not reject redirection of that module response.
+
+### Production MJS startup ownership
+
+The Production startup fetches the selected MJS through
+the fixed runtime capability, enforce a complete JavaScript response, and check
+its bounded byte length and SHA-256 against the build manifest. Model cache and
+model fetch authority are not involved. The Worker sends a small, tightly owned
+byte array through a versioned startup protocol; the host snapshots and verifies
+those bytes before creating its session-owned Blob URL. A late verification
+result after disposal cannot create another URL.
+
+The Worker validates the matching lease and same-origin Blob URL, imports the
+module, and checks its default factory export before exposing the model API or
+announcing readiness. Configuring a URL alone was insufficient: an import error
+delayed until the first ORT session could otherwise look like model incompatibility.
+The factory is not called during this startup check. The explicit absolute Wasm
+URL and the existing Wasm transport remain separate from MJS acquisition.
+
+The host retains the URL for the full Worker session, including model unload and
+subsequent loads, and attempts revocation when terminating the session. It does
+not depend on a forcibly terminated Worker running its own finally block. Startup
+failure is a Worker lifecycle error, not permission to try another dtype or
+revision. An initial explicit Download may already have transferred its first
+candidate before acceptance starts; this boundary prevents additional fallback
+transfers rather than claiming that first transfer never happened. There is no
+fallback to direct HTTP import or new persisted runtime/model cache.
+
+Browserless tests separate legitimate same-origin MJS acquisition from forbidden
+model/external traffic. The nine-model replay instruments ORT session creation;
+native Blob import is a separately identified platform boundary in its harness.
+It does not establish real-browser Blob/CSP support, pthread construction,
+Wasm initialization, GPU compatibility, or physical native resource reclamation.
+Those limits remain even when startup and model regressions pass. Vite tests
+verify the applied fixes, not a browser-wide network firewall; initial app and
+Worker module delivery still has its own deployment trust boundary.
+
+The completed browserless regression run covers all nine checked-in model
+fixtures through the new startup path. Independent startup tests cover early or
+duplicate readiness, a mismatched acknowledgement, late verification after
+disposal, import failure, and teardown failures. Module-response tests cover
+partial, short, oversized, corrupted, unreadable, and non-JavaScript responses;
+they also verify that the host hashes the same immutable bytes it leases.
+These checks prove the listed Naidan contracts, not the native-platform behavior
+excluded above. Raw metadata suites prepare the Vite artifact in suite setup,
+then retain fresh runtime imports and independent model expectations per test.
+
+## Fresh metadata size probes, 2026-09-09
+
+A connected SmolLM2-135M Download regression uses the unchanged raw metadata
+at revision `12fd25f77366fa6b3b4b768ec3050bf629380bac`, but removes Content-Length
+from full metadata responses and serves size probes as HTTP 206. Before the
+Naidan fix, the actual runtime requested `bytes=0-0` for `config.json` and
+preparation failed with `Unexpected metadata Range request`. The previous
+transport fixture always supplied Content-Length and did not exercise this
+path. This is an executable counterexample, not proof of the exact rejected
+URL in the separately reported browser incident.
+
+The pinned runtime's `getModelFile()` calls `get_file_metadata()` when a progress
+callback is present and the full response lacks Content-Length. Size probes
+therefore are not restricted to the two revisionless tokenizer/processor
+presence probes. Naidan now permits `bytes=0-0` for admitted exact-revision
+metadata while retaining the narrow revisionless alias policy. Other ranges,
+other revisions, and model weights remain forbidden in metadata preparation.
+Probe responses never acquire a full-file save obligation; full metadata
+persistence still requires a complete HTTP 200 response without Content-Range.
+The connected regression verifies full saved bytes and completion markers,
+then starts a fresh offline Load without another model-network request.
+
+An empty-cache nine-model MSI batch independently established a coverage gap:
+the existing collector retrieved raw metadata remotely, but runtime completion
+reported `cache-only-unavailable` for every model and did not invoke ordinary
+Download preparation. Its execution-level `passed` did not mean fresh Download
+or Load succeeded. Raw JSON alone also does not retain the HTTP response
+conditions that select the failing branch. Sharing the fresh metadata execution
+path with MSI, while keeping bounded transfer and isolated temporary storage,
+is the next implementation task; this paragraph does not claim it is done.
+
+### Fresh MSI metadata integration follow-up
+
+The working implementation now connects a dedicated fresh-metadata Worker to
+MSI planning through a top-level Comlink callback. It shares ordinary Download's
+config, resource selection, and tokenizer/processor preparation, with empty
+temporary memory instead of OPFS. Successful metadata is reused for replay
+sidecars; supplementary allowlisted files have distinct HTTP observations.
+The connected SmolLM2-135M tests exercise both a previously populated cache and
+an empty profile with missing Content-Length and HTTP 206 probes. They assert
+no OPFS access, no model-weight requests, no ORT sessions, and preserved raw
+bytes. This is not yet fresh-path regression coverage for all nine models.
+
+The UI and `download-lane/fresh-metadata.json` report this preparation separately
+from investigation completion and existing-cache acceptance. Metadata preparation
+does not establish successful full Download or Load. Actual Comlink MessagePort
+tests carry raw Blob sidecars through the fresh callback and planning checkpoint;
+they do not verify native browser Worker startup or deployment.
+
+Response validation also compares replay model/revision, budget, file identity,
+size, and provenance with the fresh preparation result. Independent valid JSON
+schemas alone allowed inconsistent combinations in adversarial tests. Raw
+supplemental acquisition rejects Content-Range even on HTTP 200: a synthetic
+counterexample previously archived that fragment as a complete replay resource.
+These response conditions are regression inputs, not claims that the latest
+browser ZIP recorded each malformed response.
+
+### Nine-model fresh metadata replay coverage
+
+The fresh path is now exercised independently in all nine model Download test
+files with absent Content-Length and HTTP 206 size probes. Each model retains
+its own processor, resource-plan, and collected-file expectations. The tests
+start with empty model storage and assert no OPFS activity, model-artifact
+fetches, or ORT session creation. HTTP response shaping is shared deliberately;
+model expectations are not generated from runtime output. Large raw bodies are
+compared by byte length and SHA-256 rather than a test framework's deep array
+comparison, which exhausted the Node heap on the larger tokenizers.
+
+The latest empty-cache evidence agrees with existing fixture revisions and
+previously selected raw bytes. The fixture corpus now covers presence/absence
+for all ten replay-collector paths, including supplementary templates and
+special-token maps. Those additions do not broaden required Production files.
+SmolLM2-1.7B's special-token map timed out in that evidence; an earlier raw
+observation at the same immutable revision supplies its success-case bytes.
+A separate actual-runtime test reproduces a stalled supplemental response:
+metadata preparation succeeds, raw collection remains partial, previously
+collected bytes survive, and no weights or OPFS operations are performed.
+
+A host-coordinator regression also holds the fresh Worker's result indefinitely.
+The deadline physically terminates that Worker, retains its partial HTTP
+observation as timeout, and allows a second model's fresh preparation to proceed.
+Late completion and progress from the retired Worker cannot replace the timeout.
+That test uses simulated Worker endpoints; native termination remains a browser
+canary item, not a claim established by the model replay.

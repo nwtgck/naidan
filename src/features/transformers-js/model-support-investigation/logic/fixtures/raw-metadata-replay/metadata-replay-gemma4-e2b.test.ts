@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it } from 'vitest';
 import { assertRawModelSelection, assertRawTokenizer, installRawReplay } from './harness';
 

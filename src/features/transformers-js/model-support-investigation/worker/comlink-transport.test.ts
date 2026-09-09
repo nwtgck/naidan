@@ -103,6 +103,9 @@ describe("Transformers.js Comlink transport contracts", () => {
         { modelId: "org/model", externalNetworkPolicy: "allow", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
         Comlink.proxy(onEvent),
         Comlink.proxy(onRunCheckpoint),
+        Comlink.proxy(async () => {
+          throw new Error('Fresh metadata was not requested by this transport fixture');
+        }),
       );
       await remote.runCandidateAttempt(
         {} as never,

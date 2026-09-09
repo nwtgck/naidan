@@ -37,7 +37,7 @@ function inventory(): DownloadVerificationCachedRevisionInventory {
     revisions: [{
       revision: REVISION, kind: 'immutable-sha', totalBytes: 100, fileCount: 2,
       completionMarkerCount: 2, incompleteFileCount: 0, zeroByteFileCount: 0,
-      weightFileCount: 1, lastModified: 1, status: 'committed-file-set',
+      weightFileCount: 1, committedWeightFileCount: 1, lastModified: 1, status: 'committed-file-set',
     }],
   };
 }

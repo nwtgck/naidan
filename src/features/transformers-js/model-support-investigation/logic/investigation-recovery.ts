@@ -213,6 +213,24 @@ export function interruptInvestigationCheckpoint({
     : `after ${checkpoint.recovery.lastEvent.stepId}: ${checkpoint.recovery.lastEvent.detail}`;
   run.completedAt = at;
   run.status = "failed";
+  if (run.freshMetadata !== undefined) {
+    switch (run.freshMetadata.status) {
+    case 'running':
+      // The owner has ended; preserve its last measured HTTP counters without
+      // inventing successful cancellation or leaving acquisition visibly active.
+      run.freshMetadata = { ...run.freshMetadata, status: 'interrupted', reason: 'Fresh metadata preparation was interrupted before completion.' };
+      break;
+    case 'prepared':
+    case 'failed':
+    case 'timeout':
+    case 'interrupted':
+    case 'not-run': break;
+    default: {
+      const _ex: never = run.freshMetadata.status;
+      throw new Error(`Unknown interrupted metadata status: ${_ex}`);
+    }
+    }
+  }
   run.currentOperation = `Investigation interrupted ${boundary}`;
   run.error = run.error === undefined
     ? `Investigation interrupted: ${serialized.message}`

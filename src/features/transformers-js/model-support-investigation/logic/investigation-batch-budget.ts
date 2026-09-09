@@ -29,20 +29,59 @@ export function targetInvestigationBudgetMs({ deadlineMs, nowMs, remainingTarget
   return Math.max(0, Math.floor((deadlineMs - nowMs) / remainingTargets));
 }
 
-export function settledReplayMetadataBytes({ summary, recovery }: {
+export function settledReplayMetadataBytes({ summary, freshMetadata, recovery }: {
   summary: ModelSupportInvestigationRun['replayMetadata'];
+  freshMetadata: ModelSupportInvestigationRun['freshMetadata'];
   recovery: ModelSupportInvestigationRecovery | undefined;
 }): number | undefined {
   if (summary === undefined || recovery === undefined) return undefined;
   // A file-level timeout can finish the collector while its last read is still
   // in flight. Its late chunk is deliberately discarded, not counted as zero.
   if (summary.files.some(file => file.status === 'timeout')) return undefined;
+  let receivedBytes = summary.receivedBytes;
+  if (freshMetadata !== undefined) {
+    // Raw sidecars omit size probes, discarded responses and failed acquisition
+    // bytes. Never refund those transfers just because less JSON was retained.
+    // In-flight or interrupted full-body reads cannot certify a final count.
+    switch (freshMetadata.status) {
+    case 'prepared':
+    case 'failed': break;
+    case 'running':
+    case 'timeout':
+    case 'interrupted': return undefined;
+    case 'not-run': break;
+    default: {
+      const _ex: never = freshMetadata.status;
+      throw new Error(`Unhandled fresh metadata status: ${_ex}`);
+    }
+    }
+    if (freshMetadata.requests.some(request => {
+      switch (request.status) {
+      case 'complete': return false;
+      // The upstream metadata prepass normally cancels unused size-probe
+      // bodies. The transport emits cancelled only after source acknowledgement.
+      // Count bytes observed by fetch, not unobservable browser/OS prefetch.
+      case 'cancelled': return request.request !== 'size-probe';
+      case 'requesting':
+      case 'reading':
+      case 'cancelling':
+      case 'failed': return true;
+      default: {
+        const _ex: never = request.status;
+        throw new Error(`Unhandled fresh metadata request status: ${_ex}`);
+      }
+      }
+    })) return undefined;
+    // A memory replay reads the same downloaded bytes a second time. Its
+    // counter and the HTTP counter overlap; summing them would double-charge.
+    receivedBytes = Math.max(receivedBytes, freshMetadata.receivedBytes);
+  }
   // The collector publishes a terminal summary only after its bounded reads
   // settle. A later Full runtime timeout cannot make that accounting unknown
   // again. Lost checkpoints / collecting summaries still keep the reservation.
   switch (summary.status) {
   case 'complete':
-  case 'partial': return summary.receivedBytes;
+  case 'partial': return receivedBytes;
   case 'collecting': return undefined;
   default: {
     const _ex: never = summary.status;

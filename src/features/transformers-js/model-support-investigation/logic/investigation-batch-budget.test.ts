@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { configurationForPreset } from './investigation-config';
 import { createInitialInvestigationCheckpoint } from './investigation-recovery';
 import type { InvestigationReplayMetadataSummary } from './collect-replay-metadata';
+import type { FreshMetadataSummary } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types';
 import {
   isDownloadOnlyInvestigation,
   targetInvestigationBudgetMs,
@@ -12,6 +13,52 @@ import {
 afterEach(() => vi.useRealTimers());
 
 describe('download investigation batch budget', () => {
+  it('charges all fresh HTTP bytes without double-counting their in-memory replay', () => {
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'fresh-model', now: () => '2026-09-09T00:00:00.000Z' });
+    const summary: InvestigationReplayMetadataSummary = {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), status: 'partial',
+      receivedBytes: 100, retainedBytes: 0, budgetBytes: 1024, files: [],
+    };
+    const freshMetadata: FreshMetadataSummary = {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
+      status: 'failed', maximumBytes: 1024, receivedBytes: 175,
+      requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'full', status: 'complete', receivedBytes: 175 }],
+    };
+    expect(settledReplayMetadataBytes({ summary, freshMetadata, recovery: checkpoint.recovery })).toBe(175);
+  });
+
+  it('keeps the reservation when fresh acquisition ended with an unaccounted cancelled body', () => {
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'cancelled-fresh-model', now: () => '2026-09-09T00:00:00.000Z' });
+    const summary: InvestigationReplayMetadataSummary = {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), status: 'partial',
+      receivedBytes: 0, retainedBytes: 0, budgetBytes: 1024, files: [],
+    };
+    const freshMetadata: FreshMetadataSummary = {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
+      status: 'failed', maximumBytes: 1024, receivedBytes: 200,
+      requests: [{ consumer: 'runtime-preparation', path: 'tokenizer.json', request: 'full', status: 'cancelled', receivedBytes: 200 }],
+    };
+    expect(settledReplayMetadataBytes({ summary, freshMetadata, recovery: checkpoint.recovery })).toBeUndefined();
+  });
+
+  it('does not exhaust later models budgets for a successfully cancelled header-only size probe', () => {
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'probe-model', now: () => '2026-09-09T00:00:00.000Z' });
+    const summary: InvestigationReplayMetadataSummary = {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), status: 'complete',
+      receivedBytes: 100, retainedBytes: 0, budgetBytes: 1024, files: [],
+    };
+    const freshMetadata: FreshMetadataSummary = {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
+      status: 'prepared', maximumBytes: 1024, receivedBytes: 101,
+      preparation: { processor: 'tokenizer', resourcePlansByCandidate: {} },
+      requests: [
+        { consumer: 'runtime-preparation', path: 'config.json', request: 'full', status: 'complete', receivedBytes: 100 },
+        { consumer: 'runtime-preparation', path: 'config.json', request: 'size-probe', status: 'cancelled', receivedBytes: 1 },
+      ],
+    };
+    expect(settledReplayMetadataBytes({ summary, freshMetadata, recovery: checkpoint.recovery })).toBe(101);
+  });
+
   it('settles finished collection independently of later runtime interruption, without refunding unknown reads', () => {
     const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/model', runId: 'failed-model', now: () => '2026-09-08T00:00:00.000Z' });
     expect(checkpoint.run.status).toBe('failed');
@@ -20,16 +67,16 @@ describe('download investigation batch budget', () => {
       receivedBytes: 100, retainedBytes: 0, budgetBytes: 1024, files: [],
     };
     for (const status of ['complete', 'partial'] as const) {
-      expect(settledReplayMetadataBytes({ summary: { ...summary, status }, recovery: { ...checkpoint.recovery, status: 'completed' } })).toBe(100);
+      expect(settledReplayMetadataBytes({ freshMetadata: undefined, summary: { ...summary, status }, recovery: { ...checkpoint.recovery, status: 'completed' } })).toBe(100);
     }
     for (const status of ['running', 'interrupted'] as const) {
-      expect(settledReplayMetadataBytes({ summary, recovery: { ...checkpoint.recovery, status } })).toBe(100);
-      expect(settledReplayMetadataBytes({ summary: { ...summary, status: 'collecting' }, recovery: { ...checkpoint.recovery, status } })).toBeUndefined();
+      expect(settledReplayMetadataBytes({ freshMetadata: undefined, summary, recovery: { ...checkpoint.recovery, status } })).toBe(100);
+      expect(settledReplayMetadataBytes({ freshMetadata: undefined, summary: { ...summary, status: 'collecting' }, recovery: { ...checkpoint.recovery, status } })).toBeUndefined();
     }
-    expect(settledReplayMetadataBytes({ summary: { ...summary, status: 'collecting' }, recovery: { ...checkpoint.recovery, status: 'completed' } })).toBeUndefined();
-    expect(settledReplayMetadataBytes({ summary: undefined, recovery: checkpoint.recovery })).toBeUndefined();
-    expect(settledReplayMetadataBytes({ summary, recovery: undefined })).toBeUndefined();
-    expect(settledReplayMetadataBytes({
+    expect(settledReplayMetadataBytes({ freshMetadata: undefined, summary: { ...summary, status: 'collecting' }, recovery: { ...checkpoint.recovery, status: 'completed' } })).toBeUndefined();
+    expect(settledReplayMetadataBytes({ freshMetadata: undefined, summary: undefined, recovery: checkpoint.recovery })).toBeUndefined();
+    expect(settledReplayMetadataBytes({ freshMetadata: undefined, summary, recovery: undefined })).toBeUndefined();
+    expect(settledReplayMetadataBytes({ freshMetadata: undefined,
       summary: { ...summary, files: [{ path: 'config.json', source: 'remote-exact', byteLength: 100, status: 'timeout' }] },
       recovery: { ...checkpoint.recovery, status: 'completed' },
     })).toBeUndefined();

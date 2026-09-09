@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { freshMetadataSummarySchema } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types';
 import { investigationExecutionSummary } from './investigation-execution-summary';
 import { addReplayMetadataToZip } from '@/features/transformers-js/model-support-investigation/logic/replay-metadata-export';
 import { REPLAY_METADATA_BATCH_BYTES, type InvestigationReplayMetadataSidecar } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
@@ -307,6 +308,10 @@ async function createPartialModelSupportEvidenceZip({ run, recovery, replayMetad
 }): Promise<{ zip: JSZip, fileName: string }> {
   const zip = new JSZip();
   await addReplayMetadataToZip({ zip, summary: run.replayMetadata, sidecars: replayMetadata });
+  const freshMetadata = run.freshMetadata === undefined ? undefined : freshMetadataSummarySchema.parse(run.freshMetadata);
+  if (freshMetadata !== undefined) {
+    zip.file('download-lane/fresh-metadata.json', `${JSON.stringify(freshMetadata, undefined, 2)}\n`);
+  }
   const readiness = evaluateEvidenceReadiness({ run });
   const execution = investigationExecutionSummary({ run, recovery });
   const supportBoundaries = assessSupportBoundaries({ run });
@@ -405,6 +410,10 @@ async function createPartialModelSupportEvidenceZip({ run, recovery, replayMetad
 - Execution: ${execution.state}
 - Completed execution result: ${execution.result ?? 'not-recorded'}
 - Latest boundary result (not execution completion): ${run.status}
+- Fresh metadata preparation: ${freshMetadata?.status ?? 'not-recorded'}
+- Fresh metadata preparation stage: ${freshMetadata?.preparationStage ?? 'not-recorded'}
+- Fresh metadata failure category: ${freshMetadata?.failureCategory ?? 'not-recorded'}
+- Fresh metadata observed transfer bytes: ${freshMetadata?.receivedBytes ?? 'not-recorded'}
 - Model: ${run.modelId}
 - Run ID: ${run.runId}
 - External network policy: ${run.requestedConfiguration?.externalNetworkPolicy ?? "not-recorded"}
@@ -424,6 +433,8 @@ async function createPartialModelSupportEvidenceZip({ run, recovery, replayMetad
 - Production tokenizer/processor preparation: ${productionRuntimePreparationDurationMs === undefined ? "not-recorded" : `${Math.round(productionRuntimePreparationDurationMs)}ms`}
 
 Evidence coverage and execution completion are independent. Unselected scopes are not pending work. Read execution.json for coordinator completion, and READINESS.md for the limits of the evidence. Legacy run.json status/completedAt describe the latest partial boundary. ${loadingSummary} ${productionSummary} Repository or cache artifacts are included only when their steps completed.
+
+Fresh metadata preparation uses the ordinary Download metadata path with empty temporary memory. It does not certify a full model download or successful Load. Existing-cache acceptance is a separate result. HTTP observations distinguish runtime preparation from supplemental replay collection; received bytes describe fetch-visible bodies, not browser/OS prefetch traffic. See download-lane/fresh-metadata.json when present. Missing observations are not proof of a successful fresh download.
 `;
   zip.file("SUMMARY.md", summary);
   zip.file('execution.json', `${JSON.stringify(execution, undefined, 2)}\n`);

@@ -386,10 +386,11 @@ function reconstructProductionTextStreamerChunks({
 
 const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callback must be a top-level remote argument to remain transferable.
-  async runPartialInvestigation(request, onEvent, onRunCheckpoint) {
+  async runPartialInvestigation(request, onEvent, onRunCheckpoint, collectFreshMetadata) {
     const { modelId, externalNetworkPolicy, executionPlan, replayMetadataBudgetBytes, ...unhandledRequest } = request;
     unhandledRequest satisfies Record<PropertyKey, never>;
     let replayMetadata: InvestigationReplayMetadataSidecar[] | undefined;
+    let freshMetadata: import('@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types').FreshMetadataSummary | undefined;
     const investigationFetch = createModelSupportInvestigationNetworkFetch({
       runtimeFetch,
       applicationOrigin: self.location.origin,
@@ -544,6 +545,29 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         })();
         const normalizedModelId = target?.normalizedModelId ?? normalizeHuggingFaceModelId({ modelId });
         const modelAccess = classifyReplayMetadataAccess({ metadata: repository?.metadata });
+        const budgetBytes = replayMetadataBudgetBytes ?? REPLAY_METADATA_TARGET_BYTES;
+        if (externalNetworkPolicy === 'allow' && modelAccess === 'public-request' && revision !== undefined && repository !== undefined && budgetBytes > 0) {
+          const result = await collectFreshMetadata({ request: {
+            modelId: normalizedModelId, revision, maximumBytes: budgetBytes,
+            repositoryFiles: repository.files.map(({ path, size }) => ({ path, size })),
+          } });
+          freshMetadata = result.summary;
+          replayMetadata = result.files;
+          if (result.replayMetadata !== undefined) {
+            onSummary({ summary: result.replayMetadata });
+          } else {
+            // A timed-out Worker may retain HTTP observations but no raw data.
+            // Publish an explicit partial collection, never retry acquisition
+            // through the later fallback collection hook.
+            await collectReplayMetadata({
+              modelId: normalizedModelId, revision, files: repository.files,
+              budgetBytes, fileTimeoutMs: 15_000, modelAccess,
+              localRead: async () => undefined, remoteFetch: undefined,
+              onSnapshot: ({ snapshot }) => onSummary({ summary: snapshot.summary }),
+            });
+          }
+          return;
+        }
         await collectReplayMetadata({
           modelId: normalizedModelId,
           revision,
@@ -650,10 +674,10 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         }
       },
       onEvent,
-      onRunUpdate: ({ run: updatedRun }) => onRunCheckpoint({ run: toPlanningWorkerRun({ run: updatedRun }), replayMetadata }),
+      onRunUpdate: ({ run: updatedRun }) => onRunCheckpoint({ run: toPlanningWorkerRun({ run: { ...updatedRun, freshMetadata } }), replayMetadata }),
       now: () => new Date().toISOString(),
     });
-    return toPlanningWorkerRun({ run });
+    return toPlanningWorkerRun({ run: { ...run, freshMetadata } });
   },
   async inspectDownloadedTemplateBehavior({ runtimeTarget }) {
     return await withRuntimeTargetModelCache({

@@ -200,7 +200,9 @@ export async function collectReplayMetadata({ modelId, revision, files, budgetBy
           if (stopped) {
             void response.body?.cancel().catch(() => undefined); throw new CollectionFailure({ status: 'timeout', httpStatus: undefined });
           }
-          if (response.status !== 200) {
+          // These are full replay resources, not size probes. Even a response
+          // labelled 200 must not archive a Content-Range fragment as complete.
+          if (response.status !== 200 || response.headers.has('Content-Range')) {
             void response.body?.cancel().catch(() => undefined); throw new CollectionFailure({ status: 'http-failure', httpStatus: response.status });
           }
           const length = response.headers.get('content-length');

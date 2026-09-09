@@ -17,6 +17,7 @@ function inventory(): DownloadVerificationCachedRevisionInventory {
       incompleteFileCount: 0,
       zeroByteFileCount: 0,
       weightFileCount: 1,
+      committedWeightFileCount: 1,
       lastModified: 1,
       status: 'committed-file-set',
     }],

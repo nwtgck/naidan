@@ -30,6 +30,7 @@ export async function runCandidateDownloadOrchestration({
     signal?.throwIfAborted();
 
     switch (preparation.status) {
+    case 'planning-failed':
     case 'unavailable':
       attempts.push({ candidate, preparation, acceptance: undefined });
       continue;

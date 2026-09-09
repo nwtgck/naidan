@@ -1,0 +1,1 @@
+export const ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load = (): string => "Geprüft wird die Metadatenvorbereitung über den Download-Pfad, nicht ein vollständiger Modelldownload oder erfolgreiches Laden. Die Prüfung des vorhandenen Caches ist ein separates Ergebnis.";

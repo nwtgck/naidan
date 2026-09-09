@@ -89,6 +89,57 @@ inside `from_pretrained()`.
 
 ## Required regression coverage
 
+### Evidence-backed upstream fixes
+
+- Version-bound Transformers.js fixes through the Vite integration in
+  `build/transformers-js-fixes/` are authorized when supported by a reproducible
+  counterexample and inspection of the active upstream source. Additional fixes
+  using this method do not require separate approval solely because they touch
+  another upstream location.
+- Preserve the original source and license, record reviewed input/output
+  identities, and reject unknown upstream inputs rather than applying a
+  similar-looking transformation. Do not edit installed package files.
+- Preserve upstream structure and formatting instead of rewriting third-party
+  files to satisfy Naidan-specific lint rules. File-wide lint exceptions are
+  authorized for upstream-derived files when needed for that maintenance
+  boundary, including upstream-derived files with localized Naidan fixes.
+  A directory named `upstream/` is not required to contain only unmodified files.
+  Keep the original reference distinguishable from locally modified versions so
+  the intended changes can be compared without reconstructing the original.
+  The upstream-derived files under `build/transformers-js-fixes/upstream/` are
+  excluded from Naidan lint; Naidan-owned transformation code and tests remain
+  linted.
+- Confirm the regression fails before the fix, then verify the actual transformed
+  runtime and the model-specific regressions. Do not weaken successful paths,
+  optional-resource behavior, or valid candidate fallback to make a test pass.
+- Keep Naidan-owned defects in Naidan. This authorization does not permit new
+  network authority, implicit Download during Load, or custom OPFS persistence;
+  those boundaries still require explicit approval to change.
+
+### Evidence-derived test data
+
+- Investigation ZIPs are development inputs, not test-time dependencies. Only
+  `naidan/` is published; sibling handoff and evidence directories are private.
+- Select the data needed to reproduce and verify a contract, remove personal
+  information, and commit that test data inside this repository. Do not commit
+  entire investigation archives, unused logs, user conversations, or environment
+  inventories merely because they were present in an input ZIP.
+- Choose JSON, TypeScript, or other fixture formats according to the data. Large
+  required raw assets may be compressed losslessly; do not simplify their contents
+  in ways that hide the failure or change the runtime path being tested.
+- Regression tests must run in ordinary CI using repository-owned fixtures. Do
+  not require an evidence-path environment variable, a private local file, or an
+  evidence download step, and do not exclude them from CI to conceal that dependency.
+- Keep model-specific revisions, evidence, and expectations independently
+  readable in per-model tests. Share mechanics only when a change to that
+  responsibility should intentionally affect all consumers, not merely because
+  current code or values look alike.
+- Treat an unrecorded resource as missing evidence, not as proof that the
+  repository does not contain it. Record known absence explicitly and reject
+  unexpected fixture requests instead of falling through to the internet.
+
+### Offline boundaries
+
 - `.test.ts` files under this directory must not access the external internet;
   localhost and loopback fixture servers that emulate Hugging Face are allowed;
 - an incomplete fixture or network interceptor must fail the test instead of

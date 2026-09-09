@@ -100,6 +100,11 @@ export type DownloadVerificationModelArtifactRequestPairingResult =
 
 export type DownloadVerificationCandidatePreparationObservation =
   | {
+      status: 'planning-failed';
+      error: import('@/features/transformers-js/runtime/production-resource-plan').ProductionResourceCandidateFailure;
+      prefetch: undefined;
+    }
+  | {
       status: 'ready';
       prefetch: import('@/features/transformers-js/types').TransformersJsPrefetchResult;
     }
@@ -121,7 +126,7 @@ export type DownloadVerificationRuntimeArtifactPreparationObservation =
       status: 'prepared';
       processor: import('@/features/transformers-js/types').TransformersJsProductionInvestigationProcessor;
       modelType: string | undefined;
-      requiredModelPathsByCandidate: Record<string, string[]>;
+      resourcePlansByCandidate: Record<string, import('@/features/transformers-js/runtime/production-resource-plan').ProductionCandidateResourcePlan>;
       observationMethod: 'transformers-runtime-artifact-preparation';
       error: undefined;
     }

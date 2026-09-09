@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 import { isHuggingFaceModelArtifactUrl } from '@/features/transformers-js/runtime/configure-hosted-runtime';
 import {
   createModelArtifactRequestBarrier,
@@ -44,11 +44,10 @@ afterEach(() => {
 });
 
 async function loadActualTransformersWebModule(): Promise<ActualTransformersWebModule> {
-  const moduleUrl = pathToFileURL(resolve(
-    process.cwd(),
-    'node_modules/@huggingface/transformers/dist/transformers.web.js',
-  )).href;
-  return await import(/* @vite-ignore */ moduleUrl) as unknown as ActualTransformersWebModule;
+  const artifact = await getProductionTransformersArtifact();
+  const moduleUrl = new URL(artifact.moduleUrl);
+  moduleUrl.searchParams.set('artifact-requests', crypto.randomUUID());
+  return await importProductionTransformersArtifact({ moduleUrl: moduleUrl.href }) as ActualTransformersWebModule;
 }
 
 function readExactConfig(): Record<string, unknown> {
@@ -114,16 +113,18 @@ async function observeActualRequests({ dtype }: { dtype: 'q4f16' | 'q4' }): Prom
     transformers.env.useCustomCache = originalEnv.useCustomCache;
   };
 
-  // Deliberately leave the load pending after request quiescence. Rejecting the held model
-  // fetches makes the real TJS web bundle leave parallel internal rejections unsettled in Node.
-  // A permanently pending test-only fetch transfers zero model bytes and never reaches ORT Session.create.
-  void transformers.AutoModelForCausalLM.from_pretrained(MODEL_ID, {
+  // Own rejection from the moment work starts. The production compatibility
+  // artifact must drain held core/external requests without orphaned promises.
+  const outcome = transformers.AutoModelForCausalLM.from_pretrained(MODEL_ID, {
     config: readExactConfig(),
     revision: REVISION,
     device: 'webgpu',
     dtype,
     silent: true,
-  });
+  }).then(
+    model => ({ status: 'completed' as const, model }),
+    error => ({ status: 'rejected' as const, error }),
+  );
 
   try {
     const requests = await barrier.waitForQuiescence();
@@ -132,7 +133,15 @@ async function observeActualRequests({ dtype }: { dtype: 'q4f16' | 'q4' }): Prom
       nonArtifactPaths: [...new Set(nonArtifactPaths)].sort((a, b) => a.localeCompare(b)),
     };
   } finally {
-    barrier.dispose();
+    const reason = new Error('Artifact observation complete; no model bytes transferred');
+    barrier.stop({ reason });
+    try {
+      const result = await outcome;
+      expect(result.status).toBe('rejected');
+      if (result.status === 'rejected') expect(result.error).toBe(reason);
+    } finally {
+      barrier.dispose();
+    }
   }
 }
 

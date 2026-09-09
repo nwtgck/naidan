@@ -1,15 +1,10 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import JSZip from 'jszip';
-import { z } from 'zod';
 import { vi } from 'vitest';
 import { createDownloadedModelReadOnlyCache } from '@/features/transformers-js/runtime/downloaded-model-cache';
 import { createDownloadedModelWorkerFetch } from '@/features/transformers-js/runtime/offline-worker-fetch';
 import type { OpfsModelCacheMatchObservation } from '@/features/transformers-js/runtime/opfs-model-cache';
-import { replayMetadataSummarySchema } from '@/features/transformers-js/model-support-investigation/logic/collect-replay-metadata';
+import { readModelFixture } from '@/features/transformers-js/download-verification/fixtures/model-runtime-fixture';
+import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 
 export const WEB_BUNDLE_SHA256 = '25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff';
 
@@ -17,49 +12,7 @@ export function digest({ bytes }: { bytes: Uint8Array }): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-export async function openRawZip({ inputPath }: { inputPath: string | undefined }) {
-  if (inputPath === undefined || inputPath.trim() === '') {
-    throw new Error('This external-fixture lane requires NAIDAN_REPLAY_ZIP; no raw-data replay was performed.');
-  }
-  const bytes = readFileSync(inputPath);
-  const zipSha256 = digest({ bytes });
-  const zip = await JSZip.loadAsync(bytes);
-  const batchEntry = zip.file('batch.json');
-  if (batchEntry === null) throw new Error('Missing batch.json');
-  const batch = z.object({
-    schemaVersion: z.literal(1), targetCount: z.number().int().positive(), packagedModelCount: z.number().int().positive(),
-    targets: z.array(z.object({ target: z.string(), status: z.string(), evidencePath: z.string().regex(/^models\/[^/]+\/$/u) })).min(1),
-  }).parse(JSON.parse(await batchEntry.async('string')));
-  if (new Set(batch.targets.map(target => target.target)).size !== batch.targets.length) throw new Error('Ambiguous duplicate model identities in raw ZIP');
-  return { zip, batch, zipSha256 };
-}
-
-// Local test evidence only, not a general application ZIP importer. Each model
-// test pins its own revision and raw hashes; batch provenance is a separate test.
-export async function restoreRawModel({ zip, prefix, modelId }: { zip: JSZip, prefix: string, modelId: string }) {
-  const entry = zip.file(`${prefix}replay-metadata/index.json`);
-  if (entry === null) throw new Error('Missing raw replay index');
-  const { replayScope: _replayScope, files: entries, ...fields } = z.object({
-    replayScope: z.string(), files: z.array(z.object({ path: z.string(), archived: z.boolean() }).passthrough()),
-  }).passthrough().parse(JSON.parse(await entry.async('string')));
-  const summary = replayMetadataSummarySchema.parse({ ...fields, files: entries.map(({ archived: _archived, ...file }) => file) });
-  const revision = z.string().regex(/^[a-f0-9]{40}$/u).parse(summary.revision);
-  if (summary.modelId !== modelId) throw new Error('Invalid raw model identity');
-  const files = new Map<string, Uint8Array>();
-  for (const file of summary.files) {
-    const archived = entries.find(item => item.path === file.path)!.archived;
-    if (archived !== (file.status === 'collected')) throw new Error(`Unexpected unarchived collection: ${file.path}`);
-    if (!archived) continue;
-    const bodyEntry = zip.file(`${prefix}replay-metadata/files/${file.path}`);
-    if (bodyEntry === null) throw new Error(`Missing raw body: ${file.path}`);
-    const bytes = await bodyEntry.async('uint8array');
-    if (bytes.byteLength !== file.byteLength || digest({ bytes }) !== file.sha256) throw new Error(`Invalid raw body: ${file.path}`);
-    files.set(file.path, bytes);
-  }
-  return { summary: { ...summary, revision }, files };
-}
-
-export type RawModel = Awaited<ReturnType<typeof restoreRawModel>>;
+export type RawModel = ReturnType<typeof readModelFixture>;
 export interface ReplayTokenizer {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Exact positional external Transformers.js tokenizer API.
   encode(text: string, options: { add_special_tokens: boolean }): number[];
@@ -88,19 +41,21 @@ interface ReplayRuntime {
 }
 
 export async function rawRuntime({ archive, bodyPaths }: { archive: RawModel, bodyPaths: string[] }) {
+  // Build before installing the browser-like globals used only for evaluation.
+  const runtimeArtifact = await getProductionTransformersArtifact();
+  if (runtimeArtifact.originalBundleSha256 !== WEB_BUNDLE_SHA256) throw new Error('Unexpected installed Transformers.js web bundle');
   const transport = vi.fn<typeof fetch>(async () => {
-    throw new Error('Transport forbidden in raw ZIP replay');
+    throw new Error('Transport forbidden in checked-in model replay');
   });
   const guardedFetch = vi.fn(createDownloadedModelWorkerFetch({ originalFetch: transport, workerLocationUrl: 'http://localhost/assets/worker.js', environment: 'production', userAgent: 'Vitest', vendor: '' }));
   vi.stubGlobal('fetch', guardedFetch);
   // Real urlToPath uses self.location, as in the hosted Worker. Supplying only
   // navigator in Node would accidentally exercise its malformed-URL fallback.
   vi.stubGlobal('self', { location: new URL('http://localhost/assets/worker.js') });
-  const bundleUrl = pathToFileURL(resolve(process.cwd(), 'node_modules/@huggingface/transformers/dist/transformers.web.js'));
-  if (digest({ bytes: readFileSync(bundleUrl) }) !== WEB_BUNDLE_SHA256) throw new Error('Unexpected installed Transformers.js web bundle');
+  const bundleUrl = new URL(runtimeArtifact.moduleUrl);
   // The native ORT import and spy use the exact ESM class imported by this web
   // bundle. No ORT session executes: one-byte bodies only drain file selection.
-  const ortUrl = pathToFileURL(resolve(dirname(createRequire(bundleUrl).resolve('onnxruntime-web/webgpu')), 'ort.webgpu.bundle.min.mjs')).href;
+  const ortUrl = runtimeArtifact.ortWebGpuUrl;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Exact external ORT overload boundary, spied without invoking native create.
   const ort = await import(/* @vite-ignore */ ortUrl) as { InferenceSession: { create(...args: unknown[]): Promise<unknown> } };
   const released = vi.fn(async () => undefined);
@@ -142,10 +97,10 @@ export async function rawRuntime({ archive, bodyPaths }: { archive: RawModel, bo
   vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', gpu: {}, storage: { getDirectory: async () => directory({ prefix: '' }) } });
   const actualProcess = globalThis.process;
   vi.stubGlobal('process', { ...actualProcess, release: { ...actualProcess.release, name: 'browser-test' } });
-  bundleUrl.searchParams.set('raw-zip-replay', crypto.randomUUID());
+  bundleUrl.searchParams.set('raw-model-replay', crypto.randomUUID());
   let runtime: ReplayRuntime;
   try {
-    runtime = await import(/* @vite-ignore */ bundleUrl.href) as ReplayRuntime;
+    runtime = await importProductionTransformersArtifact({ moduleUrl: bundleUrl.href }) as ReplayRuntime;
   } finally {
     vi.stubGlobal('process', actualProcess);
   }
@@ -190,7 +145,7 @@ export async function rawRuntime({ archive, bodyPaths }: { archive: RawModel, bo
       },
     },
   });
-  return { runtime, cache, transport, guardedFetch, mutations, reads, observations, sessions, released, gate, requests, unknownRequests, bodyReads, restoreSessionSpy: () => sessions.mockRestore() };
+  return { runtime, cache, transport, guardedFetch, mutations, reads, observations, sessions, released, gate, requests, unknownRequests, bodyReads, runtimeArtifact, restoreSessionSpy: () => sessions.mockRestore() };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

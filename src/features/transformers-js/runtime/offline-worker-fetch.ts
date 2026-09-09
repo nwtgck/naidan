@@ -48,7 +48,12 @@ export function createDownloadedModelWorkerFetch({
     if (url.origin !== new URL(workerLocationUrl).origin) {
       throw new Error(`Downloaded-model Worker blocked cross-origin runtime request: ${url.origin}`);
     }
-    return await originalFetch(url.href, init);
+    // Validate the first URL and refuse redirects before a second request can
+    // leave this allowlist. Caller options cannot restore redirect authority.
+    // Keep Request attributes (especially its abort signal) for native fetch to
+    // merge with init; only strings and URLs need Worker-relative resolution.
+    const request = typeof input === 'string' || input instanceof URL ? url.href : input;
+    return await originalFetch(request, { ...init, redirect: 'error' });
   };
 }
 

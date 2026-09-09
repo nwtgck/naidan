@@ -1,12 +1,14 @@
 import { releaseWorkerRemote, wrapWorkerRemote, type WorkerRemote } from '@/utils/worker-transport';
 import type { ITransformersJsWorker } from '@/features/transformers-js/types';
+import { REQUIRED_DOWNLOADED_RESOURCE_CLEANUP_ERROR_NAME } from '@/features/transformers-js/runtime/required-downloaded-resource-operation';
 import { PRODUCTION_WORKER_READY, productionWorkerStartupSchema } from './production-worker-startup';
+import { verifiedRuntimeModuleBlob } from '@/features/transformers-js/runtime/production-runtime-module';
 
 export const PRODUCTION_WORKER_STARTUP_TIMEOUT_MS = 30_000;
 
 export class ProductionWorkerLifecycleError extends Error {
   readonly reason: 'initialization-failed' | 'startup-timeout' | 'worker-error'
-    | 'message-error' | 'disposed' | 'invalid-startup-message' | 'transport-failed';
+    | 'message-error' | 'disposed' | 'invalid-startup-message' | 'transport-failed' | 'resource-cleanup-failed';
 
   constructor({ reason, message }: { reason: ProductionWorkerLifecycleError['reason'], message: string }) {
     super(message);
@@ -22,6 +24,7 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs }: {
 }) {
   let remote: WorkerRemote<ITransformersJsWorker> | undefined;
   let terminalError: Error | undefined;
+  let runtimeModuleLease: { requestId: string; objectUrl: string | undefined; acknowledged: boolean } | undefined;
   const pending = new Set<{ start(): void, reject({ error }: { error: Error }): void }>();
 
   function terminate({ error, releaseIdleRemote }: { error: Error, releaseIdleRemote: boolean }): void {
@@ -42,7 +45,22 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs }: {
     } catch {
       // Preserve the primary terminal failure even if advisory release fails.
     } finally {
-      worker.terminate();
+      try {
+        worker.terminate();
+      } catch {
+        // A platform termination exception must not replace the primary cause
+        // or become an unowned rejection of an asynchronous startup task.
+      } finally {
+        // The host created this URL and can revoke it even if Worker cleanup
+        // never runs. Keep it for the entire Realm, not merely the first import.
+        const objectUrl = runtimeModuleLease?.objectUrl;
+        if (runtimeModuleLease) runtimeModuleLease.objectUrl = undefined;
+        if (objectUrl !== undefined) {
+          try {
+            URL.revokeObjectURL(objectUrl);
+          } catch { /* Preserve the terminal cause. */ }
+        }
+      }
     }
   }
 
@@ -58,11 +76,43 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs }: {
       return;
     }
     switch (parsed.data.status) {
+    case 'runtime-module': {
+      if (runtimeModuleLease !== undefined || remote !== undefined) {
+        terminate({ error: new ProductionWorkerLifecycleError({ reason: 'invalid-startup-message', message: 'Duplicate runtime module lease request' }), releaseIdleRemote: false });
+        return;
+      }
+      const lease = { requestId: parsed.data.requestId, objectUrl: undefined as string | undefined, acknowledged: false };
+      runtimeModuleLease = lease;
+      // Snapshot synchronously before hashing. A late hash completion after
+      // disposal must never create an unowned URL or send an acknowledgement.
+      void verifiedRuntimeModuleBlob({ bytes: parsed.data.bytes, variant: parsed.data.variant }).then(blob => {
+        if (terminalError) return;
+        lease.objectUrl = URL.createObjectURL(blob);
+        lease.acknowledged = true;
+        // eslint-disable-next-line local-rules-worker-transport/no-unchecked-worker-transport -- Audited startup-only acknowledgement of this session's validated bytes and owned Blob; the Worker validates its strict reply schema before model RPCs exist.
+        worker.postMessage({
+          channel: PRODUCTION_WORKER_READY.channel, version: PRODUCTION_WORKER_READY.version,
+          status: 'runtime-module-ready', requestId: lease.requestId, objectUrl: lease.objectUrl,
+        });
+      }).catch(error => {
+        if (!terminalError) terminate({ error: new ProductionWorkerLifecycleError({
+          reason: 'initialization-failed', message: error instanceof Error ? error.message : String(error),
+        }), releaseIdleRemote: false });
+      });
+      return;
+    }
     case 'failed':
       terminate({ error: new ProductionWorkerLifecycleError({ reason: 'initialization-failed', message: `Production Worker initialization failed: ${parsed.data.message}` }), releaseIdleRemote: false });
       return;
     case 'ready':
-      if (remote) return;
+      if (!runtimeModuleLease?.acknowledged || runtimeModuleLease.objectUrl === undefined || runtimeModuleLease.requestId !== parsed.data.requestId) {
+        terminate({ error: new ProductionWorkerLifecycleError({ reason: 'invalid-startup-message', message: 'Production ready requires its verified runtime module lease' }), releaseIdleRemote: false });
+        return;
+      }
+      if (remote) {
+        terminate({ error: new ProductionWorkerLifecycleError({ reason: 'invalid-startup-message', message: 'Duplicate Production ready message' }), releaseIdleRemote: false });
+        return;
+      }
       clearTimeout(startupTimer);
       try {
         remote = wrapWorkerRemote<ITransformersJsWorker>({ endpoint: worker });
@@ -105,6 +155,21 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs }: {
     }): Promise<T> {
       if (terminalError) return Promise.reject(terminalError);
       return new Promise<T>((resolve, reject) => {
+        function handleFailure({ error }: { error: unknown }): void {
+          // Comlink preserves Error name/message, not custom prototypes. A
+          // cleanup deadline means this Realm still owns unfinished work;
+          // terminate it before any subsequent candidate or RPC can run.
+          if (error instanceof Error && error.name === REQUIRED_DOWNLOADED_RESOURCE_CLEANUP_ERROR_NAME) {
+            const lifecycleError = new ProductionWorkerLifecycleError({
+              reason: 'resource-cleanup-failed',
+              message: error.message,
+            });
+            lifecycleError.cause = error;
+            terminate({ error: lifecycleError, releaseIdleRemote: false });
+          }
+          pending.delete(owned);
+          reject(terminalError ?? error);
+        }
         const owned = {
           reject({ error }: { error: Error }) {
             reject(error);
@@ -116,12 +181,10 @@ export function createProductionWorkerSession({ worker, startupTimeoutMs }: {
                 pending.delete(owned);
                 if (!terminalError) resolve(value);
               }, error => {
-                pending.delete(owned);
-                reject(error);
+                handleFailure({ error });
               });
             } catch (error) {
-              pending.delete(owned);
-              reject(error);
+              handleFailure({ error });
             }
           },
         };

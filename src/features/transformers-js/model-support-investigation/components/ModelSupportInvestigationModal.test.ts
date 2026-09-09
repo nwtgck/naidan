@@ -5,7 +5,7 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { toToolCallId } from '@/01-models/ids';
 import ModelSupportInvestigationModal from './ModelSupportInvestigationModal.vue';
 import { configurationForPreset } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
-import { TEST_ONLY as sessionTestOnly } from '@/features/transformers-js/model-support-investigation/logic/investigation-session';
+import { createInvestigationSessionView, TEST_ONLY as sessionTestOnly } from '@/features/transformers-js/model-support-investigation/logic/investigation-session';
 import { createInitialInvestigationCheckpoint } from '@/features/transformers-js/model-support-investigation/logic/investigation-recovery';
 import type { ModelSupportInvestigationRun, ModelSupportInvestigationWorkerClient } from '@/features/transformers-js/model-support-investigation/types';
 
@@ -23,12 +23,16 @@ const evidenceMocks = vi.hoisted(() => ({
   dispose: vi.fn(),
 }));
 
+const confirmMocks = vi.hoisted(() => ({ showConfirm: vi.fn() }));
+
+vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => confirmMocks }));
+
 vi.mock('@/features/transformers-js/model-support-investigation/worker/client-hosted', () => ({
-  createModelSupportInvestigationWorkerClient: () => workerMocks,
+  createModelSupportInvestigationWorkerClient: () => ({ ...workerMocks }),
 }));
 
 vi.mock('@/features/transformers-js/model-support-investigation/evidence-worker/client-hosted', () => ({
-  createModelSupportInvestigationEvidenceWorkerClient: () => evidenceMocks,
+  createModelSupportInvestigationEvidenceWorkerClient: () => ({ ...evidenceMocks }),
 }));
 
 const completedRun: ModelSupportInvestigationRun = {
@@ -457,6 +461,7 @@ describe('ModelSupportInvestigationModal', () => {
   beforeEach(() => {
     sessionTestOnly.clear();
     vi.clearAllMocks();
+    confirmMocks.showConfirm.mockResolvedValue(true);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: vi.fn() },
@@ -542,6 +547,269 @@ org/second
     reopened.unmount();
   });
 
+  it('returns a completed batch to Setup, retains choices on reopening, and exports only fresh run evidence', async () => {
+    vi.stubGlobal('Blob', NodeBlob);
+    const oldPublishers: Array<Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]['onCheckpoint']> = [];
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId, onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      oldPublishers.push(onCheckpoint);
+      const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: `old-${modelId}`, now: () => completedRun.startedAt });
+      const result = { ...structuredClone(completedRun), modelId, runId: checkpoint.run.runId };
+      onCheckpoint?.({ checkpoint: { ...checkpoint, run: result, replayMetadata: [{ path: 'old-config.json', blob: new Blob(['old']) }] } });
+      return result;
+    });
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await first.get('[data-testid="model-support-targets-input"]').setValue('org/second');
+    await first.get('[data-testid="model-support-preset-download-focused"]').trigger('click');
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await first.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    const previousBatchId = evidenceMocks.createBatchEvidence.mock.calls[0]?.[0].batchId;
+    await first.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    expect(confirmMocks.showConfirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'New investigation' }));
+    expect(first.find('[data-testid="model-support-investigation-download"]').exists()).toBe(false);
+    expect(first.find('[data-testid="model-support-investigation-start"]').exists()).toBe(true);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    oldPublishers[0]?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId: 'org/first', runId: 'late-old-run', now: () => completedRun.startedAt }) });
+    first.unmount();
+
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-preset-download-focused"]').attributes('aria-pressed')).toBe('true');
+    expect(reopened.find('[data-testid="model-support-investigation-download"]').exists()).toBe(false);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({
+      ...structuredClone(completedRun), modelId, runId: `new-${modelId}`,
+    }));
+    await reopened.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    oldPublishers[1]?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId: 'org/second', runId: 'late-old-run', now: () => completedRun.startedAt }) });
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    const freshBatch = evidenceMocks.createBatchEvidence.mock.calls[1]?.[0];
+    expect(freshBatch.batchId).not.toBe(previousBatchId);
+    expect(freshBatch.items).toMatchObject([
+      { target: 'org/first', run: { runId: 'new-org/first' }, recovery: undefined, replayMetadata: undefined },
+      { target: 'org/second', run: { runId: 'new-org/second' }, recovery: undefined, replayMetadata: undefined },
+    ]);
+    expect(workerMocks.runPartialInvestigation.mock.calls.slice(2).map(([args]) => args.configuration)).toEqual([
+      configurationForPreset({ preset: 'download-focused' }),
+      configurationForPreset({ preset: 'download-focused' }),
+    ]);
+    reopened.unmount();
+  });
+
+  it('can start a fresh investigation after failure before the first checkpoint', async () => {
+    workerMocks.runPartialInvestigation.mockRejectedValueOnce(new Error('Worker unavailable'));
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].run).toMatchObject({ status: 'passed', error: undefined });
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it('keeps Results when New investigation confirmation is cancelled', async () => {
+    confirmMocks.showConfirm.mockResolvedValue(false);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="model-support-investigation-start"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].run.runId).toBe(completedRun.runId);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+
+  it('disables New investigation until an active run and its Worker disposal settle', async () => {
+    const investigation = Promise.withResolvers<ModelSupportInvestigationRun>();
+    const disposal = Promise.withResolvers<void>();
+    workerMocks.runPartialInvestigation.mockReturnValue(investigation.promise);
+    workerMocks.dispose.mockReturnValue(disposal.promise);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const action = wrapper.get('[data-testid="model-support-investigation-new"]');
+    expect(action.attributes('disabled')).toBeDefined();
+    await action.trigger('click');
+    investigation.resolve(completedRun);
+    await flushPromises();
+    expect(action.attributes('disabled')).toBeDefined();
+    expect(confirmMocks.showConfirm).not.toHaveBeenCalled();
+    disposal.resolve();
+    await flushPromises();
+    expect(action.attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('disables New investigation during export and rechecks export after confirmation', async () => {
+    const confirmation = Promise.withResolvers<boolean>();
+    confirmMocks.showConfirm.mockReturnValueOnce(confirmation.promise);
+    const evidence = Promise.withResolvers<{ blob: Blob; fileName: string }>();
+    evidenceMocks.createPartialEvidence.mockReturnValueOnce(evidence.promise);
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const action = wrapper.get('[data-testid="model-support-investigation-new"]');
+    await action.trigger('click');
+    await flushPromises();
+    expect(action.attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    confirmation.resolve(true);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="model-support-investigation-start"]').exists()).toBe(false);
+    expect(action.attributes('disabled')).toBeDefined();
+    await action.trigger('click');
+    expect(confirmMocks.showConfirm).toHaveBeenCalledOnce();
+    evidence.resolve({ blob: new Blob(['evidence']), fileName: 'evidence.zip' });
+    await flushPromises();
+    expect(action.attributes('disabled')).toBeUndefined();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].run.runId).toBe(completedRun.runId);
+    await action.trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="model-support-investigation-start"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('waits for old Worker teardown on reopening and isolates its late checkpoints and batch finally', async () => {
+    const oldRun = Promise.withResolvers<ModelSupportInvestigationRun>();
+    const oldDisposal = Promise.withResolvers<void>();
+    let publishOld: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]['onCheckpoint'] | undefined;
+    workerMocks.runPartialInvestigation.mockImplementationOnce(({ onCheckpoint }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => {
+      publishOld = onCheckpoint;
+      publishOld?.({ checkpoint: createInitialInvestigationCheckpoint({ modelId: 'org/first', runId: 'old-run', now: () => completedRun.startedAt }) });
+      return oldRun.promise;
+    });
+    workerMocks.dispose.mockReturnValueOnce(oldDisposal.promise);
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await first.get('[data-testid="model-support-targets-input"]').setValue('org/second');
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    expect(workerMocks.dispose).toHaveBeenCalledOnce();
+    expect(workerMocks.interrupt).not.toHaveBeenCalled();
+
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeDefined();
+    expect(reopened.get('[data-testid="model-support-investigation-download"]').attributes('disabled')).toBeDefined();
+    await reopened.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    expect(confirmMocks.showConfirm).not.toHaveBeenCalled();
+    oldDisposal.resolve();
+    await flushPromises();
+    await reopened.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    workerMocks.runPartialInvestigation.mockImplementation(async ({ modelId }: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]) => ({
+      ...structuredClone(completedRun), modelId, runId: `fresh-${modelId}`, currentOperation: `${modelId} fresh result`,
+    }));
+    await reopened.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const checkpoint = createInitialInvestigationCheckpoint({ modelId: 'org/first', runId: 'late-old-run', now: () => completedRun.startedAt });
+    publishOld?.({ checkpoint });
+    oldRun.resolve({ ...structuredClone(completedRun), modelId: 'org/first', runId: 'late-old-run' });
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(3);
+    expect(reopened.get('[data-testid="model-support-current-operation"]').text()).toBe('org/second fresh result');
+    reopened.unmount();
+
+    const retained = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
+    await flushPromises();
+    await retained.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createBatchEvidence.mock.calls[0]?.[0].items).toMatchObject([
+      { target: 'org/first', status: 'passed', run: { runId: 'fresh-org/first' }, recovery: undefined },
+      { target: 'org/second', status: 'passed', run: { runId: 'fresh-org/second' }, recovery: undefined },
+    ]);
+    retained.unmount();
+  });
+
+  it('retires an exporting view on Close and suppresses its late archive after reopening and rerunning', async () => {
+    const oldEvidence = Promise.withResolvers<{ blob: Blob; fileName: string }>();
+    const oldEvidenceDisposal = Promise.withResolvers<void>();
+    evidenceMocks.createPartialEvidence.mockReturnValueOnce(oldEvidence.promise);
+    evidenceMocks.dispose.mockReturnValueOnce(oldEvidenceDisposal.promise);
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await first.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    await first.get('[data-testid="model-support-investigation-close"]').trigger('click');
+    expect(first.emitted('close')).toHaveLength(1);
+    expect(evidenceMocks.dispose).toHaveBeenCalledOnce();
+    first.unmount();
+
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeDefined();
+    oldEvidenceDisposal.resolve();
+    await flushPromises();
+    await reopened.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    workerMocks.runPartialInvestigation.mockResolvedValue({ ...structuredClone(completedRun), runId: 'fresh-run' });
+    await reopened.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    oldEvidence.resolve({ blob: new Blob(['old-evidence']), fileName: 'old-evidence.zip' });
+    await flushPromises();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(reopened.get('[data-testid="model-support-step-evidence-export"]').text()).toContain('Not Run');
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[1]?.[0].run.runId).toBe('fresh-run');
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
+    reopened.unmount();
+  });
+
+  it('ignores a New investigation confirmation that resolves after its view was unmounted', async () => {
+    const confirmation = Promise.withResolvers<boolean>();
+    confirmMocks.showConfirm.mockReturnValueOnce(confirmation.promise);
+    const first = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await first.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await first.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    first.unmount();
+    const reopened = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    confirmation.resolve(true);
+    await flushPromises();
+    expect(reopened.find('[data-testid="model-support-investigation-start"]').exists()).toBe(false);
+    expect(reopened.get('[data-testid="model-support-investigation-new"]').attributes('disabled')).toBeUndefined();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0].run.runId).toBe(completedRun.runId);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    reopened.unmount();
+  });
+
+  it('explains a previous teardown failure and requires reload before starting another investigation', async () => {
+    const previous = createInvestigationSessionView({ initialSnapshot: undefined });
+    await previous.retire({ dispose: async () => {
+      throw new Error('Worker termination unavailable');
+    } });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await flushPromises();
+    const alert = wrapper.get('[data-testid="model-support-investigation-teardown-error"]');
+    expect(alert.text()).toContain('Reload the page before starting another investigation.');
+    expect(alert.text()).toContain('Worker termination unavailable');
+    expect(wrapper.get('[data-testid="model-support-investigation-start"]').attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-testid="model-support-investigation-close"]').trigger('click');
+    expect(wrapper.emitted('close')).toHaveLength(1);
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it('freezes checkpoint identity and metadata together before asynchronous export preparation', async () => {
     vi.stubGlobal('Blob', NodeBlob);
     let publish: Parameters<ModelSupportInvestigationWorkerClient['runPartialInvestigation']>[0]['onCheckpoint'] | undefined;
@@ -588,6 +856,16 @@ org/second
       run: { status: 'failed', runId: 'pending-run' },
       recovery: { status: 'interrupted', interruption: { error: { message: 'Investigation stopped when its modal was closed' } } },
     });
+    await reopened.get('[data-testid="model-support-investigation-new"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledOnce();
+    workerMocks.runPartialInvestigation.mockResolvedValue({ ...structuredClone(completedRun), runId: 'fresh-run' });
+    await reopened.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await reopened.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[1]?.[0]).toMatchObject({ run: { status: 'passed', runId: 'fresh-run' }, recovery: undefined });
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(2);
     reopened.unmount();
   });
 
@@ -683,6 +961,34 @@ org/five
     expect(wrapper.get('[data-testid="model-support-evidence-coverage-explanation"]').text()).toContain('not pending');
     expect(wrapper.get('[data-testid="model-support-investigation-download"]').text()).toBe('Download Evidence ZIP');
     expect(wrapper.text()).not.toContain('later investigation stages are not run yet');
+    wrapper.unmount();
+  });
+
+  it('shows fresh metadata success separately from full Download and Load', async () => {
+    workerMocks.runPartialInvestigation.mockResolvedValue({ ...structuredClone(completedRun), freshMetadata: {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
+      status: 'prepared', maximumBytes: 1024, receivedBytes: 100, requests: [],
+      preparation: { processor: 'tokenizer', resourcePlansByCandidate: {} },
+    } });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-support-fresh-metadata-status"]').text()).toContain('Fresh metadata preparation: succeeded');
+    expect(wrapper.get('[data-testid="model-support-fresh-metadata-limit"]').text()).toContain('not a full model download or successful Load');
+    expect(wrapper.get('[data-testid="model-support-fresh-metadata-bytes"]').text()).toContain('100 / 1024');
+    wrapper.unmount();
+  });
+
+  it('does not present a failed fresh acquisition as success when investigation execution finished', async () => {
+    workerMocks.runPartialInvestigation.mockResolvedValue({ ...structuredClone(completedRun), freshMetadata: {
+      schemaVersion: 1, modelId: 'org/model', revision: 'a'.repeat(40), source: 'fresh-network-memory',
+      status: 'failed', maximumBytes: 1024, receivedBytes: 0, requests: [],
+    } });
+    const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="model-support-fresh-metadata-status"]').text()).toContain('Fresh metadata preparation: failed');
+    expect(wrapper.find('[data-testid="model-support-fresh-metadata-limit"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
@@ -1224,11 +1530,11 @@ org/second
 
     wrapper.unmount();
     await flushPromises();
-    expect(workerMocks.interrupt).toHaveBeenCalledTimes(2);
+    expect(workerMocks.interrupt).toHaveBeenCalledTimes(1);
     expect(workerMocks.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it('treats unmount interrupt transport failure as best-effort cleanup', async () => {
+  it('disposes on unmount without waiting for a separate interrupt transport request', async () => {
     workerMocks.runPartialInvestigation.mockImplementation(() => new Promise(() => {}));
     workerMocks.interrupt.mockRejectedValue(new Error('interrupt transport failed'));
     const wrapper = mount(ModelSupportInvestigationModal, {
@@ -1240,7 +1546,7 @@ org/second
     wrapper.unmount();
     await flushPromises();
 
-    expect(workerMocks.interrupt).toHaveBeenCalledTimes(1);
+    expect(workerMocks.interrupt).not.toHaveBeenCalled();
     expect(workerMocks.dispose).toHaveBeenCalledTimes(1);
   });
 

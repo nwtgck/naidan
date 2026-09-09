@@ -1,5 +1,6 @@
 import type { ChatMessage, LmParameters, ToolCall } from '@/01-models/types';
 import type { WorkerProxy } from '@/utils/worker-transport';
+import type { ProductionCandidateResourcePlan } from '@/features/transformers-js/runtime/production-resource-plan';
 
 /**
  * Shared types for Transformers.js service and worker
@@ -192,7 +193,7 @@ export type TransformersJsProductionInvestigationProcessor =
 export interface TransformersJsRuntimeArtifactPreparationResult {
   processor: TransformersJsProductionInvestigationProcessor,
   modelType: string | undefined,
-  requiredModelPathsByCandidate: Record<string, string[]>,
+  resourcePlansByCandidate: Record<string, ProductionCandidateResourcePlan>,
 }
 export type TransformersJsProductionInvestigationStrategy =
   | 'standard'

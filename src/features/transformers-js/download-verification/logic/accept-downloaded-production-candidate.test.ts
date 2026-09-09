@@ -91,7 +91,7 @@ describe('acceptDownloadedProductionCandidate', () => {
     const dispose = vi.fn(async () => {});
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue({
       verifyDownloadedModelCandidate: vi.fn(async () => {
-        throw new Error('loadDownloadedModel() MUST NOT fetch model artifacts; the required file is not in the downloaded-model cache: https://huggingface.co/org/model/resolve/main/onnx/model.onnx');
+        throw Object.assign(new Error('loadDownloadedModel() MUST NOT fetch model artifacts; the required file is not in the downloaded-model cache: https://huggingface.co/org/model/resolve/main/onnx/model.onnx'), { name: 'MissingDownloadedModelArtifact' });
       }),
       verifyDownloadedModelRevision: vi.fn(),
       dispose,

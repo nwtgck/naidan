@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PRODUCTION_WORKER_READY } from '@/features/transformers-js/worker/production-worker-startup';
+import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
 
 const mocks = vi.hoisted(() => ({
   release: vi.fn(),
@@ -15,15 +15,24 @@ vi.mock('@/utils/worker-transport', async importOriginal => ({
 }));
 
 class MockWorker extends EventTarget {
+  static production: MockWorker;
+  private active = true;
+  readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
+  readonly postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
   constructor(url: URL) {
     super();
     mocks.workerUrls.push(url);
     if (url.pathname.endsWith('/worker/bootstrap.ts')) {
-      queueMicrotask(() => this.dispatchEvent(new MessageEvent('message', { data: PRODUCTION_WORKER_READY })));
+      MockWorker.production = this;
+      queueMicrotask(() => {
+        if (this.active) this.startup.start();
+      });
     }
   }
 
-  terminate = mocks.terminate;
+  terminate = () => {
+    this.active = false; mocks.terminate();
+  };
 }
 
 vi.stubGlobal('Worker', MockWorker);
@@ -31,6 +40,7 @@ vi.stubGlobal('Worker', MockWorker);
 describe('Download Verification dedicated Worker clients', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
     mocks.workerUrls.length = 0;
     mocks.wrap.mockReturnValue({});
     mocks.release.mockReturnValue(new Promise<never>(() => undefined));
@@ -56,7 +66,7 @@ describe('Download Verification dedicated Worker clients', () => {
       createDownloadVerificationCandidateAcceptanceWorkerClient(),
       createTransformersJsDownloadWorkerClient(),
     ];
-    await Promise.resolve(); // The startup handshake completes before idle cleanup.
+    await MockWorker.production.startup.ready;
 
     for (const client of clients) {
       await expect(client.dispose()).resolves.toBeUndefined();

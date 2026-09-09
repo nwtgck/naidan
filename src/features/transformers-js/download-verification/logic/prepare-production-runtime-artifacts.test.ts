@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareProductionRuntimeArtifacts } from '@/features/transformers-js/download-verification/logic/prepare-production-runtime-artifacts';
 import { createDownloadVerificationRuntimeArtifactPreparationWorkerClient } from '@/features/transformers-js/download-verification/runtime-artifact-preparation-worker/client-hosted';
+import type { TransformersJsRuntimeArtifactPreparationResult } from '@/features/transformers-js/types';
 
 vi.mock('@/features/transformers-js/download-verification/runtime-artifact-preparation-worker/client-hosted', () => ({
   createDownloadVerificationRuntimeArtifactPreparationWorkerClient: vi.fn(),
@@ -16,10 +17,12 @@ describe('prepareProductionRuntimeArtifacts', () => {
   it('returns the Production runtime artifact route and always disposes the fresh worker', async () => {
     const dispose = vi.fn(async () => {});
     vi.mocked(createDownloadVerificationRuntimeArtifactPreparationWorkerClient).mockReturnValue({
-      prepareModelRuntimeArtifacts: vi.fn(async () => ({
+      prepareModelRuntimeArtifacts: vi.fn(async (): Promise<TransformersJsRuntimeArtifactPreparationResult> => ({
         processor: 'qwen3_5-processor' as const,
         modelType: 'qwen3_5_text',
-        requiredModelPathsByCandidate: { 'webgpu/q4f16': ['onnx/model_q4f16.onnx'] },
+        resourcePlansByCandidate: {
+          'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] },
+        },
       })),
       dispose,
     });
@@ -33,7 +36,9 @@ describe('prepareProductionRuntimeArtifacts', () => {
       status: 'prepared',
       processor: 'qwen3_5-processor' as const,
       modelType: 'qwen3_5_text',
-      requiredModelPathsByCandidate: { 'webgpu/q4f16': ['onnx/model_q4f16.onnx'] },
+      resourcePlansByCandidate: {
+        'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] },
+      },
       observationMethod: 'transformers-runtime-artifact-preparation',
       error: undefined,
     });
@@ -44,10 +49,12 @@ describe('prepareProductionRuntimeArtifacts', () => {
 
   it('preserves prepared runtime artifacts when dedicated worker disposal reports a remote release failure', async () => {
     vi.mocked(createDownloadVerificationRuntimeArtifactPreparationWorkerClient).mockReturnValue({
-      prepareModelRuntimeArtifacts: vi.fn(async () => ({
+      prepareModelRuntimeArtifacts: vi.fn(async (): Promise<TransformersJsRuntimeArtifactPreparationResult> => ({
         processor: 'qwen3_5-processor' as const,
         modelType: 'qwen3_5_text',
-        requiredModelPathsByCandidate: { 'webgpu/q4f16': ['onnx/model_q4f16.onnx'] },
+        resourcePlansByCandidate: {
+          'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] },
+        },
       })),
       dispose: vi.fn(async () => {
         throw new Error('remote release failed');
