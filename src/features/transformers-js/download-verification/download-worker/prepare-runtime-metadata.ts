@@ -41,7 +41,7 @@ export async function prepareRuntimeMetadata({ modelId, revision, runtime, downl
     for (const candidate of TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES) {
       try {
         resourcePlansByCandidate[`${candidate.device}/${candidate.dtype}`] = { status: 'ready', paths: selectProductionModelResources({
-          autoClass: selectTransformersJsProductionAutoClass({ modelId }), config, candidate,
+          autoClass: selectTransformersJsProductionAutoClass({ modelId, modelType }), config, candidate,
         }).paths };
       } catch (error) {
         if (!(error instanceof ProductionResourceCandidateError)) throw error;

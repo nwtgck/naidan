@@ -125,6 +125,9 @@ inside `from_pretrained()`.
 
 ### Evidence-derived test data
 
+- Read [REPLAY_TESTING.md](./REPLAY_TESTING.md) when deriving model regression
+  tests from investigation evidence. It describes replay boundaries, conditional
+  contracts, evidence ownership, and model-local test patterns.
 - Investigation ZIPs are development inputs, not test-time dependencies. Only
   `naidan/` is published; sibling handoff and evidence directories are private.
 - Investigation archive layouts and observation schemas are not application

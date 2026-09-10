@@ -289,7 +289,7 @@ Reproduction baseline:
 - Transformers.js: `4.2.0`.
 - Installed `dist/transformers.web.js` SHA-256:
   `25e0cbdf5df922996299fcd2cf835101ba979b134389a0dcc54f92022ca7e0ff`.
-- Test: [request-planner-adversarial.test.ts](./download-verification/fixtures/request-planner-adversarial.test.ts).
+- Test: [request-planner-adversarial.test.ts](./replay-models/support/request-planner-adversarial.test.ts).
 
 ### What the executable audit establishes
 
@@ -393,7 +393,7 @@ remain separate canary checks after a concrete implementation exists.
 
 Against the original 4.2.0 web bundle identified above, the LFM2.5-350M
 regression in
-[download-replay-lfm2.5-350m.test.ts](./download-verification/fixtures/raw-download-replay/download-replay-lfm2.5-350m.test.ts)
+[download-replay-lfm2.5-350m.test.ts](./replay-models/liquidai--lfm2.5-350m-onnx/download-replay-lfm2.5-350m.test.ts)
 completed explicit Download, then removed required q4f16 external data after
 offline planning had classified the candidate as complete. The file removal
 uses a runtime progress event, not a delay. The test expects terminal failure

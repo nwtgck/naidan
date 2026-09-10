@@ -1,4 +1,5 @@
 /* eslint-disable no-restricted-imports -- Dedicated worker entry intentionally imports transformers.js runtime directly. */
+import { generationContinuationOwnerSchema } from './generation-continuation-owner';
 import {
   AutoConfig,
   AutoProcessor,
@@ -49,6 +50,7 @@ import {
 import {
   normalizeTransformersJsProductionModelId,
   selectTransformersJsProductionAutoClass,
+  supportsQwen3_5MultimodalRoute,
   selectTransformersJsProductionRuntimeArtifactLoader,
 } from '@/features/transformers-js/production-routing';
 import { TRANSFORMERS_JS_PRODUCTION_LOAD_CANDIDATES } from '@/features/transformers-js/production-load-candidates';
@@ -418,7 +420,6 @@ async function loadProductionRuntime({
   } });
   try {
     const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
-    const autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId });
     assertGemma4RuntimeSupport({ modelId: cleanModelId });
     const rawProgressCallback: TransformersProgressCallback = info => progressCallback({ info });
     const runtimeModelCache = modelCache ?? createDownloadedModelReadOnlyCache({
@@ -441,12 +442,13 @@ async function loadProductionRuntime({
           }),
         });
         const modelType = typeof config.model_type === 'string' ? config.model_type : undefined;
+        let autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId, modelType });
         const runtimeArtifactLoader = selectTransformersJsProductionRuntimeArtifactLoader({
           modelId: cleanModelId,
           modelType,
         });
         onRuntimePhase?.({ phase: 'candidate-plan' });
-        const candidatePlan = await withDownloadedModelPreparationPhase({
+        const planCandidates = () => withDownloadedModelPreparationPhase({
           phase: 'candidate-plan',
           run: () => planDownloadedModelCandidates({
             modelId: cleanModelId,
@@ -471,6 +473,15 @@ async function loadProductionRuntime({
             workerLocationUrl: self.location.href,
           }),
         });
+        let candidatePlan = await planCandidates();
+        // Prefer a complete multimodal route before native loading begins. Old
+        // language-only caches remain usable for text without fetching missing
+        // vision files. Never downgrade after a native/resource failure.
+        if (supportsQwen3_5MultimodalRoute({ modelType })
+          && candidatePlan.every(entry => entry.status === 'checked' && !entry.complete)) {
+          autoClass = 'AutoModelForCausalLM';
+          candidatePlan = await planCandidates();
+        }
         const completeCandidates = candidatePlan
           .filter(entry => entry.status === 'checked')
           .filter(entry => entry.complete);
@@ -1740,6 +1751,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
     params?: LmParameters,
     tools?: WorkerToolDefinition[],
     capture?: GenerationCaptureRequest,
+    continuationOwner?: string,
   ): Promise<void> {
     const cacheGeneration = {};
     generationRuntimeState.generationStateOwner = cacheGeneration;
@@ -1749,6 +1761,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
     let captureOutcome: 'fulfilled' | 'rejected' = 'rejected';
     try {
       if (!model || !tokenizer) throw new Error('Model not loaded');
+      const validatedContinuationOwner = generationContinuationOwnerSchema.parse(continuationOwner);
 
       const generationStart = performance.now();
       const strategy = selectGenerationStrategy({
@@ -1790,6 +1803,7 @@ const transformersJsWorker: WorkerServerApi<ITransformersJsWorker> = {
         let generationFailure: { error: unknown } | undefined;
         try {
           await strategy.generate({
+            continuationOwner: validatedContinuationOwner,
             model,
             tokenizer,
             messages,

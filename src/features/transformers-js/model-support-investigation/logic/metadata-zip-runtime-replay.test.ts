@@ -10,7 +10,7 @@ import type { OpfsModelCacheMatchObservation } from '@/features/transformers-js/
 import { collectReplayMetadata, replayMetadataSha256, replayMetadataSummarySchema, type InvestigationReplayMetadataSnapshot } from './collect-replay-metadata';
 import { createPartialModelSupportEvidence, createBatchModelSupportEvidence } from './create-partial-evidence';
 import { createInitialInvestigationCheckpoint } from './investigation-recovery';
-import corpusJson from './fixtures/replay-metadata-corpus.json';
+import corpusJson from '@/features/transformers-js/replay-models/support/model-parsed-metadata-corpus';
 
 const REVISION = 'a'.repeat(40);
 const MODEL_ID = 'fixture/replay';

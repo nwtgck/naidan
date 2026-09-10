@@ -583,6 +583,8 @@ export interface ITransformersJsWorker {
     params?: LmParameters,
     tools?: WorkerToolDefinition[],
     capture?: GenerationCaptureRequest,
+    // Append after capture to preserve the existing diagnostic RPC position.
+    continuationOwner?: string,
   ): Promise<void>,
   takeGenerationCapture({ runId, workerEpoch }: GenerationCaptureReadRequest): Promise<GenerationCaptureReadResult>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
@@ -606,12 +608,13 @@ export interface TransformersJsWorkerClient {
   unloadModel(): Promise<void>,
   interrupt(): Promise<void>,
   resetCache(): Promise<void>,
-  generateText({ messages, onChunk, onToolCalls, params, tools }: {
+  generateText({ messages, onChunk, onToolCalls, params, tools, continuationOwner }: {
     messages: ChatMessage[],
     onChunk: TransformersJsChunkCallback,
     onToolCalls: TransformersJsToolCallsCallback,
     params?: LmParameters,
     tools?: WorkerToolDefinition[],
+    continuationOwner?: string,
   }): Promise<void>,
   dispose(): Promise<void>,
 }

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { createProductionReplayTestRuntime } from '@/features/transformers-js/production-replay-test-runtime';
+import { createProviderReplayTestRuntime } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 
 // Actual startup, Comlink, offline common Load and tokenizer execute. Only the
 // browser module/OPFS platform and heavyweight ORT construction are substituted.
@@ -11,8 +11,8 @@ describe('ordinary Load receipt through actual Worker communication without gene
     const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
     const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
     const runId = 'load-without-generation';
-    const harness = await createProductionReplayTestRuntime({
-      modelId, expectedRevision: revision,
+    const harness = await createProviderReplayTestRuntime({
+      modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: "all-fixture",
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: Uint8Array.of(1, 2, 3) }],
       imagePlatform: undefined,
       generate: async () => {

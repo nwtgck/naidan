@@ -17,6 +17,7 @@ const transformerMocks = vi.hoisted(() => {
   };
   return {
     env,
+    configFromPretrained: vi.fn(),
     causalFromPretrained: vi.fn(),
     imageTextFromPretrained: vi.fn(),
   };
@@ -29,6 +30,9 @@ vi.mock('comlink', () => ({
 }));
 
 vi.mock('@huggingface/transformers', () => ({
+  AutoConfig: {
+    from_pretrained: transformerMocks.configFromPretrained,
+  },
   AutoModelForCausalLM: {
     from_pretrained: transformerMocks.causalFromPretrained,
   },
@@ -71,6 +75,9 @@ beforeEach(() => {
   });
 
   transformerMocks.env.fetch = undefined;
+  // This unit controls request lifetime, not native metadata or model loading.
+  // Give the new config-owned route the non-multimodal metadata it consumes.
+  transformerMocks.configFromPretrained.mockResolvedValue({ model_type: 'lfm2' });
   transformerMocks.causalFromPretrained.mockImplementation(async (_modelId: string, options: { revision: string }) => {
     const runtimeFetch = transformerMocks.env.fetch;
     if (runtimeFetch === undefined) throw new Error('worker did not configure Transformers.js fetch');
@@ -107,10 +114,18 @@ describe('model artifact request worker', () => {
 
     await expect(observation).resolves.toEqual(expect.objectContaining({
       status: 'observed',
+      autoClass: 'AutoModelForCausalLM',
       paths: [
         'onnx/model_q4f16.onnx',
         'onnx/model_q4f16.onnx_data',
       ],
     }));
+    expect(transformerMocks.configFromPretrained).toHaveBeenCalledExactlyOnceWith(
+      'LiquidAI/LFM2.5-230M-ONNX', { revision: 'c6f46e4e3f885ebcad164d14059a49f90e27eb4d' },
+    );
+    expect(transformerMocks.causalFromPretrained).toHaveBeenCalledExactlyOnceWith(
+      'LiquidAI/LFM2.5-230M-ONNX', { revision: 'c6f46e4e3f885ebcad164d14059a49f90e27eb4d', device: 'webgpu', dtype: 'q4f16', silent: true },
+    );
+    expect(transformerMocks.imageTextFromPretrained).not.toHaveBeenCalled();
   });
 });

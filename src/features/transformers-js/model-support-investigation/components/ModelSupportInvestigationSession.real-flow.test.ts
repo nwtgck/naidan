@@ -8,8 +8,8 @@ import JSZip from 'jszip';
 import { z } from 'zod';
 import * as transport from '@/utils/worker-transport';
 import type { WorkerServerApi } from '@/utils/worker-transport';
-import { ProductionReplayTestWorker } from '@/features/transformers-js/production-replay-test-transport';
-import { createMemoryFiles } from '@/features/transformers-js/download-verification/fixtures/raw-download-replay/memory-files';
+import { ProviderReplayTestWorker } from '@/features/transformers-js/replay-models/support/provider-replay-test-transport';
+import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { lazyStrings } from '@/strings';
 import type { IModelSupportInvestigationWorker } from '@/features/transformers-js/model-support-investigation/types';
@@ -84,7 +84,7 @@ const archivedRecoveryOutcomeSchema = z.object({
 let firstRequestIdentity: 'original' | 'foreign';
 const planningRequestEnvelope = z.object({ type: z.literal('APPLY'), path: z.tuple([z.literal('runPartialInvestigation')]), argumentList: z.array(z.unknown()) }).passthrough();
 
-class InvestigationTestWorker extends ProductionReplayTestWorker {
+class InvestigationTestWorker extends ProviderReplayTestWorker {
   readonly kind: 'planning' | 'evidence';
   // Implements the browser Worker constructor.
   constructor(url: string | URL, options: WorkerOptions | undefined) {

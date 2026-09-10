@@ -1,0 +1,89 @@
+{
+  "format": "provider-resource-context-v1",
+  "modelId": "onnx-community/gpt-oss-20b-ONNX",
+  "metadataRevision": "6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7",
+  "observedCacheRevision": "main",
+  "loadReceipt": {
+    "format": "production-offline-load-receipt-v1",
+    "modelId": "onnx-community/gpt-oss-20b-ONNX",
+    "loaderRevisionOption": {
+      "status": "omitted"
+    },
+    "autoClass": "AutoModelForCausalLM",
+    "processor": "tokenizer",
+    "candidate": {
+      "device": "webgpu",
+      "dtype": "q4f16"
+    },
+    "plannedRequiredPaths": [
+      "config.json",
+      "onnx/model_q4f16.onnx",
+      "onnx/model_q4f16.onnx_data",
+      "onnx/model_q4f16.onnx_data_1",
+      "onnx/model_q4f16.onnx_data_2",
+      "onnx/model_q4f16.onnx_data_3",
+      "onnx/model_q4f16.onnx_data_4",
+      "onnx/model_q4f16.onnx_data_5",
+      "onnx/model_q4f16.onnx_data_6",
+      "tokenizer.json",
+      "tokenizer_config.json"
+    ],
+    "cacheLookup": {
+      "source": "read-only-opfs-scoped-match",
+      "revision": "main",
+      "hitPaths": [
+        "config.json",
+        "generation_config.json",
+        "onnx/model_q4f16.onnx",
+        "onnx/model_q4f16.onnx_data",
+        "onnx/model_q4f16.onnx_data_1",
+        "onnx/model_q4f16.onnx_data_2",
+        "onnx/model_q4f16.onnx_data_3",
+        "onnx/model_q4f16.onnx_data_4",
+        "onnx/model_q4f16.onnx_data_5",
+        "onnx/model_q4f16.onnx_data_6",
+        "tokenizer.json",
+        "tokenizer_config.json"
+      ]
+    },
+    "completion": "model-session-and-tokenizer-processor-ready",
+    "resourceHealth": "healthy-after-close",
+    "accessBoundary": "production-offline-read-only",
+    "limitations": {
+      "wholeFileProvenance": "not-verified",
+      "allPlannedBodiesConsumed": "not-certified"
+    }
+  },
+  "localMetadataPaths": [
+    "config.json",
+    "generation_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json"
+  ],
+  "metadata": [
+    {
+      "path": "config.json",
+      "sha256": "dc54cf872c059cb8f510f38770176b29211d1d83a9bebb7de0d759fe77d80948"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "sha256": "0b27d36b62a2a939e5f8e52ebb1798be181a5f8b35685f81c142b14690d3d4b4"
+    },
+    {
+      "path": "generation_config.json",
+      "sha256": "912bb474f36eb600f91a5a32f70f5dd2534313423adfc3d6726cb123e3b1de9d"
+    },
+    {
+      "path": "special_tokens_map.json",
+      "sha256": "9ee667e324910c037718c9251f2ec97cec5530b6789a52a4d95328e61f110512"
+    },
+    {
+      "path": "chat_template.jinja",
+      "sha256": "e381f0b98be3c3714676ec4102bc75a885d75b9002feb02fb6f25ad0e641bce3"
+    },
+    {
+      "path": "tokenizer.json",
+      "sha256": "0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3"
+    }
+  ]
+}

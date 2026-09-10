@@ -192,12 +192,13 @@ function createWorkerClientCore({ capture }: {
     async resetCache(): Promise<void> {
       return session.run({ operation: ({ remote }) => remote.resetCache() });
     },
-    async generateText({ messages, onChunk, onToolCalls, params, tools }: {
+    async generateText({ messages, onChunk, onToolCalls, params, tools, continuationOwner }: {
       messages: ChatMessage[],
       onChunk: TransformersJsChunkCallback,
       onToolCalls: TransformersJsToolCallsCallback,
       params?: LmParameters,
       tools?: WorkerToolDefinition[],
+      continuationOwner?: string,
     }): Promise<void> {
       const request = capture?.createRequest();
       let acceptingCallbacks = true;
@@ -215,6 +216,7 @@ function createWorkerClientCore({ capture }: {
           params,
           tools,
           request,
+          continuationOwner,
         ) });
       } finally {
         // A failed or disposed RPC cannot deliver into a later request, even

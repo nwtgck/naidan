@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMemoryFiles } from './download-verification/fixtures/raw-download-replay/memory-files';
+import { createMemoryFiles } from './replay-models/support/download-memory-files';
 import { ProductionWorkerLifecycleError } from './worker/production-worker-session';
 import type { TransformersJsWorkerClient } from './types';
 import type { ChatMessage } from '@/01-models/types';

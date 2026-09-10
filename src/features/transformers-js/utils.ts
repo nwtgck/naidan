@@ -1,3 +1,5 @@
+import { createOpfsStagingFileName } from './runtime/opfs-staging-file';
+
 /**
  * Interface to extend FileSystemFileHandle with the non-standard createWritable method.
  */
@@ -203,7 +205,7 @@ export async function writeToOpfsWithStaging({ path, response }: { path: string,
   const pathParts = path.split('/');
   const fileName = pathParts.pop()!;
   const markerName = `.${fileName}.complete`;
-  const stagingName = `.${fileName}.staging-${crypto.randomUUID()}`;
+  const stagingName = createOpfsStagingFileName({ fileName });
 
   const root = await navigator.storage.getDirectory();
   let currentDir = root;

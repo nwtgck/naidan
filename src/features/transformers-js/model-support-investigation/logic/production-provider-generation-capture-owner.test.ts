@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TransformersJsWorkerClient } from '@/features/transformers-js/types';
 import type { GenerationCaptureReadResult, GenerationCaptureRequest } from '@/features/transformers-js/worker/generation-capture-protocol';
-import { createMemoryFiles } from '@/features/transformers-js/download-verification/fixtures/raw-download-replay/memory-files';
+import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import { createProductionProviderGenerationCaptureOwner } from './production-provider-generation-capture-owner';
 
 type OwnerArguments = Parameters<typeof createProductionProviderGenerationCaptureOwner>[0];

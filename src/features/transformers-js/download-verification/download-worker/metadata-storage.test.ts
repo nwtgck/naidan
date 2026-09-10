@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { createMemoryFiles } from '@/features/transformers-js/download-verification/fixtures/raw-download-replay/memory-files';
+import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import { createRuntimeMetadataStorage } from './metadata-storage';
 
 const revision = 'a'.repeat(40);

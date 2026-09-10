@@ -1,0 +1,190 @@
+{
+  "modelId": "LiquidAI/LFM2.5-230M-ONNX",
+  "revision": "c6f46e4e3f885ebcad164d14059a49f90e27eb4d",
+  "repositoryFiles": [
+    {
+      "path": ".gitattributes",
+      "size": 1821
+    },
+    {
+      "path": "chat_template.jinja",
+      "size": 4621
+    },
+    {
+      "path": "config.json",
+      "size": 1668
+    },
+    {
+      "path": "generation_config.json",
+      "size": 131
+    },
+    {
+      "path": "LICENSE",
+      "size": 10574
+    },
+    {
+      "path": "onnx/model_fp16.onnx",
+      "size": 133966
+    },
+    {
+      "path": "onnx/model_fp16.onnx_data",
+      "size": 475768832
+    },
+    {
+      "path": "onnx/model_q4.onnx",
+      "size": 154010
+    },
+    {
+      "path": "onnx/model_q4.onnx_data",
+      "size": 211111936
+    },
+    {
+      "path": "onnx/model_q4f32.onnx",
+      "size": 153902
+    },
+    {
+      "path": "onnx/model_q4f32.onnx_data",
+      "size": 403001344
+    },
+    {
+      "path": "onnx/model_q8.onnx",
+      "size": 167040
+    },
+    {
+      "path": "onnx/model_q8.onnx_data",
+      "size": 489345024
+    },
+    {
+      "path": "onnx/model.onnx",
+      "size": 128784
+    },
+    {
+      "path": "onnx/model.onnx_data",
+      "size": 951537664
+    },
+    {
+      "path": "README.md",
+      "size": 2944
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 5347
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 4733389
+    }
+  ],
+  "declarations": [
+    {
+      "path": "config.json",
+      "originalByteLength": 1668,
+      "value": {
+        "architectures": [
+          "Lfm2ForCausalLM"
+        ],
+        "block__name_mlp": "parallel_mlp_merged",
+        "block_auto_adjust_ff_dim": false,
+        "block_dim": 1024,
+        "block_ff_dim": 2560,
+        "block_ffn_dim_multiplier": 1,
+        "block_ffn_te_autocast": false,
+        "block_ffn_use_quantized_params": false,
+        "block_mlp_init_scale": 1,
+        "block_multiple_of": 256,
+        "block_norm_eps": 0.00001,
+        "block_out_init_scale": 1,
+        "block_sequence_parallel_norm_across_tp": false,
+        "block_use_swiglu": true,
+        "block_use_xavier_init": true,
+        "bos_token_id": 1,
+        "conv_L_cache": 3,
+        "conv_bias": false,
+        "conv_dim": 1024,
+        "conv_use_xavier_init": true,
+        "dtype": "bfloat16",
+        "eos_token_id": 7,
+        "ffn_te_autocast": false,
+        "ffn_use_quantized_params": false,
+        "hidden_size": 1024,
+        "initializer_range": 0.02,
+        "intermediate_size": 2560,
+        "layer_types": [
+          "conv",
+          "conv",
+          "full_attention",
+          "conv",
+          "full_attention",
+          "conv",
+          "full_attention",
+          "conv",
+          "full_attention",
+          "conv",
+          "full_attention",
+          "conv",
+          "full_attention",
+          "conv"
+        ],
+        "max_position_embeddings": 128000,
+        "model_type": "lfm2",
+        "norm_eps": 0.00001,
+        "num_attention_heads": 16,
+        "num_heads": 16,
+        "num_hidden_layers": 14,
+        "num_key_value_heads": 8,
+        "pad_token_id": 0,
+        "rope_parameters": {
+          "rope_theta": 1000000,
+          "rope_type": "default"
+        },
+        "sequence_parallel_norm_across_tp": false,
+        "tie_embedding": true,
+        "transformers_version": "5.0.0.dev0",
+        "use_cache": true,
+        "use_pos_enc": true,
+        "vocab_size": 65536,
+        "transformers.js_config": {
+          "kv_cache_dtype": {
+            "fp32": "float32"
+          },
+          "use_external_data_format": true
+        }
+      }
+    },
+    {
+      "path": "tokenizer_config.json",
+      "originalByteLength": 5347,
+      "value": {
+        "backend": "tokenizers",
+        "bos_token": "<|startoftext|>",
+        "clean_up_tokenization_spaces": false,
+        "eos_token": "<|im_end|>",
+        "is_local": true,
+        "legacy": false,
+        "model_input_names": [
+          "input_ids",
+          "attention_mask"
+        ],
+        "model_max_length": 1e+30,
+        "pad_token": "<|pad|>",
+        "sp_model_kwargs": {},
+        "spaces_between_special_tokens": false,
+        "tokenizer_class": "TokenizersBackend",
+        "use_default_system_prompt": false,
+        "use_fast": true,
+        "chat_template": "{{- bos_token -}}\n{%- set preserve_thinking = preserve_thinking | default(false) -%}\n\n{%- macro format_arg_value(arg_value) -%}\n    {%- if arg_value is string -%}\n        {{- \"'\" + arg_value + \"'\" -}}\n    {%- elif arg_value is mapping -%}\n        {{- arg_value | tojson -}}\n    {%- else -%}\n        {{- arg_value | string -}}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro parse_content(content) -%}\n    {%- if content is string -%}\n        {{- content -}}\n    {%- else -%}\n        {%- set _ns = namespace(result=\"\") -%}\n        {%- for item in content -%}\n            {%- if item[\"type\"] == \"image\" -%}\n                {%- set _ns.result = _ns.result + \"<image>\" -%}\n            {%- elif item[\"type\"] == \"text\" -%}\n                {%- set _ns.result = _ns.result + item[\"text\"] -%}\n            {%- else -%}\n                {%- set _ns.result = _ns.result + item | tojson -%}\n            {%- endif -%}\n        {%- endfor -%}\n        {{- _ns.result -}}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro render_tool_calls(tool_calls) -%}\n    {%- set tool_calls_ns = namespace(tool_calls=[]) -%}\n    {%- for tool_call in tool_calls -%}\n        {%- set func_name = tool_call[\"function\"][\"name\"] -%}\n        {%- set func_args = tool_call[\"function\"][\"arguments\"] -%}\n        {%- set args_ns = namespace(arg_strings=[]) -%}\n        {%- for arg_name, arg_value in func_args.items() -%}\n            {%- set args_ns.arg_strings = args_ns.arg_strings + [arg_name + \"=\" + format_arg_value(arg_value)] -%}\n        {%- endfor -%}\n        {%- set tool_calls_ns.tool_calls = tool_calls_ns.tool_calls + [func_name + \"(\" + (args_ns.arg_strings | join(\", \")) + \")\"] -%}\n    {%- endfor -%}\n    {{- \"<|tool_call_start|>[\" + (tool_calls_ns.tool_calls | join(\", \")) + \"]<|tool_call_end|>\" -}}\n{%- endmacro -%}\n\n{%- set ns = namespace(system_prompt=\"\", last_user_index=-1) -%}\n{%- if messages[0][\"role\"] == \"system\" -%}\n    {%- if messages[0].get(\"content\") -%}\n        {%- set ns.system_prompt = parse_content(messages[0][\"content\"]) -%}\n    {%- endif -%}\n    {%- set messages = messages[1:] -%}\n{%- endif -%}\n{%- if tools -%}\n    {%- set ns.system_prompt = ns.system_prompt + (\"\\n\" if ns.system_prompt else \"\") + \"List of tools: [\" -%}\n    {%- for tool in tools -%}\n        {%- if tool is not string -%}\n            {%- set tool = tool | tojson -%}\n        {%- endif -%}\n        {%- set ns.system_prompt = ns.system_prompt + tool -%}\n        {%- if not loop.last -%}\n            {%- set ns.system_prompt = ns.system_prompt + \", \" -%}\n        {%- endif -%}\n    {%- endfor -%}\n    {%- set ns.system_prompt = ns.system_prompt + \"]\" -%}\n{%- endif -%}\n{%- if ns.system_prompt -%}\n    {{- \"<|im_start|>system\\n\" + ns.system_prompt + \"<|im_end|>\\n\" -}}\n{%- endif -%}\n{%- for message in messages -%}\n    {%- if message[\"role\"] == \"user\" -%}\n        {%- set ns.last_user_index = loop.index0 -%}\n    {%- endif -%}\n{%- endfor -%}\n{%- for message in messages -%}\n    {{- \"<|im_start|>\" + message.role + \"\\n\" -}}\n    {%- if message.role == \"assistant\" -%}\n        {%- generation -%}\n        {%- if message.thinking is defined and (preserve_thinking or loop.index0 > ns.last_user_index) -%}\n            {{- \"<think>\" + message.thinking + \"</think>\" -}}\n        {%- endif -%}\n        {%- set _cfm_tag = \"CONTINUE_FINAL_MESSAGE_TAG \" -%}\n        {%- set _has_cfm = false -%}\n        {%- if message.content is defined -%}\n            {%- set content = parse_content(message.content) -%}\n            {%- if not (preserve_thinking or loop.index0 > ns.last_user_index) -%}\n                {%- if \"</think>\" in content -%}\n                    {%- set content = content.split(\"</think>\")[-1] | trim -%}\n                {%- endif -%}\n            {%- endif -%}\n            {%- if message.tool_calls is defined and content.endswith(_cfm_tag) -%}\n                {%- set _has_cfm = true -%}\n                {%- set _trunc_len = (content | length) - (_cfm_tag | length) -%}\n                {{- content[:_trunc_len] -}}\n            {%- else -%}\n                {{- content -}}\n            {%- endif -%}\n        {%- endif -%}\n        {%- if message.tool_calls is defined -%}\n            {{- render_tool_calls(message.tool_calls) -}}\n        {%- endif -%}\n        {%- if _has_cfm -%}\n            {{- _cfm_tag -}}\n        {%- endif -%}\n        {{- \"<|im_end|>\\n\" -}}\n        {%- endgeneration -%}\n    {%- else %}\n        {%- if message.get(\"content\") -%}\n            {{- parse_content(message[\"content\"]) -}}\n        {%- endif -%}\n        {{- \"<|im_end|>\\n\" -}}\n    {%- endif %}\n{%- endfor -%}\n{%- if add_generation_prompt -%}\n    {{- \"<|im_start|>assistant\\n\" -}}\n{%- endif -%}"
+      }
+    },
+    {
+      "path": "generation_config.json",
+      "originalByteLength": 131,
+      "value": {
+        "_from_model_config": true,
+        "bos_token_id": 1,
+        "eos_token_id": 7,
+        "pad_token_id": 0,
+        "transformers_version": "4.54.0"
+      }
+    }
+  ]
+}

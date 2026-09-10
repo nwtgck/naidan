@@ -187,7 +187,7 @@ call:do_not_execute{value:1}Visible  answer`);
     const NativeTemplate = bundledJinjaTemplate({ code: applyTransformersJsFixes({
       code: readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8'), version: '4.2.0',
     }).code });
-    const template = new NativeTemplate(readFileSync('src/features/transformers-js/download-verification/fixtures/model-runtime-data/gemma4-e2b/chat_template.jinja', 'utf8'));
+    const template = new NativeTemplate(readFileSync('src/features/transformers-js/replay-models/onnx-community--gemma-4-e2b-it-onnx/model-chat_template.jinja', 'utf8'));
 
     function renderCall({ name, args }: { name: string, args: Record<string, unknown> }): string {
       const rendered = template.render({ bos_token: '<bos>', tools: [], add_generation_prompt: false,

@@ -1,0 +1,297 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "supplied-history",
+  "contextSha256": "b8980711f542d83c9d5ab6df7d105431c1ee4ea6522e7a2a0753a522506db2e1",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Template probe first user message."
+        },
+        {
+          "role": "assistant",
+          "content": "Template probe assistant response."
+        },
+        {
+          "role": "user",
+          "content": "Template probe second user message."
+        }
+      ],
+      "tools": [],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 1,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "<think>"
+      },
+      {
+        "sequence": 2,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "The"
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              37
+            ],
+            "byteLength": 296,
+            "sha256": "2663a6a549ff6915ca6e65d43e230d11f67d27eb4ac7bf8a1f394a0063c597f1"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              37
+            ],
+            "byteLength": 296,
+            "sha256": "ec37504372901fc76c27a11cf01f4ea1f0b30ca7257611d71d54a1a85be99518"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              37
+            ],
+            "byteLength": 296,
+            "sha256": "2663a6a549ff6915ca6e65d43e230d11f67d27eb4ac7bf8a1f394a0063c597f1"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              37
+            ],
+            "byteLength": 296,
+            "sha256": "ec37504372901fc76c27a11cf01f4ea1f0b30ca7257611d71d54a1a85be99518"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 1,
+          "contextLimit": 128000,
+          "promptTokenCount": 37,
+          "usedContextTokenCount": 37
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "124894",
+              "124899",
+              "5922",
+              "207",
+              "23108",
+              "22355",
+              "1008",
+              "4695",
+              "5781",
+              "22",
+              "124900",
+              "207",
+              "124899",
+              "63514",
+              "207",
+              "23108",
+              "22355",
+              "16200",
+              "3715",
+              "22",
+              "124900",
+              "207",
+              "124899",
+              "5922",
+              "207",
+              "23108",
+              "22355",
+              "1840",
+              "4695",
+              "5781",
+              "22",
+              "124900",
+              "207",
+              "124899",
+              "63514",
+              "207",
+              "124901"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "597"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "The",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          38
+        ],
+        "byteLength": 304,
+        "sha256": "37072bea8016a885f72b306f4489fc5d8e3a6430ce2cd303bee07e50245cecd7",
+        "tokens": [
+          "124894",
+          "124899",
+          "5922",
+          "207",
+          "23108",
+          "22355",
+          "1008",
+          "4695",
+          "5781",
+          "22",
+          "124900",
+          "207",
+          "124899",
+          "63514",
+          "207",
+          "23108",
+          "22355",
+          "16200",
+          "3715",
+          "22",
+          "124900",
+          "207",
+          "124899",
+          "5922",
+          "207",
+          "23108",
+          "22355",
+          "1840",
+          "4695",
+          "5781",
+          "22",
+          "124900",
+          "207",
+          "124899",
+          "63514",
+          "207",
+          "124901",
+          "597"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "85cc4e72dfb78ab4be8695fdaa52b19268b0ef0239d07094f03ad2812a49e109"
+}

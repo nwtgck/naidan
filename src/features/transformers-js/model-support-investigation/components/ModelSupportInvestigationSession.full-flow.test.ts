@@ -5,11 +5,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import JSZip from 'jszip';
 import { z } from 'zod';
-import { ProductionReplayTestWorker } from '@/features/transformers-js/production-replay-test-transport';
-import { createProductionReplayTestRuntime } from '@/features/transformers-js/production-replay-test-runtime';
-import { createProductionReplayTestImagePlatform } from '@/features/transformers-js/production-replay-test-image-platform';
-import { readModelFixture } from '@/features/transformers-js/download-verification/fixtures/model-runtime-fixture';
-import { createSyntheticModelBody } from '@/features/transformers-js/download-verification/fixtures/raw-download-replay/synthetic-session-oracle';
+import { ProviderReplayTestWorker } from '@/features/transformers-js/replay-models/support/provider-replay-test-transport';
+import { createProviderReplayTestRuntime } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
+import { createProviderReplayTestImagePlatform } from '@/features/transformers-js/replay-models/support/provider-replay-test-image-platform';
+import { readModelFixture } from '@/features/transformers-js/replay-models/support/model-runtime-fixture';
+import { createSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE as image } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
 import { resolveHostedTransformersRuntimeAssetUrls } from '@/features/transformers-js/runtime/configure-hosted-runtime';
 import { createInvestigationFullFlowTestHttp } from '@/features/transformers-js/model-support-investigation/fixtures/full-flow-test-http';
@@ -94,21 +94,21 @@ describe('complete Full collection through Session and actual Worker transports'
     // Missing-cache is a real offline Load failure: do not seed the first
     // model's directory. Only the independently successful second target exists.
     const seededModel = firstTarget === 'missing-cache' ? models[1]! : first;
-    const harness = await createProductionReplayTestRuntime({
-      modelId: seededModel.modelId, expectedRevision: seededModel.revision, artifacts: artifactsForModel(seededModel),
-      imagePlatform: { platform: createProductionReplayTestImagePlatform(), allowedDataUrls: [image.dataUrl] },
+    const harness = await createProviderReplayTestRuntime({
+      modelId: seededModel.modelId, expectedRevision: seededModel.revision, cacheRevision: seededModel.revision, metadataCache: "all-fixture", artifacts: artifactsForModel(seededModel),
+      imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: [image.dataUrl] },
       generate: async () => {
         throw new Error('The platform setup runtime must not perform Worker inference');
       },
     });
     let inferenceCalls = 0;
     const workerRuntimes: Array<{ kind: Exclude<WorkerKind, 'evidence'>; runtime: typeof import('@huggingface/transformers'); inferenceCalls: number }> = [];
-    const workers: Array<ProductionReplayTestWorker & { kind: string }> = [];
+    const workers: Array<ProviderReplayTestWorker & { kind: string }> = [];
     const startupErrors: unknown[] = [];
     const startupStages: string[] = [];
     const nativeSelf = self;
     const originalFetch = fetch;
-    let activeWorker: ProductionReplayTestWorker | undefined;
+    let activeWorker: ProviderReplayTestWorker | undefined;
     let wrapper: ReturnType<typeof mount> | undefined;
     try {
       const artifact = await getProductionTransformersArtifact();
@@ -208,7 +208,7 @@ describe('complete Full collection through Session and actual Worker transports'
           actual.exposeWorkerRemote({ api, endpoint: activeWorker.endpoint });
         } };
       });
-      vi.stubGlobal('Worker', class extends ProductionReplayTestWorker {
+      vi.stubGlobal('Worker', class extends ProviderReplayTestWorker {
         readonly kind: WorkerKind;
         constructor(url: string | URL, options: WorkerOptions | undefined) {
           const pathname = new NodeUrl(String(url)).pathname;
@@ -337,16 +337,17 @@ describe('complete Full collection through Session and actual Worker transports'
             modelId: model.modelId, loaderRevisionOption: { status: 'provided', value: model.revision },
             cacheLookup: { source: 'read-only-opfs-scoped-match', revision: model.revision },
             candidate: { device: 'webgpu', dtype: 'q4f16' },
-            autoClass: 'AutoModelForCausalLM', processor: 'qwen3_5-processor',
+            autoClass: 'AutoModelForImageTextToText', processor: 'qwen3_5-processor',
             completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close',
             accessBoundary: 'production-offline-read-only',
             limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
           });
-          // Seeded vision artifacts are not proof that the selected CausalLM
-          // class planned or loaded a vision encoder. Match that class's plan.
+          // Both fixtures have native multimodal configs and a complete vision
+          // candidate. The current ImageTextToText route must plan that session.
           expect(receipt.plannedRequiredPaths.filter(path => path.startsWith('onnx/')).sort()).toEqual([
             'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
-            'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data', ...model.extraShards,
+            'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
+            'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data', ...model.extraShards,
           ].sort());
           expect(receipt.cacheLookup.hitPaths).toEqual(expect.arrayContaining(receipt.plannedRequiredPaths));
         }
@@ -366,9 +367,20 @@ describe('complete Full collection through Session and actual Worker transports'
           expect(completion?.cacheAfter).toBeUndefined();
           expect(run.downloadEvidence?.modelArtifactObservationError).toBeUndefined();
           expect(run.downloadEvidence?.modelArtifactObservations).toHaveLength(3);
+          expect(run.downloadEvidence!.modelArtifactObservations.map(observation => observation.candidate)).toEqual([
+            { device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }, { device: 'wasm', dtype: 'q4' },
+          ]);
           for (const observation of run.downloadEvidence!.modelArtifactObservations) {
             expect(observation.status, observation.error?.message).toBe('observed');
-            expect(observation.paths.length).toBeGreaterThan(0);
+            expect(observation.autoClass).toBe('AutoModelForImageTextToText');
+            const dtype = observation.candidate.dtype;
+            const model = models.find(model => model.modelId === run.modelId)!;
+            expect([...observation.paths].sort()).toEqual([
+              `onnx/decoder_model_merged_${dtype}.onnx`, `onnx/decoder_model_merged_${dtype}.onnx_data`,
+              `onnx/embed_tokens_${dtype}.onnx`, `onnx/embed_tokens_${dtype}.onnx_data`,
+              `onnx/vision_encoder_${dtype}.onnx`, `onnx/vision_encoder_${dtype}.onnx_data`,
+              ...model.extraShards.map(path => path.replace('q4f16', dtype)),
+            ].sort());
             expect(observation.requests.length).toBeGreaterThan(0);
           }
         }

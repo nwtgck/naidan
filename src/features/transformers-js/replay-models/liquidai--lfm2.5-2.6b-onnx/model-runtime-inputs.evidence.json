@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "modelId": "LiquidAI/LFM2.5-2.6B-ONNX",
+  "revision": "66826372fd4fa166f53be0371c9315745c07cace",
+  "scope": "Selected original runtime metadata and complete ONNX path/size inventory; not a complete repository or runnable model.",
+  "resources": [
+    {
+      "path": "special_tokens_map.json",
+      "status": "repository-absent"
+    },
+    {
+      "path": "added_tokens.json",
+      "status": "repository-absent"
+    },
+    {
+      "path": "chat_template.json",
+      "status": "repository-absent"
+    },
+    {
+      "path": "chat_template.jinja",
+      "status": "recorded",
+      "asset": "model-chat_template.jinja",
+      "encoding": "identity",
+      "byteLength": 5404,
+      "sha256": "8ea15224003c2e89a1ac8d3b0a3362e8e587896f2bcc41df5dcc2d9c5d0ee82c"
+    },
+    {
+      "path": "config.json",
+      "status": "recorded",
+      "asset": "model-config.json",
+      "encoding": "identity",
+      "byteLength": 1728,
+      "sha256": "3df9ebb278bf43eddd8a240086449f197976a1783d6c4d2bfe9eaec4920f4184"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "status": "recorded",
+      "asset": "model-tokenizer_config.json",
+      "encoding": "identity",
+      "byteLength": 6063,
+      "sha256": "cf46c3cdb18cf88542ee0d5d2afd98d78b3eeffd0e6d00a26f8b76800ff9a446"
+    },
+    {
+      "path": "generation_config.json",
+      "status": "recorded",
+      "asset": "model-generation_config.json",
+      "encoding": "identity",
+      "byteLength": 146,
+      "sha256": "e5e1e91829a9ae65809b578bff350dca876febbda88a9e36f415b002f6b3ddf0"
+    },
+    {
+      "path": "processor_config.json",
+      "status": "repository-absent"
+    },
+    {
+      "path": "preprocessor_config.json",
+      "status": "repository-absent"
+    },
+    {
+      "path": "tokenizer.json",
+      "status": "recorded",
+      "asset": "model-tokenizer.json.gz",
+      "encoding": "gzip",
+      "byteLength": 17905598,
+      "sha256": "695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41"
+    }
+  ],
+  "modelArtifacts": [
+    {
+      "path": "onnx/model_fp16.onnx",
+      "size": 275079
+    },
+    {
+      "path": "onnx/model_fp16.onnx_data",
+      "size": 2147258368
+    },
+    {
+      "path": "onnx/model_fp16.onnx_data_1",
+      "size": 2128846848
+    },
+    {
+      "path": "onnx/model_fp16.onnx_data_2",
+      "size": 1134673920
+    },
+    {
+      "path": "onnx/model_q4.onnx",
+      "size": 315101
+    },
+    {
+      "path": "onnx/model_q4.onnx_data",
+      "size": 1854562304
+    },
+    {
+      "path": "onnx/model_q4f16.onnx",
+      "size": 222160
+    },
+    {
+      "path": "onnx/model_q4f16.onnx_data",
+      "size": 1063972864
+    },
+    {
+      "path": "onnx/model_q4f16.onnx_data_1",
+      "size": 469958656
+    },
+    {
+      "path": "onnx/model_q8.onnx",
+      "size": 343485
+    },
+    {
+      "path": "onnx/model_q8.onnx_data",
+      "size": 2133549056
+    },
+    {
+      "path": "onnx/model_q8.onnx_data_1",
+      "size": 1764065280
+    },
+    {
+      "path": "onnx/model.onnx",
+      "size": 264630
+    },
+    {
+      "path": "onnx/model.onnx_data",
+      "size": 2138423296
+    },
+    {
+      "path": "onnx/model.onnx_data_1",
+      "size": 2139316224
+    },
+    {
+      "path": "onnx/model.onnx_data_2",
+      "size": 2093195264
+    },
+    {
+      "path": "onnx/model.onnx_data_3",
+      "size": 2114125824
+    },
+    {
+      "path": "onnx/model.onnx_data_4",
+      "size": 2093195264
+    },
+    {
+      "path": "onnx/model.onnx_data_5",
+      "size": 243302400
+    }
+  ]
+}

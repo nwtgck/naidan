@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createDownloadedModelReadOnlyCache } from './downloaded-model-cache';
 import { createRequiredDownloadedResourceOperation } from './required-downloaded-resource-operation';
-import { createMemoryFiles } from '@/features/transformers-js/download-verification/fixtures/raw-download-replay/memory-files';
+import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 
 const workerLocationUrl = 'https://app.example.test/assets/worker.js';
 const requiredPath = 'onnx/model_q4f16.onnx';

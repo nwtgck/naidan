@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMemoryFiles } from '@/features/transformers-js/download-verification/fixtures/raw-download-replay/memory-files';
+import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import type { TransformersJsWorkerClient } from '@/features/transformers-js/types';
 import { createProductionProviderCaptureOwner, type ProductionProviderCapturePlan, type ProductionProviderCaptureSnapshot } from './production-provider-capture-owner';
 import { createProductionProviderCaptureEvidence, readProductionProviderCaptureEvidence, PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS } from './production-provider-capture-evidence';

@@ -1,5 +1,6 @@
 import { normalizeTransformersJsProductionModelId } from '@/features/transformers-js/production-routing';
 import { isModelWeightFileName } from '@/features/transformers-js/runtime/configure-hosted-runtime';
+import { isOpfsStagingFileName } from '@/features/transformers-js/runtime/opfs-staging-file';
 
 export type DownloadVerificationCachedRevisionKind = 'legacy-main' | 'immutable-sha' | 'other';
 
@@ -79,6 +80,7 @@ async function inspectRevisionDirectory({
       const path = relativePath.length === 0 ? name : `${relativePath}/${name}`;
       switch (handle.kind) {
       case 'file': {
+        if (isOpfsStagingFileName({ fileName: name })) break;
         if (name.startsWith('.') && name.endsWith('.complete')) {
           markers.add(path);
           break;

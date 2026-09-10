@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { readModelFixture } from '@/features/transformers-js/download-verification/fixtures/model-runtime-fixture';
-import { createSyntheticModelBody } from '@/features/transformers-js/download-verification/fixtures/raw-download-replay/synthetic-session-oracle';
+import { readModelFixture } from '@/features/transformers-js/replay-models/support/model-runtime-fixture';
+import { createSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { hostedTransformersRuntimeAssetManifestEntry, HOSTED_TRANSFORMERS_RUNTIME_ASSET_MANIFEST } from '@/features/transformers-js/runtime/runtime-asset-manifest';
 import type { HostedTransformersRuntimeAssetUrls } from '@/features/transformers-js/runtime/configure-hosted-runtime';
 

@@ -1,0 +1,2521 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "natural-tool-minimal",
+  "contextSha256": "b8980711f542d83c9d5ab6df7d105431c1ee4ea6522e7a2a0753a522506db2e1",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use the weather tool for Tokyo."
+        }
+      ],
+      "tools": [
+        {
+          "fixtureId": "model-support-weather-v1",
+          "name": "lookup_weather",
+          "description": "Return deterministic weather fixture data.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 128,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "<think>"
+      },
+      {
+        "sequence": 2,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "The "
+      },
+      {
+        "sequence": 3,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "user "
+      },
+      {
+        "sequence": 4,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "wants "
+      },
+      {
+        "sequence": 5,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "me "
+      },
+      {
+        "sequence": 6,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "to "
+      },
+      {
+        "sequence": 7,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "use "
+      },
+      {
+        "sequence": 8,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 9,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 10,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "tool "
+      },
+      {
+        "sequence": 11,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "for "
+      },
+      {
+        "sequence": 12,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Tokyo. "
+      },
+      {
+        "sequence": 13,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "I "
+      },
+      {
+        "sequence": 14,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "need "
+      },
+      {
+        "sequence": 15,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "to "
+      },
+      {
+        "sequence": 16,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "call "
+      },
+      {
+        "sequence": 17,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 18,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "lookup_weather "
+      },
+      {
+        "sequence": 19,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "function "
+      },
+      {
+        "sequence": 20,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "with "
+      },
+      {
+        "sequence": 21,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 22,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "city "
+      },
+      {
+        "sequence": 23,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "parameter "
+      },
+      {
+        "sequence": 24,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "set "
+      },
+      {
+        "sequence": 25,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "to "
+      },
+      {
+        "sequence": 26,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "\"Tokyo\".</think>"
+      },
+      {
+        "sequence": 27,
+        "phase": "before-settlement",
+        "kind": "tool-call",
+        "toolCallId": "tool-1",
+        "toolName": "lookup_weather",
+        "modelVisibleArguments": "{\"city\":\"Tokyo\"}"
+      },
+      {
+        "sequence": 28,
+        "phase": "before-settlement",
+        "kind": "tool-success",
+        "toolCallId": "tool-1",
+        "content": "{\"temperatureC\":20,\"condition\":\"clear\"}"
+      },
+      {
+        "sequence": 29,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 30,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "<think>"
+      },
+      {
+        "sequence": 31,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "The "
+      },
+      {
+        "sequence": 32,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 33,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "tool "
+      },
+      {
+        "sequence": 34,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "has "
+      },
+      {
+        "sequence": 35,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "returned "
+      },
+      {
+        "sequence": 36,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 37,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 38,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "data "
+      },
+      {
+        "sequence": 39,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "for "
+      },
+      {
+        "sequence": 40,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Tokyo. "
+      },
+      {
+        "sequence": 41,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "The "
+      },
+      {
+        "sequence": 42,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "temperature "
+      },
+      {
+        "sequence": 43,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "is "
+      },
+      {
+        "sequence": 44,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "20°C "
+      },
+      {
+        "sequence": 45,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "and "
+      },
+      {
+        "sequence": 46,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 47,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "condition "
+      },
+      {
+        "sequence": 48,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "is "
+      },
+      {
+        "sequence": 49,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "clear. "
+      },
+      {
+        "sequence": 50,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "I "
+      },
+      {
+        "sequence": 51,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "should "
+      },
+      {
+        "sequence": 52,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "provide "
+      },
+      {
+        "sequence": 53,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "this "
+      },
+      {
+        "sequence": 54,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "information "
+      },
+      {
+        "sequence": 55,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "to "
+      },
+      {
+        "sequence": 56,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 57,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "user.</think>The "
+      },
+      {
+        "sequence": 58,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 59,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "in "
+      },
+      {
+        "sequence": 60,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Tokyo "
+      },
+      {
+        "sequence": 61,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "is "
+      },
+      {
+        "sequence": 62,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "currently "
+      },
+      {
+        "sequence": 63,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "**clear** "
+      },
+      {
+        "sequence": 64,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "with "
+      },
+      {
+        "sequence": 65,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "a "
+      },
+      {
+        "sequence": 66,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "temperature "
+      },
+      {
+        "sequence": 67,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "of "
+      },
+      {
+        "sequence": 68,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "**20°C**."
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              88
+            ],
+            "byteLength": 704,
+            "sha256": "580b329c50ca43089d8d65b62c332b0060f06470f3a40d9d94e1c1952036d3d1"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              88
+            ],
+            "byteLength": 704,
+            "sha256": "c190ff373c4e17c9198ee88fdf63da604ff5e318bfcc22f35e407e51ceca57e2"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              88
+            ],
+            "byteLength": 704,
+            "sha256": "580b329c50ca43089d8d65b62c332b0060f06470f3a40d9d94e1c1952036d3d1"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              88
+            ],
+            "byteLength": 704,
+            "sha256": "c190ff373c4e17c9198ee88fdf63da604ff5e318bfcc22f35e407e51ceca57e2"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 128,
+          "contextLimit": 128000,
+          "promptTokenCount": 88,
+          "usedContextTokenCount": 88
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "124894",
+              "124899",
+              "23630",
+              "207",
+              "3120",
+              "302",
+              "5985",
+              "34",
+              "66155",
+              "5882",
+              "6380",
+              "496",
+              "5545",
+              "1377",
+              "496",
+              "5545",
+              "6380",
+              "36579",
+              "2554",
+              "6380",
+              "496",
+              "30252",
+              "1056",
+              "71",
+              "51492",
+              "1377",
+              "496",
+              "19021",
+              "6380",
+              "496",
+              "17319",
+              "89936",
+              "7420",
+              "51639",
+              "1317",
+              "50007",
+              "496",
+              "29701",
+              "6380",
+              "36579",
+              "5882",
+              "6380",
+              "496",
+              "7022",
+              "1377",
+              "496",
+              "38805",
+              "6380",
+              "36579",
+              "47749",
+              "6380",
+              "36579",
+              "5882",
+              "6380",
+              "496",
+              "3987",
+              "87961",
+              "496",
+              "34503",
+              "6380",
+              "34564",
+              "47749",
+              "62544",
+              "496",
+              "115352",
+              "19550",
+              "6380",
+              "4330",
+              "2107",
+              "19851",
+              "124900",
+              "207",
+              "124899",
+              "5922",
+              "207",
+              "14374",
+              "278",
+              "7420",
+              "6189",
+              "374",
+              "18943",
+              "22",
+              "124900",
+              "207",
+              "124899",
+              "63514",
+              "207",
+              "124901"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "597"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4695"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "10966"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "622"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "310"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1016"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "278"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7420"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6189"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "374"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "18943"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "22"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "358"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1094"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "310"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1367"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "278"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "60357"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "71"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "51492"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1446"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "415"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "278"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3270"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "9673"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1520"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "310"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "496"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "40049"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "11053"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2784"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "124902"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "124905"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "67"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "30252"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1056"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "71"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "51492"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "9619"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "459"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7536"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "40049"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "11053"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7609"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "69"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "124906"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "124900"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "The ",
+          "streamEnd": false
+        },
+        {
+          "text": "user ",
+          "streamEnd": false
+        },
+        {
+          "text": "wants ",
+          "streamEnd": false
+        },
+        {
+          "text": "me ",
+          "streamEnd": false
+        },
+        {
+          "text": "to ",
+          "streamEnd": false
+        },
+        {
+          "text": "use ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "tool ",
+          "streamEnd": false
+        },
+        {
+          "text": "for ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "Tokyo. ",
+          "streamEnd": false
+        },
+        {
+          "text": "I ",
+          "streamEnd": false
+        },
+        {
+          "text": "need ",
+          "streamEnd": false
+        },
+        {
+          "text": "to ",
+          "streamEnd": false
+        },
+        {
+          "text": "call ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "lookup_weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "function ",
+          "streamEnd": false
+        },
+        {
+          "text": "with ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "city ",
+          "streamEnd": false
+        },
+        {
+          "text": "parameter ",
+          "streamEnd": false
+        },
+        {
+          "text": "set ",
+          "streamEnd": false
+        },
+        {
+          "text": "to ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "\"Tokyo\".</think><|tool_call_start|>[lookup_weather(city='Tokyo')]<|tool_call_end|>",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          135
+        ],
+        "byteLength": 1080,
+        "sha256": "9b11bde89f661359118552d8b769163227b370a983fe4b9af769f1574902f6bf",
+        "tokens": [
+          "124894",
+          "124899",
+          "23630",
+          "207",
+          "3120",
+          "302",
+          "5985",
+          "34",
+          "66155",
+          "5882",
+          "6380",
+          "496",
+          "5545",
+          "1377",
+          "496",
+          "5545",
+          "6380",
+          "36579",
+          "2554",
+          "6380",
+          "496",
+          "30252",
+          "1056",
+          "71",
+          "51492",
+          "1377",
+          "496",
+          "19021",
+          "6380",
+          "496",
+          "17319",
+          "89936",
+          "7420",
+          "51639",
+          "1317",
+          "50007",
+          "496",
+          "29701",
+          "6380",
+          "36579",
+          "5882",
+          "6380",
+          "496",
+          "7022",
+          "1377",
+          "496",
+          "38805",
+          "6380",
+          "36579",
+          "47749",
+          "6380",
+          "36579",
+          "5882",
+          "6380",
+          "496",
+          "3987",
+          "87961",
+          "496",
+          "34503",
+          "6380",
+          "34564",
+          "47749",
+          "62544",
+          "496",
+          "115352",
+          "19550",
+          "6380",
+          "4330",
+          "2107",
+          "19851",
+          "124900",
+          "207",
+          "124899",
+          "5922",
+          "207",
+          "14374",
+          "278",
+          "7420",
+          "6189",
+          "374",
+          "18943",
+          "22",
+          "124900",
+          "207",
+          "124899",
+          "63514",
+          "207",
+          "124901",
+          "597",
+          "4695",
+          "10966",
+          "622",
+          "310",
+          "1016",
+          "278",
+          "7420",
+          "6189",
+          "374",
+          "18943",
+          "22",
+          "358",
+          "1094",
+          "310",
+          "1367",
+          "278",
+          "60357",
+          "71",
+          "51492",
+          "1446",
+          "415",
+          "278",
+          "3270",
+          "9673",
+          "1520",
+          "310",
+          "496",
+          "40049",
+          "11053",
+          "2784",
+          "124902",
+          "124905",
+          "67",
+          "30252",
+          "1056",
+          "71",
+          "51492",
+          "9619",
+          "459",
+          "7536",
+          "40049",
+          "11053",
+          "7609",
+          "69",
+          "124906",
+          "124900"
+        ]
+      }
+    },
+    {
+      "localOrdinal": 2,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              155
+            ],
+            "byteLength": 1240,
+            "sha256": "4050f9dac92d6d4fbaa2d2c86c5aba7d0e32dd213eb0c5b5237468f4001a322e"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              155
+            ],
+            "byteLength": 1240,
+            "sha256": "54e88b41ae745983b4a8b3f486bbb1648ac04a6eb48ac2aa01031e3721a0da8b"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              155
+            ],
+            "byteLength": 1240,
+            "sha256": "4050f9dac92d6d4fbaa2d2c86c5aba7d0e32dd213eb0c5b5237468f4001a322e"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              155
+            ],
+            "byteLength": 1240,
+            "sha256": "54e88b41ae745983b4a8b3f486bbb1648ac04a6eb48ac2aa01031e3721a0da8b"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 128,
+          "contextLimit": 128000,
+          "promptTokenCount": 155,
+          "usedContextTokenCount": 155
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "124894",
+              "124899",
+              "23630",
+              "207",
+              "3120",
+              "302",
+              "5985",
+              "34",
+              "66155",
+              "5882",
+              "6380",
+              "496",
+              "5545",
+              "1377",
+              "496",
+              "5545",
+              "6380",
+              "36579",
+              "2554",
+              "6380",
+              "496",
+              "30252",
+              "1056",
+              "71",
+              "51492",
+              "1377",
+              "496",
+              "19021",
+              "6380",
+              "496",
+              "17319",
+              "89936",
+              "7420",
+              "51639",
+              "1317",
+              "50007",
+              "496",
+              "29701",
+              "6380",
+              "36579",
+              "5882",
+              "6380",
+              "496",
+              "7022",
+              "1377",
+              "496",
+              "38805",
+              "6380",
+              "36579",
+              "47749",
+              "6380",
+              "36579",
+              "5882",
+              "6380",
+              "496",
+              "3987",
+              "87961",
+              "496",
+              "34503",
+              "6380",
+              "34564",
+              "47749",
+              "62544",
+              "496",
+              "115352",
+              "19550",
+              "6380",
+              "4330",
+              "2107",
+              "19851",
+              "124900",
+              "207",
+              "124899",
+              "5922",
+              "207",
+              "14374",
+              "278",
+              "7420",
+              "6189",
+              "374",
+              "18943",
+              "22",
+              "124900",
+              "207",
+              "124899",
+              "63514",
+              "207",
+              "124901",
+              "597",
+              "4695",
+              "10966",
+              "622",
+              "310",
+              "1016",
+              "278",
+              "7420",
+              "6189",
+              "374",
+              "18943",
+              "22",
+              "358",
+              "1094",
+              "310",
+              "1367",
+              "278",
+              "60357",
+              "71",
+              "51492",
+              "1446",
+              "415",
+              "278",
+              "3270",
+              "9673",
+              "1520",
+              "310",
+              "496",
+              "40049",
+              "11053",
+              "2784",
+              "124902",
+              "124905",
+              "67",
+              "30252",
+              "1056",
+              "71",
+              "51492",
+              "9619",
+              "459",
+              "7536",
+              "40049",
+              "11053",
+              "7609",
+              "69",
+              "124906",
+              "124900",
+              "207",
+              "124899",
+              "46765",
+              "207",
+              "38184",
+              "116418",
+              "43",
+              "6380",
+              "397",
+              "2011",
+              "25055",
+              "41565",
+              "14143",
+              "106654",
+              "124900",
+              "207",
+              "124899",
+              "63514",
+              "207",
+              "124901"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "597"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7420"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6189"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "677"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6943"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "278"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7420"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1317"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "374"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "18943"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "22"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "440"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4577"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "355"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "229"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "397"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "8653"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "309"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "278"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4075"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "355"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3983"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "22"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "358"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1252"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2675"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "532"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1702"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "310"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "278"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4695"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "22"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "124902"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "597"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7420"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "296"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "18943"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "355"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6153"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7575"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "14143"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "962"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "415"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "267"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4577"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "302"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7575"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "397"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "8653"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "88050"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "124900"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "The ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "tool ",
+          "streamEnd": false
+        },
+        {
+          "text": "has ",
+          "streamEnd": false
+        },
+        {
+          "text": "returned ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "data ",
+          "streamEnd": false
+        },
+        {
+          "text": "for ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "Tokyo. ",
+          "streamEnd": false
+        },
+        {
+          "text": "The ",
+          "streamEnd": false
+        },
+        {
+          "text": "temperature ",
+          "streamEnd": false
+        },
+        {
+          "text": "is ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "20°C ",
+          "streamEnd": false
+        },
+        {
+          "text": "and ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "condition ",
+          "streamEnd": false
+        },
+        {
+          "text": "is ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "clear. ",
+          "streamEnd": false
+        },
+        {
+          "text": "I ",
+          "streamEnd": false
+        },
+        {
+          "text": "should ",
+          "streamEnd": false
+        },
+        {
+          "text": "provide ",
+          "streamEnd": false
+        },
+        {
+          "text": "this ",
+          "streamEnd": false
+        },
+        {
+          "text": "information ",
+          "streamEnd": false
+        },
+        {
+          "text": "to ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "user.</think>The ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "in ",
+          "streamEnd": false
+        },
+        {
+          "text": "Tokyo ",
+          "streamEnd": false
+        },
+        {
+          "text": "is ",
+          "streamEnd": false
+        },
+        {
+          "text": "currently ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "**clear** ",
+          "streamEnd": false
+        },
+        {
+          "text": "with ",
+          "streamEnd": false
+        },
+        {
+          "text": "a ",
+          "streamEnd": false
+        },
+        {
+          "text": "temperature ",
+          "streamEnd": false
+        },
+        {
+          "text": "of ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "**20°C**.",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          206
+        ],
+        "byteLength": 1648,
+        "sha256": "95e1e10094bbc142fadc8f95077cdab0d6e4e893567013168cddc8dc40c376fe",
+        "tokens": [
+          "124894",
+          "124899",
+          "23630",
+          "207",
+          "3120",
+          "302",
+          "5985",
+          "34",
+          "66155",
+          "5882",
+          "6380",
+          "496",
+          "5545",
+          "1377",
+          "496",
+          "5545",
+          "6380",
+          "36579",
+          "2554",
+          "6380",
+          "496",
+          "30252",
+          "1056",
+          "71",
+          "51492",
+          "1377",
+          "496",
+          "19021",
+          "6380",
+          "496",
+          "17319",
+          "89936",
+          "7420",
+          "51639",
+          "1317",
+          "50007",
+          "496",
+          "29701",
+          "6380",
+          "36579",
+          "5882",
+          "6380",
+          "496",
+          "7022",
+          "1377",
+          "496",
+          "38805",
+          "6380",
+          "36579",
+          "47749",
+          "6380",
+          "36579",
+          "5882",
+          "6380",
+          "496",
+          "3987",
+          "87961",
+          "496",
+          "34503",
+          "6380",
+          "34564",
+          "47749",
+          "62544",
+          "496",
+          "115352",
+          "19550",
+          "6380",
+          "4330",
+          "2107",
+          "19851",
+          "124900",
+          "207",
+          "124899",
+          "5922",
+          "207",
+          "14374",
+          "278",
+          "7420",
+          "6189",
+          "374",
+          "18943",
+          "22",
+          "124900",
+          "207",
+          "124899",
+          "63514",
+          "207",
+          "124901",
+          "597",
+          "4695",
+          "10966",
+          "622",
+          "310",
+          "1016",
+          "278",
+          "7420",
+          "6189",
+          "374",
+          "18943",
+          "22",
+          "358",
+          "1094",
+          "310",
+          "1367",
+          "278",
+          "60357",
+          "71",
+          "51492",
+          "1446",
+          "415",
+          "278",
+          "3270",
+          "9673",
+          "1520",
+          "310",
+          "496",
+          "40049",
+          "11053",
+          "2784",
+          "124902",
+          "124905",
+          "67",
+          "30252",
+          "1056",
+          "71",
+          "51492",
+          "9619",
+          "459",
+          "7536",
+          "40049",
+          "11053",
+          "7609",
+          "69",
+          "124906",
+          "124900",
+          "207",
+          "124899",
+          "46765",
+          "207",
+          "38184",
+          "116418",
+          "43",
+          "6380",
+          "397",
+          "2011",
+          "25055",
+          "41565",
+          "14143",
+          "106654",
+          "124900",
+          "207",
+          "124899",
+          "63514",
+          "207",
+          "124901",
+          "597",
+          "7420",
+          "6189",
+          "677",
+          "6943",
+          "278",
+          "7420",
+          "1317",
+          "374",
+          "18943",
+          "22",
+          "440",
+          "4577",
+          "355",
+          "229",
+          "397",
+          "8653",
+          "309",
+          "278",
+          "4075",
+          "355",
+          "3983",
+          "22",
+          "358",
+          "1252",
+          "2675",
+          "532",
+          "1702",
+          "310",
+          "278",
+          "4695",
+          "22",
+          "124902",
+          "597",
+          "7420",
+          "296",
+          "18943",
+          "355",
+          "6153",
+          "7575",
+          "14143",
+          "962",
+          "415",
+          "267",
+          "4577",
+          "302",
+          "7575",
+          "397",
+          "8653",
+          "88050",
+          "124900"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "aecef7527bdf368170179c2ff0ad9e7e0f222bd03345cbaa504ea0728488d23d"
+}

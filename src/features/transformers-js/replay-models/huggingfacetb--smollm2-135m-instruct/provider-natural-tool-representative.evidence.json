@@ -1,0 +1,1262 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "natural-tool-representative",
+  "contextSha256": "e7c1a164674e7404bd0b9b6333beb497a47b12328d750e89af19b11600a6b337",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use lookup_weather for Tokyo, then give a short answer based on the tool result."
+        }
+      ],
+      "tools": [
+        {
+          "fixtureId": "model-support-weather-v1",
+          "name": "lookup_weather",
+          "description": "Return deterministic weather fixture data.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 128,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "I'm "
+      },
+      {
+        "sequence": 2,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "sorry "
+      },
+      {
+        "sequence": 3,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "for "
+      },
+      {
+        "sequence": 4,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 5,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "misunderstanding, "
+      },
+      {
+        "sequence": 6,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "but "
+      },
+      {
+        "sequence": 7,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "as "
+      },
+      {
+        "sequence": 8,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "a "
+      },
+      {
+        "sequence": 9,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather-related "
+      },
+      {
+        "sequence": 10,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "AI, "
+      },
+      {
+        "sequence": 11,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "I "
+      },
+      {
+        "sequence": 12,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "don't "
+      },
+      {
+        "sequence": 13,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "have "
+      },
+      {
+        "sequence": 14,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 15,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "capability "
+      },
+      {
+        "sequence": 16,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "to "
+      },
+      {
+        "sequence": 17,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "provide "
+      },
+      {
+        "sequence": 18,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "a "
+      },
+      {
+        "sequence": 19,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "lookup-weather "
+      },
+      {
+        "sequence": 20,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "response. "
+      },
+      {
+        "sequence": 21,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "I'd "
+      },
+      {
+        "sequence": 22,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "recommend "
+      },
+      {
+        "sequence": 23,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "using "
+      },
+      {
+        "sequence": 24,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 25,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather-related "
+      },
+      {
+        "sequence": 26,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "tool, "
+      },
+      {
+        "sequence": 27,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "such "
+      },
+      {
+        "sequence": 28,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "as "
+      },
+      {
+        "sequence": 29,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 30,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "one "
+      },
+      {
+        "sequence": 31,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "provided "
+      },
+      {
+        "sequence": 32,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "by "
+      },
+      {
+        "sequence": 33,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Hugging "
+      },
+      {
+        "sequence": 34,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Face, "
+      },
+      {
+        "sequence": 35,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "to "
+      },
+      {
+        "sequence": 36,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "get "
+      },
+      {
+        "sequence": 37,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "the "
+      },
+      {
+        "sequence": 38,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 39,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "information."
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              48
+            ],
+            "byteLength": 384,
+            "sha256": "85e35124c714dd1cdcf35f5b95195e6fe08e60a1b75652d9575f52c2c9486db2"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              48
+            ],
+            "byteLength": 384,
+            "sha256": "989fc25a5c180f7373d60461ae33ebfd356010bfbe160160621586716a57154c"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              48
+            ],
+            "byteLength": 384,
+            "sha256": "85e35124c714dd1cdcf35f5b95195e6fe08e60a1b75652d9575f52c2c9486db2"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              48
+            ],
+            "byteLength": 384,
+            "sha256": "989fc25a5c180f7373d60461ae33ebfd356010bfbe160160621586716a57154c"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 128,
+          "contextLimit": 8192,
+          "promptTokenCount": 48,
+          "usedContextTokenCount": 48
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1",
+              "9690",
+              "198",
+              "2683",
+              "359",
+              "253",
+              "5356",
+              "5646",
+              "11173",
+              "3365",
+              "3511",
+              "308",
+              "34519",
+              "28",
+              "7018",
+              "411",
+              "407",
+              "19712",
+              "8182",
+              "2",
+              "198",
+              "1",
+              "4093",
+              "198",
+              "9801",
+              "32214",
+              "79",
+              "29624",
+              "327",
+              "19081",
+              "28",
+              "965",
+              "1928",
+              "253",
+              "1890",
+              "2988",
+              "1552",
+              "335",
+              "260",
+              "1763",
+              "966",
+              "30",
+              "2",
+              "198",
+              "1",
+              "520",
+              "9531",
+              "198"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "57"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "5248"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "22657"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "327"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "260"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "29532"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "564"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "347"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "253"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3947"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "29"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4235"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "5646"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "339"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1326"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "982"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "457"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "260"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "12678"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "288"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1538"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "253"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "32214"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "29"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "29624"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2426"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "30"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "339"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6737"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3730"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1015"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "260"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3947"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "29"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4235"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1763"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "715"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "347"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "260"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "582"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2711"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "411"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "407"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "19712"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "8182"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "28"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "288"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "820"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "260"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "3947"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1096"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "30"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "2"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "I'm ",
+          "streamEnd": false
+        },
+        {
+          "text": "sorry ",
+          "streamEnd": false
+        },
+        {
+          "text": "for ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "misunderstanding, ",
+          "streamEnd": false
+        },
+        {
+          "text": "but ",
+          "streamEnd": false
+        },
+        {
+          "text": "as ",
+          "streamEnd": false
+        },
+        {
+          "text": "a ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "weather-related ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "AI, ",
+          "streamEnd": false
+        },
+        {
+          "text": "I ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "don't ",
+          "streamEnd": false
+        },
+        {
+          "text": "have ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "capability ",
+          "streamEnd": false
+        },
+        {
+          "text": "to ",
+          "streamEnd": false
+        },
+        {
+          "text": "provide ",
+          "streamEnd": false
+        },
+        {
+          "text": "a ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "lookup-weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "response. ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "I'd ",
+          "streamEnd": false
+        },
+        {
+          "text": "recommend ",
+          "streamEnd": false
+        },
+        {
+          "text": "using ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "weather-related ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "tool, ",
+          "streamEnd": false
+        },
+        {
+          "text": "such ",
+          "streamEnd": false
+        },
+        {
+          "text": "as ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "one ",
+          "streamEnd": false
+        },
+        {
+          "text": "provided ",
+          "streamEnd": false
+        },
+        {
+          "text": "by ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "Hugging ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "Face, ",
+          "streamEnd": false
+        },
+        {
+          "text": "to ",
+          "streamEnd": false
+        },
+        {
+          "text": "get ",
+          "streamEnd": false
+        },
+        {
+          "text": "the ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "information.",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          104
+        ],
+        "byteLength": 832,
+        "sha256": "b56afc818619d455ab7f1f27470bb188eaafd100814ea2cce431ffad42acee06",
+        "tokens": [
+          "1",
+          "9690",
+          "198",
+          "2683",
+          "359",
+          "253",
+          "5356",
+          "5646",
+          "11173",
+          "3365",
+          "3511",
+          "308",
+          "34519",
+          "28",
+          "7018",
+          "411",
+          "407",
+          "19712",
+          "8182",
+          "2",
+          "198",
+          "1",
+          "4093",
+          "198",
+          "9801",
+          "32214",
+          "79",
+          "29624",
+          "327",
+          "19081",
+          "28",
+          "965",
+          "1928",
+          "253",
+          "1890",
+          "2988",
+          "1552",
+          "335",
+          "260",
+          "1763",
+          "966",
+          "30",
+          "2",
+          "198",
+          "1",
+          "520",
+          "9531",
+          "198",
+          "57",
+          "5248",
+          "22657",
+          "327",
+          "260",
+          "29532",
+          "28",
+          "564",
+          "347",
+          "253",
+          "3947",
+          "29",
+          "4235",
+          "5646",
+          "28",
+          "339",
+          "1326",
+          "982",
+          "457",
+          "260",
+          "12678",
+          "288",
+          "1538",
+          "253",
+          "32214",
+          "29",
+          "29624",
+          "2426",
+          "30",
+          "339",
+          "6737",
+          "3730",
+          "1015",
+          "260",
+          "3947",
+          "29",
+          "4235",
+          "1763",
+          "28",
+          "715",
+          "347",
+          "260",
+          "582",
+          "2711",
+          "411",
+          "407",
+          "19712",
+          "8182",
+          "28",
+          "288",
+          "820",
+          "260",
+          "3947",
+          "1096",
+          "30",
+          "2"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "52c3ec0027f99196dc60e1353ab3f704bf4277964bc1b1f26c090b8c56b3a2ab"
+}

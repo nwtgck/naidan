@@ -1,0 +1,349 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "independent-next-input",
+  "contextSha256": "8d2c0aa1fcc6194b4ac2afeb5131431a76da9f1be670a7b59b297aee5a495456",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "A separate synthetic capture conversation."
+        }
+      ],
+      "tools": [],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 1,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              73
+            ],
+            "byteLength": 584,
+            "sha256": "95689f6cf15cb6edfd489c3dc7bd8070b6f0caafa773b5bedc6c7680aa59fc1d"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              73
+            ],
+            "byteLength": 584,
+            "sha256": "43b5bd1229c42646c0896b490191d9136f701fe6ed449874b9bae7cc8cd67968"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              73
+            ],
+            "byteLength": 584,
+            "sha256": "95689f6cf15cb6edfd489c3dc7bd8070b6f0caafa773b5bedc6c7680aa59fc1d"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              73
+            ],
+            "byteLength": 584,
+            "sha256": "43b5bd1229c42646c0896b490191d9136f701fe6ed449874b9bae7cc8cd67968"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 1
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 1,
+          "contextLimit": 131072,
+          "promptTokenCount": 73,
+          "usedContextTokenCount": 73
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200006",
+              "17360",
+              "200008",
+              "3575",
+              "553",
+              "17554",
+              "162016",
+              "11",
+              "261",
+              "4410",
+              "6439",
+              "2359",
+              "22203",
+              "656",
+              "7788",
+              "17527",
+              "558",
+              "87447",
+              "100594",
+              "25",
+              "220",
+              "1323",
+              "19",
+              "12",
+              "3218",
+              "198",
+              "6576",
+              "3521",
+              "25",
+              "220",
+              "1323",
+              "21",
+              "12",
+              "3114",
+              "12",
+              "702",
+              "279",
+              "30377",
+              "289",
+              "25",
+              "14093",
+              "279",
+              "2",
+              "13888",
+              "18403",
+              "25",
+              "8450",
+              "11",
+              "49159",
+              "11",
+              "1721",
+              "13",
+              "21030",
+              "2804",
+              "413",
+              "7360",
+              "395",
+              "1753",
+              "3176",
+              "13",
+              "200007",
+              "200006",
+              "1428",
+              "200008",
+              "32",
+              "13574",
+              "37001",
+              "19374",
+              "15681",
+              "13",
+              "200007",
+              "200006",
+              "173781"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "200005"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "<|channel|>",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          74
+        ],
+        "byteLength": 592,
+        "sha256": "378454a49cadfe872ad914d404f0bd3a2ddea4703c408f04477e695cc73dc7b6",
+        "tokens": [
+          "200006",
+          "17360",
+          "200008",
+          "3575",
+          "553",
+          "17554",
+          "162016",
+          "11",
+          "261",
+          "4410",
+          "6439",
+          "2359",
+          "22203",
+          "656",
+          "7788",
+          "17527",
+          "558",
+          "87447",
+          "100594",
+          "25",
+          "220",
+          "1323",
+          "19",
+          "12",
+          "3218",
+          "198",
+          "6576",
+          "3521",
+          "25",
+          "220",
+          "1323",
+          "21",
+          "12",
+          "3114",
+          "12",
+          "702",
+          "279",
+          "30377",
+          "289",
+          "25",
+          "14093",
+          "279",
+          "2",
+          "13888",
+          "18403",
+          "25",
+          "8450",
+          "11",
+          "49159",
+          "11",
+          "1721",
+          "13",
+          "21030",
+          "2804",
+          "413",
+          "7360",
+          "395",
+          "1753",
+          "3176",
+          "13",
+          "200007",
+          "200006",
+          "1428",
+          "200008",
+          "32",
+          "13574",
+          "37001",
+          "19374",
+          "15681",
+          "13",
+          "200007",
+          "200006",
+          "173781",
+          "200005"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "b5a3a02108813cf88911e6eba182cb10cf16b6dab59f099d1d02332e8189e689"
+}

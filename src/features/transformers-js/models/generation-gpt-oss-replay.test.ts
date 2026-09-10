@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 // eslint-disable-next-line no-restricted-imports -- Types describe the instrumented native generation boundary in this Worker regression.
 import type { PreTrainedModel, PreTrainedTokenizer, TextStreamer } from '@huggingface/transformers';
-import { archiveFor, installRawReplay, start } from '@/features/transformers-js/model-support-investigation/logic/fixtures/raw-metadata-replay/harness';
+import { archiveFor, installRawReplay, start } from '@/features/transformers-js/replay-models/support/model-runtime-input-harness';
 
 installRawReplay({ evidence: undefined });
 afterEach(() => {

@@ -1,0 +1,99 @@
+{
+  "format": "provider-resource-context-v1",
+  "modelId": "onnx-community/gemma-4-E2B-it-ONNX",
+  "metadataRevision": "9f4bef82ea6e296bc69f8a2f5939f73af81b07a6",
+  "observedCacheRevision": "9f4bef82ea6e296bc69f8a2f5939f73af81b07a6",
+  "loadReceipt": {
+    "format": "production-offline-load-receipt-v1",
+    "modelId": "onnx-community/gemma-4-E2B-it-ONNX",
+    "loaderRevisionOption": {
+      "status": "provided",
+      "value": "9f4bef82ea6e296bc69f8a2f5939f73af81b07a6"
+    },
+    "autoClass": "AutoModelForImageTextToText",
+    "processor": "gemma4-processor",
+    "candidate": {
+      "device": "webgpu",
+      "dtype": "q4f16"
+    },
+    "plannedRequiredPaths": [
+      "config.json",
+      "onnx/audio_encoder_q4f16.onnx",
+      "onnx/audio_encoder_q4f16.onnx_data",
+      "onnx/decoder_model_merged_q4f16.onnx",
+      "onnx/decoder_model_merged_q4f16.onnx_data",
+      "onnx/embed_tokens_q4f16.onnx",
+      "onnx/embed_tokens_q4f16.onnx_data",
+      "onnx/vision_encoder_q4f16.onnx",
+      "onnx/vision_encoder_q4f16.onnx_data",
+      "preprocessor_config.json",
+      "tokenizer.json",
+      "tokenizer_config.json"
+    ],
+    "cacheLookup": {
+      "source": "read-only-opfs-scoped-match",
+      "revision": "9f4bef82ea6e296bc69f8a2f5939f73af81b07a6",
+      "hitPaths": [
+        "chat_template.jinja",
+        "config.json",
+        "onnx/audio_encoder_q4f16.onnx",
+        "onnx/audio_encoder_q4f16.onnx_data",
+        "onnx/decoder_model_merged_q4f16.onnx",
+        "onnx/decoder_model_merged_q4f16.onnx_data",
+        "onnx/embed_tokens_q4f16.onnx",
+        "onnx/embed_tokens_q4f16.onnx_data",
+        "onnx/vision_encoder_q4f16.onnx",
+        "onnx/vision_encoder_q4f16.onnx_data",
+        "preprocessor_config.json",
+        "processor_config.json",
+        "tokenizer.json",
+        "tokenizer_config.json"
+      ]
+    },
+    "completion": "model-session-and-tokenizer-processor-ready",
+    "resourceHealth": "healthy-after-close",
+    "accessBoundary": "production-offline-read-only",
+    "limitations": {
+      "wholeFileProvenance": "not-verified",
+      "allPlannedBodiesConsumed": "not-certified"
+    }
+  },
+  "localMetadataPaths": [
+    "chat_template.jinja",
+    "config.json",
+    "preprocessor_config.json",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json"
+  ],
+  "metadata": [
+    {
+      "path": "config.json",
+      "sha256": "5494e6677d9e150ea20ba3101ae8a32b0f141004626f052725d8bf48991b9faa"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "sha256": "06afbf54e228050cba79c4a0afd83543cc89070a2d62b8337d0aa8b4cdc348c3"
+    },
+    {
+      "path": "generation_config.json",
+      "sha256": "e6a0b50de21a511f15ac4857b7f227f68ee60ecb1f11255d07b75e0bdc60e155"
+    },
+    {
+      "path": "processor_config.json",
+      "sha256": "32bdf45d2ad4cc29a0822ddd157a182de76644f0419a6228d151495256e9813c"
+    },
+    {
+      "path": "preprocessor_config.json",
+      "sha256": "4457c6e8a09070d7d5d1cd983fbfb67ebafe602bd98120c3543a024f5d07056b"
+    },
+    {
+      "path": "chat_template.jinja",
+      "sha256": "781d10940fbc44be40064b5d43a056fc486c84ceaa55538226368b57314132bf"
+    },
+    {
+      "path": "tokenizer.json",
+      "sha256": "47bd35616c7c782aaca6ccf48c75f3461d5877170984b8836b375107d0a9f566"
+    }
+  ]
+}

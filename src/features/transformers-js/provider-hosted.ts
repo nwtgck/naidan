@@ -72,6 +72,9 @@ class HostedTransformersJsProvider implements LmProvider {
       : undefined;
 
     const currentMessages: ChatMessage[] = [...messages];
+    // In-memory ownership of this public operation, including its tool loop.
+    // It is not a conversation identifier and is never persisted or captured.
+    const continuationOwner = crypto.randomUUID();
 
     while (true) {
       if (signal?.aborted) throw new Error('Generation aborted');
@@ -92,6 +95,7 @@ class HostedTransformersJsProvider implements LmProvider {
         params: parameters,
         tools: workerTools,
         signal,
+        continuationOwner,
       });
 
       if (receivedToolCalls.length === 0) break;

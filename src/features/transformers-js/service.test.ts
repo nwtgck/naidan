@@ -205,6 +205,32 @@ describe('transformersJsService', () => {
     }));
   });
 
+  it('keeps committed text and retried vision visible despite an orphan writer staging file', async () => {
+    const orphanName = '.vision_encoder_q4f16.onnx.staging-f28f6802-947c-4b9d-bc99-223d8d469f4b';
+    const entries: Record<string, ReturnType<typeof createMockFile>> = {
+      'decoder_model_merged_q4f16.onnx': createMockFile(100, 1),
+      '.decoder_model_merged_q4f16.onnx.complete': createMockFile(0, 1),
+      [orphanName]: createMockFile(999, 99),
+    };
+    const revision = createMockDir(entries);
+    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(createMockDir({
+      models: createMockDir({ 'huggingface.co': createMockDir({ org: createMockDir({ repo: createMockDir({ resolve: createMockDir({
+        '0123456789abcdef0123456789abcdef01234567': revision,
+      }) }) }) }) }),
+    })) } });
+    const { transformersJsService } = await import('./index');
+    expect.soft(await transformersJsService.listCachedModels()).toContainEqual(expect.objectContaining({ id: 'hf.co/org/repo', isComplete: true, size: 100, fileCount: 1, lastModified: 1 }));
+    // A retry commits its own final path but cannot clean a terminated writer's
+    // unique temporary file. Listing must not require deleting that orphan.
+    entries['vision_encoder_q4f16.onnx'] = createMockFile(200, 2);
+    entries['.vision_encoder_q4f16.onnx.complete'] = createMockFile(0, 2);
+    expect.soft(await transformersJsService.listCachedModels()).toContainEqual(expect.objectContaining({ id: 'hf.co/org/repo', isComplete: true, size: 300, fileCount: 2, lastModified: 2 }));
+    expect(entries[orphanName]).toBeDefined();
+    for (const handle of Object.values(entries)) expect(handle.createWritable).not.toHaveBeenCalled();
+    delete entries['.vision_encoder_q4f16.onnx.complete'];
+    expect(await transformersJsService.listCachedModels()).toContainEqual(expect.objectContaining({ isComplete: false }));
+  });
+
   it('does not let a partial exact revision make a committed legacy main cache look incomplete', async () => {
     const mockHuggingFaceDir = createMockDir({
       org: createMockDir({

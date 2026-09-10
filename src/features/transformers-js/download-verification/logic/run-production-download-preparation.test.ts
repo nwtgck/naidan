@@ -4,7 +4,7 @@ import { prepareProductionRuntimeArtifacts } from '@/features/transformers-js/do
 import { prepareProductionModelCandidate } from '@/features/transformers-js/download-verification/logic/prepare-production-model-candidate';
 import { acceptDownloadedProductionCandidate } from '@/features/transformers-js/download-verification/logic/accept-downloaded-production-candidate';
 import type { TransformersJsPrefetchResult } from '@/features/transformers-js/types';
-import qwen4bRepository from '@/features/transformers-js/download-verification/fixtures/repositories/qwen3-5-4b.json';
+import qwen4bRepository from '@/features/transformers-js/replay-models/onnx-community--qwen3.5-4b-onnx/download-repository.evidence.json';
 
 vi.mock('@/features/transformers-js/download-verification/logic/prepare-production-runtime-artifacts', () => ({
   prepareProductionRuntimeArtifacts: vi.fn(),

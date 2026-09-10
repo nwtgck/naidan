@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { ITransformersJsWorker } from '@/features/transformers-js/types';
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import { createDownloadVerificationCandidateAcceptanceWorkerClient } from '@/features/transformers-js/download-verification/candidate-acceptance-worker/client-hosted';
-import { createMemoryFiles } from '@/features/transformers-js/download-verification/fixtures/raw-download-replay/memory-files';
+import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import { reuseDownloadedProductionRevision } from './reuse-downloaded-production-revision';
 import { initializeProductionEntryFixture, installProductionRuntimeStartupPlatform, productionRuntimeModuleFixtureBytes } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
 import { resolveHostedTransformersRuntimeAssetUrls } from '@/features/transformers-js/runtime/configure-hosted-runtime';

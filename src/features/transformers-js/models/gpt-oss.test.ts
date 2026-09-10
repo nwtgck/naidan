@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@huggingface/transformers', () => ({
+  Tensor: class {},
   TextStreamer: class {
     constructor() {}
   },
@@ -72,7 +73,7 @@ describe('generateGptOss input observation', () => {
     ]);
   });
 
-  it('reports reconstructed full input and cache reuse for an observed tool continuation', async () => {
+  it('reports full input and refuses an unowned cache despite tool-shaped supplied history', async () => {
     const { tokenizer, applyChatTemplate, callable } = tokenizerFixture();
     const generateWithModel = generateWithModelFixture();
     const onInputPrepared = vi.fn();
@@ -92,18 +93,15 @@ describe('generateGptOss input observation', () => {
       generateWithModel,
     });
 
-    expect(callable).toHaveBeenCalledWith(
-      expect.stringContaining('<|start|>my_tool to=assistant'),
-      expect.objectContaining({ add_special_tokens: false }),
-    );
+    expect(callable).not.toHaveBeenCalled();
     expect(applyChatTemplate).toHaveBeenCalledOnce();
     expect(onInputPrepared).toHaveBeenCalledWith({
       fullConversationInputs: { input_ids: { data: BigInt64Array.from([10n, 11n, 12n]) } },
-      cacheDecision: { status: 'reused', reason: 'gpt-oss-tool-continuation' },
+      cacheDecision: { status: 'not-reused', reason: 'gpt-oss-owned-continuation-unavailable' },
     });
     expect(generateWithModel).toHaveBeenCalledWith(expect.objectContaining({
-      inputs: { input_ids: { data: BigInt64Array.from([90n, 91n]) } },
-      pastKeyValues,
+      inputs: { input_ids: { data: BigInt64Array.from([10n, 11n, 12n]) } },
+      pastKeyValues: null,
     }));
   });
 
@@ -129,7 +127,7 @@ describe('generateGptOss input observation', () => {
     expect(callable).not.toHaveBeenCalled();
     expect(applyChatTemplate).toHaveBeenCalledOnce();
     expect(onInputPrepared).toHaveBeenCalledWith(expect.objectContaining({
-      cacheDecision: { status: 'not-reused', reason: 'gpt-oss-past-key-values-unavailable' },
+      cacheDecision: { status: 'not-reused', reason: 'gpt-oss-owned-continuation-unavailable' },
     }));
     expect(generateWithModel).toHaveBeenCalledWith(expect.objectContaining({ pastKeyValues: null }));
   });
@@ -153,13 +151,13 @@ describe('generateGptOss input observation', () => {
       stoppingCriteria,
       onInputPrepared,
       generateWithModel,
-    })).resolves.toBeDefined();
+    })).resolves.toBeUndefined();
 
     expect(onInputPrepared).toHaveBeenCalledOnce();
     expect(generateWithModel).toHaveBeenCalledOnce();
   });
 
-  it('does not add diagnostic full-prompt rendering to the normal unobserved continuation path', async () => {
+  it('also rejects unowned supplied continuation when no diagnostic observer is installed', async () => {
     const { tokenizer, applyChatTemplate, callable } = tokenizerFixture();
     const generateWithModel = generateWithModelFixture();
 
@@ -177,7 +175,8 @@ describe('generateGptOss input observation', () => {
       generateWithModel,
     });
 
-    expect(callable).toHaveBeenCalledOnce();
-    expect(applyChatTemplate).not.toHaveBeenCalled();
+    expect(callable).not.toHaveBeenCalled();
+    expect(applyChatTemplate).toHaveBeenCalledOnce();
+    expect(generateWithModel).toHaveBeenCalledWith(expect.objectContaining({ pastKeyValues: null }));
   });
 });

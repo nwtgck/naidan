@@ -214,9 +214,24 @@ describe('investigation-owned generation capture client', () => {
       await generate({ client });
       expect(generateText).toHaveBeenCalledExactlyOnceWith(
         [{ role: 'user', content: 'Synthetic capture input.' }],
-        expect.any(Function), expect.any(Function), undefined, undefined, undefined,
+        expect.any(Function), expect.any(Function), undefined, undefined, undefined, undefined,
       );
       expect(takeGenerationCapture).not.toHaveBeenCalled();
+    } finally {
+      await client.dispose();
+    }
+  });
+
+  it('passes operation ownership only in the appended RPC slot without enabling capture', async () => {
+    const generateText = vi.fn().mockResolvedValue(undefined);
+    mocks.wrap.mockReturnValue({ generateText });
+    const { createTransformersJsWorkerClient } = await import('./client-hosted');
+    const client = createTransformersJsWorkerClient();
+    const continuationOwner = 'f28f6802-947c-4b9d-bc99-223d8d469f4b';
+    try {
+      await MockWorker.latest.publishReady();
+      await client.generateText({ messages: [], onChunk: () => undefined, onToolCalls: () => undefined, params: undefined, tools: undefined, continuationOwner });
+      expect(generateText).toHaveBeenCalledExactlyOnceWith([], expect.any(Function), expect.any(Function), undefined, undefined, undefined, continuationOwner);
     } finally {
       await client.dispose();
     }

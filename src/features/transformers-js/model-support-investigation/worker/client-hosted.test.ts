@@ -4,7 +4,7 @@ import { PRODUCTION_WORKER_READY } from '@/features/transformers-js/worker/produ
 import { configurationForPreset, createDefaultInvestigationConfiguration } from '@/features/transformers-js/model-support-investigation/logic/investigation-config';
 import type { RuntimeAcceptanceProgressCallback } from '@/features/transformers-js/download-verification/logic/runtime-acceptance-progress';
 import { runInvestigationTargetsSequentially } from '@/features/transformers-js/model-support-investigation/logic/run-investigation-targets-sequentially';
-import { createMemoryFiles } from '@/features/transformers-js/download-verification/fixtures/raw-download-replay/memory-files';
+import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import type {
   IModelSupportInvestigationWorker,
   ModelSupportInvestigationLoadAttempt,

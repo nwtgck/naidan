@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMemoryFiles } from '@/features/transformers-js/download-verification/fixtures/raw-download-replay/memory-files';
+import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import { createTransformersJsService, transformersJsService } from '@/features/transformers-js/index-hosted';
 import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
 import { toToolCallId } from '@/01-models/ids';

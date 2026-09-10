@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import publicInput from '@/features/transformers-js/production-replay-gemma4-e2b.input.evidence.json';
+import publicInput from '@/features/transformers-js/replay-models/onnx-community--gemma-4-e2b-it-onnx/provider-template-inputs.evidence.json';
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
 import { createModelSupportToolResultContinuationMessages, MODEL_SUPPORT_TOOL_RESULT_CONTENT } from './tool-protocol-fixture';
 import { captureScenarioInput, captureProviderMessages, captureScenarios, isCaptureScenarioSelected } from './production-provider-capture-plan';

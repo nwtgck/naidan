@@ -1,5 +1,6 @@
 import type { ChatMessage, LmParameters, MultimodalContent, ToolCall } from '@/01-models/types';
 import { exactObject } from '@/utils/exact-object';
+import { isOpfsStagingFileName } from './runtime/opfs-staging-file';
 import { createTransformersJsWorkerClient } from '@/features/transformers-js/worker/client';
 import { ProductionWorkerLifecycleError } from '@/features/transformers-js/worker/production-worker-session';
 import { inspectDownloadVerificationCachedRevisions, planDownloadVerificationCachedRevisionLoadCandidates } from '@/features/transformers-js/download-verification/logic/inspect-cached-revisions';
@@ -586,6 +587,9 @@ export function createTransformersJsService({ createWorkerClient }: {
 
               switch (h.kind) {
               case 'file': {
+                // Interrupted writers may leave unique temporary files. They
+                // are not committed resources; listing is read-only, not cleanup.
+                if (isOpfsStagingFileName({ fileName: name })) break;
                 if (name.startsWith('.') && name.endsWith('.complete')) {
                   markers.add(fullPath);
                 } else {
@@ -1125,13 +1129,14 @@ export function createTransformersJsService({ createWorkerClient }: {
     /**
      * Generates text through the worker.
      */
-    async generateText({ messages, onChunk, onToolCalls, params, tools, signal }: {
+    async generateText({ messages, onChunk, onToolCalls, params, tools, signal, continuationOwner }: {
       messages: ChatMessage[],
       onChunk: TransformersJsChunkCallback,
       onToolCalls: TransformersJsToolCallsCallback,
       params?: LmParameters,
       tools?: WorkerToolDefinition[],
       signal?: AbortSignal,
+      continuationOwner?: string,
     }) {
       ensureOpen();
       switch (loadingStatus) {
@@ -1178,6 +1183,7 @@ export function createTransformersJsService({ createWorkerClient }: {
           onToolCalls,
           params: cloneLmParameters({ params }),
           tools: cloneWorkerTools({ tools }),
+          continuationOwner,
         });
         ensureOpen();
       } catch (e) {

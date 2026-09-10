@@ -77,6 +77,20 @@ function storageRoot({ revisions }: { revisions: Record<string, FakeDirectory> }
 }
 
 describe('inspectDownloadVerificationCachedRevisions', () => {
+  it.each(['.model_q4.onnx.staging-f28f6802-947c-4b9d-bc99-223d8d469f4b', '.model_q4.onnx.staging-not-a-uuid', '.other-hidden-file', 'vision_encoder_q4.onnx'])('distinguishes writer temporary basename from real incomplete file %s', async name => {
+    const sha = 'a'.repeat(40);
+    const cached = revisionDirectory();
+    cached.entries[name] = file({ size: 99, lastModified: 99 });
+    const inventory = await inspectDownloadVerificationCachedRevisions({ modelId: 'org/repo', storageRoot: storageRoot({ revisions: { [sha]: cached } }) });
+    const isTemporary = name.endsWith('f28f6802-947c-4b9d-bc99-223d8d469f4b');
+    expect(inventory.revisions[0]).toMatchObject({
+      status: isTemporary ? 'committed-file-set' : 'partial', totalBytes: isTemporary ? 110 : 209,
+      fileCount: isTemporary ? 2 : 3, incompleteFileCount: isTemporary ? 0 : 1,
+      zeroByteFileCount: 0, completionMarkerCount: 2, lastModified: isTemporary ? 1 : 99,
+      committedWeightFileCount: 1,
+    });
+    expect(cached.entries[name]).toBeDefined();
+  });
   it('separates legacy main and immutable SHA namespaces without calling either one model-complete', async () => {
     const sha = 'a'.repeat(40);
     const inventory = await inspectDownloadVerificationCachedRevisions({

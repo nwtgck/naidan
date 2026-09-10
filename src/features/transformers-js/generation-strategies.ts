@@ -200,6 +200,7 @@ export interface WorkerGenerationRuntimeState {
 }
 
 interface GenerationStrategyContext {
+  continuationOwner?: string,
   model: PreTrainedModel,
   tokenizer: PreTrainedTokenizer,
   messages: ChatMessage[],
@@ -401,6 +402,7 @@ const standardGenerationStrategy: GenerationStrategy = {
 const gptOssGenerationStrategy: GenerationStrategy = {
   kind: 'gpt-oss',
   async generate({
+    continuationOwner,
     model,
     tokenizer,
     messages,
@@ -425,6 +427,7 @@ const gptOssGenerationStrategy: GenerationStrategy = {
       params,
       tools,
       pastKeyValues: previousCache,
+      continuationOwner,
       stoppingCriteria,
       onInputPrepared: observationSink === undefined
         ? undefined
@@ -593,6 +596,9 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
       activeModelId: runtimeState.activeModelId,
     });
     const hasImages = messages.some(message => Array.isArray(message.content) && message.content.some(part => part.type === 'image_url'));
+    if (hasImages && model.sessions['vision_encoder'] === undefined) {
+      throw new Error('This Qwen runtime was loaded from a text-only local candidate. Image generation requires a complete vision candidate and an explicit model reload; offline generation will not download or load additional model files.');
+    }
     // Consume the old pair before asynchronous work: native generation can
     // mutate a supplied cache in place, even when it later rejects.
     runtimeState.qwen3_5SequenceCache = undefined;

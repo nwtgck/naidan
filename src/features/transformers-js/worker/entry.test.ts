@@ -4,11 +4,11 @@ import type { WorkerServerApi } from '@/utils/worker-transport';
 import { MissingDownloadedModelArtifactError } from '@/features/transformers-js/runtime/plan-downloaded-model-candidates';
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { historicalRepositoryPath } from '@/features/transformers-js/replay-models/support/model-historical-evidence-paths';
 import {
   createHuggingFaceFixtureServer,
   type HuggingFaceRepositoryFixture,
-} from '@/features/transformers-js/download-verification/fixtures/hf-compatible-fixture-server';
+} from '@/features/transformers-js/replay-models/support/hf-compatible-fixture-server';
 
 import { initializeProductionEntryFixture, installProductionRuntimeStartupPlatform, productionRuntimeModuleFixtureBytes } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
 import { resolveHostedTransformersRuntimeAssetUrls } from '@/features/transformers-js/runtime/configure-hosted-runtime';
@@ -229,11 +229,7 @@ function createMockFile(initialSize: number) {
 }
 
 function readDownloadVerificationRepositoryFixture({ name }: { name: string }): HuggingFaceRepositoryFixture {
-  const path = resolve(
-    process.cwd(),
-    'src/features/transformers-js/download-verification/fixtures/repositories',
-    `${name}.json`,
-  );
+  const path = historicalRepositoryPath({ name });
   return JSON.parse(readFileSync(path, 'utf8')) as HuggingFaceRepositoryFixture;
 }
 
@@ -3592,8 +3588,8 @@ Use shell tools.<|im_end|>
       code: readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8'), version: '4.2.0',
     }).code });
     const nativeTemplates = {
-      '2B': new NativeTemplate(readFileSync('src/features/transformers-js/download-verification/fixtures/model-runtime-data/qwen3.5-2b/chat_template.jinja', 'utf8')),
-      '4B': new NativeTemplate(readFileSync('src/features/transformers-js/download-verification/fixtures/model-runtime-data/qwen3.5-4b/chat_template.jinja', 'utf8')),
+      '2B': new NativeTemplate(readFileSync('src/features/transformers-js/replay-models/onnx-community--qwen3.5-2b-onnx/model-chat_template.jinja', 'utf8')),
+      '4B': new NativeTemplate(readFileSync('src/features/transformers-js/replay-models/onnx-community--qwen3.5-4b-onnx/model-chat_template.jinja', 'utf8')),
     };
     let nativeTemplate: InstanceType<typeof NativeTemplate>;
     let workerObj: any;
@@ -3819,6 +3815,9 @@ Use shell tools.<|im_end|>
     });
 
     it('passes ordered decoded images and fresh processor tensors through the Worker without text-cache reuse', async () => {
+      // This input-only mock represents a successfully loaded vision route.
+      // The real route/session connection is covered by the native generation test.
+      Object.assign(mockModel, { sessions: { vision_encoder: { inputNames: ['pixel_values', 'image_grid_thw'] } } });
       const { RawImage } = await import('@huggingface/transformers');
       const firstImage = { data: Uint8ClampedArray.of(1, 2, 3), width: 1, height: 1, channels: 3 };
       const secondImage = { data: Uint8ClampedArray.of(4, 5, 6), width: 1, height: 1, channels: 3 };
@@ -4565,6 +4564,7 @@ file-a
     let tokensToEmit: string[];
     let mockApplyTemplate: ReturnType<typeof vi.fn>;
     let mockCallableTokenizer: ReturnType<typeof vi.fn>;
+    let mockGenerate: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
       capturedCallback = undefined;
@@ -4585,11 +4585,12 @@ file-a
         { apply_chat_template: mockApplyTemplate },
       );
 
+      mockGenerate = vi.fn().mockImplementation(async () => {
+        for (const token of tokensToEmit) capturedCallback?.(token);
+        return { past_key_values: {} };
+      });
       const mockModel = {
-        generate: vi.fn().mockImplementation(async () => {
-          for (const token of tokensToEmit) capturedCallback?.(token);
-          return { past_key_values: {} };
-        }),
+        generate: mockGenerate,
         dispose: vi.fn(),
         device: 'webgpu',
       };
@@ -4612,6 +4613,11 @@ file-a
       '{"query":"test"}',
       '<|call|>',
     ];
+
+    it.each([null, 7, [], {}, '', 'not-an-operation-uuid'])('rejects malformed continuation owner %# at the Worker RPC boundary', async owner => {
+      await expect(workerObj.generateText([{ role: 'user', content: 'Hello' }], vi.fn(), vi.fn(), undefined, undefined, undefined, owner)).rejects.toThrow();
+      expect(mockGenerate).not.toHaveBeenCalled();
+    });
 
     const SIMPLE_TOOL: WorkerToolDefinition = {
       type: 'function',
@@ -4700,7 +4706,7 @@ file-a
       expect(formattedMessages[0].content).toContain('query: string');
     });
 
-    it('skips apply_chat_template and calls tokenizer directly for GPT-OSS continuation', async () => {
+    it('renders full input for direct GPT-OSS supplied history without a public operation owner', async () => {
       tokensToEmit = [];
 
       await workerObj.generateText(
@@ -4726,15 +4732,12 @@ file-a
 
       await workerObj.generateText(messages, vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL]);
 
-      expect(mockApplyTemplate).not.toHaveBeenCalled();
-      // The callable tokenizer should have been invoked with the Harmony-formatted text
-      expect(mockCallableTokenizer).toHaveBeenCalledWith(
-        expect.stringContaining('<|start|>my_tool to=assistant'),
-        expect.objectContaining({ add_special_tokens: false }),
-      );
+      expect(mockApplyTemplate).toHaveBeenCalledOnce();
+      expect(mockCallableTokenizer).not.toHaveBeenCalled();
+      expect(mockGenerate.mock.calls.at(-1)?.[0]).toMatchObject({ past_key_values: null });
     });
 
-    it('captures a GPT-OSS tool continuation without preparing an extra full-conversation template', async () => {
+    it('keeps direct unowned GPT-OSS full-input generation identical with and without capture', async () => {
       const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
       const first = [{ role: 'user', content: 'Synthetic tool request.' }];
       const callId = toToolCallId({ raw: 'call_1' });
@@ -4747,17 +4750,18 @@ file-a
       mockApplyTemplate.mockClear();
       mockCallableTokenizer.mockClear();
       await worker.generateText(continuation, vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL]);
-      expect(mockApplyTemplate).not.toHaveBeenCalled();
-      expect(mockCallableTokenizer).toHaveBeenCalledOnce();
-      const ordinaryCall = mockCallableTokenizer.mock.calls[0];
+      expect(mockApplyTemplate).toHaveBeenCalledOnce();
+      expect(mockCallableTokenizer).not.toHaveBeenCalled();
+      const ordinaryCall = mockApplyTemplate.mock.calls[0];
       await worker.resetCache();
       await worker.generateText(first, vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL]);
       mockApplyTemplate.mockClear();
       mockCallableTokenizer.mockClear();
       await worker.generateText(continuation, vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL], captureRequest);
-      expect(mockApplyTemplate).not.toHaveBeenCalled();
-      expect(mockCallableTokenizer).toHaveBeenCalledOnce();
-      expect(mockCallableTokenizer.mock.calls[0]).toEqual(ordinaryCall);
+      expect(mockApplyTemplate).toHaveBeenCalledOnce();
+      expect(mockCallableTokenizer).not.toHaveBeenCalled();
+      expect(mockApplyTemplate.mock.calls[0]).toEqual(ordinaryCall);
+      expect(mockGenerate.mock.calls.at(-1)?.[0]).toMatchObject({ past_key_values: null });
       const result = generationCaptureReadResultSchema.parse(await worker.takeGenerationCapture(captureRun));
       if (result.status !== 'captured') throw new Error('Expected capture');
       expect(result.capture.events.filter(event => event.kind === 'inputs').map(event => event.phase)).toEqual(['pre-budget', 'native-kwargs']);

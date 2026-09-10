@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
-import { createMemoryFiles } from '@/features/transformers-js/download-verification/fixtures/raw-download-replay/memory-files';
+import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import { writeToOpfsWithStaging } from '@/features/transformers-js/utils';
 import type { ITransformersJsDownloadWorker } from '@/features/transformers-js/types';
 import type { WorkerServerApi } from '@/utils/worker-transport';

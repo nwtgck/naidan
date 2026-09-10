@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-imports -- Dedicated verification worker intentionally imports the Transformers.js runtime directly. */
 import {
+  AutoConfig,
   AutoModelForCausalLM,
   AutoModelForImageTextToText,
   env,
@@ -102,7 +103,6 @@ const workerApi: WorkerServerApi<DownloadVerificationModelArtifactRequestWorker>
     candidate,
   }): Promise<DownloadVerificationModelArtifactRequestObservation> {
     const cleanModelId = normalizeTransformersJsProductionModelId({ modelId });
-    const autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId });
     const barrier = createModelArtifactRequestBarrier({ quiescenceMs: OBSERVATION_QUIESCENCE_MS });
 
     const interceptedFetch: typeof fetch = async (input, init) => {
@@ -129,22 +129,31 @@ const workerApi: WorkerServerApi<DownloadVerificationModelArtifactRequestWorker>
     type LoadOutcome =
       | { kind: 'loaded' }
       | { kind: 'failed'; error: unknown };
-    const loadOutcome = loadProductionModel({
-      autoClass,
-      modelId: cleanModelId,
-      revision,
-      candidate,
-    }).then<LoadOutcome, LoadOutcome>(
-      () => ({ kind: 'loaded' }),
-      error => ({ kind: 'failed', error }),
-    );
-
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<{ kind: 'timeout' }>(resolve => {
       timeoutId = setTimeout(() => resolve({ kind: 'timeout' }), OBSERVATION_TIMEOUT_MS);
     });
 
     try {
+      // Route from actual bounded metadata under the same credential-free fetch
+      // and total observation deadline; never invent a class when it is unknown.
+      const metadata = await Promise.race([
+        AutoConfig.from_pretrained(cleanModelId, { revision }).then(config => ({ kind: 'config' as const, config })),
+        timeout,
+      ]);
+      switch (metadata.kind) {
+      case 'config': break;
+      case 'timeout': throw new Error('Timed out while reading model configuration for artifact request observation');
+      default: {
+        const exhaustive: never = metadata;
+        throw new Error(`Unhandled artifact observation metadata outcome: ${String(exhaustive)}`);
+      }
+      }
+      const modelType = typeof metadata.config.model_type === 'string' ? metadata.config.model_type : undefined;
+      const autoClass = selectTransformersJsProductionAutoClass({ modelId: cleanModelId, modelType });
+      const loadOutcome = loadProductionModel({ autoClass, modelId: cleanModelId, revision, candidate }).then<LoadOutcome, LoadOutcome>(
+        () => ({ kind: 'loaded' }), error => ({ kind: 'failed', error }),
+      );
       const outcome = await Promise.race([
         barrier.waitForQuiescence().then(requests => ({ kind: 'observed' as const, requests })),
         loadOutcome,

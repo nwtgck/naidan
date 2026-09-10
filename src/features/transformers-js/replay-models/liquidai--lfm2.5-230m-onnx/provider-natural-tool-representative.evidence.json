@@ -1,0 +1,1326 @@
+{
+  "format": "provider-request-evidence-v1",
+  "caseId": "natural-tool-representative",
+  "contextSha256": "f282c5753f3753d8587316ab9e48722e4bc36f9593390063bc733bb9527aa56c",
+  "request": {
+    "input": {
+      "messages": [
+        {
+          "role": "user",
+          "content": "Use lookup_weather for Tokyo, then give a short answer based on the tool result."
+        }
+      ],
+      "tools": [
+        {
+          "fixtureId": "model-support-weather-v1",
+          "name": "lookup_weather",
+          "description": "Return deterministic weather fixture data.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "parameters": {
+        "temperature": 0,
+        "topP": 1,
+        "maxCompletionTokens": 128,
+        "presencePenalty": null,
+        "frequencyPenalty": null,
+        "stop": null,
+        "reasoning": {
+          "effort": null
+        }
+      }
+    },
+    "events": [
+      {
+        "sequence": 0,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 1,
+        "phase": "before-settlement",
+        "kind": "tool-call",
+        "toolCallId": "tool-1",
+        "toolName": "lookup_weather",
+        "modelVisibleArguments": "{\"city\":\"Tokyo\"}"
+      },
+      {
+        "sequence": 2,
+        "phase": "before-settlement",
+        "kind": "tool-success",
+        "toolCallId": "tool-1",
+        "content": "{\"temperatureC\":20,\"condition\":\"clear\"}"
+      },
+      {
+        "sequence": 3,
+        "phase": "before-settlement",
+        "kind": "assistant-start"
+      },
+      {
+        "sequence": 4,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "The "
+      },
+      {
+        "sequence": 5,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "weather "
+      },
+      {
+        "sequence": 6,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "in "
+      },
+      {
+        "sequence": 7,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "Tokyo "
+      },
+      {
+        "sequence": 8,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "today "
+      },
+      {
+        "sequence": 9,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "is "
+      },
+      {
+        "sequence": 10,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "clear "
+      },
+      {
+        "sequence": 11,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "with "
+      },
+      {
+        "sequence": 12,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "a "
+      },
+      {
+        "sequence": 13,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "temperature "
+      },
+      {
+        "sequence": 14,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "of "
+      },
+      {
+        "sequence": 15,
+        "phase": "before-settlement",
+        "kind": "chunk",
+        "chunk": "20°C."
+      }
+    ]
+  },
+  "invocations": [
+    {
+      "localOrdinal": 1,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "e6b3c521c3c005677e09912a21d04fa618be92d21c44b520d0741281600218b0"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "37611d27f79518e501d2639c031c11b50a8a23a12bf632c89f007c327af72487"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "e6b3c521c3c005677e09912a21d04fa618be92d21c44b520d0741281600218b0"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              102
+            ],
+            "byteLength": 816,
+            "sha256": "37611d27f79518e501d2639c031c11b50a8a23a12bf632c89f007c327af72487"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 128,
+          "contextLimit": 128000,
+          "promptTokenCount": 102,
+          "usedContextTokenCount": 102
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1",
+              "6",
+              "24131",
+              "708",
+              "3621",
+              "803",
+              "6486",
+              "535",
+              "1607",
+              "38685",
+              "6383",
+              "6881",
+              "997",
+              "6046",
+              "1878",
+              "997",
+              "6046",
+              "6881",
+              "37080",
+              "3055",
+              "6881",
+              "997",
+              "30753",
+              "1557",
+              "572",
+              "51993",
+              "1878",
+              "997",
+              "19522",
+              "6881",
+              "997",
+              "17820",
+              "15249",
+              "3547",
+              "7921",
+              "52140",
+              "1818",
+              "50508",
+              "997",
+              "30202",
+              "6881",
+              "37080",
+              "6383",
+              "6881",
+              "997",
+              "7523",
+              "1878",
+              "997",
+              "39306",
+              "6881",
+              "37080",
+              "48250",
+              "6881",
+              "37080",
+              "6383",
+              "6881",
+              "997",
+              "4488",
+              "511",
+              "37602",
+              "997",
+              "35004",
+              "6881",
+              "35065",
+              "48250",
+              "63045",
+              "997",
+              "3263",
+              "2847",
+              "20051",
+              "6881",
+              "4831",
+              "2608",
+              "20352",
+              "7",
+              "708",
+              "6",
+              "6423",
+              "708",
+              "14875",
+              "60858",
+              "572",
+              "51993",
+              "875",
+              "19444",
+              "521",
+              "1757",
+              "3619",
+              "768",
+              "3290",
+              "5642",
+              "2948",
+              "884",
+              "779",
+              "6690",
+              "1725",
+              "523",
+              "7",
+              "708",
+              "6",
+              "64015",
+              "708"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "10"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "568"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "30753"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1557"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "572"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "51993"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "10120"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "960"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1248"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "40550"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "11554"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "6681"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "570"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "11"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "<|tool_call_start|>[lookup_weather(city=\"Tokyo\")]<|tool_call_end|>",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          117
+        ],
+        "byteLength": 936,
+        "sha256": "2edeb19c99856336c692773e68bb308e80351fa6ac2dc6e86066a45d60b19749",
+        "tokens": [
+          "1",
+          "6",
+          "24131",
+          "708",
+          "3621",
+          "803",
+          "6486",
+          "535",
+          "1607",
+          "38685",
+          "6383",
+          "6881",
+          "997",
+          "6046",
+          "1878",
+          "997",
+          "6046",
+          "6881",
+          "37080",
+          "3055",
+          "6881",
+          "997",
+          "30753",
+          "1557",
+          "572",
+          "51993",
+          "1878",
+          "997",
+          "19522",
+          "6881",
+          "997",
+          "17820",
+          "15249",
+          "3547",
+          "7921",
+          "52140",
+          "1818",
+          "50508",
+          "997",
+          "30202",
+          "6881",
+          "37080",
+          "6383",
+          "6881",
+          "997",
+          "7523",
+          "1878",
+          "997",
+          "39306",
+          "6881",
+          "37080",
+          "48250",
+          "6881",
+          "37080",
+          "6383",
+          "6881",
+          "997",
+          "4488",
+          "511",
+          "37602",
+          "997",
+          "35004",
+          "6881",
+          "35065",
+          "48250",
+          "63045",
+          "997",
+          "3263",
+          "2847",
+          "20051",
+          "6881",
+          "4831",
+          "2608",
+          "20352",
+          "7",
+          "708",
+          "6",
+          "6423",
+          "708",
+          "14875",
+          "60858",
+          "572",
+          "51993",
+          "875",
+          "19444",
+          "521",
+          "1757",
+          "3619",
+          "768",
+          "3290",
+          "5642",
+          "2948",
+          "884",
+          "779",
+          "6690",
+          "1725",
+          "523",
+          "7",
+          "708",
+          "6",
+          "64015",
+          "708",
+          "10",
+          "568",
+          "30753",
+          "1557",
+          "572",
+          "51993",
+          "10120",
+          "960",
+          "1248",
+          "40550",
+          "11554",
+          "6681",
+          "570",
+          "11",
+          "7"
+        ]
+      }
+    },
+    {
+      "localOrdinal": 2,
+      "preInputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              138
+            ],
+            "byteLength": 1104,
+            "sha256": "21fa27c06b5a7d83a628df903a46df024668966eb9dd2dd5d8486b4e475cadf8"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              138
+            ],
+            "byteLength": 1104,
+            "sha256": "fb1339accb621aabc6e6b988f089020c323a12586367dc790489692e42e0984f"
+          }
+        }
+      ],
+      "inputs": [
+        {
+          "name": "input_ids",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              138
+            ],
+            "byteLength": 1104,
+            "sha256": "21fa27c06b5a7d83a628df903a46df024668966eb9dd2dd5d8486b4e475cadf8"
+          }
+        },
+        {
+          "name": "attention_mask",
+          "value": {
+            "kind": "tensor",
+            "dtype": "int64",
+            "dims": [
+              1,
+              138
+            ],
+            "byteLength": 1104,
+            "sha256": "fb1339accb621aabc6e6b988f089020c323a12586367dc790489692e42e0984f"
+          }
+        }
+      ],
+      "settings": {
+        "requested": {
+          "maxCompletionTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          }
+        },
+        "kwargs": {
+          "keys": {
+            "status": "complete",
+            "totalCount": 10,
+            "values": [
+              "input_ids",
+              "attention_mask",
+              "past_key_values",
+              "max_new_tokens",
+              "temperature",
+              "top_p",
+              "do_sample",
+              "streamer",
+              "stopping_criteria",
+              "return_dict_in_generate"
+            ],
+            "incompleteReasons": []
+          },
+          "maxNewTokens": {
+            "status": "value",
+            "value": 128
+          },
+          "temperature": {
+            "status": "value",
+            "value": 0
+          },
+          "topP": {
+            "status": "value",
+            "value": 1
+          },
+          "doSample": {
+            "status": "value",
+            "value": false
+          },
+          "returnDictInGenerate": {
+            "status": "value",
+            "value": true
+          }
+        },
+        "budget": {
+          "source": "explicit",
+          "pastTokenCount": 0,
+          "maxNewTokens": 128,
+          "contextLimit": 128000,
+          "promptTokenCount": 138,
+          "usedContextTokenCount": 138
+        }
+      },
+      "stream": [
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1",
+              "6",
+              "24131",
+              "708",
+              "3621",
+              "803",
+              "6486",
+              "535",
+              "1607",
+              "38685",
+              "6383",
+              "6881",
+              "997",
+              "6046",
+              "1878",
+              "997",
+              "6046",
+              "6881",
+              "37080",
+              "3055",
+              "6881",
+              "997",
+              "30753",
+              "1557",
+              "572",
+              "51993",
+              "1878",
+              "997",
+              "19522",
+              "6881",
+              "997",
+              "17820",
+              "15249",
+              "3547",
+              "7921",
+              "52140",
+              "1818",
+              "50508",
+              "997",
+              "30202",
+              "6881",
+              "37080",
+              "6383",
+              "6881",
+              "997",
+              "7523",
+              "1878",
+              "997",
+              "39306",
+              "6881",
+              "37080",
+              "48250",
+              "6881",
+              "37080",
+              "6383",
+              "6881",
+              "997",
+              "4488",
+              "511",
+              "37602",
+              "997",
+              "35004",
+              "6881",
+              "35065",
+              "48250",
+              "63045",
+              "997",
+              "3263",
+              "2847",
+              "20051",
+              "6881",
+              "4831",
+              "2608",
+              "20352",
+              "7",
+              "708",
+              "6",
+              "6423",
+              "708",
+              "14875",
+              "60858",
+              "572",
+              "51993",
+              "875",
+              "19444",
+              "521",
+              "1757",
+              "3619",
+              "768",
+              "3290",
+              "5642",
+              "2948",
+              "884",
+              "779",
+              "6690",
+              "1725",
+              "523",
+              "7",
+              "708",
+              "6",
+              "64015",
+              "708",
+              "10",
+              "568",
+              "30753",
+              "1557",
+              "572",
+              "51993",
+              "10120",
+              "960",
+              "8037",
+              "40550",
+              "11554",
+              "8110",
+              "570",
+              "11",
+              "7",
+              "708",
+              "6",
+              "47266",
+              "708",
+              "38685",
+              "593",
+              "25793",
+              "544",
+              "6881",
+              "898",
+              "2512",
+              "25556",
+              "42066",
+              "14644",
+              "511",
+              "602",
+              "7",
+              "708",
+              "6",
+              "64015",
+              "708"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "1098"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7921"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "797"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "19444"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4008"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "856"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "4484"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "916"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "768"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "5078"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "803"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "730"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "898"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "9154"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "523"
+            ]
+          ]
+        },
+        {
+          "operation": "put",
+          "groups": [
+            [
+              "7"
+            ]
+          ]
+        },
+        {
+          "operation": "end"
+        }
+      ],
+      "finalized": [
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "The ",
+          "streamEnd": false
+        },
+        {
+          "text": "weather ",
+          "streamEnd": false
+        },
+        {
+          "text": "in ",
+          "streamEnd": false
+        },
+        {
+          "text": "Tokyo ",
+          "streamEnd": false
+        },
+        {
+          "text": "today ",
+          "streamEnd": false
+        },
+        {
+          "text": "is ",
+          "streamEnd": false
+        },
+        {
+          "text": "clear ",
+          "streamEnd": false
+        },
+        {
+          "text": "with ",
+          "streamEnd": false
+        },
+        {
+          "text": "a ",
+          "streamEnd": false
+        },
+        {
+          "text": "temperature ",
+          "streamEnd": false
+        },
+        {
+          "text": "of ",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "",
+          "streamEnd": false
+        },
+        {
+          "text": "20°C.",
+          "streamEnd": true
+        }
+      ],
+      "sequence": {
+        "dtype": "int64",
+        "dims": [
+          1,
+          154
+        ],
+        "byteLength": 1232,
+        "sha256": "97047865dded7127f752d4306f7227fa089a9f35a5bb2675b0d953cc4e5687c0",
+        "tokens": [
+          "1",
+          "6",
+          "24131",
+          "708",
+          "3621",
+          "803",
+          "6486",
+          "535",
+          "1607",
+          "38685",
+          "6383",
+          "6881",
+          "997",
+          "6046",
+          "1878",
+          "997",
+          "6046",
+          "6881",
+          "37080",
+          "3055",
+          "6881",
+          "997",
+          "30753",
+          "1557",
+          "572",
+          "51993",
+          "1878",
+          "997",
+          "19522",
+          "6881",
+          "997",
+          "17820",
+          "15249",
+          "3547",
+          "7921",
+          "52140",
+          "1818",
+          "50508",
+          "997",
+          "30202",
+          "6881",
+          "37080",
+          "6383",
+          "6881",
+          "997",
+          "7523",
+          "1878",
+          "997",
+          "39306",
+          "6881",
+          "37080",
+          "48250",
+          "6881",
+          "37080",
+          "6383",
+          "6881",
+          "997",
+          "4488",
+          "511",
+          "37602",
+          "997",
+          "35004",
+          "6881",
+          "35065",
+          "48250",
+          "63045",
+          "997",
+          "3263",
+          "2847",
+          "20051",
+          "6881",
+          "4831",
+          "2608",
+          "20352",
+          "7",
+          "708",
+          "6",
+          "6423",
+          "708",
+          "14875",
+          "60858",
+          "572",
+          "51993",
+          "875",
+          "19444",
+          "521",
+          "1757",
+          "3619",
+          "768",
+          "3290",
+          "5642",
+          "2948",
+          "884",
+          "779",
+          "6690",
+          "1725",
+          "523",
+          "7",
+          "708",
+          "6",
+          "64015",
+          "708",
+          "10",
+          "568",
+          "30753",
+          "1557",
+          "572",
+          "51993",
+          "10120",
+          "960",
+          "8037",
+          "40550",
+          "11554",
+          "8110",
+          "570",
+          "11",
+          "7",
+          "708",
+          "6",
+          "47266",
+          "708",
+          "38685",
+          "593",
+          "25793",
+          "544",
+          "6881",
+          "898",
+          "2512",
+          "25556",
+          "42066",
+          "14644",
+          "511",
+          "602",
+          "7",
+          "708",
+          "6",
+          "64015",
+          "708",
+          "1098",
+          "7921",
+          "797",
+          "19444",
+          "4008",
+          "856",
+          "4484",
+          "916",
+          "768",
+          "5078",
+          "803",
+          "730",
+          "898",
+          "9154",
+          "523",
+          "7"
+        ]
+      }
+    }
+  ],
+  "inputGaps": [],
+  "unavailableOutputOrdinals": [],
+  "provenanceSha256": "86f4ec780c9c1fc092cce1a3be479bf2e9f29b33acfdc61378f00126a9f91469"
+}

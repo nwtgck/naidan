@@ -17,6 +17,7 @@ import type {
   TransformersJsProductionInvestigationObservation,
   TransformersJsProductionInvestigationScenario,
   WorkerToolDefinition,
+  ITransformersJsWorker,
 } from "@/features/transformers-js/types";
 import type { ChatMessage, LmParameters, ToolCall } from "@/01-models/types";
 
@@ -60,6 +61,8 @@ type WorkerTransportData =
   | LmParameters
   | ToolCall
   | WorkerToolDefinition;
+type ContinuationOwnerData = Parameters<ITransformersJsWorker['generateText']>[6];
+const continuationOwnerExtraTypes: AssertNever<Exclude<ContinuationOwnerData, string | undefined>>[] = [];
 
 const workerTransportFunctionPaths: AssertNever<FunctionPath<WorkerTransportData>>[] = [];
 const ordinaryLoadExtraFields: AssertNever<Exclude<keyof ModelLoadResult, 'device' | 'dtype'>>[] = [];
@@ -73,6 +76,7 @@ describe("Model Support Investigation Worker transport data", () => {
   it("keeps transported DTOs free of functions and callable class instances", () => {
     expect(workerTransportFunctionPaths).toEqual([]);
     expect(ordinaryLoadExtraFields).toEqual([]);
+    expect(continuationOwnerExtraTypes).toEqual([]);
     expect(functionPathProbe).toBe("nested.callback");
   });
 });

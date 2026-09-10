@@ -12,12 +12,18 @@ describe('Transformers.js production routing', () => {
     expect(normalizeTransformersJsProductionModelId({ modelId: 'org/model' })).toBe('org/model');
   });
 
-  it('uses image-text-to-text only for the Gemma 4 production route', () => {
-    expect(selectTransformersJsProductionAutoClass({ modelId: 'onnx-community/gemma-4-E2B-it-ONNX' }))
+  it('uses multimodal config identity rather than the Qwen repository spelling', () => {
+    expect(selectTransformersJsProductionAutoClass({ modelId: 'onnx-community/gemma-4-E2B-it-ONNX', modelType: 'gemma4' }))
       .toBe('AutoModelForImageTextToText');
-    expect(selectTransformersJsProductionAutoClass({ modelId: 'Qwen/Qwen3.5-2B-ONNX' }))
+    expect(selectTransformersJsProductionAutoClass({ modelId: 'org/custom-model', modelType: 'qwen3_5' }))
+      .toBe('AutoModelForImageTextToText');
+    expect(selectTransformersJsProductionAutoClass({ modelId: 'org/custom-moe', modelType: 'qwen3_5_moe' }))
+      .toBe('AutoModelForImageTextToText');
+    expect(selectTransformersJsProductionAutoClass({ modelId: 'Qwen/Qwen3.5-2B-ONNX', modelType: 'qwen3_5_text' }))
       .toBe('AutoModelForCausalLM');
-    expect(selectTransformersJsProductionAutoClass({ modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct' }))
+    expect(selectTransformersJsProductionAutoClass({ modelId: 'Qwen/Qwen3.5-2B-ONNX', modelType: undefined }))
+      .toBe('AutoModelForCausalLM');
+    expect(selectTransformersJsProductionAutoClass({ modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct', modelType: 'llama' }))
       .toBe('AutoModelForCausalLM');
   });
 

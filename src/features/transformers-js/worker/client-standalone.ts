@@ -41,12 +41,13 @@ export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
     async resetCache(): Promise<void> {
       throw createUnsupportedError();
     },
-    async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools }: {
+    async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools, continuationOwner: _continuationOwner }: {
       messages: ChatMessage[],
       onChunk: TransformersJsChunkCallback,
       onToolCalls: TransformersJsToolCallsCallback,
       params?: LmParameters,
       tools?: WorkerToolDefinition[],
+      continuationOwner?: string,
     }): Promise<void> {
       throw createUnsupportedError();
     },

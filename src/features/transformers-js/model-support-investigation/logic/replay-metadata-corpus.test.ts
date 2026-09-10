@@ -1,7 +1,7 @@
 import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import capturedCorpus from './fixtures/replay-metadata-corpus.json';
+import capturedCorpus from '@/features/transformers-js/replay-models/support/model-parsed-metadata-corpus';
 import { collectReplayMetadata, REPLAY_METADATA_PATHS, REPLAY_METADATA_TARGET_BYTES } from './collect-replay-metadata';
 import { createInitialInvestigationCheckpoint } from './investigation-recovery';
 import { runInvestigationTargetsSequentially } from './run-investigation-targets-sequentially';

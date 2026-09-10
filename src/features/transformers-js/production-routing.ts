@@ -11,12 +11,20 @@ export function normalizeTransformersJsProductionModelId({ modelId }: { modelId:
   return modelId;
 }
 
-export function selectTransformersJsProductionAutoClass({ modelId }: {
+export function selectTransformersJsProductionAutoClass({ modelId, modelType }: {
   modelId: string,
+  modelType: string | undefined,
 }): TransformersJsProductionInvestigationAutoClass {
+  if (supportsQwen3_5MultimodalRoute({ modelType })) return 'AutoModelForImageTextToText';
   return isGemma4Model({ modelType: undefined, activeModelId: modelId })
     ? 'AutoModelForImageTextToText'
     : 'AutoModelForCausalLM';
+}
+
+export function supportsQwen3_5MultimodalRoute({ modelType }: { modelType: string | undefined }): boolean {
+  // Native multimodal configs have a vision encoder. The *_text architectures
+  // intentionally remain language-only regardless of a repository's name.
+  return modelType === 'qwen3_5' || modelType === 'qwen3_5_moe';
 }
 
 export function selectTransformersJsProductionRuntimeArtifactLoader({
